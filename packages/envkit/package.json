@@ -1,0 +1,18 @@
+{
+  "name": "@geekmidas/envkit",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "~3.25.67",
+    "lodash.set": "~4.3.2",
+    "lodash.get": "~4.4.2"
+  },
+  "devDependencies": {
+    "@types/lodash.set": "~4.3.9",
+    "@types/lodash.get": "~4.4.9"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 80,
+    "attributePosition": "auto",
+    "ignore": ["node_modules/*", ".turbo"]
+  },
+  "organizeImports": { "enabled": true },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "complexity": { "noForEach": "off", "noUselessFragments": "off" },
+      "correctness": {
+        "useExhaustiveDependencies": "off",
+        "useJsxKeyInIterable": "off",
+        "noUnusedImports": "error",
+        "noUnusedLabels": "off",
+        "noUnusedPrivateClassMembers": "off",
+        "noUnusedVariables": "off"
+      },
+      "style": {
+        "useImportType": "error"
+      },
+      "suspicious": { "noConsoleLog": "error", "noExplicitAny": "off" }
+    },
+    "ignore": ["**/dist/*", "**/__generated__/*"]
+  },
+  "javascript": {
+    "formatter": {
+      "jsxQuoteStyle": "double",
+      "quoteProperties": "asNeeded",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always",
+      "bracketSpacing": true,
+      "bracketSameLine": false,
+      "enabled": true,
+      "quoteStyle": "single",
+      "attributePosition": "auto"
+    }
+  },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git"
+  }
+}
