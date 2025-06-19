@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { ConsoleLogger, Logger } from '../logger';
 import type {
   HermodServiceConstructor,
   HermodServiceRecord,
@@ -18,7 +19,7 @@ export type InferStandardSchema<T> = T extends StandardSchemaV1
 export type HandlerContext<
   S extends EndpointSchemas,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > = {
   [K in keyof S]: InferStandardSchema<S[K]>;
@@ -33,7 +34,7 @@ export type RouteHandler<
   S extends EndpointSchemas,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > = (
   ctx: HandlerContext<S, TServices, TLogger, TSession>,
@@ -44,7 +45,7 @@ export type RouteHandler<
 export type SessionFn<
   S extends EndpointSchemas,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > = (
   ctx: HandlerContext<S, TServices, TLogger, undefined>,
@@ -56,7 +57,7 @@ export type ExtractSessionFromFn<T extends SessionFn<any, any, any, any>> =
 export type Authorizer<
   S extends EndpointSchemas,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > = (
   ctx: HandlerContext<S, TServices, TLogger, TSession>,

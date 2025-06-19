@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 
 import { UnprocessableEntityError } from '../errors';
+import { ConsoleLogger, type Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import type {
   Authorizer,
@@ -27,13 +28,14 @@ export enum SuccessStatus {
   PartialContent = 206,
 }
 
+const DEFAULT_LOGGER = new ConsoleLogger() as any;
 export class Handler<
   S extends EndpointSchemas,
   Path extends string,
   TMethod extends Method,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
   __IS_HANDLER__ = true;
@@ -58,7 +60,7 @@ export class Handler<
     public readonly status: SuccessStatus = SuccessStatus.OK,
     private description?: string,
     public services: TServices = {} as TServices,
-    public logger: TLogger = console as TLogger,
+    public logger: TLogger = DEFAULT_LOGGER,
     public getSession: SessionFn<S, TServices, TLogger, TSession> = () =>
       ({}) as TSession,
   ) {}
@@ -121,6 +123,15 @@ export class Handler<
     return this.parseSchema(data, this.schemas.query) as InferStandardSchema<
       S['query']
     >;
+  }
+
+  async parseOutput(
+    data?: any,
+  ): Promise<InferStandardSchema<OutSchema> | undefined> {
+    return this.parseSchema(
+      data,
+      this.outputSchema,
+    ) as InferStandardSchema<OutSchema>;
   }
 
   async toJSONSchema(schema?: StandardSchemaV1): Promise<any | undefined> {
@@ -233,7 +244,7 @@ class EndpointBuilder<
   TMethod extends Method = Method,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
   private method: TMethod;
@@ -245,9 +256,11 @@ class EndpointBuilder<
 
   // Made these accessible to EndpointFactory
   _services: TServices;
-  _logger: TLogger = console as TLogger;
+  _logger: TLogger = DEFAULT_LOGGER;
   _auth: TSession = {} as TSession;
   authorizeFn: Authorizer<TSchema, TServices, TLogger, TSession> = () => true;
+  _getSession: SessionFn<TSchema, TServices, TLogger, TSession> = () =>
+    ({}) as TSession;
 
   constructor(method: TMethod, path: Path) {
     this.method = method;
@@ -355,6 +368,8 @@ class EndpointBuilder<
       this.statusCode,
       this._description,
       this._services,
+      this._logger,
+      this._getSession,
     ) as Handler<
       TSchema,
       Path,
@@ -371,7 +386,7 @@ class EndpointBuilder<
 export class EndpointFactory<
   TServices extends HermodServiceConstructor[] = [],
   TBasePath extends string = '',
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
   private defaultServices: TServices;
@@ -381,13 +396,13 @@ export class EndpointFactory<
     private defaultAuthorizeFn?: (
       ctx: HandlerContext<any, TServices, TLogger, TSession>,
     ) => boolean | Promise<boolean>,
-    private defaultLogger: TLogger = console as TLogger,
-    private defaultSessionExtractor: SessionFn<
+    private defaultLogger: TLogger = DEFAULT_LOGGER,
+    private defaultSessionExtractor?: SessionFn<
       {},
       TServices,
       TLogger,
       TSession
-    > = () => ({}) as TSession,
+    >,
   ) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -458,7 +473,9 @@ export class EndpointFactory<
     );
   }
 
-  logger<L>(logger: L): EndpointFactory<TServices, TBasePath, L, TSession> {
+  logger<L extends Logger>(
+    logger: L,
+  ): EndpointFactory<TServices, TBasePath, L, TSession> {
     return new EndpointFactory<TServices, TBasePath, L, TSession>(
       this.defaultServices,
       this.basePath,
@@ -500,6 +517,21 @@ export class EndpointFactory<
     if (this.defaultServices.length) {
       // @ts-ignore
       builder._services = this.defaultServices as TServices;
+    }
+
+    if (this.defaultLogger) {
+      // @ts-ignore
+      builder._logger = this.defaultLogger as TLogger;
+    }
+
+    if (this.defaultSessionExtractor) {
+      // @ts-ignore
+      builder._getSession = this.defaultSessionExtractor as SessionFn<
+        {},
+        TServices,
+        TLogger,
+        TSession
+      >;
     }
 
     return builder as unknown as EndpointBuilder<

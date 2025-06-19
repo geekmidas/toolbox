@@ -1,7 +1,7 @@
 {
   "name": "@geekmidas/api",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": {
     "zap": "./.bin/zap.ts"
@@ -11,17 +11,27 @@
     "./errors": "./src/errors.ts",
     "./server": "./src/server.ts"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geekmidas/toolbox.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
 
   "dependencies": {
     "@standard-schema/spec": "~1.0.0",
     "openapi-typescript": "~7.8.0",
     "lodash.uniqby": "~4.7.0",
-    "lodash.merge": "~4.6.2"
+    "lodash.merge": "~4.6.2",
+    "lodash.set": "~4.3.2"
   },
   "devDependencies": {
     "fast-glob": "~3.3.3",
     "@types/lodash.uniqby": "~4.7.9",
-    "@types/lodash.merge": "~4.6.9"
+    "@types/lodash.merge": "~4.6.9",
+    "@types/lodash.set": "~4.3.9"
   },
   "scripts": {},
   "peerDependencies": {

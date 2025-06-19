@@ -2,16 +2,17 @@ import middy, { type MiddlewareObj } from '@middy/core';
 import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpJsonBodyParser from '@middy/http-json-body-parser';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { APIGatewayProxyEvent } from 'aws-lambda';
-import type { Handler } from './Endpoint.ts';
-import type { EndpointSchemas, Method } from './types.ts';
-
+import type { APIGatewayProxyEventV2 } from 'aws-lambda';
+import set from 'lodash.set';
 import { wrapError } from '../errors.ts';
+import type { ConsoleLogger, Logger } from '../logger.ts';
 import {
   type HermodServiceConstructor,
   HermodServiceDiscovery,
   type HermodServiceRecord,
-} from '../services.ts';
+} from '../services';
+import type { Handler } from './Endpoint';
+import type { EndpointSchemas, Method } from './types';
 
 export class AWSApiGatewayV1EndpointAdaptor<
   S extends EndpointSchemas,
@@ -19,7 +20,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
   TMethod extends Method,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
   constructor(
@@ -44,8 +45,12 @@ export class AWSApiGatewayV1EndpointAdaptor<
     before: async (request) => {
       const headers = Object.entries(request.event.headers || {});
 
-      request.event.headers = new Map(
-        headers.map(([key, value]) => [key.toLowerCase(), value]),
+      set(
+        request.event,
+        'req.headers',
+        new Map(
+          headers.map(([key, value]) => [key.toLowerCase(), value as string]),
+        ),
       );
     },
   };
@@ -59,9 +64,14 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   logger: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
-      request.event.logger = this.endpoint.logger as TLogger;
-      const { method, path, status } = this.endpoint;
-      const { body, query, params } = request.event;
+      request.event.logger = this.endpoint.logger.child({
+        route: this.endpoint.route(),
+        requestId: request.event.requestContext?.requestId,
+        ip: request.event.requestContext?.http?.sourceIp,
+        host: request.event.requestContext?.domainName,
+        method: request.event.requestContext?.http?.method,
+        path: request.event.requestContext?.http?.path,
+      }) as TLogger;
     },
     after: async (request) => {},
   };
@@ -69,10 +79,18 @@ export class AWSApiGatewayV1EndpointAdaptor<
   services: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
       const serviceDiscovery = HermodServiceDiscovery.getInstance();
-      request.event.services = await serviceDiscovery.register(
-        this.endpoint.services,
-      );
+      const services = await serviceDiscovery.register(this.endpoint.services);
+
+      request.event.services = services;
     },
+  };
+  defaultBody: MiddlewareObj<Event<TServices, TLogger>> = {
+    before: async (request) => {
+      if (request.event.body === undefined) {
+        request.event.body = '{}';
+      }
+    },
+    after: async (request) => {},
   };
   parseData: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
@@ -89,7 +107,17 @@ export class AWSApiGatewayV1EndpointAdaptor<
       request.event.params = params;
     },
     after: async (request) => {
-      // You can add any post-processing logic here if needed
+      const responseBody = request.response.body;
+      const headers = (request.response.headers || {}) as Record<
+        string,
+        string
+      >;
+      if (responseBody) {
+        request.response.headers = {
+          ...headers,
+          'Content-Type': 'application/json',
+        };
+      }
     },
   };
 
@@ -106,9 +134,11 @@ export class AWSApiGatewayV1EndpointAdaptor<
   _handler = middy(async (event) => {
     const response = await this.endpoint.handler(event);
 
+    const output = await this.endpoint.parseOutput(response);
+
     return {
       statusCode: this.endpoint.status,
-      body: response ? JSON.stringify(response) : undefined,
+      body: output ? JSON.stringify(output) : undefined,
     };
   })
     .use(this.errors)
@@ -130,14 +160,16 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
 type Event<
   TServices extends HermodServiceConstructor[] = [],
-  TLogger = Console,
+  TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
-> = Omit<APIGatewayProxyEvent, 'headers'> & {
+> = APIGatewayProxyEventV2 & {
   body: any;
   query: any;
   params: any;
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
   session: TSession;
-  headers: Map<string, string>;
+  req: {
+    headers: Map<string, string>;
+  };
 };
