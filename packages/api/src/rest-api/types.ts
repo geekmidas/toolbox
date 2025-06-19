@@ -26,8 +26,10 @@ export type HandlerContext<
 } & {
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
-  headers: Map<string, string>;
-  auth: TSession;
+  req: {
+    headers: Map<string, string>;
+  };
+  session: TSession;
 };
 
 export type RouteHandler<
