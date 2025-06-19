@@ -9,7 +9,8 @@
   "exports": {
     "./aws-lambda": "./src/aws-lambda.ts",
     "./errors": "./src/errors.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./services": "./src/services.ts"
   },
   "repository": {
     "type": "git",
