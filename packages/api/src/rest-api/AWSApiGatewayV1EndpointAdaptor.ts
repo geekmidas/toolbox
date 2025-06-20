@@ -37,6 +37,8 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   errors: MiddlewareObj<Event<TServices, TLogger>> = {
     onError: async (request) => {
+      request.event.logger.error(request.error as Error);
+
       request.error = wrapError(request.error, 500, 'Internal Server Error');
     },
   };
@@ -141,9 +143,9 @@ export class AWSApiGatewayV1EndpointAdaptor<
       body: output ? JSON.stringify(output) : undefined,
     };
   })
+    .use(this.logger)
     .use(this.errors)
     .use(this.headers)
-    .use(this.logger)
     .use(this.services)
     .use(this.session)
     .use(httpHeaderNormalizer());
