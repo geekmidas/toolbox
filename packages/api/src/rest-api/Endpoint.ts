@@ -98,6 +98,8 @@ export class Handler<
       return validated.value as InferStandardSchema<T>;
     }
 
+    this.logger.error(validated.issues);
+
     throw new UnprocessableEntityError(undefined, validated.issues);
   }
 
@@ -112,6 +114,7 @@ export class Handler<
   async parseBody(
     data?: any,
   ): Promise<InferStandardSchema<S['body']> | undefined> {
+    this.logger.debug({ data }, 'Parsing body schema');
     return this.parseSchema(data, this.schemas.body) as InferStandardSchema<
       S['body']
     >;
@@ -255,7 +258,8 @@ class EndpointBuilder<
   private statusCode: SuccessStatus = SuccessStatus.OK;
 
   // Made these accessible to EndpointFactory
-  _services: TServices;
+  // @ts-ignore
+  _services: TServices = [];
   _logger: TLogger = DEFAULT_LOGGER;
   _auth: TSession = {} as TSession;
   authorizeFn: Authorizer<TSchema, TServices, TLogger, TSession> = () => true;

@@ -55,7 +55,9 @@ export class HermodServiceDiscovery<
   async register<T extends HermodServiceConstructor[]>(
     services: T,
   ): Promise<HermodServiceRecord<T>> {
-    const names: ExtractServiceNames<T>[] = [];
+    const names: ExtractServiceNames<T>[] = services.map(
+      (Service) => Service.serviceName,
+    ) as ExtractServiceNames<T>[];
     for await (const Service of services) {
       const name = Service.serviceName;
       if (!this.has(name)) {

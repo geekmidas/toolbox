@@ -81,5 +81,7 @@ describe('Endpoint', () => {
       });
 
     expect(createUser.services).toHaveLength(2);
+    const serviceNames = createUser.services.map((s) => s.serviceName);
+    expect(serviceNames).toMatchSnapshot();
   });
 });

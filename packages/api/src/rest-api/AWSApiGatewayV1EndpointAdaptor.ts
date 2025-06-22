@@ -24,7 +24,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
   TSession = unknown,
 > {
   constructor(
-    private readonly endpoint: Handler<
+    readonly endpoint: Handler<
       S,
       Path,
       TMethod,
@@ -81,7 +81,9 @@ export class AWSApiGatewayV1EndpointAdaptor<
   services: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
       const serviceDiscovery = HermodServiceDiscovery.getInstance();
+
       const services = await serviceDiscovery.register(this.endpoint.services);
+      request.event.logger.info({ services });
 
       request.event.services = services;
     },
@@ -135,6 +137,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   _handler = middy(async (event) => {
     const response = await this.endpoint.handler(event);
+    event.logger.info({ response });
 
     const output = await this.endpoint.parseOutput(response);
 
