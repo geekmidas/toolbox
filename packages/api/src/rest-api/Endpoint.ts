@@ -285,9 +285,19 @@ class EndpointBuilder<
 
   services<T extends HermodServiceConstructor[]>(
     services: T,
-  ): EndpointBuilder<TSchema, Path, TMethod, OutSchema, T, TLogger, TSession> {
-    // @ts-ignore
-    this._services = services as TServices;
+  ): EndpointBuilder<
+    TSchema,
+    Path,
+    TMethod,
+    OutSchema,
+    [...TServices, ...T],
+    TLogger,
+    TSession
+  > {
+    this._services = uniqBy(
+      [...this._services, ...services],
+      (s) => s.serviceName,
+    ) as TServices;
     // @ts-expect-error - for chaining with updated generic
     return this;
   }
