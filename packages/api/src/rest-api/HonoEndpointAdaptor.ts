@@ -124,6 +124,7 @@ export class HonoEndpointAdaptor<
           // @ts-ignore
           return c.json(response, e.status);
         } catch (error) {
+          this.logger.error(error);
           const err = wrapError(error, 500, 'Internal Server Error');
           // @ts-ignore
           return c.json(err, err.statusCode);
