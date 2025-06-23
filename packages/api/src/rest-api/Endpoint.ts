@@ -114,7 +114,6 @@ export class Handler<
   async parseBody(
     data?: any,
   ): Promise<InferStandardSchema<S['body']> | undefined> {
-    this.logger.debug({ data }, 'Parsing body schema');
     return this.parseSchema(data, this.schemas.body) as InferStandardSchema<
       S['body']
     >;

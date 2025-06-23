@@ -85,7 +85,6 @@ export class AWSApiGatewayV1EndpointAdaptor<
       );
 
       const services = await serviceDiscovery.register(this.endpoint.services);
-      request.event.logger.info({ services });
 
       request.event.services = services;
     },
@@ -139,7 +138,6 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   _handler = middy(async (event) => {
     const response = await this.endpoint.handler(event);
-    event.logger.info({ response });
 
     const output = await this.endpoint.parseOutput(response);
 

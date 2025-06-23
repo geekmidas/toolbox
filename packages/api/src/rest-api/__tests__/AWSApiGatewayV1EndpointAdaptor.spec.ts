@@ -26,8 +26,6 @@ describe('AWSApiGatewayV1EndpointAdaptor', () => {
         }),
       )
       .handle(({ services, logger }) => {
-        logger.info({ services });
-
         return services.TestService;
       });
 
