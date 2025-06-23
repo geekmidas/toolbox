@@ -23,7 +23,6 @@
   },
 
   "dependencies": {
-    "@geekmidas/envkit": "workspace:*",
     "@standard-schema/spec": "~1.0.0",
     "openapi-typescript": "~7.8.0",
     "lodash.uniqby": "~4.7.0",
@@ -44,6 +43,7 @@
     "@middy/http-json-body-parser": ">=6.3.1",
     "@middy/http-header-normalizer": ">=6.3.1",
     "@types/aws-lambda": ">=8.10.92",
-    "hono": "~4.8.2"
+    "hono": "~4.8.2",
+    "@geekmidas/envkit": "workspace:*"
   }
 }
