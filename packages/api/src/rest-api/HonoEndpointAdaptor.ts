@@ -67,6 +67,7 @@ export class HonoEndpointAdaptor<
     this.endpoints = options.endpoints;
     // @ts-ignore
     this.logger = options.logger ?? new ConsoleLogger();
+    this.envParser = options.envParser;
   }
 
   async register(): Promise<Hono> {
