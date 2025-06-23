@@ -90,6 +90,7 @@ export class HonoEndpointAdaptor<
         }) as TLogger;
         try {
           const h = c.req.header();
+          logger.info({ headers: h }, 'Request headers');
           const p = c.req.param();
           const q = c.req.query();
 
