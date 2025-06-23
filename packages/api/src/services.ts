@@ -1,3 +1,5 @@
+import type { ConsoleLogger, Logger } from './logger';
+
 export interface HermodServiceInterface<TInstance = unknown> {
   /**
    * The register method is called when the service is registered with the service discovery.
@@ -5,7 +7,10 @@ export interface HermodServiceInterface<TInstance = unknown> {
   register(): Promise<TInstance> | TInstance;
 }
 
-export abstract class HermodService<TInstance = unknown> {
+export abstract class HermodService<
+  TInstance = unknown,
+  TLogger extends Logger = ConsoleLogger,
+> {
   /**
    * The register method is called when the service is registered with the service discovery.
    */
@@ -13,26 +18,33 @@ export abstract class HermodService<TInstance = unknown> {
   /**
    * @param serviceDiscovery The service discovery instance to register the service with.
    */
-  constructor(readonly serviceDiscovery: HermodServiceDiscovery) {}
+  constructor(
+    readonly serviceDiscovery: HermodServiceDiscovery,
+    readonly logger: TLogger,
+  ) {}
 }
 
 export class HermodServiceDiscovery<
   TServices extends Record<string, unknown> = {},
+  TLogger extends Logger = ConsoleLogger,
 > {
-  private static _instance: HermodServiceDiscovery<any>;
+  private static _instance: HermodServiceDiscovery<any, any>;
   private services = new Map<string, HermodServiceInterface>();
   s!: TServices;
 
   static getInstance<
     T extends Record<any, unknown> = {},
-  >(): HermodServiceDiscovery<T> {
+    TLogger extends Logger = ConsoleLogger,
+  >(logger: TLogger): HermodServiceDiscovery<T> {
     if (!HermodServiceDiscovery._instance) {
-      HermodServiceDiscovery._instance = new HermodServiceDiscovery<T>();
+      HermodServiceDiscovery._instance = new HermodServiceDiscovery<T, TLogger>(
+        logger,
+      );
     }
     return HermodServiceDiscovery._instance as HermodServiceDiscovery<T>;
   }
 
-  private constructor() {}
+  private constructor(readonly logger: TLogger) {}
   /**
    * Add a service to the service discovery.
    *
@@ -61,7 +73,11 @@ export class HermodServiceDiscovery<
     for await (const Service of services) {
       const name = Service.serviceName;
       if (!this.has(name)) {
-        const service = new Service(this) as HermodService<
+        const childLogger = this.logger.child({
+          service: `ns.serviceDiscovery.${name}`,
+        });
+        // @ts-ignore
+        const service = new Service(this, childLogger) as HermodService<
           ExtractServiceNames<typeof services>
         >;
         await service.register();
@@ -125,8 +141,12 @@ export class HermodServiceDiscovery<
 export interface HermodServiceConstructor<
   TName extends string = string,
   TInstance = unknown,
+  TLogger extends Logger = ConsoleLogger,
 > {
-  new (serviceDiscovery: HermodServiceDiscovery): HermodService<TInstance>;
+  new (
+    serviceDiscovery: HermodServiceDiscovery,
+    logger: TLogger,
+  ): HermodService<TInstance>;
 
   serviceName: TName;
 }

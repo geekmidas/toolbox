@@ -80,7 +80,9 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   services: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
-      const serviceDiscovery = HermodServiceDiscovery.getInstance();
+      const serviceDiscovery = HermodServiceDiscovery.getInstance(
+        this.endpoint.logger,
+      );
 
       const services = await serviceDiscovery.register(this.endpoint.services);
       request.event.logger.info({ services });
