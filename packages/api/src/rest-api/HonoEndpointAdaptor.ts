@@ -84,6 +84,10 @@ export class HonoEndpointAdaptor<
       const path = e.path;
 
       this.app[method](path, async (c) => {
+        const logger = this.logger.child({
+          route: e.route(),
+          method,
+        }) as TLogger;
         try {
           const h = c.req.header();
           const p = c.req.param();
@@ -107,7 +111,7 @@ export class HonoEndpointAdaptor<
             req: {
               headers,
             },
-            logger: this.logger,
+            logger,
             services,
             body,
             query,
@@ -125,7 +129,7 @@ export class HonoEndpointAdaptor<
           // @ts-ignore
           return c.json(response, e.status);
         } catch (error) {
-          this.logger.error(error);
+          logger.error(error);
           const err = wrapError(error, 500, 'Internal Server Error');
           // @ts-ignore
           return c.json(err, err.statusCode);
