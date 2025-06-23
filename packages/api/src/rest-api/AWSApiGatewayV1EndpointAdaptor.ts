@@ -1,3 +1,4 @@
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
 import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpJsonBodyParser from '@middy/http-json-body-parser';
@@ -33,6 +34,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
       TLogger,
       TSession
     >,
+    readonly envParser: EnvironmentParser<{}>,
   ) {}
 
   errors: MiddlewareObj<Event<TServices, TLogger>> = {
@@ -82,6 +84,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
     before: async (request) => {
       const serviceDiscovery = HermodServiceDiscovery.getInstance(
         this.endpoint.logger,
+        this.envParser,
       );
 
       const services = await serviceDiscovery.register(this.endpoint.services);

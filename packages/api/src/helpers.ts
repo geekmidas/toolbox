@@ -30,7 +30,8 @@ export async function getEndpointsFromRoutes(
   routes: string[],
   cwd: string,
 ): Promise<Handler<any, any, any>[]> {
-  const stream = fg.stream(routes);
+  const stream = fg.stream(routes, { cwd });
+
   const endpoints: Handler<any, any, any>[] = [];
 
   for await (const f of stream) {

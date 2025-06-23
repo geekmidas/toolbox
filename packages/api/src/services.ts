@@ -1,3 +1,4 @@
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { ConsoleLogger, Logger } from './logger';
 
 export interface HermodServiceInterface<TInstance = unknown> {
@@ -35,16 +36,23 @@ export class HermodServiceDiscovery<
   static getInstance<
     T extends Record<any, unknown> = {},
     TLogger extends Logger = ConsoleLogger,
-  >(logger: TLogger): HermodServiceDiscovery<T> {
+  >(
+    logger: TLogger,
+    envParser: EnvironmentParser<{}>,
+  ): HermodServiceDiscovery<T> {
     if (!HermodServiceDiscovery._instance) {
       HermodServiceDiscovery._instance = new HermodServiceDiscovery<T, TLogger>(
         logger,
+        envParser,
       );
     }
     return HermodServiceDiscovery._instance as HermodServiceDiscovery<T>;
   }
 
-  private constructor(readonly logger: TLogger) {}
+  private constructor(
+    readonly logger: TLogger,
+    readonly envParser: EnvironmentParser<{}>,
+  ) {}
   /**
    * Add a service to the service discovery.
    *

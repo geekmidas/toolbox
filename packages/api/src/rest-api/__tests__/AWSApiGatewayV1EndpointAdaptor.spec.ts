@@ -1,9 +1,10 @@
+import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { HermodService } from '../../services';
 import { AWSApiGatewayV1EndpointAdaptor } from '../AWSApiGatewayV1EndpointAdaptor';
 import { Endpoint } from '../Endpoint';
-
+const envParser = new EnvironmentParser({});
 class TestService extends HermodService<{
   name: string;
 }> {
@@ -29,7 +30,8 @@ describe('AWSApiGatewayV1EndpointAdaptor', () => {
         return services.TestService;
       });
 
-    const awsEndpoint = new AWSApiGatewayV1EndpointAdaptor(getUsers).handler;
+    const awsEndpoint = new AWSApiGatewayV1EndpointAdaptor(getUsers, envParser)
+      .handler;
     // @ts-ignore
     const response = await awsEndpoint({
       headers: {

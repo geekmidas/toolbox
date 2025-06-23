@@ -23,6 +23,7 @@
   },
 
   "dependencies": {
+    "@geekmidas/envkit": "workspace:*",
     "@standard-schema/spec": "~1.0.0",
     "openapi-typescript": "~7.8.0",
     "lodash.uniqby": "~4.7.0",

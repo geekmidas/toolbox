@@ -35,6 +35,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../envkit
       '@middy/core':
         specifier: '>=6.3.1'
         version: 6.3.2

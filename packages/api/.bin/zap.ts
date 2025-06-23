@@ -11,6 +11,7 @@ import { Handler } from '../src/rest-api/Endpoint';
 const configSchema = z.object({
   routes: z.array(z.string()).default(['src/**/routes/*.ts']),
   openapi: z.any(),
+  envParser: z.string(),
 });
 
 type WrestConfig = z.infer<typeof configSchema>;
@@ -44,11 +45,18 @@ async function getProjectRoot(cwd: string): Promise<string> {
   const projectRoot = await getProjectRoot(root);
   const configPath = path.resolve(root, 'wrest.json');
   const stats = await fs.stat(configPath);
-  let config: WrestConfig = { routes: [], openapi: {} };
+  let config: WrestConfig = { routes: [], openapi: {}, envParser: '' };
   if (stats.isFile()) {
     const _config = await import(configPath);
     config = await configSchema.parseAsync(_config);
   }
+
+  const [envParserPath, envParserName] = config.envParser.split('#');
+  const envParserImportPattern = !envParserName
+    ? 'envParser'
+    : envParserName === 'envParser'
+      ? '{ envParser }'
+      : `{ envParser as ${envParserName} }`;
 
   const { routes } = config;
   const endpoints: Record<string, any> = {};
@@ -80,11 +88,13 @@ async function getProjectRoot(cwd: string): Promise<string> {
       console.log(`Found endpoint ${key} in ${routePath}`);
       const filePath = path.join(parent, `${key}.ts`);
       const relativePath = path.relative(parent, routePath);
+      const relativeEnvParserPath = path.relative(parent, envParserPath);
       const statements = [
         'import { AWSApiGatewayV1EndpointAdaptor } from "@geekmidas/api/aws-lambda";',
         `import { ${key} } from "${relativePath}";`,
+        `import ${envParserImportPattern} from '${relativeEnvParserPath}';`,
         '',
-        `export const handler = new AWSApiGatewayV1EndpointAdaptor(${key}).handler;`,
+        `export const handler = new AWSApiGatewayV1EndpointAdaptor(${key}, envParser).handler;`,
       ];
       console.log(`Generating endpoint ${key} from ${relativePath}`);
       endpoints[handler.route()] = {

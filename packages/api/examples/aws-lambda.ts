@@ -2,6 +2,8 @@ import { AWSApiGatewayV1EndpointAdaptor } from '@geekmidas/api/aws-lambda';
 import { e } from '@geekmidas/api/server';
 import { z } from 'zod';
 
+const envParser = new EnvironmentParser({});
+
 // Example 1: Simple Lambda handler
 const healthEndpoint = e
   .get('/health')
@@ -26,7 +28,10 @@ const healthEndpoint = e
     };
   });
 
-const healthAdapter = new AWSApiGatewayV1EndpointAdaptor(healthEndpoint);
+const healthAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  healthEndpoint,
+  envParser,
+);
 export const healthHandler = healthAdapter.handler;
 
 // Example 2: Lambda with path parameters
@@ -53,7 +58,10 @@ const getUserEndpoint = e
     };
   });
 
-const getUserAdapter = new AWSApiGatewayV1EndpointAdaptor(getUserEndpoint);
+const getUserAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  getUserEndpoint,
+  envParser,
+);
 export const getUserHandler = getUserAdapter.handler;
 
 // Example 3: Lambda with query parameters and headers
@@ -98,7 +106,10 @@ const searchEndpoint = e
     };
   });
 
-const searchAdapter = new AWSApiGatewayV1EndpointAdaptor(searchEndpoint);
+const searchAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  searchEndpoint,
+  envParser,
+);
 export const searchHandler = searchAdapter.handler;
 
 // Example 4: POST endpoint with body parsing
@@ -133,6 +144,7 @@ const createItemEndpoint = e
 
 const createItemAdapter = new AWSApiGatewayV1EndpointAdaptor(
   createItemEndpoint,
+  envParser,
 );
 export const createItemHandler = createItemAdapter.handler;
 
@@ -157,7 +169,10 @@ const errorDemoEndpoint = e
     }
   });
 
-const errorDemoAdapter = new AWSApiGatewayV1EndpointAdaptor(errorDemoEndpoint);
+const errorDemoAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  errorDemoEndpoint,
+  envParser,
+);
 export const errorDemoHandler = errorDemoAdapter.handler;
 
 // Example 6: Lambda with authentication
@@ -188,7 +203,10 @@ const protectedEndpoint = e
     userId: session.userId,
   }));
 
-const protectedAdapter = new AWSApiGatewayV1EndpointAdaptor(protectedEndpoint);
+const protectedAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  protectedEndpoint,
+  envParser,
+);
 export const protectedHandler = protectedAdapter.handler;
 
 // Example 7: Lambda with services
@@ -238,7 +256,10 @@ const dynamoEndpoint = e
     return item;
   });
 
-const dynamoAdapter = new AWSApiGatewayV1EndpointAdaptor(dynamoEndpoint);
+const dynamoAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  dynamoEndpoint,
+  envParser,
+);
 export const dynamoHandler = dynamoAdapter.handler;
 
 // Example 8: Lambda with custom middleware (using context)
@@ -269,7 +290,10 @@ const contextEndpoint = e
     };
   });
 
-const contextAdapter = new AWSApiGatewayV1EndpointAdaptor(contextEndpoint);
+const contextAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  contextEndpoint,
+  envParser,
+);
 export const contextHandler = contextAdapter.handler;
 
 // Example 9: Binary response (e.g., images)
@@ -288,7 +312,10 @@ const imageEndpoint = e
     });
   });
 
-const imageAdapter = new AWSApiGatewayV1EndpointAdaptor(imageEndpoint);
+const imageAdapter = new AWSApiGatewayV1EndpointAdaptor(
+  imageEndpoint,
+  envParser,
+);
 export const imageHandler = imageAdapter.handler;
 
 // Import error classes used in examples
@@ -297,3 +324,4 @@ import {
   NotFoundError,
   UnprocessableEntityError,
 } from '@geekmidas/api/errors';
+import { EnvironmentParser } from '@geekmidas/envkit';

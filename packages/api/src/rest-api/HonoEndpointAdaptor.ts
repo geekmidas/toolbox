@@ -1,3 +1,4 @@
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Hono } from 'hono';
 import { wrapError } from '../errors';
@@ -30,20 +31,25 @@ export class HonoEndpointAdaptor<
     TSession
   >[];
   readonly logger: TLogger;
+  readonly envParser: EnvironmentParser<{}>;
 
   static async fromRoutes<TLogger extends Logger>(
     routes: string[],
+    envParser: EnvironmentParser<{}>,
     app?: Hono,
     logger?: TLogger,
     cwd = process.cwd(),
-  ): Promise<HonoEndpointAdaptor<any, any, any>> {
+  ): Promise<Hono> {
     const endpoints = await getEndpointsFromRoutes(routes, cwd);
 
-    return new HonoEndpointAdaptor({
+    const adaptor = new HonoEndpointAdaptor({
       endpoints,
       app,
       logger: logger as ConsoleLogger | undefined,
+      envParser,
     });
+
+    return adaptor.register();
   }
 
   constructor(
@@ -64,7 +70,10 @@ export class HonoEndpointAdaptor<
   }
 
   async register(): Promise<Hono> {
-    const serviceDiscovery = HermodServiceDiscovery.getInstance(this.logger);
+    const serviceDiscovery = HermodServiceDiscovery.getInstance(
+      this.logger,
+      this.envParser,
+    );
     for await (const e of this.endpoints) {
       const method = e.method.toLowerCase() as
         | 'get'
@@ -144,6 +153,7 @@ export type HonoEndpointAdaptorOptions<
     TLogger,
     TSession
   >[];
+  envParser: EnvironmentParser<{}>;
   app?: Hono;
   logger?: TLogger;
 };

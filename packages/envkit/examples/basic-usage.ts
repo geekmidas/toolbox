@@ -1,10 +1,9 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { z } from 'zod';
 
+const parser = new EnvironmentParser(process.env as {});
 // Example 1: Basic configuration
 export function basicExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     appName: get('APP_NAME').string().default('My App'),
     port: get('PORT').string().transform(Number).default(3000),
@@ -20,8 +19,6 @@ export function basicExample() {
 
 // Example 2: Database configuration
 export function databaseExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     database: {
       host: get('DB_HOST').string().default('localhost'),
@@ -48,8 +45,6 @@ export function databaseExample() {
 
 // Example 3: API configuration with validation
 export function apiConfigExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     api: {
       baseUrl: get('API_BASE_URL').url(),
@@ -72,8 +67,6 @@ export function apiConfigExample() {
 
 // Example 4: Feature flags and complex validation
 export function featureFlagsExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     features: {
       authentication: get('FEATURE_AUTH')
@@ -118,8 +111,6 @@ export function featureFlagsExample() {
 
 // Example 5: Email configuration with refinements
 export function emailConfigExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     email: {
       provider: get('EMAIL_PROVIDER').enum(['sendgrid', 'mailgun', 'ses']),
@@ -217,8 +208,6 @@ export function multiEnvironmentExample() {
 
 // Example 7: Error handling
 export function errorHandlingExample() {
-  const parser = new EnvironmentParser(process.env);
-
   try {
     const config = parser
       .create((get) => ({
@@ -257,8 +246,6 @@ export function dotenvExample() {
   // Load .env file
   require('dotenv').config();
 
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     app: {
       name: get('APP_NAME').string(),
@@ -282,8 +269,6 @@ export function dotenvExample() {
 
 // Example 9: Custom transformations
 export function customTransformationsExample() {
-  const parser = new EnvironmentParser(process.env);
-
   const config = parser.create((get) => ({
     // Parse JSON
     features: get('FEATURES_JSON')
@@ -352,7 +337,7 @@ function parseMemorySize(size: string): number {
 // Example 10: Type-safe configuration module
 // config.ts - This is how you'd typically use it in a real app
 export const loadConfig = () => {
-  const parser = new EnvironmentParser(process.env);
+  const parser = new EnvironmentParser(process.env as any);
 
   return parser
     .create((get) => ({
