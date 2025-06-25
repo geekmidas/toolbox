@@ -1,9 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 
-import { UnprocessableEntityError } from '../errors';
+import { ForbiddenError, UnprocessableEntityError, wrapError } from '../errors';
 import { ConsoleLogger, type Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
+import type {
+  HermodServiceConstructor,
+  HermodServiceRecord,
+} from '../services';
+import type { TestRequest, TestResponse } from './TestAdaptor';
 import type {
   Authorizer,
   ConvertRouteParams,
@@ -40,8 +44,99 @@ export class Handler<
 > {
   __IS_HANDLER__ = true;
 
+  static normalizeHeaders(headers: Record<string, string>) {
+    return new Map<string, string>(
+      Object.entries(headers || {}).map(([key, value]) => [
+        key.toLowerCase(),
+        value,
+      ]),
+    );
+  }
+
   static isHandler(obj: any): obj is Handler<any, any, any, any, any, any> {
     return obj && obj.__IS_HANDLER__ === true;
+  }
+
+  private createServices(
+    partialServices?: Partial<HermodServiceRecord<TServices>>,
+  ): HermodServiceRecord<TServices> {
+    // Create a base services object with all required services
+    const services = {} as HermodServiceRecord<TServices>;
+
+    // Initialize each service from the endpoint's services array
+    for (const ServiceConstructor of this.services) {
+      const serviceName = ServiceConstructor.serviceName;
+
+      // Check if a partial service was provided
+      if (partialServices && serviceName in partialServices) {
+        services[serviceName] = partialServices[serviceName];
+      } else {
+        // Create a mock/default instance if not provided
+        // You might want to customize this based on your service structure
+        services[serviceName] = {} as any;
+      }
+    }
+
+    return services;
+  }
+
+  async request(
+    options: TestRequest<S, TServices, TLogger> = {},
+  ): Promise<TestResponse<OutSchema>> {
+    // Create default logger if not provided
+
+    try {
+      const logger = options.logger || this.logger;
+
+      // Create services object
+      const services = this.createServices(options.services);
+
+      // Parse and validate input data
+      const body = await this.parseBody(options.body);
+      const query = await this.parseQuery(options.query);
+      const params = await this.parseParams(options.params);
+
+      // Create headers map
+      const headers = Handler.normalizeHeaders(options.headers || {});
+      const ctx = {
+        body,
+        query,
+        params,
+        services,
+        logger,
+        req: { headers },
+        session: {} as TSession,
+      } as any;
+
+      // Get session
+      const session = await this.getSession(ctx);
+
+      // Create context
+      const context = {
+        ...ctx,
+        session,
+      } as any;
+
+      const isAuthorized = await this.authorize(context);
+      if (!isAuthorized) {
+        return new ForbiddenError();
+      }
+      // Execute handler
+      const response = await this.handler(context);
+
+      // Parse and validate output
+      const output = await this.parseOutput(response);
+
+      // Return response
+      return {
+        statusCode: this.status,
+        body: output as OutSchema extends StandardSchemaV1
+          ? InferStandardSchema<OutSchema>
+          : any,
+      };
+    } catch (err) {
+      return wrapError(err);
+    }
   }
 
   constructor(

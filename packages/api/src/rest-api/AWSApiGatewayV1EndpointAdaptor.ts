@@ -12,7 +12,7 @@ import {
   HermodServiceDiscovery,
   type HermodServiceRecord,
 } from '../services';
-import type { Handler } from './Endpoint';
+import { Handler } from './Endpoint';
 import type { EndpointSchemas, Method } from './types';
 
 export class AWSApiGatewayV1EndpointAdaptor<
@@ -52,9 +52,7 @@ export class AWSApiGatewayV1EndpointAdaptor<
       set(
         request.event,
         'req.headers',
-        new Map(
-          headers.map(([key, value]) => [key.toLowerCase(), value as string]),
-        ),
+        Handler.normalizeHeaders(headers as any),
       );
     },
   };

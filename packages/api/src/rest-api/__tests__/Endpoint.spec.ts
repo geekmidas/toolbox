@@ -84,4 +84,27 @@ describe('Endpoint', () => {
     const serviceNames = createUser.services.map((s) => s.serviceName);
     expect(serviceNames).toMatchSnapshot();
   });
+
+  it('Should make request', async () => {
+    const createUser = E.post('/users')
+      .body(z.object({ name: z.string().min(2).max(100) }))
+      .services([TestService2])
+      .description('Get users')
+      .output(
+        z.object({
+          name: z.string(),
+        }),
+      )
+      .handle(({ services }) => {
+        return {
+          name: '',
+        };
+      });
+
+    const response = await createUser.request({
+      body: { name: 'Test User' },
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
 });
