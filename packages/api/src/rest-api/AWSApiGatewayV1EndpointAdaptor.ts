@@ -47,12 +47,12 @@ export class AWSApiGatewayV1EndpointAdaptor<
 
   headers: MiddlewareObj<Event<TServices, TLogger>> = {
     before: async (request) => {
-      const headers = Object.entries(request.event.headers || {});
-
       set(
         request.event,
         'req.headers',
-        Handler.normalizeHeaders(headers as any),
+        Handler.normalizeHeaders(
+          (request.event.headers || {}) as Record<string, string>,
+        ),
       );
     },
   };
