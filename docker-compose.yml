@@ -1,0 +1,22 @@
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:17
+    volumes:
+      - "dbdata:/var/lib/postgresql/data"
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=geekmidas
+      - POSTGRES_PASSWORD=geekmidas
+      - POSTGRES_DB=geekmidas
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geekmidas -d geekmidas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  dbdata:
+  minio-data:
