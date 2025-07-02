@@ -6,6 +6,8 @@
 [![pnpm Version](https://img.shields.io/badge/pnpm-10.11.0-blue)](https://pnpm.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![CI](https://github.com/geekmidas/toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/geekmidas/toolbox/actions/workflows/ci.yml)
+[![Publish](https://github.com/geekmidas/toolbox/actions/workflows/publish.yml/badge.svg)](https://github.com/geekmidas/toolbox/actions/workflows/publish.yml)
 
 ## 🚀 Overview
 
