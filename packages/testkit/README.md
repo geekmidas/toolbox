@@ -34,7 +34,7 @@ yarn add -D @geekmidas/testkit
 ### With Kysely
 
 ```typescript
-import { KyselyFactory } from '@geekmidas/testkit/factory/kysely';
+import { KyselyFactory } from '@geekmidas/testkit/kysely';
 import { Kysely } from 'kysely';
 
 // Define your database schema
@@ -98,7 +98,7 @@ describe('User Service', () => {
 ### With Objection.js
 
 ```typescript
-import { ObjectionFactory } from '@geekmidas/testkit/factory/objection';
+import { ObjectionFactory } from '@geekmidas/testkit/objection';
 import { Model } from 'objection';
 
 // Define your models

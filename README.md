@@ -61,7 +61,7 @@ A comprehensive testing utility library for creating type-safe test data with da
 - Batch operations and seeding support
 
 ```typescript
-import { KyselyFactory } from '@geekmidas/testkit/factory/kysely';
+import { KyselyFactory } from '@geekmidas/testkit/kysely';
 
 const userBuilder = KyselyFactory.createBuilder<Database, 'users'>({
   table: 'users',

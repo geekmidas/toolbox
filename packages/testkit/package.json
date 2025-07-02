@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./factory/objection": "./src/ObjectionFactory.ts",
-    "./factory/kysely": "./src/KyselyFactory.ts",
-    "./db": "./src/db.ts"
+    "./objection": "./src/ObjectionFactory.ts",
+    "./kysely": "./src/KyselyFactory.ts"
   },
   "dependencies": {},
   "devDependencies": {
