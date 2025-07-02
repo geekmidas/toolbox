@@ -47,6 +47,36 @@ const endpoint = e
 
 [Learn more →](./packages/api/README.md)
 
+### [@geekmidas/testkit](./packages/testkit)
+
+A comprehensive testing utility library for creating type-safe test data with database factories.
+
+- Factory pattern implementation for Kysely and Objection.js
+- Type-safe builders with automatic schema inference
+- Transaction-based test isolation
+- Support for complex data relationships
+- Built-in database migration utilities
+- Batch operations and seeding support
+
+```typescript
+import { KyselyFactory } from '@geekmidas/testkit/factory/kysely';
+
+const userBuilder = KyselyFactory.createBuilder<Database, 'users'>({
+  table: 'users',
+  defaults: async () => ({
+    name: 'John Doe',
+    email: `user${Date.now()}@example.com`,
+    createdAt: new Date(),
+  }),
+});
+
+// In tests
+const user = await factory.insert('user', { name: 'Jane Doe' });
+const users = await factory.insertMany(5, 'user');
+```
+
+[Learn more →](./packages/testkit/README.md)
+
 ### [@geekmidas/envkit](./packages/envkit) *(Coming Soon)*
 
 Type-safe environment configuration parser with Zod validation.
@@ -119,6 +149,7 @@ pnpm test:watch
 toolbox/
 ├── packages/
 │   ├── api/          # REST API framework
+│   ├── testkit/      # Testing utilities and database factories
 │   └── envkit/       # Environment configuration parser
 ├── turbo.json        # Turbo configuration
 ├── pnpm-workspace.yaml
@@ -159,6 +190,7 @@ Special thanks to all contributors and the open-source community for the amazing
 <p align="center">
   <a href="https://github.com/geekmidas/toolbox">GitHub</a> •
   <a href="./packages/api">API Docs</a> •
+  <a href="./packages/testkit">TestKit Docs</a> •
   <a href="./packages/envkit">EnvKit Docs</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
