@@ -6,6 +6,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "dependencies": {
     "zod": "~3.25.67",
     "lodash.set": "~4.3.2",

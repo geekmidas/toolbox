@@ -11,6 +11,10 @@
   "devDependencies": {
     "@types/pg": "~8.15.4"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "peerDependencies": {
     "kysely": "~0.28.2",
     "pg": "~8.16.3",
