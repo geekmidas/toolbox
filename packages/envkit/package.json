@@ -1,10 +1,14 @@
 {
   "name": "@geekmidas/envkit",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./src/index.ts"
+    }
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

@@ -197,51 +197,9 @@ export const deleteUser = e
     };
   });
 
-// Example 7: Headers validation
-export const secureEndpoint = e
-  .post('/secure-action')
-  .headers(
-    z.object({
-      'x-api-key': z.string().min(32),
-      'x-request-id': z.string().uuid(),
-      'content-type': z.literal('application/json'),
-    }),
-  )
-  .body(
-    z.object({
-      action: z.string(),
-      data: z.any(),
-    }),
-  )
-  .output(
-    z.object({
-      success: z.boolean(),
-      requestId: z.string(),
-    }),
-  )
-  .handle(async ({ headers, body, logger }) => {
-    logger.info(
-      {
-        requestId: headers['x-request-id'],
-        action: body.action,
-      },
-      'Processing secure action',
-    );
-
-    return {
-      success: true,
-      requestId: headers['x-request-id'],
-    };
-  });
-
-// Example 8: File upload simulation
+// Example 7: File upload simulation
 export const uploadFile = e
   .post('/upload')
-  .headers(
-    z.object({
-      'content-type': z.string().regex(/^multipart\/form-data/),
-    }),
-  )
   .body(
     z.object({
       filename: z.string(),
@@ -271,7 +229,7 @@ export const uploadFile = e
     };
   });
 
-// Example 9: Complex nested data
+// Example 8: Complex nested data
 export const createOrder = e
   .post('/orders')
   .body(
@@ -330,7 +288,7 @@ export const createOrder = e
     };
   });
 
-// Example 10: Optional fields and defaults
+// Example 9: Optional fields and defaults
 export const searchProducts = e
   .get('/products/search')
   .query(

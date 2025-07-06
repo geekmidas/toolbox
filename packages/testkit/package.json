@@ -1,13 +1,23 @@
 {
   "name": "@geekmidas/testkit",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "type": "module",
   "exports": {
-    "./objection": "./src/ObjectionFactory.ts",
-    "./kysely": "./src/KyselyFactory.ts"
+    "./objection": {
+      "import": "./dist/objection.mjs",
+      "require": "./dist/objection.cjs",
+      "types": "./src/objection.ts"
+    },
+    "./kysely": {
+      "import": "./dist/kysely.mjs",
+      "require": "./dist/kysely.cjs",
+      "types": "./src/kysely.ts"
+    }
   },
-  "dependencies": {},
+  "dependencies": {
+    "@faker-js/faker": "~9.9.0"
+  },
   "devDependencies": {
     "@types/pg": "~8.15.4"
   },

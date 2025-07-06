@@ -221,7 +221,7 @@ describe('User Service', () => {
 TestKit includes utilities for managing test database migrations:
 
 ```typescript
-import { PostgresKyselyMigrator } from '@geekmidas/testkit/migrator/postgres-kysely';
+import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
 
 const migrator = new PostgresKyselyMigrator({
   database: 'test_db',

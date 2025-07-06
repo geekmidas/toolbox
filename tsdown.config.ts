@@ -6,6 +6,7 @@ export default defineConfig({
   outDir: 'dist',
   entry: ['src/'],
   format: ['cjs', 'esm'],
+  dts: false,
   outExtensions: (ctx) => ({
     js: ctx.format === 'es' ? '.mjs' : '.cjs',
   }),
