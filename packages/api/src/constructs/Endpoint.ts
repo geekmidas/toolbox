@@ -5,6 +5,7 @@ import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Function, FunctionBuilder, type FunctionHandler } from './Function';
 import { convertStandardSchemaToJsonSchema } from './helpers';
+import { buildOpenApiSchema, type OpenApiSchemaOptions } from './openapi';
 import { FunctionType, type RemoveUndefined } from './types';
 
 export class Endpoint<
@@ -25,6 +26,14 @@ export class Endpoint<
   route: TRoute;
   method: TMethod;
   description?: string;
+
+  static async buildOpenApiSchema(
+    endpoints: Endpoint<any, any, any, any, any, any, any, any>[],
+    options?: OpenApiSchemaOptions,
+  ) {
+    return buildOpenApiSchema(endpoints, options);
+  }
+
   static isEndpoint(obj: any): obj is Endpoint<any, any, any, any> {
     return (
       obj &&
@@ -95,7 +104,9 @@ export class Endpoint<
           paramsSchema.type === 'object' &&
           paramsSchema.properties
         ) {
-          for (const [name, schema] of Object.entries(paramsSchema.properties)) {
+          for (const [name, schema] of Object.entries(
+            paramsSchema.properties,
+          )) {
             parameters.push({
               name,
               in: 'path',
@@ -116,7 +127,9 @@ export class Endpoint<
           searchSchema.type === 'object' &&
           searchSchema.properties
         ) {
-          for (const [name, schema] of Object.entries(searchSchema.properties)) {
+          for (const [name, schema] of Object.entries(
+            searchSchema.properties,
+          )) {
             parameters.push({
               name,
               in: 'query',
@@ -173,7 +186,6 @@ export class Endpoint<
     this.method = method;
     this.description = description;
   }
-
 }
 
 export class EndpointBuilder<
