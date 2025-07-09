@@ -1,8 +1,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Function, FunctionBuilder, type FunctionHandler } from './Function';
+import { convertStandardSchemaToJsonSchema } from './helpers';
 import { FunctionType, type RemoveUndefined } from './types';
 
 export class Endpoint<
@@ -31,8 +33,110 @@ export class Endpoint<
     );
   }
 
-  toOpenApi3Route(): OpenAPIV3_1.PathsObject {
-    return {};
+  async toOpenApi3Route(): Promise<OpenAPIV3_1.PathsObject> {
+    const operation: OpenAPIV3_1.OperationObject = {
+      ...(this.description && { description: this.description }),
+      responses: {
+        '200': {
+          description: 'Successful response',
+        } as OpenAPIV3_1.ResponseObject,
+      },
+    };
+
+    // Add response schema
+    if (this.outputSchema) {
+      const responseSchema = await convertStandardSchemaToJsonSchema(
+        this.outputSchema,
+      );
+      if (responseSchema) {
+        set(
+          operation,
+          ['responses', '200', 'content', 'application/json', 'schema'],
+          responseSchema,
+        );
+      }
+    }
+
+    // Add parameters array
+    const parameters: OpenAPIV3_1.ParameterObject[] = [];
+
+    // Since the EndpointBuilder doesn't have body/search/params methods yet,
+    // and the input is a composite type, we need to check if input exists
+    // and has the expected shape
+    if (this.input && typeof this.input === 'object') {
+      // Add request body for methods that support it
+      if (
+        ['POST', 'PUT', 'PATCH'].includes(this.method) &&
+        'body' in this.input &&
+        this.input.body
+      ) {
+        const bodySchema = await convertStandardSchemaToJsonSchema(
+          this.input.body as StandardSchemaV1,
+        );
+        if (bodySchema) {
+          set(operation, ['requestBody'], {
+            required: true,
+            content: {
+              'application/json': {
+                schema: bodySchema,
+              },
+            },
+          });
+        }
+      }
+
+      // Add path parameters
+      if ('params' in this.input && this.input.params) {
+        const paramsSchema = await convertStandardSchemaToJsonSchema(
+          this.input.params as StandardSchemaV1,
+        );
+        if (
+          paramsSchema &&
+          paramsSchema.type === 'object' &&
+          paramsSchema.properties
+        ) {
+          for (const [name, schema] of Object.entries(paramsSchema.properties)) {
+            parameters.push({
+              name,
+              in: 'path',
+              required: paramsSchema.required?.includes(name) ?? true,
+              schema: schema as any,
+            });
+          }
+        }
+      }
+
+      // Add query parameters
+      if ('search' in this.input && this.input.search) {
+        const searchSchema = await convertStandardSchemaToJsonSchema(
+          this.input.search as StandardSchemaV1,
+        );
+        if (
+          searchSchema &&
+          searchSchema.type === 'object' &&
+          searchSchema.properties
+        ) {
+          for (const [name, schema] of Object.entries(searchSchema.properties)) {
+            parameters.push({
+              name,
+              in: 'query',
+              required: searchSchema.required?.includes(name) ?? false,
+              schema: schema as any,
+            });
+          }
+        }
+      }
+    }
+
+    if (parameters.length > 0) {
+      operation.parameters = parameters;
+    }
+
+    return {
+      [this.route]: {
+        [this.method.toLowerCase()]: operation,
+      },
+    };
   }
 
   constructor({
