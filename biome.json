@@ -29,7 +29,7 @@
       },
       "suspicious": { "noConsoleLog": "error", "noExplicitAny": "off" }
     },
-    "ignore": ["**/dist/*", "**/__generated__/*"]
+    "ignore": ["**/dist/*", "**/__generated__/*", "**/.claude/*"]
   },
   "javascript": {
     "formatter": {

@@ -1,0 +1,34 @@
+{
+  "name": "@geekmidas/auth",
+  "version": "0.0.2",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./src/index.ts"
+    },
+    "./server": {
+      "import": "./dist/server.mjs",
+      "require": "./dist/server.cjs",
+      "types": "./src/server.ts"
+    },
+    "./client": {
+      "import": "./dist/client.mjs",
+      "require": "./dist/client.cjs",
+      "types": "./src/client.ts"
+    }
+  },
+  "scripts": {
+    "play": "tsx src/playground.ts"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "~0.4.3"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@geekmidas/cli",
+  "version": "0.0.2",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "gms": "./dist/index.mjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "~14.0.0",
+    "lodash.get": "~4.4.2",
+    "lodash.set": "~4.3.2",
+    "zod": "~3.25.67"
+  },
+  "devDependencies": {
+    "@types/lodash.get": "~4.4.9",
+    "@types/lodash.set": "~4.3.9"
+  }
+}

@@ -5,14 +5,14 @@
   "type": "module",
   "exports": {
     "./objection": {
+      "types": "./src/objection.ts",
       "import": "./dist/objection.mjs",
-      "require": "./dist/objection.cjs",
-      "types": "./src/objection.ts"
+      "require": "./dist/objection.cjs"
     },
     "./kysely": {
+      "types": "./src/kysely.ts",
       "import": "./dist/kysely.mjs",
-      "require": "./dist/kysely.cjs",
-      "types": "./src/kysely.ts"
+      "require": "./dist/kysely.cjs"
     }
   },
   "dependencies": {
