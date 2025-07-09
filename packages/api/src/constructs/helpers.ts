@@ -25,7 +25,9 @@ export async function convertStandardSchemaToJsonSchema(
     );
   }
   if (vendor in StandardSchemaJsonSchema) {
-    return StandardSchemaJsonSchema[vendor](schema);
+    const toJSONSchema = StandardSchemaJsonSchema[vendor];
+
+    return toJSONSchema(schema);
   }
 
   throw new Error(

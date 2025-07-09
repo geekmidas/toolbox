@@ -173,6 +173,7 @@ export class Endpoint<
     this.method = method;
     this.description = description;
   }
+
 }
 
 export class EndpointBuilder<
