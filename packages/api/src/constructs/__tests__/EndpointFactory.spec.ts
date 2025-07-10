@@ -43,21 +43,30 @@ describe('EndpointFactory', () => {
     });
 
     it('should handle complex paths', () => {
-      expect(EndpointFactory.joinPaths('/users/:id', '/api/v1')).toBe('/api/v1/users/:id');
-      expect(EndpointFactory.joinPaths('/posts/:postId/comments/:commentId', '/blog')).toBe(
-        '/blog/posts/:postId/comments/:commentId'
+      expect(EndpointFactory.joinPaths('/users/:id', '/api/v1')).toBe(
+        '/api/v1/users/:id',
       );
+      expect(
+        EndpointFactory.joinPaths(
+          '/posts/:postId/comments/:commentId',
+          '/blog',
+        ),
+      ).toBe('/blog/posts/:postId/comments/:commentId');
     });
 
     it('should handle paths with query parameters notation', () => {
-      expect(EndpointFactory.joinPaths('/users?page=1', '/api')).toBe('/api/users?page=1');
+      expect(EndpointFactory.joinPaths('/users?page=1', '/api')).toBe(
+        '/api/users?page=1',
+      );
       expect(EndpointFactory.joinPaths('/search', '/api')).toBe('/api/search');
     });
 
     it('should handle nested segments', () => {
-      expect(EndpointFactory.joinPaths('/admin/users', '/api')).toBe('/api/admin/users');
+      expect(EndpointFactory.joinPaths('/admin/users', '/api')).toBe(
+        '/api/admin/users',
+      );
       expect(EndpointFactory.joinPaths('/v2/resources/items', '/api/v1')).toBe(
-        '/api/v1/v2/resources/items'
+        '/api/v1/v2/resources/items',
       );
     });
 
@@ -68,9 +77,9 @@ describe('EndpointFactory', () => {
 
     it('should preserve path parameters', () => {
       expect(EndpointFactory.joinPaths('/:id', '/users')).toBe('/users/:id');
-      expect(EndpointFactory.joinPaths('/:userId/posts/:postId', '/api/users')).toBe(
-        '/api/users/:userId/posts/:postId'
-      );
+      expect(
+        EndpointFactory.joinPaths('/:userId/posts/:postId', '/api/users'),
+      ).toBe('/api/users/:userId/posts/:postId');
     });
 
     it('should work with undefined base path (default parameter)', () => {
