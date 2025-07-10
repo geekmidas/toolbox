@@ -155,9 +155,7 @@ export class EndpointFactory<
   ): EndpointBuilder<
     JoinPaths<TBasePath, TPath>,
     TMethod,
-    undefined,
-    undefined,
-    undefined,
+    {},
     TServices,
     TLogger,
     undefined,
@@ -193,9 +191,7 @@ export class EndpointFactory<
     return builder as unknown as EndpointBuilder<
       JoinPaths<TBasePath, TPath>,
       TMethod,
-      undefined,
-      undefined,
-      undefined,
+      {},
       TServices,
       TLogger,
       undefined,

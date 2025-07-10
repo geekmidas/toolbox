@@ -1,29 +1,20 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
-import { Endpoint, type EndpointInput } from './Endpoint';
+import { Endpoint, type EndpointSchemas } from './Endpoint';
 import { FunctionBuilder, type FunctionHandler } from './Function';
 import { FunctionType, type HttpMethod } from './types';
 
 export class EndpointBuilder<
   TRoute extends string,
   TMethod extends HttpMethod,
-  TBody extends StandardSchemaV1 | undefined = undefined,
-  TSearch extends StandardSchemaV1 | undefined = undefined,
-  TParams extends StandardSchemaV1 | undefined = undefined,
+  TInput extends EndpointSchemas = {},
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
-> extends FunctionBuilder<
-  EndpointInput<TBody, TSearch, TParams>,
-  OutSchema,
-  TServices,
-  TLogger
-> {
-  protected bodySchema?: TBody;
-  protected searchSchema?: TSearch;
-  protected paramsSchema?: TParams;
+> extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
+  protected schemas: TInput;
   protected _description?: string;
 
   constructor(
@@ -43,14 +34,12 @@ export class EndpointBuilder<
   ): EndpointBuilder<
     TRoute,
     TMethod,
-    T,
-    TSearch,
-    TParams,
+    Omit<TInput, 'body'> & { body: T },
     TServices,
     TLogger,
     OutSchema
   > {
-    this.bodySchema = schema as unknown as TBody;
+    this.schemas.body = schema as unknown as T;
     // @ts-ignore
     return this;
   }
@@ -60,14 +49,12 @@ export class EndpointBuilder<
   ): EndpointBuilder<
     TRoute,
     TMethod,
-    TBody,
-    T,
-    TParams,
+    Omit<TInput, 'query'> & { query: T },
     TServices,
     TLogger,
     OutSchema
   > {
-    this.searchSchema = schema as unknown as TSearch;
+    this.schemas.query = schema as unknown as T;
     // @ts-ignore
     return this;
   }
@@ -77,35 +64,19 @@ export class EndpointBuilder<
   ): EndpointBuilder<
     TRoute,
     TMethod,
-    TBody,
-    TSearch,
-    T,
+    Omit<TInput, 'params'> & { params: T },
     TServices,
     TLogger,
     OutSchema
   > {
-    this.paramsSchema = schema as unknown as TParams;
+    this.schemas.query = schema as unknown as T;
     // @ts-ignore
     return this;
   }
 
   handle(
-    fn: FunctionHandler<
-      EndpointInput<TBody, TSearch, TParams>,
-      TServices,
-      TLogger,
-      OutSchema
-    >,
-  ): Endpoint<
-    TRoute,
-    TMethod,
-    TBody,
-    TSearch,
-    TParams,
-    OutSchema,
-    TServices,
-    TLogger
-  > {
+    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+  ): Endpoint<TRoute, TMethod, TInput, OutSchema, TServices, TLogger> {
     return new Endpoint({
       fn,
       method: this.method,

@@ -53,11 +53,11 @@ describe('Endpoint', () => {
 
       const spec = await endpoint.toOpenApi3Route();
 
-      expect(spec['/users/:id']!.get!.responses['200']).toHaveProperty(
+      expect(spec['/users/:id'].get.responses?.['200']).toHaveProperty(
         'content',
       );
       expect(
-        (spec['/users/:id']!.get!.responses['200'] as any).content[
+        (spec['/users/:id'].get.responses?.['200'] as any).content[
           'application/json'
         ].schema,
       ).toMatchObject({
@@ -135,9 +135,10 @@ describe('Endpoint', () => {
 
       const spec = await endpoint.toOpenApi3Route();
 
-      expect(spec['/users/:id/items/:subId']!.get).toHaveProperty('parameters');
-      const parameters = (spec['/users/:id/items/:subId']!.get! as any)
-        .parameters;
+      const doc = spec['/users/{id}/items/{subId}'];
+
+      expect(doc.get).toHaveProperty('parameters');
+      const parameters = doc.get.parameters;
 
       expect(parameters).toHaveLength(2);
       expect(parameters).toContainEqual({
@@ -167,7 +168,7 @@ describe('Endpoint', () => {
         description: 'List users with pagination',
         fn: async (ctx) => [],
         input: {
-          search: searchSchema,
+          query: searchSchema,
         },
         outputSchema: undefined,
         services: [],

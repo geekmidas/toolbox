@@ -38,3 +38,5 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'TRACE'
   | 'CONNECT';
+
+export type LowerHttpMethod<T extends HttpMethod> = Lowercase<T>;

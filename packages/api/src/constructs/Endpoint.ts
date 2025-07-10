@@ -6,29 +6,27 @@ import type { HermodServiceConstructor } from '../services';
 import { Function, type FunctionHandler } from './Function';
 import { convertStandardSchemaToJsonSchema } from './helpers';
 import { type OpenApiSchemaOptions, buildOpenApiSchema } from './openapi';
-import { FunctionType, type HttpMethod, type RemoveUndefined } from './types';
+import {
+  FunctionType,
+  type HttpMethod,
+  type LowerHttpMethod,
+  type RemoveUndefined,
+} from './types';
 
 export class Endpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
-  TBody extends StandardSchemaV1 | undefined = undefined,
-  TSearch extends StandardSchemaV1 | undefined = undefined,
-  TParams extends StandardSchemaV1 | undefined = undefined,
+  TInput extends EndpointSchemas = {},
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
-> extends Function<
-  EndpointInput<TBody, TSearch, TParams>,
-  TServices,
-  TLogger,
-  OutSchema
-> {
+> extends Function<TInput, TServices, TLogger, OutSchema> {
   route: TRoute;
   method: TMethod;
   description?: string;
 
   static async buildOpenApiSchema(
-    endpoints: Endpoint<any, any, any, any, any, any, any, any>[],
+    endpoints: Endpoint<any, any, any, any, any, any>[],
     options?: OpenApiSchemaOptions,
   ) {
     return buildOpenApiSchema(endpoints, options);
@@ -46,7 +44,7 @@ export class Endpoint<
     return this.route.replace(/:(\w+)/g, '{$1}') as ConvertRouteParams<TRoute>;
   }
 
-  async toOpenApi3Route(): Promise<OpenAPIV3_1.PathsObject> {
+  async toOpenApi3Route(): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
     const operation: OpenAPIV3_1.OperationObject = {
       ...(this.description && { description: this.description }),
       responses: {
@@ -122,22 +120,20 @@ export class Endpoint<
       }
 
       // Add query parameters
-      if ('search' in this.input && this.input.search) {
-        const searchSchema = await convertStandardSchemaToJsonSchema(
-          this.input.search as StandardSchemaV1,
+      if ('query' in this.input && this.input.query) {
+        const querySchema = await convertStandardSchemaToJsonSchema(
+          this.input.query,
         );
         if (
-          searchSchema &&
-          searchSchema.type === 'object' &&
-          searchSchema.properties
+          querySchema &&
+          querySchema.type === 'object' &&
+          querySchema.properties
         ) {
-          for (const [name, schema] of Object.entries(
-            searchSchema.properties,
-          )) {
+          for (const [name, schema] of Object.entries(querySchema.properties)) {
             parameters.push({
               name,
               in: 'query',
-              required: searchSchema.required?.includes(name) ?? false,
+              required: querySchema.required?.includes(name) ?? false,
               schema: schema as any,
             });
           }
@@ -150,10 +146,10 @@ export class Endpoint<
     }
 
     return {
-      [this.route]: {
+      [this._path]: {
         [this.method.toLowerCase()]: operation,
       },
-    };
+    } as EndpointOpenApiSchema<TRoute, TMethod>;
   }
 
   constructor({
@@ -166,16 +162,7 @@ export class Endpoint<
     outputSchema,
     services,
     timeout,
-  }: EndpointOptions<
-    TRoute,
-    TMethod,
-    TBody,
-    TSearch,
-    TParams,
-    OutSchema,
-    TServices,
-    TLogger
-  >) {
+  }: EndpointOptions<TRoute, TMethod, TInput, OutSchema, TServices, TLogger>) {
     super(
       fn,
       timeout,
@@ -205,27 +192,27 @@ export type EndpointInput<
 export interface EndpointOptions<
   TRoute extends string,
   TMethod extends HttpMethod,
-  TBody extends StandardSchemaV1 | undefined = undefined,
-  TSearch extends StandardSchemaV1 | undefined = undefined,
-  TParams extends StandardSchemaV1 | undefined = undefined,
+  TInput extends EndpointSchemas = {},
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
 > {
   route: TRoute;
   method: TMethod;
-  fn: FunctionHandler<
-    EndpointInput<TBody, TSearch, TParams>,
-    TServices,
-    TLogger
-  >;
+  fn: FunctionHandler<TInput, TServices, TLogger>;
   description: string | undefined;
   timeout: number | undefined;
-  input: EndpointInput<TBody, TSearch, TParams> | undefined;
+  input: TInput | undefined;
   outputSchema: TOutSchema | undefined;
   services: TServices;
   logger: TLogger;
 }
+
+export type EndpointSchemas = Partial<{
+  params: StandardSchemaV1;
+  query: StandardSchemaV1;
+  body: StandardSchemaV1;
+}>;
 
 export type ConvertRouteParams<T extends string> =
   T extends `${infer Start}:${infer Param}/${infer Rest}`
@@ -233,3 +220,12 @@ export type ConvertRouteParams<T extends string> =
     : T extends `${infer Start}:${infer Param}`
       ? `${Start}{${Param}}`
       : T;
+
+export type EndpointOpenApiSchema<
+  TRoute extends string,
+  TMethod extends HttpMethod,
+> = {
+  [key in ConvertRouteParams<TRoute>]: {
+    [key in LowerHttpMethod<TMethod>]: OpenAPIV3_1.OperationObject<{}>;
+  };
+};
