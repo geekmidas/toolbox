@@ -49,6 +49,32 @@ export class Endpoint<
     return schema['~standard'].validate(data);
   }
 
+  async parseInput<K extends keyof TInput>(
+    input: unknown,
+    key: K,
+  ): Promise<InferComposableStandardSchema<TInput[K]>> {
+    const schema = this.input?.[key];
+    if (!schema) {
+      return Promise.resolve({} as InferComposableStandardSchema<TInput[K]>);
+    }
+
+    const parsed = await Endpoint.parseSchema(
+      schema as unknown as StandardSchemaV1,
+      input,
+    );
+    if (parsed.issues) {
+      throw parsed.issues;
+    }
+
+    return parsed.value as InferComposableStandardSchema<TInput[K]>;
+  }
+
+  async parseBody(body: unknown): Promise<InferStandardSchema<TInput['body']>> {
+    return this.parseInput(body, 'body') as Promise<
+      InferStandardSchema<TInput['body']>
+    >;
+  }
+
   static createHeaders(headers: Record<string, string>) {
     const headerMap = new Map<string, string>();
     for (const [k, v] of Object.entries(headers)) {
@@ -61,8 +87,8 @@ export class Endpoint<
     };
   }
 
-  handler: EndpointHandler<TInput, TServices, TLogger, OutSchema> = (
-    ctx: EndpointContext<TInput, TServices, TLogger>,
+  handler: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession> = (
+    ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
   ): OutSchema extends StandardSchemaV1
     ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
     : void | Promise<void> => {
@@ -259,7 +285,7 @@ export interface EndpointOptions<
 > {
   route: TRoute;
   method: TMethod;
-  fn: EndpointHandler<TInput, TServices, TLogger, TOutput>;
+  fn: EndpointHandler<TInput, TServices, TLogger, TOutput, TSession>;
   description: string | undefined;
   timeout: number | undefined;
   input: TInput | undefined;
@@ -319,8 +345,9 @@ export type EndpointHandler<
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
+  TSession = unknown,
 > = (
-  ctx: EndpointContext<TInput, TServices, TLogger>,
+  ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
 ) => OutSchema extends StandardSchemaV1
   ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
   : any | Promise<any>;

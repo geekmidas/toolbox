@@ -1,8 +1,0 @@
-// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
-
-exports[`Endpoint > Should have services 1`] = `
-[
-  "TestService",
-  "TestService2",
-]
-`;

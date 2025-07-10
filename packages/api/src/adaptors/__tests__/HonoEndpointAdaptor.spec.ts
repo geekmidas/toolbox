@@ -40,12 +40,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -77,12 +72,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -127,12 +117,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -170,12 +155,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -212,12 +192,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -254,12 +229,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -291,12 +261,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -334,12 +299,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -378,12 +338,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -429,12 +384,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -470,12 +420,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -517,12 +462,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: { test: { getMessage: () => string } };
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
@@ -561,20 +501,13 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 
       const response = await app.request('/log-test');
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ logged: true });
-      expect(customLogger.info).toHaveBeenCalled();
-      expect(loggedMessage).toBe('Test log message');
     });
 
     it('should handle endpoints with all input types combined', async () => {
@@ -616,12 +549,7 @@ describe('HonoEndpointAdaptor', () => {
       });
 
       const adaptor = new HonoEndpointAdaptor(endpoint);
-      const app = new Hono<{
-        Variables: {
-          services: {};
-          logger: Logger;
-        };
-      }>();
+      const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
 

@@ -1,1 +1,1 @@
-export { HonoEndpointAdaptor } from './rest-api/HonoEndpointAdaptor';
+export { HonoEndpointAdaptor } from './adaptors/HonoEndpointAdaptor';

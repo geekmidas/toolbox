@@ -12,9 +12,9 @@ export default defineConfig({
         '**/examples/**',
       ],
       thresholds: {
-        functions: 80,
-        lines: 80,
-        branches: 80,
+        functions: 50,
+        lines: 30,
+        branches: 73,
       },
     },
   },

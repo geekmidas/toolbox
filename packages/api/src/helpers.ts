@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fg from 'fast-glob';
-import { Handler } from './rest-api/Endpoint';
+import { Endpoint } from './constructs/Endpoint';
 
 export async function getProjectRoot(cwd: string): Promise<string> {
   if (cwd === '/') {
@@ -29,18 +29,18 @@ export async function getProjectRoot(cwd: string): Promise<string> {
 export async function getEndpointsFromRoutes(
   routes: string[],
   cwd: string,
-): Promise<Handler<any, any, any>[]> {
+): Promise<Endpoint<any, any, any>[]> {
   const stream = fg.stream(routes, { cwd });
 
-  const endpoints: Handler<any, any, any>[] = [];
+  const endpoints: Endpoint<any, any, any>[] = [];
 
   for await (const f of stream) {
     const routePath = path.resolve(cwd, f.toString());
     const route = await import(routePath);
 
     const handlers = Object.values(route).filter((value) => {
-      return Handler.isHandler(value);
-    }) as Handler<any, any, any>[];
+      return Endpoint.isEndpoint(value);
+    }) as Endpoint<any, any, any>[];
 
     endpoints.push(...handlers);
   }

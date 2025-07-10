@@ -83,8 +83,16 @@ export class EndpointBuilder<
   }
 
   handle(
-    fn: EndpointHandler<TInput, TServices, TLogger, OutSchema>,
-  ): Endpoint<TRoute, TMethod, TInput, OutSchema, TServices, TLogger> {
+    fn: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>,
+  ): Endpoint<
+    TRoute,
+    TMethod,
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TSession
+  > {
     return new Endpoint({
       fn,
       method: this.method,
