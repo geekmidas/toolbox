@@ -12,6 +12,11 @@
       "require": "./dist/aws-lambda.cjs",
       "types": "./src/aws-lambda.ts"
     },
+    "./aws-apigateway": {
+      "import": "./dist/aws-apigateway.mjs",
+      "require": "./dist/aws-apigateway.cjs",
+      "types": "./src/aws-apigateway.ts"
+    },
     "./hono": {
       "import": "./dist/hono.mjs",
       "require": "./dist/hono.cjs",

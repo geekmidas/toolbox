@@ -234,7 +234,7 @@ describe('buildOpenApiSchema', () => {
       }),
       input: {
         params: z.object({ id: z.string() }),
-        search: z.object({ include: z.array(z.string()).optional() }),
+        query: z.object({ include: z.array(z.string()).optional() }),
       },
       output: outputSchema,
       services: [],
@@ -286,7 +286,7 @@ describe('buildOpenApiSchema', () => {
       },
     });
 
-    expect(schema.paths!['/users/:id']).toMatchObject({
+    expect(schema.paths!['/users/{id}']).toMatchObject({
       get: {
         description: 'Get user by ID',
         parameters: [
@@ -374,14 +374,14 @@ describe('buildOpenApiSchema', () => {
 
     const schema = await buildOpenApiSchema(endpoints);
 
-    expect(Object.keys(schema.paths!['/users/:id']!)).toEqual([
+    expect(Object.keys(schema.paths!['/users/{id}']!)).toEqual([
       'get',
       'put',
       'delete',
     ]);
-    expect(schema.paths!['/users/:id']!.get!.description).toBe('Get user');
-    expect(schema.paths!['/users/:id']!.put!.description).toBe('Update user');
-    expect(schema.paths!['/users/:id']!.delete!.description).toBe(
+    expect(schema.paths!['/users/{id}']!.get!.description).toBe('Get user');
+    expect(schema.paths!['/users/{id}']!.put!.description).toBe('Update user');
+    expect(schema.paths!['/users/{id}']!.delete!.description).toBe(
       'Delete user',
     );
   });
