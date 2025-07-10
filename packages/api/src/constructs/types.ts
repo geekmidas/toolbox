@@ -27,3 +27,14 @@ export enum FunctionType {
   Endpoint = 'dev.geekmidas.function.endpoint',
   Function = 'dev.geekmidas.function.function',
 }
+
+export type HttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
+  | 'HEAD'
+  | 'OPTIONS'
+  | 'TRACE'
+  | 'CONNECT';

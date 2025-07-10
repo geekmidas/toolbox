@@ -3,10 +3,10 @@ import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
-import { Function, FunctionBuilder, type FunctionHandler } from './Function';
+import { Function, type FunctionHandler } from './Function';
 import { convertStandardSchemaToJsonSchema } from './helpers';
-import { buildOpenApiSchema, type OpenApiSchemaOptions } from './openapi';
-import { FunctionType, type RemoveUndefined } from './types';
+import { type OpenApiSchemaOptions, buildOpenApiSchema } from './openapi';
+import { FunctionType, type HttpMethod, type RemoveUndefined } from './types';
 
 export class Endpoint<
   TRoute extends string,
@@ -188,69 +188,6 @@ export class Endpoint<
   }
 }
 
-export class EndpointBuilder<
-  TRoute extends string,
-  TMethod extends HttpMethod,
-  TBody extends StandardSchemaV1 | undefined = undefined,
-  TSearch extends StandardSchemaV1 | undefined = undefined,
-  TParams extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
-> extends FunctionBuilder<
-  EndpointInput<TBody, TSearch, TParams>,
-  OutSchema,
-  TServices,
-  TLogger
-> {
-  protected bodySchema?: TBody;
-  protected searchSchema?: TSearch;
-  protected paramsSchema?: TParams;
-  protected _description?: string;
-
-  constructor(
-    readonly route: TRoute,
-    readonly method: TMethod,
-  ) {
-    super(FunctionType.Endpoint);
-  }
-
-  description(description: string): this {
-    this._description = description;
-    return this;
-  }
-
-  handle(
-    fn: FunctionHandler<
-      EndpointInput<TBody, TSearch, TParams>,
-      TServices,
-      TLogger,
-      OutSchema
-    >,
-  ): Endpoint<
-    TRoute,
-    TMethod,
-    TBody,
-    TSearch,
-    TParams,
-    OutSchema,
-    TServices,
-    TLogger
-  > {
-    return new Endpoint({
-      fn,
-      method: this.method,
-      route: this.route,
-      description: this._description,
-      input: this.inputSchema as EndpointInput<TBody, TSearch, TParams>,
-      outputSchema: this.outputSchema,
-      services: this._services,
-      logger: this._logger,
-      timeout: this._timeout,
-    });
-  }
-}
-
 export type EndpointInput<
   TBody extends StandardSchemaV1 | undefined = undefined,
   TSearch extends StandardSchemaV1 | undefined = undefined,
@@ -260,17 +197,6 @@ export type EndpointInput<
   search: TSearch;
   params: TParams;
 }>;
-
-export type HttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'PATCH'
-  | 'DELETE'
-  | 'HEAD'
-  | 'OPTIONS'
-  | 'TRACE'
-  | 'CONNECT';
 
 export interface EndpointOptions<
   TRoute extends string,
