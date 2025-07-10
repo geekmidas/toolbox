@@ -16,6 +16,7 @@ import { type OpenApiSchemaOptions, buildOpenApiSchema } from './openapi';
 import {
   FunctionType,
   type HttpMethod,
+  type InferComposableStandardSchema,
   type InferStandardSchema,
   type LowerHttpMethod,
   type RemoveUndefined,
@@ -66,17 +67,14 @@ export class Endpoint<
     ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
     : void | Promise<void> => {
     return this.fn({
-      input: {
-        body: ctx.body,
-        search: ctx.query,
-        params: ctx.params,
-      } as InferStandardSchema<TInput>,
+      body: ctx.body,
+      query: ctx.query,
+      params: ctx.params,
       services: ctx.services,
       logger: ctx.logger,
-      // @ts-ignore
       header: ctx.header,
       session: ctx.session,
-    });
+    } as unknown as FunctionContext<TInput, TServices, TLogger>);
   };
 
   static isEndpoint(obj: any): obj is Endpoint<any, any, any, any> {
@@ -206,7 +204,7 @@ export class Endpoint<
     description,
     input,
     logger,
-    outputSchema,
+    output: outputSchema,
     services,
     timeout,
     getSession,
@@ -221,7 +219,7 @@ export class Endpoint<
     TSession
   >) {
     super(
-      fn,
+      fn as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
       timeout,
       FunctionType.Endpoint,
       input,
@@ -254,18 +252,18 @@ export interface EndpointOptions<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
-  TOutSchema extends StandardSchemaV1 | undefined = undefined,
+  TOutput extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
   route: TRoute;
   method: TMethod;
-  fn: FunctionHandler<TInput, TServices, TLogger, TOutSchema>;
+  fn: EndpointHandler<TInput, TServices, TLogger, TOutput>;
   description: string | undefined;
   timeout: number | undefined;
   input: TInput | undefined;
-  outputSchema: TOutSchema | undefined;
+  output: TOutput | undefined;
   services: TServices;
   logger: TLogger;
   getSession: SessionFn<TServices, TLogger, TSession> | undefined;
@@ -314,7 +312,7 @@ export type EndpointContext<
   logger: TLogger;
   header: (key: string) => string | undefined;
   session: TSession;
-} & Input;
+} & InferComposableStandardSchema<Input>;
 
 export type EndpointHandler<
   TInput extends EndpointSchemas | undefined = undefined,

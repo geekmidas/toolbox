@@ -10,6 +10,7 @@ import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import type { ConsoleLogger, Logger } from '../logger';
 import type {
   HermodServiceConstructor,
+  HermodServiceDiscovery,
   HermodServiceRecord,
 } from '../services';
 
@@ -51,6 +52,10 @@ export class HonoEndpointAdaptor<
   }
 
   addRoute(
+    serviceDiscovery: HermodServiceDiscovery<
+      HermodServiceRecord<TServices>,
+      TLogger
+    >,
     app: Hono<{
       Variables: {
         services: HermodServiceRecord<TServices>;
@@ -75,14 +80,17 @@ export class HonoEndpointAdaptor<
       ),
       async (c) => {
         const headerValues = c.req.header();
+        const services = await serviceDiscovery.register(
+          this.endpoint.services,
+        );
 
         const response = await this.endpoint.handler({
-          services: c.var.services,
-          logger: c.var.logger,
+          services,
+          logger: this.endpoint.logger,
           body: c.req.valid('json'),
-          search: c.req.valid('query'),
+          query: c.req.valid('query'),
           params: c.req.valid('param'),
-          headers: Endpoint.createHeaders(headerValues),
+          header: Endpoint.createHeaders(headerValues),
         } as unknown as EndpointContext<TInput, TServices, TLogger>);
 
         return c.json(response);

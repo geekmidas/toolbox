@@ -2,8 +2,8 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
-import type { SessionFn, SuccessStatus } from './Endpoint';
-import { FunctionBuilder, type FunctionHandler } from './Function';
+import type { EndpointHandler, SessionFn, SuccessStatus } from './Endpoint';
+import { FunctionBuilder } from './Function';
 import { FunctionType, type HttpMethod } from './types';
 
 export class EndpointBuilder<
@@ -83,7 +83,7 @@ export class EndpointBuilder<
   }
 
   handle(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+    fn: EndpointHandler<TInput, TServices, TLogger, OutSchema>,
   ): Endpoint<TRoute, TMethod, TInput, OutSchema, TServices, TLogger> {
     return new Endpoint({
       fn,
@@ -91,7 +91,7 @@ export class EndpointBuilder<
       route: this.route,
       description: this._description,
       input: this.inputSchema,
-      outputSchema: this.outputSchema,
+      output: this.outputSchema,
       services: this._services,
       logger: this._logger,
       timeout: this._timeout,

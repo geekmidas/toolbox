@@ -11,7 +11,9 @@ describe('Endpoint', () => {
         description: 'Get all users',
         fn: async () => [],
         input: undefined,
-        outputSchema: undefined,
+        status: undefined,
+        getSession: undefined,
+        output: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
@@ -45,8 +47,10 @@ describe('Endpoint', () => {
         description: 'Get user by ID',
         fn: async () => ({ id: '1', name: 'John' }),
         input: undefined,
-        outputSchema,
+        output: outputSchema,
         services: [],
+        status: undefined,
+        getSession: undefined,
         logger: {} as any,
         timeout: undefined,
       });
@@ -80,7 +84,9 @@ describe('Endpoint', () => {
         input: {
           body: bodySchema,
         },
-        outputSchema: undefined,
+        output: undefined,
+        status: undefined,
+        getSession: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
@@ -115,6 +121,8 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users/:id/items/:subId',
         method: 'GET',
+        status: undefined,
+        getSession: undefined,
         description: 'Get user item',
         fn: async (ctx) => ({
           userId: (ctx as any).params.id,
@@ -123,7 +131,7 @@ describe('Endpoint', () => {
         input: {
           params: paramsSchema,
         },
-        outputSchema: undefined,
+        output: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
@@ -166,10 +174,12 @@ describe('Endpoint', () => {
         input: {
           query: searchSchema,
         },
-        outputSchema: undefined,
+        output: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
+        status: undefined,
+        getSession: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -217,6 +227,8 @@ describe('Endpoint', () => {
         route: '/users/:id',
         method: 'PUT',
         description: 'Update user',
+        status: undefined,
+        getSession: undefined,
         fn: async (ctx) => ({
           id: (ctx as any).params.id,
           ...(ctx as any).body,
@@ -226,7 +238,7 @@ describe('Endpoint', () => {
           body: bodySchema,
           params: paramsSchema,
         },
-        outputSchema,
+        output: outputSchema,
         services: [],
         logger: {} as any,
         timeout: undefined,
@@ -275,8 +287,10 @@ describe('Endpoint', () => {
         route: '/health',
         method: 'GET',
         fn: async () => ({ status: 'ok' }),
+        status: undefined,
+        getSession: undefined,
         input: undefined,
-        outputSchema: undefined,
+        output: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
@@ -304,7 +318,9 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users',
         method: 'GET',
-        outputSchema: z.object({
+        status: undefined,
+        getSession: undefined,
+        output: z.object({
           users: z.array(z.object({ id: z.string(), name: z.string() })),
         }),
         fn: async ({}) => ({

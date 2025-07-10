@@ -34,7 +34,7 @@ export class HermodServiceDiscovery<
   s!: TServices;
 
   static getInstance<
-    T extends Record<any, unknown> = {},
+    T extends Record<any, unknown> = any,
     TLogger extends Logger = ConsoleLogger,
   >(
     logger: TLogger,

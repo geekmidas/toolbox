@@ -51,6 +51,12 @@ export class Function<
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
+  Fn extends FunctionHandler<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema
+  > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
 > {
   __IS_FUNCTION__ = true;
 
@@ -59,12 +65,7 @@ export class Function<
   }
 
   constructor(
-    protected readonly fn: FunctionHandler<
-      TInput,
-      TServices,
-      TLogger,
-      OutSchema
-    >,
+    protected readonly fn: Fn,
     readonly timeout = 30000, // Default timeout of 30 seconds
     public readonly type = FunctionType.Function,
     public input?: TInput,
@@ -171,20 +172,6 @@ export class FunctionBuilder<
 
     return this as unknown as FunctionBuilder<T, OutSchema, TServices, TLogger>;
   }
-
-  handle(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
-  ): Function<TInput, TServices, TLogger, OutSchema> {
-    return new Function(
-      fn,
-      this._timeout,
-      this.type,
-      this.inputSchema as TInput,
-      this.outputSchema,
-      this._services,
-      this._logger,
-    ) as Function<TInput, TServices, TLogger, OutSchema>;
-  }
 }
 
 export type FunctionHandler<
@@ -203,7 +190,6 @@ export type FunctionContext<
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
 > = {
-  input: InferComposableStandardSchema<Input>;
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
-};
+} & Input;
