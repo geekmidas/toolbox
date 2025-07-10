@@ -146,6 +146,152 @@ const config = new EnvironmentParser(process.env)
 - Create minimal data needed for each test
 - Use seeds for complex test scenarios
 
+## Test Structure
+
+### File Organization
+- Test files live alongside source files with `.spec.ts` or `.test.ts` suffix
+- Integration tests in `__tests__/` directories
+- Mock data and fixtures in `__fixtures__/` directories
+- Test utilities in `__helpers__/` directories
+
+### Test File Naming
+- Unit tests: `ComponentName.spec.ts` or `functionName.test.ts`
+- Integration tests: `feature.integration.spec.ts`
+- E2E tests: `scenario.e2e.ts`
+
+### Test Structure Pattern
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+describe('ComponentName', () => {
+  // Setup shared test data
+  let testData: TestType;
+
+  beforeEach(() => {
+    // Initialize test data
+    testData = createTestData();
+  });
+
+  afterEach(() => {
+    // Cleanup if needed
+  });
+
+  describe('methodName', () => {
+    it('should handle normal case', () => {
+      // Arrange
+      const input = 'test';
+      
+      // Act
+      const result = methodName(input);
+      
+      // Assert
+      expect(result).toBe('expected');
+    });
+
+    it('should handle edge case', () => {
+      // Test edge cases
+    });
+
+    it('should throw error for invalid input', () => {
+      // Test error scenarios
+      expect(() => methodName(null)).toThrow('Expected error');
+    });
+  });
+});
+```
+
+### Testing Patterns
+
+#### Unit Tests
+- Test individual functions/methods in isolation
+- Mock external dependencies
+- Focus on input/output relationships
+- Test edge cases and error scenarios
+
+#### Integration Tests
+- Test multiple components working together
+- Use real or in-memory databases
+- Test API endpoints with supertest
+- Verify data flow through system
+
+#### Database Tests
+```typescript
+import { createTestDatabase } from '@geekmidas/testkit';
+
+describe('UserRepository', () => {
+  const { db, cleanup } = createTestDatabase();
+  
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it('should create user', async () => {
+    const user = await db.insert('users').values({ name: 'Test' });
+    expect(user.id).toBeDefined();
+  });
+});
+```
+
+#### API Endpoint Tests
+```typescript
+import { createTestApp } from '@geekmidas/api/testing';
+import { endpoint } from './endpoint';
+
+describe('POST /users', () => {
+  const app = createTestApp([endpoint]);
+
+  it('should create user', async () => {
+    const response = await app
+      .post('/users')
+      .send({ name: 'Test User' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      id: expect.any(String),
+      name: 'Test User',
+    });
+  });
+});
+```
+
+### Mocking Guidelines
+- Use vitest's built-in mocking utilities
+- Create type-safe mocks with `vi.fn<T>()`
+- Mock at the boundary (external services, databases)
+- Avoid mocking internal implementation details
+
+### Test Coverage
+- Aim for 80%+ coverage for critical paths
+- Focus on behavior coverage, not line coverage
+- Test public APIs thoroughly
+- Don't test implementation details
+
+### Performance Testing
+```typescript
+import { bench, describe } from 'vitest';
+
+describe('performance', () => {
+  bench('should handle large datasets', () => {
+    processLargeDataset(testData);
+  });
+});
+```
+
+### Snapshot Testing
+- Use for complex object structures
+- Store snapshots in `__snapshots__/` directories
+- Review snapshot changes carefully
+- Update snapshots with `pnpm test -u`
+
+### Test Commands
+```bash
+pnpm test                 # Run tests in watch mode
+pnpm test:once           # Run tests once
+pnpm test:coverage       # Generate coverage report
+pnpm test:ui             # Open Vitest UI
+pnpm test path/to/file   # Test specific file
+```
+
 ### Configuration
 - Parse all environment variables at startup
 - Use @geekmidas/envkit for type-safe parsing

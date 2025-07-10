@@ -42,10 +42,37 @@ export class EndpointFactory<
     path: P,
     basePath: TBasePath = '' as TBasePath,
   ): JoinPaths<TBasePath, P> {
+    // Handle empty cases
+    if (!basePath && !path) return '/' as JoinPaths<TBasePath, P>;
+    if (!basePath)
+      return (path.startsWith('/') ? path : '/' + path) as JoinPaths<
+        TBasePath,
+        P
+      >;
+    if (!path)
+      return (
+        basePath.startsWith('/') ? basePath : '/' + basePath
+      ) as JoinPaths<TBasePath, P>;
+
     const base = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
     const segment = path.startsWith('/') ? path : '/' + path;
 
-    return (base + segment) as JoinPaths<TBasePath, P>;
+    let result = base + segment;
+
+    // Ensure leading slash
+    if (!result.startsWith('/')) {
+      result = '/' + result;
+    }
+
+    // Normalize multiple slashes (except in the middle of the path where they might be intentional)
+    result = result.replace(/^\/+/g, '/');
+
+    // Remove trailing slash unless it's the root path "/"
+    if (result.length > 1 && result.endsWith('/')) {
+      result = result.slice(0, -1);
+    }
+
+    return result as JoinPaths<TBasePath, P>;
   }
 
   // Create a sub-router with a path prefix

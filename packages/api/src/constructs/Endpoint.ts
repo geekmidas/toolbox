@@ -42,6 +42,10 @@ export class Endpoint<
     );
   }
 
+  get _path() {
+    return this.route.replace(/:(\w+)/g, '{$1}') as ConvertRouteParams<TRoute>;
+  }
+
   async toOpenApi3Route(): Promise<OpenAPIV3_1.PathsObject> {
     const operation: OpenAPIV3_1.OperationObject = {
       ...(this.description && { description: this.description }),
@@ -222,3 +226,10 @@ export interface EndpointOptions<
   services: TServices;
   logger: TLogger;
 }
+
+export type ConvertRouteParams<T extends string> =
+  T extends `${infer Start}:${infer Param}/${infer Rest}`
+    ? `${Start}{${Param}}/${ConvertRouteParams<Rest>}`
+    : T extends `${infer Start}:${infer Param}`
+      ? `${Start}{${Param}}`
+      : T;
