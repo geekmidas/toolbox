@@ -66,6 +66,7 @@
     "@middy/http-header-normalizer": ">=6.3.1",
     "@types/aws-lambda": ">=8.10.92",
     "hono": "~4.8.2",
+    "hono-openapi": "~0.4.8",
     "@geekmidas/envkit": "workspace:*"
   }
 }

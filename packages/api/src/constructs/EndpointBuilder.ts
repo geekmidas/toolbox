@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
-import type { SessionFn } from './EndpointFactory';
+import type { SessionFn, SuccessStatus } from './Endpoint';
 import { FunctionBuilder, type FunctionHandler } from './Function';
 import { FunctionType, type HttpMethod } from './types';
 
@@ -17,6 +17,7 @@ export class EndpointBuilder<
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   protected schemas: TInput;
   protected _description?: string;
+  protected _status?: SuccessStatus;
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
 
   constructor(
@@ -28,6 +29,11 @@ export class EndpointBuilder<
 
   description(description: string): this {
     this._description = description;
+    return this;
+  }
+
+  status(status: SuccessStatus): this {
+    this._status = status;
     return this;
   }
 
@@ -89,6 +95,8 @@ export class EndpointBuilder<
       services: this._services,
       logger: this._logger,
       timeout: this._timeout,
+      status: this._status,
+      getSession: this._getSession,
     });
   }
 }

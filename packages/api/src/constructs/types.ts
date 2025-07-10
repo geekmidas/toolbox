@@ -34,9 +34,6 @@ export type HttpMethod =
   | 'PUT'
   | 'PATCH'
   | 'DELETE'
-  | 'HEAD'
-  | 'OPTIONS'
-  | 'TRACE'
-  | 'CONNECT';
+  | 'OPTIONS';
 
 export type LowerHttpMethod<T extends HttpMethod> = Lowercase<T>;

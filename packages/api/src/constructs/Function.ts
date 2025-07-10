@@ -59,22 +59,19 @@ export class Function<
   }
 
   constructor(
-    private readonly fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
-    private readonly timeout = 30000, // Default timeout of 30 seconds
+    protected readonly fn: FunctionHandler<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema
+    >,
+    readonly timeout = 30000, // Default timeout of 30 seconds
     public readonly type = FunctionType.Function,
     public input?: TInput,
     public outputSchema?: OutSchema,
     public services: TServices = [] as HermodServiceConstructor[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
   ) {}
-
-  handler: FunctionHandler<TInput, TServices, TLogger, OutSchema> = (
-    ctx: FunctionContext<TInput, TServices, TLogger>,
-  ): OutSchema extends StandardSchemaV1
-    ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
-    : any | Promise<any> => {
-    return this.fn(ctx);
-  };
 }
 
 export class FunctionBuilder<
@@ -210,5 +207,3 @@ export type FunctionContext<
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
 };
-
-export const f = new FunctionBuilder();

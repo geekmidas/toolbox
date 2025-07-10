@@ -18,7 +18,8 @@ export class ConsoleLogger implements Logger {
   private createLogFn(logMethod: (...args: any[]) => void): LogFn {
     return <T extends object>(obj: T, msg?: string, ...args: any[]): void => {
       // Merge the logger's context data with the provided object
-      const mergedData = { ...this.data, ...obj };
+      const ts = Date.now();
+      const mergedData = { ...this.data, ...obj, ts };
 
       if (msg) {
         logMethod(mergedData, msg, ...args);

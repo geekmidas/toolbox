@@ -2,13 +2,21 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import type { ConsoleLogger, Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
-import { Function, type FunctionHandler } from './Function';
+import type {
+  HermodServiceConstructor,
+  HermodServiceRecord,
+} from '../services';
+import {
+  Function,
+  type FunctionContext,
+  type FunctionHandler,
+} from './Function';
 import { convertStandardSchemaToJsonSchema } from './helpers';
 import { type OpenApiSchemaOptions, buildOpenApiSchema } from './openapi';
 import {
   FunctionType,
   type HttpMethod,
+  type InferStandardSchema,
   type LowerHttpMethod,
   type RemoveUndefined,
 } from './types';
@@ -20,10 +28,14 @@ export class Endpoint<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
   route: TRoute;
   method: TMethod;
   description?: string;
+  public readonly status: SuccessStatus;
+  public getSession: SessionFn<TServices, TLogger, TSession> = () =>
+    ({}) as TSession;
 
   static async buildOpenApiSchema(
     endpoints: Endpoint<any, any, any, any, any, any>[],
@@ -31,6 +43,41 @@ export class Endpoint<
   ) {
     return buildOpenApiSchema(endpoints, options);
   }
+
+  static parseSchema<T extends StandardSchemaV1>(schema: T, data: unknown) {
+    return schema['~standard'].validate(data);
+  }
+
+  static createHeaders(headers: Record<string, string>) {
+    const headerMap = new Map<string, string>();
+    for (const [k, v] of Object.entries(headers)) {
+      const key = k.toLowerCase();
+      headerMap.set(key, v);
+    }
+
+    return function get(key: string): string | undefined {
+      return headerMap.get(key.toLowerCase());
+    };
+  }
+
+  handler: EndpointHandler<TInput, TServices, TLogger, OutSchema> = (
+    ctx: EndpointContext<TInput, TServices, TLogger>,
+  ): OutSchema extends StandardSchemaV1
+    ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
+    : void | Promise<void> => {
+    return this.fn({
+      input: {
+        body: ctx.body,
+        search: ctx.query,
+        params: ctx.params,
+      } as InferStandardSchema<TInput>,
+      services: ctx.services,
+      logger: ctx.logger,
+      // @ts-ignore
+      header: ctx.header,
+      session: ctx.session,
+    });
+  };
 
   static isEndpoint(obj: any): obj is Endpoint<any, any, any, any> {
     return (
@@ -162,7 +209,17 @@ export class Endpoint<
     outputSchema,
     services,
     timeout,
-  }: EndpointOptions<TRoute, TMethod, TInput, OutSchema, TServices, TLogger>) {
+    getSession,
+    status = SuccessStatus.OK,
+  }: EndpointOptions<
+    TRoute,
+    TMethod,
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TSession
+  >) {
     super(
       fn,
       timeout,
@@ -176,6 +233,10 @@ export class Endpoint<
     this.route = route;
     this.method = method;
     this.description = description;
+    this.status = status;
+    if (getSession) {
+      this.getSession = getSession;
+    }
   }
 }
 
@@ -196,6 +257,7 @@ export interface EndpointOptions<
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
 > {
   route: TRoute;
   method: TMethod;
@@ -206,6 +268,8 @@ export interface EndpointOptions<
   outputSchema: TOutSchema | undefined;
   services: TServices;
   logger: TLogger;
+  getSession: SessionFn<TServices, TLogger, TSession> | undefined;
+  status: SuccessStatus | undefined;
 }
 
 export type EndpointSchemas = Partial<{
@@ -213,6 +277,14 @@ export type EndpointSchemas = Partial<{
   query: StandardSchemaV1;
   body: StandardSchemaV1;
 }>;
+
+export type SessionFn<
+  TServices extends HermodServiceConstructor[] = [],
+  TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
+> = (
+  ctx: FunctionContext<{}, TServices, TLogger>,
+) => Promise<TSession> | TSession;
 
 export type ConvertRouteParams<T extends string> =
   T extends `${infer Start}:${infer Param}/${infer Rest}`
@@ -229,3 +301,37 @@ export type EndpointOpenApiSchema<
     [key in LowerHttpMethod<TMethod>]: OpenAPIV3_1.OperationObject<{}>;
   };
 };
+
+export type EndpointHeaders = Map<string, string>;
+
+export type EndpointContext<
+  Input extends EndpointSchemas | undefined = undefined,
+  TServices extends HermodServiceConstructor[] = [],
+  TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
+> = {
+  services: HermodServiceRecord<TServices>;
+  logger: TLogger;
+  header: (key: string) => string | undefined;
+  session: TSession;
+} & Input;
+
+export type EndpointHandler<
+  TInput extends EndpointSchemas | undefined = undefined,
+  TServices extends HermodServiceConstructor[] = [],
+  TLogger extends Logger = ConsoleLogger,
+  OutSchema extends StandardSchemaV1 | undefined = undefined,
+> = (
+  ctx: EndpointContext<TInput, TServices, TLogger>,
+) => OutSchema extends StandardSchemaV1
+  ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
+  : any | Promise<any>;
+
+export enum SuccessStatus {
+  OK = 200,
+  Created = 201,
+  Accepted = 202,
+  NoContent = 204,
+  ResetContent = 205,
+  PartialContent = 206,
+}

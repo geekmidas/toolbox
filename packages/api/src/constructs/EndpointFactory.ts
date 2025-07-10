@@ -1,19 +1,12 @@
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
+import type { SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { FunctionContext } from './Function';
 import type { HttpMethod } from './types';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
-
-export type SessionFn<
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
-  TSession = unknown,
-> = (
-  ctx: FunctionContext<{}, TServices, TLogger>,
-) => Promise<TSession> | TSession;
 
 export class EndpointFactory<
   TServices extends HermodServiceConstructor[] = [],
