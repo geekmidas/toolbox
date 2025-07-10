@@ -21,21 +21,33 @@ export class EndpointFactory<
   TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > {
+  // @ts-ignore
   private defaultServices: TServices;
-  constructor(
-    defaultServices: TServices,
-    private basePath: TBasePath = '' as TBasePath,
-    private defaultAuthorizeFn?: (
-      ctx: FunctionContext<any, TServices, TLogger>,
-    ) => boolean | Promise<boolean>,
-    private defaultLogger: TLogger = DEFAULT_LOGGER,
-    private defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>,
-  ) {
+  private basePath: TBasePath = '' as TBasePath;
+  private defaultAuthorizeFn?: (
+    ctx: FunctionContext<any, TServices, TLogger>,
+  ) => boolean | Promise<boolean>;
+
+  private defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
+  private defaultLogger: TLogger = DEFAULT_LOGGER;
+  constructor({
+    basePath,
+    defaultAuthorizeFn,
+    defaultLogger,
+    defaultSessionExtractor,
+    // @ts-ignore
+    defaultServices = [] as TServices,
+  }: EndpointFactoryOptions<TServices, TBasePath, TLogger, TSession> = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
       defaultServices,
       (s) => s.serviceName,
     ) as TServices;
+
+    this.basePath = basePath || ('' as TBasePath);
+    this.defaultAuthorizeFn = defaultAuthorizeFn;
+    this.defaultLogger = defaultLogger || (DEFAULT_LOGGER as TLogger);
+    this.defaultSessionExtractor = defaultSessionExtractor;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -85,13 +97,13 @@ export class EndpointFactory<
     TSession
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
-    return new EndpointFactory(
-      this.defaultServices,
-      newBasePath,
-      this.defaultAuthorizeFn,
-      this.defaultLogger,
-      this.defaultSessionExtractor,
-    );
+    return new EndpointFactory({
+      defaultServices: this.defaultServices,
+      basePath: newBasePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+    });
   }
 
   // Create a new factory with authorization
@@ -100,13 +112,13 @@ export class EndpointFactory<
       ctx: FunctionContext<any, TServices, TLogger>,
     ) => boolean | Promise<boolean>,
   ): EndpointFactory<TServices, TBasePath, TLogger, TSession> {
-    return new EndpointFactory(
-      this.defaultServices,
-      this.basePath,
-      fn,
-      this.defaultLogger,
-      this.defaultSessionExtractor,
-    );
+    return new EndpointFactory({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: fn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+    });
   }
 
   // Create a new factory with services
@@ -118,35 +130,35 @@ export class EndpointFactory<
       TBasePath,
       TLogger,
       TSession
-    >(
-      [...services, ...this.defaultServices],
-      this.basePath,
-      this.defaultAuthorizeFn,
-      this.defaultLogger,
-      this.defaultSessionExtractor,
-    );
+    >({
+      defaultServices: [...services, ...this.defaultServices],
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+    });
   }
 
   logger<L extends Logger>(
     logger: L,
   ): EndpointFactory<TServices, TBasePath, L, TSession> {
-    return new EndpointFactory<TServices, TBasePath, L, TSession>(
-      this.defaultServices,
-      this.basePath,
-      this.defaultAuthorizeFn as any,
-      logger,
-      this.defaultSessionExtractor as any,
-    );
+    return new EndpointFactory<TServices, TBasePath, L, TSession>({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: logger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+    } as EndpointFactoryOptions<TServices, TBasePath, L, TSession>);
   }
 
   session<TSession>(session: SessionFn<TServices, TLogger, TSession>) {
-    return new EndpointFactory<TServices, TBasePath, TLogger, TSession>(
-      this.defaultServices,
-      this.basePath,
-      this.defaultAuthorizeFn as any,
-      this.defaultLogger,
-      session,
-    );
+    return new EndpointFactory<TServices, TBasePath, TLogger, TSession>({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: session,
+    });
   }
 
   private createBuilder<TMethod extends HttpMethod, TPath extends string>(
@@ -162,26 +174,30 @@ export class EndpointFactory<
     TSession
   > {
     const fullPath = EndpointFactory.joinPaths(path, this.basePath);
-    const builder = new EndpointBuilder(fullPath, method);
+    const builder = new EndpointBuilder<
+      JoinPaths<TBasePath, TPath>,
+      TMethod,
+      {},
+      TServices,
+      TLogger,
+      undefined,
+      TSession
+    >(fullPath, method);
 
     if (this.defaultAuthorizeFn) {
       // @ts-ignore
       builder.authorizeFn = this.defaultAuthorizeFn;
     }
     if (this.defaultServices.length) {
-      // @ts-ignore
       builder._services = this.defaultServices as TServices;
     }
 
     if (this.defaultLogger) {
-      // @ts-ignore
       builder._logger = this.defaultLogger as TLogger;
     }
 
     if (this.defaultSessionExtractor) {
-      // @ts-ignore
       builder._getSession = this.defaultSessionExtractor as SessionFn<
-        {},
         TServices,
         TLogger,
         TSession
@@ -250,3 +266,18 @@ export type JoinPaths<
             ? `${TBasePath}/${Rest}`
             : `${TBasePath}/${TPath}`
 >;
+
+export interface EndpointFactoryOptions<
+  TServices extends HermodServiceConstructor[] = [],
+  TBasePath extends string = '',
+  TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
+> {
+  defaultServices?: TServices;
+  basePath?: TBasePath;
+  defaultAuthorizeFn?: (
+    ctx: FunctionContext<any, TServices, TLogger>,
+  ) => boolean | Promise<boolean>;
+  defaultLogger?: TLogger;
+  defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
+}

@@ -87,9 +87,8 @@ export class FunctionBuilder<
   protected outputSchema?: OutSchema;
   protected _timeout?: number;
 
-  protected _services: TServices =
-    [] as HermodServiceConstructor[] as TServices;
-  protected _logger: TLogger = DEFAULT_LOGGER;
+  public _services: TServices = [] as HermodServiceConstructor[] as TServices;
+  public _logger: TLogger = DEFAULT_LOGGER;
 
   static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
     const schema = (s as StandardSchemaV1)['~standard'];

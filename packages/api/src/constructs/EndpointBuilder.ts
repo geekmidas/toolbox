@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
+import type { SessionFn } from './EndpointFactory';
 import { FunctionBuilder, type FunctionHandler } from './Function';
 import { FunctionType, type HttpMethod } from './types';
 
@@ -16,6 +17,7 @@ export class EndpointBuilder<
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   protected schemas: TInput;
   protected _description?: string;
+  _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
 
   constructor(
     readonly route: TRoute,
