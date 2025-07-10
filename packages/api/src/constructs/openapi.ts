@@ -8,7 +8,7 @@ export interface OpenApiSchemaOptions {
 }
 
 export async function buildOpenApiSchema(
-  endpoints: Endpoint<any, any, any, any, any, any, any, any>[],
+  endpoints: Endpoint<any, any, any, any, any, any>[],
   options: OpenApiSchemaOptions = {},
 ): Promise<OpenAPIV3_1.Document> {
   const { title = 'API', version = '1.0.0', description } = options;
@@ -16,7 +16,7 @@ export async function buildOpenApiSchema(
 
   for (const endpoint of endpoints) {
     const route = await endpoint.toOpenApi3Route();
-    
+
     // Merge the route into the paths object
     for (const [path, methods] of Object.entries(route)) {
       if (!paths[path]) {

@@ -199,7 +199,7 @@ export interface EndpointOptions<
 > {
   route: TRoute;
   method: TMethod;
-  fn: FunctionHandler<TInput, TServices, TLogger>;
+  fn: FunctionHandler<TInput, TServices, TLogger, TOutSchema>;
   description: string | undefined;
   timeout: number | undefined;
   input: TInput | undefined;

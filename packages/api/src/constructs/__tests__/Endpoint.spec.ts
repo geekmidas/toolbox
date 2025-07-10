@@ -52,14 +52,10 @@ describe('Endpoint', () => {
       });
 
       const spec = await endpoint.toOpenApi3Route();
-
-      expect(spec['/users/:id'].get.responses?.['200']).toHaveProperty(
-        'content',
-      );
+      const doc = spec['/users/{id}'];
+      expect(doc.get.responses?.['200']).toHaveProperty('content');
       expect(
-        (spec['/users/:id'].get.responses?.['200'] as any).content[
-          'application/json'
-        ].schema,
+        (doc.get.responses?.['200'] as any).content['application/json'].schema,
       ).toMatchObject({
         type: 'object',
         properties: {
@@ -237,13 +233,12 @@ describe('Endpoint', () => {
       });
 
       const spec = await endpoint.toOpenApi3Route();
+      const doc = spec['/users/{id}'];
 
       // Check request body
-      expect(spec['/users/:id']!.put).toHaveProperty('requestBody');
+      expect(doc.put).toHaveProperty('requestBody');
       expect(
-        (spec['/users/:id']!.put! as any).requestBody.content[
-          'application/json'
-        ].schema,
+        (doc.put as any).requestBody.content['application/json'].schema,
       ).toMatchObject({
         type: 'object',
         properties: {
@@ -253,8 +248,8 @@ describe('Endpoint', () => {
       });
 
       // Check parameters
-      expect((spec['/users/:id']!.put! as any).parameters).toHaveLength(1);
-      expect((spec['/users/:id']!.put! as any).parameters[0]).toEqual({
+      expect((doc.put as any).parameters).toHaveLength(1);
+      expect((doc.put as any).parameters[0]).toEqual({
         name: 'id',
         in: 'path',
         required: true,
@@ -263,9 +258,7 @@ describe('Endpoint', () => {
 
       // Check response
       expect(
-        (spec['/users/:id']!.put!.responses['200'] as any).content[
-          'application/json'
-        ].schema,
+        (doc.put.responses?.['200'] as any).content['application/json'].schema,
       ).toMatchObject({
         type: 'object',
         properties: {
@@ -311,11 +304,15 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users',
         method: 'GET',
-        fn: async () => [],
+        outputSchema: z.object({
+          users: z.array(z.object({ id: z.string(), name: z.string() })),
+        }),
+        fn: async ({}) => ({
+          users: [],
+        }),
         input: {
           body: bodySchema,
         },
-        outputSchema: undefined,
         services: [],
         logger: {} as any,
         timeout: undefined,
