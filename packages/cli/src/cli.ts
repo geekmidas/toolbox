@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { buildCommand } from './build.js';
+import { openapiCommand } from './openapi.js';
 import type { Provider } from './types.js';
 
 const program = new Command();
@@ -17,7 +18,7 @@ program
   .option(
     '--provider <provider>',
     'Target provider for generated handlers',
-    'aws-apigatewayv1'
+    'aws-apigatewayv1',
   )
   .action(async (options: { provider: Provider }) => {
     try {
@@ -47,6 +48,23 @@ program
   .description('Manage REST API endpoints')
   .action(() => {
     process.stdout.write('REST API management - coming soon\n');
+  });
+
+program
+  .command('openapi')
+  .description('Generate OpenAPI 3.0 specification from endpoints')
+  .option(
+    '--output <path>',
+    'Output file path for the OpenAPI spec',
+    'openapi.json',
+  )
+  .action(async (options: { output?: string }) => {
+    try {
+      await openapiCommand(options);
+    } catch (error) {
+      console.error('OpenAPI generation failed:', (error as Error).message);
+      process.exit(1);
+    }
   });
 
 program.parse();

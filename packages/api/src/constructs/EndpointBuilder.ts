@@ -15,7 +15,7 @@ export class EndpointBuilder<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
-  protected schemas: TInput;
+  protected schemas: TInput = {} as TInput;
   protected _description?: string;
   protected _status?: SuccessStatus;
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;

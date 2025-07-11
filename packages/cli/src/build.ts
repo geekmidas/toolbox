@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'path';
-import fg from 'fast-glob';
 import { loadConfig } from './config.js';
+import { loadEndpoints } from './loadEndpoints.js';
 import type {
   BuildOptions,
   Provider,
@@ -39,52 +39,32 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   // Ensure output directory exists
   await mkdir(outputDir, { recursive: true });
 
-  // Find all endpoint files
-  const files = fg.stream(config.routes);
+  // Load all endpoints using the refactored function
+  const loadedEndpoints = await loadEndpoints(config.routes);
 
-  const allEndpoints: Array<{
-    file: string;
-    exportName: string;
-    endpoint: any;
-    routeInfo: RouteInfo;
-  }> = [];
-
-  for await (const f of files) {
-    const file = f.toString();
-    logger.log(`Processing: ${file}`);
-
-    try {
-      const module = await import(join(process.cwd(), file));
-
-      // Look for exported endpoints using Endpoint.isEndpoint
-      for (const [exportName, exportValue] of Object.entries(module)) {
-        // Import Endpoint class to use isEndpoint
-        const { Endpoint } = await import('@geekmidas/api/server');
-
-        if (Endpoint.isEndpoint(exportValue)) {
-          const endpoint = exportValue as any;
-          const routeInfo: RouteInfo = {
-            path: endpoint.route,
-            method: endpoint.method.toUpperCase(),
-            handler: '', // Will be filled in later
-          };
-
-          allEndpoints.push({
-            file,
-            exportName,
-            endpoint,
-            routeInfo,
-          });
-
-          logger.log(
-            `Found endpoint for ${routeInfo.method} ${routeInfo.path}`,
-          );
-        }
-      }
-    } catch (error) {
-      logger.warn(`Failed to process ${file}: ${(error as Error).message}`);
-    }
+  if (loadedEndpoints.length === 0) {
+    logger.log('No endpoints found to process');
+    return;
   }
+
+  const allEndpoints = loadedEndpoints.map(({ name, endpoint, file }) => {
+    const routeInfo: RouteInfo = {
+      path: endpoint.route,
+      method: endpoint.method,
+      handler: '', // Will be filled in later
+    };
+
+    logger.log(
+      `Found endpoint: ${name} - ${routeInfo.method} ${routeInfo.path}`,
+    );
+
+    return {
+      file: relative(process.cwd(), file),
+      exportName: name,
+      endpoint,
+      routeInfo,
+    };
+  });
 
   // Generate handlers based on provider
   if (options.provider === 'server') {
@@ -120,12 +100,13 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
       routes.push({
         ...routeInfo,
-        handler: relative(process.cwd(), handlerFile).replace(/\.ts$/, '.handler'),
+        handler: relative(process.cwd(), handlerFile).replace(
+          /\.ts$/,
+          '.handler',
+        ),
       });
 
-      logger.log(
-        `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-      );
+      logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
     }
   }
 
@@ -158,11 +139,11 @@ async function generateServerFile(
 
   // Group imports by file
   const importsByFile = new Map<string, string[]>();
-  
+
   for (const { file, exportName } of endpoints) {
     const relativePath = relative(dirname(serverPath), file);
     const importPath = relativePath.replace(/\.ts$/, '.js');
-    
+
     if (!importsByFile.has(importPath)) {
       importsByFile.set(importPath, []);
     }
@@ -174,7 +155,10 @@ async function generateServerFile(
 
   // Generate import statements
   const imports = Array.from(importsByFile.entries())
-    .map(([importPath, exports]) => `import { ${exports.join(', ')} } from '${importPath}';`)
+    .map(
+      ([importPath, exports]) =>
+        `import { ${exports.join(', ')} } from '${importPath}';`,
+    )
     .join('\n');
 
   const allExportNames = endpoints.map(({ exportName }) => exportName);
