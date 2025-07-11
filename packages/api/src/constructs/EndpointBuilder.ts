@@ -81,6 +81,19 @@ export class EndpointBuilder<
     return this;
   }
 
+  query<T extends StandardSchemaV1>(
+    schema: T,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    Omit<TInput, 'query'> & { query: T },
+    TServices,
+    TLogger,
+    OutSchema
+  > {
+    return this.search(schema);
+  }
+
   params<T extends StandardSchemaV1>(
     schema: T,
   ): EndpointBuilder<
@@ -91,7 +104,7 @@ export class EndpointBuilder<
     TLogger,
     OutSchema
   > {
-    this.schemas.query = schema as unknown as T;
+    this.schemas.params = schema as unknown as T;
     // @ts-ignore
     return this;
   }
@@ -112,7 +125,7 @@ export class EndpointBuilder<
       method: this.method,
       route: this.route,
       description: this._description,
-      input: this.inputSchema,
+      input: this.schemas,
       output: this.outputSchema,
       services: this._services,
       logger: this._logger,

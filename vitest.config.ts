@@ -11,6 +11,7 @@ export default defineConfig({
         '**/*.d.ts',
         '**/examples/**',
         '**/exports/**',
+        '**/.gkm/**',
       ],
       thresholds: {
         functions: 36,

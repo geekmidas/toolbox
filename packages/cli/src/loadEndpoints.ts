@@ -1,5 +1,6 @@
 import { Endpoint } from '@geekmidas/api/server';
 import fg from 'fast-glob';
+import type { Routes } from './types';
 
 export interface LoadedEndpoint {
   name: string;
@@ -7,7 +8,7 @@ export interface LoadedEndpoint {
   file: string;
 }
 
-export async function loadEndpoints(routes: string): Promise<LoadedEndpoint[]> {
+export async function loadEndpoints(routes: Routes): Promise<LoadedEndpoint[]> {
   const logger = console;
 
   // Find all endpoint files

@@ -1,7 +1,9 @@
 export type Provider = 'server' | 'aws-apigatewayv1' | 'aws-apigatewayv2';
 
+export type Routes = string | string[];
+
 export interface GkmConfig {
-  routes: string;
+  routes: Routes;
   envParser: string;
   logger: string;
 }
