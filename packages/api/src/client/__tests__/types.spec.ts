@@ -10,10 +10,10 @@ import type {
 
 describe('Type utilities', () => {
   it('should extract valid endpoints from paths', () => {
-    type ValidEndpoints = ValidEndpoint<paths>;
+    type ValidEndpoints = TypedEndpoint<paths>;
 
     // Test that valid endpoints are correctly generated
-    expectTypeOf<ValidEndpoints>().toMatchTypeOf<
+    expectTypeOf<ValidEndpoints>().toExtend<
       | 'GET /users'
       | 'POST /users'
       | 'GET /users/{id}'
