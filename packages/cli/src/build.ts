@@ -173,7 +173,7 @@ ${imports}
 export function createApp(app?: Hono): Hono {
   const honoApp = app || new Hono();
   
-  const endpoints = [
+  const endpoints: Endpoint<any, any, any, any, any, any>[] = [
     ${allExportNames.join(',\n    ')}
   ];
 
