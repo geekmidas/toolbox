@@ -5,14 +5,14 @@ import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import {
   AmazonApiGatewayEndpoint,
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpoint';
 
-export class AmazonApiGatewayV1Endpoint<
+export class AmazonApiGatewayV2Endpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
@@ -21,7 +21,7 @@ export class AmazonApiGatewayV1Endpoint<
   TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > extends AmazonApiGatewayEndpoint<
-  APIGatewayProxyEvent,
+  APIGatewayProxyEventV2,
   TRoute,
   TMethod,
   TInput,
@@ -30,7 +30,7 @@ export class AmazonApiGatewayV1Endpoint<
   TLogger,
   TSession
 > {
-  getInput(e: APIGatewayProxyEvent): GetInputResponse {
+  getInput(e: APIGatewayProxyEventV2): GetInputResponse {
     return {
       body: e.body ? JSON.parse(e.body) : undefined,
       query: e.queryStringParameters || {},
@@ -38,7 +38,7 @@ export class AmazonApiGatewayV1Endpoint<
     };
   }
   getLoggerContext(
-    data: APIGatewayProxyEvent,
+    event: APIGatewayProxyEventV2,
     context: Context,
   ): LoggerContext {
     return {
@@ -47,11 +47,11 @@ export class AmazonApiGatewayV1Endpoint<
         version: context.functionVersion,
       },
       req: {
-        id: data.requestContext.requestId,
+        id: event.requestContext.requestId,
         awsRequestId: context.awsRequestId,
-        ip: data.requestContext.identity.sourceIp,
-        userAgent: data.requestContext.identity.userAgent || undefined,
-        path: data.requestContext.path,
+        ip: event.requestContext.http.sourceIp,
+        userAgent: event.requestContext.http.userAgent || undefined,
+        path: event.requestContext.http.path,
       },
     };
   }
