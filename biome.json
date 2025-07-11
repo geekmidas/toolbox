@@ -29,7 +29,14 @@
       },
       "suspicious": { "noConsoleLog": "error", "noExplicitAny": "off" }
     },
-    "ignore": ["**/dist/*", "**/__generated__/*", "**/.claude/*"]
+    "ignore": [
+      "**/dist/*",
+      "**/__generated__/*",
+      "**/.claude/*",
+      "**/.gkm/*",
+      "**/node_modules/*",
+      "**/.turbo/*"
+    ]
   },
   "javascript": {
     "formatter": {

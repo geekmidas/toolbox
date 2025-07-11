@@ -1,0 +1,299 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'path';
+import fg from 'fast-glob';
+import { loadConfig } from './config.js';
+import type {
+  BuildOptions,
+  Provider,
+  RouteInfo,
+  RoutesManifest,
+} from './types.js';
+
+const logger = console;
+export async function buildCommand(options: BuildOptions): Promise<void> {
+  logger.log(`Building with provider: ${options.provider}`);
+
+  const config = await loadConfig();
+  logger.log(`Loading routes from: ${config.routes}`);
+  logger.log(`Using envParser: ${config.envParser}`);
+
+  // Parse envParser configuration
+  const [envParserPath, envParserName] = config.envParser.split('#');
+  const envParserImportPattern = !envParserName
+    ? 'envParser'
+    : envParserName === 'envParser'
+      ? '{ envParser }'
+      : `{ ${envParserName} as envParser }`;
+
+  // Parse logger configuration
+  const [loggerPath, loggerName] = config.logger.split('#');
+  const loggerImportPattern = !loggerName
+    ? 'logger'
+    : loggerName === 'logger'
+      ? '{ logger }'
+      : `{ ${loggerName} as logger }`;
+
+  const routes: RouteInfo[] = [];
+  const outputDir = join(process.cwd(), '.gkm', options.provider);
+
+  // Ensure output directory exists
+  await mkdir(outputDir, { recursive: true });
+
+  // Find all endpoint files
+  const files = fg.stream(config.routes);
+
+  const allEndpoints: Array<{
+    file: string;
+    exportName: string;
+    endpoint: any;
+    routeInfo: RouteInfo;
+  }> = [];
+
+  for await (const f of files) {
+    const file = f.toString();
+    logger.log(`Processing: ${file}`);
+
+    try {
+      const module = await import(join(process.cwd(), file));
+
+      // Look for exported endpoints using Endpoint.isEndpoint
+      for (const [exportName, exportValue] of Object.entries(module)) {
+        // Import Endpoint class to use isEndpoint
+        const { Endpoint } = await import('@geekmidas/api/server');
+
+        if (Endpoint.isEndpoint(exportValue)) {
+          const endpoint = exportValue as any;
+          const routeInfo: RouteInfo = {
+            path: endpoint.route,
+            method: endpoint.method.toUpperCase(),
+            handler: '', // Will be filled in later
+          };
+
+          allEndpoints.push({
+            file,
+            exportName,
+            endpoint,
+            routeInfo,
+          });
+
+          logger.log(
+            `Found endpoint for ${routeInfo.method} ${routeInfo.path}`,
+          );
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to process ${file}: ${(error as Error).message}`);
+    }
+  }
+
+  // Generate handlers based on provider
+  if (options.provider === 'server') {
+    // Generate single server file with all endpoints
+    const serverFile = await generateServerFile(
+      outputDir,
+      allEndpoints,
+      envParserPath,
+      envParserImportPattern,
+      loggerPath,
+      loggerImportPattern,
+    );
+
+    routes.push({
+      path: '*',
+      method: 'ALL',
+      handler: relative(process.cwd(), serverFile),
+    });
+
+    logger.log(`Generated server app with ${allEndpoints.length} endpoints`);
+  } else {
+    // Generate individual handler files for AWS providers
+    for (const { file, exportName, routeInfo } of allEndpoints) {
+      const handlerFile = await generateHandlerFile(
+        outputDir,
+        file,
+        exportName,
+        options.provider,
+        routeInfo,
+        envParserPath,
+        envParserImportPattern,
+      );
+
+      routes.push({
+        ...routeInfo,
+        handler: relative(process.cwd(), handlerFile).replace(/\.ts$/, '.handler'),
+      });
+
+      logger.log(
+        `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+      );
+    }
+  }
+
+  // Generate routes.json
+  const manifest: RoutesManifest = { routes };
+  const manifestPath = join(outputDir, 'routes.json');
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  logger.log(
+    `Generated ${routes.length} handlers in ${relative(process.cwd(), outputDir)}`,
+  );
+  logger.log(`Routes manifest: ${relative(process.cwd(), manifestPath)}`);
+}
+
+async function generateServerFile(
+  outputDir: string,
+  endpoints: Array<{
+    file: string;
+    exportName: string;
+    endpoint: any;
+    routeInfo: RouteInfo;
+  }>,
+  envParserPath: string,
+  envParserImportPattern: string,
+  loggerPath: string,
+  loggerImportPattern: string,
+): Promise<string> {
+  const serverFileName = 'app.ts';
+  const serverPath = join(outputDir, serverFileName);
+
+  // Group imports by file
+  const importsByFile = new Map<string, string[]>();
+  
+  for (const { file, exportName } of endpoints) {
+    const relativePath = relative(dirname(serverPath), file);
+    const importPath = relativePath.replace(/\.ts$/, '.js');
+    
+    if (!importsByFile.has(importPath)) {
+      importsByFile.set(importPath, []);
+    }
+    importsByFile.get(importPath)!.push(exportName);
+  }
+
+  const relativeEnvParserPath = relative(dirname(serverPath), envParserPath);
+  const relativeLoggerPath = relative(dirname(serverPath), loggerPath);
+
+  // Generate import statements
+  const imports = Array.from(importsByFile.entries())
+    .map(([importPath, exports]) => `import { ${exports.join(', ')} } from '${importPath}';`)
+    .join('\n');
+
+  const allExportNames = endpoints.map(({ exportName }) => exportName);
+
+  const content = `import { HonoEndpoint } from '@geekmidas/api/hono';
+import { HermodServiceDiscovery } from '@geekmidas/api/services';
+import { Hono } from 'hono';
+import ${envParserImportPattern} from '${relativeEnvParserPath}';
+import ${loggerImportPattern} from '${relativeLoggerPath}';
+${imports}
+
+export function createApp(app?: Hono): Hono {
+  const honoApp = app || new Hono();
+  
+  const endpoints = [
+    ${allExportNames.join(',\n    ')}
+  ];
+
+  const serviceDiscovery = HermodServiceDiscovery.getInstance(
+    logger,
+    envParser
+  );
+
+  HonoEndpoint.addRoutes(endpoints, serviceDiscovery, honoApp);
+
+  return honoApp;
+}
+
+// Default export for convenience
+export default createApp;
+`;
+
+  await writeFile(serverPath, content);
+  return serverPath;
+}
+
+async function generateHandlerFile(
+  outputDir: string,
+  sourceFile: string,
+  exportName: string,
+  provider: Provider,
+  routeInfo: RouteInfo,
+  envParserPath: string,
+  envParserImportPattern: string,
+): Promise<string> {
+  const handlerFileName = `${exportName}.ts`;
+  const handlerPath = join(outputDir, handlerFileName);
+
+  const relativePath = relative(dirname(handlerPath), sourceFile);
+  const importPath = relativePath.replace(/\.ts$/, '.js');
+
+  const relativeEnvParserPath = relative(dirname(handlerPath), envParserPath);
+
+  let content: string;
+
+  switch (provider) {
+    case 'aws-apigatewayv1':
+      content = generateAWSApiGatewayV1Handler(
+        importPath,
+        exportName,
+        relativeEnvParserPath,
+        envParserImportPattern,
+      );
+      break;
+    case 'aws-apigatewayv2':
+      content = generateAWSApiGatewayV2Handler(
+        importPath,
+        exportName,
+        relativeEnvParserPath,
+        envParserImportPattern,
+      );
+      break;
+    case 'server':
+      content = generateServerHandler(importPath, exportName);
+      break;
+    default:
+      throw new Error(`Unsupported provider: ${provider}`);
+  }
+
+  await writeFile(handlerPath, content);
+  return handlerPath;
+}
+
+function generateAWSApiGatewayV1Handler(
+  importPath: string,
+  exportName: string,
+  envParserPath: string,
+  envParserImportPattern: string,
+): string {
+  return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/api/aws-apigateway';
+import { ${exportName} } from '${importPath}';
+import ${envParserImportPattern} from '${envParserPath}';
+
+const adapter = new AmazonApiGatewayV1Endpoint(envParser, ${exportName});
+
+export const handler = adapter.handler;
+`;
+}
+
+function generateAWSApiGatewayV2Handler(
+  importPath: string,
+  exportName: string,
+  envParserPath: string,
+  envParserImportPattern: string,
+): string {
+  return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/api/aws-apigateway';
+import { ${exportName} } from '${importPath}';
+import ${envParserImportPattern} from '${envParserPath}';
+
+const adapter = new AmazonApiGatewayV2Endpoint(envParser, ${exportName});
+
+export const handler = adapter.handler;
+`;
+}
+
+function generateServerHandler(importPath: string, exportName: string): string {
+  return `import { ${exportName} } from '${importPath}';
+
+// Server handler - implement based on your server framework
+export const handler = ${exportName};
+`;
+}

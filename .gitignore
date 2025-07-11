@@ -40,3 +40,5 @@ yarn-error.log*
 
 playground.ts
 src/playground/**
+
+.gkm

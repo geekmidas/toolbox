@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "bin": {
-    "gms": "./dist/index.mjs"
+    "gkm": "./dist/index.mjs"
   },
   "exports": {
     ".": {
@@ -21,7 +21,9 @@
     "commander": "~14.0.0",
     "lodash.get": "~4.4.2",
     "lodash.set": "~4.3.2",
-    "zod": "~3.25.67"
+    "zod": "~3.25.67",
+    "fast-glob": "~3.3.3",
+    "@geekmidas/api": "workspace:*"
   },
   "devDependencies": {
     "@types/lodash.get": "~4.4.9",

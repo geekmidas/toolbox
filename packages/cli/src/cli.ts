@@ -1,13 +1,32 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { buildCommand } from './build.js';
+import type { Provider } from './types.js';
 
 const program = new Command();
 
 program
-  .name('gms')
+  .name('gkm')
   .description('GeekMidas backend framework CLI')
   .version('0.0.2');
+
+program
+  .command('build')
+  .description('Build API handlers from endpoints')
+  .option(
+    '--provider <provider>',
+    'Target provider for generated handlers',
+    'aws-apigatewayv1'
+  )
+  .action(async (options: { provider: Provider }) => {
+    try {
+      await buildCommand(options);
+    } catch (error) {
+      console.error('Build failed:', (error as Error).message);
+      process.exit(1);
+    }
+  });
 
 program
   .command('cron')
