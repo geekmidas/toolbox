@@ -274,3 +274,5 @@ export interface EndpointFactoryOptions<
   defaultLogger?: TLogger;
   defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
 }
+
+export const e = new EndpointFactory();

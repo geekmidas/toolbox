@@ -16,7 +16,7 @@ import {
   type HermodServiceRecord,
 } from '../services';
 
-export class HonoEndpointAdaptor<
+export class HonoEndpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
@@ -59,7 +59,7 @@ export class HonoEndpointAdaptor<
     >,
     app: Hono,
   ): void {
-    HonoEndpointAdaptor.addRoute(this.endpoint, serviceDiscovery, app);
+    HonoEndpoint.addRoute(this.endpoint, serviceDiscovery, app);
   }
 
   static async fromRoutes<
@@ -78,7 +78,7 @@ export class HonoEndpointAdaptor<
       TLogger
     >(logger, envParser);
 
-    HonoEndpointAdaptor.addRoutes(endpoints, serviceDiscovery, app);
+    HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app);
 
     return app;
   }
@@ -95,7 +95,7 @@ export class HonoEndpointAdaptor<
     app: Hono,
   ): void {
     for (const endpoint of endpoints) {
-      HonoEndpointAdaptor.addRoute(endpoint, serviceDiscovery, app);
+      HonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
     }
   }
 
@@ -120,13 +120,13 @@ export class HonoEndpointAdaptor<
     app[method](
       route,
       validator('json', (value, c) =>
-        HonoEndpointAdaptor.validate(c, value, endpoint.input?.body),
+        HonoEndpoint.validate(c, value, endpoint.input?.body),
       ),
       validator('query', (query, c) =>
-        HonoEndpointAdaptor.validate(c, query, endpoint.input?.query),
+        HonoEndpoint.validate(c, query, endpoint.input?.query),
       ),
       validator('param', (params, c) =>
-        HonoEndpointAdaptor.validate(c, params, endpoint.input?.params),
+        HonoEndpoint.validate(c, params, endpoint.input?.params),
       ),
       async (c) => {
         const headerValues = c.req.header();

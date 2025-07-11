@@ -1,6 +1,7 @@
-export interface LogFn {
+export type LogFn = {
   <T extends object>(obj: T, msg?: string, ...args: any[]): void;
-}
+  (msg: string): void;
+};
 
 export interface Logger {
   debug: LogFn;

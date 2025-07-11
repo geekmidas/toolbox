@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Endpoint, EndpointSchemas } from '../constructs/Endpoint';
+import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
 import type {
   HttpMethod,
   InferComposableStandardSchema,
@@ -13,7 +13,7 @@ import {
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
-import type { APIGatewayProxyEvent } from 'aws-lambda';
+import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { wrapError } from '../errors';
 
 export class AmazonApiGatewayV1Endpoint<
@@ -45,6 +45,23 @@ export class AmazonApiGatewayV1Endpoint<
       },
     };
   }
+
+  private input(): Middleware<TInput, TServices, TLogger> {
+    return {
+      before: async (req) => {
+        const body = req.event.body ? JSON.parse(req.event.body) : undefined;
+        const query = req.event.queryStringParameters || {};
+        const params = req.event.pathParameters || {};
+        const headers = req.event.headers as Record<string, string>;
+        const header = Endpoint.createHeaders(headers);
+
+        req.event.body = (await this.endpoint.parseInput(body, 'body')) as any;
+        req.event.query = await this.endpoint.parseInput(query, 'query');
+        req.event.params = await this.endpoint.parseInput(params, 'params');
+        req.event.header = header;
+      },
+    };
+  }
   private logger(): Middleware<TInput, TServices, TLogger> {
     return {
       before: (req) => {
@@ -57,6 +74,8 @@ export class AmazonApiGatewayV1Endpoint<
             version: req.context.functionVersion,
           },
           req: {
+            id: req.event.requestContext?.requestId,
+            awsRequestId: req.context.awsRequestId,
             ip: req.event.requestContext?.identity?.sourceIp,
             userAgent: req.event.headers?.['user-agent'],
             path: req.event.path,
@@ -74,9 +93,11 @@ export class AmazonApiGatewayV1Endpoint<
           TLogger
         >(logger, this.envParser);
 
-        req.event.services = await serviceDiscovery.register(
+        const services = await serviceDiscovery.register(
           this.endpoint.services,
         );
+
+        req.event.services = services;
       },
     };
   }
@@ -86,16 +107,16 @@ export class AmazonApiGatewayV1Endpoint<
       before: async (req) => {
         const logger = req.event.logger as TLogger;
         const services = req.event.services as HermodServiceRecord<TServices>;
-        req.event.session = await this.endpoint.getSession({
+        req.event.session = (await this.endpoint.getSession({
           logger,
           services,
           header: req.event.header,
-        });
+        })) as TSession;
       },
     };
   }
 
-  private async _handler(event: Event<TInput, TServices, TLogger>) {
+  private async _handler(event: Event<TInput, TServices, TLogger, TSession>) {
     const input = {
       body: event.body,
       query: event.query,
@@ -106,7 +127,7 @@ export class AmazonApiGatewayV1Endpoint<
       header: event.header,
       logger: event.logger,
       services: event.services,
-      session: {} as TSession,
+      session: event.session,
       ...input,
     });
 
@@ -126,6 +147,7 @@ export class AmazonApiGatewayV1Endpoint<
       .use(this.logger())
       .use(this.error())
       .use(this.services())
+      .use(this.input())
       .use(this.session()) as unknown as AmazonApiGatewayV1EndpointHandler;
   }
 }
@@ -151,9 +173,10 @@ type Middleware<
 
 export type AmazonApiGatewayV1EndpointHandlerResponse = {
   statusCode: number;
-  body: string;
+  body: string | undefined;
 };
 
 export type AmazonApiGatewayV1EndpointHandler = (
   event: APIGatewayProxyEvent,
+  context: Context,
 ) => Promise<AmazonApiGatewayV1EndpointHandlerResponse>;

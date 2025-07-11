@@ -37,6 +37,20 @@ export class EndpointBuilder<
     return this;
   }
 
+  output<T extends StandardSchemaV1>(
+    schema: T,
+  ): EndpointBuilder<TRoute, TMethod, TInput, TServices, TLogger, T, TSession> {
+    return super.output(schema) as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      T,
+      TSession
+    >;
+  }
+
   body<T extends StandardSchemaV1>(
     schema: T,
   ): EndpointBuilder<

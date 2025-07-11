@@ -1,0 +1,52 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid body 1`] = `
+[
+  {
+    "code": "too_small",
+    "exact": false,
+    "inclusive": true,
+    "message": "String must contain at least 3 character(s)",
+    "minimum": 3,
+    "path": [
+      "name",
+    ],
+    "type": "string",
+  },
+  {
+    "code": "invalid_type",
+    "expected": "number",
+    "message": "Expected number, received string",
+    "path": [
+      "age",
+    ],
+    "received": "string",
+  },
+]
+`;
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid path parameters 1`] = `
+[
+  {
+    "code": "invalid_string",
+    "message": "Invalid uuid",
+    "path": [
+      "id",
+    ],
+    "validation": "uuid",
+  },
+]
+`;
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid query parameters 1`] = `
+[
+  {
+    "code": "invalid_string",
+    "message": "Invalid",
+    "path": [
+      "page",
+    ],
+    "validation": "regex",
+  },
+]
+`;

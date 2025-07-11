@@ -7,35 +7,15 @@
     "zap": "./.bin/zap.ts"
   },
   "exports": {
-    "./aws-lambda": {
-      "import": "./dist/aws-lambda.mjs",
-      "require": "./dist/aws-lambda.cjs",
-      "types": "./src/aws-lambda.ts"
-    },
-    "./aws-apigateway": {
-      "import": "./dist/aws-apigateway.mjs",
-      "require": "./dist/aws-apigateway.cjs",
-      "types": "./src/aws-apigateway.ts"
-    },
-    "./hono": {
-      "import": "./dist/hono.mjs",
-      "require": "./dist/hono.cjs",
-      "types": "./src/hono.ts"
-    },
-    "./testing": {
-      "import": "./dist/testing.mjs",
-      "require": "./dist/testing.cjs",
-      "types": "./src/testing.ts"
+    "./*": {
+      "import": "./dist/exports/*.mjs",
+      "require": "./dist/exports/*.cjs",
+      "types": "./src/exports/*.ts"
     },
     "./errors": {
       "import": "./dist/errors.mjs",
       "require": "./dist/errors.cjs",
       "types": "./src/errors.ts"
-    },
-    "./server": {
-      "import": "./dist/server.mjs",
-      "require": "./dist/server.cjs",
-      "types": "./src/server.ts"
     },
     "./services": {
       "import": "./dist/services.mjs",

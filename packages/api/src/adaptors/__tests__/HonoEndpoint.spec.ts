@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { Endpoint, type EndpointContext } from '../../constructs/Endpoint';
 import type { Logger } from '../../logger';
 import { HermodService, HermodServiceDiscovery } from '../../services';
-import { HonoEndpointAdaptor } from '../HonoEndpointAdaptor';
+import { HonoEndpoint } from '../HonoEndpoint';
 
 describe('HonoEndpointAdaptor', () => {
   const mockLogger: Logger = {
@@ -39,7 +39,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -71,7 +71,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -116,7 +116,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -154,7 +154,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -191,7 +191,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -228,7 +228,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -260,7 +260,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -298,7 +298,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -337,7 +337,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -383,7 +383,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -419,7 +419,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -461,7 +461,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -500,7 +500,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -548,7 +548,7 @@ describe('HonoEndpointAdaptor', () => {
         description: undefined,
       });
 
-      const adaptor = new HonoEndpointAdaptor(endpoint);
+      const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
 
       adaptor.addRoute(serviceDiscovery, app);
@@ -579,7 +579,7 @@ describe('HonoEndpointAdaptor', () => {
         json: vi.fn(),
       };
 
-      const result = await HonoEndpointAdaptor.validate(
+      const result = await HonoEndpoint.validate(
         mockContext,
         { any: 'data' },
         undefined,
@@ -599,7 +599,7 @@ describe('HonoEndpointAdaptor', () => {
         age: z.number(),
       });
 
-      const result = await HonoEndpointAdaptor.validate(
+      const result = await HonoEndpoint.validate(
         mockContext,
         { name: 'John', age: 30 },
         schema,
