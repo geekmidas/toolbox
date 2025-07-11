@@ -6,13 +6,19 @@ A comprehensive REST API framework for building type-safe HTTP endpoints with bu
 
 - 🔒 **Type-safe endpoints**: Full TypeScript support with automatic type inference
 - ✅ **Schema validation**: Uses StandardSchema specification (Zod, Valibot, etc.)
-- 🚀 **Multiple runtime support**: AWS Lambda adapter included, extensible to other platforms
+- 🚀 **Multiple runtime support**: AWS Lambda adapters and test adapter included
 - 💉 **Dependency injection**: Built-in service discovery and registration
 - 🔐 **Authorization**: Flexible authorization system with session management
 - 📄 **OpenAPI generation**: Automatic OpenAPI schema generation
 - 🚨 **Error handling**: Comprehensive HTTP error classes and handling
 - 📊 **Structured logging**: Built-in logger with context propagation
 - 🎯 **Zero config**: Works out of the box with sensible defaults
+
+### Available Adapters
+
+- **AmazonApiGatewayV1Endpoint**: For AWS API Gateway v1 (REST API)
+- **AmazonApiGatewayV2Endpoint**: For AWS API Gateway v2 (HTTP API)
+- **TestEndpointAdaptor**: For unit testing endpoints
 
 ## Installation
 
@@ -26,7 +32,7 @@ pnpm add @geekmidas/api zod
 
 For AWS Lambda support:
 ```bash
-npm install @geekmidas/api @types/aws-lambda aws-lambda
+npm install @geekmidas/api @geekmidas/envkit @types/aws-lambda aws-lambda
 ```
 
 ## Quick Start
@@ -61,16 +67,47 @@ const getUser = e
 ### AWS Lambda Handler
 
 ```typescript
-import { AWSApiGatewayV1EndpointAdaptor } from '@geekmidas/api/aws-lambda';
+import { AmazonApiGatewayV1Endpoint } from '@geekmidas/api/aws-apigateway';
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+const envParser = new EnvironmentParser(process.env);
 
 const endpoint = e
   .get('/health')
   .output(z.object({ status: z.string() }))
   .handle(() => ({ status: 'ok' }));
 
-const adapter = new AWSApiGatewayV1EndpointAdaptor(endpoint);
+const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
 export const handler = adapter.handler;
 ```
+
+#### API Gateway v2 (HTTP API)
+
+For AWS API Gateway v2 (HTTP APIs), use the `AmazonApiGatewayV2Endpoint` adapter:
+
+```typescript
+import { AmazonApiGatewayV2Endpoint } from '@geekmidas/api/aws-apigateway';
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+const envParser = new EnvironmentParser(process.env);
+
+const endpoint = e
+  .post('/users')
+  .body(z.object({ name: z.string(), email: z.string().email() }))
+  .output(z.object({ id: z.string(), created: z.boolean() }))
+  .handle(async ({ body }) => ({
+    id: crypto.randomUUID(),
+    created: true
+  }));
+
+const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+export const handler = adapter.handler;
+```
+
+The v2 adapter automatically handles the differences in the API Gateway v2 event format, including:
+- Different request context structure
+- Simplified path and query parameter handling
+- HTTP API-specific features
 
 ## Core Concepts
 
@@ -402,12 +439,15 @@ const getProfile = userEndpoints
 
 ### Testing
 
-The framework is designed to be easily testable:
+The framework provides a dedicated test adapter for unit testing endpoints:
 
 ```typescript
-import { testEndpoint } from '@geekmidas/api/testing';
+import { TestEndpointAdaptor } from '@geekmidas/api/testing';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
 describe('User endpoint', () => {
+  const envParser = new EnvironmentParser({});
+  
   it('should return user by ID', async () => {
     const endpoint = e
       .get('/users/:id')
@@ -417,8 +457,10 @@ describe('User endpoint', () => {
         return { id: params.id, name: 'Test User' };
       });
     
-    const response = await testEndpoint(endpoint, {
-      params: { id: '123' }
+    const adapter = new TestEndpointAdaptor(envParser, endpoint);
+    const response = await adapter.request({
+      method: 'GET',
+      url: '/users/123'
     });
     
     expect(response.status).toBe(200);
@@ -426,6 +468,27 @@ describe('User endpoint', () => {
       id: '123',
       name: 'Test User'
     });
+  });
+  
+  it('should handle POST requests with body', async () => {
+    const createEndpoint = e
+      .post('/users')
+      .body(z.object({ name: z.string(), email: z.string().email() }))
+      .output(z.object({ id: z.string(), name: z.string() }))
+      .handle(async ({ body }) => ({
+        id: '123',
+        name: body.name
+      }));
+    
+    const adapter = new TestEndpointAdaptor(envParser, createEndpoint);
+    const response = await adapter.request({
+      method: 'POST',
+      url: '/users',
+      body: { name: 'John Doe', email: 'john@example.com' }
+    });
+    
+    expect(response.status).toBe(200);
+    expect(response.body.name).toBe('John Doe');
   });
 });
 ```
