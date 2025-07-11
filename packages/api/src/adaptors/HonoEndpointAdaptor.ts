@@ -44,7 +44,7 @@ export class HonoEndpointAdaptor<
       return undefined;
     }
 
-    const parsed = await Endpoint.parseSchema(schema, data);
+    const parsed = await Endpoint.validate(schema, data);
 
     if (parsed.issues) {
       return c.json(parsed.issues, 422);

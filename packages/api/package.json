@@ -22,6 +22,11 @@
       "require": "./dist/hono.cjs",
       "types": "./src/hono.ts"
     },
+    "./testing": {
+      "import": "./dist/testing.mjs",
+      "require": "./dist/testing.cjs",
+      "types": "./src/testing.ts"
+    },
     "./errors": {
       "import": "./dist/errors.mjs",
       "require": "./dist/errors.cjs",

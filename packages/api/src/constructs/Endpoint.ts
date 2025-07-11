@@ -45,8 +45,34 @@ export class Endpoint<
     return buildOpenApiSchema(endpoints, options);
   }
 
-  static parseSchema<T extends StandardSchemaV1>(schema: T, data: unknown) {
+  static validate<T extends StandardSchemaV1>(schema: T, data: unknown) {
     return schema['~standard'].validate(data);
+  }
+
+  static async parseSchema<T extends StandardSchemaV1>(
+    schema: T,
+    data: unknown,
+  ): Promise<InferStandardSchema<T>> {
+    if (!schema) {
+      return undefined as InferStandardSchema<T>;
+    }
+
+    const parsed = await Endpoint.validate(
+      schema as unknown as StandardSchemaV1,
+      data,
+    );
+    if (parsed.issues) {
+      throw parsed.issues;
+    }
+
+    return parsed.value as InferStandardSchema<T>;
+  }
+
+  async parseOutput(output: unknown): Promise<InferStandardSchema<OutSchema>> {
+    return Endpoint.parseSchema(
+      this.outputSchema as StandardSchemaV1,
+      output,
+    ) as Promise<InferStandardSchema<OutSchema>>;
   }
 
   async parseInput<K extends keyof TInput>(
@@ -54,19 +80,9 @@ export class Endpoint<
     key: K,
   ): Promise<InferComposableStandardSchema<TInput[K]>> {
     const schema = this.input?.[key];
-    if (!schema) {
-      return Promise.resolve({} as InferComposableStandardSchema<TInput[K]>);
-    }
-
-    const parsed = await Endpoint.parseSchema(
-      schema as unknown as StandardSchemaV1,
-      input,
-    );
-    if (parsed.issues) {
-      throw parsed.issues;
-    }
-
-    return parsed.value as InferComposableStandardSchema<TInput[K]>;
+    return Endpoint.parseSchema(schema as StandardSchemaV1, input) as Promise<
+      InferComposableStandardSchema<TInput[K]>
+    >;
   }
 
   async parseBody(body: unknown): Promise<InferStandardSchema<TInput['body']>> {
@@ -307,7 +323,7 @@ export type SessionFn<
   TLogger extends Logger = ConsoleLogger,
   TSession = unknown,
 > = (
-  ctx: FunctionContext<{}, TServices, TLogger>,
+  ctx: FunctionContext<{}, TServices, TLogger> & { header: HeaderFn },
 ) => Promise<TSession> | TSession;
 
 export type ConvertRouteParams<T extends string> =
@@ -327,6 +343,7 @@ export type EndpointOpenApiSchema<
 };
 
 export type EndpointHeaders = Map<string, string>;
+export type HeaderFn = (key: string) => string | undefined;
 
 export type EndpointContext<
   Input extends EndpointSchemas | undefined = undefined,
@@ -336,7 +353,7 @@ export type EndpointContext<
 > = {
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
-  header: (key: string) => string | undefined;
+  header: HeaderFn;
   session: TSession;
 } & InferComposableStandardSchema<Input>;
 
