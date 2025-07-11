@@ -18,7 +18,7 @@ const queryClient = createTypedQueryClient<paths>({
 
 // Try typing: client(' and you'll see:
 // - 'GET /users'
-// - 'POST /users'  
+// - 'POST /users'
 // - 'GET /users/{id}'
 // - 'PUT /users/{id}'
 // - 'DELETE /users/{id}'
@@ -28,18 +28,18 @@ async function demonstrateAutocomplete() {
   // Full autocomplete when typing endpoint strings
   const users = await client('GET /users');
   const newUser = await client('POST /users', {
-    body: { name: 'John', email: 'john@example.com' }
+    body: { name: 'John', email: 'john@example.com' },
   });
   const user = await client('GET /users/{id}', {
-    params: { id: '123' }
+    params: { id: '123' },
   });
   const posts = await client('GET /posts', {
-    query: { page: 1, limit: 10 }
+    query: { page: 1, limit: 10 },
   });
 
   // Same autocomplete works with React Query
   const { data } = queryClient.useQuery('GET /users/{id}', {
-    params: { id: '123' }
+    params: { id: '123' },
   });
 
   const mutation = queryClient.useMutation('POST /users');
@@ -60,8 +60,8 @@ const createUserRequest = createRequest('POST /users');
 async function typeSafeUsage() {
   // TypeScript knows the exact response type and required config
   const user = await getUserRequest({ params: { id: '123' } });
-  const newUser = await createUserRequest({ 
-    body: { name: 'Jane', email: 'jane@example.com' } 
+  const newUser = await createUserRequest({
+    body: { name: 'Jane', email: 'jane@example.com' },
   });
 
   return { user, newUser };

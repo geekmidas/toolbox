@@ -1,12 +1,15 @@
-import type { UseQueryOptions, UseMutationOptions } from '@tanstack/react-query';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import type {
+  UseMutationOptions,
+  UseQueryOptions,
+} from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { createTypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
-  FilteredRequestConfig,
   FetcherOptions,
+  FilteredRequestConfig,
   TypedEndpoint,
 } from './types';
-import { createTypedFetcher } from './fetcher';
 
 export interface TypedQueryClientOptions extends FetcherOptions {}
 
@@ -28,7 +31,7 @@ export class TypedQueryClient<Paths> {
     >,
   ) {
     const queryKey = this.buildQueryKey(endpoint, config);
-    
+
     return useQuery<ExtractEndpointResponse<Paths, T>, Error>({
       queryKey,
       queryFn: () => this.fetcher(endpoint, config),
@@ -52,7 +55,8 @@ export class TypedQueryClient<Paths> {
       Error,
       FilteredRequestConfig<Paths, T>
     >({
-      mutationFn: (config: FilteredRequestConfig<Paths, T>) => this.fetcher(endpoint, config),
+      mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
+        this.fetcher(endpoint, config),
       ...options,
     });
   }
@@ -62,20 +66,22 @@ export class TypedQueryClient<Paths> {
     config?: FilteredRequestConfig<Paths, T>,
   ): unknown[] {
     const key: unknown[] = [endpoint];
-    
+
     if (config && 'params' in config && config.params) {
       key.push({ params: config.params });
     }
-    
+
     if (config && 'query' in config && config.query) {
       key.push({ query: config.query });
     }
-    
+
     return key;
   }
 }
 
-export function createTypedQueryClient<Paths>(options?: TypedQueryClientOptions) {
+export function createTypedQueryClient<Paths>(
+  options?: TypedQueryClientOptions,
+) {
   return new TypedQueryClient<Paths>(options);
 }
 

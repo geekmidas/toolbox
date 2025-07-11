@@ -1,8 +1,8 @@
 import type {
   EndpointString,
   ExtractEndpointResponse,
-  FilteredRequestConfig,
   FetcherOptions,
+  FilteredRequestConfig,
   ParseEndpoint,
   TypedEndpoint,
 } from './types';
@@ -23,23 +23,27 @@ export class TypedFetcher<Paths> {
     config?: FilteredRequestConfig<Paths, T>,
   ): Promise<ExtractEndpointResponse<Paths, T>> {
     const { method, route } = this.parseEndpoint(endpoint);
-    
+
     // Replace path parameters
     let url = route;
     if (config && 'params' in config && config.params) {
-      Object.entries(config.params as Record<string, unknown>).forEach(([key, value]) => {
-        url = url.replace(`{${key}}`, String(value));
-      });
+      Object.entries(config.params as Record<string, unknown>).forEach(
+        ([key, value]) => {
+          url = url.replace(`{${key}}`, String(value));
+        },
+      );
     }
 
     // Add query parameters
     if (config && 'query' in config && config.query) {
       const queryParams = new URLSearchParams();
-      Object.entries(config.query as Record<string, unknown>).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
+      Object.entries(config.query as Record<string, unknown>).forEach(
+        ([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, String(value));
+          }
+        },
+      );
       const queryString = queryParams.toString();
       if (queryString) {
         url += `?${queryString}`;
@@ -80,9 +84,19 @@ export class TypedFetcher<Paths> {
 
       // Handle errors
       if (!response.ok) {
-        const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const error = new Error(
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
         (error as any).response = response;
         throw error;
+      }
+
+      // Handle empty responses (204 No Content, etc.)
+      if (
+        response.status === 204 ||
+        response.headers.get('content-length') === '0'
+      ) {
+        return undefined as ExtractEndpointResponse<Paths, T>;
       }
 
       // Parse JSON response
@@ -97,7 +111,9 @@ export class TypedFetcher<Paths> {
     }
   }
 
-  private parseEndpoint<T extends EndpointString>(endpoint: T): ParseEndpoint<T> {
+  private parseEndpoint<T extends EndpointString>(
+    endpoint: T,
+  ): ParseEndpoint<T> {
     const [method, ...routeParts] = endpoint.split(' ');
     const route = routeParts.join(' ');
     return { method: method.toLowerCase(), route } as ParseEndpoint<T>;

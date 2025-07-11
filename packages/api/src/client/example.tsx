@@ -1,12 +1,12 @@
 import { createTypedFetcher } from './fetcher';
-import { createTypedQueryClient } from './react-query';
 import type { paths } from './openapi-types';
+import { createTypedQueryClient } from './react-query';
 
 // Example 1: Basic fetcher usage with type parameters
 const client = createTypedFetcher<paths>({
   baseURL: 'https://api.example.com',
   headers: {
-    'Authorization': 'Bearer your-token',
+    Authorization: 'Bearer your-token',
   },
 });
 
@@ -16,8 +16,6 @@ async function fetchUser() {
   const user = await client('GET /users/{id}', {
     params: { id: '123' },
   });
-  
-  console.log(user.name); // TypeScript knows this is a string
 }
 
 // Example 2: Creating a new user
@@ -29,7 +27,7 @@ async function createUser() {
       email: 'john@example.com',
     },
   });
-  
+
   return newUser;
 }
 
@@ -42,7 +40,7 @@ async function fetchPosts() {
       sort: 'desc',
     },
   });
-  
+
   return response.posts;
 }
 
@@ -50,26 +48,30 @@ async function fetchPosts() {
 const queryClient = createTypedQueryClient<paths>({
   baseURL: 'https://api.example.com',
   headers: {
-    'Authorization': 'Bearer your-token',
+    Authorization: 'Bearer your-token',
   },
 });
 
 // In a React component:
 function UserProfile({ userId }: { userId: string }) {
   // Type-safe query with automatic response typing
-  const { data: user, isLoading, error } = queryClient.useQuery(
+  const {
+    data: user,
+    isLoading,
+    error,
+  } = queryClient.useQuery(
     'GET /users/{id}',
     { params: { id: userId } },
     {
       staleTime: 5 * 60 * 1000, // 5 minutes
       retry: 3,
-    }
+    },
   );
-  
+
   if (isLoading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
   if (!user) return null;
-  
+
   return (
     <div>
       <h1>{user.name}</h1>
@@ -82,27 +84,28 @@ function UserProfile({ userId }: { userId: string }) {
 function CreateUserForm() {
   const createUserMutation = queryClient.useMutation('POST /users', {
     onSuccess: (data) => {
-      console.log('User created:', data);
       // Invalidate and refetch users list
     },
     onError: (error) => {
       console.error('Failed to create user:', error);
     },
   });
-  
+
   const handleSubmit = (formData: { name: string; email: string }) => {
     createUserMutation.mutate({ body: formData });
   };
-  
+
   return (
-    <form onSubmit={(e) => {
-      e.preventDefault();
-      const formData = new FormData(e.currentTarget);
-      handleSubmit({
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-      });
-    }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        handleSubmit({
+          name: formData.get('name') as string,
+          email: formData.get('email') as string,
+        });
+      }}
+    >
       <input name="name" required />
       <input name="email" type="email" required />
       <button type="submit" disabled={createUserMutation.isPending}>
@@ -124,8 +127,6 @@ const advancedClient = createTypedFetcher({
     return config;
   },
   onResponse: async (response) => {
-    // Log all responses
-    console.log(`Response from ${response.url}: ${response.status}`);
     return response;
   },
   onError: async (error) => {
@@ -152,10 +153,8 @@ async function safeUserFetch(userId: string) {
 // Usage shows discriminated union
 async function displayUser(userId: string) {
   const result = await safeUserFetch(userId);
-  
+
   if (result.success) {
-    // TypeScript knows result.data exists here
-    console.log(result.data.name);
   } else {
     // TypeScript knows result.error exists here
     console.error(result.error.message);

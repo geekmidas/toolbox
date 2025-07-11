@@ -1,98 +1,136 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createTypedFetcher } from '../fetcher';
 import type { paths } from '../openapi-types';
-
-// Mock fetch
-global.fetch = vi.fn();
+import './setup';
 
 describe('TypedFetcher', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it('should make GET request to fetch users', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    const result = await client('GET /users');
+
+    expect(result).toEqual({
+      users: [
+        { id: '1', name: 'John Doe', email: 'john@example.com' },
+        { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
+      ],
+    });
   });
 
   it('should make GET request with path params', async () => {
-    const mockResponse = { id: '123', name: 'John', email: 'john@example.com' };
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
     });
+
     const result = await client('GET /users/{id}', { params: { id: '123' } });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/users/123',
-      {
-        method: 'GET',
-        headers: {},
-      },
-    );
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      id: '123',
+      name: 'John Doe',
+      email: 'john@example.com',
+    });
   });
 
   it('should make POST request with body', async () => {
-    const mockResponse = { id: '456', name: 'Jane', email: 'jane@example.com' };
-    const requestBody = { name: 'Jane', email: 'jane@example.com' };
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
     });
+
+    const requestBody = { name: 'Jane Doe', email: 'jane@example.com' };
     const result = await client('POST /users', { body: requestBody });
 
-    expect(global.fetch).toHaveBeenCalledWith('https://api.example.com/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+    expect(result).toEqual({
+      id: '123',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
     });
-    expect(result).toEqual(mockResponse);
+  });
+
+  it('should make PUT request with path params and body', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    const result = await client('PUT /users/{id}', {
+      params: { id: '456' },
+      body: { name: 'Updated Name' },
+    });
+
+    expect(result).toEqual({
+      id: '456',
+      name: 'Updated Name',
+      email: 'john@example.com',
+    });
+  });
+
+  it('should handle DELETE requests', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // DELETE returns no content (204)
+    const result = await client('DELETE /users/{id}', {
+      params: { id: '123' },
+    });
+
+    // For 204 responses, result should be undefined or empty
+    expect(result).toBeUndefined();
   });
 
   it('should handle query parameters', async () => {
-    const mockResponse = {
-      posts: [],
-      pagination: { page: 1, limit: 10, total: 0 },
-    };
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
     });
+
     const result = await client('GET /posts', {
-      query: { page: 1, limit: 10, sort: 'desc' },
+      query: { page: 2, limit: 5, sort: 'desc' },
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/posts?page=1&limit=10&sort=desc',
-      {
-        method: 'GET',
-        headers: {},
+    expect(result).toEqual({
+      posts: [
+        {
+          id: '1',
+          title: 'Test Post',
+          content: 'Test content',
+          authorId: '1',
+          createdAt: '2023-01-01T00:00:00Z',
+        },
+      ],
+      pagination: {
+        page: 2,
+        limit: 5,
+        total: 1,
       },
+      sort: 'desc',
+    });
+  });
+
+  it('should handle 404 errors', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    await expect(
+      client('GET /users/{id}', { params: { id: '404' } }),
+    ).rejects.toThrow('HTTP 404: Not Found');
+  });
+
+  it('should handle 500 errors', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    await expect(client('GET /error')).rejects.toThrow(
+      'HTTP 500: Internal Server Error',
     );
-    expect(result).toEqual(mockResponse);
   });
 
   it('should apply request interceptor', async () => {
-    const mockResponse = { id: '123' };
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
     const onRequest = vi.fn((config) => ({
       ...config,
-      headers: { ...config.headers, 'X-Custom': 'header' },
+      headers: { ...config.headers, 'X-Custom-Header': 'test-value' },
     }));
 
     const client = createTypedFetcher<paths>({
@@ -102,63 +140,90 @@ describe('TypedFetcher', () => {
 
     await client('GET /users/{id}', { params: { id: '123' } });
 
-    expect(onRequest).toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/users/123',
-      {
+    expect(onRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
         method: 'GET',
-        headers: { 'X-Custom': 'header' },
-      },
+        headers: expect.any(Object),
+      }),
     );
   });
 
-  it('should handle errors', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      statusText: 'Not Found',
+  it('should apply response interceptor', async () => {
+    const onResponse = vi.fn((response) => response);
+
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+      onResponse,
     });
 
+    await client('GET /users/{id}', { params: { id: '123' } });
+
+    expect(onResponse).toHaveBeenCalledWith(expect.any(Response));
+  });
+
+  it('should apply error handler', async () => {
     const onError = vi.fn();
+
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
       onError,
     });
 
     await expect(
-      client('GET /users/{id}', { params: { id: '999' } }),
-    ).rejects.toThrow('HTTP 404: Not Found');
+      client('GET /users/{id}', { params: { id: '404' } }),
+    ).rejects.toThrow();
 
-    expect(onError).toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
   });
 
   it('should merge default headers with request headers', async () => {
-    const mockResponse = { id: '123' };
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
-      headers: { Authorization: 'Bearer default-token' },
+      headers: { Authorization: 'Bearer valid-token' },
     });
 
-    await client('GET /users/{id}', {
-      params: { id: '123' },
+    const result = await client('GET /protected', {
       headers: { 'X-Custom': 'value' },
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/users/123',
-      {
-        method: 'GET',
-        headers: {
-          Authorization: 'Bearer default-token',
-          'X-Custom': 'value',
-        },
-      },
-    );
+    expect(result).toEqual({ message: 'Protected data' });
+  });
+
+  it('should handle unauthorized requests', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+      headers: { Authorization: 'Bearer broken-token' },
+    });
+
+    await expect(() => client('GET /protected')).rejects.toThrow();
+  });
+
+  it('should handle empty query parameters', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    const result = await client('GET /posts', {
+      query: { page: 1, sort: undefined as any },
+    });
+
+    expect(result.pagination.page).toBe(1);
+    expect(result.sort).toBe('asc'); // Default value when sort is undefined
+  });
+
+  it('should properly encode path parameters', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    const result = await client('GET /users/{id}', {
+      params: { id: 'user with spaces' },
+    });
+
+    expect(result).toEqual({
+      id: 'user with spaces',
+      name: 'John Doe',
+      email: 'john@example.com',
+    });
   });
 });

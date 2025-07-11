@@ -14,8 +14,8 @@ export default defineConfig({
         '**/.gkm/**',
       ],
       thresholds: {
-        functions: 36,
-        lines: 41,
+        functions: 44,
+        lines: 42,
         branches: 77,
       },
     },
