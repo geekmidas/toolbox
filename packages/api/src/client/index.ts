@@ -6,7 +6,6 @@ export {
   useTypedMutation,
   type TypedQueryClientOptions,
 } from './react-query';
-export { generateOpenAPITypes, type GenerateTypesOptions } from './openapi-generator';
 export type {
   EndpointString,
   ExtractEndpointResponse,

@@ -23,17 +23,60 @@ pnpm add @geekmidas/api
 
 ### 1. Generate Types from OpenAPI Spec
 
-First, generate TypeScript types from your OpenAPI specification:
+First, generate TypeScript types from your OpenAPI specification using `openapi-typescript`:
 
 ```bash
-npx @geekmidas/api generate-types https://api.example.com/openapi.json -o ./src/openapi-types.d.ts
+# Install openapi-typescript
+npm install -D openapi-typescript
+
+# Generate types from URL
+npx openapi-typescript https://api.example.com/openapi.json -o ./src/openapi-types.d.ts
+
+# Or generate types from local file
+npx openapi-typescript ./openapi.yaml -o ./src/openapi-types.d.ts
+```
+
+This will create a file with your API types that looks like:
+
+```typescript
+export interface paths {
+  "/users": {
+    get: {
+      responses: {
+        200: {
+          content: {
+            "application/json": User[];
+          };
+        };
+      };
+    };
+    post: {
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            email: string;
+          };
+        };
+      };
+      responses: {
+        201: {
+          content: {
+            "application/json": User;
+          };
+        };
+      };
+    };
+  };
+  // ... more endpoints
+}
 ```
 
 ### 2. Create a Typed Fetcher
 
 ```typescript
 import { createTypedFetcher } from '@geekmidas/api/client';
-import type { paths } from './path/to/your/openapi-types';
+import type { paths } from './openapi-types';
 
 const client = createTypedFetcher<paths>({
   baseURL: 'https://api.example.com',
@@ -54,7 +97,7 @@ console.log(user.name); // TypeScript knows this is a string
 
 ```typescript
 import { createTypedQueryClient } from '@geekmidas/api/client';
-import type { paths } from './path/to/your/openapi-types';
+import type { paths } from './openapi-types';
 
 const queryClient = createTypedQueryClient<paths>({
   baseURL: 'https://api.example.com',
@@ -165,14 +208,38 @@ try {
    - Extract the HTTP method and path
    - Look up the corresponding types from the OpenAPI definitions
    - Infer request parameters and response types
+   - Provide VS Code autocomplete for all valid endpoints
 3. **Runtime Fetching**: At runtime, the client constructs and executes the HTTP request
+
+## VS Code Autocomplete
+
+When you type endpoint strings, you get **full autocomplete** showing all available endpoints:
+
+```typescript
+// Start typing: client('
+// VS Code shows:
+//   ✓ 'GET /users'
+//   ✓ 'POST /users' 
+//   ✓ 'GET /users/{id}'
+//   ✓ 'PUT /users/{id}'
+//   ✓ 'DELETE /users/{id}'
+//   ✓ 'GET /posts'
+
+const user = await client('GET /users/{id}', {
+  params: { id: '123' }  // ← TypeScript enforces required params
+});
+```
 
 ## Best Practices
 
 1. **Keep OpenAPI Spec Updated**: Regenerate types whenever your API changes
-2. **Use Specific Endpoints**: Instead of `any`, use specific endpoint strings for better type safety
+   ```bash
+   npx openapi-typescript https://api.example.com/openapi.json -o ./src/openapi-types.d.ts
+   ```
+2. **Use Specific Endpoints**: Let TypeScript autocomplete guide you to valid endpoints
 3. **Handle Errors**: Always handle potential errors, especially for mutations
 4. **Cache Wisely**: Configure React Query's `staleTime` and `cacheTime` appropriately
+5. **Commit Generated Types**: Include the generated types file in your repository for team consistency
 
 ## TypeScript Support
 
