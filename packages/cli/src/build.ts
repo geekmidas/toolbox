@@ -164,6 +164,7 @@ async function generateServerFile(
   const allExportNames = endpoints.map(({ exportName }) => exportName);
 
   const content = `import { HonoEndpoint } from '@geekmidas/api/hono';
+import { Endpoint } from '@geekmidas/api/server';
 import { HermodServiceDiscovery } from '@geekmidas/api/services';
 import { Hono } from 'hono';
 import ${envParserImportPattern} from '${relativeEnvParserPath}';
