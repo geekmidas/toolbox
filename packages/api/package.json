@@ -21,6 +21,11 @@
       "import": "./dist/services.mjs",
       "require": "./dist/services.cjs",
       "types": "./src/services.ts"
+    },
+    "./client": {
+      "import": "./dist/client/index.mjs",
+      "require": "./dist/client/index.cjs",
+      "types": "./src/client/index.ts"
     }
   },
   "repository": {
@@ -45,7 +50,8 @@
     "@types/lodash.uniqby": "~4.7.9",
     "@types/lodash.merge": "~4.6.9",
     "@types/lodash.set": "~4.3.9",
-    "@types/lodash.get": "~4.4.9"
+    "@types/lodash.get": "~4.4.9",
+    "msw": "~2.10.3"
   },
   "scripts": {},
   "peerDependencies": {
@@ -57,6 +63,7 @@
     "@types/aws-lambda": ">=8.10.92",
     "hono": "~4.8.2",
     "hono-openapi": "~0.4.8",
-    "@geekmidas/envkit": "workspace:*"
+    "@geekmidas/envkit": "workspace:*",
+    "@tanstack/react-query": ">=5.0.0"
   }
 }
