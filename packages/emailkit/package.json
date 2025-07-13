@@ -11,6 +11,10 @@
       "types": "./src/*.ts"
     }
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "dependencies": {
     "nodemailer": "^6.9.7",
     "react": "~19.1.0",
