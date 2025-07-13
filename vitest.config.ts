@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    globals: true,
     projects: ['packages/*'],
     coverage: {
       provider: 'v8',
@@ -14,8 +15,8 @@ export default defineConfig({
         '**/.gkm/**',
       ],
       thresholds: {
-        functions: 44,
-        lines: 42,
+        functions: 46,
+        lines: 43,
         branches: 77,
       },
     },

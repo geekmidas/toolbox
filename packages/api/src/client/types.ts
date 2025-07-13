@@ -59,11 +59,21 @@ export type RequestConfig<
 
 export type EndpointString = `${Uppercase<string>} ${string}`;
 
+// Filter out methods that are never to avoid showing them in autocomplete
+// This handles both explicit never and optional never (?: never)
+type FilterNeverMethods<T> = {
+  [K in keyof T as T[K] extends never | undefined
+    ? never
+    : K]: T[K] extends undefined ? never : T[K];
+};
+
 // Generate all valid endpoint strings from OpenAPI paths
 export type ValidEndpoint<Paths> = {
   [Route in keyof Paths]: {
-    [Method in keyof Paths[Route]]: `${Uppercase<string & Method>} ${string & Route}`;
-  }[keyof Paths[Route]];
+    [Method in keyof FilterNeverMethods<Paths[Route]>]: `${Uppercase<
+      string & Method
+    >} ${string & Route}`;
+  }[keyof FilterNeverMethods<Paths[Route]>];
 }[keyof Paths];
 
 // Helper type to get autocomplete for endpoint strings
