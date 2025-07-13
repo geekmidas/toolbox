@@ -24,7 +24,6 @@ export interface PlainEmailOptions extends EmailOptions {
   html?: string;
 }
 
-
 export interface SMTPConfig {
   host: string;
   port: number;
@@ -44,7 +43,6 @@ export interface SMTPConfig {
   logger?: boolean;
   debug?: boolean;
 }
-
 
 export interface SendResult {
   messageId: string;

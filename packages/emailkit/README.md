@@ -7,7 +7,6 @@ Type-safe email client with SMTP support and React templates.
 - **Type-Safe Templates**: Templates are provided at construction time with full TypeScript inference for both template names and their corresponding props
 - **SMTP Support**: Works with any SMTP server via nodemailer configuration  
 - **React Templates**: Uses `react-dom/server` to render React components to HTML
-- **Built-in Templates**: Includes common email templates (welcome, password reset, notifications)
 
 ## Installation
 

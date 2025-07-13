@@ -11,9 +11,7 @@ import type {
   TemplateRecord,
 } from './types';
 
-export class SMTPClient<T extends TemplateRecord>
-  implements EmailClient<T>
-{
+export class SMTPClient<T extends TemplateRecord> implements EmailClient<T> {
   private transporter: Transporter;
   private config: EmailClientConfig<T>;
 

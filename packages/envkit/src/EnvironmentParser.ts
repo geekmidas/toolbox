@@ -148,7 +148,8 @@ export class EnvironmentParser<T extends EmptyObject> {
           if (value && typeof value === 'object') {
             return new Proxy(value, {
               get: (nestedTarget, nestedProp) => {
-                const nestedValue = nestedTarget[nestedProp as keyof typeof nestedTarget];
+                const nestedValue =
+                  nestedTarget[nestedProp as keyof typeof nestedTarget];
                 if (typeof nestedValue === 'function') {
                   return (...args: any[]) => {
                     const schema = nestedValue(...args);
