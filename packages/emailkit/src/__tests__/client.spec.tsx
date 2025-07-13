@@ -1,8 +1,8 @@
 // biome-ignore lint/correctness/noUnusedImports: <explanation>
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type SMTPClient, createEmailClient } from './client';
-import type { EmailClientConfig } from './types';
+import { type SMTPClient, createEmailClient } from '../client';
+import type { EmailClientConfig } from '../types';
 
 // Mock nodemailer
 vi.mock('nodemailer', () => ({
