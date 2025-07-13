@@ -37,6 +37,28 @@ export class EndpointBuilder<
     return this;
   }
 
+  services<T extends HermodServiceConstructor[]>(
+    services: T,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    [...TServices, ...T],
+    TLogger,
+    OutSchema,
+    TSession
+  > {
+    return super.services(services) as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      [...TServices, ...T],
+      TLogger,
+      OutSchema,
+      TSession
+    >;
+  }
+
   output<T extends StandardSchemaV1>(
     schema: T,
   ): EndpointBuilder<TRoute, TMethod, TInput, TServices, TLogger, T, TSession> {
