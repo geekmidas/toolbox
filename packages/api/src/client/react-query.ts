@@ -8,6 +8,8 @@ import type {
   ExtractEndpointResponse,
   FetcherOptions,
   FilteredRequestConfig,
+  MutationEndpoint,
+  QueryEndpoint,
   TypedEndpoint,
 } from './types';
 
@@ -22,7 +24,7 @@ export class TypedQueryClient<Paths> {
     this.options = options;
   }
 
-  useQuery<T extends TypedEndpoint<Paths>>(
+  useQuery<T extends QueryEndpoint<Paths>>(
     endpoint: T,
     config?: FilteredRequestConfig<Paths, T>,
     options?: Omit<
@@ -39,7 +41,7 @@ export class TypedQueryClient<Paths> {
     });
   }
 
-  useMutation<T extends TypedEndpoint<Paths>>(
+  useMutation<T extends MutationEndpoint<Paths>>(
     endpoint: T,
     options?: Omit<
       UseMutationOptions<
@@ -86,7 +88,7 @@ export function createTypedQueryClient<Paths>(
 }
 
 // Hook exports for convenience
-export function useTypedQuery<Paths, T extends TypedEndpoint<Paths>>(
+export function useTypedQuery<Paths, T extends QueryEndpoint<Paths>>(
   client: TypedQueryClient<Paths>,
   endpoint: T,
   config?: FilteredRequestConfig<Paths, T>,
@@ -98,7 +100,7 @@ export function useTypedQuery<Paths, T extends TypedEndpoint<Paths>>(
   return client.useQuery(endpoint, config, options);
 }
 
-export function useTypedMutation<Paths, T extends TypedEndpoint<Paths>>(
+export function useTypedMutation<Paths, T extends MutationEndpoint<Paths>>(
   client: TypedQueryClient<Paths>,
   endpoint: T,
   options?: Omit<

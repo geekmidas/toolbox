@@ -83,6 +83,26 @@ export type TypedEndpoint<Paths> = ValidEndpoint<Paths> extends infer E
     : never
   : never;
 
+// Filter endpoints by HTTP method
+export type FilterEndpointByMethod<
+  Paths,
+  Method extends string,
+> = ValidEndpoint<Paths> extends infer E
+  ? E extends `${Method} ${string}`
+    ? E
+    : never
+  : never;
+
+// Query endpoints (GET only)
+export type QueryEndpoint<Paths> = FilterEndpointByMethod<Paths, 'GET'>;
+
+// Mutation endpoints (POST, PATCH, PUT, DELETE)
+export type MutationEndpoint<Paths> =
+  | FilterEndpointByMethod<Paths, 'POST'>
+  | FilterEndpointByMethod<Paths, 'PATCH'>
+  | FilterEndpointByMethod<Paths, 'PUT'>
+  | FilterEndpointByMethod<Paths, 'DELETE'>;
+
 export type ParseEndpoint<T extends EndpointString> =
   T extends `${infer Method} ${infer Route}`
     ? { method: Lowercase<Method>; route: Route }
