@@ -1,0 +1,23 @@
+{
+  "name": "@geekmidas/cache",
+  "version": "0.0.1",
+  "description": "Type-safe email client with SMTP support and React templates",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./*": {
+      "import": "./dist/*.mjs",
+      "require": "./dist/*.cjs",
+      "types": "./src/*.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "peerDependencies": {
+    "@upstash/redis": "~1.35.1"
+  }
+}
