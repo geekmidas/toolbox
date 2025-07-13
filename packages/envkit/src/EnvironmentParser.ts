@@ -134,16 +134,33 @@ export class EnvironmentParser<T extends EmptyObject> {
         get: (target, prop) => {
           // deno-lint-ignore ban-ts-comment
           // @ts-ignore
-          const func = target[prop];
+          const value = target[prop];
 
-          if (typeof func === 'function') {
+          if (typeof value === 'function') {
             // Return a wrapper around each Zod schema creator
             return (...args: any[]) => {
-              const schema = func(...args);
+              const schema = value(...args);
               return this.wrapSchema(schema, name);
             };
           }
-          return func;
+
+          // Handle objects like z.coerce
+          if (value && typeof value === 'object') {
+            return new Proxy(value, {
+              get: (nestedTarget, nestedProp) => {
+                const nestedValue = nestedTarget[nestedProp as keyof typeof nestedTarget];
+                if (typeof nestedValue === 'function') {
+                  return (...args: any[]) => {
+                    const schema = nestedValue(...args);
+                    return this.wrapSchema(schema, name);
+                  };
+                }
+                return nestedValue;
+              },
+            });
+          }
+
+          return value;
         },
       },
     );
