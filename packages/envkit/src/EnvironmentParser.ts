@@ -59,6 +59,73 @@ export class ConfigParser<TResponse extends EmptyObject> {
 export class EnvironmentParser<T extends EmptyObject> {
   constructor(private readonly config: T) {}
 
+  private wrapSchema = (schema: z.ZodType, name: string): z.ZodType => {
+    // Create a proxy that intercepts all method calls on the schema
+    return new Proxy(schema, {
+      get: (target, prop) => {
+        if (prop === 'parse') {
+          return () => {
+            const value = get(this.config, name);
+            try {
+              return target.parse(value);
+            } catch (error) {
+              if (error instanceof z.ZodError) {
+                // Modify the error to include the environment variable name
+                const modifiedIssues = error.issues.map((issue) => ({
+                  ...issue,
+                  message: `Environment variable "${name}": ${issue.message}`,
+                  path: [name, ...issue.path],
+                }));
+                throw new z.ZodError(modifiedIssues);
+              }
+              throw error;
+            }
+          };
+        }
+
+        if (prop === 'safeParse') {
+          return () => {
+            const value = get(this.config, name);
+            const result = target.safeParse(value);
+
+            if (!result.success) {
+              // Modify the error to include the environment variable name
+              const modifiedIssues = result.error.issues.map(
+                (issue: z.core.$ZodIssue) => ({
+                  ...issue,
+                  message: `Environment variable "${name}": ${issue.message}`,
+                  path: [name, ...issue.path],
+                }),
+              );
+              return {
+                success: false as const,
+                error: new z.ZodError(modifiedIssues),
+              };
+            }
+
+            return result;
+          };
+        }
+
+        // For any method that returns a new schema (like transform, optional, etc.),
+        // wrap the result as well
+        const originalProp = target[prop as keyof typeof target];
+        if (typeof originalProp === 'function') {
+          return (...args: any[]) => {
+            const result = originalProp.apply(target, args);
+            // If the result is a ZodType, wrap it too
+            if (result && typeof result === 'object' && 'parse' in result) {
+              return this.wrapSchema(result, name);
+            }
+            return result;
+          };
+        }
+
+        return originalProp;
+      },
+    });
+  };
+
   private getZodGetter = (name: string) => {
     // Return an object that has all Zod schemas but with our wrapper
     return new Proxy(
@@ -73,51 +140,7 @@ export class EnvironmentParser<T extends EmptyObject> {
             // Return a wrapper around each Zod schema creator
             return (...args: any[]) => {
               const schema = func(...args);
-              // Add a custom parse method that gets the value from config
-              const originalParse = schema.parse;
-              const originalSafeParse = schema.safeParse;
-
-              schema.parse = () => {
-                const value = get(this.config, name);
-                try {
-                  return originalParse.call(schema, value);
-                } catch (error) {
-                  if (error instanceof z.ZodError) {
-                    // Modify the error to include the environment variable name
-                    const modifiedIssues = error.issues.map((issue) => ({
-                      ...issue,
-                      message: `Environment variable "${name}": ${issue.message}`,
-                      path: [name, ...issue.path],
-                    }));
-                    throw new z.ZodError(modifiedIssues);
-                  }
-                  throw error;
-                }
-              };
-
-              schema.safeParse = () => {
-                const value = get(this.config, name);
-                const result = originalSafeParse.call(schema, value);
-
-                if (!result.success) {
-                  // Modify the error to include the environment variable name
-                  const modifiedIssues = result.error.issues.map(
-                    (issue: z.core.$ZodIssue) => ({
-                      ...issue,
-                      message: `Environment variable "${name}": ${issue.message}`,
-                      path: [name, ...issue.path],
-                    }),
-                  );
-                  return {
-                    success: false as const,
-                    error: new z.ZodError(modifiedIssues),
-                  };
-                }
-
-                return result;
-              };
-
-              return schema;
+              return this.wrapSchema(schema, name);
             };
           }
           return func;
