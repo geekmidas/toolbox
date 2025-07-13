@@ -24,10 +24,6 @@ export interface PlainEmailOptions extends EmailOptions {
   html?: string;
 }
 
-export interface TemplateEmailOptions<T = any> extends EmailOptions {
-  template: string;
-  props: T;
-}
 
 export interface SMTPConfig {
   host: string;
@@ -49,17 +45,6 @@ export interface SMTPConfig {
   debug?: boolean;
 }
 
-export interface EmailClientConfig {
-  smtp: SMTPConfig;
-  defaults?: {
-    from?: string | Address;
-    replyTo?: string | Address;
-  };
-  templates?: {
-    directory?: string;
-    extension?: string;
-  };
-}
 
 export interface SendResult {
   messageId: string;
@@ -72,19 +57,38 @@ export interface EmailTemplate<T = any> {
   (props: T): ReactElement;
 }
 
-export interface EmailClient {
+// Extract props type from a template function
+export type TemplateProps<T> = T extends EmailTemplate<infer P> ? P : never;
+
+// Template record type for type safety
+export type TemplateRecord = Record<string, EmailTemplate<any>>;
+
+// Extract template names from template record
+export type TemplateNames<T extends TemplateRecord> = keyof T;
+
+// Extract props for a specific template
+export type TemplatePropsFor<
+  T extends TemplateRecord,
+  K extends TemplateNames<T>,
+> = TemplateProps<T[K]>;
+
+export interface EmailClientConfig<T extends TemplateRecord = TemplateRecord> {
+  smtp: SMTPConfig;
+  templates: T;
+  defaults?: {
+    from?: string | Address;
+    replyTo?: string | Address;
+  };
+}
+
+export interface EmailClient<T extends TemplateRecord = TemplateRecord> {
   send(options: PlainEmailOptions): Promise<SendResult>;
-  sendTemplate<T = any>(
-    template: string,
-    options: Omit<TemplateEmailOptions<T>, 'template'>,
+  sendTemplate<K extends TemplateNames<T>>(
+    template: K,
+    options: Omit<EmailOptions, 'template'> & {
+      props: TemplatePropsFor<T, K>;
+    },
   ): Promise<SendResult>;
   verify(): Promise<boolean>;
   close(): Promise<void>;
-}
-
-export interface TemplateRegistry {
-  register<T = any>(name: string, template: EmailTemplate<T>): void;
-  get<T = any>(name: string): EmailTemplate<T> | undefined;
-  has(name: string): boolean;
-  list(): string[];
 }

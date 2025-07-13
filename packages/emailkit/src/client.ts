@@ -3,22 +3,23 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type {
   EmailClient,
   EmailClientConfig,
-  EmailTemplate,
+  EmailOptions,
   PlainEmailOptions,
   SendResult,
-  TemplateEmailOptions,
-  TemplateRegistry,
+  TemplateNames,
+  TemplatePropsFor,
+  TemplateRecord,
 } from './types';
 
-export class SMTPClient implements EmailClient {
+export class SMTPClient<T extends TemplateRecord>
+  implements EmailClient<T>
+{
   private transporter: Transporter;
-  private config: EmailClientConfig;
-  private templates: TemplateRegistry;
+  private config: EmailClientConfig<T>;
 
-  constructor(config: EmailClientConfig) {
+  constructor(config: EmailClientConfig<T>) {
     this.config = config;
     this.transporter = nodemailer.createTransport(config.smtp as any);
-    this.templates = new TemplateRegistryImpl();
   }
 
   async send(options: PlainEmailOptions): Promise<SendResult> {
@@ -41,13 +42,15 @@ export class SMTPClient implements EmailClient {
     };
   }
 
-  async sendTemplate<T = any>(
-    template: string,
-    options: Omit<TemplateEmailOptions<T>, 'template'>,
+  async sendTemplate<K extends TemplateNames<T>>(
+    template: K,
+    options: Omit<EmailOptions, 'template'> & {
+      props: TemplatePropsFor<T, K>;
+    },
   ): Promise<SendResult> {
-    const templateFn = this.templates.get<T>(template);
+    const templateFn = this.config.templates[template];
     if (!templateFn) {
-      throw new Error(`Template "${template}" not found`);
+      throw new Error(`Template "${String(template)}" not found`);
     }
 
     const element = templateFn(options.props);
@@ -72,35 +75,13 @@ export class SMTPClient implements EmailClient {
     this.transporter.close();
   }
 
-  registerTemplate<T = any>(name: string, template: EmailTemplate<T>): void {
-    this.templates.register(name, template);
-  }
-
-  getTemplateRegistry(): TemplateRegistry {
-    return this.templates;
+  getTemplateNames(): TemplateNames<T>[] {
+    return Object.keys(this.config.templates) as TemplateNames<T>[];
   }
 }
 
-class TemplateRegistryImpl implements TemplateRegistry {
-  private templates = new Map<string, EmailTemplate>();
-
-  register<T = any>(name: string, template: EmailTemplate<T>): void {
-    this.templates.set(name, template);
-  }
-
-  get<T = any>(name: string): EmailTemplate<T> | undefined {
-    return this.templates.get(name) as EmailTemplate<T> | undefined;
-  }
-
-  has(name: string): boolean {
-    return this.templates.has(name);
-  }
-
-  list(): string[] {
-    return Array.from(this.templates.keys());
-  }
-}
-
-export function createEmailClient(config: EmailClientConfig): SMTPClient {
+export function createEmailClient<T extends TemplateRecord>(
+  config: EmailClientConfig<T>,
+): SMTPClient<T> {
   return new SMTPClient(config);
 }

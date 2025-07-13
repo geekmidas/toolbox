@@ -5,9 +5,7 @@ export type {
   SMTPConfig,
   EmailOptions,
   PlainEmailOptions,
-  TemplateEmailOptions,
   SendResult,
   Attachment,
   EmailTemplate,
-  TemplateRegistry,
 } from './types';

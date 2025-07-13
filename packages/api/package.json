@@ -3,9 +3,6 @@
   "version": "0.0.5",
   "private": false,
   "type": "module",
-  "bin": {
-    "zap": "./.bin/zap.ts"
-  },
   "exports": {
     "./*": {
       "import": "./dist/exports/*.mjs",

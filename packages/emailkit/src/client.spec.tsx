@@ -1,3 +1,4 @@
+// biome-ignore lint/correctness/noUnusedImports: <explanation>
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SMTPClient, createEmailClient } from './client';
@@ -19,9 +20,27 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
+const TestTemplate = ({ name }: { name: string }) => <div>Hello {name}!</div>;
+
+const AnotherTemplate = ({
+  title,
+  message,
+}: { title: string; message: string }) => (
+  <div>
+    <h1>{title}</h1>
+    <p>{message}</p>
+  </div>
+);
+
 describe('SMTPClient', () => {
-  let client: SMTPClient;
-  const config: EmailClientConfig = {
+  let client: SMTPClient<typeof templates>;
+
+  const templates = {
+    test: TestTemplate,
+    another: AnotherTemplate,
+  };
+
+  const config: EmailClientConfig<typeof templates> = {
     smtp: {
       host: 'smtp.example.com',
       port: 587,
@@ -30,6 +49,7 @@ describe('SMTPClient', () => {
         pass: 'password',
       },
     },
+    templates,
     defaults: {
       from: 'noreply@example.com',
     },
@@ -118,11 +138,6 @@ describe('SMTPClient', () => {
 
   describe('sendTemplate', () => {
     it('should send email with React template', async () => {
-      const TestTemplate = ({ name }: { name: string }) =>
-        React.createElement('div', null, `Hello ${name}!`);
-
-      client.registerTemplate('test', TestTemplate);
-
       const result = await client.sendTemplate('test', {
         from: 'sender@example.com',
         to: 'recipient@example.com',
@@ -133,15 +148,15 @@ describe('SMTPClient', () => {
       expect(result.messageId).toBe('test-message-id');
     });
 
-    it('should throw error for unknown template', async () => {
-      await expect(
-        client.sendTemplate('unknown', {
-          from: 'sender@example.com',
-          to: 'recipient@example.com',
-          subject: 'Test Email',
-          props: {},
-        }),
-      ).rejects.toThrow('Template "unknown" not found');
+    it('should send email with another template', async () => {
+      const result = await client.sendTemplate('another', {
+        from: 'sender@example.com',
+        to: 'recipient@example.com',
+        subject: 'Another Template Email',
+        props: { title: 'Hello', message: 'World' },
+      });
+
+      expect(result.messageId).toBe('test-message-id');
     });
   });
 
@@ -158,27 +173,10 @@ describe('SMTPClient', () => {
     });
   });
 
-  describe('template registry', () => {
-    it('should register and list templates', () => {
-      const Template1 = () => React.createElement('div', null, 'Template 1');
-      const Template2 = () => React.createElement('div', null, 'Template 2');
-
-      client.registerTemplate('template1', Template1);
-      client.registerTemplate('template2', Template2);
-
-      const registry = client.getTemplateRegistry();
-      expect(registry.has('template1')).toBe(true);
-      expect(registry.has('template2')).toBe(true);
-      expect(registry.list()).toEqual(['template1', 'template2']);
-    });
-
-    it('should get registered template', () => {
-      const TestTemplate = () => React.createElement('div', null, 'Test');
-      client.registerTemplate('test', TestTemplate);
-
-      const registry = client.getTemplateRegistry();
-      const template = registry.get('test');
-      expect(template).toBe(TestTemplate);
+  describe('template names', () => {
+    it('should return available template names', () => {
+      const templateNames = client.getTemplateNames();
+      expect(templateNames).toEqual(['test', 'another']);
     });
   });
 });

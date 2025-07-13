@@ -22,6 +22,7 @@
     "APIV",
     "citext",
     "dbdata",
+    "emailkit",
     "envkit",
     "fuzzystrmatch",
     "healthcheck",
