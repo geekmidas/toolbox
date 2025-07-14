@@ -81,7 +81,8 @@ export class EndpointBuilder<
     Omit<TInput, 'body'> & { body: T },
     TServices,
     TLogger,
-    OutSchema
+    OutSchema,
+    TSession
   > {
     this.schemas.body = schema as unknown as T;
     // @ts-ignore
@@ -96,7 +97,8 @@ export class EndpointBuilder<
     Omit<TInput, 'query'> & { query: T },
     TServices,
     TLogger,
-    OutSchema
+    OutSchema,
+    TSession
   > {
     this.schemas.query = schema as unknown as T;
     // @ts-ignore
@@ -111,7 +113,8 @@ export class EndpointBuilder<
     Omit<TInput, 'query'> & { query: T },
     TServices,
     TLogger,
-    OutSchema
+    OutSchema,
+    TSession
   > {
     return this.search(schema);
   }
@@ -124,7 +127,8 @@ export class EndpointBuilder<
     Omit<TInput, 'params'> & { params: T },
     TServices,
     TLogger,
-    OutSchema
+    OutSchema,
+    TSession
   > {
     this.schemas.params = schema as unknown as T;
     // @ts-ignore
