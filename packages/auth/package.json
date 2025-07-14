@@ -1,7 +1,6 @@
 {
   "name": "@geekmidas/auth",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "exports": {
     ".": {
@@ -28,7 +27,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@openauthjs/openauth": "~0.4.3"
+    "@openauthjs/openauth": "~0.4.3",
+    "@geekmidas/cache": "workspace:*",
+    "jsonwebtoken": "^9.0.2",
+    "@types/ms": "~2.1.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.5"
+  }
 }

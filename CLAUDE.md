@@ -254,6 +254,139 @@ describe('POST /users', () => {
 });
 ```
 
+### Testing Philosophy
+
+The project follows a **"Integration over Unit"** testing philosophy that prioritizes real behavior verification over mocked implementations:
+
+#### Core Principles
+
+1. **Integration over Unit**: Prefer tests that verify complete integration between components rather than isolated unit tests with heavy mocking
+2. **Behavior over Implementation**: Test what the code actually does, not how it calls underlying methods
+3. **Real Dependencies over Mocks**: Use actual implementations (in-memory databases, real cache instances) instead of mocks when possible
+4. **Comprehensive Coverage**: Test both happy path and edge cases with real data flow
+
+#### When to Use Real Dependencies
+
+- **Cache Operations**: Use `InMemoryCache` instead of mocking cache interface
+- **Database Operations**: Use in-memory or test databases with real schemas
+- **Internal Services**: Test actual service interactions rather than mocked calls
+- **Data Transformations**: Test real data processing pipelines
+
+#### When to Use MSW (Mock Service Worker)
+
+- **External HTTP APIs**: Use MSW to intercept and mock network requests
+- **Third-party Services**: Mock external service responses with realistic data
+- **API Integration Tests**: Test complete HTTP request/response cycles
+
+#### When to Use Traditional Mocks
+
+- **File System Operations**: Mock file operations for consistency
+- **Time-dependent Operations**: Mock `Date.now()` for predictable tests
+- **Environment Variables**: Mock process.env for different configurations
+
+#### Example: Real vs Mocked Testing
+
+```typescript
+// ❌ Avoid: Heavy mocking of internal dependencies
+describe('CacheTokenStorage', () => {
+  it('should store token', async () => {
+    const mockCache = { set: vi.fn() };
+    const storage = new CacheTokenStorage(mockCache);
+    
+    await storage.setAccessToken('token');
+    
+    expect(mockCache.set).toHaveBeenCalledWith('access_token', 'token');
+  });
+});
+
+// ✅ Prefer: Real dependencies with actual behavior
+describe('CacheTokenStorage', () => {
+  it('should store and retrieve token', async () => {
+    const cache = new InMemoryCache<string>();
+    const storage = new CacheTokenStorage(cache);
+    
+    await storage.setAccessToken('token');
+    const result = await storage.getAccessToken();
+    
+    expect(result).toBe('token');
+  });
+});
+```
+
+#### Example: MSW for External API Testing
+
+```typescript
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import { beforeAll, afterEach, afterAll } from 'vitest';
+
+// Setup MSW server
+const server = setupServer(
+  http.post('/auth/refresh', () => {
+    return HttpResponse.json({
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+    });
+  }),
+);
+
+describe('TokenClient API Integration', () => {
+  beforeAll(() => server.listen());
+  afterEach(() => server.resetHandlers());
+  afterAll(() => server.close());
+
+  it('should refresh tokens via API', async () => {
+    const storage = new MemoryTokenStorage();
+    const client = new TokenClient({
+      storage,
+      refreshEndpoint: '/auth/refresh',
+    });
+    
+    // Set up initial state
+    await storage.setRefreshToken('valid-refresh-token');
+    
+    // Test actual HTTP request/response cycle
+    const success = await client.refreshTokens();
+    
+    expect(success).toBe(true);
+    expect(await storage.getAccessToken()).toBe('new-access-token');
+    expect(await storage.getRefreshToken()).toBe('new-refresh-token');
+  });
+
+  it('should handle API errors gracefully', async () => {
+    server.use(
+      http.post('/auth/refresh', () => {
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+
+    const storage = new MemoryTokenStorage();
+    const client = new TokenClient({
+      storage,
+      refreshEndpoint: '/auth/refresh',
+    });
+    
+    await storage.setRefreshToken('invalid-refresh-token');
+    
+    const success = await client.refreshTokens();
+    
+    expect(success).toBe(false);
+    expect(await storage.getAccessToken()).toBeNull();
+    expect(await storage.getRefreshToken()).toBeNull();
+  });
+});
+```
+
+#### Benefits of This Approach
+
+- **Higher Confidence**: Tests verify actual behavior, not mocked behavior
+- **Refactoring Safety**: Tests remain valid when internal implementation changes
+- **Integration Issues**: Catches problems at component boundaries
+- **Real Performance**: Tests reflect actual runtime performance characteristics
+- **Realistic Network Testing**: MSW provides realistic HTTP request/response cycles
+- **Network Error Handling**: MSW enables testing of network failures and edge cases
+- **API Contract Testing**: Tests verify actual API integration without external dependencies
+
 ### Mocking Guidelines
 - Use vitest's built-in mocking utilities
 - Create type-safe mocks with `vi.fn<T>()`

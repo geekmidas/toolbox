@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/testkit",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": false,
   "type": "module",
   "exports": {
@@ -36,6 +36,7 @@
     "knex": "~3.1.0",
     "objection": "~3.1.5",
     "db-errors": "~0.2.3",
-    "@geekmidas/envkit": "workspace:*"
+    "@geekmidas/envkit": "workspace:*",
+    "vitest": "~3.2.4"
   }
 }

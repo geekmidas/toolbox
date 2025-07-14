@@ -12,6 +12,7 @@
   "devDependencies": {
     "tsdown": "~0.12.8",
     "turbo": "^2.5.4",
+    "msw": "~2.10.3",
     "tsx": "~4.20.3",
     "@tsconfig/node22": "~22.0.2",
     "@biomejs/biome": "~1.9.4",
