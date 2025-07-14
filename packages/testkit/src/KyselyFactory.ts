@@ -5,6 +5,7 @@ import type {
   Selectable,
 } from 'kysely';
 import { Factory, type FactorySeed } from './Factory.ts';
+import { type FakerFactory, faker } from './faker.ts';
 
 export class KyselyFactory<
   DB,
@@ -31,67 +32,55 @@ export class KyselyFactory<
     >,
     Factory = any,
     Result = Selectable<DB[TableName]>,
-  >(config: {
-    table: TableName;
-    defaults?: (
+  >(
+    table: TableName,
+    item?: (
       attrs: Attrs,
       factory: Factory,
       db: Kysely<DB>,
+      faker: FakerFactory,
     ) =>
       | Partial<Insertable<DB[TableName]>>
-      | Promise<Partial<Insertable<DB[TableName]>>>;
-    transform?: (
-      data: Partial<Insertable<DB[TableName]>>,
-      factory: Factory,
-      db: Kysely<DB>,
-    ) =>
-      | Partial<Insertable<DB[TableName]>>
-      | Promise<Partial<Insertable<DB[TableName]>>>;
-    relations?: (
-      record: Result,
+      | Promise<Partial<Insertable<DB[TableName]>>>,
+    autoInsert?: boolean,
+  ): (
+    attrs: Attrs,
+    factory: Factory,
+    db: Kysely<DB>,
+    faker: FakerFactory,
+  ) => Promise<Result> {
+    return async (
       attrs: Attrs,
       factory: Factory,
       db: Kysely<DB>,
-    ) => Promise<void>;
-    autoInsert?: boolean;
-  }): (attrs: Attrs, factory: Factory, db: Kysely<DB>) => Promise<Result> {
-    return async (attrs: Attrs, factory: Factory, db: Kysely<DB>) => {
+      faker: FakerFactory,
+    ) => {
       // Start with attributes
       let data: Partial<Insertable<DB[TableName]>> = { ...attrs };
 
       // Apply defaults
-      if (config.defaults) {
-        const defaults = await config.defaults(attrs, factory, db);
+      if (item) {
+        const defaults = await item(attrs, factory, db, faker);
         data = { ...defaults, ...data };
       }
 
-      // Apply transformations
-      if (config.transform) {
-        data = await config.transform(data, factory, db);
-      }
-
       // Handle insertion based on autoInsert flag
-      if (config.autoInsert !== false) {
+      if (autoInsert !== false) {
         // Auto insert is enabled by default
         const result = await db
-          .insertInto(config.table)
+          .insertInto(table)
           .values(data as Insertable<DB[TableName]>)
           .returningAll()
           .executeTakeFirst();
 
         if (!result) {
-          throw new Error(`Failed to insert into ${config.table}`);
-        }
-
-        // Handle relations if defined
-        if (config.relations) {
-          await config.relations(result as Result, attrs, factory, db);
+          throw new Error(`Failed to insert into ${table}`);
         }
 
         return result as Result;
       } else {
         // Return object for factory to handle insertion
-        return { table: config.table, data } as any;
+        return { table, data } as any;
       }
     };
   }
@@ -108,7 +97,12 @@ export class KyselyFactory<
       );
     }
 
-    const result = await this.builders[builderName](attrs || {}, this, this.db);
+    const result = await this.builders[builderName](
+      attrs || {},
+      this,
+      this.db,
+      faker,
+    );
 
     // For Kysely, we expect the builder to return an object with table and data properties
     // or to handle the insertion itself and return the inserted record
@@ -141,7 +135,7 @@ export class KyselyFactory<
   async insertMany<K extends keyof Builders>(
     count: number,
     builderName: K,
-    attrs: (idx: number) => Parameters<Builders[K]>[0],
+    attrs: (idx: number, faker: FakerFactory) => Parameters<Builders[K]>[0],
   ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
   async insertMany<K extends keyof Builders>(
     count: number,
@@ -159,7 +153,7 @@ export class KyselyFactory<
     const promises: Promise<any>[] = [];
 
     for (let i = 0; i < count; i++) {
-      const newAttrs = typeof attrs === 'function' ? attrs(i) : attrs;
+      const newAttrs = typeof attrs === 'function' ? attrs(i, faker) : attrs;
       promises.push(this.insert(builderName, newAttrs));
     }
 

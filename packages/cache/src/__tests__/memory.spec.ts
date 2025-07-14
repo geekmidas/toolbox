@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryCache } from '../memory';
 
 describe('InMemoryCache', () => {
@@ -82,7 +82,7 @@ describe('InMemoryCache', () => {
       await cache.set('key1', 'value1');
       await cache.set('key2', 'value2');
       await cache.delete('key1');
-      
+
       expect(await cache.get('key1')).toBeUndefined();
       expect(await cache.get('key2')).toBe('value2');
     });
@@ -102,10 +102,10 @@ describe('InMemoryCache', () => {
     it('should maintain data integrity across operations', async () => {
       const data = { count: 0 };
       await cache.set('counter', data);
-      
+
       const retrieved = await cache.get('counter');
       retrieved.count = 5;
-      
+
       const original = await cache.get('counter');
       expect(original.count).toBe(5); // Reference equality in memory
     });

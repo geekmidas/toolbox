@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { Cache } from '../cache';
 import { InMemoryCache } from '../memory';
 
@@ -25,16 +25,16 @@ describe('Cache Integration Tests', () => {
         it('should handle basic CRUD operations', async () => {
           // Create
           await cacheInstance.set('user:1', { id: 1, name: 'John' });
-          
+
           // Read
           const user = await cacheInstance.get('user:1');
           expect(user).toEqual({ id: 1, name: 'John' });
-          
+
           // Update
           await cacheInstance.set('user:1', { id: 1, name: 'Jane' });
           const updatedUser = await cacheInstance.get('user:1');
           expect(updatedUser).toEqual({ id: 1, name: 'Jane' });
-          
+
           // Delete
           await cacheInstance.delete('user:1');
           const deletedUser = await cacheInstance.get('user:1');
@@ -72,13 +72,13 @@ describe('Cache Integration Tests', () => {
           // Store all data types
           await Promise.all(
             Object.entries(testData).map(([key, value]) =>
-              cacheInstance.set(key, value)
-            )
+              cacheInstance.set(key, value),
+            ),
           );
 
           // Retrieve and verify
           const results = await Promise.all(
-            Object.keys(testData).map(key => cacheInstance.get(key))
+            Object.keys(testData).map((key) => cacheInstance.get(key)),
           );
 
           expect(results[0]).toBe('hello');
@@ -203,13 +203,13 @@ describe('Cache Integration Tests', () => {
 
       // Bulk insert
       const insertPromises = Array.from({ length: operationCount }, (_, i) =>
-        cache.set(`key:${i}`, i)
+        cache.set(`key:${i}`, i),
       );
       await Promise.all(insertPromises);
 
       // Bulk read
       const readPromises = Array.from({ length: operationCount }, (_, i) =>
-        cache.get(`key:${i}`)
+        cache.get(`key:${i}`),
       );
       const results = await Promise.all(readPromises);
 
@@ -220,7 +220,7 @@ describe('Cache Integration Tests', () => {
 
       // Bulk delete
       const deletePromises = Array.from({ length: operationCount }, (_, i) =>
-        cache.delete(`key:${i}`)
+        cache.delete(`key:${i}`),
       );
       await Promise.all(deletePromises);
 
@@ -231,7 +231,7 @@ describe('Cache Integration Tests', () => {
 
     it('should handle large objects efficiently', async () => {
       const cache = new InMemoryCache<any>();
-      
+
       const largeObject = {
         id: 1,
         data: Array.from({ length: 1000 }, (_, i) => ({
@@ -265,7 +265,7 @@ describe('Cache Integration Tests', () => {
       // Operations should continue working normally
       await cache.set('another-key', 'another-value');
       expect(await cache.get('another-key')).toBe('another-value');
-      
+
       await cache.delete('valid-key');
       expect(await cache.get('valid-key')).toBeUndefined();
     });

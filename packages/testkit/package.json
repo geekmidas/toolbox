@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/testkit",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "type": "module",
   "exports": {
@@ -13,6 +13,11 @@
       "types": "./src/kysely.ts",
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
+    },
+    "./faker": {
+      "types": "./src/faker.ts",
+      "import": "./dist/faker.mjs",
+      "require": "./dist/faker.cjs"
     }
   },
   "dependencies": {

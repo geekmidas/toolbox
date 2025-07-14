@@ -1,3 +1,5 @@
+import type { FakerFactory } from './faker';
+
 export abstract class Factory<
   Builders extends Record<string, any>,
   Seeds extends Record<string, any>,
@@ -28,7 +30,7 @@ export abstract class Factory<
     builderName: K,
     attrs?:
       | Parameters<Builders[K]>[0]
-      | ((idx: number) => Parameters<Builders[K]>[0]),
+      | ((idx: number, faker: FakerFactory) => Parameters<Builders[K]>[0]),
   ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
 
   /**

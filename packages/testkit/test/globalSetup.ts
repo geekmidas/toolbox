@@ -1,19 +1,6 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import pg from 'pg';
-
-import {
-  CamelCasePlugin,
-  FileMigrationProvider,
-  Kysely,
-  PostgresDialect,
-} from 'kysely';
-
-import { PostgresKyselyMigrator } from '../src/PostgresKyselyMigrator';
+import { Client } from 'pg';
 
 const TEST_DATABASE_NAME = 'geekmidas_test';
-
-const logger = console;
 
 export const TEST_DATABASE_CONFIG = {
   host: 'localhost',
@@ -23,31 +10,45 @@ export const TEST_DATABASE_CONFIG = {
   database: TEST_DATABASE_NAME,
 };
 
-// password: get('Database.password').string(),
-//       user: get('Database.username').string(),
-//       database: get('Database.database').string(),
-//       host: get('Database.host').string(),
-//       port: get('Database.port').number().default(5432),
-
 export default async function globalSetup() {
-  const uri = `postgres://${TEST_DATABASE_CONFIG.user}:${TEST_DATABASE_CONFIG.password}@${TEST_DATABASE_CONFIG.host}:${TEST_DATABASE_CONFIG.port}/${TEST_DATABASE_CONFIG.database}`;
+  const adminConfig = {
+    host: TEST_DATABASE_CONFIG.host,
+    port: TEST_DATABASE_CONFIG.port,
+    user: TEST_DATABASE_CONFIG.user,
+    password: TEST_DATABASE_CONFIG.password,
+    database: 'postgres', // Connect to default postgres database
+  };
 
-  const migrationFolder = path.resolve(__dirname, './migrations');
+  const client = new Client(adminConfig);
 
-  const migrationProcessor = new PostgresKyselyMigrator({
-    uri,
-    db: new Kysely({
-      dialect: new PostgresDialect({
-        pool: new pg.Pool(TEST_DATABASE_CONFIG),
-      }),
-      plugins: [new CamelCasePlugin()],
-    }),
-    provider: new FileMigrationProvider({
-      fs,
-      path,
-      migrationFolder,
-    }),
-  });
+  try {
+    await client.connect();
 
-  return migrationProcessor.start();
+    // Check if test database exists
+    const result = await client.query(
+      `SELECT * FROM pg_catalog.pg_database WHERE datname = $1`,
+      [TEST_DATABASE_NAME],
+    );
+
+    // Create test database if it doesn't exist
+    if (result.rowCount === 0) {
+      await client.query(`CREATE DATABASE "${TEST_DATABASE_NAME}"`);
+    } else {
+    }
+  } finally {
+    await client.end();
+  }
+
+  // Return cleanup function that drops the database
+  return async () => {
+    const cleanupClient = new Client(adminConfig);
+    try {
+      await cleanupClient.connect();
+      await cleanupClient.query(
+        `DROP DATABASE IF EXISTS "${TEST_DATABASE_NAME}"`,
+      );
+    } finally {
+      await cleanupClient.end();
+    }
+  };
 }
