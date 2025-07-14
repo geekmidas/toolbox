@@ -1,4 +1,4 @@
-import type { Cache } from './cache';
+import type { Cache } from './';
 
 export class InMemoryCache<T> implements Cache<T> {
   private store: Map<string, T> = new Map();

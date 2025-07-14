@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import type { Cache } from './cache';
+import type { Cache } from './';
 
 export class UpstashCache<T> implements Cache<T> {
   private client: Redis;
