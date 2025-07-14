@@ -1,11 +1,16 @@
-import { beforeAll, describe, expect } from 'vitest';
+import { it as base, beforeAll, describe, expect } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
 import { type TestDatabase, createTestTables } from '../../test/helpers';
 import { KyselyFactory } from '../KyselyFactory';
-import { createKyselyDb, wrapVitestKyselyTransaction } from '../helpers';
+import { createKyselyDb } from '../helpers';
+import { wrapVitestKyselyTransaction } from '../kysely';
 
 const db = createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
-const it = wrapVitestKyselyTransaction<TestDatabase>(db, createTestTables);
+const it = wrapVitestKyselyTransaction<TestDatabase>(
+  base,
+  db,
+  createTestTables,
+);
 describe('Testkit Integration Tests', () => {
   beforeAll(async () => {});
   describe('Complex Factory Scenarios', () => {

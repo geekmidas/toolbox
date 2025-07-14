@@ -1,4 +1,4 @@
-import { test as base } from 'vitest';
+import type { TestAPI } from 'vitest';
 
 export interface DatabaseFixtures<Transaction> {
   trx: Transaction;
@@ -21,12 +21,14 @@ export abstract class VitestPostgresTransactionIsolator<
     fn: (trx: Transaction) => Promise<void>,
   ): Promise<void>;
 
+  constructor(private readonly api: TestAPI) {}
+
   wrapVitestWithTransaction(
     conn: Connection,
     setup?: (trx: Transaction) => Promise<void>,
     level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
   ) {
-    return base.extend<DatabaseFixtures<Transaction>>({
+    return this.api.extend<DatabaseFixtures<Transaction>>({
       // This fixture automatically provides a transaction to each test
       trx: async ({}, use) => {
         // Create a custom error class for rollback

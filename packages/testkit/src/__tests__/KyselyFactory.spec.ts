@@ -1,13 +1,14 @@
-import type { ControlledTransaction, Kysely } from 'kysely';
 import pg from 'pg';
-import { describe, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
 import { type TestDatabase, createTestTables } from '../../test/helpers';
 import { KyselyFactory } from '../KyselyFactory';
-import { createKyselyDb, wrapVitestKyselyTransaction } from '../helpers';
+import { createKyselyDb } from '../helpers';
+import { wrapVitestKyselyTransaction } from '../kysely';
 
 const db = createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
 const itWithTransaction = wrapVitestKyselyTransaction<TestDatabase>(
+  it,
   db,
   createTestTables,
 );
@@ -17,9 +18,6 @@ pg.types.setTypeParser(int8TypeId, (val) => {
   return parseInt(val, 10);
 });
 describe('KyselyFactory', () => {
-  let db: Kysely<TestDatabase>;
-  let trx: ControlledTransaction<TestDatabase, []>;
-
   describe('KyselyFactory.insert', () => {
     itWithTransaction(
       'should insert a record with defaults',
