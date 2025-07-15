@@ -49,6 +49,10 @@ export class Endpoint<
     return schema['~standard'].validate(data);
   }
 
+  get fullPath() {
+    return `${this.method} ${this._path}` as const;
+  }
+
   static async parseSchema<T extends StandardSchemaV1>(
     schema: T,
     data: unknown,

@@ -16,6 +16,9 @@ import {
   type HermodServiceRecord,
 } from '../services';
 
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { wrapError } from '../errors';
+
 export class HonoEndpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
@@ -129,25 +132,40 @@ export class HonoEndpoint<
         HonoEndpoint.validate(c, params, endpoint.input?.params),
       ),
       async (c) => {
-        const headerValues = c.req.header();
-        const services = await serviceDiscovery.register(endpoint.services);
         const logger = endpoint.logger.child({
+          endpoint: endpoint.fullPath,
           route: endpoint.route,
           host: c.header('host'),
           method: endpoint.method,
           path: c.req.path,
         }) as TLogger;
+        try {
+          logger.debug('Processing endpoint request');
+          const headerValues = c.req.header();
+          const header = Endpoint.createHeaders(headerValues);
+          const services = await serviceDiscovery.register(endpoint.services);
 
-        const response = await endpoint.handler({
-          services,
-          logger,
-          body: c.req.valid('json'),
-          query: c.req.valid('query'),
-          params: c.req.valid('param'),
-          header: Endpoint.createHeaders(headerValues),
-        } as unknown as EndpointContext<TInput, TServices, TLogger>);
+          const session = await endpoint.getSession({
+            services,
+            logger,
+            header,
+          });
+          const response = await endpoint.handler({
+            services,
+            logger,
+            body: c.req.valid('json'),
+            query: c.req.valid('query'),
+            params: c.req.valid('param'),
+            session,
+            header: Endpoint.createHeaders(headerValues),
+          } as unknown as EndpointContext<TInput, TServices, TLogger>);
 
-        return c.json(response);
+          return c.json(response);
+        } catch (e) {
+          logger.error(e, 'Error processing endpoint request');
+          const error = wrapError(e, 500, 'Internal Server Error');
+          return c.json(error, error.statusCode as ContentfulStatusCode);
+        }
       },
     );
   }
