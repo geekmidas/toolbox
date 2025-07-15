@@ -48,6 +48,7 @@ describe('buildOpenApiSchema', () => {
       status: undefined,
       getSession: undefined,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const schema = await buildOpenApiSchema([endpoint]);
@@ -86,6 +87,7 @@ describe('buildOpenApiSchema', () => {
       getSession: undefined,
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const postEndpoint = new Endpoint({
@@ -102,6 +104,7 @@ describe('buildOpenApiSchema', () => {
       services: [],
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const schema = await buildOpenApiSchema([getEndpoint, postEndpoint]);
@@ -153,6 +156,7 @@ describe('buildOpenApiSchema', () => {
       services: [],
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const postsEndpoint = new Endpoint({
@@ -167,6 +171,7 @@ describe('buildOpenApiSchema', () => {
       services: [],
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const schema = await buildOpenApiSchema([usersEndpoint, postsEndpoint]);
@@ -219,6 +224,7 @@ describe('buildOpenApiSchema', () => {
       services: [],
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const getUserEndpoint = new Endpoint({
@@ -240,6 +246,7 @@ describe('buildOpenApiSchema', () => {
       services: [],
       logger: {} as any,
       timeout: undefined,
+      authorize: undefined,
     });
 
     const schema = await buildOpenApiSchema([
@@ -339,6 +346,7 @@ describe('buildOpenApiSchema', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+      authorize: undefined,
       }),
       new Endpoint({
         route: '/users/:id',
@@ -356,6 +364,7 @@ describe('buildOpenApiSchema', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+      authorize: undefined,
       }),
       new Endpoint({
         route: '/users/:id',
@@ -369,6 +378,7 @@ describe('buildOpenApiSchema', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+      authorize: undefined,
       }),
     ];
 

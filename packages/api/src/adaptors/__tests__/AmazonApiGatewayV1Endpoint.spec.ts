@@ -3,7 +3,7 @@ import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../../constructs/Endpoint';
-import { HttpError } from '../../errors';
+import { HttpError, UnauthorizedError } from '../../errors';
 import type { Logger } from '../../logger';
 import { HermodService } from '../../services';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
@@ -126,6 +126,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Test endpoint',
       });
 
@@ -155,6 +156,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: 201,
         getSession: undefined,
+        authorize: undefined,
         description: 'Create user endpoint',
       });
 
@@ -195,6 +197,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'List items endpoint',
       });
 
@@ -228,6 +231,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Get user endpoint',
       });
 
@@ -258,6 +262,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: 204,
         getSession: undefined,
+        authorize: undefined,
         description: 'Void endpoint',
       });
 
@@ -289,6 +294,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Logger test endpoint',
       });
 
@@ -331,6 +337,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Error test endpoint',
       });
 
@@ -358,6 +365,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Service test endpoint',
       });
 
@@ -386,6 +394,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: async () => mockSession,
+        authorize: undefined,
         description: 'Session test endpoint',
       });
 
@@ -417,6 +426,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'HTTP error test endpoint',
       });
 
@@ -443,6 +453,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Generic error test endpoint',
       });
 
@@ -475,6 +486,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Header test endpoint',
       });
 
@@ -496,6 +508,117 @@ describe('AmazonApiGatewayV1Endpoint', () => {
           authorization: 'Bearer token123',
           contentType: 'application/json',
         }),
+      );
+    });
+  });
+
+  describe('authorization', () => {
+    it('should allow requests when authorize returns true', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Protected endpoint',
+      });
+
+      // Set authorize function that returns true
+      endpoint.authorize = async () => true;
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe(JSON.stringify({ success: true }));
+    });
+
+    it('should reject requests when authorize returns false', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Protected endpoint',
+      });
+
+      // Set authorize function that returns false
+      endpoint.authorize = async () => false;
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent();
+      const context = createMockContext();
+
+      await expect(handler(event, context)).rejects.toThrow(UnauthorizedError);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Unauthorized access attempt',
+      );
+    });
+
+    it('should handle async authorize functions', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Protected endpoint',
+      });
+
+      // Set async authorize function with delay
+      endpoint.authorize = async ({ header }) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return header('authorization') === 'Bearer valid-token';
+      };
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      // Test with valid token
+      const validEvent = createMockEvent({
+        headers: {
+          authorization: 'Bearer valid-token',
+        },
+      });
+      const context = createMockContext();
+      const response = await handler(validEvent, context);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe(JSON.stringify({ success: true }));
+
+      // Test with invalid token
+      const invalidEvent = createMockEvent({
+        headers: {
+          authorization: 'Bearer invalid-token',
+        },
+      });
+      await expect(handler(invalidEvent, context)).rejects.toThrow(
+        UnauthorizedError,
       );
     });
   });
@@ -530,6 +653,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: 'Complex input endpoint',
       });
 

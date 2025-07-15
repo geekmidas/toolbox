@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
+import type { ConsoleLogger, Logger } from '../../logger';
+import { HermodService, HermodServiceDiscovery } from '../../services';
 import { Endpoint } from '../Endpoint';
 
 describe('Endpoint', () => {
@@ -8,6 +11,7 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users',
         method: 'GET',
+        authorize: undefined,
         description: 'Get all users',
         fn: async () => [],
         input: undefined,
@@ -48,6 +52,7 @@ describe('Endpoint', () => {
         fn: async () => ({ id: '1', name: 'John' }),
         input: undefined,
         output: outputSchema,
+        authorize: undefined,
         services: [],
         status: undefined,
         getSession: undefined,
@@ -79,6 +84,7 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users',
         method: 'POST',
+        authorize: undefined,
         description: 'Create a new user',
         fn: async (ctx) => ({ id: '1', ...(ctx as any).body }),
         input: {
@@ -122,6 +128,7 @@ describe('Endpoint', () => {
         route: '/users/:id/items/:subId',
         method: 'GET',
         status: undefined,
+        authorize: undefined,
         getSession: undefined,
         description: 'Get user item',
         fn: async (ctx) => ({
@@ -169,6 +176,7 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/users',
         method: 'GET',
+        authorize: undefined,
         description: 'List users with pagination',
         fn: async (ctx) => [],
         input: {
@@ -229,6 +237,7 @@ describe('Endpoint', () => {
         description: 'Update user',
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         fn: async (ctx) => ({
           id: (ctx as any).params.id,
           ...(ctx as any).body,
@@ -286,6 +295,7 @@ describe('Endpoint', () => {
       const endpoint = new Endpoint({
         route: '/health',
         method: 'GET',
+        authorize: undefined,
         fn: async () => ({ status: 'ok' }),
         status: undefined,
         getSession: undefined,
@@ -320,6 +330,7 @@ describe('Endpoint', () => {
         method: 'GET',
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         output: z.object({
           users: z.array(z.object({ id: z.string(), name: z.string() })),
         }),
@@ -338,6 +349,379 @@ describe('Endpoint', () => {
       const spec = await endpoint.toOpenApi3Route();
 
       expect(spec['/users']!.get).not.toHaveProperty('requestBody');
+    });
+  });
+
+  describe('authorize property', () => {
+    const mockLogger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      fatal: vi.fn(),
+      trace: vi.fn(),
+      child: vi.fn(() => mockLogger),
+    };
+
+    it('should have default authorize function that returns true', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        authorize: undefined,
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const result = await endpoint.authorize({
+        header: vi.fn(),
+        services: {},
+        logger: mockLogger,
+        session: {},
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('should allow custom authorize function', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        authorize: undefined,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const customAuthFn = vi.fn().mockResolvedValue(false);
+      endpoint.authorize = customAuthFn;
+
+      const mockContext = {
+        header: vi.fn(),
+        services: {},
+        logger: mockLogger,
+        session: {},
+      };
+
+      const result = await endpoint.authorize(mockContext);
+
+      expect(result).toBe(false);
+      expect(customAuthFn).toHaveBeenCalledWith(mockContext);
+    });
+
+    it('should support synchronous authorize function', () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const syncAuthFn = vi.fn().mockReturnValue(true);
+      endpoint.authorize = syncAuthFn;
+
+      const mockContext = {
+        header: vi.fn(),
+        services: {},
+        logger: mockLogger,
+        session: {},
+      };
+
+      const result = endpoint.authorize(mockContext);
+
+      expect(result).toBe(true);
+      expect(syncAuthFn).toHaveBeenCalledWith(mockContext);
+    });
+
+    it('should receive header function in context', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        authorize: undefined,
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const headerFn = vi.fn().mockReturnValue('Bearer token123');
+
+      endpoint.authorize = ({ header }) => {
+        return header('authorization') === 'Bearer token123';
+      };
+
+      const result = await endpoint.authorize({
+        header: headerFn,
+        services: {},
+        logger: mockLogger,
+        session: {},
+      });
+
+      expect(result).toBe(true);
+      expect(headerFn).toHaveBeenCalledWith('authorization');
+    });
+
+    it('should receive services in context', async () => {
+      class TestService extends HermodService<TestService> {
+        static serviceName = 'TestService' as const;
+
+        validateUser(id: string) {
+          return id === 'valid';
+        }
+        async register() {
+          return this;
+        }
+      }
+
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [TestService],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        authorize: ({ services }) => {
+          return services.TestService.validateUser('valid');
+        },
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const envParser = new EnvironmentParser({});
+      const serviceDiscovery = HermodServiceDiscovery.getInstance<any, Logger>(
+        endpoint.logger,
+        envParser,
+      );
+      const service = new TestService(
+        serviceDiscovery,
+        endpoint.logger as ConsoleLogger,
+      );
+
+      const result = await endpoint.authorize({
+        header: vi.fn(),
+        services: {
+          TestService: service,
+        },
+        logger: mockLogger,
+        session: {},
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('should receive logger in context', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        authorize: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const loggerSpy = vi.fn();
+      const testLogger = {
+        ...mockLogger,
+        info: loggerSpy,
+      };
+
+      endpoint.authorize = ({ logger }) => {
+        logger.info('Authorization check');
+        return true;
+      };
+
+      const result = await endpoint.authorize({
+        header: vi.fn(),
+        services: {},
+        logger: testLogger,
+        session: {},
+      });
+
+      expect(result).toBe(true);
+      expect(loggerSpy).toHaveBeenCalledWith('Authorization check');
+    });
+
+    it('should receive session in context', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        authorize: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: () => ({ role: 'admin' }),
+        description: undefined,
+      });
+
+      const mockSession = { userId: 'user123', role: 'admin' };
+
+      endpoint.authorize = ({ session }) => {
+        return session.role === 'admin';
+      };
+
+      const result = await endpoint.authorize({
+        header: vi.fn(),
+        services: {},
+        logger: mockLogger,
+        session: mockSession,
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('should handle authorize function that throws error', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        authorize: async () => {
+          throw new Error('Authorization failed');
+        },
+
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      await expect(() =>
+        endpoint.authorize({
+          header: vi.fn(),
+          services: {},
+          logger: mockLogger,
+          session: {},
+        }),
+      ).rejects.toThrow('Authorization failed');
+    });
+
+    it('should handle async authorize function that throws error', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      endpoint.authorize = async () => {
+        throw new Error('Async authorization failed');
+      };
+
+      await expect(
+        endpoint.authorize({
+          header: vi.fn(),
+          services: {},
+          logger: mockLogger,
+          session: {},
+        }),
+      ).rejects.toThrow('Async authorization failed');
+    });
+
+    it('should work with complex authorization logic', async () => {
+      const endpoint = new Endpoint({
+        route: '/admin/users',
+        method: 'GET',
+        authorize: undefined,
+        fn: async () => ({ users: [] }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      endpoint.authorize = async ({ header, session }) => {
+        // Simulate complex authorization logic
+        const token = header('authorization');
+        if (!token) return false;
+
+        const user = session as any;
+        if (!user?.role) return false;
+
+        return user.role === 'admin' || user.role === 'superuser';
+      };
+
+      // Test with admin role
+      const adminResult = await endpoint.authorize({
+        header: vi.fn().mockReturnValue('Bearer admin-token'),
+        services: {},
+        logger: mockLogger,
+        session: { userId: 'admin1', role: 'admin' },
+      });
+
+      expect(adminResult).toBe(true);
+
+      // Test with user role
+      const userResult = await endpoint.authorize({
+        header: vi.fn().mockReturnValue('Bearer user-token'),
+        services: {},
+        logger: mockLogger,
+        session: { userId: 'user1', role: 'user' },
+      });
+
+      expect(userResult).toBe(false);
+
+      // Test with no token
+      const noTokenResult = await endpoint.authorize({
+        header: vi.fn().mockReturnValue(undefined),
+        services: {},
+        logger: mockLogger,
+        session: { userId: 'user1', role: 'admin' },
+      });
+
+      expect(noTokenResult).toBe(false);
     });
   });
 });

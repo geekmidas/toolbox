@@ -18,7 +18,7 @@ import type {
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
-import { wrapError } from '../errors';
+import { UnauthorizedError, wrapError } from '../errors';
 
 export abstract class AmazonApiGatewayEndpoint<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
@@ -99,6 +99,32 @@ export abstract class AmazonApiGatewayEndpoint<
     };
   }
 
+  private authorize(): Middleware<TEvent, TInput, TServices, TLogger> {
+    return {
+      before: async (req) => {
+        const logger = req.event.logger as TLogger;
+        const services = req.event.services as HermodServiceRecord<TServices>;
+        const header = req.event.header;
+        const session = req.event.session as TSession;
+
+        const isAuthorized = await this.endpoint.authorize({
+          header,
+          services,
+          logger,
+          session,
+        });
+
+        if (!isAuthorized) {
+          logger.warn('Unauthorized access attempt');
+          throw new UnauthorizedError(
+            'Unauthorized access to the endpoint',
+            'You do not have permission to access this resource.',
+          );
+        }
+      },
+    };
+  }
+
   private session(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
       before: async (req) => {
@@ -147,6 +173,7 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.error())
       .use(this.services())
       .use(this.input())
+      .use(this.authorize())
       .use(this.session()) as unknown as AmazonApiGatewayV1EndpointHandler;
   }
 }
@@ -170,7 +197,8 @@ type Middleware<
   TInput extends EndpointSchemas = {},
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
-> = MiddlewareObj<Event<TEvent, TInput, TServices, TLogger>>;
+  TSession = unknown,
+> = MiddlewareObj<Event<TEvent, TInput, TServices, TLogger, TSession>>;
 
 export type AmazonApiGatewayV1EndpointHandlerResponse = {
   statusCode: number;

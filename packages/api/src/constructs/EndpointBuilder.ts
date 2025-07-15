@@ -2,7 +2,12 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ConsoleLogger, Logger } from '../logger';
 import type { HermodServiceConstructor } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
-import type { EndpointHandler, SessionFn, SuccessStatus } from './Endpoint';
+import type {
+  AuthorizeFn,
+  EndpointHandler,
+  SessionFn,
+  SuccessStatus,
+} from './Endpoint';
 import { FunctionBuilder } from './Function';
 import { FunctionType, type HttpMethod } from './types';
 
@@ -19,6 +24,7 @@ export class EndpointBuilder<
   protected _description?: string;
   protected _status?: SuccessStatus;
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
+  _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
 
   constructor(
     readonly route: TRoute,
@@ -156,6 +162,7 @@ export class EndpointBuilder<
       services: this._services,
       logger: this._logger,
       timeout: this._timeout,
+      authorize: this._authorize,
       status: this._status,
       getSession: this._getSession,
     });

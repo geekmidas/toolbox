@@ -26,6 +26,7 @@ export class HonoEndpoint<
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends HermodServiceConstructor[] = [],
   TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
 > {
   constructor(
     private readonly endpoint: Endpoint<
@@ -34,7 +35,8 @@ export class HonoEndpoint<
       TInput,
       TOutSchema,
       TServices,
-      TLogger
+      TLogger,
+      TSession
     >,
   ) {}
 
@@ -109,8 +111,17 @@ export class HonoEndpoint<
     TOutSchema extends StandardSchemaV1 | undefined = undefined,
     TServices extends HermodServiceConstructor[] = [],
     TLogger extends Logger = ConsoleLogger,
+    TSession = unknown,
   >(
-    endpoint: Endpoint<TRoute, TMethod, TInput, TOutSchema, TServices, TLogger>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      TSession
+    >,
     serviceDiscovery: HermodServiceDiscovery<
       HermodServiceRecord<TServices>,
       TLogger
@@ -150,6 +161,19 @@ export class HonoEndpoint<
             logger,
             header,
           });
+
+          const isAuthorized = await endpoint.authorize({
+            header,
+            services,
+            logger,
+            session,
+          });
+
+          if (!isAuthorized) {
+            logger.warn('Unauthorized access attempt');
+            return c.json({ error: 'Unauthorized' }, 401);
+          }
+
           const response = await endpoint.handler({
             services,
             logger,
@@ -158,7 +182,12 @@ export class HonoEndpoint<
             params: c.req.valid('param'),
             session,
             header: Endpoint.createHeaders(headerValues),
-          } as unknown as EndpointContext<TInput, TServices, TLogger>);
+          } as unknown as EndpointContext<
+            TInput,
+            TServices,
+            TLogger,
+            TSession
+          >);
 
           return c.json(response);
         } catch (e) {

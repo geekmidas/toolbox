@@ -36,6 +36,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -68,6 +69,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -113,6 +115,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -151,6 +154,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -188,6 +192,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -225,6 +230,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -257,6 +263,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -295,6 +302,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -334,6 +342,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -380,6 +389,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -416,6 +426,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -458,6 +469,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -497,6 +509,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -545,6 +558,7 @@ describe('HonoEndpointAdaptor', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
         description: undefined,
       });
 
@@ -607,6 +621,228 @@ describe('HonoEndpointAdaptor', () => {
 
       expect(result).toEqual({ name: 'John', age: 30 });
       expect(mockContext.json).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('authorization', () => {
+    it('should allow requests when authorize returns true', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      // Set authorize function that returns true
+      endpoint.authorize = async () => true;
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/protected');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ success: true });
+    });
+
+    it('should return 401 when authorize returns false', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      // Set authorize function that returns false
+      endpoint.authorize = async () => false;
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/protected');
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Unauthorized' });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Unauthorized access attempt',
+      );
+    });
+
+    it('should handle async authorize functions with headers', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      // Set async authorize function that checks bearer token
+      endpoint.authorize = async ({ header }) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return header('authorization') === 'Bearer valid-token';
+      };
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      // Test with valid token
+      const validResponse = await app.request('/protected', {
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+      expect(validResponse.status).toBe(200);
+      expect(await validResponse.json()).toEqual({ success: true });
+
+      // Test with invalid token
+      const invalidResponse = await app.request('/protected', {
+        headers: { Authorization: 'Bearer invalid-token' },
+      });
+      expect(invalidResponse.status).toBe(401);
+      expect(await invalidResponse.json()).toEqual({ error: 'Unauthorized' });
+    });
+
+    it('should authorize with services available', async () => {
+      class AuthService extends HermodService {
+        static readonly serviceName = 'authService' as const;
+
+        async register() {
+          return {
+            isValidToken: (token: string) => token === 'valid-token',
+          };
+        }
+      }
+
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [AuthService],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      endpoint.authorize = async ({ header, services }) => {
+        const token = header('authorization')?.replace('Bearer ', '') || '';
+        return services.authService.isValidToken(token);
+      };
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      // Test with valid token
+      const validResponse = await app.request('/protected', {
+        headers: { Authorization: 'Bearer valid-token' },
+      });
+      expect(validResponse.status).toBe(200);
+
+      // Test with invalid token
+      const invalidResponse = await app.request('/protected', {
+        headers: { Authorization: 'Bearer invalid-token' },
+      });
+      expect(invalidResponse.status).toBe(401);
+    });
+
+    it('should authorize with session', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: async ({ header }) => {
+          const token = header('authorization');
+          return token === 'Bearer user-token'
+            ? { userId: 'user-123', role: 'user' }
+            : null;
+        },
+        authorize: undefined,
+        description: undefined,
+      });
+
+      endpoint.authorize = async ({ session }) => {
+        return session?.role === 'user' || session?.role === 'admin';
+      };
+
+      const adaptor = new HonoEndpoint(endpoint as any);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      // Test with valid user token
+      const validResponse = await app.request('/protected', {
+        headers: { Authorization: 'Bearer user-token' },
+      });
+      expect(validResponse.status).toBe(200);
+
+      // Test with no token (no session)
+      const noTokenResponse = await app.request('/protected');
+      expect(noTokenResponse.status).toBe(401);
+    });
+
+    it('should handle authorization errors', async () => {
+      const endpoint = new Endpoint({
+        route: '/protected',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: undefined,
+        output: undefined,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: async () => {
+          throw new Error('Authorization service unavailable');
+        },
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/protected');
+      expect(response.status).toBe(500);
     });
   });
 });

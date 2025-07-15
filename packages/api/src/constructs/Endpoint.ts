@@ -37,6 +37,7 @@ export class Endpoint<
   public readonly status: SuccessStatus;
   public getSession: SessionFn<TServices, TLogger, TSession> = () =>
     ({}) as TSession;
+  public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
 
   static async buildOpenApiSchema(
     endpoints: Endpoint<any, any, any, any, any, any>[],
@@ -254,6 +255,7 @@ export class Endpoint<
     services,
     timeout,
     getSession,
+    authorize,
     status = SuccessStatus.OK,
   }: EndpointOptions<
     TRoute,
@@ -281,6 +283,10 @@ export class Endpoint<
     if (getSession) {
       this.getSession = getSession;
     }
+
+    if (authorize) {
+      this.authorize = authorize;
+    }
   }
 }
 
@@ -306,6 +312,7 @@ export interface EndpointOptions<
   route: TRoute;
   method: TMethod;
   fn: EndpointHandler<TInput, TServices, TLogger, TOutput, TSession>;
+  authorize: AuthorizeFn<TServices, TLogger, TSession> | undefined;
   description: string | undefined;
   timeout: number | undefined;
   input: TInput | undefined;
@@ -321,6 +328,17 @@ export type EndpointSchemas = Partial<{
   query: StandardSchemaV1;
   body: StandardSchemaV1;
 }>;
+
+export type AuthorizeFn<
+  TServices extends HermodServiceConstructor[] = [],
+  TLogger extends Logger = ConsoleLogger,
+  TSession = unknown,
+> = (
+  ctx: FunctionContext<{}, TServices, TLogger> & {
+    header: HeaderFn;
+    session: TSession;
+  },
+) => Promise<boolean> | boolean;
 
 export type SessionFn<
   TServices extends HermodServiceConstructor[] = [],

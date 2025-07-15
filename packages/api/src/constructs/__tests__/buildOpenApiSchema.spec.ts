@@ -16,6 +16,7 @@ describe('buildOpenApiSchema', () => {
         logger: {} as any,
         timeout: undefined,
         status: undefined,
+        authorize: undefined,
         getSession: undefined,
       }),
       new Endpoint({
@@ -32,6 +33,7 @@ describe('buildOpenApiSchema', () => {
         timeout: undefined,
         status: undefined,
         getSession: undefined,
+        authorize: undefined,
       }),
     ];
 
@@ -114,6 +116,7 @@ describe('buildOpenApiSchema', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        authorize: undefined,
         description: undefined,
         status: undefined,
         getSession: undefined,
@@ -144,6 +147,7 @@ describe('buildOpenApiSchema', () => {
         output: z.array(z.object({ id: z.string() })),
         services: [],
         logger: {} as any,
+        authorize: undefined,
         timeout: undefined,
         status: undefined,
         getSession: undefined,
@@ -156,6 +160,7 @@ describe('buildOpenApiSchema', () => {
         input: {
           body: z.object({ name: z.string(), email: z.email() }),
         },
+        authorize: undefined,
         output: z.object({
           id: z.string(),
           name: z.string(),
@@ -200,6 +205,7 @@ describe('buildOpenApiSchema', () => {
         userId: (ctx as any).params.userId,
         ...(ctx as any).body,
       }),
+      authorize: undefined,
       input: {
         params: z.object({
           userId: z.string(),
@@ -300,6 +306,7 @@ describe('buildOpenApiSchema', () => {
       route: '/users/:id',
       method: 'PATCH',
       description: 'Partially update user',
+      authorize: undefined,
       fn: async (ctx) => ({ id: (ctx as any).params.id, ...(ctx as any).body }),
       input: {
         params: z.object({ id: z.string() }),
@@ -340,6 +347,7 @@ describe('buildOpenApiSchema', () => {
     const endpoint = new Endpoint({
       route: '/users/:id',
       method: 'DELETE',
+      authorize: undefined,
       description: 'Delete user',
       fn: async () => {},
       input: {
@@ -371,6 +379,7 @@ describe('buildOpenApiSchema', () => {
     const endpoint = new Endpoint({
       route: '/organizations/:orgId/projects',
       method: 'POST',
+      authorize: undefined,
       description: 'Create project',
       fn: async (ctx) => ({ id: '1', ...(ctx as any).body }),
       input: {
@@ -446,6 +455,7 @@ describe('buildOpenApiSchema', () => {
       output: undefined,
       services: [],
       logger: {} as any,
+      authorize: undefined,
       timeout: undefined,
       status: undefined,
       getSession: undefined,
@@ -482,6 +492,7 @@ describe('buildOpenApiSchema', () => {
         route: '/test',
         method: 'GET',
         fn: async () => {},
+        authorize: undefined,
         input: undefined,
         output: undefined,
         services: [],
