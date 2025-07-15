@@ -1,1 +1,1 @@
-export { StorageClient } from './StorageClient.ts';
+export type { StorageClient } from './StorageClient.ts';

@@ -21,8 +21,15 @@ export class AmazonStorageClient implements StorageClient {
   static create(
     options: AmazonStorageClientCreateOptions,
   ): AmazonStorageClient {
-    const { bucket, region, accessKeyId, acl, endpoint, secretAccessKey } =
-      options;
+    const {
+      bucket,
+      region,
+      accessKeyId,
+      acl,
+      endpoint,
+      secretAccessKey,
+      forcePathStyle = false,
+    } = options;
     const hasCredentials = accessKeyId && secretAccessKey;
     const credentials = hasCredentials
       ? { accessKeyId, secretAccessKey }
@@ -32,6 +39,7 @@ export class AmazonStorageClient implements StorageClient {
       region,
       credentials,
       endpoint,
+      forcePathStyle,
     });
 
     return new AmazonStorageClient(client, bucket, acl);
@@ -164,4 +172,5 @@ interface AmazonStorageClientCreateOptions {
   accessKeyId?: string;
   secretAccessKey?: string;
   endpoint?: string;
+  forcePathStyle?: boolean;
 }

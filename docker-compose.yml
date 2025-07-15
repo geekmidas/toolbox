@@ -30,6 +30,27 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+  minio:
+    image: minio/minio:latest
+    entrypoint: sh
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - "minio-data:/data"
+    environment:
+      - MINIO_ROOT_USER=geekmidas
+      - MINIO_ROOT_PASSWORD=geekmidas
+      - MINIO_DEFAULT_BUCKETS=geekmidas
+      - MINIO_ACCESS_KEY=geekmidas
+      - MINIO_SECRET_KEY=geekmidas
+    command: -c 'mkdir -p /data/geekmidas && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
 
 volumes:
   dbdata:
