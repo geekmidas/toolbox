@@ -98,7 +98,7 @@ export class EndpointFactory<
 
   // Create a new factory with authorization
   authorize(
-    fn: AuthorizeFn<TServices, TLogger>,
+    fn: AuthorizeFn<TServices, TLogger, TSession>,
   ): EndpointFactory<TServices, TBasePath, TLogger, TSession> {
     return new EndpointFactory({
       defaultServices: this.defaultServices,
