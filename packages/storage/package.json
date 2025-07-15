@@ -1,0 +1,27 @@
+{
+  "name": "@geekmidas/storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./aws": {
+      "import": "./dist/aws.mjs",
+      "require": "./dist/aws.cjs",
+      "types": "./src/aws.ts"
+    },
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "zod": "~3.25.67"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "~3.844.0",
+    "@aws-sdk/s3-presigned-post": "^3.844.0",
+    "@aws-sdk/s3-request-presigner": "~3.844.0"
+  }
+}

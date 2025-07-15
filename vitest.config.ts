@@ -17,7 +17,7 @@ export default defineConfig({
       include: ['packages/*/src/**/*.{ts,tsx}'],
       thresholds: {
         functions: 79,
-        lines: 63,
+        lines: 69,
         branches: 80,
       },
     },
