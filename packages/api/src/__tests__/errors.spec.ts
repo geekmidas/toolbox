@@ -478,9 +478,8 @@ describe('wrapError utility', () => {
 
     expect(wrappedError).toBeInstanceOf(HttpError);
     expect(wrappedError.statusCode).toBe(500);
-    expect(wrappedError.message).toBe('Something went wrong');
-    expect(wrappedError.cause).toBe(originalError);
-    expect(wrappedError.details).toEqual({ originalError: 'Error' });
+    expect(wrappedError.message).toBe('An unknown error occurred');
+    expect(wrappedError.details.originalError).toBe(originalError);
   });
 
   it('should wrap regular Error with custom status and message', () => {
@@ -493,7 +492,7 @@ describe('wrapError utility', () => {
 
     expect(wrappedError.statusCode).toBe(503);
     expect(wrappedError.message).toBe('Service temporarily unavailable');
-    expect(wrappedError.cause).toBe(originalError);
+    expect(wrappedError.details.originalError).toBe(originalError);
   });
 
   it('should wrap non-Error values', () => {

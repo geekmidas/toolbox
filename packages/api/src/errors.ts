@@ -337,11 +337,8 @@ export function wrapError(
     return error;
   }
 
-  if (error instanceof Error) {
-    return new HttpError(statusCode, message || error.message, {
-      cause: error,
-      details: { originalError: error.name },
-    });
+  if (error instanceof HttpError) {
+    return error;
   }
 
   return new HttpError(statusCode, message || 'An unknown error occurred', {
