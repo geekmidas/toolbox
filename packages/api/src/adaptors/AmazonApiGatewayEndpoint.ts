@@ -46,6 +46,7 @@ export abstract class AmazonApiGatewayEndpoint<
   private error(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
       onError: (req) => {
+        req.event.logger.error(req.error || {}, 'Error processing request');
         req.error = wrapError(req.error);
       },
     };
