@@ -4,7 +4,7 @@ import type {
   EmailClient,
   EmailClientConfig,
   EmailOptions,
-  PlainEmailOptions,
+  SendOptions,
   SendResult,
   TemplateNames,
   TemplatePropsFor,
@@ -20,7 +20,7 @@ export class SMTPClient<T extends TemplateRecord> implements EmailClient<T> {
     this.transporter = nodemailer.createTransport(config.smtp as any);
   }
 
-  async send(options: PlainEmailOptions): Promise<SendResult> {
+  async send(options: SendOptions): Promise<SendResult> {
     const mailOptions = {
       ...this.config.defaults,
       ...options,
