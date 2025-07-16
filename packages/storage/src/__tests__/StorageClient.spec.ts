@@ -69,7 +69,10 @@ describe('StorageClient', () => {
 
       expect(response.url).toBe('https://example.com/upload');
       expect(response.fields).toHaveLength(2);
-      expect(response.fields[0]).toEqual({ key: 'key', value: 'test/path.txt' });
+      expect(response.fields[0]).toEqual({
+        key: 'key',
+        value: 'test/path.txt',
+      });
       expect(response.fields[1]).toEqual({ key: 'acl', value: 'public-read' });
     });
 

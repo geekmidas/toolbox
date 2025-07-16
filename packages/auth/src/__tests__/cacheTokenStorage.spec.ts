@@ -15,32 +15,32 @@ describe('CacheTokenStorage', () => {
   describe('access token operations', () => {
     it('should store and retrieve access token', async () => {
       await storage.setAccessToken('test-access-token');
-      
+
       const token = await storage.getAccessToken();
-      
+
       expect(token).toBe('test-access-token');
     });
 
     it('should return null when no access token exists', async () => {
       const token = await storage.getAccessToken();
-      
+
       expect(token).toBeNull();
     });
 
     it('should store access token with TTL', async () => {
       await storage.setAccessToken('test-access-token', 3600);
-      
+
       const token = await storage.getAccessToken();
-      
+
       expect(token).toBe('test-access-token');
     });
 
     it('should overwrite existing access token', async () => {
       await storage.setAccessToken('first-token');
       await storage.setAccessToken('second-token');
-      
+
       const token = await storage.getAccessToken();
-      
+
       expect(token).toBe('second-token');
     });
   });
@@ -48,32 +48,32 @@ describe('CacheTokenStorage', () => {
   describe('refresh token operations', () => {
     it('should store and retrieve refresh token', async () => {
       await storage.setRefreshToken('test-refresh-token');
-      
+
       const token = await storage.getRefreshToken();
-      
+
       expect(token).toBe('test-refresh-token');
     });
 
     it('should return null when no refresh token exists', async () => {
       const token = await storage.getRefreshToken();
-      
+
       expect(token).toBeNull();
     });
 
     it('should store refresh token with TTL', async () => {
       await storage.setRefreshToken('test-refresh-token', 7200);
-      
+
       const token = await storage.getRefreshToken();
-      
+
       expect(token).toBe('test-refresh-token');
     });
 
     it('should overwrite existing refresh token', async () => {
       await storage.setRefreshToken('first-refresh-token');
       await storage.setRefreshToken('second-refresh-token');
-      
+
       const token = await storage.getRefreshToken();
-      
+
       expect(token).toBe('second-refresh-token');
     });
   });
@@ -82,10 +82,10 @@ describe('CacheTokenStorage', () => {
     it('should store both tokens independently', async () => {
       await storage.setAccessToken('access-token');
       await storage.setRefreshToken('refresh-token');
-      
+
       const accessToken = await storage.getAccessToken();
       const refreshToken = await storage.getRefreshToken();
-      
+
       expect(accessToken).toBe('access-token');
       expect(refreshToken).toBe('refresh-token');
     });
@@ -93,24 +93,24 @@ describe('CacheTokenStorage', () => {
     it('should clear both tokens', async () => {
       await storage.setAccessToken('access-token');
       await storage.setRefreshToken('refresh-token');
-      
+
       await storage.clearTokens();
-      
+
       const accessToken = await storage.getAccessToken();
       const refreshToken = await storage.getRefreshToken();
-      
+
       expect(accessToken).toBeNull();
       expect(refreshToken).toBeNull();
     });
 
     it('should clear tokens when some are missing', async () => {
       await storage.setAccessToken('access-token');
-      
+
       await storage.clearTokens();
-      
+
       const accessToken = await storage.getAccessToken();
       const refreshToken = await storage.getRefreshToken();
-      
+
       expect(accessToken).toBeNull();
       expect(refreshToken).toBeNull();
     });
@@ -177,7 +177,7 @@ describe('CacheTokenStorage', () => {
     it('should work with multiple cache instances', async () => {
       const cache1 = new InMemoryCache<string>();
       const cache2 = new InMemoryCache<string>();
-      
+
       const storage1 = new CacheTokenStorage(cache1);
       const storage2 = new CacheTokenStorage(cache2);
 

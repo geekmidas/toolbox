@@ -6,6 +6,4 @@ export {
   type DecodedToken,
 } from './tokenManager.js';
 
-export {
-  CacheTokenStorage,
-} from './cacheTokenStorage.js';
+export { CacheTokenStorage } from './cacheTokenStorage.js';

@@ -1,10 +1,6 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(pnpm add:*)",
-      "Bash(rm:*)",
-      "Bash(mv:*)"
-    ],
+    "allow": ["Bash(pnpm add:*)", "Bash(rm:*)", "Bash(mv:*)"],
     "deny": []
   }
 }
