@@ -37,6 +37,13 @@ export class HttpError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 
+  get body() {
+    return JSON.stringify({
+      message: this.message,
+      code: this.code,
+    });
+  }
+
   private getDefaultStatusMessage(statusCode: number): string {
     const statusMessages: Record<number, string> = {
       400: 'Bad Request',

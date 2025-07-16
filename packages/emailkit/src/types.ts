@@ -24,6 +24,10 @@ export interface PlainEmailOptions extends EmailOptions {
   html?: string;
 }
 
+export type SendOptions = Omit<PlainEmailOptions, 'from'> & {
+  from?: string | Address;
+};
+
 export interface SMTPConfig {
   host: string;
   port: number;
@@ -73,17 +77,18 @@ export type TemplatePropsFor<
 export interface EmailClientConfig<T extends TemplateRecord = TemplateRecord> {
   smtp: SMTPConfig;
   templates: T;
-  defaults?: {
+  defaults: {
     from?: string | Address;
     replyTo?: string | Address;
   };
 }
 
 export interface EmailClient<T extends TemplateRecord = TemplateRecord> {
-  send(options: PlainEmailOptions): Promise<SendResult>;
+  send(options: SendOptions): Promise<SendResult>;
   sendTemplate<K extends TemplateNames<T>>(
     template: K,
-    options: Omit<EmailOptions, 'template'> & {
+    options: Omit<EmailOptions, 'from'> & {
+      from?: string | Address;
       props: TemplatePropsFor<T, K>;
     },
   ): Promise<SendResult>;
