@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
+import { UnprocessableEntityError } from '../errors';
 import type { ConsoleLogger, Logger } from '../logger';
 import type {
   HermodServiceConstructor,
@@ -67,7 +68,7 @@ export class Endpoint<
       data,
     );
     if (parsed.issues) {
-      throw parsed.issues;
+      throw new UnprocessableEntityError('Validation failed', parsed.issues);
     }
 
     return parsed.value as InferStandardSchema<T>;

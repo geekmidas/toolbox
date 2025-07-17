@@ -41,6 +41,7 @@ export class HttpError extends Error {
     return JSON.stringify({
       message: this.message,
       code: this.code,
+      error: this.details,
     });
   }
 

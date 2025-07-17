@@ -3,7 +3,14 @@ import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../../constructs/Endpoint';
-import { HttpError, UnauthorizedError } from '../../errors';
+import {
+  BadRequestError,
+  ConflictError,
+  HttpError,
+  InternalServerError,
+  NotFoundError,
+  UnauthorizedError,
+} from '../../errors';
 import type { Logger } from '../../logger';
 import { HermodService } from '../../services';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
@@ -347,7 +354,15 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const event = createMockEvent();
       const context = createMockContext();
 
-      await expect(handler(event, context)).rejects.toThrow();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body!);
+      expect(body).toMatchObject({
+        message: 'An unknown error occurred',
+      });
+
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
     it('should register services', async () => {
@@ -412,12 +427,12 @@ describe('AmazonApiGatewayV1Endpoint', () => {
   });
 
   describe('error handling', () => {
-    it('should handle HttpError properly', async () => {
+    it('should return correct status code for HttpError', async () => {
       const endpoint = new Endpoint({
         route: '/http-error',
         method: 'GET',
         fn: async () => {
-          throw new HttpError(403, 'Forbidden');
+          throw new HttpError(403, 'Forbidden', { code: 'FORBIDDEN_ACCESS' });
         },
         input: {},
         output: z.object({ message: z.string() }),
@@ -436,10 +451,19 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const event = createMockEvent();
       const context = createMockContext();
 
-      await expect(handler(event, context)).rejects.toThrow(HttpError);
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toBe(
+        JSON.stringify({
+          message: 'Forbidden',
+          code: 'FORBIDDEN_ACCESS',
+        }),
+      );
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
-    it('should wrap non-HttpError errors', async () => {
+    it('should return 500 for non-HttpError errors', async () => {
       const endpoint = new Endpoint({
         route: '/generic-error',
         method: 'GET',
@@ -463,7 +487,181 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const event = createMockEvent();
       const context = createMockContext();
 
-      await expect(handler(event, context)).rejects.toThrow();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body!);
+      expect(body).toMatchObject({
+        message: 'An unknown error occurred',
+      });
+
+      expect(mockLogger.error).toHaveBeenCalled();
+    });
+
+    it('should preserve status codes for various HttpError subclasses', async () => {
+      const testCases = [
+        {
+          ErrorClass: UnauthorizedError,
+          statusCode: 401,
+          message: 'Unauthorized',
+        },
+        {
+          ErrorClass: BadRequestError,
+          statusCode: 400,
+          message: 'Bad Request',
+        },
+        { ErrorClass: NotFoundError, statusCode: 404, message: 'Not Found' },
+        { ErrorClass: ConflictError, statusCode: 409, message: 'Conflict' },
+        {
+          ErrorClass: InternalServerError,
+          statusCode: 500,
+          message: 'Internal Server Error',
+        },
+      ];
+
+      for (const { ErrorClass, statusCode, message } of testCases) {
+        const endpoint = new Endpoint({
+          route: `/error-${statusCode}`,
+          method: 'GET',
+          fn: async () => {
+            throw new ErrorClass(message);
+          },
+          input: {},
+          output: z.object({ message: z.string() }),
+          services: [],
+          logger: mockLogger,
+          timeout: undefined,
+          status: undefined,
+          getSession: undefined,
+          authorize: undefined,
+          description: `${statusCode} error test endpoint`,
+        });
+
+        const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+        const handler = adapter.handler;
+
+        const event = createMockEvent();
+        const context = createMockContext();
+
+        const response = await handler(event, context);
+
+        expect(response.statusCode).toBe(statusCode);
+        expect(response.body).toBe(
+          JSON.stringify({
+            message,
+            code: undefined,
+          }),
+        );
+      }
+    });
+
+    it('should return 422 for body validation errors', async () => {
+      const bodySchema = z.object({
+        name: z.string().min(3),
+        age: z.number().positive(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/validation',
+        method: 'POST',
+        fn: async () => ({ success: true }),
+        input: { body: bodySchema },
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Validation test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent({
+        httpMethod: 'POST',
+        body: JSON.stringify({ name: 'Jo', age: -5 }), // Invalid: name too short, age negative
+      });
+      const context = createMockContext();
+
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(422);
+      const body = JSON.parse(response.body!);
+      expect(body.message).toBe('Validation failed');
+      expect(body.code).toBeUndefined();
+    });
+
+    it('should return 422 for query validation errors', async () => {
+      const querySchema = z.object({
+        page: z.string().transform(Number).pipe(z.number().positive()),
+        limit: z.string().transform(Number).pipe(z.number().max(100)),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/items',
+        method: 'GET',
+        fn: async () => ({ items: [] }),
+        input: { query: querySchema },
+        output: z.object({ items: z.array(z.any()) }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Query validation test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent({
+        queryStringParameters: { page: '0', limit: '200' }, // Invalid: page not positive, limit too high
+      });
+      const context = createMockContext();
+
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(422);
+      const body = JSON.parse(response.body!);
+      expect(body.message).toBe('Validation failed');
+    });
+
+    it('should return 422 for params validation errors', async () => {
+      const paramsSchema = z.object({
+        id: z.string().uuid(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/users/:id',
+        method: 'GET',
+        fn: async ({ params }) => ({ id: params.id }),
+        input: { params: paramsSchema },
+        output: z.object({ id: z.string() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Params validation test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent({
+        pathParameters: { id: 'not-a-uuid' }, // Invalid: not a valid UUID
+      });
+      const context = createMockContext();
+
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(422);
+      const body = JSON.parse(response.body!);
+      expect(body.message).toBe('Validation failed');
     });
   });
 
@@ -568,7 +766,13 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const event = createMockEvent();
       const context = createMockContext();
 
-      await expect(handler(event, context)).rejects.toThrow(UnauthorizedError);
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body!);
+      expect(body).toMatchObject({
+        message: 'Unauthorized access to the endpoint',
+      });
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Unauthorized access attempt',
       );
@@ -617,9 +821,12 @@ describe('AmazonApiGatewayV1Endpoint', () => {
           authorization: 'Bearer invalid-token',
         },
       });
-      await expect(handler(invalidEvent, context)).rejects.toThrow(
-        UnauthorizedError,
-      );
+      const invalidResponse = await handler(invalidEvent, context);
+      const invalidResponseBody = JSON.parse(invalidResponse.body!);
+      expect(invalidResponse.statusCode).toBe(401);
+      expect(invalidResponseBody).toMatchObject({
+        message: 'Unauthorized access to the endpoint',
+      });
     });
   });
 

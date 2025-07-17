@@ -18,7 +18,7 @@ import type {
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
-import { UnauthorizedError, wrapError } from '../errors';
+import { UnauthorizedError, UnprocessableEntityError, wrapError } from '../errors';
 
 export abstract class AmazonApiGatewayEndpoint<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
@@ -47,7 +47,13 @@ export abstract class AmazonApiGatewayEndpoint<
     return {
       onError: (req) => {
         req.event.logger.error(req.error || {}, 'Error processing request');
-        req.error = wrapError(req.error);
+        const wrappedError = wrapError(req.error);
+        
+        // Set the response with the proper status code from the HttpError
+        req.response = {
+          statusCode: wrappedError.statusCode,
+          body: wrappedError.body,
+        };
       },
     };
   }
@@ -56,14 +62,22 @@ export abstract class AmazonApiGatewayEndpoint<
   private input(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
       before: async (req) => {
-        const { body, query, params } = this.getInput(req.event);
-        const headers = req.event.headers as Record<string, string>;
-        const header = Endpoint.createHeaders(headers);
+        try {
+          const { body, query, params } = this.getInput(req.event);
+          const headers = req.event.headers as Record<string, string>;
+          const header = Endpoint.createHeaders(headers);
 
-        req.event.body = (await this.endpoint.parseInput(body, 'body')) as any;
-        req.event.query = await this.endpoint.parseInput(query, 'query');
-        req.event.params = await this.endpoint.parseInput(params, 'params');
-        req.event.header = header;
+          req.event.body = (await this.endpoint.parseInput(body, 'body')) as any;
+          req.event.query = await this.endpoint.parseInput(query, 'query');
+          req.event.params = await this.endpoint.parseInput(params, 'params');
+          req.event.header = header;
+        } catch (error) {
+          // Convert validation errors to 422 Unprocessable Entity
+          if (error && typeof error === 'object' && Array.isArray(error)) {
+            throw new UnprocessableEntityError('Validation failed', error);
+          }
+          throw error;
+        }
       },
     };
   }
@@ -188,7 +202,7 @@ export type Event<
 > = {
   services: HermodServiceRecord<TServices>;
   logger: TLogger;
-  header(string): string | undefined;
+  header(key: string): string | undefined;
   session: TSession;
 } & TEvent &
   InferComposableStandardSchema<TInput>;
