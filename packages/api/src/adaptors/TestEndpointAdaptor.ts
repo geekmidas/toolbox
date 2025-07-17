@@ -46,7 +46,7 @@ export class TestEndpointAdaptor<
       header,
     });
     // @ts-ignore
-    return this.endpoint.handler({
+    const response = await this.endpoint.handler({
       body,
       query,
       params,
@@ -54,7 +54,9 @@ export class TestEndpointAdaptor<
       services: ctx.services,
       logger,
       header,
-    }) as Promise<InferStandardSchema<TOutSchema>>;
+    });
+
+    return this.endpoint.parseOutput(response);
   }
 }
 
