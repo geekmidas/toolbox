@@ -1,3 +1,5 @@
 import { defineConfig } from 'tsdown';
 
-export default defineConfig({});
+export default defineConfig({
+  external: ['@middy/core', '@valibot/to-json-schema', 'zod'],
+});
