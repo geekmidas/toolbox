@@ -3,11 +3,11 @@ import { join } from 'path';
 import type { GkmConfig } from './types.js';
 
 export async function loadConfig(): Promise<GkmConfig> {
-  const configPath = join(process.cwd(), 'gkm.config.ts');
+  const configPath = join(process.cwd(), 'gkm.config.json');
 
   if (!existsSync(configPath)) {
     throw new Error(
-      'gkm.config.ts not found. Please create a configuration file.',
+      'gkm.config.json not found. Please create a configuration file.',
     );
   }
 

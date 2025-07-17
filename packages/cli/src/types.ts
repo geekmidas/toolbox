@@ -9,7 +9,7 @@ export interface GkmConfig {
 }
 
 export interface BuildOptions {
-  provider: Provider;
+  providers: Provider[];
 }
 
 export interface RouteInfo {

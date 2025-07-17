@@ -11,7 +11,7 @@ import type {
 
 const logger = console;
 export async function buildCommand(options: BuildOptions): Promise<void> {
-  logger.log(`Building with provider: ${options.provider}`);
+  logger.log(`Building with providers: ${options.providers.join(', ')}`);
 
   const config = await loadConfig();
   logger.log(`Loading routes from: ${config.routes}`);
@@ -32,12 +32,6 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     : loggerName === 'logger'
       ? '{ logger }'
       : `{ ${loggerName} as logger }`;
-
-  const routes: RouteInfo[] = [];
-  const outputDir = join(process.cwd(), '.gkm', options.provider);
-
-  // Ensure output directory exists
-  await mkdir(outputDir, { recursive: true });
 
   // Load all endpoints using the refactored function
   const loadedEndpoints = await loadEndpoints(config.routes);
@@ -66,59 +60,70 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     };
   });
 
-  // Generate handlers based on provider
-  if (options.provider === 'server') {
-    // Generate single server file with all endpoints
-    const serverFile = await generateServerFile(
-      outputDir,
-      allEndpoints,
-      envParserPath,
-      envParserImportPattern,
-      loggerPath,
-      loggerImportPattern,
-    );
+  // Process each provider
+  for (const provider of options.providers) {
+    const routes: RouteInfo[] = [];
+    const outputDir = join(process.cwd(), '.gkm', provider);
 
-    routes.push({
-      path: '*',
-      method: 'ALL',
-      handler: relative(process.cwd(), serverFile),
-    });
+    // Ensure output directory exists
+    await mkdir(outputDir, { recursive: true });
 
-    logger.log(`Generated server app with ${allEndpoints.length} endpoints`);
-  } else {
-    // Generate individual handler files for AWS providers
-    for (const { file, exportName, routeInfo } of allEndpoints) {
-      const handlerFile = await generateHandlerFile(
+    logger.log(`\nGenerating handlers for provider: ${provider}`);
+
+    // Generate handlers based on provider
+    if (provider === 'server') {
+      // Generate single server file with all endpoints
+      const serverFile = await generateServerFile(
         outputDir,
-        file,
-        exportName,
-        options.provider,
-        routeInfo,
+        allEndpoints,
         envParserPath,
         envParserImportPattern,
+        loggerPath,
+        loggerImportPattern,
       );
 
       routes.push({
-        ...routeInfo,
-        handler: relative(process.cwd(), handlerFile).replace(
-          /\.ts$/,
-          '.handler',
-        ),
+        path: '*',
+        method: 'ALL',
+        handler: relative(process.cwd(), serverFile),
       });
 
-      logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
+      logger.log(`Generated server app with ${allEndpoints.length} endpoints`);
+    } else {
+      // Generate individual handler files for AWS providers
+      for (const { file, exportName, routeInfo } of allEndpoints) {
+        const handlerFile = await generateHandlerFile(
+          outputDir,
+          file,
+          exportName,
+          provider,
+          routeInfo,
+          envParserPath,
+          envParserImportPattern,
+        );
+
+        routes.push({
+          ...routeInfo,
+          handler: relative(process.cwd(), handlerFile).replace(
+            /\.ts$/,
+            '.handler',
+          ),
+        });
+
+        logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
+      }
     }
+
+    // Generate routes.json
+    const manifest: RoutesManifest = { routes };
+    const manifestPath = join(outputDir, 'routes.json');
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+    logger.log(
+      `Generated ${routes.length} handlers in ${relative(process.cwd(), outputDir)}`,
+    );
+    logger.log(`Routes manifest: ${relative(process.cwd(), manifestPath)}`);
   }
-
-  // Generate routes.json
-  const manifest: RoutesManifest = { routes };
-  const manifestPath = join(outputDir, 'routes.json');
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-
-  logger.log(
-    `Generated ${routes.length} handlers in ${relative(process.cwd(), outputDir)}`,
-  );
-  logger.log(`Routes manifest: ${relative(process.cwd(), manifestPath)}`);
 }
 
 async function generateServerFile(
@@ -201,7 +206,7 @@ async function generateHandlerFile(
   sourceFile: string,
   exportName: string,
   provider: Provider,
-  routeInfo: RouteInfo,
+  _routeInfo: RouteInfo,
   envParserPath: string,
   envParserImportPattern: string,
 ): Promise<string> {

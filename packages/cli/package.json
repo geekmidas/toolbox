@@ -1,10 +1,10 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.0.4",
+  "version": "0.0.7",
   "private": false,
   "type": "module",
   "bin": {
-    "gkm": "./dist/index.mjs"
+    "gkm": "./src/index.ts"
   },
   "exports": {
     ".": {

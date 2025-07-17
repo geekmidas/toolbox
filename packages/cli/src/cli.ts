@@ -10,19 +10,25 @@ const program = new Command();
 program
   .name('gkm')
   .description('GeekMidas backend framework CLI')
-  .version('0.0.2');
+  .version('0.0.2')
+  .option('--cwd <path>', 'Change working directory');
 
 program
   .command('build')
   .description('Build API handlers from endpoints')
   .option(
-    '--provider <provider>',
-    'Target provider for generated handlers',
+    '--providers <providers>',
+    'Target providers for generated handlers (comma-separated)',
     'aws-apigatewayv1',
   )
-  .action(async (options: { provider: Provider }) => {
+  .action(async (options: { providers: string }) => {
     try {
-      await buildCommand(options);
+      const globalOptions = program.opts();
+      if (globalOptions.cwd) {
+        process.chdir(globalOptions.cwd);
+      }
+      const providerList = [...new Set(options.providers.split(',').map(p => p.trim()))] as Provider[];
+      await buildCommand({ providers: providerList });
     } catch (error) {
       console.error('Build failed:', (error as Error).message);
       process.exit(1);
@@ -33,6 +39,10 @@ program
   .command('cron')
   .description('Manage cron jobs')
   .action(() => {
+    const globalOptions = program.opts();
+    if (globalOptions.cwd) {
+      process.chdir(globalOptions.cwd);
+    }
     process.stdout.write('Cron management - coming soon\n');
   });
 
@@ -40,6 +50,10 @@ program
   .command('function')
   .description('Manage serverless functions')
   .action(() => {
+    const globalOptions = program.opts();
+    if (globalOptions.cwd) {
+      process.chdir(globalOptions.cwd);
+    }
     process.stdout.write('Serverless function management - coming soon\n');
   });
 
@@ -47,6 +61,10 @@ program
   .command('api')
   .description('Manage REST API endpoints')
   .action(() => {
+    const globalOptions = program.opts();
+    if (globalOptions.cwd) {
+      process.chdir(globalOptions.cwd);
+    }
     process.stdout.write('REST API management - coming soon\n');
   });
 
@@ -60,6 +78,10 @@ program
   )
   .action(async (options: { output?: string }) => {
     try {
+      const globalOptions = program.opts();
+      if (globalOptions.cwd) {
+        process.chdir(globalOptions.cwd);
+      }
       await openapiCommand(options);
     } catch (error) {
       console.error('OpenAPI generation failed:', (error as Error).message);
