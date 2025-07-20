@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/api",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "private": false,
   "type": "module",
   "exports": {
@@ -15,9 +15,9 @@
       "types": "./src/errors.ts"
     },
     "./services": {
-      "import": "./dist/service-discovery.mjs",
-      "require": "./dist/service-discovery.cjs",
-      "types": "./src/service-discovery.ts"
+      "import": "./dist/services.mjs",
+      "require": "./dist/services.cjs",
+      "types": "./src/services.ts"
     },
     "./client": {
       "import": "./dist/client/index.mjs",
