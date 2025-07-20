@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
-import type { Service } from '../service-discovery';
+import type { Service } from '../services';
 import { Function, FunctionBuilder, type FunctionHandler } from './Function';
 import { type ComposableStandardSchema, FunctionType } from './types';
 

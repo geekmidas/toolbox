@@ -22,7 +22,7 @@ import {
   type Service,
   ServiceDiscovery,
   type ServiceRecord,
-} from '../service-discovery';
+} from '../services';
 
 export abstract class AmazonApiGatewayEndpoint<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,

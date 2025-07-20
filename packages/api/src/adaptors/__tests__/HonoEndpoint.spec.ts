@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint, type EndpointContext } from '../../constructs/Endpoint';
 import type { Logger } from '../../logger';
-import { ServiceDiscovery } from '../../service-discovery';
+import { ServiceDiscovery } from '../../services';
 import { HonoEndpoint } from '../HonoEndpoint';
 
 describe('HonoEndpointAdaptor', () => {

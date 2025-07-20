@@ -1,7 +1,7 @@
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger';
 
-import type { Service } from '../service-discovery';
+import type { Service } from '../services';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { HttpMethod } from './types';

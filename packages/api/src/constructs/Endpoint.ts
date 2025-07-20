@@ -4,11 +4,7 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { UnprocessableEntityError } from '../errors';
 import type { Logger } from '../logger';
 
-import type {
-  Service,
-  ServiceDiscovery,
-  ServiceRecord,
-} from '../service-discovery';
+import type { Service, ServiceDiscovery, ServiceRecord } from '../services';
 import {
   Function,
   type FunctionContext,

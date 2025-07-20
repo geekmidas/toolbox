@@ -2,7 +2,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { Endpoint } from './constructs/Endpoint';
 import type { HttpMethod } from './constructs/types';
-import type { Service } from './service-discovery';
+import type { Service } from './services';
 
 export async function getProjectRoot(cwd: string): Promise<string> {
   if (cwd === '/') {

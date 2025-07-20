@@ -2,11 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
 import type { HttpMethod, InferStandardSchema } from '../constructs/types';
 import type { Logger } from '../logger';
-import type {
-  Service,
-  ServiceDiscovery,
-  ServiceRecord,
-} from '../service-discovery';
+import type { Service, ServiceDiscovery, ServiceRecord } from '../services';
 
 export class TestEndpointAdaptor<
   TRoute extends string,

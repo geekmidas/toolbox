@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
-import type { Service } from '../service-discovery';
+import type { Service } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
   AuthorizeFn,

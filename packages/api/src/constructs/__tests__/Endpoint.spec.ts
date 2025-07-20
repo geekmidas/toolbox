@@ -2,7 +2,7 @@ import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import type { Logger } from '../../logger';
-import { ServiceDiscovery } from '../../service-discovery';
+import { ServiceDiscovery } from '../../services';
 import { Endpoint } from '../Endpoint';
 
 describe('Endpoint', () => {

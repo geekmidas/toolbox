@@ -5,7 +5,7 @@ import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
-import type { Service } from '../service-discovery';
+import type { Service } from '../services';
 import {
   AmazonApiGatewayEndpoint,
   type GetInputResponse,

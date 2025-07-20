@@ -17,7 +17,7 @@ import {
   type Service,
   ServiceDiscovery,
   type ServiceRecord,
-} from '../service-discovery';
+} from '../services';
 
 export class HonoEndpoint<
   TRoute extends string,
