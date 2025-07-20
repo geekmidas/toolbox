@@ -1,6 +1,8 @@
 import path from 'node:path';
 import fg from 'fast-glob';
 import { Endpoint } from './constructs/Endpoint';
+import type { HttpMethod } from './constructs/types';
+import type { Service } from './service-discovery';
 
 export async function getProjectRoot(cwd: string): Promise<string> {
   if (cwd === '/') {
@@ -26,13 +28,13 @@ export async function getProjectRoot(cwd: string): Promise<string> {
   return getProjectRoot(path.resolve(cwd, '..'));
 }
 
-export async function getEndpointsFromRoutes(
+export async function getEndpointsFromRoutes<TServices extends Service[]>(
   routes: string[],
   cwd: string,
-): Promise<Endpoint<any, any, any>[]> {
+): Promise<Endpoint<string, HttpMethod, any, any, TServices>[]> {
   const stream = fg.stream(routes, { cwd });
 
-  const endpoints: Endpoint<any, any, any>[] = [];
+  const endpoints: Endpoint<string, HttpMethod, any, any, TServices>[] = [];
 
   for await (const f of stream) {
     const routePath = path.resolve(cwd, f.toString());
@@ -40,7 +42,7 @@ export async function getEndpointsFromRoutes(
 
     const handlers = Object.values(route).filter((value) => {
       return Endpoint.isEndpoint(value);
-    }) as Endpoint<any, any, any>[];
+    }) as unknown as Endpoint<string, HttpMethod, any, any, TServices>[];
 
     endpoints.push(...handlers);
   }

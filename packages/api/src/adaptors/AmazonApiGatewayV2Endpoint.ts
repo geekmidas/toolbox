@@ -1,11 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Endpoint, EndpointSchemas } from '../constructs/Endpoint';
 import type { HttpMethod } from '../constructs/types';
-import type { ConsoleLogger, Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
+import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
+import type { Service } from '../service-discovery';
 import {
   AmazonApiGatewayEndpoint,
   type GetInputResponse,
@@ -17,8 +17,8 @@ export class AmazonApiGatewayV2Endpoint<
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > extends AmazonApiGatewayEndpoint<
   APIGatewayProxyEventV2,

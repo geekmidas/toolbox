@@ -1,8 +1,8 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-import type { ConsoleLogger, Logger } from '../../logger';
-import { HermodService, HermodServiceDiscovery } from '../../services';
+import type { Logger } from '../../logger';
+import { ServiceDiscovery } from '../../service-discovery';
 import { Endpoint } from '../Endpoint';
 
 describe('Endpoint', () => {
@@ -363,6 +363,11 @@ describe('Endpoint', () => {
       child: vi.fn(() => mockLogger),
     };
 
+    const services = ServiceDiscovery.getInstance(
+      mockLogger,
+      new EnvironmentParser({}),
+    );
+
     it('should have default authorize function that returns true', async () => {
       const endpoint = new Endpoint({
         route: '/test',
@@ -381,7 +386,7 @@ describe('Endpoint', () => {
 
       const result = await endpoint.authorize({
         header: vi.fn(),
-        services: {},
+        services,
         logger: mockLogger,
         session: {},
       });
@@ -410,7 +415,7 @@ describe('Endpoint', () => {
 
       const mockContext = {
         header: vi.fn(),
-        services: {},
+        services,
         logger: mockLogger,
         session: {},
       };
@@ -442,7 +447,7 @@ describe('Endpoint', () => {
 
       const mockContext = {
         header: vi.fn(),
-        services: {},
+        services,
         logger: mockLogger,
         session: {},
       };
@@ -477,7 +482,7 @@ describe('Endpoint', () => {
 
       const result = await endpoint.authorize({
         header: headerFn,
-        services: {},
+        services,
         logger: mockLogger,
         session: {},
       });
@@ -487,17 +492,18 @@ describe('Endpoint', () => {
     });
 
     it('should receive services in context', async () => {
-      class TestService extends HermodService<TestService> {
-        static serviceName = 'TestService' as const;
-
-        validateUser(id: string) {
-          return id === 'valid';
-        }
+      const TestService = {
+        serviceName: 'TestService' as const,
         async register() {
-          return this;
-        }
-      }
+          return {
+            validateUser(id: string) {
+              return id === 'valid';
+            },
+          };
+        },
+      };
 
+      services.addMany([TestService]);
       const endpoint = new Endpoint({
         route: '/test',
         method: 'GET',
@@ -508,28 +514,17 @@ describe('Endpoint', () => {
         logger: mockLogger,
         timeout: undefined,
         status: undefined,
-        authorize: ({ services }) => {
-          return services.TestService.validateUser('valid');
+        authorize: async ({ services }) => {
+          const service = await services.get('TestService');
+          return service.validateUser('valid');
         },
         getSession: undefined,
         description: undefined,
       });
 
-      const envParser = new EnvironmentParser({});
-      const serviceDiscovery = HermodServiceDiscovery.getInstance<any, Logger>(
-        endpoint.logger,
-        envParser,
-      );
-      const service = new TestService(
-        serviceDiscovery,
-        endpoint.logger as ConsoleLogger,
-      );
-
       const result = await endpoint.authorize({
         header: vi.fn(),
-        services: {
-          TestService: service,
-        },
+        services,
         logger: mockLogger,
         session: {},
       });
@@ -566,7 +561,7 @@ describe('Endpoint', () => {
 
       const result = await endpoint.authorize({
         header: vi.fn(),
-        services: {},
+        services,
         logger: testLogger,
         session: {},
       });
@@ -599,7 +594,7 @@ describe('Endpoint', () => {
 
       const result = await endpoint.authorize({
         header: vi.fn(),
-        services: {},
+        services,
         logger: mockLogger,
         session: mockSession,
       });
@@ -629,7 +624,7 @@ describe('Endpoint', () => {
       await expect(() =>
         endpoint.authorize({
           header: vi.fn(),
-          services: {},
+          services,
           logger: mockLogger,
           session: {},
         }),
@@ -659,7 +654,7 @@ describe('Endpoint', () => {
       await expect(
         endpoint.authorize({
           header: vi.fn(),
-          services: {},
+          services,
           logger: mockLogger,
           session: {},
         }),
@@ -696,7 +691,7 @@ describe('Endpoint', () => {
       // Test with admin role
       const adminResult = await endpoint.authorize({
         header: vi.fn().mockReturnValue('Bearer admin-token'),
-        services: {},
+        services,
         logger: mockLogger,
         session: { userId: 'admin1', role: 'admin' },
       });
@@ -706,7 +701,7 @@ describe('Endpoint', () => {
       // Test with user role
       const userResult = await endpoint.authorize({
         header: vi.fn().mockReturnValue('Bearer user-token'),
-        services: {},
+        services,
         logger: mockLogger,
         session: { userId: 'user1', role: 'user' },
       });
@@ -716,7 +711,7 @@ describe('Endpoint', () => {
       // Test with no token
       const noTokenResult = await endpoint.authorize({
         header: vi.fn().mockReturnValue(undefined),
-        services: {},
+        services,
         logger: mockLogger,
         session: { userId: 'user1', role: 'admin' },
       });

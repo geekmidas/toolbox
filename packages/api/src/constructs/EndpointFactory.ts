@@ -1,6 +1,7 @@
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
+
+import type { Service } from '../service-discovery';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { HttpMethod } from './types';
@@ -8,9 +9,9 @@ import type { HttpMethod } from './types';
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class EndpointFactory<
-  TServices extends HermodServiceConstructor[] = [],
+  TServices extends Service[] = [],
   TBasePath extends string = '',
-  TLogger extends Logger = ConsoleLogger,
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   // @ts-ignore
@@ -110,7 +111,7 @@ export class EndpointFactory<
   }
 
   // Create a new factory with services
-  services<S extends HermodServiceConstructor[]>(
+  services<S extends Service[]>(
     services: S,
   ): EndpointFactory<[...S, ...TServices], TBasePath, TLogger, TSession> {
     return new EndpointFactory<
@@ -257,9 +258,9 @@ export type JoinPaths<
 >;
 
 export interface EndpointFactoryOptions<
-  TServices extends HermodServiceConstructor[] = [],
+  TServices extends Service[] = [],
   TBasePath extends string = '',
-  TLogger extends Logger = ConsoleLogger,
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   defaultServices?: TServices;

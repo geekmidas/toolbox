@@ -4,12 +4,7 @@ import type {
   HttpMethod,
   InferComposableStandardSchema,
 } from '../constructs/types';
-import type { ConsoleLogger, Logger } from '../logger';
-import {
-  type HermodServiceConstructor,
-  HermodServiceDiscovery,
-  type HermodServiceRecord,
-} from '../services';
+import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -18,7 +13,16 @@ import type {
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
-import { UnauthorizedError, UnprocessableEntityError, wrapError } from '../errors';
+import {
+  UnauthorizedError,
+  UnprocessableEntityError,
+  wrapError,
+} from '../errors';
+import {
+  type Service,
+  ServiceDiscovery,
+  type ServiceRecord,
+} from '../service-discovery';
 
 export abstract class AmazonApiGatewayEndpoint<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
@@ -26,8 +30,8 @@ export abstract class AmazonApiGatewayEndpoint<
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   constructor(
@@ -48,7 +52,7 @@ export abstract class AmazonApiGatewayEndpoint<
       onError: (req) => {
         req.event.logger.error(req.error || {}, 'Error processing request');
         const wrappedError = wrapError(req.error);
-        
+
         // Set the response with the proper status code from the HttpError
         req.response = {
           statusCode: wrappedError.statusCode,
@@ -67,7 +71,10 @@ export abstract class AmazonApiGatewayEndpoint<
           const headers = req.event.headers as Record<string, string>;
           const header = Endpoint.createHeaders(headers);
 
-          req.event.body = (await this.endpoint.parseInput(body, 'body')) as any;
+          req.event.body = (await this.endpoint.parseInput(
+            body,
+            'body',
+          )) as any;
           req.event.query = await this.endpoint.parseInput(query, 'query');
           req.event.params = await this.endpoint.parseInput(params, 'params');
           req.event.header = header;
@@ -100,16 +107,14 @@ export abstract class AmazonApiGatewayEndpoint<
     return {
       before: async (req) => {
         const logger = req.event.logger as TLogger;
-        const serviceDiscovery = HermodServiceDiscovery.getInstance<
-          HermodServiceRecord<TServices>,
+        const serviceDiscovery = ServiceDiscovery.getInstance<
+          ServiceRecord<TServices>,
           TLogger
         >(logger, this.envParser);
 
-        const services = await serviceDiscovery.register(
-          this.endpoint.services,
-        );
+        serviceDiscovery.addMany(this.endpoint.services);
 
-        req.event.services = services;
+        req.event.services = serviceDiscovery as any;
       },
     };
   }
@@ -118,7 +123,7 @@ export abstract class AmazonApiGatewayEndpoint<
     return {
       before: async (req) => {
         const logger = req.event.logger as TLogger;
-        const services = req.event.services as HermodServiceRecord<TServices>;
+        const services = req.event.services;
         const header = req.event.header;
         const session = req.event.session as TSession;
 
@@ -144,7 +149,7 @@ export abstract class AmazonApiGatewayEndpoint<
     return {
       before: async (req) => {
         const logger = req.event.logger as TLogger;
-        const services = req.event.services as HermodServiceRecord<TServices>;
+        const services = req.event.services;
         req.event.session = (await this.endpoint.getSession({
           logger,
           services,
@@ -196,11 +201,11 @@ export abstract class AmazonApiGatewayEndpoint<
 export type Event<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
   TInput extends EndpointSchemas = {},
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > = {
-  services: HermodServiceRecord<TServices>;
+  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
   logger: TLogger;
   header(key: string): string | undefined;
   session: TSession;
@@ -210,8 +215,8 @@ export type Event<
 type Middleware<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
   TInput extends EndpointSchemas = {},
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > = MiddlewareObj<Event<TEvent, TInput, TServices, TLogger, TSession>>;
 

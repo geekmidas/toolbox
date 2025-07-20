@@ -9,23 +9,23 @@ import {
 } from '../constructs/Endpoint';
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
-import type { ConsoleLogger, Logger } from '../logger';
-import {
-  type HermodServiceConstructor,
-  HermodServiceDiscovery,
-  type HermodServiceRecord,
-} from '../services';
+import type { Logger } from '../logger';
 
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { wrapError } from '../errors';
+import {
+  type Service,
+  ServiceDiscovery,
+  type ServiceRecord,
+} from '../service-discovery';
 
 export class HonoEndpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   constructor(
@@ -58,28 +58,22 @@ export class HonoEndpoint<
     return parsed.value;
   }
   addRoute(
-    serviceDiscovery: HermodServiceDiscovery<
-      HermodServiceRecord<TServices>,
-      TLogger
-    >,
+    serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
     HonoEndpoint.addRoute(this.endpoint, serviceDiscovery, app);
   }
 
-  static async fromRoutes<
-    TLogger extends Logger,
-    TServices extends HermodServiceConstructor[],
-  >(
+  static async fromRoutes<TLogger extends Logger, TServices extends Service[]>(
     routes: string[],
     envParser: EnvironmentParser<{}>,
     app = new Hono(),
     logger: TLogger,
     cwd = process.cwd(),
   ): Promise<Hono> {
-    const endpoints = await getEndpointsFromRoutes(routes, cwd);
-    const serviceDiscovery = HermodServiceDiscovery.getInstance<
-      HermodServiceRecord<TServices>,
+    const endpoints = await getEndpointsFromRoutes<TServices>(routes, cwd);
+    const serviceDiscovery = ServiceDiscovery.getInstance<
+      ServiceRecord<TServices>,
       TLogger
     >(logger, envParser);
 
@@ -89,14 +83,11 @@ export class HonoEndpoint<
   }
 
   static addRoutes<
-    TServices extends HermodServiceConstructor[] = [],
-    TLogger extends Logger = ConsoleLogger,
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
   >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
-    serviceDiscovery: HermodServiceDiscovery<
-      HermodServiceRecord<TServices>,
-      TLogger
-    >,
+    serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
     for (const endpoint of endpoints) {
@@ -109,8 +100,8 @@ export class HonoEndpoint<
     TMethod extends HttpMethod,
     TInput extends EndpointSchemas = {},
     TOutSchema extends StandardSchemaV1 | undefined = undefined,
-    TServices extends HermodServiceConstructor[] = [],
-    TLogger extends Logger = ConsoleLogger,
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
     TSession = unknown,
   >(
     endpoint: Endpoint<
@@ -122,10 +113,7 @@ export class HonoEndpoint<
       TLogger,
       TSession
     >,
-    serviceDiscovery: HermodServiceDiscovery<
-      HermodServiceRecord<TServices>,
-      TLogger
-    >,
+    serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
     const { route } = endpoint;
@@ -154,17 +142,17 @@ export class HonoEndpoint<
           logger.debug('Processing endpoint request');
           const headerValues = c.req.header();
           const header = Endpoint.createHeaders(headerValues);
-          const services = await serviceDiscovery.register(endpoint.services);
+          serviceDiscovery.addMany(endpoint.services);
 
           const session = await endpoint.getSession({
-            services,
+            services: serviceDiscovery,
             logger,
             header,
           });
 
           const isAuthorized = await endpoint.authorize({
             header,
-            services,
+            services: serviceDiscovery,
             logger,
             session,
           });
@@ -175,7 +163,7 @@ export class HonoEndpoint<
           }
 
           const response = await endpoint.handler({
-            services,
+            services: serviceDiscovery,
             logger,
             body: c.req.valid('json'),
             query: c.req.valid('query'),

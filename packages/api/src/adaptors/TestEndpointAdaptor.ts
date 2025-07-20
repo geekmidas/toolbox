@@ -1,19 +1,20 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
 import type { HttpMethod, InferStandardSchema } from '../constructs/types';
-import type { ConsoleLogger, Logger } from '../logger';
+import type { Logger } from '../logger';
 import type {
-  HermodServiceConstructor,
-  HermodServiceRecord,
-} from '../services';
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '../service-discovery';
 
 export class TestEndpointAdaptor<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   constructor(
@@ -29,7 +30,7 @@ export class TestEndpointAdaptor<
   ) {}
 
   async request(
-    ctx: TestRequestAdaptor<TInput, TServices>,
+    ctx: TestRequestAdaptor<TInput, TServices, TLogger>,
   ): Promise<InferStandardSchema<TOutSchema>> {
     const body = await this.endpoint.parseInput(ctx.body, 'body');
     const query = await this.endpoint.parseInput(ctx.query, 'query');
@@ -62,11 +63,12 @@ export class TestEndpointAdaptor<
 
 export type TestRequestAdaptor<
   TInput extends EndpointSchemas = {},
-  TServices extends HermodServiceConstructor[] = [],
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
 > = {
   body: InferStandardSchema<TInput['body']>;
   query: InferStandardSchema<TInput['query']>;
   params: InferStandardSchema<TInput['params']>;
-  services: HermodServiceRecord<TServices>;
+  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
   headers: Record<string, string>;
 };

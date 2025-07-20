@@ -27,7 +27,9 @@ program
       if (globalOptions.cwd) {
         process.chdir(globalOptions.cwd);
       }
-      const providerList = [...new Set(options.providers.split(',').map(p => p.trim()))] as Provider[];
+      const providerList = [
+        ...new Set(options.providers.split(',').map((p) => p.trim())),
+      ] as Provider[];
       await buildCommand({ providers: providerList });
     } catch (error) {
       console.error('Build failed:', (error as Error).message);

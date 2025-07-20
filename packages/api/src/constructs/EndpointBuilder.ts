@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { ConsoleLogger, Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
+import type { Logger } from '../logger';
+import type { Service } from '../service-discovery';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
   AuthorizeFn,
@@ -15,8 +15,8 @@ export class EndpointBuilder<
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
@@ -43,7 +43,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  services<T extends HermodServiceConstructor[]>(
+  services<T extends Service[]>(
     services: T,
   ): EndpointBuilder<
     TRoute,

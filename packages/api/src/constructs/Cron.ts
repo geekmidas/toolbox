@@ -1,13 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { ConsoleLogger, Logger } from '../logger';
-import type { HermodServiceConstructor } from '../services';
+import type { Logger } from '../logger';
+import type { Service } from '../service-discovery';
 import { Function, FunctionBuilder, type FunctionHandler } from './Function';
 import { type ComposableStandardSchema, FunctionType } from './types';
 
 export class Cron<
   TInput extends ComposableStandardSchema,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
   static isCron(obj: any): obj is Cron<any, any, any, any> {
@@ -24,7 +24,7 @@ export class Cron<
     protected _schedule?: ScheduleExpression,
     input?: TInput,
     outputSchema?: OutSchema,
-    services: TServices = [] as HermodServiceConstructor[] as TServices,
+    services: TServices = [] as Service[] as TServices,
     logger?: TLogger,
   ) {
     super(
@@ -41,8 +41,8 @@ export class Cron<
 
 export class CronBuilder<
   TInput extends ComposableStandardSchema,
-  TServices extends HermodServiceConstructor[],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   private _schedule?: ScheduleExpression;

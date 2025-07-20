@@ -12,7 +12,7 @@ import {
   UnauthorizedError,
 } from '../../errors';
 import type { Logger } from '../../logger';
-import { HermodService } from '../../services';
+
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
 
 // Mock logger
@@ -30,15 +30,15 @@ const createMockLogger = (): Logger => {
 };
 
 // Mock service for testing
-class TestService extends HermodService {
-  static serviceName = 'TestService' as const;
+const TestService = {
+  serviceName: 'TestService' as const,
 
   async register() {
     return this;
-  }
+  },
 
-  async cleanup() {}
-}
+  async cleanup() {},
+};
 
 // Mock context
 const createMockContext = (): Context => ({
@@ -370,7 +370,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         route: '/with-service',
         method: 'GET',
         fn: async ({ services }) => {
-          const testService = services.TestService;
+          const testService = await services.get('TestService');
           return { hasService: !!testService };
         },
         input: {},

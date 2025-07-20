@@ -19,6 +19,11 @@
       "require": "./dist/services.cjs",
       "types": "./src/services.ts"
     },
+    "./service-discovery": {
+      "import": "./dist/service-discovery.mjs",
+      "require": "./dist/service-discovery.cjs",
+      "types": "./src/service-discovery.ts"
+    },
     "./client": {
       "import": "./dist/client/index.mjs",
       "require": "./dist/client/index.cjs",

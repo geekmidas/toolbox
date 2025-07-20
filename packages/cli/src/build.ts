@@ -110,7 +110,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
           ),
         });
 
-        logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
+        logger.log(
+          `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+        );
       }
     }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConsoleLogger, type Logger } from '../../logger';
-import { HermodService } from '../../services';
 import { EndpointFactory } from '../EndpointFactory';
 
 describe('EndpointFactory', () => {
@@ -128,13 +127,13 @@ describe('EndpointFactory', () => {
     });
 
     it('should handle authorization with different service types', async () => {
-      class AuthService extends HermodService {
-        static serviceName = 'AuthService' as const;
+      const AuthService = {
+        serviceName: 'AuthService' as const,
 
         async register() {
           return { validateToken: (token: string) => token === 'valid' };
-        }
-      }
+        },
+      };
 
       const authFn = async ({ header, services }: any) => {
         const token = header('authorization')?.replace('Bearer ', '');
@@ -240,13 +239,13 @@ describe('EndpointFactory', () => {
     it('should preserve services, auth, and logger in sub-routes', () => {
       const authFn = async () => true;
       const sessionFn = async () => ({ userId: 'user1' });
-      
-      class TestService extends HermodService {
-        static serviceName = 'TestService' as const;
+
+      const TestService = {
+        serviceName: 'TestService' as const,
         async register() {
           return {};
-        }
-      }
+        },
+      };
 
       const factory = new EndpointFactory()
         .services([TestService])
@@ -263,25 +262,25 @@ describe('EndpointFactory', () => {
   });
 
   describe('services', () => {
-    class Service1 extends HermodService {
-      static serviceName = 'Service1' as const;
+    const Service1 = {
+      serviceName: 'Service1' as const,
       async register() {
         return { method1: () => 'service1' };
-      }
-    }
+      },
+    };
 
-    class Service2 extends HermodService {
-      static serviceName = 'Service2' as const;
+    const Service2 = {
+      serviceName: 'Service2' as const,
       async register() {
         return { method2: () => 'service2' };
-      }
-    }
+      },
+    };
 
     it('should add services to factory', () => {
       const factory = new EndpointFactory().services([Service1, Service2]);
       const endpoint = factory.get('/test').handle(async ({ services }) => ({
-        result1: services.Service1.method1(),
-        result2: services.Service2.method2(),
+        result1: (await services.get(Service1.serviceName)).method1(),
+        result2: (await services.get(Service2.serviceName)).method2(),
       }));
 
       expect(endpoint.services).toEqual([Service1, Service2]);
@@ -351,14 +350,14 @@ describe('EndpointFactory', () => {
     });
 
     it('should handle session with services', () => {
-      class SessionService extends HermodService {
-        static serviceName = 'SessionService' as const;
+      const SessionService = {
+        serviceName: 'SessionService' as const,
         async register() {
           return {
             getSession: (token: string) => ({ userId: token }),
           };
-        }
-      }
+        },
+      };
 
       const sessionFn = async ({ header, services }: any) => {
         const token = header('authorization');
@@ -415,12 +414,12 @@ describe('EndpointFactory', () => {
       const sessionFn = async () => ({ userId: '123' });
       const logger: Logger = new ConsoleLogger();
 
-      class TestService extends HermodService {
-        static serviceName = 'TestService' as const;
+      const TestService = {
+        serviceName: 'TestService' as const,
         async register() {
           return {};
-        }
-      }
+        },
+      };
 
       const factory = new EndpointFactory({
         basePath: '/api',
@@ -450,12 +449,12 @@ describe('EndpointFactory', () => {
 
   describe('type safety', () => {
     it('should maintain type information through chains', () => {
-      class TypedService extends HermodService {
-        static serviceName = 'TypedService' as const;
+      const TypedService = {
+        serviceName: 'TypedService' as const,
         async register() {
           return { getData: () => ({ value: 42 }) };
-        }
-      }
+        },
+      };
 
       const factory = new EndpointFactory()
         .services([TypedService])
@@ -466,7 +465,9 @@ describe('EndpointFactory', () => {
         .body(z.object({ input: z.number() }))
         .output(z.object({ result: z.number() }))
         .handle(async ({ body, services }) => ({
-          result: body.input + services.TypedService.getData().value,
+          result:
+            body.input +
+            (await services.get(TypedService.serviceName)).getData().value,
         }));
 
       // Type assertions to ensure type safety

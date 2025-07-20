@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConsoleLogger, type Logger } from '../../logger';
-import { HermodService } from '../../services';
 import { Endpoint } from '../Endpoint';
 import { EndpointBuilder } from '../EndpointBuilder';
 import { FunctionType } from '../types';
@@ -72,19 +71,19 @@ describe('EndpointBuilder', () => {
   });
 
   describe('services', () => {
-    class TestService extends HermodService {
-      static serviceName = 'TestService' as const;
+    const TestService = {
+      serviceName: 'TestService' as const,
       async register() {
         return { getData: () => 'test data' };
-      }
-    }
+      },
+    };
 
-    class AnotherService extends HermodService {
-      static serviceName = 'AnotherService' as const;
+    const AnotherService = {
+      serviceName: 'AnotherService' as const,
       async register() {
         return { process: (input: string) => input.toUpperCase() };
-      }
-    }
+      },
+    };
 
     it('should add services to builder', () => {
       const builder = new EndpointBuilder('/users', 'GET').services([
@@ -100,18 +99,15 @@ describe('EndpointBuilder', () => {
         .services([TestService])
         .services([AnotherService]);
 
-      expect((builder as any)._services).toEqual([
-        TestService,
-        AnotherService,
-      ]);
+      expect((builder as any)._services).toEqual([TestService, AnotherService]);
     });
 
     it('should pass services to endpoint', () => {
       const endpoint = new EndpointBuilder('/users', 'GET')
         .services([TestService, AnotherService])
         .handle(async ({ services }) => ({
-          test: services.TestService.getData(),
-          another: services.AnotherService.process('hello'),
+          test: (await services.get('TestService')).getData(),
+          another: (await services.get('AnotherService')).process('hello'),
         }));
 
       expect(endpoint.services).toEqual([TestService, AnotherService]);
@@ -124,7 +120,7 @@ describe('EndpointBuilder', () => {
 
       // This should compile and provide type-safe access
       const endpoint = builder.handle(async ({ services }) => ({
-        result: services.TestService.getData(),
+        result: (await services.get('TestService')).getData(),
       }));
 
       expect(endpoint.services).toEqual([TestService]);
@@ -291,22 +287,19 @@ describe('EndpointBuilder', () => {
       const paramsSchema = z.object({ id: z.string() });
       const outputSchema = z.object({ result: z.string() });
 
-      class Service extends HermodService {
-        static serviceName = 'Service' as const;
+      const Service = {
+        serviceName: 'Service' as const,
         async register() {
           return {};
-        }
-      }
+        },
+      };
 
       const logger: Logger = new ConsoleLogger();
       const authFn = async () => true;
       const sessionFn = async () => ({ userId: '123' });
       const handler = async () => ({ result: 'success' });
 
-      const builder = new EndpointBuilder('/items/:id', 'POST');
-
-      // Set all properties
-      builder
+      const builder = new EndpointBuilder('/items/:id', 'POST')
         .body(bodySchema)
         .query(querySchema)
         .params(paramsSchema)
@@ -340,12 +333,10 @@ describe('EndpointBuilder', () => {
     });
 
     it('should handle async handlers', async () => {
-      const endpoint = new EndpointBuilder('/async', 'GET').handle(
-        async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          return { delayed: true };
-        },
-      );
+      const endpoint = new EndpointBuilder('/async', 'GET').handle(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { delayed: true };
+      });
 
       expect(endpoint).toBeInstanceOf(Endpoint);
     });

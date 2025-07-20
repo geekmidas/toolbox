@@ -3,9 +3,11 @@ import get from 'lodash.get';
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
 import type {
-  HermodServiceConstructor,
-  HermodServiceRecord,
-} from '../services.ts';
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '../service-discovery.ts';
+
 import {
   type ComposableStandardSchema,
   FunctionType,
@@ -16,8 +18,8 @@ import {
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class FunctionFactory<
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
 > {
   private defaultServices: TServices;
   constructor(
@@ -32,7 +34,7 @@ export class FunctionFactory<
   }
 
   // Create a new factory with services
-  services<S extends HermodServiceConstructor[]>(
+  services<S extends Service[]>(
     services: S,
   ): FunctionFactory<[...S, ...TServices], TLogger> {
     return new FunctionFactory<[...S, ...TServices], TLogger>(
@@ -48,8 +50,8 @@ export class FunctionFactory<
 
 export class Function<
   TInput extends ComposableStandardSchema | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   Fn extends FunctionHandler<
     TInput,
@@ -70,7 +72,7 @@ export class Function<
     public readonly type = FunctionType.Function,
     public input?: TInput,
     public outputSchema?: OutSchema,
-    public services: TServices = [] as HermodServiceConstructor[] as TServices,
+    public services: TServices = [] as Service[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
   ) {}
 }
@@ -78,14 +80,14 @@ export class Function<
 export class FunctionBuilder<
   TInput extends ComposableStandardSchema,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
 > {
   protected inputSchema?: TInput;
   protected outputSchema?: OutSchema;
   protected _timeout?: number;
 
-  public _services: TServices = [] as HermodServiceConstructor[] as TServices;
+  public _services: TServices = [] as Service[] as TServices;
   public _logger: TLogger = DEFAULT_LOGGER;
 
   static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
@@ -127,7 +129,7 @@ export class FunctionBuilder<
 
   constructor(public type = FunctionType.Function) {}
 
-  services<T extends HermodServiceConstructor[]>(
+  services<T extends Service[]>(
     services: T,
   ): FunctionBuilder<TInput, OutSchema, [...TServices, ...T], TLogger> {
     this._services = uniqBy(
@@ -176,8 +178,8 @@ export class FunctionBuilder<
 
 export type FunctionHandler<
   TInput extends ComposableStandardSchema | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
 > = (
   ctx: FunctionContext<TInput, TServices, TLogger>,
@@ -187,9 +189,9 @@ export type FunctionHandler<
 
 export type FunctionContext<
   Input extends ComposableStandardSchema | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
 > = {
-  services: HermodServiceRecord<TServices>;
+  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
   logger: TLogger;
 } & Input;

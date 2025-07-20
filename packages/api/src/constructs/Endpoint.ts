@@ -2,11 +2,13 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import { UnprocessableEntityError } from '../errors';
-import type { ConsoleLogger, Logger } from '../logger';
+import type { Logger } from '../logger';
+
 import type {
-  HermodServiceConstructor,
-  HermodServiceRecord,
-} from '../services';
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '../service-discovery';
 import {
   Function,
   type FunctionContext,
@@ -28,8 +30,8 @@ export class Endpoint<
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
   route: TRoute;
@@ -306,8 +308,8 @@ export interface EndpointOptions<
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
   TOutput extends StandardSchemaV1 | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > {
   route: TRoute;
@@ -331,8 +333,8 @@ export type EndpointSchemas = Partial<{
 }>;
 
 export type AuthorizeFn<
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > = (
   ctx: FunctionContext<{}, TServices, TLogger> & {
@@ -342,8 +344,8 @@ export type AuthorizeFn<
 ) => Promise<boolean> | boolean;
 
 export type SessionFn<
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > = (
   ctx: FunctionContext<{}, TServices, TLogger> & { header: HeaderFn },
@@ -370,11 +372,11 @@ export type HeaderFn = (key: string) => string | undefined;
 
 export type EndpointContext<
   Input extends EndpointSchemas | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   TSession = unknown,
 > = {
-  services: HermodServiceRecord<TServices>;
+  services: ServiceDiscovery<ServiceRecord<TServices>>;
   logger: TLogger;
   header: HeaderFn;
   session: TSession;
@@ -382,8 +384,8 @@ export type EndpointContext<
 
 export type EndpointHandler<
   TInput extends EndpointSchemas | undefined = undefined,
-  TServices extends HermodServiceConstructor[] = [],
-  TLogger extends Logger = ConsoleLogger,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
 > = (

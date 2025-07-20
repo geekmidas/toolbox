@@ -1,5 +1,21 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import type { ConsoleLogger, Logger } from './logger';
+import type { Logger } from './logger';
+
+/**
+ * Service interface for the new simplified service pattern.
+ * Services are objects with a serviceName and register method.
+ */
+export interface Service<TName extends string = string, TInstance = unknown> {
+  /**
+   * Unique name for the service, used for lookup via services.get()
+   */
+  serviceName: TName;
+  /**
+   * Register method that returns the actual service instance.
+   * Called once on first access, then cached.
+   */
+  register(envParser: EnvironmentParser<{}>): TInstance | Promise<TInstance>;
+}
 
 export interface HermodServiceInterface<TInstance = unknown> {
   /**
@@ -8,45 +24,25 @@ export interface HermodServiceInterface<TInstance = unknown> {
   register(): Promise<TInstance> | TInstance;
 }
 
-export abstract class HermodService<
-  TInstance = unknown,
-  TLogger extends Logger = ConsoleLogger,
-> {
-  /**
-   * The register method is called when the service is registered with the service discovery.
-   */
-  abstract register(): Promise<TInstance> | TInstance;
-  /**
-   * @param serviceDiscovery The service discovery instance to register the service with.
-   */
-  constructor(
-    readonly serviceDiscovery: HermodServiceDiscovery,
-    readonly logger: TLogger,
-  ) {}
-}
-
-export class HermodServiceDiscovery<
+export class ServiceDiscovery<
   TServices extends Record<string, unknown> = {},
-  TLogger extends Logger = ConsoleLogger,
+  TLogger extends Logger = Logger,
 > {
-  private static _instance: HermodServiceDiscovery<any, any>;
-  private services = new Map<string, HermodServiceInterface>();
+  private static _instance: ServiceDiscovery<any, any>;
+  private services = new Map<string, Service>();
   s!: TServices;
 
   static getInstance<
     T extends Record<any, unknown> = any,
-    TLogger extends Logger = ConsoleLogger,
-  >(
-    logger: TLogger,
-    envParser: EnvironmentParser<{}>,
-  ): HermodServiceDiscovery<T> {
-    if (!HermodServiceDiscovery._instance) {
-      HermodServiceDiscovery._instance = new HermodServiceDiscovery<T, TLogger>(
+    TLogger extends Logger = Logger,
+  >(logger: TLogger, envParser: EnvironmentParser<{}>): ServiceDiscovery<T> {
+    if (!ServiceDiscovery._instance) {
+      ServiceDiscovery._instance = new ServiceDiscovery<T, TLogger>(
         logger,
         envParser,
       );
     }
-    return HermodServiceDiscovery._instance as HermodServiceDiscovery<T>;
+    return ServiceDiscovery._instance as ServiceDiscovery<T>;
   }
 
   private constructor(
@@ -60,10 +56,16 @@ export class HermodServiceDiscovery<
    */
   add<TName extends string, TInstance>(
     name: TName,
-    service: HermodServiceInterface<TInstance>,
+    service: Service<TName, TInstance>,
   ): void {
     if (!this.services.has(name)) {
       this.services.set(name, service);
+    }
+  }
+
+  addMany<T extends Service[]>(services: T): void {
+    for (const service of services) {
+      this.add(service.serviceName, service);
     }
   }
 
@@ -72,9 +74,7 @@ export class HermodServiceDiscovery<
    *
    * @param services -  The services to register.
    */
-  async register<T extends HermodServiceConstructor[]>(
-    services: T,
-  ): Promise<HermodServiceRecord<T>> {
+  async register<T extends Service[]>(services: T): Promise<ServiceRecord<T>> {
     const names: ExtractServiceNames<T>[] = services.map(
       (Service) => Service.serviceName,
     ) as ExtractServiceNames<T>[];
@@ -95,7 +95,7 @@ export class HermodServiceDiscovery<
 
     const registeredServices = await this.getMany(names);
 
-    return registeredServices as unknown as HermodServiceRecord<T>;
+    return registeredServices as unknown as ServiceRecord<T>;
   }
 
   /**
@@ -111,7 +111,7 @@ export class HermodServiceDiscovery<
       throw new Error(`Service '${name}' not found in service discovery`);
     }
 
-    return service.register() as Promise<TServices[K]>;
+    return service.register(this.envParser) as Promise<TServices[K]>;
   }
   /**
    * Get multiple services from the service discovery.
@@ -137,7 +137,7 @@ export class HermodServiceDiscovery<
    * @param service - The service name or service instance to check.
    * @returns True if the service exists, false otherwise.
    */
-  has(service: string | HermodServiceConstructor): boolean {
+  has(service: string | Service): boolean {
     if (typeof service === 'string') {
       return this.services.has(service);
     }
@@ -145,42 +145,11 @@ export class HermodServiceDiscovery<
     return this.services.has(service.serviceName);
   }
 }
-/** The options bag to pass to the {@link search} method. */
-export interface HermodServiceConstructor<
-  TName extends string = string,
-  TInstance = unknown,
-  TLogger extends Logger = ConsoleLogger,
-> {
-  new (
-    serviceDiscovery: HermodServiceDiscovery,
-    logger: TLogger,
-  ): HermodService<TInstance>;
 
-  serviceName: TName;
-}
+export type ExtractServiceNames<T extends Service[]> = T[number]['serviceName'];
 
-// First, let's create a type to extract information from a service class
-type ExtractServiceInfo<T> = T extends HermodServiceConstructor<
-  infer Name,
-  infer Instance
->
-  ? { name: Name; instance: Instance }
-  : never;
-
-export type ExtractServiceName<T> = T extends HermodServiceConstructor<
-  infer Name
->
-  ? Name
-  : never;
-export type ExtractServiceNames<T> = T extends HermodServiceConstructor<
-  infer Name
->[]
-  ? Name
-  : never;
-// Now let's create a type to build a record from an array of service classes
-export type HermodServiceRecord<T extends HermodServiceConstructor[]> = {
-  [K in Extract<ExtractServiceInfo<T[number]>['name'], string>]: Extract<
-    ExtractServiceInfo<T[number]>,
-    { name: K }
-  >['instance'];
+export type ServiceRecord<T extends Service[]> = {
+  [K in T[number] as K['serviceName']]: K extends Service
+    ? Awaited<ReturnType<K['register']>>
+    : never;
 };

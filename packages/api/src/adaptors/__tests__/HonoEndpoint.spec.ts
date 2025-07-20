@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint, type EndpointContext } from '../../constructs/Endpoint';
 import type { Logger } from '../../logger';
-import { HermodService, HermodServiceDiscovery } from '../../services';
+import { ServiceDiscovery } from '../../service-discovery';
 import { HonoEndpoint } from '../HonoEndpoint';
 
 describe('HonoEndpointAdaptor', () => {
@@ -18,10 +18,7 @@ describe('HonoEndpointAdaptor', () => {
     child: vi.fn(() => mockLogger),
   };
   const envParser = new EnvironmentParser({});
-  const serviceDiscovery = HermodServiceDiscovery.getInstance(
-    mockLogger,
-    envParser,
-  );
+  const serviceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
 
   describe('addRoute', () => {
     it('should register a GET endpoint', async () => {
@@ -444,15 +441,15 @@ describe('HonoEndpointAdaptor', () => {
     });
 
     it('should provide services to endpoint handler', async () => {
-      class TestService extends HermodService {
-        static readonly serviceName = 'test' as const;
+      const TestService = {
+        serviceName: 'test' as const,
 
         async register() {
           return {
             getMessage: () => 'Hello from service',
           };
-        }
-      }
+        },
+      };
 
       const endpoint = new Endpoint({
         route: '/service-test',
@@ -460,7 +457,7 @@ describe('HonoEndpointAdaptor', () => {
         fn: async ({
           services,
         }: EndpointContext<{}, [typeof TestService], Logger>) => ({
-          message: services.test.getMessage(),
+          message: (await services.get('test')).getMessage(),
         }),
         input: undefined,
         output: undefined,
@@ -729,15 +726,15 @@ describe('HonoEndpointAdaptor', () => {
     });
 
     it('should authorize with services available', async () => {
-      class AuthService extends HermodService {
-        static readonly serviceName = 'authService' as const;
+      const AuthService = {
+        serviceName: 'authService' as const,
 
         async register() {
           return {
             isValidToken: (token: string) => token === 'valid-token',
           };
-        }
-      }
+        },
+      };
 
       const endpoint = new Endpoint({
         route: '/protected',
@@ -756,7 +753,7 @@ describe('HonoEndpointAdaptor', () => {
 
       endpoint.authorize = async ({ header, services }) => {
         const token = header('authorization')?.replace('Bearer ', '') || '';
-        return services.authService.isValidToken(token);
+        return (await services.get('authService')).isValidToken(token);
       };
 
       const adaptor = new HonoEndpoint(endpoint);
