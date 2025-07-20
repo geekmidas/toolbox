@@ -12,11 +12,13 @@ export type ComposableStandardSchema =
 
 export type InferComposableStandardSchema<T> = T extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<T>
-  : T extends { [key: string]: StandardSchemaV1 }
+  : T extends { [key: string]: StandardSchemaV1 | undefined }
     ? {
-        [K in keyof T]: StandardSchemaV1.InferOutput<T[K]>;
+        [K in keyof T as T[K] extends StandardSchemaV1 ? K : never]: T[K] extends StandardSchemaV1
+          ? StandardSchemaV1.InferOutput<T[K]>
+          : never;
       }
-    : never;
+    : {};
 
 export type RemoveUndefined<T> = {
   [K in keyof T as T[K] extends undefined ? never : K]: T[K];
