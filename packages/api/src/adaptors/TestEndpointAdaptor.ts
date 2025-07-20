@@ -1,6 +1,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
-import type { HttpMethod, InferStandardSchema } from '../constructs/types';
+import type {
+  HttpMethod,
+  InferComposableStandardSchema,
+  InferStandardSchema,
+} from '../constructs/types';
 import type { Logger } from '../logger';
 import type { Service, ServiceRecord } from '../services';
 
@@ -26,11 +30,15 @@ export class TestEndpointAdaptor<
   ) {}
 
   async request(
-    ctx: TestRequestAdaptor<TInput, TServices, TLogger>,
+    ctx: TestRequestAdaptor<TInput, TServices>,
   ): Promise<InferStandardSchema<TOutSchema>> {
-    const body = await this.endpoint.parseInput(ctx.body, 'body');
-    const query = await this.endpoint.parseInput(ctx.query, 'query');
-    const params = await this.endpoint.parseInput(ctx.params, 'params');
+    const body = await this.endpoint.parseInput((ctx as any).body, 'body');
+    const query = await this.endpoint.parseInput((ctx as any).query, 'query');
+    const params = await this.endpoint.parseInput(
+      (ctx as any).params,
+      'params',
+    );
+
     const header = Endpoint.createHeaders(ctx.headers);
     const logger = this.endpoint.logger.child({
       route: this.endpoint.route,
@@ -42,7 +50,7 @@ export class TestEndpointAdaptor<
       services: ctx.services,
       header,
     });
-    // @ts-ignore
+
     const response = await this.endpoint.handler({
       body,
       query,
@@ -51,7 +59,7 @@ export class TestEndpointAdaptor<
       services: ctx.services,
       logger,
       header,
-    });
+    } as any);
 
     return this.endpoint.parseOutput(response);
   }
@@ -60,11 +68,7 @@ export class TestEndpointAdaptor<
 export type TestRequestAdaptor<
   TInput extends EndpointSchemas = {},
   TServices extends Service[] = [],
-  TLogger extends Logger = Logger,
 > = {
-  body: InferStandardSchema<TInput['body']>;
-  query: InferStandardSchema<TInput['query']>;
-  params: InferStandardSchema<TInput['params']>;
   services: ServiceRecord<TServices>;
   headers: Record<string, string>;
-};
+} & InferComposableStandardSchema<TInput>;
