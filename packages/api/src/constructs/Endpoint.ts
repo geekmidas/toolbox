@@ -1,10 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import pick from 'lodash.pick';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import { UnprocessableEntityError } from '../errors';
 import type { Logger } from '../logger';
 
-import type { Service, ServiceDiscovery, ServiceRecord } from '../services';
+import type { Service, ServiceRecord } from '../services';
 import {
   Function,
   type FunctionContext,
@@ -107,15 +108,25 @@ export class Endpoint<
     };
   }
 
+  refineInput(
+    ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
+  ): InferComposableStandardSchema<TInput> {
+    const input = pick(ctx, [
+      'body',
+      'query',
+      'params',
+    ]) as InferComposableStandardSchema<TInput>;
+
+    return input;
+  }
+
   handler: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession> = (
     ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
   ): OutSchema extends StandardSchemaV1
     ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
     : void | Promise<void> => {
     return this.fn({
-      body: ctx.body,
-      query: ctx.query,
-      params: ctx.params,
+      ...this.refineInput(ctx),
       services: ctx.services,
       logger: ctx.logger,
       header: ctx.header,
@@ -372,7 +383,7 @@ export type EndpointContext<
   TLogger extends Logger = Logger,
   TSession = unknown,
 > = {
-  services: ServiceDiscovery<ServiceRecord<TServices>>;
+  services: ServiceRecord<TServices>;
   logger: TLogger;
   header: HeaderFn;
   session: TSession;

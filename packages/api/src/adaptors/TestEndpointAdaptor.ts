@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
 import type { HttpMethod, InferStandardSchema } from '../constructs/types';
 import type { Logger } from '../logger';
-import type { Service, ServiceDiscovery, ServiceRecord } from '../services';
+import type { Service, ServiceRecord } from '../services';
 
 export class TestEndpointAdaptor<
   TRoute extends string,
@@ -65,6 +65,6 @@ export type TestRequestAdaptor<
   body: InferStandardSchema<TInput['body']>;
   query: InferStandardSchema<TInput['query']>;
   params: InferStandardSchema<TInput['params']>;
-  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
+  services: ServiceRecord<TServices>;
   headers: Record<string, string>;
 };

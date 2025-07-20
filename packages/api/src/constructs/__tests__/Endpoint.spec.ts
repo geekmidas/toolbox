@@ -494,7 +494,7 @@ describe('Endpoint', () => {
     it('should receive services in context', async () => {
       const TestService = {
         serviceName: 'TestService' as const,
-        async register() {
+        register() {
           return {
             validateUser(id: string) {
               return id === 'valid';
@@ -503,7 +503,7 @@ describe('Endpoint', () => {
         },
       };
 
-      services.addMany([TestService]);
+      await services.register([TestService]);
       const endpoint = new Endpoint({
         route: '/test',
         method: 'GET',
@@ -515,8 +515,7 @@ describe('Endpoint', () => {
         timeout: undefined,
         status: undefined,
         authorize: async ({ services }) => {
-          const service = await services.get('TestService');
-          return service.validateUser('valid');
+          return services.TestService.validateUser('valid');
         },
         getSession: undefined,
         description: undefined,
@@ -524,7 +523,7 @@ describe('Endpoint', () => {
 
       const result = await endpoint.authorize({
         header: vi.fn(),
-        services,
+        services: { TestService: TestService.register() },
         logger: mockLogger,
         session: {},
       });

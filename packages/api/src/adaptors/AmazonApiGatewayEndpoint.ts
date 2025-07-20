@@ -13,6 +13,7 @@ import type {
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
+import set from 'lodash.set';
 import {
   UnauthorizedError,
   UnprocessableEntityError,
@@ -71,13 +72,19 @@ export abstract class AmazonApiGatewayEndpoint<
           const headers = req.event.headers as Record<string, string>;
           const header = Endpoint.createHeaders(headers);
 
-          req.event.body = (await this.endpoint.parseInput(
-            body,
-            'body',
-          )) as any;
-          req.event.query = await this.endpoint.parseInput(query, 'query');
-          req.event.params = await this.endpoint.parseInput(params, 'params');
-          req.event.header = header;
+          set(req.event, 'body', await this.endpoint.parseInput(body, 'body'));
+
+          set(
+            req.event,
+            'query',
+            await this.endpoint.parseInput(query, 'query'),
+          );
+          set(
+            req.event,
+            'params',
+            await this.endpoint.parseInput(params, 'params'),
+          );
+          set(req.event, 'header', header);
         } catch (error) {
           // Convert validation errors to 422 Unprocessable Entity
           if (error && typeof error === 'object' && Array.isArray(error)) {
@@ -112,9 +119,11 @@ export abstract class AmazonApiGatewayEndpoint<
           TLogger
         >(logger, this.envParser);
 
-        serviceDiscovery.addMany(this.endpoint.services);
+        const services = await serviceDiscovery.register(
+          this.endpoint.services,
+        );
 
-        req.event.services = serviceDiscovery as any;
+        req.event.services = services;
       },
     };
   }
@@ -162,11 +171,7 @@ export abstract class AmazonApiGatewayEndpoint<
   private async _handler(
     event: Event<TEvent, TInput, TServices, TLogger, TSession>,
   ) {
-    const input = {
-      body: event.body,
-      query: event.query,
-      params: event.params,
-    } as InferComposableStandardSchema<TInput>;
+    const input = this.endpoint.refineInput(event);
 
     const response = await this.endpoint.handler({
       header: event.header,
@@ -205,7 +210,7 @@ export type Event<
   TLogger extends Logger = Logger,
   TSession = unknown,
 > = {
-  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
+  services: ServiceRecord<TServices>;
   logger: TLogger;
   header(key: string): string | undefined;
   session: TSession;

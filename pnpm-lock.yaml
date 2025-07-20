@@ -83,6 +83,9 @@ importers:
       lodash.merge:
         specifier: ~4.6.2
         version: 4.6.2
+      lodash.pick:
+        specifier: ~4.4.0
+        version: 4.4.0
       lodash.set:
         specifier: ~4.3.2
         version: 4.3.2
@@ -117,6 +120,9 @@ importers:
       '@types/lodash.merge':
         specifier: ~4.6.9
         version: 4.6.9
+      '@types/lodash.pick':
+        specifier: ~4.4.9
+        version: 4.4.9
       '@types/lodash.set':
         specifier: ~4.3.9
         version: 4.3.9
@@ -1769,6 +1775,9 @@ packages:
   '@types/lodash.merge@4.6.9':
     resolution: {integrity: sha512-23sHDPmzd59kUgWyKGiOMO2Qb9YtqRO/x4IhkgNUiPQ1+5MUVqi6bCZeq9nBJ17msjIMbEIO5u+XW4Kz6aGUhQ==}
 
+  '@types/lodash.pick@4.4.9':
+    resolution: {integrity: sha512-hDpr96x9xHClwy1KX4/RXRejqjDFTEGbEMT3t6wYSYeFDzxmMnSKB/xHIbktRlPj8Nii2g8L5dtFDRaNFBEzUQ==}
+
   '@types/lodash.set@4.3.9':
     resolution: {integrity: sha512-KOxyNkZpbaggVmqbpr82N2tDVTx05/3/j0f50Es1prxrWB0XYf9p3QNxqcbWb7P1Q9wlvsUSlCFnwlPCIJ46PQ==}
 
@@ -2631,6 +2640,10 @@ packages:
 
   lodash.once@4.1.1:
     resolution: {integrity: sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==}
+
+  lodash.pick@4.4.0:
+    resolution: {integrity: sha512-hXt6Ul/5yWjfklSGvLQl8vM//l3FtyHZeuelpzK6mm99pNvN9yTDruNZPEJZD1oWrqo+izBmB7oUfWgcCX7s4Q==}
+    deprecated: This package is deprecated. Use destructuring assignment syntax instead.
 
   lodash.set@4.3.2:
     resolution: {integrity: sha512-4hNPN5jlm/N/HLMCO43v8BXKq9Z7QdAGc/VGrRD61w8gN9g/6jF9A4L1pbUgBLCffi0w9VsXfTOij5x8iTyFvg==}
@@ -5320,6 +5333,10 @@ snapshots:
     dependencies:
       '@types/lodash': 4.17.18
 
+  '@types/lodash.pick@4.4.9':
+    dependencies:
+      '@types/lodash': 4.17.18
+
   '@types/lodash.set@4.3.9':
     dependencies:
       '@types/lodash': 4.17.18
@@ -6155,6 +6172,8 @@ snapshots:
   lodash.merge@4.6.2: {}
 
   lodash.once@4.1.1: {}
+
+  lodash.pick@4.4.0: {}
 
   lodash.set@4.3.2: {}
 

@@ -441,24 +441,29 @@ describe('HonoEndpointAdaptor', () => {
     });
 
     it('should provide services to endpoint handler', async () => {
+      const service = {
+        getMessage: () => 'Hello from service',
+      };
       const TestService = {
         serviceName: 'test' as const,
 
         async register() {
-          return {
-            getMessage: () => 'Hello from service',
-          };
+          return service;
         },
       };
+
+      await serviceDiscovery.register([TestService]);
 
       const endpoint = new Endpoint({
         route: '/service-test',
         method: 'GET',
         fn: async ({
           services,
-        }: EndpointContext<{}, [typeof TestService], Logger>) => ({
-          message: (await services.get('test')).getMessage(),
-        }),
+        }: EndpointContext<{}, [typeof TestService], Logger>) => {
+          return {
+            message: await services.test.getMessage(),
+          };
+        },
         input: undefined,
         output: undefined,
         services: [TestService],
@@ -726,13 +731,14 @@ describe('HonoEndpointAdaptor', () => {
     });
 
     it('should authorize with services available', async () => {
+      const service = {
+        isValidToken: (token: string) => token === 'valid-token',
+      };
       const AuthService = {
         serviceName: 'authService' as const,
 
         async register() {
-          return {
-            isValidToken: (token: string) => token === 'valid-token',
-          };
+          return service;
         },
       };
 
@@ -744,17 +750,15 @@ describe('HonoEndpointAdaptor', () => {
         output: undefined,
         services: [AuthService],
         logger: mockLogger,
+        authorize: async ({ header, services }) => {
+          const token = header('authorization')?.replace('Bearer ', '') || '';
+          return (await services.authService).isValidToken(token);
+        },
         timeout: undefined,
         status: undefined,
         getSession: undefined,
-        authorize: undefined,
         description: undefined,
       });
-
-      endpoint.authorize = async ({ header, services }) => {
-        const token = header('authorization')?.replace('Bearer ', '') || '';
-        return (await services.get('authService')).isValidToken(token);
-      };
 
       const adaptor = new HonoEndpoint(endpoint);
       const app = new Hono();
@@ -765,6 +769,7 @@ describe('HonoEndpointAdaptor', () => {
       const validResponse = await app.request('/protected', {
         headers: { Authorization: 'Bearer valid-token' },
       });
+
       expect(validResponse.status).toBe(200);
 
       // Test with invalid token

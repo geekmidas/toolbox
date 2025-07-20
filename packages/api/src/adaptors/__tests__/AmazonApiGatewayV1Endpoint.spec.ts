@@ -370,7 +370,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         route: '/with-service',
         method: 'GET',
         fn: async ({ services }) => {
-          const testService = await services.get('TestService');
+          const testService = await services.TestService;
           return { hasService: !!testService };
         },
         input: {},

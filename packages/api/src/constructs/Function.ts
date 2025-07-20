@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
-import type { Service, ServiceDiscovery, ServiceRecord } from '../services.ts';
+import type { Service, ServiceRecord } from '../services.ts';
 
 import {
   type ComposableStandardSchema,
@@ -188,6 +188,6 @@ export type FunctionContext<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
 > = {
-  services: ServiceDiscovery<ServiceRecord<TServices>, TLogger>;
+  services: ServiceRecord<TServices>;
   logger: TLogger;
 } & Input;

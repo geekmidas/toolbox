@@ -106,8 +106,8 @@ describe('EndpointBuilder', () => {
       const endpoint = new EndpointBuilder('/users', 'GET')
         .services([TestService, AnotherService])
         .handle(async ({ services }) => ({
-          test: (await services.get('TestService')).getData(),
-          another: (await services.get('AnotherService')).process('hello'),
+          test: await services.TestService.getData(),
+          another: await services.AnotherService.process('hello'),
         }));
 
       expect(endpoint.services).toEqual([TestService, AnotherService]);
@@ -120,7 +120,7 @@ describe('EndpointBuilder', () => {
 
       // This should compile and provide type-safe access
       const endpoint = builder.handle(async ({ services }) => ({
-        result: (await services.get('TestService')).getData(),
+        result: await services.TestService.getData(),
       }));
 
       expect(endpoint.services).toEqual([TestService]);

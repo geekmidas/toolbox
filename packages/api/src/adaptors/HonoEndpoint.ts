@@ -138,21 +138,25 @@ export class HonoEndpoint<
           method: endpoint.method,
           path: c.req.path,
         }) as TLogger;
+
         try {
           logger.debug('Processing endpoint request');
+
           const headerValues = c.req.header();
+
           const header = Endpoint.createHeaders(headerValues);
-          serviceDiscovery.addMany(endpoint.services);
+
+          const services = await serviceDiscovery.register(endpoint.services);
 
           const session = await endpoint.getSession({
-            services: serviceDiscovery,
+            services,
             logger,
             header,
           });
 
           const isAuthorized = await endpoint.authorize({
             header,
-            services: serviceDiscovery,
+            services,
             logger,
             session,
           });
@@ -163,7 +167,7 @@ export class HonoEndpoint<
           }
 
           const response = await endpoint.handler({
-            services: serviceDiscovery,
+            services,
             logger,
             body: c.req.valid('json'),
             query: c.req.valid('query'),
@@ -179,6 +183,7 @@ export class HonoEndpoint<
 
           return c.json(response);
         } catch (e) {
+          console.error('Error processing endpoint request', e);
           logger.error(e, 'Error processing endpoint request');
           const error = wrapError(e, 500, 'Internal Server Error');
           return c.json(error, error.statusCode as ContentfulStatusCode);

@@ -30,7 +30,7 @@ export class ServiceDiscovery<
 > {
   private static _instance: ServiceDiscovery<any, any>;
   private services = new Map<string, Service>();
-  s!: TServices;
+  private instances = new Map<keyof TServices, TServices[keyof TServices]>();
 
   static getInstance<
     T extends Record<any, unknown> = any,
@@ -54,18 +54,12 @@ export class ServiceDiscovery<
    *
    * @param service The service to add.
    */
-  add<TName extends string, TInstance>(
+  private add<TName extends string, TInstance>(
     name: TName,
     service: Service<TName, TInstance>,
   ): void {
     if (!this.services.has(name)) {
       this.services.set(name, service);
-    }
-  }
-
-  addMany<T extends Service[]>(services: T): void {
-    for (const service of services) {
-      this.add(service.serviceName, service);
     }
   }
 
@@ -75,27 +69,23 @@ export class ServiceDiscovery<
    * @param services -  The services to register.
    */
   async register<T extends Service[]>(services: T): Promise<ServiceRecord<T>> {
-    const names: ExtractServiceNames<T>[] = services.map(
-      (Service) => Service.serviceName,
-    ) as ExtractServiceNames<T>[];
-    for await (const Service of services) {
-      const name = Service.serviceName;
-      if (!this.has(name)) {
-        const childLogger = this.logger.child({
-          service: `ns.serviceDiscovery.${name}`,
-        });
-        // @ts-ignore
-        const service = new Service(this, childLogger) as HermodService<
-          ExtractServiceNames<typeof services>
-        >;
-        await service.register();
-        this.add(name, service);
+    const registeredServices: ServiceRecord<T> = {} as ServiceRecord<T>;
+    for (const service of services) {
+      const name = service.serviceName;
+      if (this.instances.has(name)) {
+        registeredServices[name] = this.instances.get(
+          name,
+        ) as TServices[keyof TServices];
+        continue;
       }
+
+      const instance = await service.register(this.envParser);
+
+      this.instances.set(name, instance as TServices[keyof TServices]);
+      registeredServices[name] = instance as TServices[keyof TServices];
     }
 
-    const registeredServices = await this.getMany(names);
-
-    return registeredServices as unknown as ServiceRecord<T>;
+    return registeredServices;
   }
 
   /**
