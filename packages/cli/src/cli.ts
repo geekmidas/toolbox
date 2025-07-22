@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build.js';
 import { openapiCommand } from './openapi.js';
 import type { Provider } from './types.js';
@@ -10,7 +11,7 @@ const program = new Command();
 program
   .name('gkm')
   .description('GeekMidas backend framework CLI')
-  .version('0.0.2')
+  .version(pkg.version)
   .option('--cwd <path>', 'Change working directory');
 
 program

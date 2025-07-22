@@ -172,7 +172,7 @@ async function generateServerFile(
 
   const content = `import { HonoEndpoint } from '@geekmidas/api/hono';
 import { Endpoint } from '@geekmidas/api/server';
-import { HermodServiceDiscovery } from '@geekmidas/api/services';
+import { ServiceDiscovery } from '@geekmidas/api/services';
 import { Hono } from 'hono';
 import ${envParserImportPattern} from '${relativeEnvParserPath}';
 import ${loggerImportPattern} from '${relativeLoggerPath}';
@@ -185,7 +185,7 @@ export function createApp(app?: Hono): Hono {
     ${allExportNames.join(',\n    ')}
   ];
 
-  const serviceDiscovery = HermodServiceDiscovery.getInstance(
+  const serviceDiscovery = ServiceDiscovery.getInstance(
     logger,
     envParser
   );

@@ -618,6 +618,39 @@ jobs:
 3. **Import errors**: Verify your environment parser and logger paths are correct
 4. **TypeScript errors**: Ensure your endpoints are properly typed
 
+### Working with Different Directories
+
+When using the `--cwd` option to run the CLI from a different directory, TypeScript configuration (tsconfig.json) is resolved from the directory where the CLI is invoked, not from the target directory. This can cause issues with path resolution and type checking.
+
+**Workarounds:**
+
+1. **Run from the target directory** (recommended):
+   ```bash
+   cd /path/to/project && gkm build
+   ```
+
+2. **Use TS_NODE_PROJECT environment variable**:
+   ```bash
+   TS_NODE_PROJECT=/path/to/project/tsconfig.json gkm build --cwd /path/to/project
+   ```
+
+3. **Create a wrapper script**:
+   ```bash
+   #!/bin/bash
+   # gkm-wrapper.sh
+   cd "$1" && shift && gkm "$@"
+   ```
+   
+   Then use:
+   ```bash
+   ./gkm-wrapper.sh /path/to/project build --provider server
+   ```
+
+4. **Use npx with explicit tsx configuration**:
+   ```bash
+   cd /path/to/project && npx tsx --tsconfig ./tsconfig.json node_modules/.bin/gkm build
+   ```
+
 ### Debug Mode
 
 Enable verbose logging by setting the environment variable:
