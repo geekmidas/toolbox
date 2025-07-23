@@ -4,7 +4,9 @@
       "Bash(pnpm add:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",
-      "Bash(pnpm test:once:*)"
+      "Bash(pnpm test:once:*)",
+      "Bash(mkdir:*)",
+      "Bash(pnpm install:*)"
     ],
     "deny": []
   }

@@ -42,3 +42,4 @@ playground.ts
 src/playground/**
 
 .gkm
+.vitepress

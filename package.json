@@ -4,6 +4,9 @@
   "scripts": {
     "build": "tsdown",
     "dev": "turbo run dev",
+    "docs:dev": "pnpm --filter @geekmidas/docs dev",
+    "docs:build": "pnpm --filter @geekmidas/docs build",
+    "docs:preview": "pnpm --filter @geekmidas/docs preview",
     "lint": "biome check .",
     "fmt": "biome format . --write",
     "test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
