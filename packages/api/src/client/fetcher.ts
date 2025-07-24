@@ -84,11 +84,7 @@ export class TypedFetcher<Paths> {
 
       // Handle errors
       if (!response.ok) {
-        const error = new Error(
-          `HTTP ${response.status}: ${response.statusText}`,
-        );
-        (error as any).response = response;
-        throw error;
+        throw response;
       }
 
       // Handle empty responses (204 No Content, etc.)
@@ -105,7 +101,7 @@ export class TypedFetcher<Paths> {
     } catch (error) {
       // Apply error handler
       if (this.options.onError) {
-        await this.options.onError(error as Error);
+        await this.options.onError(error);
       }
       throw error;
     }

@@ -1,4 +1,4 @@
-import { describe, it, expectTypeOf } from 'vitest';
+import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import { e } from '../EndpointFactory';
 
@@ -9,12 +9,12 @@ describe('Endpoint type inference', () => {
       expectTypeOf(ctx).toHaveProperty('logger');
       expectTypeOf(ctx).toHaveProperty('header');
       expectTypeOf(ctx).toHaveProperty('session');
-      
+
       // These should NOT exist
       expectTypeOf(ctx).not.toHaveProperty('body');
       expectTypeOf(ctx).not.toHaveProperty('params');
       expectTypeOf(ctx).not.toHaveProperty('query');
-      
+
       return { success: true };
     });
   });
@@ -26,11 +26,11 @@ describe('Endpoint type inference', () => {
       .handle((ctx) => {
         expectTypeOf(ctx).toHaveProperty('body');
         expectTypeOf(ctx.body).toEqualTypeOf<{ name: string }>();
-        
+
         // These should NOT exist
         expectTypeOf(ctx).not.toHaveProperty('params');
         expectTypeOf(ctx).not.toHaveProperty('query');
-        
+
         return { success: true };
       });
   });
@@ -42,11 +42,11 @@ describe('Endpoint type inference', () => {
       .handle((ctx) => {
         expectTypeOf(ctx).toHaveProperty('params');
         expectTypeOf(ctx.params).toEqualTypeOf<{ id: string }>();
-        
+
         // These should NOT exist
         expectTypeOf(ctx).not.toHaveProperty('body');
         expectTypeOf(ctx).not.toHaveProperty('query');
-        
+
         return { success: true };
       });
   });
@@ -58,11 +58,11 @@ describe('Endpoint type inference', () => {
       .handle((ctx) => {
         expectTypeOf(ctx).toHaveProperty('query');
         expectTypeOf(ctx.query).toEqualTypeOf<{ filter: string }>();
-        
+
         // These should NOT exist
         expectTypeOf(ctx).not.toHaveProperty('body');
         expectTypeOf(ctx).not.toHaveProperty('params');
-        
+
         return { success: true };
       });
   });
@@ -77,11 +77,11 @@ describe('Endpoint type inference', () => {
         expectTypeOf(ctx).toHaveProperty('body');
         expectTypeOf(ctx).toHaveProperty('params');
         expectTypeOf(ctx).toHaveProperty('query');
-        
+
         expectTypeOf(ctx.body).toEqualTypeOf<{ name: string }>();
         expectTypeOf(ctx.params).toEqualTypeOf<{ id: string }>();
         expectTypeOf(ctx.query).toEqualTypeOf<{ filter: string }>();
-        
+
         return { success: true };
       });
   });

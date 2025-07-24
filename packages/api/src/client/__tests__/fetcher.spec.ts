@@ -112,9 +112,12 @@ describe('TypedFetcher', () => {
       baseURL: 'https://api.example.com',
     });
 
-    await expect(
-      client('GET /users/{id}', { params: { id: '404' } }),
-    ).rejects.toThrow('HTTP 404: Not Found');
+    const response = (await client('GET /users/{id}', {
+      params: { id: '404' },
+    }).catch((error) => error)) as Response;
+
+    const data = await response.json();
+    expect(data.message).toBe('User not found');
   });
 
   it('should handle 500 errors', async () => {
@@ -122,9 +125,12 @@ describe('TypedFetcher', () => {
       baseURL: 'https://api.example.com',
     });
 
-    await expect(client('GET /error')).rejects.toThrow(
-      'HTTP 500: Internal Server Error',
-    );
+    const response = (await client('GET /error').catch(
+      (error) => error,
+    )) as Response;
+
+    const data = await response.json();
+    expect(data.message).toBe('Internal server error');
   });
 
   it('should apply request interceptor', async () => {
@@ -173,7 +179,7 @@ describe('TypedFetcher', () => {
       client('GET /users/{id}', { params: { id: '404' } }),
     ).rejects.toThrow();
 
-    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(onError).toHaveBeenCalledWith(expect.any(Response));
   });
 
   it('should merge default headers with request headers', async () => {

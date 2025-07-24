@@ -28,13 +28,13 @@ export class TypedQueryClient<Paths> {
     endpoint: T,
     config?: FilteredRequestConfig<Paths, T>,
     options?: Omit<
-      UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+      UseQueryOptions<ExtractEndpointResponse<Paths, T>, Response>,
       'queryKey' | 'queryFn'
     >,
   ) {
     const queryKey = this.buildQueryKey(endpoint, config);
 
-    return useQuery<ExtractEndpointResponse<Paths, T>, Error>({
+    return useQuery<ExtractEndpointResponse<Paths, T>, Response>({
       queryKey,
       queryFn: () => this.fetcher(endpoint, config),
       ...options,
@@ -46,7 +46,7 @@ export class TypedQueryClient<Paths> {
     options?: Omit<
       UseMutationOptions<
         ExtractEndpointResponse<Paths, T>,
-        Error,
+        Response,
         FilteredRequestConfig<Paths, T>
       >,
       'mutationFn'
@@ -54,7 +54,7 @@ export class TypedQueryClient<Paths> {
   ) {
     return useMutation<
       ExtractEndpointResponse<Paths, T>,
-      Error,
+      Response,
       FilteredRequestConfig<Paths, T>
     >({
       mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
@@ -93,7 +93,7 @@ export function useTypedQuery<Paths, T extends QueryEndpoint<Paths>>(
   endpoint: T,
   config?: FilteredRequestConfig<Paths, T>,
   options?: Omit<
-    UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+    UseQueryOptions<ExtractEndpointResponse<Paths, T>, Response>,
     'queryKey' | 'queryFn'
   >,
 ) {
@@ -106,7 +106,7 @@ export function useTypedMutation<Paths, T extends MutationEndpoint<Paths>>(
   options?: Omit<
     UseMutationOptions<
       ExtractEndpointResponse<Paths, T>,
-      Error,
+      Response,
       FilteredRequestConfig<Paths, T>
     >,
     'mutationFn'

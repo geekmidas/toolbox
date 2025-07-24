@@ -341,7 +341,7 @@ describe('TypedQueryClient', () => {
         expect(result.current.isError).toBe(true);
       });
 
-      expect(result.current.error?.message).toContain('404');
+      expect(result.current.error?.status).toBe(404);
     });
 
     it('should handle authorization errors', async () => {
@@ -358,7 +358,7 @@ describe('TypedQueryClient', () => {
         expect(result.current.isError).toBe(true);
       });
 
-      expect(result.current.error?.message).toContain('401');
+      expect(result.current.error?.status).toBe(401);
     });
   });
 });
