@@ -72,16 +72,16 @@ describe('buildOpenApiSchema', () => {
           },
         },
         '/users/{id}': {
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+            },
+          ],
           get: {
             description: 'Get user by ID',
-            parameters: [
-              {
-                name: 'id',
-                in: 'path',
-                required: true,
-                schema: { type: 'string' },
-              },
-            ],
             responses: {
               '200': {
                 description: 'Successful response',
@@ -237,23 +237,28 @@ describe('buildOpenApiSchema', () => {
 
     const schema = await Endpoint.buildOpenApiSchema([endpoint]);
 
-    const operation = schema.paths?.['/users/{userId}/items/{itemId}']!.put!;
+    const route = schema.paths?.['/users/{userId}/items/{itemId}']!;
+    const operation = route.put!;
 
-    // Check path parameters
-    expect(operation.parameters).toContainEqual({
+    // Check path parameters at route level
+    expect(route.parameters).toBeDefined();
+    expect(route.parameters).toHaveLength(2);
+    expect(route.parameters).toContainEqual({
       name: 'userId',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
-    expect(operation.parameters).toContainEqual({
+    expect(route.parameters).toContainEqual({
       name: 'itemId',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
 
-    // Check query parameters
+    // Check query parameters at operation level
+    expect(operation.parameters).toBeDefined();
+    expect(operation.parameters).toHaveLength(2);
     expect(operation.parameters).toContainEqual({
       name: 'includeMetadata',
       in: 'query',
@@ -362,16 +367,21 @@ describe('buildOpenApiSchema', () => {
     });
 
     const schema = await Endpoint.buildOpenApiSchema([endpoint]);
-    const operation = schema.paths?.['/users/{id}']!.delete!;
+    const route = schema.paths?.['/users/{id}']!;
+    const operation = route.delete!;
 
     expect(operation.description).toBe('Delete user');
-    expect(operation.parameters).toHaveLength(1);
-    expect(operation.parameters![0]).toEqual({
+    // Path parameters should be at route level
+    expect(route.parameters).toBeDefined();
+    expect(route.parameters).toHaveLength(1);
+    expect(route.parameters![0]).toEqual({
       name: 'id',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
+    // Operation should not have parameters
+    expect(operation.parameters).toBeUndefined();
     expect(operation).not.toHaveProperty('requestBody');
   });
 
@@ -463,27 +473,32 @@ describe('buildOpenApiSchema', () => {
 
     const schema = await Endpoint.buildOpenApiSchema([endpoint]);
     const path = '/orgs/{orgId}/teams/{teamId}/members/{userId}';
-    const operation = schema.paths?.[path]!.get!;
+    const route = schema.paths?.[path]!;
+    const operation = route.get!;
 
-    expect(operation.parameters).toHaveLength(3);
-    expect(operation.parameters).toContainEqual({
+    // Path parameters should be at route level
+    expect(route.parameters).toBeDefined();
+    expect(route.parameters).toHaveLength(3);
+    expect(route.parameters).toContainEqual({
       name: 'orgId',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
-    expect(operation.parameters).toContainEqual({
+    expect(route.parameters).toContainEqual({
       name: 'teamId',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
-    expect(operation.parameters).toContainEqual({
+    expect(route.parameters).toContainEqual({
       name: 'userId',
       in: 'path',
       required: true,
       schema: { type: 'string' },
     });
+    // Operation should not have parameters since all are path params
+    expect(operation.parameters).toBeUndefined();
   });
 
   it('should not include info description when not provided', async () => {

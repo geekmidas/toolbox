@@ -118,7 +118,7 @@ describe('Endpoint', () => {
       });
     });
 
-    it('should include path parameters', async () => {
+    it('should include path parameters at route level', async () => {
       const paramsSchema = z.object({
         id: z.string(),
         subId: z.string().optional(),
@@ -148,8 +148,9 @@ describe('Endpoint', () => {
 
       const doc = spec['/users/{id}/items/{subId}'];
 
-      expect(doc.get).toHaveProperty('parameters');
-      const parameters = doc.get.parameters;
+      // Path parameters should be at route level, not method level
+      expect(doc).toHaveProperty('parameters');
+      const parameters = doc.parameters;
 
       expect(parameters).toHaveLength(2);
       expect(parameters).toContainEqual({
@@ -164,6 +165,9 @@ describe('Endpoint', () => {
         required: false,
         schema: { type: 'string' },
       });
+
+      // Method should not have path parameters
+      expect(doc.get.parameters).toBeUndefined();
     });
 
     it('should include query parameters', async () => {
@@ -268,14 +272,18 @@ describe('Endpoint', () => {
         },
       });
 
-      // Check parameters
-      expect((doc.put as any).parameters).toHaveLength(1);
-      expect((doc.put as any).parameters[0]).toEqual({
+      // Check path parameters at route level
+      expect(doc).toHaveProperty('parameters');
+      expect(doc.parameters).toHaveLength(1);
+      expect(doc.parameters?.[0]).toEqual({
         name: 'id',
         in: 'path',
         required: true,
         schema: { type: 'string' },
       });
+
+      // Method should not have path parameters
+      expect((doc.put as any).parameters).toBeUndefined();
 
       // Check response
       expect(
@@ -349,6 +357,77 @@ describe('Endpoint', () => {
       const spec = await endpoint.toOpenApi3Route();
 
       expect(spec['/users']!.get).not.toHaveProperty('requestBody');
+    });
+
+    it('should correctly separate path and query parameters', async () => {
+      const paramsSchema = z.object({
+        userId: z.string(),
+        itemId: z.string(),
+      });
+      const querySchema = z.object({
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+        filter: z.string(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/users/:userId/items/:itemId',
+        method: 'GET',
+        description: 'Get user item with pagination',
+        fn: async () => ({}),
+        input: {
+          params: paramsSchema,
+          query: querySchema,
+        },
+        output: undefined,
+        services: [],
+        logger: {} as any,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+      });
+
+      const spec = await endpoint.toOpenApi3Route();
+      const doc = spec['/users/{userId}/items/{itemId}'];
+
+      // Path parameters should be at route level
+      expect(doc.parameters).toBeDefined();
+      expect(doc.parameters).toHaveLength(2);
+      expect(doc.parameters).toContainEqual({
+        name: 'userId',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      });
+      expect(doc.parameters).toContainEqual({
+        name: 'itemId',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      });
+
+      // Query parameters should be at method level
+      expect(doc.get.parameters).toBeDefined();
+      expect(doc.get.parameters).toHaveLength(3);
+      expect(doc.get.parameters).toContainEqual({
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'number' },
+      });
+      expect(doc.get.parameters).toContainEqual({
+        name: 'offset',
+        in: 'query',
+        required: false,
+        schema: { type: 'number' },
+      });
+      expect(doc.get.parameters).toContainEqual({
+        name: 'filter',
+        in: 'query',
+        required: true,
+        schema: { type: 'string' },
+      });
     });
   });
 

@@ -6,6 +6,167 @@
  */
 
 export interface paths {
+  '/job/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Successful response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              role: string;
+              overview: string;
+              qualifications: string;
+              hourlyRate: {
+                max: number;
+                min: number;
+              };
+              dateNeeded: {
+                from: string;
+                to: string;
+              };
+              shiftHours: {
+                from: string;
+                to: string;
+              };
+              /** Format: uuid */
+              id: string;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+              /** Format: uuid */
+              businessId: string;
+              /** Format: uuid */
+              creatorId: string;
+              /** @enum {string} */
+              status: 'Draft' | 'Active' | 'Closed' | 'Filled';
+            };
+          };
+        };
+      };
+    };
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            role?: string;
+            overview?: string;
+            qualifications?: string;
+            hourlyRate?: {
+              max: number;
+              min: number;
+            };
+            dateNeeded?: {
+              from: string;
+              to: string;
+            };
+            shiftHours?: {
+              from: string;
+              to: string;
+            };
+            /** @enum {string} */
+            status?: 'Draft' | 'Active' | 'Closed' | 'Filled';
+          };
+        };
+      };
+      responses: {
+        /** @description Successful response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              role: string;
+              overview: string;
+              qualifications: string;
+              hourlyRate: {
+                max: number;
+                min: number;
+              };
+              dateNeeded: {
+                from: string;
+                to: string;
+              };
+              shiftHours: {
+                from: string;
+                to: string;
+              };
+              /** Format: uuid */
+              id: string;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+              /** Format: uuid */
+              businessId: string;
+              /** Format: uuid */
+              creatorId: string;
+              /** @enum {string} */
+              status: 'Draft' | 'Active' | 'Closed' | 'Filled';
+            };
+          };
+        };
+      };
+    };
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Successful response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              message: string;
+              /** Format: uuid */
+              id: string;
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/users': {
     get: {
       responses: {

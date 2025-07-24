@@ -294,15 +294,17 @@ describe('buildOpenApiSchema', () => {
     });
 
     expect(schema.paths!['/users/{id}']).toMatchObject({
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: { type: 'string' },
+        },
+      ],
       get: {
         description: 'Get user by ID',
         parameters: [
-          {
-            name: 'id',
-            in: 'path',
-            required: true,
-            schema: { type: 'string' },
-          },
           {
             name: 'include',
             in: 'query',
@@ -385,6 +387,7 @@ describe('buildOpenApiSchema', () => {
     const schema = await buildOpenApiSchema(endpoints);
 
     expect(Object.keys(schema.paths!['/users/{id}']!)).toEqual([
+      'parameters',
       'get',
       'put',
       'delete',

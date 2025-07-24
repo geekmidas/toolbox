@@ -170,8 +170,9 @@ export class Endpoint<
       }
     }
 
-    // Add parameters array
-    const parameters: OpenAPIV3_1.ParameterObject[] = [];
+    // Separate path and query parameters
+    const pathParameters: OpenAPIV3_1.ParameterObject[] = [];
+    const queryParameters: OpenAPIV3_1.ParameterObject[] = [];
 
     // Since the EndpointBuilder doesn't have body/search/params methods yet,
     // and the input is a composite type, we need to check if input exists
@@ -211,7 +212,7 @@ export class Endpoint<
           for (const [name, schema] of Object.entries(
             paramsSchema.properties,
           )) {
-            parameters.push({
+            pathParameters.push({
               name,
               in: 'path',
               required: paramsSchema.required?.includes(name) ?? true,
@@ -232,7 +233,7 @@ export class Endpoint<
           querySchema.properties
         ) {
           for (const [name, schema] of Object.entries(querySchema.properties)) {
-            parameters.push({
+            queryParameters.push({
               name,
               in: 'query',
               required: querySchema.required?.includes(name) ?? false,
@@ -243,14 +244,20 @@ export class Endpoint<
       }
     }
 
-    if (parameters.length > 0) {
-      operation.parameters = parameters;
+    // Only add query parameters to the operation
+    if (queryParameters.length > 0) {
+      operation.parameters = queryParameters;
     }
 
+    // Build the route object with path parameters at the route level
+    const routeObject: any = {};
+    if (pathParameters.length > 0) {
+      routeObject.parameters = pathParameters;
+    }
+    routeObject[this.method.toLowerCase()] = operation;
+
     return {
-      [this._path]: {
-        [this.method.toLowerCase()]: operation,
-      },
+      [this._path]: routeObject,
     } as EndpointOpenApiSchema<TRoute, TMethod>;
   }
 
@@ -371,6 +378,8 @@ export type EndpointOpenApiSchema<
 > = {
   [key in ConvertRouteParams<TRoute>]: {
     [key in LowerHttpMethod<TMethod>]: OpenAPIV3_1.OperationObject<{}>;
+  } & {
+    parameters?: OpenAPIV3_1.ParameterObject[];
   };
 };
 
