@@ -8,6 +8,11 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs",
       "types": "./src/index.ts"
+    },
+    "./sst": {
+      "import": "./dist/sst.mjs",
+      "require": "./dist/sst.cjs",
+      "types": "./src/sst.ts"
     }
   },
   "publishConfig": {
@@ -17,10 +22,12 @@
   "dependencies": {
     "zod": "~3.25.67",
     "lodash.set": "~4.3.2",
-    "lodash.get": "~4.4.2"
+    "lodash.get": "~4.4.2",
+    "lodash.snakecase": "~4.1.1"
   },
   "devDependencies": {
     "@types/lodash.set": "~4.3.9",
-    "@types/lodash.get": "~4.4.9"
+    "@types/lodash.get": "~4.4.9",
+    "@types/lodash.snakecase": "~4.1.9"
   }
 }

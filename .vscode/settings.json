@@ -39,6 +39,7 @@
     "paysafe",
     "pgcrypto",
     "presigner",
+    "snakecase",
     "testkit",
     "trgm",
     "tsdown",
