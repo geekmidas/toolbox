@@ -1,12 +1,12 @@
 /**
  * Objection.js-specific exports for test utilities.
  * Provides factory implementation for creating test data with Objection.js ORM.
- * 
+ *
  * @example
  * ```typescript
  * import { ObjectionFactory } from '@geekmidas/testkit/objection';
  * import { User, Post } from './models';
- * 
+ *
  * // Define builders
  * const builders = {
  *   user: (attrs) => User.fromJson({
@@ -22,7 +22,7 @@
  *     ...attrs
  *   })
  * };
- * 
+ *
  * // Define seeds
  * const seeds = {
  *   userWithPosts: async (attrs, factory) => {
@@ -31,10 +31,10 @@
  *     return user;
  *   }
  * };
- * 
+ *
  * // Create factory
  * const factory = new ObjectionFactory(builders, seeds, knex);
- * 
+ *
  * // Use in tests
  * const user = await factory.insert('user', { role: 'admin' });
  * const users = await factory.insertMany(5, 'user');

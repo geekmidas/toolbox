@@ -3,10 +3,10 @@ import snakecase from 'lodash.snakecase';
 /**
  * Converts a string to environment variable case format (UPPER_SNAKE_CASE).
  * Numbers following underscores are preserved without the underscore.
- * 
+ *
  * @param name - The string to convert
  * @returns The converted string in environment variable format
- * 
+ *
  * @example
  * environmentCase('myVariable') // 'MY_VARIABLE'
  * environmentCase('api_v2') // 'APIV2'
@@ -39,7 +39,7 @@ export enum ResourceType {
 
 /**
  * Processes a Secret resource into environment variables.
- * 
+ *
  * @param name - The resource name
  * @param value - The Secret resource
  * @returns Object with environment variable mappings
@@ -50,7 +50,7 @@ const secret = (name: string, value: Secret) => ({
 /**
  * Processes a Postgres database resource into environment variables.
  * Creates multiple environment variables for database connection details.
- * 
+ *
  * @param key - The resource key
  * @param value - The Postgres resource
  * @returns Object with database connection environment variables
@@ -68,7 +68,7 @@ const postgres = (key: string, value: Postgres) => {
 
 /**
  * Processes a Bucket resource into environment variables.
- * 
+ *
  * @param name - The resource name
  * @param value - The Bucket resource
  * @returns Object with bucket name environment variable
@@ -82,7 +82,7 @@ const bucket = (name: string, value: Bucket) => {
 
 /**
  * No-operation processor for resources that don't require environment variables.
- * 
+ *
  * @param name - The resource name (unused)
  * @param value - The resource value (unused)
  * @returns Empty object
@@ -111,10 +111,10 @@ const processors: Record<ResourceType, ResourceProcessor<any>> = {
 /**
  * Normalizes SST resources and plain strings into environment variables.
  * Processes resources based on their type and converts names to environment case.
- * 
+ *
  * @param record - Object containing resources and/or string values
  * @returns Normalized environment variables object
- * 
+ *
  * @example
  * normalizeResourceEnv({
  *   apiUrl: 'https://api.example.com',
@@ -209,7 +209,7 @@ export type Resource =
 
 /**
  * Function type for processing a specific resource type into environment variables.
- * 
+ *
  * @template K - The specific resource type
  * @param name - The resource name
  * @param value - The resource value

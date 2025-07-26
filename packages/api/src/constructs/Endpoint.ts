@@ -25,7 +25,7 @@ import {
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
  * dependency injection, session management, and authorization.
- * 
+ *
  * @template TRoute - The route path string with parameter placeholders (e.g., '/users/:id')
  * @template TMethod - The HTTP method (GET, POST, PUT, DELETE, PATCH)
  * @template TInput - The input schema definition for body, query, and path parameters
@@ -33,9 +33,9 @@ import {
  * @template TServices - Array of service dependencies to inject
  * @template TLogger - The logger instance type
  * @template TSession - The session data type
- * 
+ *
  * @extends Function - Base function construct for handler execution
- * 
+ *
  * @example
  * ```typescript
  * const endpoint = new Endpoint({
@@ -72,11 +72,11 @@ export class Endpoint<
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
-   * 
+   *
    * @param endpoints - Array of endpoint instances to document
    * @param options - Optional configuration for OpenAPI generation
    * @returns OpenAPI 3.1 specification object
-   * 
+   *
    * @example
    * ```typescript
    * const schema = await Endpoint.buildOpenApiSchema([
@@ -97,7 +97,7 @@ export class Endpoint<
 
   /**
    * Validates data against a StandardSchema.
-   * 
+   *
    * @param schema - The StandardSchema to validate against
    * @param data - The data to validate
    * @returns Validation result with value or issues
@@ -116,7 +116,7 @@ export class Endpoint<
 
   /**
    * Parses and validates data against a schema, throwing an error if validation fails.
-   * 
+   *
    * @param schema - The StandardSchema to validate against
    * @param data - The data to parse and validate
    * @returns The validated data with proper typing
@@ -143,7 +143,7 @@ export class Endpoint<
 
   /**
    * Parses and validates the endpoint output against the output schema.
-   * 
+   *
    * @param output - The raw output data to validate
    * @returns The validated output data
    * @throws {UnprocessableEntityError} When output validation fails
@@ -157,7 +157,7 @@ export class Endpoint<
 
   /**
    * Parses and validates input data for a specific input type (body, query, params).
-   * 
+   *
    * @param input - The raw input data to validate
    * @param key - The input type key ('body', 'query', or 'params')
    * @returns The validated input data for the specified key
@@ -175,7 +175,7 @@ export class Endpoint<
 
   /**
    * Parses and validates the request body against the body schema.
-   * 
+   *
    * @param body - The raw request body to validate
    * @returns The validated body data
    * @throws {UnprocessableEntityError} When body validation fails
@@ -188,10 +188,10 @@ export class Endpoint<
 
   /**
    * Creates a case-insensitive header lookup function from a headers object.
-   * 
+   *
    * @param headers - Object containing header key-value pairs
    * @returns Function to retrieve header values by case-insensitive key
-   * 
+   *
    * @example
    * ```typescript
    * const headerFn = Endpoint.createHeaders({ 'Content-Type': 'application/json' });
@@ -212,7 +212,7 @@ export class Endpoint<
 
   /**
    * Extracts and refines input data from the endpoint context.
-   * 
+   *
    * @param ctx - The endpoint execution context
    * @returns Object containing only the input data (body, query, params)
    * @internal
@@ -245,7 +245,7 @@ export class Endpoint<
 
   /**
    * Type guard to check if an object is an Endpoint instance.
-   * 
+   *
    * @param obj - The object to check
    * @returns True if the object is an Endpoint
    */
@@ -268,7 +268,7 @@ export class Endpoint<
 
   /**
    * Generates OpenAPI 3.1 schema for this endpoint.
-   * 
+   *
    * @returns OpenAPI route definition with operation details
    */
   async toOpenApi3Route(): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
@@ -388,7 +388,7 @@ export class Endpoint<
 
   /**
    * Creates a new Endpoint instance.
-   * 
+   *
    * @param options - Configuration options for the endpoint
    * @param options.fn - The handler function to execute
    * @param options.method - HTTP method
@@ -451,11 +451,11 @@ export class Endpoint<
 
 /**
  * Defines the input schema structure for an endpoint.
- * 
+ *
  * @template TBody - Schema for request body validation
- * @template TSearch - Schema for query string validation  
+ * @template TSearch - Schema for query string validation
  * @template TParams - Schema for URL path parameters validation
- * 
+ *
  * @example
  * ```typescript
  * type UserInput = EndpointInput<
@@ -477,7 +477,7 @@ export type EndpointInput<
 
 /**
  * Configuration options for creating an Endpoint instance.
- * 
+ *
  * @template TRoute - The route path string
  * @template TMethod - The HTTP method
  * @template TInput - Input schema definitions
@@ -536,14 +536,14 @@ export type EndpointSchemas = Partial<{
 
 /**
  * Function type for endpoint authorization checks.
- * 
+ *
  * @template TServices - Available service dependencies
  * @template TLogger - Logger type
  * @template TSession - Session data type
- * 
+ *
  * @param ctx - Context containing services, logger, headers, and session
  * @returns Boolean indicating if the request is authorized
- * 
+ *
  * @example
  * ```typescript
  * const authorize: AuthorizeFn = ({ session }) => {
@@ -564,14 +564,14 @@ export type AuthorizeFn<
 
 /**
  * Function type for extracting session data from a request.
- * 
+ *
  * @template TServices - Available service dependencies
  * @template TLogger - Logger type
  * @template TSession - Session data type to extract
- * 
+ *
  * @param ctx - Context containing services, logger, and headers
  * @returns The extracted session data
- * 
+ *
  * @example
  * ```typescript
  * const getSession: SessionFn<Services, Logger, UserSession> = async ({ header, services }) => {
@@ -591,9 +591,9 @@ export type SessionFn<
 /**
  * Utility type that converts Express-style route parameters to OpenAPI format.
  * Transforms ':param' syntax to '{param}' syntax.
- * 
+ *
  * @template T - The route string to convert
- * 
+ *
  * @example
  * ```typescript
  * type Route1 = ConvertRouteParams<'/users/:id'>; // '/users/{id}'
@@ -609,10 +609,10 @@ export type ConvertRouteParams<T extends string> =
 
 /**
  * Type representing the OpenAPI schema structure for an endpoint.
- * 
+ *
  * @template TRoute - The route path
  * @template TMethod - The HTTP method
- * 
+ *
  * @example
  * ```typescript
  * type Schema = EndpointOpenApiSchema<'/users/:id', 'GET'>;
@@ -637,7 +637,7 @@ export type EndpointHeaders = Map<string, string>;
 
 /**
  * Function type for retrieving HTTP header values.
- * 
+ *
  * @param key - The header name (case-insensitive)
  * @returns The header value or undefined if not found
  */
@@ -646,7 +646,7 @@ export type HeaderFn = (key: string) => string | undefined;
 /**
  * The execution context provided to endpoint handlers.
  * Contains all parsed input data, services, logger, headers, and session.
- * 
+ *
  * @template Input - The input schemas (body, query, params)
  * @template TServices - Available service dependencies
  * @template TLogger - Logger type
@@ -670,19 +670,19 @@ export type EndpointContext<
 
 /**
  * Handler function type for endpoint implementations.
- * 
+ *
  * @template TInput - Input schemas for validation
  * @template TServices - Available service dependencies
  * @template TLogger - Logger type
  * @template OutSchema - Output schema for response validation
  * @template TSession - Session data type
- * 
+ *
  * @param ctx - The endpoint execution context
  * @returns The response data (validated if OutSchema is provided)
- * 
+ *
  * @example
  * ```typescript
- * const handler: EndpointHandler<Input, [UserService], Logger, UserSchema> = 
+ * const handler: EndpointHandler<Input, [UserService], Logger, UserSchema> =
  *   async ({ params, services }) => {
  *     return await services.users.findById(params.id);
  *   };

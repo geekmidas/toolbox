@@ -3,12 +3,12 @@
 /**
  * Base HTTP Error class that extends the native Error.
  * Provides a foundation for all HTTP-specific errors with status codes and structured error responses.
- * 
+ *
  * @extends Error
- * 
+ *
  * @example
  * ```typescript
- * throw new HttpError(400, 'Bad Request', { 
+ * throw new HttpError(400, 'Bad Request', {
  *   details: { field: 'email', message: 'Invalid format' }
  * });
  * ```
@@ -27,7 +27,7 @@ export class HttpError extends Error {
 
   /**
    * Creates a new HttpError instance.
-   * 
+   *
    * @param statusCode - The HTTP status code
    * @param message - Optional error message for the client
    * @param options - Optional configuration object
@@ -66,7 +66,7 @@ export class HttpError extends Error {
   /**
    * Gets the error response body as a JSON string.
    * Used for sending the error response to clients.
-   * 
+   *
    * @returns JSON string containing message, code, and error details
    */
   get body() {
@@ -79,7 +79,7 @@ export class HttpError extends Error {
 
   /**
    * Gets the default HTTP status message for a given status code.
-   * 
+   *
    * @param statusCode - The HTTP status code
    * @returns The standard HTTP status message or 'Unknown Error' if not found
    * @private
@@ -109,7 +109,7 @@ export class HttpError extends Error {
   /**
    * Serializes the error to a JSON-compatible object.
    * Useful for logging and debugging purposes.
-   * 
+   *
    * @returns Object representation of the error including stack trace
    */
   toJSON() {
@@ -130,9 +130,9 @@ export class HttpError extends Error {
 /**
  * Represents a 400 Bad Request error.
  * Used when the client sends a malformed or invalid request.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new BadRequestError('Invalid JSON', { line: 5, column: 12 });
@@ -147,9 +147,9 @@ export class BadRequestError extends HttpError {
 /**
  * Represents a 401 Unauthorized error.
  * Used when authentication is required but not provided or invalid.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new UnauthorizedError('Invalid token');
@@ -164,9 +164,9 @@ export class UnauthorizedError extends HttpError {
 /**
  * Represents a 403 Forbidden error.
  * Used when the client is authenticated but lacks permission for the resource.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new ForbiddenError('Insufficient permissions', { required: 'admin' });
@@ -181,9 +181,9 @@ export class ForbiddenError extends HttpError {
 /**
  * Represents a 404 Not Found error.
  * Used when the requested resource doesn't exist.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new NotFoundError('User not found', { userId: '123' });
@@ -198,9 +198,9 @@ export class NotFoundError extends HttpError {
 /**
  * Represents a 405 Method Not Allowed error.
  * Used when the HTTP method is not supported for the requested resource.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new MethodNotAllowedError('DELETE not supported', ['GET', 'POST', 'PUT']);
@@ -221,9 +221,9 @@ export class MethodNotAllowedError extends HttpError {
 /**
  * Represents a 409 Conflict error.
  * Used when the request conflicts with the current state of the resource.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new ConflictError('Email already exists', { email: 'user@example.com' });
@@ -238,9 +238,9 @@ export class ConflictError extends HttpError {
 /**
  * Represents a 422 Unprocessable Entity error.
  * Used when the request is well-formed but contains semantic errors.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new UnprocessableEntityError('Validation failed', {
@@ -264,9 +264,9 @@ export class UnprocessableEntityError extends HttpError {
 /**
  * Represents a 429 Too Many Requests error.
  * Used when the client has exceeded rate limits.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new TooManyRequestsError('Rate limit exceeded', 60); // retry after 60 seconds
@@ -289,9 +289,9 @@ export class TooManyRequestsError extends HttpError {
 /**
  * Represents a 500 Internal Server Error.
  * Used for unexpected server-side errors.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new InternalServerError('Database connection failed');
@@ -306,9 +306,9 @@ export class InternalServerError extends HttpError {
 /**
  * Represents a 501 Not Implemented error.
  * Used when the server doesn't support the requested functionality.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new NotImplementedError('WebSocket support not implemented');
@@ -323,9 +323,9 @@ export class NotImplementedError extends HttpError {
 /**
  * Represents a 502 Bad Gateway error.
  * Used when the server receives an invalid response from an upstream server.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new BadGatewayError('Upstream server error');
@@ -340,9 +340,9 @@ export class BadGatewayError extends HttpError {
 /**
  * Represents a 503 Service Unavailable error.
  * Used when the server is temporarily unable to handle requests.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new ServiceUnavailableError('Maintenance in progress', 300); // retry after 5 minutes
@@ -363,9 +363,9 @@ export class ServiceUnavailableError extends HttpError {
 /**
  * Represents a 504 Gateway Timeout error.
  * Used when the server doesn't receive a timely response from an upstream server.
- * 
+ *
  * @extends HttpError
- * 
+ *
  * @example
  * ```typescript
  * throw new GatewayTimeoutError('Upstream server timeout');
@@ -460,18 +460,18 @@ const factoryHandlers: Record<
 /**
  * Creates an HTTP error with type-safe options based on the status code.
  * Provides IntelliSense support for status-code-specific options.
- * 
+ *
  * @overload For known status codes with specific options
  * @param statusCode - A valid HTTP status code from the registry
  * @param message - Optional error message
  * @param options - Status-code-specific options
  * @returns The appropriate HttpError subclass
- * 
+ *
  * @example
  * ```typescript
  * // TypeScript knows allowedMethods is valid for 405
  * createHttpError(405, 'Method not allowed', { allowedMethods: ['GET', 'POST'] });
- * 
+ *
  * // TypeScript knows retryAfter is valid for 429
  * createHttpError(429, 'Rate limited', { retryAfter: 60 });
  * ```
@@ -505,7 +505,7 @@ export function createHttpError(
 /**
  * Type-safe error creation utilities with descriptive method names.
  * Provides a fluent API for creating specific HTTP errors.
- * 
+ *
  * @example
  * ```typescript
  * createError.notFound('User not found');
@@ -559,10 +559,10 @@ export const createError = {
 /**
  * Type guard to check if an error is an HttpError.
  * Works with both instanceof checks and duck typing.
- * 
+ *
  * @param error - The error to check
  * @returns True if the error is an HttpError
- * 
+ *
  * @example
  * ```typescript
  * try {
@@ -586,10 +586,10 @@ export function isHttpError(error: unknown): error is HttpError {
 
 /**
  * Type guard to check if an error is a client error (4xx status code).
- * 
+ *
  * @param error - The error to check
  * @returns True if the error is an HttpError with a 4xx status code
- * 
+ *
  * @example
  * ```typescript
  * if (isClientError(error)) {
@@ -605,10 +605,10 @@ export function isClientError(error: unknown): error is HttpError {
 
 /**
  * Type guard to check if an error is a server error (5xx status code).
- * 
+ *
  * @param error - The error to check
  * @returns True if the error is an HttpError with a 5xx status code
- * 
+ *
  * @example
  * ```typescript
  * if (isServerError(error)) {
@@ -627,12 +627,12 @@ export function isServerError(error: unknown): error is HttpError {
 /**
  * Wraps an unknown error into an HttpError.
  * If the error is already an HttpError, returns it unchanged.
- * 
+ *
  * @param error - The error to wrap
  * @param statusCode - The HTTP status code to use (defaults to 500)
  * @param message - Optional message to override the original error message
  * @returns An HttpError instance
- * 
+ *
  * @example
  * ```typescript
  * try {
@@ -721,7 +721,7 @@ export enum HttpStatusCode {
 /**
  * Namespace containing all HTTP error classes.
  * Useful for importing all error types at once.
- * 
+ *
  * @example
  * ```typescript
  * import { HttpErrors } from '@geekmidas/api/errors';

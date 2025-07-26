@@ -3,10 +3,10 @@ import { Client } from 'pg';
 /**
  * Creates a PostgreSQL client connected to the 'postgres' database.
  * Extracts connection details from the provided URI.
- * 
+ *
  * @param uri - PostgreSQL connection URI
  * @returns Object containing the target database name and client instance
- * 
+ *
  * @example
  * ```typescript
  * const { database, db } = await setupClient('postgresql://user:pass@localhost:5432/mydb');
@@ -41,7 +41,7 @@ const logger = console;
  * Abstract base class for PostgreSQL database migration utilities.
  * Provides database creation, migration, and cleanup functionality for testing.
  * Subclasses must implement the migrate() method to define migration logic.
- * 
+ *
  * @example
  * ```typescript
  * class MyMigrator extends PostgresMigrator {
@@ -50,13 +50,13 @@ const logger = console;
  *     await this.runMigrations();
  *   }
  * }
- * 
+ *
  * // Use in tests
  * const migrator = new MyMigrator('postgresql://localhost:5432/test_db');
  * const cleanup = await migrator.start();
- * 
+ *
  * // Run tests...
- * 
+ *
  * // Clean up
  * await cleanup();
  * ```
@@ -64,7 +64,7 @@ const logger = console;
 export abstract class PostgresMigrator {
   /**
    * Creates a new PostgresMigrator instance.
-   * 
+   *
    * @param uri - PostgreSQL connection URI
    */
   constructor(private uri: string) {}
@@ -72,7 +72,7 @@ export abstract class PostgresMigrator {
   /**
    * Abstract method to be implemented by subclasses.
    * Should contain the migration logic for setting up database schema.
-   * 
+   *
    * @returns Promise that resolves when migrations are complete
    */
   abstract migrate(): Promise<void>;
@@ -80,7 +80,7 @@ export abstract class PostgresMigrator {
   /**
    * Creates a PostgreSQL database if it doesn't already exist.
    * Connects to the 'postgres' database to check and create the target database.
-   * 
+   *
    * @param uri - PostgreSQL connection URI
    * @returns Object indicating whether the database already existed
    * @private
@@ -110,7 +110,7 @@ export abstract class PostgresMigrator {
   /**
    * Drops a PostgreSQL database.
    * Used for cleanup after tests are complete.
-   * 
+   *
    * @param uri - PostgreSQL connection URI
    * @throws Error if database cannot be dropped
    * @private
@@ -128,16 +128,16 @@ export abstract class PostgresMigrator {
   /**
    * Starts the migration process by creating the database and running migrations.
    * Returns a cleanup function that will drop the database when called.
-   * 
+   *
    * @returns Async cleanup function that drops the created database
-   * 
+   *
    * @example
    * ```typescript
    * const migrator = new MyMigrator('postgresql://localhost:5432/test_db');
-   * 
+   *
    * // Start migrations and get cleanup function
    * const cleanup = await migrator.start();
-   * 
+   *
    * try {
    *   // Run your tests here
    *   await runTests();

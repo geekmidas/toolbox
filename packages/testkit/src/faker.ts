@@ -6,7 +6,7 @@ import { faker as baseFaker } from '@faker-js/faker';
  * Atomic counter implementation for thread-safe sequence generation.
  * Provides a clean abstraction for generating sequential numbers in tests.
  * While JavaScript is single-threaded, this class makes the intent explicit.
- * 
+ *
  * @example
  * ```typescript
  * const counter = new AtomicCounter(100);
@@ -64,15 +64,15 @@ class AtomicCounter {
  * Generates random timestamp fields for database records.
  * Creates a createdAt date in the past and an updatedAt date between creation and now.
  * Milliseconds are set to 0 for cleaner database storage.
- * 
+ *
  * @returns Object with createdAt and updatedAt Date fields
- * 
+ *
  * @example
  * ```typescript
  * const { createdAt, updatedAt } = timestamps();
  * console.log(createdAt); // 2023-05-15T10:30:00.000Z
  * console.log(updatedAt); // 2023-11-20T14:45:00.000Z
- * 
+ *
  * // Use in factory
  * const user = {
  *   name: 'John Doe',
@@ -96,10 +96,10 @@ export function timestamps(): Timestamps {
 /**
  * Generates a reverse domain name identifier.
  * Useful for creating unique identifiers that follow domain naming conventions.
- * 
+ *
  * @param suffix - Optional suffix to append to the identifier
  * @returns A reverse domain name string (e.g., "com.example.feature123")
- * 
+ *
  * @example
  * ```typescript
  * console.log(identifier()); // "com.example.widget1"
@@ -126,10 +126,10 @@ const sequences = new Map<string, AtomicCounter>();
  * Generates sequential numbers for a named sequence.
  * Useful for creating unique IDs or numbered test data.
  * Each named sequence maintains its own counter.
- * 
+ *
  * @param name - The sequence name (default: 'default')
  * @returns The next number in the sequence
- * 
+ *
  * @example
  * ```typescript
  * console.log(sequence()); // 1
@@ -137,7 +137,7 @@ const sequences = new Map<string, AtomicCounter>();
  * console.log(sequence('user')); // 1
  * console.log(sequence('user')); // 2
  * console.log(sequence()); // 3
- * 
+ *
  * // Use in factories
  * const email = `user${sequence('email')}@example.com`;
  * ```
@@ -154,17 +154,17 @@ export function sequence(name = 'default'): number {
 /**
  * Resets a named sequence counter to a specific value.
  * Useful for resetting sequences between test suites.
- * 
+ *
  * @param name - The sequence name to reset (default: 'default')
  * @param value - The new starting value (default: 0)
- * 
+ *
  * @example
  * ```typescript
  * sequence('user'); // 1
  * sequence('user'); // 2
  * resetSequence('user');
  * sequence('user'); // 1
- * 
+ *
  * resetSequence('order', 1000);
  * sequence('order'); // 1001
  * ```
@@ -181,14 +181,14 @@ export function resetSequence(name = 'default', value = 0): void {
 /**
  * Resets all sequence counters.
  * Useful for cleaning up between test suites to ensure predictable sequences.
- * 
+ *
  * @example
  * ```typescript
  * // In test setup
  * beforeEach(() => {
  *   resetAllSequences();
  * });
- * 
+ *
  * it('starts sequences from 1', () => {
  *   expect(sequence()).toBe(1);
  *   expect(sequence('user')).toBe(1);
@@ -202,9 +202,9 @@ export function resetAllSequences(): void {
 /**
  * Generates a random price as a number.
  * Converts faker's string price to a numeric value.
- * 
+ *
  * @returns A random price number
- * 
+ *
  * @example
  * ```typescript
  * const productPrice = price(); // 29.99
@@ -218,15 +218,15 @@ function price(): number {
 /**
  * Enhanced faker instance with additional utility methods for testing.
  * Extends @faker-js/faker with custom methods for common test data generation patterns.
- * 
+ *
  * @example
  * ```typescript
  * import { faker } from '@geekmidas/testkit';
- * 
+ *
  * // Use standard faker methods
  * const name = faker.person.fullName();
  * const email = faker.internet.email();
- * 
+ *
  * // Use custom extensions
  * const { createdAt, updatedAt } = faker.timestamps();
  * const id = faker.identifier('user');

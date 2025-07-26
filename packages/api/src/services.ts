@@ -4,20 +4,20 @@ import type { Logger } from './logger';
 /**
  * Service interface for the new simplified service pattern.
  * Services are objects with a serviceName and register method.
- * 
+ *
  * @template TName - The literal string type for the service name
  * @template TInstance - The type of the service instance that will be registered
- * 
+ *
  * @example
  * ```typescript
  * class DatabaseService implements Service<'database', Database> {
  *   serviceName = 'database' as const;
- *   
+ *
  *   async register(envParser: EnvironmentParser<{}>): Promise<Database> {
  *     const config = envParser.create((get) => ({
  *       url: get('DATABASE_URL').string()
  *     })).parse();
- *     
+ *
  *     return new Database(config.url);
  *   }
  * }
@@ -38,7 +38,7 @@ export interface Service<TName extends string = string, TInstance = unknown> {
 /**
  * Legacy service interface for backwards compatibility.
  * Consider using the newer Service interface instead.
- * 
+ *
  * @template TInstance - The type of the service instance
  * @deprecated Use Service interface instead
  */
@@ -52,10 +52,10 @@ export interface HermodServiceInterface<TInstance = unknown> {
 /**
  * Service discovery container that manages service registration and retrieval.
  * Implements a singleton pattern with lazy initialization of services.
- * 
+ *
  * @template TServices - Record type mapping service names to their instance types
  * @template TLogger - Logger type for internal logging
- * 
+ *
  * @example
  * ```typescript
  * // Define service types
@@ -64,17 +64,17 @@ export interface HermodServiceInterface<TInstance = unknown> {
  *   cache: CacheService;
  *   auth: AuthService;
  * }
- * 
+ *
  * // Get service discovery instance
  * const discovery = ServiceDiscovery.getInstance<MyServices>(logger, envParser);
- * 
+ *
  * // Register services
  * await discovery.register([
  *   new DatabaseService(),
  *   new CacheService(),
  *   new AuthService()
  * ]);
- * 
+ *
  * // Retrieve services
  * const db = await discovery.get('database');
  * const { cache, auth } = await discovery.getMany(['cache', 'auth']);
@@ -94,13 +94,13 @@ export class ServiceDiscovery<
   /**
    * Gets the singleton instance of ServiceDiscovery.
    * Creates a new instance if one doesn't exist.
-   * 
+   *
    * @template T - Record type mapping service names to their instance types
    * @template TLogger - Logger type for internal logging
    * @param logger - Logger instance for service logging
    * @param envParser - Environment parser for service configuration
    * @returns The ServiceDiscovery singleton instance
-   * 
+   *
    * @example
    * ```typescript
    * const services = ServiceDiscovery.getInstance<MyServices>(logger, envParser);
@@ -121,7 +121,7 @@ export class ServiceDiscovery<
 
   /**
    * Private constructor to enforce singleton pattern.
-   * 
+   *
    * @param logger - Logger instance for service logging
    * @param envParser - Environment parser for service configuration
    * @private
@@ -157,7 +157,7 @@ export class ServiceDiscovery<
    * @template T - Array type of services to register
    * @param services - Array of services to register
    * @returns Promise resolving to a record of service names to instances
-   * 
+   *
    * @example
    * ```typescript
    * const services = await discovery.register([
@@ -165,7 +165,7 @@ export class ServiceDiscovery<
    *   new CacheService(),
    *   new AuthService()
    * ]);
-   * 
+   *
    * // services = {
    * //   database: Database instance,
    * //   cache: CacheService instance,
@@ -201,7 +201,7 @@ export class ServiceDiscovery<
    * @param name - The name of the service to get
    * @returns Promise resolving to the service instance
    * @throws {Error} If the service is not registered
-   * 
+   *
    * @example
    * ```typescript
    * const database = await discovery.get('database');
@@ -224,7 +224,7 @@ export class ServiceDiscovery<
    * @template K - Array of service name keys
    * @param names - Array of service names to retrieve
    * @returns Promise resolving to an object containing the service instances
-   * 
+   *
    * @example
    * ```typescript
    * const { database, cache, auth } = await discovery.getMany([
@@ -252,13 +252,13 @@ export class ServiceDiscovery<
    *
    * @param service - The service name or service instance to check
    * @returns True if the service exists, false otherwise
-   * 
+   *
    * @example
    * ```typescript
    * if (discovery.has('database')) {
    *   const db = await discovery.get('database');
    * }
-   * 
+   *
    * // Or check with service instance
    * const dbService = new DatabaseService();
    * if (!discovery.has(dbService)) {
@@ -277,9 +277,9 @@ export class ServiceDiscovery<
 
 /**
  * Utility type to extract service names from an array of services.
- * 
+ *
  * @template T - Array of Service types
- * 
+ *
  * @example
  * ```typescript
  * type Names = ExtractServiceNames<[DatabaseService, CacheService]>;
@@ -291,9 +291,9 @@ export type ExtractServiceNames<T extends Service[]> = T[number]['serviceName'];
 /**
  * Utility type to create a record type from an array of services.
  * Maps service names to their registered instance types.
- * 
+ *
  * @template T - Array of Service types
- * 
+ *
  * @example
  * ```typescript
  * type MyServiceRecord = ServiceRecord<[DatabaseService, CacheService]>;

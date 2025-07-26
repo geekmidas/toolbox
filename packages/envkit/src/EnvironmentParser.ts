@@ -5,13 +5,13 @@ import { z } from 'zod/v4';
 /**
  * Parses and validates configuration objects against Zod schemas.
  * Handles nested configurations and aggregates validation errors.
- * 
+ *
  * @template TResponse - The shape of the configuration object
  */
 export class ConfigParser<TResponse extends EmptyObject> {
   /**
    * Creates a new ConfigParser instance.
-   * 
+   *
    * @param config - The configuration object to parse
    */
   constructor(private readonly config: TResponse) {}
@@ -71,9 +71,9 @@ export class ConfigParser<TResponse extends EmptyObject> {
  * Parses environment variables with type-safe validation using Zod schemas.
  * Provides a fluent API for defining environment variable schemas with automatic
  * error context enrichment.
- * 
+ *
  * @template T - The type of the configuration object (typically process.env)
- * 
+ *
  * @example
  * ```typescript
  * const config = new EnvironmentParser(process.env)
@@ -89,7 +89,7 @@ export class ConfigParser<TResponse extends EmptyObject> {
 export class EnvironmentParser<T extends EmptyObject> {
   /**
    * Creates a new EnvironmentParser instance.
-   * 
+   *
    * @param config - The configuration object to parse (typically process.env)
    */
   constructor(private readonly config: T) {}
@@ -97,7 +97,7 @@ export class EnvironmentParser<T extends EmptyObject> {
   /**
    * Wraps a Zod schema to intercept parse/safeParse calls and enrich error messages
    * with environment variable context.
-   * 
+   *
    * @param schema - The Zod schema to wrap
    * @param name - The environment variable name for error context
    * @returns A wrapped Zod schema with enhanced error reporting
@@ -172,7 +172,7 @@ export class EnvironmentParser<T extends EmptyObject> {
   /**
    * Creates a proxied version of the Zod object that wraps all schema creators
    * to provide enhanced error messages with environment variable context.
-   * 
+   *
    * @param name - The environment variable name
    * @returns A proxied Zod object with wrapped schema creators
    */
@@ -234,7 +234,7 @@ export class EnvironmentParser<T extends EmptyObject> {
 /**
  * Infers the TypeScript type of a configuration object based on its Zod schemas.
  * Recursively processes nested objects and extracts types from Zod schemas.
- * 
+ *
  * @template T - The configuration object type
  */
 export type InferConfig<T extends EmptyObject> = {
@@ -248,7 +248,7 @@ export type InferConfig<T extends EmptyObject> = {
 /**
  * Function type for fetching environment variables with Zod validation.
  * Returns a Zod object scoped to a specific environment variable.
- * 
+ *
  * @template TPath - The environment variable path type
  * @param name - The environment variable name
  * @returns A Zod object for defining the schema
@@ -260,7 +260,7 @@ export type EnvFetcher<TPath extends string = string> = (
 /**
  * Function type for building environment configuration objects.
  * Takes an EnvFetcher and returns a configuration object with Zod schemas.
- * 
+ *
  * @template TResponse - The response configuration object type
  * @param get - The environment variable fetcher function
  * @returns The configuration object with Zod schemas

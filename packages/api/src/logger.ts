@@ -1,12 +1,12 @@
 /**
  * Logging function type that supports both structured and simple logging.
  * Can be called with an object for structured logging or just a message string.
- * 
+ *
  * @example
  * ```typescript
  * // Structured logging with context object
  * logger.info({ userId: 123, action: 'login' }, 'User logged in');
- * 
+ *
  * // Simple string logging
  * logger.info('Application started');
  * ```
@@ -21,7 +21,7 @@ export type LogFn = {
 /**
  * Standard logger interface with multiple log levels and child logger support.
  * Follows common logging patterns with structured logging capabilities.
- * 
+ *
  * @interface Logger
  */
 export interface Logger {
@@ -40,7 +40,7 @@ export interface Logger {
   /**
    * Creates a child logger with additional context.
    * Child loggers inherit parent context and add their own.
-   * 
+   *
    * @param obj - Additional context to include in all child logger calls
    * @returns A new Logger instance with merged context
    */
@@ -50,15 +50,15 @@ export interface Logger {
 /**
  * Console-based logger implementation that outputs to standard console methods.
  * Supports structured logging with automatic timestamp injection and context inheritance.
- * 
+ *
  * @implements {Logger}
- * 
+ *
  * @example
  * ```typescript
  * const logger = new ConsoleLogger({ app: 'myApp', version: '1.0.0' });
  * logger.info({ userId: 123 }, 'User action performed');
  * // Output: { app: 'myApp', version: '1.0.0', userId: 123, ts: 1234567890 } User action performed
- * 
+ *
  * const childLogger = logger.child({ module: 'auth' });
  * childLogger.debug({ action: 'validate' }, 'Validating token');
  * // Output: { app: 'myApp', version: '1.0.0', module: 'auth', action: 'validate', ts: 1234567891 } Validating token
@@ -67,14 +67,14 @@ export interface Logger {
 export class ConsoleLogger implements Logger {
   /**
    * Creates a new ConsoleLogger instance.
-   * 
+   *
    * @param data - Initial context data to include in all log messages
    */
   constructor(readonly data: object = {}) {}
 
   /**
    * Creates a logging function that merges context data and adds timestamps.
-   * 
+   *
    * @param logMethod - The console method to use (e.g., console.log, console.error)
    * @returns A LogFn that handles both structured and simple logging
    * @private
@@ -109,10 +109,10 @@ export class ConsoleLogger implements Logger {
   /**
    * Creates a child logger with additional context data.
    * The child logger inherits all context from the parent and adds its own.
-   * 
+   *
    * @param obj - Additional context data for the child logger
    * @returns A new ConsoleLogger instance with merged context
-   * 
+   *
    * @example
    * ```typescript
    * const parentLogger = new ConsoleLogger({ app: 'myApp' });
@@ -136,14 +136,14 @@ export class ConsoleLogger implements Logger {
  * logger.info({ action: 'start' }, 'Application starting');
  * // Logs: { app: 'myApp', action: 'start', ts: 1234567890 } Application starting
  * ```
- * 
+ *
  * @example Child logger usage
  * ```typescript
  * const childLogger = logger.child({ module: 'auth' });
  * childLogger.debug({ userId: 123 }, 'User authenticated');
  * // Logs: { app: 'myApp', module: 'auth', userId: 123, ts: 1234567891 } User authenticated
  * ```
- * 
+ *
  * @example Error logging with context
  * ```typescript
  * try {
