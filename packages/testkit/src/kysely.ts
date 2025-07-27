@@ -10,6 +10,8 @@ import { IsolationLevel } from './VitestTransactionIsolator';
 
 export { KyselyFactory } from './KyselyFactory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
+export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
+export { IsolationLevel } from './VitestTransactionIsolator';
 
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Kysely.
