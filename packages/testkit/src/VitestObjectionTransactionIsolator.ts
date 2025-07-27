@@ -60,7 +60,8 @@ export class VitestObjectionTransactionIsolator extends VitestPostgresTransactio
     level: IsolationLevel,
     fn: (trx: Knex.Transaction) => Promise<void>,
   ): Promise<void> {
-    const isolationLevel = level.toUpperCase() as Lowercase<IsolationLevel>;
+    const isolationLevel = level.toLowerCase() as Lowercase<IsolationLevel>;
+
     await conn.transaction(
       async (trx) => {
         await fn(trx);

@@ -162,7 +162,9 @@ export async function createTestTables(
 /**
  * Creates test tables using Knex
  */
-async function createTestTablesKnex(trx: Knex.Transaction): Promise<void> {
+export async function createTestTablesKnex(
+  trx: Knex.Transaction,
+): Promise<void> {
   // Create users table
   await trx.schema.createTable('users', (table) => {
     table.bigIncrements('id').primary();
