@@ -1,4 +1,6 @@
-import { Client } from 'pg';
+import pg from 'pg';
+
+const { Client } = pg;
 
 /**
  * Creates a PostgreSQL client connected to the 'postgres' database.
