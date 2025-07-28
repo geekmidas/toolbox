@@ -65,9 +65,11 @@ export class PostgresObjectionMigrator extends PostgresMigrator {
     try {
       // Run migrations to latest
       const [batchNo, migrations] = await this.options.knex.migrate.latest();
-      
+
       if (migrations.length > 0) {
-        logger.log(`Applied batch ${batchNo} with ${migrations.length} migrations:`);
+        logger.log(
+          `Applied batch ${batchNo} with ${migrations.length} migrations:`,
+        );
         migrations.forEach((migration: string) => {
           logger.log(`  - ${migration}`);
         });
@@ -92,9 +94,11 @@ export class PostgresObjectionMigrator extends PostgresMigrator {
   async rollback(): Promise<void> {
     try {
       const [batchNo, migrations] = await this.options.knex.migrate.rollback();
-      
+
       if (migrations.length > 0) {
-        logger.log(`Rolled back batch ${batchNo} with ${migrations.length} migrations:`);
+        logger.log(
+          `Rolled back batch ${batchNo} with ${migrations.length} migrations:`,
+        );
         migrations.forEach((migration: string) => {
           logger.log(`  - ${migration}`);
         });
@@ -122,7 +126,7 @@ export class PostgresObjectionMigrator extends PostgresMigrator {
     try {
       const completed = await this.options.knex.migrate.list();
       const [, pending] = await this.options.knex.migrate.currentVersion();
-      
+
       return {
         completed: Array.isArray(completed[0]) ? completed[0] : [],
         pending: Array.isArray(pending) ? pending : [],

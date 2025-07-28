@@ -43,3 +43,5 @@ src/playground/**
 
 .gkm
 .vitepress
+
+bad-migrations
