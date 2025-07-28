@@ -12,6 +12,7 @@ import { IsolationLevel } from './VitestTransactionIsolator';
 export { ObjectionFactory } from './ObjectionFactory';
 export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
+export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
 
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Objection.js.
