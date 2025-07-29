@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build.js';
 import { openapiCommand } from './openapi.js';
+import { generateReactQueryCommand } from './openapi-react-query.js';
 import type { Provider } from './types.js';
 
 const program = new Command();
@@ -88,6 +89,37 @@ program
       await openapiCommand(options);
     } catch (error) {
       console.error('OpenAPI generation failed:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('generate:react-query')
+  .description('Generate React Query hooks from OpenAPI specification')
+  .option(
+    '--input <path>',
+    'Input OpenAPI spec file path',
+    'openapi.json',
+  )
+  .option(
+    '--output <path>',
+    'Output file path for generated hooks',
+    'src/api/hooks.ts',
+  )
+  .option(
+    '--name <name>',
+    'API name prefix for generated code',
+    'API',
+  )
+  .action(async (options: { input?: string; output?: string; name?: string }) => {
+    try {
+      const globalOptions = program.opts();
+      if (globalOptions.cwd) {
+        process.chdir(globalOptions.cwd);
+      }
+      await generateReactQueryCommand(options);
+    } catch (error) {
+      console.error('React Query generation failed:', (error as Error).message);
       process.exit(1);
     }
   });

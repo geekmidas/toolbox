@@ -51,6 +51,17 @@ export const handlers = [
     });
   }),
 
+  // PATCH /users/{id}
+  http.patch('https://api.example.com/users/:id', async ({ params, request }) => {
+    const { id } = params;
+    const body = await request.json();
+    return HttpResponse.json({
+      id,
+      name: (body as any).name || 'John Doe',
+      email: (body as any).email || 'john@example.com',
+    });
+  }),
+
   // DELETE /users/{id}
   http.delete('https://api.example.com/users/:id', () => {
     return new HttpResponse(null, { status: 204 });
@@ -80,6 +91,29 @@ export const handlers = [
       },
       sort,
     });
+  }),
+
+  // GET /posts/{postId}
+  http.get('https://api.example.com/posts/:postId', ({ params, request }) => {
+    const { postId } = params;
+    const url = new URL(request.url);
+    const includeAuthor = url.searchParams.get('includeAuthor') === 'true';
+
+    const response = {
+      id: postId,
+      title: 'Test Post',
+      content: 'Test content',
+      authorId: '123',
+    };
+
+    if (includeAuthor) {
+      return HttpResponse.json({
+        ...response,
+        author: { id: '123', name: 'John' },
+      });
+    }
+
+    return HttpResponse.json(response);
   }),
 
   // Error endpoint for testing

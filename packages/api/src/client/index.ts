@@ -6,6 +6,9 @@ export {
   useTypedMutation,
   type TypedQueryClientOptions,
 } from './react-query';
+export {
+  createOpenAPIHooks,
+} from './openapi-hooks';
 export type {
   EndpointString,
   ExtractEndpointResponse,

@@ -14,6 +14,7 @@ export interface paths {
       cookie?: never;
     };
     get: {
+      operationId: 'getJob';
       parameters: {
         query?: never;
         header?: never;
@@ -64,6 +65,7 @@ export interface paths {
       };
     };
     put: {
+      operationId: 'updateJob';
       parameters: {
         query?: never;
         header?: never;
@@ -137,6 +139,7 @@ export interface paths {
     };
     post?: never;
     delete: {
+      operationId: 'deleteJob';
       parameters: {
         query?: never;
         header?: never;
@@ -169,6 +172,7 @@ export interface paths {
   };
   '/users': {
     get: {
+      operationId: 'listUsers';
       responses: {
         200: {
           content: {
@@ -184,6 +188,7 @@ export interface paths {
       };
     };
     post: {
+      operationId: 'createUser';
       requestBody: {
         content: {
           'application/json': {
@@ -212,6 +217,7 @@ export interface paths {
       };
     };
     get: {
+      operationId: 'getUser';
       responses: {
         200: {
           content: {
@@ -225,6 +231,7 @@ export interface paths {
       };
     };
     put: {
+      operationId: 'updateUser';
       requestBody: {
         content: {
           'application/json': {
@@ -246,6 +253,7 @@ export interface paths {
       };
     };
     delete: {
+      operationId: 'deleteUser';
       responses: {
         204: {
           content: never;
@@ -255,6 +263,7 @@ export interface paths {
   };
   '/posts': {
     get: {
+      operationId: 'listPosts';
       parameters: {
         query: {
           page?: number;
@@ -287,6 +296,7 @@ export interface paths {
   };
   '/protected': {
     get: {
+      operationId: 'getProtected';
       responses: {
         200: {
           content: {
@@ -307,6 +317,7 @@ export interface paths {
   };
   '/error': {
     get: {
+      operationId: 'getError';
       responses: {
         500: {
           content: {
