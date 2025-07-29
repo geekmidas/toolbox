@@ -3,6 +3,7 @@ import { Model } from 'objection';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupKnexTest } from '../../test/helpers';
 import { ObjectionFactory } from '../ObjectionFactory';
+import { faker } from '../faker';
 
 // Define real Objection models for testing
 class User extends Model {
@@ -383,6 +384,162 @@ describe.skip('ObjectionFactory', () => {
       const result = ObjectionFactory.createSeed(seedFn);
 
       expect(result).toBe(seedFn);
+    });
+  });
+
+  describe('createBuilder static method', () => {
+    it('should create a builder function with auto-insert', async () => {
+      const userBuilder = ObjectionFactory.createBuilder(User, 
+        (attrs, factory, db, faker) => ({
+          name: faker.person.fullName(),
+          email: faker.internet.email(),
+          role: 'user',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...attrs
+        })
+      );
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      const result = await factory.insert('user', { name: 'Test User' });
+
+      expect(result).toBeInstanceOf(User);
+      expect(result.name).toBe('Test User');
+      expect(result.email).toMatch(/@/);
+      expect(result.id).toBeDefined();
+    });
+
+    it('should create a builder function without auto-insert', async () => {
+      const userBuilder = ObjectionFactory.createBuilder(User, 
+        (attrs) => ({
+          name: 'No Insert User',
+          email: 'noinsert@example.com',
+          role: 'user',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...attrs
+        }),
+        false // Don't auto-insert
+      );
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      const result = await factory.insert('user');
+
+      // The factory's insert method should handle the insertion
+      expect(result).toBeInstanceOf(User);
+      expect(result.name).toBe('No Insert User');
+      expect(result.id).toBeDefined();
+    });
+
+    it('should pass all parameters to the item function', async () => {
+      let capturedFactory: any;
+      let capturedDb: any;
+      let capturedFaker: any;
+
+      const userBuilder = ObjectionFactory.createBuilder(User,
+        (attrs, factory, db, fakerInstance) => {
+          capturedFactory = factory;
+          capturedDb = db;
+          capturedFaker = fakerInstance;
+          
+          return {
+            name: 'Test User',
+            email: 'test@example.com',
+            role: 'user',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            ...attrs
+          };
+        }
+      );
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      await factory.insert('user');
+
+      expect(capturedFactory).toBe(factory);
+      expect(capturedDb).toBe(trx);
+      expect(capturedFaker).toBe(faker);
+    });
+
+    it('should handle async item functions', async () => {
+      const userBuilder = ObjectionFactory.createBuilder(User,
+        async (attrs, factory, db, faker) => {
+          // Simulate async operation
+          await new Promise(resolve => setTimeout(resolve, 10));
+          
+          return {
+            name: 'Async User',
+            email: faker.internet.email(),
+            role: 'user',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            ...attrs
+          };
+        }
+      );
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      const result = await factory.insert('user');
+
+      expect(result).toBeInstanceOf(User);
+      expect(result.name).toBe('Async User');
+      expect(result.id).toBeDefined();
+    });
+
+    it('should work without item function', async () => {
+      const userBuilder = ObjectionFactory.createBuilder(User);
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      const attrs = {
+        name: 'Manual User',
+        email: 'manual@example.com',
+        role: 'user',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const result = await factory.insert('user', attrs);
+
+      expect(result).toBeInstanceOf(User);
+      expect(result.name).toBe('Manual User');
+      expect(result.email).toBe('manual@example.com');
+      expect(result.id).toBeDefined();
+    });
+
+    it('should allow overriding default values', async () => {
+      const userBuilder = ObjectionFactory.createBuilder(User,
+        (attrs, factory, db, faker) => ({
+          name: 'Default Name',
+          email: 'default@example.com',
+          role: 'user',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...attrs
+        })
+      );
+
+      const builders = { user: userBuilder };
+      factory = new ObjectionFactory(builders, {}, trx);
+
+      const result = await factory.insert('user', {
+        name: 'Override Name',
+        email: 'override@example.com'
+      });
+
+      expect(result).toBeInstanceOf(User);
+      expect(result.name).toBe('Override Name');
+      expect(result.email).toBe('override@example.com');
+      expect(result.role).toBe('user'); // Default not overridden
     });
   });
 

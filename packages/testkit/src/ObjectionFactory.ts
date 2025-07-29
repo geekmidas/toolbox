@@ -1,5 +1,7 @@
 import type { Knex } from 'knex';
+import type { Model } from 'objection';
 import { Factory, type FactorySeed } from './Factory.ts';
+import { type FakerFactory, faker } from './faker.ts';
 
 /**
  * Factory implementation for Objection.js ORM, providing test data creation utilities.
@@ -54,6 +56,105 @@ export class ObjectionFactory<
   }
 
   /**
+   * Creates a typed builder function for Objection.js models.
+   * This is a utility method that helps create builders with proper type inference.
+   *
+   * @template TModel - The Objection.js Model class type
+   * @template Attrs - The attributes type for the builder (defaults to Partial of model)
+   * @template Factory - The factory instance type
+   * @template Result - The result type (defaults to the model instance)
+   *
+   * @param ModelClass - The Objection.js Model class
+   * @param item - Optional function to provide default values and transformations
+   * @param autoInsert - Whether to automatically insert the record (default: true)
+   * @returns A builder function that creates and optionally inserts records
+   *
+   * @example
+   * ```typescript
+   * // Create a simple builder with defaults
+   * const userBuilder = ObjectionFactory.createBuilder(User,
+   *   (attrs, factory, db, faker) => ({
+   *     id: faker.string.uuid(),
+   *     name: faker.person.fullName(),
+   *     email: faker.internet.email(),
+   *     createdAt: new Date(),
+   *     ...attrs
+   *   })
+   * );
+   *
+   * // Create a builder that doesn't auto-insert (useful for nested inserts)
+   * const addressBuilder = ObjectionFactory.createBuilder(Address,
+   *   (attrs) => ({
+   *     street: '123 Main St',
+   *     city: 'Anytown',
+   *     ...attrs
+   *   }),
+   *   false // Don't auto-insert
+   * );
+   *
+   * // Use with relations
+   * const postBuilder = ObjectionFactory.createBuilder(Post,
+   *   async (attrs, factory) => ({
+   *     title: faker.lorem.sentence(),
+   *     content: faker.lorem.paragraphs(),
+   *     authorId: attrs.authorId || (await factory.insert('user')).id,
+   *     ...attrs
+   *   })
+   * );
+   * ```
+   */
+  static createBuilder<
+    TModel extends typeof Model,
+    Attrs extends Partial<InstanceType<TModel>> = Partial<InstanceType<TModel>>,
+    Factory = any,
+    Result = InstanceType<TModel>,
+  >(
+    ModelClass: TModel,
+    item?: (
+      attrs: Attrs,
+      factory: Factory,
+      db: Knex,
+      faker: FakerFactory,
+    ) => Partial<InstanceType<TModel>> | Promise<Partial<InstanceType<TModel>>>,
+    autoInsert?: boolean,
+  ): (
+    attrs: Attrs,
+    factory: Factory,
+    db: Knex,
+    faker: FakerFactory,
+  ) => Promise<Result> {
+    return async (
+      attrs: Attrs,
+      factory: Factory,
+      db: Knex,
+      faker: FakerFactory,
+    ) => {
+      // Start with attributes
+      let data: Partial<InstanceType<TModel>> = { ...attrs };
+
+      // Apply defaults
+      if (item) {
+        const defaults = await item(attrs, factory, db, faker);
+        data = { ...defaults, ...data };
+      }
+
+      // Create model instance
+      const model = ModelClass.fromJson(data) as InstanceType<TModel>;
+
+      // Handle insertion based on autoInsert flag
+      if (autoInsert !== false) {
+        // Auto insert is enabled by default
+        // @ts-ignore
+        const result = await model.$query(db).insertGraph(model).execute();
+        return result as Result;
+      } else {
+        // Return model for factory to handle insertion
+        return model as Result;
+      }
+    };
+  }
+
+  /**
    * Creates a new ObjectionFactory instance.
    *
    * @param builders - Record of builder functions for creating individual entities
@@ -72,7 +173,8 @@ export class ObjectionFactory<
    * Inserts a single record into the database using the specified builder.
    * Uses Objection.js's insertGraph method to handle nested relations.
    *
-   * @param factory - The name of the builder to use
+   * @template K - The builder name (must be a key of Builders)
+   * @param builderName - The name of the builder to use
    * @param attrs - Optional attributes to override builder defaults
    * @returns A promise resolving to the inserted record with all relations
    * @throws Error if the specified builder doesn't exist
@@ -98,18 +200,32 @@ export class ObjectionFactory<
    * });
    * ```
    */
-  insert(factory: keyof Builders, attrs: any = {}) {
-    if (!(factory in this.builders)) {
+  async insert<K extends keyof Builders>(
+    builderName: K,
+    attrs?: Parameters<Builders[K]>[0],
+  ): Promise<Awaited<ReturnType<Builders[K]>>> {
+    if (!(builderName in this.builders)) {
       throw new Error(
         `Factory "${
-          factory as string
+          builderName as string
         }" does not exist. Make sure it is correct and registered in src/test/setup.ts`,
       );
     }
 
-    return this.builders[factory](attrs, {}, this.db).then((record: any) => {
-      return record.$query(this.db).insertGraph(record).execute();
-    }) as any;
+    const result = await this.builders[builderName](
+      attrs || {},
+      this,
+      this.db,
+      faker,
+    );
+
+    // If the builder returns a model instance, insert it
+    if (result && typeof result.$query === 'function') {
+      return await result.$query(this.db).insertGraph(result).execute();
+    }
+
+    // Otherwise, assume the builder handled insertion itself
+    return result;
   }
   /**
    * Inserts multiple records into the database using the specified builder.
@@ -140,7 +256,22 @@ export class ObjectionFactory<
    * }));
    * ```
    */
-  insertMany(count: number, builderName: keyof Builders, attrs: any = {}) {
+  // Method overloads for better type inference
+  async insertMany<K extends keyof Builders>(
+    count: number,
+    builderName: K,
+    attrs?: Parameters<Builders[K]>[0],
+  ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
+  async insertMany<K extends keyof Builders>(
+    count: number,
+    builderName: K,
+    attrs: (idx: number, faker: FakerFactory) => Parameters<Builders[K]>[0],
+  ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
+  async insertMany<K extends keyof Builders>(
+    count: number,
+    builderName: K,
+    attrs?: any,
+  ): Promise<Awaited<ReturnType<Builders[K]>>[]> {
     if (!(builderName in this.builders)) {
       throw new Error(
         `Builder "${
@@ -151,11 +282,19 @@ export class ObjectionFactory<
 
     const records: any[] = [];
     for (let i = 0; i < count; i++) {
-      const newAttrs = typeof attrs === 'function' ? (attrs as any)(i) : attrs;
+      const newAttrs =
+        typeof attrs === 'function' ? (attrs as any)(i, faker) : attrs;
 
       records.push(
-        this.builders[builderName](newAttrs, {}, this.db).then((record: any) =>
-          record.$query(this.db).insertGraph(record).execute(),
+        this.builders[builderName](newAttrs, this, this.db, faker).then(
+          (record: any) => {
+            // If the builder returns a model instance, insert it
+            if (record && typeof record.$query === 'function') {
+              return record.$query(this.db).insertGraph(record).execute();
+            }
+            // Otherwise, assume the builder handled insertion itself
+            return record;
+          },
         ),
       );
     }
@@ -166,6 +305,7 @@ export class ObjectionFactory<
    * Executes a seed function to create complex test scenarios with multiple related records.
    * Seeds are useful for setting up complete test environments with realistic data relationships.
    *
+   * @template K - The seed name (must be a key of Seeds)
    * @param seedName - The name of the seed to execute
    * @param attrs - Optional configuration attributes for the seed
    * @returns The result of the seed function (typically the primary record created)
@@ -194,7 +334,10 @@ export class ObjectionFactory<
    *   .withGraphFetched('[departments.employees]');
    * ```
    */
-  seed(seedName: keyof Seeds, attrs: any = {}) {
+  seed<K extends keyof Seeds>(
+    seedName: K,
+    attrs?: Parameters<Seeds[K]>[0],
+  ): ReturnType<Seeds[K]> {
     if (!(seedName in this.seeds)) {
       throw new Error(
         `Seed "${
@@ -203,6 +346,6 @@ export class ObjectionFactory<
       );
     }
 
-    return this.seeds[seedName](attrs, this, this.db);
+    return this.seeds[seedName](attrs || {}, this, this.db);
   }
 }

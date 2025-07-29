@@ -43,7 +43,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
   const allEndpoints = loadedEndpoints.map(({ name, endpoint, file }) => {
     const routeInfo: RouteInfo = {
-      path: endpoint.route,
+      path: endpoint._path,
       method: endpoint.method,
       handler: '', // Will be filled in later
     };
