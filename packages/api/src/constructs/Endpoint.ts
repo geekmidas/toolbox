@@ -56,6 +56,7 @@ export class Endpoint<
   TLogger extends Logger = Logger,
   TSession = unknown,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
+  operationId?: string;
   /** The route path pattern with parameter placeholders */
   route: TRoute;
   /** The HTTP method for this endpoint */
@@ -273,6 +274,7 @@ export class Endpoint<
    */
   async toOpenApi3Route(): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
     const operation: OpenAPIV3_1.OperationObject = {
+      operationId: this.operationId,
       ...(this.description && { description: this.description }),
       responses: {
         '200': {

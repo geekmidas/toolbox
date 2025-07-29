@@ -27,7 +27,8 @@ export async function loadEndpoints(routes: Routes): Promise<LoadedEndpoint[]> {
 
       // Check all exports for endpoints
       for (const [exportName, exportValue] of Object.entries(module)) {
-        if (Endpoint.isEndpoint(exportValue as any)) {
+        if (Endpoint.isEndpoint(exportValue)) {
+          exportValue.operationId = exportName;
           endpoints.push({
             name: exportName,
             endpoint: exportValue as Endpoint<any, any, any, any, any, any>,
