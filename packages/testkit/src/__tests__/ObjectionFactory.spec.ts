@@ -389,15 +389,16 @@ describe.skip('ObjectionFactory', () => {
 
   describe('createBuilder static method', () => {
     it('should create a builder function with auto-insert', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(User, 
+      const userBuilder = ObjectionFactory.createBuilder(
+        User,
         (attrs, factory, db, faker) => ({
           name: faker.person.fullName(),
           email: faker.internet.email(),
           role: 'user',
           createdAt: new Date(),
           updatedAt: new Date(),
-          ...attrs
-        })
+          ...attrs,
+        }),
       );
 
       const builders = { user: userBuilder };
@@ -412,16 +413,17 @@ describe.skip('ObjectionFactory', () => {
     });
 
     it('should create a builder function without auto-insert', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(User, 
+      const userBuilder = ObjectionFactory.createBuilder(
+        User,
         (attrs) => ({
           name: 'No Insert User',
           email: 'noinsert@example.com',
           role: 'user',
           createdAt: new Date(),
           updatedAt: new Date(),
-          ...attrs
+          ...attrs,
         }),
-        false // Don't auto-insert
+        false, // Don't auto-insert
       );
 
       const builders = { user: userBuilder };
@@ -440,21 +442,22 @@ describe.skip('ObjectionFactory', () => {
       let capturedDb: any;
       let capturedFaker: any;
 
-      const userBuilder = ObjectionFactory.createBuilder(User,
+      const userBuilder = ObjectionFactory.createBuilder(
+        User,
         (attrs, factory, db, fakerInstance) => {
           capturedFactory = factory;
           capturedDb = db;
           capturedFaker = fakerInstance;
-          
+
           return {
             name: 'Test User',
             email: 'test@example.com',
             role: 'user',
             createdAt: new Date(),
             updatedAt: new Date(),
-            ...attrs
+            ...attrs,
           };
-        }
+        },
       );
 
       const builders = { user: userBuilder };
@@ -468,20 +471,21 @@ describe.skip('ObjectionFactory', () => {
     });
 
     it('should handle async item functions', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(User,
+      const userBuilder = ObjectionFactory.createBuilder(
+        User,
         async (attrs, factory, db, faker) => {
           // Simulate async operation
-          await new Promise(resolve => setTimeout(resolve, 10));
-          
+          await new Promise((resolve) => setTimeout(resolve, 10));
+
           return {
             name: 'Async User',
             email: faker.internet.email(),
             role: 'user',
             createdAt: new Date(),
             updatedAt: new Date(),
-            ...attrs
+            ...attrs,
           };
-        }
+        },
       );
 
       const builders = { user: userBuilder };
@@ -517,15 +521,16 @@ describe.skip('ObjectionFactory', () => {
     });
 
     it('should allow overriding default values', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(User,
+      const userBuilder = ObjectionFactory.createBuilder(
+        User,
         (attrs, factory, db, faker) => ({
           name: 'Default Name',
           email: 'default@example.com',
           role: 'user',
           createdAt: new Date(),
           updatedAt: new Date(),
-          ...attrs
-        })
+          ...attrs,
+        }),
       );
 
       const builders = { user: userBuilder };
@@ -533,7 +538,7 @@ describe.skip('ObjectionFactory', () => {
 
       const result = await factory.insert('user', {
         name: 'Override Name',
-        email: 'override@example.com'
+        email: 'override@example.com',
       });
 
       expect(result).toBeInstanceOf(User);

@@ -143,9 +143,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  rateLimit(
-    config: RateLimitConfig,
-  ): this {
+  rateLimit(config: RateLimitConfig): this {
     this._rateLimit = config;
     return this;
   }

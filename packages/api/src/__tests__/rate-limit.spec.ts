@@ -2,12 +2,12 @@ import { InMemoryCache } from '@geekmidas/cache/memory';
 import { describe, expect, it, vi } from 'vitest';
 import { TooManyRequestsError } from '../errors';
 import {
-  checkRateLimit,
-  defaultKeyGenerator,
-  getRateLimitHeaders,
   type RateLimitConfig,
   type RateLimitContext,
   type RateLimitData,
+  checkRateLimit,
+  defaultKeyGenerator,
+  getRateLimitHeaders,
 } from '../rate-limit';
 
 describe('Rate Limiting', () => {
@@ -61,7 +61,8 @@ describe('Rate Limiting', () => {
     it('should handle comma-separated IPs in x-forwarded-for', () => {
       const ctx = createContext({
         header: vi.fn((key: string) => {
-          if (key === 'x-forwarded-for') return '192.168.1.1, 10.0.0.1, 172.16.0.1';
+          if (key === 'x-forwarded-for')
+            return '192.168.1.1, 10.0.0.1, 172.16.0.1';
           return undefined;
         }),
       });
@@ -97,7 +98,7 @@ describe('Rate Limiting', () => {
 
       // First request
       await checkRateLimit(config, ctx);
-      
+
       // Second request
       const info = await checkRateLimit(config, ctx);
       expect(info.count).toBe(2);
@@ -158,7 +159,7 @@ describe('Rate Limiting', () => {
       // Should not throw even though limit would be exceeded
       await checkRateLimit(config, ctx);
       const info = await checkRateLimit(config, ctx);
-      
+
       expect(info.count).toBe(0);
       expect(info.remaining).toBe(1);
       expect(config.skip).toHaveBeenCalledWith(ctx);
@@ -205,7 +206,7 @@ describe('Rate Limiting', () => {
       const ctx = createContext();
 
       await checkRateLimit(config, ctx);
-      
+
       expect(keyGenerator).toHaveBeenCalledWith(ctx);
     });
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env -S npx tsx
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
 import { exec } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
@@ -31,33 +31,41 @@ export async function generateReactQueryCommand(
   try {
     // Read OpenAPI spec
     const inputPath = options.input || join(process.cwd(), 'openapi.json');
-    
+
     if (!existsSync(inputPath)) {
-      throw new Error(`OpenAPI spec not found at ${inputPath}. Run 'npx @geekmidas/cli openapi' first.`);
+      throw new Error(
+        `OpenAPI spec not found at ${inputPath}. Run 'npx @geekmidas/cli openapi' first.`,
+      );
     }
 
     const specContent = await readFile(inputPath, 'utf-8');
     const spec: OpenAPISpec = JSON.parse(specContent);
 
     // Generate TypeScript types from OpenAPI spec
-    const outputDir = dirname(options.output || join(process.cwd(), 'src', 'api', 'hooks.ts'));
+    const outputDir = dirname(
+      options.output || join(process.cwd(), 'src', 'api', 'hooks.ts'),
+    );
     const typesPath = join(outputDir, 'openapi-types.d.ts');
-    
+
     logger.log('Generating TypeScript types from OpenAPI spec...');
-    
+
     try {
       // Use npx to run openapi-typescript
       await execAsync(
         `npx openapi-typescript "${inputPath}" -o "${typesPath}"`,
-        { cwd: process.cwd() }
+        { cwd: process.cwd() },
       );
       logger.log(`TypeScript types generated: ${typesPath}`);
     } catch (error) {
-      logger.warn('Could not generate types with openapi-typescript. Install it for better type inference.');
+      logger.warn(
+        'Could not generate types with openapi-typescript. Install it for better type inference.',
+      );
       logger.warn('Run: npm install -D openapi-typescript');
-      
+
       // Generate basic types file
-      await writeFile(typesPath, `// Auto-generated placeholder types
+      await writeFile(
+        typesPath,
+        `// Auto-generated placeholder types
 export interface paths {
   [path: string]: {
     [method: string]: {
@@ -68,24 +76,32 @@ export interface paths {
     };
   };
 }
-`);
+`,
+      );
     }
 
     // Extract operation info
     const operations = extractOperations(spec);
-    
+
     // Generate TypeScript code
-    const code = generateReactQueryCode(spec, operations, options.name || 'API');
+    const code = generateReactQueryCode(
+      spec,
+      operations,
+      options.name || 'API',
+    );
 
     // Write output
-    const outputPath = options.output || join(process.cwd(), 'src', 'api', 'hooks.ts');
+    const outputPath =
+      options.output || join(process.cwd(), 'src', 'api', 'hooks.ts');
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, code);
 
     logger.log(`React Query hooks generated: ${outputPath}`);
     logger.log(`Generated ${operations.length} hooks`);
   } catch (error) {
-    throw new Error(`React Query generation failed: ${(error as Error).message}`);
+    throw new Error(
+      `React Query generation failed: ${(error as Error).message}`,
+    );
   }
 }
 
@@ -137,7 +153,7 @@ function extractResponseType(operation: any): string {
 
 function schemaToTypeString(schema: any): string {
   if (!schema) return 'unknown';
-  
+
   switch (schema.type) {
     case 'string':
       return 'string';
@@ -151,7 +167,10 @@ function schemaToTypeString(schema: any): string {
     case 'object':
       if (schema.properties) {
         const props = Object.entries(schema.properties)
-          .map(([key, value]: [string, any]) => `${key}: ${schemaToTypeString(value)}`)
+          .map(
+            ([key, value]: [string, any]) =>
+              `${key}: ${schemaToTypeString(value)}`,
+          )
           .join('; ');
         return `{ ${props} }`;
       }
@@ -178,13 +197,13 @@ export const ${apiName.toLowerCase()} = createTypedQueryClient<paths>({
 `;
 
   const queryHooks = operations
-    .filter(op => op.method === 'GET')
-    .map(op => generateQueryHook(op, apiName))
+    .filter((op) => op.method === 'GET')
+    .map((op) => generateQueryHook(op, apiName))
     .join('\n\n');
 
   const mutationHooks = operations
-    .filter(op => op.method !== 'GET')
-    .map(op => generateMutationHook(op, apiName))
+    .filter((op) => op.method !== 'GET')
+    .map((op) => generateMutationHook(op, apiName))
     .join('\n\n');
 
   const typeExports = generateTypeExports(operations);
@@ -207,18 +226,21 @@ export { ${apiName.toLowerCase()} };
 function generateQueryHook(op: OperationInfo, apiName: string): string {
   const hookName = `use${capitalize(op.operationId)}`;
   const endpoint = op.endpoint;
-  const hasParams = op.parameters?.some(p => p.in === 'path');
-  const hasQuery = op.parameters?.some(p => p.in === 'query');
-  
+  const hasParams = op.parameters?.some((p) => p.in === 'path');
+  const hasQuery = op.parameters?.some((p) => p.in === 'query');
+
   // Generate properly typed hook
   let params = '';
   let args = '';
-  
+
   if (hasParams || hasQuery) {
     const paramParts: string[] = [];
     if (hasParams) {
-      const pathParams = op.parameters?.filter(p => p.in === 'path').map(p => p.name) || [];
-      paramParts.push(`params: { ${pathParams.map(p => `${p}: string`).join('; ')} }`);
+      const pathParams =
+        op.parameters?.filter((p) => p.in === 'path').map((p) => p.name) || [];
+      paramParts.push(
+        `params: { ${pathParams.map((p) => `${p}: string`).join('; ')} }`,
+      );
     }
     if (hasQuery) {
       paramParts.push(`query?: Record<string, any>`);
@@ -226,7 +248,7 @@ function generateQueryHook(op: OperationInfo, apiName: string): string {
     params = `config: { ${paramParts.join('; ')} }, `;
     args = ', config';
   }
-  
+
   return `export const ${hookName} = (
   ${params}options?: Parameters<typeof ${apiName.toLowerCase()}.useQuery>[2]
 ) => {
@@ -237,7 +259,7 @@ function generateQueryHook(op: OperationInfo, apiName: string): string {
 function generateMutationHook(op: OperationInfo, apiName: string): string {
   const hookName = `use${capitalize(op.operationId)}`;
   const endpoint = op.endpoint;
-  
+
   return `export const ${hookName} = (
   options?: Parameters<typeof ${apiName.toLowerCase()}.useMutation>[1]
 ) => {
@@ -246,10 +268,10 @@ function generateMutationHook(op: OperationInfo, apiName: string): string {
 }
 
 function generateTypeExports(operations: OperationInfo[]): string {
-  const exports = operations.map(op => {
+  const exports = operations.map((op) => {
     const typeName = capitalize(op.operationId);
     const isQuery = op.method === 'GET';
-    
+
     if (isQuery) {
       return `export type ${typeName}Response = Awaited<ReturnType<ReturnType<typeof use${typeName}>['data']>>;`;
     } else {

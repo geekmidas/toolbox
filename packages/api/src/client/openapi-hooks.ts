@@ -21,7 +21,11 @@ type AllOperations<Paths> = {
             path: Path;
             method: Method;
             spec: Paths[Path][Method] & {
-              _pathParams?: Paths[Path] extends { parameters: { path: infer P } } ? P : never;
+              _pathParams?: Paths[Path] extends {
+                parameters: { path: infer P };
+              }
+                ? P
+                : never;
             };
           }
         : never
@@ -31,7 +35,11 @@ type AllOperations<Paths> = {
 
 // Create operation map
 type OperationMap<Paths> = {
-  [Op in AllOperations<Paths> as Op extends { operationId: infer Id extends string } ? Id : never]: Op;
+  [Op in AllOperations<Paths> as Op extends {
+    operationId: infer Id extends string;
+  }
+    ? Id
+    : never]: Op;
 };
 
 // Get operation IDs
@@ -39,43 +47,66 @@ type OperationId<Paths> = keyof OperationMap<Paths>;
 
 // Get operations by method
 type OperationsByMethod<Paths, Method extends HttpMethods> = {
-  [K in OperationId<Paths>]: OperationMap<Paths>[K] extends { method: Method } ? K : never;
+  [K in OperationId<Paths>]: OperationMap<Paths>[K] extends { method: Method }
+    ? K
+    : never;
 }[OperationId<Paths>];
 
-// Extract parameter types  
-type OperationParams<Paths, OpId extends OperationId<Paths>> = 
-  OperationMap<Paths>[OpId] extends { path: infer Path extends keyof Paths; spec: infer Spec }
-    ? {
-        params?: Paths[Path] extends { parameters: { path: infer P } }
+// Extract parameter types
+type OperationParams<
+  Paths,
+  OpId extends OperationId<Paths>,
+> = OperationMap<Paths>[OpId] extends {
+  path: infer Path extends keyof Paths;
+  spec: infer Spec;
+}
+  ? {
+      params?: Paths[Path] extends { parameters: { path: infer P } }
+        ? P
+        : Spec extends { parameters: { path: infer P } }
           ? P
-          : Spec extends { parameters: { path: infer P } }
-            ? P
-            : never;
-        query?: Spec extends { parameters: { query?: infer Q } } ? Q : never;
-        body?: Spec extends { requestBody: { content: { 'application/json': infer Body } } }
-          ? Body
-          : Spec extends { requestBody: { required: true; content: { 'application/json': infer Body } } }
-            ? Body
-            : never;
+          : never;
+      query?: Spec extends { parameters: { query?: infer Q } } ? Q : never;
+      body?: Spec extends {
+        requestBody: { content: { 'application/json': infer Body } };
       }
-    : never;
+        ? Body
+        : Spec extends {
+              requestBody: {
+                required: true;
+                content: { 'application/json': infer Body };
+              };
+            }
+          ? Body
+          : never;
+    }
+  : never;
 
 // Extract response type
-type OperationResponse<Paths, OpId extends OperationId<Paths>> =
-  OperationMap<Paths>[OpId] extends { spec: infer Spec }
-    ? Spec extends { responses: { 200: { content: { 'application/json': infer R } } } }
+type OperationResponse<
+  Paths,
+  OpId extends OperationId<Paths>,
+> = OperationMap<Paths>[OpId] extends { spec: infer Spec }
+  ? Spec extends {
+      responses: { 200: { content: { 'application/json': infer R } } };
+    }
+    ? R
+    : Spec extends {
+          responses: { 201: { content: { 'application/json': infer R } } };
+        }
       ? R
-      : Spec extends { responses: { 201: { content: { 'application/json': infer R } } } }
-        ? R
-        : Spec extends { responses: { 204: any } }
-          ? void
-          : unknown
-    : never;
+      : Spec extends { responses: { 204: any } }
+        ? void
+        : unknown
+  : never;
 
 // Remove never properties
-type RemoveNever<T> = Pick<T, {
-  [K in keyof T]: T[K] extends never ? never : K;
-}[keyof T]>;
+type RemoveNever<T> = Pick<
+  T,
+  {
+    [K in keyof T]: T[K] extends never ? never : K;
+  }[keyof T]
+>;
 
 // Check if type is empty
 type IsEmpty<T> = keyof T extends never ? true : false;
@@ -128,7 +159,12 @@ export function createOpenAPIHooks<Paths>(
       });
     },
 
-    useMutation: <OpId extends Exclude<OperationId<Paths>, OperationsByMethod<Paths, 'get'>>>(
+    useMutation: <
+      OpId extends Exclude<
+        OperationId<Paths>,
+        OperationsByMethod<Paths, 'get'>
+      >,
+    >(
       operationId: OpId,
       options?: Omit<
         UseMutationOptions<

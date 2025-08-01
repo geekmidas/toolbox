@@ -52,15 +52,18 @@ export const handlers = [
   }),
 
   // PATCH /users/{id}
-  http.patch('https://api.example.com/users/:id', async ({ params, request }) => {
-    const { id } = params;
-    const body = await request.json();
-    return HttpResponse.json({
-      id,
-      name: (body as any).name || 'John Doe',
-      email: (body as any).email || 'john@example.com',
-    });
-  }),
+  http.patch(
+    'https://api.example.com/users/:id',
+    async ({ params, request }) => {
+      const { id } = params;
+      const body = await request.json();
+      return HttpResponse.json({
+        id,
+        name: (body as any).name || 'John Doe',
+        email: (body as any).email || 'john@example.com',
+      });
+    },
+  ),
 
   // DELETE /users/{id}
   http.delete('https://api.example.com/users/:id', () => {

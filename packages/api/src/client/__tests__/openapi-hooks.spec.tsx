@@ -1,11 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 /**
  * @vitest-environment jsdom
  */
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // biome-ignore lint/style/useImportType: required for React provider
 import React from 'react';
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOpenAPIHooks } from '../openapi-hooks';
 import './setup';
 
@@ -180,10 +180,9 @@ describe('createOpenAPIHooks', () => {
         operations,
       });
 
-      const { result } = renderHook(
-        () => api.useQuery('listUsers'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useQuery('listUsers'), {
+        wrapper: createWrapper(),
+      });
 
       await waitFor(() => {
         expect(result.current.isSuccess).toBe(true);
@@ -206,9 +205,10 @@ describe('createOpenAPIHooks', () => {
       });
 
       const { result } = renderHook(
-        () => api.useQuery('listUsers', {
-          query: { page: 2, limit: 10, search: 'john' },
-        }),
+        () =>
+          api.useQuery('listUsers', {
+            query: { page: 2, limit: 10, search: 'john' },
+          }),
         { wrapper: createWrapper() },
       );
 
@@ -229,9 +229,10 @@ describe('createOpenAPIHooks', () => {
       });
 
       const { result } = renderHook(
-        () => api.useQuery('getUser', {
-          params: { id: '123' },
-        }),
+        () =>
+          api.useQuery('getUser', {
+            params: { id: '123' },
+          }),
         { wrapper: createWrapper() },
       );
 
@@ -255,10 +256,11 @@ describe('createOpenAPIHooks', () => {
       });
 
       const { result } = renderHook(
-        () => api.useQuery('getPost', {
-          params: { postId: '456' },
-          query: { includeAuthor: true },
-        }),
+        () =>
+          api.useQuery('getPost', {
+            params: { postId: '456' },
+            query: { includeAuthor: true },
+          }),
         { wrapper: createWrapper() },
       );
 
@@ -284,16 +286,18 @@ describe('createOpenAPIHooks', () => {
       });
 
       const { result: result1 } = renderHook(
-        () => api.useQuery('listUsers', {
-          query: { page: 1 },
-        }),
+        () =>
+          api.useQuery('listUsers', {
+            query: { page: 1 },
+          }),
         { wrapper: createWrapper() },
       );
 
       const { result: result2 } = renderHook(
-        () => api.useQuery('listUsers', {
-          query: { page: 1 },
-        }),
+        () =>
+          api.useQuery('listUsers', {
+            query: { page: 1 },
+          }),
         { wrapper: createWrapper() },
       );
 
@@ -316,10 +320,9 @@ describe('createOpenAPIHooks', () => {
         operations,
       });
 
-      const { result } = renderHook(
-        () => api.useMutation('createUser'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useMutation('createUser'), {
+        wrapper: createWrapper(),
+      });
 
       result.current.mutate({
         body: {
@@ -348,10 +351,9 @@ describe('createOpenAPIHooks', () => {
         operations,
       });
 
-      const { result } = renderHook(
-        () => api.useMutation('updateUser'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useMutation('updateUser'), {
+        wrapper: createWrapper(),
+      });
 
       result.current.mutate({
         params: { id: '123' },
@@ -377,10 +379,9 @@ describe('createOpenAPIHooks', () => {
         operations,
       });
 
-      const { result } = renderHook(
-        () => api.useMutation('deleteUser'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useMutation('deleteUser'), {
+        wrapper: createWrapper(),
+      });
 
       result.current.mutate({
         params: { id: '123' },
@@ -405,10 +406,11 @@ describe('createOpenAPIHooks', () => {
       });
 
       const { result } = renderHook(
-        () => api.useMutation('createUser', {
-          onSuccess,
-          onError,
-        }),
+        () =>
+          api.useMutation('createUser', {
+            onSuccess,
+            onError,
+          }),
         { wrapper: createWrapper() },
       );
 
@@ -441,10 +443,9 @@ describe('createOpenAPIHooks', () => {
       });
 
       // The endpoint should be built correctly based on the registry
-      const { result } = renderHook(
-        () => api.useQuery('listUsers'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useQuery('listUsers'), {
+        wrapper: createWrapper(),
+      });
 
       // Wait for the query to be initiated
       expect(result.current.isLoading).toBe(true);
@@ -456,10 +457,9 @@ describe('createOpenAPIHooks', () => {
       });
 
       // Without registry, it should use operationId as fallback
-      const { result } = renderHook(
-        () => api.useQuery('listUsers'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useQuery('listUsers'), {
+        wrapper: createWrapper(),
+      });
 
       expect(result.current.isLoading).toBe(true);
     });
@@ -472,14 +472,14 @@ describe('createOpenAPIHooks', () => {
         operations,
       });
 
-      const { result } = renderHook(
-        () => api.useQuery('listUsers'),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => api.useQuery('listUsers'), {
+        wrapper: createWrapper(),
+      });
 
       // Type test - this should compile without errors
       if (result.current.data) {
-        const users: Array<{ id: string; name: string; email: string }> = result.current.data.users;
+        const users: Array<{ id: string; name: string; email: string }> =
+          result.current.data.users;
         const total: number = result.current.data.total;
         expect(users).toBeDefined();
         expect(total).toBeDefined();
@@ -494,16 +494,17 @@ describe('createOpenAPIHooks', () => {
 
       // This test is about type checking, not runtime behavior
       // The TypeScript compiler enforces these constraints:
-      
+
       // ✓ This compiles - no params required for listUsers
       const listUsersHook = () => api.useQuery('listUsers');
-      
+
       // ✓ This compiles - params are provided for getUser
-      const getUserHook = () => api.useQuery('getUser', { params: { id: '123' } });
-      
+      const getUserHook = () =>
+        api.useQuery('getUser', { params: { id: '123' } });
+
       // ✗ This would not compile - missing required params
       // const invalidHook = () => api.useQuery('getUser');
-      
+
       expect(listUsersHook).toBeDefined();
       expect(getUserHook).toBeDefined();
     });
@@ -519,8 +520,9 @@ describe('createOpenAPIHooks', () => {
       const hook2 = () => api.useQuery('listUsers', {});
       const hook3 = () => api.useQuery('listUsers', { query: {} });
       const hook4 = () => api.useQuery('listUsers', { query: { page: 1 } });
-      const hook5 = () => api.useQuery('listUsers', { query: { page: 1, limit: 10 } });
-      
+      const hook5 = () =>
+        api.useQuery('listUsers', { query: { page: 1, limit: 10 } });
+
       expect(hook1).toBeDefined();
       expect(hook2).toBeDefined();
       expect(hook3).toBeDefined();
