@@ -63,7 +63,7 @@ export class TypedQueryClient<Paths> {
     });
   }
 
-  private buildQueryKey<T extends TypedEndpoint<Paths>>(
+  buildQueryKey<T extends TypedEndpoint<Paths>>(
     endpoint: T,
     config?: FilteredRequestConfig<Paths, T>,
   ): unknown[] {

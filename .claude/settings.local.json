@@ -11,7 +11,8 @@
       "Bash(pnpm list:*)",
       "Bash(pnpm typecheck:*)",
       "Bash(pnpm ts:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": []
   }

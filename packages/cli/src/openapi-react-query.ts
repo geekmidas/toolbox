@@ -93,6 +93,7 @@ interface OperationInfo {
   operationId: string;
   path: string;
   method: string;
+  endpoint: string; // Full endpoint like 'GET /users/{id}'
   parameters?: Array<{ name: string; in: string; required?: boolean }>;
   requestBody?: boolean;
   responseType?: string;
@@ -108,6 +109,7 @@ function extractOperations(spec: OpenAPISpec): OperationInfo[] {
           operationId: operation.operationId,
           path,
           method: method.toUpperCase(),
+          endpoint: `${method.toUpperCase()} ${path}`,
           parameters: operation.parameters,
           requestBody: !!operation.requestBody,
           responseType: extractResponseType(operation),
@@ -164,23 +166,12 @@ function generateReactQueryCode(
   operations: OperationInfo[],
   apiName: string,
 ): string {
-  // Generate operation registry
-  const operationRegistry = operations.map(op => 
-    `  '${op.operationId}': { path: '${op.path}', method: '${op.method.toLowerCase()}' },`
-  ).join('\n');
-
-  const imports = `import { createOpenAPIHooks } from '@geekmidas/api/client';
+  const imports = `import { createTypedQueryClient } from '@geekmidas/api/client';
 import type { paths } from './openapi-types';
 
-// Runtime operation registry
-const operations = {
-${operationRegistry}
-};
-
-// Create typed hooks with full type inference
-export const ${apiName.toLowerCase()} = createOpenAPIHooks<paths>({
+// Create typed query client
+export const ${apiName.toLowerCase()} = createTypedQueryClient<paths>({
   baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
-  operations,
 });
 
 // Export individual hooks for better DX
@@ -199,7 +190,6 @@ export const ${apiName.toLowerCase()} = createOpenAPIHooks<paths>({
   const typeExports = generateTypeExports(operations);
 
   return `${imports}
-
 // Query Hooks
 ${queryHooks}
 
@@ -209,45 +199,62 @@ ${mutationHooks}
 // Type exports for convenience
 ${typeExports}
 
-// Re-export the client for advanced usage
-export { ${apiName.toLowerCase()}Client };
+// Re-export the api for advanced usage
+export { ${apiName.toLowerCase()} };
 `;
 }
 
 function generateQueryHook(op: OperationInfo, apiName: string): string {
   const hookName = `use${capitalize(op.operationId)}`;
+  const endpoint = op.endpoint;
   const hasParams = op.parameters?.some(p => p.in === 'path');
   const hasQuery = op.parameters?.some(p => p.in === 'query');
-
-  let configType = '';
+  
+  // Generate properly typed hook
+  let params = '';
+  let args = '';
+  
   if (hasParams || hasQuery) {
-    const parts: string[] = [];
-    if (hasParams) parts.push(`params: Parameters<typeof ${apiName.toLowerCase()}.useQuery<'${op.operationId}'>>[1]['params']`);
-    if (hasQuery) parts.push(`query?: Parameters<typeof ${apiName.toLowerCase()}.useQuery<'${op.operationId}'>>[1]['query']`);
-    configType = `config: { ${parts.join('; ')} }, `;
+    const paramParts: string[] = [];
+    if (hasParams) {
+      const pathParams = op.parameters?.filter(p => p.in === 'path').map(p => p.name) || [];
+      paramParts.push(`params: { ${pathParams.map(p => `${p}: string`).join('; ')} }`);
+    }
+    if (hasQuery) {
+      paramParts.push(`query?: Record<string, any>`);
+    }
+    params = `config: { ${paramParts.join('; ')} }, `;
+    args = ', config';
   }
-
+  
   return `export const ${hookName} = (
-  ${configType}options?: Parameters<typeof ${apiName.toLowerCase()}.useQuery<'${op.operationId}'>>[2]
+  ${params}options?: Parameters<typeof ${apiName.toLowerCase()}.useQuery>[2]
 ) => {
-  return ${apiName.toLowerCase()}.useQuery('${op.operationId}'${hasParams || hasQuery ? ', config' : ''}, options);
+  return ${apiName.toLowerCase()}.useQuery('${endpoint}' as any${args}, options);
 };`;
 }
 
 function generateMutationHook(op: OperationInfo, apiName: string): string {
   const hookName = `use${capitalize(op.operationId)}`;
+  const endpoint = op.endpoint;
   
   return `export const ${hookName} = (
-  options?: Parameters<typeof ${apiName.toLowerCase()}.useMutation<'${op.operationId}'>>[1]
+  options?: Parameters<typeof ${apiName.toLowerCase()}.useMutation>[1]
 ) => {
-  return ${apiName.toLowerCase()}.useMutation('${op.operationId}', options);
+  return ${apiName.toLowerCase()}.useMutation('${endpoint}' as any, options);
 };`;
 }
 
 function generateTypeExports(operations: OperationInfo[]): string {
   const exports = operations.map(op => {
     const typeName = capitalize(op.operationId);
-    return `export type ${typeName}Response = Awaited<ReturnType<typeof use${typeName}>['data']>;`;
+    const isQuery = op.method === 'GET';
+    
+    if (isQuery) {
+      return `export type ${typeName}Response = Awaited<ReturnType<ReturnType<typeof use${typeName}>['data']>>;`;
+    } else {
+      return `export type ${typeName}Response = Awaited<ReturnType<ReturnType<typeof use${typeName}>['mutateAsync']>>;`;
+    }
   });
 
   return exports.join('\n');

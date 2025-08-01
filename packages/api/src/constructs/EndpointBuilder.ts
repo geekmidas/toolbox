@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
+import type { RateLimitConfig } from '../rate-limit';
 import type { Service } from '../services';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
@@ -25,6 +26,7 @@ export class EndpointBuilder<
   protected _status?: SuccessStatus;
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
+  _rateLimit?: RateLimitConfig;
 
   constructor(
     readonly route: TRoute,
@@ -141,6 +143,13 @@ export class EndpointBuilder<
     return this;
   }
 
+  rateLimit(
+    config: RateLimitConfig,
+  ): this {
+    this._rateLimit = config;
+    return this;
+  }
+
   handle(
     fn: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>,
   ): Endpoint<
@@ -165,6 +174,7 @@ export class EndpointBuilder<
       authorize: this._authorize,
       status: this._status,
       getSession: this._getSession,
+      rateLimit: this._rateLimit,
     });
   }
 }

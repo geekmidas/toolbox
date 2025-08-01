@@ -59,6 +59,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@geekmidas/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
@@ -258,7 +261,7 @@ importers:
         version: 5.8.2
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.16.3)(@vitest/ui@3.2.4(vitest@3.2.4))(jsdom@26.1.0)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2))
+        version: 2.1.9(@types/node@22.16.3)(@vitest/ui@3.2.4)(jsdom@26.1.0)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2))
 
   packages/envkit:
     dependencies:
@@ -8646,7 +8649,7 @@ snapshots:
       - typescript
       - universal-cookie
 
-  vitest@2.1.9(@types/node@22.16.3)(@vitest/ui@3.2.4(vitest@3.2.4))(jsdom@26.1.0)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2)):
+  vitest@2.1.9(@types/node@22.16.3)(@vitest/ui@3.2.4)(jsdom@26.1.0)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2)):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2))(vite@5.4.19(@types/node@22.16.3))

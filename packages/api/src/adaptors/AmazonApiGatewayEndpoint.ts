@@ -198,8 +198,8 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.error())
       .use(this.services())
       .use(this.input())
-      .use(this.authorize())
-      .use(this.session()) as unknown as AmazonApiGatewayV1EndpointHandler;
+      .use(this.session())
+      .use(this.authorize()) as unknown as AmazonApiGatewayV1EndpointHandler;
   }
 }
 

@@ -1,17 +1,10 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "private": false,
   "type": "module",
   "bin": {
-    "gkm": "./src/index.ts"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs",
-      "types": "./src/index.ts"
-    }
+    "gkm": "./src/cli.ts"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

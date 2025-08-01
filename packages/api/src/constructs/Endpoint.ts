@@ -4,6 +4,7 @@ import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import { UnprocessableEntityError } from '../errors';
 import type { Logger } from '../logger';
+import type { RateLimitConfig } from '../rate-limit';
 
 import type { Service, ServiceRecord } from '../services';
 import {
@@ -70,6 +71,8 @@ export class Endpoint<
     ({}) as TSession;
   /** Function to determine if the request is authorized */
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
+  /** Optional rate limiting configuration */
+  public rateLimit?: RateLimitConfig;
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -417,6 +420,7 @@ export class Endpoint<
     timeout,
     getSession,
     authorize,
+    rateLimit,
     status = SuccessStatus.OK,
   }: EndpointOptions<
     TRoute,
@@ -447,6 +451,10 @@ export class Endpoint<
 
     if (authorize) {
       this.authorize = authorize;
+    }
+
+    if (rateLimit) {
+      this.rateLimit = rateLimit;
     }
   }
 }
@@ -519,6 +527,8 @@ export interface EndpointOptions<
   logger: TLogger;
   /** Optional session extraction function */
   getSession: SessionFn<TServices, TLogger, TSession> | undefined;
+  /** Optional rate limiting configuration */
+  rateLimit?: RateLimitConfig;
   /** Success HTTP status code */
   status: SuccessStatus | undefined;
 }

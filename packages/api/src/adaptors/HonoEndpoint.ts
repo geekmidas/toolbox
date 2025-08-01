@@ -10,6 +10,7 @@ import {
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
 import type { Logger } from '../logger';
+import { checkRateLimit, getRateLimitHeaders } from '../rate-limit';
 
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { wrapError } from '../errors';
@@ -164,6 +165,29 @@ export class HonoEndpoint<
           if (!isAuthorized) {
             logger.warn('Unauthorized access attempt');
             return c.json({ error: 'Unauthorized' }, 401);
+          }
+
+          // Check rate limit if configured
+          if (endpoint.rateLimit) {
+            const rateLimitInfo = await checkRateLimit(endpoint.rateLimit, {
+              header,
+              services,
+              logger,
+              session,
+              path: c.req.path,
+              method: endpoint.method,
+            });
+
+            // Set rate limit headers
+            const rateLimitHeaders = getRateLimitHeaders(
+              rateLimitInfo,
+              endpoint.rateLimit,
+            );
+            for (const [key, value] of Object.entries(rateLimitHeaders)) {
+              if (value) {
+                c.header(key, value);
+              }
+            }
           }
 
           const response = await endpoint.handler({
