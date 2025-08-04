@@ -1,14 +1,14 @@
 {
   "name": "@geekmidas/emailkit",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Type-safe email client with SMTP support and React templates",
   "private": false,
   "type": "module",
   "exports": {
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.mjs",
-      "require": "./dist/*.cjs",
-      "types": "./src/*.ts"
+      "require": "./dist/*.cjs"
     }
   },
   "publishConfig": {

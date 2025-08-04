@@ -38,6 +38,9 @@ export async function loadEndpoints(routes: Routes): Promise<LoadedEndpoint[]> {
       }
     } catch (error) {
       logger.warn(`Failed to load ${f}:`, (error as Error).message);
+      throw new Error(
+        'Failed to load endpoints. Please check the logs for details.',
+      );
     }
   }
 

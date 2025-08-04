@@ -202,7 +202,7 @@ export class Endpoint<
    * headerFn('content-type'); // Returns 'application/json'
    * ```
    */
-  static createHeaders(headers: Record<string, string>) {
+  static createHeaders(headers: Record<string, string>): HeaderFn {
     const headerMap = new Map<string, string>();
     for (const [k, v] of Object.entries(headers)) {
       const key = k.toLowerCase();
@@ -642,6 +642,8 @@ export type EndpointOpenApiSchema<
   };
 };
 
+export type SingleHeaderFn = (key: string) => string | undefined;
+export type MultiHeaderFn = () => EndpointHeaders;
 /**
  * Type representing HTTP headers as a Map.
  */
@@ -653,7 +655,7 @@ export type EndpointHeaders = Map<string, string>;
  * @param key - The header name (case-insensitive)
  * @returns The header value or undefined if not found
  */
-export type HeaderFn = (key: string) => string | undefined;
+export type HeaderFn = SingleHeaderFn;
 
 /**
  * The execution context provided to endpoint handlers.

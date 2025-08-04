@@ -1,21 +1,21 @@
 {
   "name": "@geekmidas/testkit",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "private": false,
   "type": "module",
   "exports": {
     "./objection": {
-      "types": "./src/objection.ts",
+      "types": "./dist/objection.d.ts",
       "import": "./dist/objection.mjs",
       "require": "./dist/objection.cjs"
     },
     "./kysely": {
-      "types": "./src/kysely.ts",
+      "types": "./dist/kysely.ts",
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
     },
     "./faker": {
-      "types": "./src/faker.ts",
+      "types": "./dist/faker.d.ts",
       "import": "./dist/faker.mjs",
       "require": "./dist/faker.cjs"
     }

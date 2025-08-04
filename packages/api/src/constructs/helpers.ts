@@ -1,11 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 export const StandardSchemaJsonSchema = {
-  zod: async (schema) => {
+  zod: async (schema): Promise<any> => {
     const { z } = await import('zod/v4');
     return z.toJSONSchema(schema, { unrepresentable: 'any' });
   },
-  valibot: async (schema) => {
+  valibot: async (schema): Promise<any> => {
     const { toJsonSchema } = await import('@valibot/to-json-schema');
     return toJsonSchema(schema as any);
   },

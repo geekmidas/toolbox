@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import type { GkmConfig } from './types.js';
+import { readFile } from 'fs/promises';
+import type { GkmConfig } from './types.ts';
 
 export async function loadConfig(): Promise<GkmConfig> {
   const configPath = join(process.cwd(), 'gkm.config.json');
@@ -12,11 +13,11 @@ export async function loadConfig(): Promise<GkmConfig> {
   }
 
   try {
-    const config = await import(configPath);
-    return config.default || config;
+    const config = await readFile(configPath, 'utf-8');
+    return JSON.parse(config);
   } catch (error) {
     throw new Error(
-      `Failed to load gkm.config.ts: ${(error as Error).message}`,
+      `Failed to load gkm.config.json: ${(error as Error).message}`,
     );
   }
 }

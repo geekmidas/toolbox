@@ -1,28 +1,28 @@
 {
   "name": "@geekmidas/api",
-  "version": "0.0.28",
+  "version": "0.0.31",
   "private": false,
   "type": "module",
   "exports": {
     "./*": {
+      "types": "./dist/exports/*.d.ts",
       "import": "./dist/exports/*.mjs",
-      "require": "./dist/exports/*.cjs",
-      "types": "./src/exports/*.ts"
+      "require": "./dist/exports/*.cjs"
     },
     "./errors": {
+      "types": "./dist/errors.d.ts",
       "import": "./dist/errors.mjs",
-      "require": "./dist/errors.cjs",
-      "types": "./src/errors.ts"
+      "require": "./dist/errors.cjs"
     },
     "./services": {
+      "types": "./dist/services.d.ts",
       "import": "./dist/services.mjs",
-      "require": "./dist/services.cjs",
-      "types": "./src/services.ts"
+      "require": "./dist/services.cjs"
     },
     "./client": {
+      "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.mjs",
-      "require": "./dist/client/index.cjs",
-      "types": "./src/client/index.ts"
+      "require": "./dist/client/index.cjs"
     }
   },
   "repository": {
