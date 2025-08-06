@@ -29,7 +29,7 @@ export class TypedFetcher<Paths> {
     if (config && 'params' in config && config.params) {
       Object.entries(config.params as Record<string, unknown>).forEach(
         ([key, value]) => {
-          url = url.replace(`{${key}}`, String(value));
+          url = url.replace(`{${key}}`, encodeURIComponent(String(value)));
         },
       );
     }

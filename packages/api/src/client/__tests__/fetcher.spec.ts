@@ -226,10 +226,99 @@ describe('TypedFetcher', () => {
       params: { id: 'user with spaces' },
     });
 
+    // MSW decodes the URL parameters, so we get the original value back
     expect(result).toEqual({
       id: 'user with spaces',
       name: 'John Doe',
       email: 'john@example.com',
     });
+  });
+
+  it('should correctly substitute multiple path parameters', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // Add a mock handler for this test
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === 'https://api.example.com/posts/123/comments/456') {
+        return new Response(
+          JSON.stringify({
+            postId: '123',
+            commentId: '456',
+            content: 'Test comment',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(url, init);
+    });
+    // @ts-ignore
+    global.fetch = mockFetch;
+
+    const result = await client(
+      'GET /posts/{postId}/comments/{commentId}' as any,
+      {
+        params: { postId: '123', commentId: '456' },
+      },
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/posts/123/comments/456',
+      expect.any(Object),
+    );
+    expect(result).toEqual({
+      postId: '123',
+      commentId: '456',
+      content: 'Test comment',
+    });
+
+    global.fetch = originalFetch;
+  });
+
+  it('should URL encode special characters in path parameters', async () => {
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // Mock fetch to verify the actual URL being called
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (
+        url ===
+        'https://api.example.com/users/user%20with%20spaces%2Fand%2Fslashes'
+      ) {
+        return new Response(
+          JSON.stringify({
+            id: 'user with spaces/and/slashes',
+            name: 'Test User',
+            email: 'test@example.com',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(url, init);
+    });
+    // @ts-ignore
+    global.fetch = mockFetch;
+
+    const result = await client('GET /users/{id}', {
+      params: { id: 'user with spaces/and/slashes' },
+    });
+
+    // Verify the URL was properly encoded
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/users/user%20with%20spaces%2Fand%2Fslashes',
+      expect.any(Object),
+    );
+
+    expect(result).toEqual({
+      id: 'user with spaces/and/slashes',
+      name: 'Test User',
+      email: 'test@example.com',
+    });
+
+    global.fetch = originalFetch;
   });
 });

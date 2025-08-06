@@ -215,6 +215,88 @@ function price(): number {
   return +faker.commerce.price();
 }
 
+type Coordinate = {
+  lat: number;
+  lng: number;
+};
+
+export function coordinateInRadius(
+  center: Coordinate,
+  radius: number,
+): Coordinate {
+  // Earth's radius in meters
+  const earth = 6378137;
+  // Convert radius from meters to degrees
+  const d = radius / earth;
+
+  // Random bearing and distance
+  const theta = 2 * Math.PI * Math.random();
+  const r = d * Math.sqrt(Math.random());
+
+  const lat1 = (center.lat * Math.PI) / 180;
+  const lng1 = (center.lng * Math.PI) / 180;
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(r) +
+      Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
+      Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
+    );
+
+  return {
+    lat: (lat2 * 180) / Math.PI,
+    lng: (lng2 * 180) / Math.PI,
+  };
+}
+
+function coordinateOutsideRadius(
+  center: Coordinate,
+  minRadiusMeters: number,
+  maxRadiusMeters: number,
+): Coordinate {
+  // Earth's radius in meters
+  const earth = 6378137;
+
+  // Convert radii from meters to radians
+  const minD = minRadiusMeters / earth;
+  const maxD = maxRadiusMeters / earth;
+
+  // Random bearing
+  const theta = 2 * Math.PI * Math.random();
+
+  // Random distance in annular ring (uniform distribution by area)
+  // For uniform distribution in annulus: r = sqrt(r_min² + (r_max² - r_min²) * random)
+  const r = Math.sqrt(
+    minD * minD + (maxD * maxD - minD * minD) * Math.random(),
+  );
+
+  const lat1 = (center.lat * Math.PI) / 180;
+  const lng1 = (center.lng * Math.PI) / 180;
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(r) +
+      Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
+      Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
+    );
+
+  // Normalize longitude to [-180, 180]
+  const normalizedLng = (((lng2 * 180) / Math.PI + 540) % 360) - 180;
+
+  return {
+    lat: (lat2 * 180) / Math.PI,
+    lng: normalizedLng,
+  };
+}
+
 /**
  * Enhanced faker instance with additional utility methods for testing.
  * Extends @faker-js/faker with custom methods for common test data generation patterns.
@@ -242,6 +324,10 @@ export const faker = Object.freeze(
     resetSequence,
     resetAllSequences,
     price,
+    coordinates: {
+      within: coordinateInRadius,
+      outside: coordinateOutsideRadius,
+    },
   }),
 );
 
