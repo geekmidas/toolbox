@@ -286,7 +286,10 @@ export class KyselyFactory<
   async insertMany<K extends keyof Builders>(
     count: number,
     builderName: K,
-    attrs: (idx: number, faker: FakerFactory) => Parameters<Builders[K]>[0],
+    attrs: (
+      idx: number,
+      faker: FakerFactory,
+    ) => Promise<Parameters<Builders[K]>[0]>,
   ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
   async insertMany<K extends keyof Builders>(
     count: number,
@@ -304,7 +307,8 @@ export class KyselyFactory<
     const promises: Promise<any>[] = [];
 
     for (let i = 0; i < count; i++) {
-      const newAttrs = typeof attrs === 'function' ? attrs(i, faker) : attrs;
+      const newAttrs =
+        typeof attrs === 'function' ? await attrs(i, faker) : attrs;
       promises.push(this.insert(builderName, newAttrs));
     }
 

@@ -71,7 +71,10 @@ export abstract class Factory<
     builderName: K,
     attrs?:
       | Parameters<Builders[K]>[0]
-      | ((idx: number, faker: FakerFactory) => Parameters<Builders[K]>[0]),
+      | ((
+          idx: number,
+          faker: FakerFactory,
+        ) => Promise<Parameters<Builders[K]>[0]>),
   ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
 
   /**

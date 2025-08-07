@@ -283,7 +283,7 @@ export class ObjectionFactory<
     const records: any[] = [];
     for (let i = 0; i < count; i++) {
       const newAttrs =
-        typeof attrs === 'function' ? (attrs as any)(i, faker) : attrs;
+        typeof attrs === 'function' ? await (attrs as any)(i, faker) : attrs;
 
       records.push(
         this.builders[builderName](newAttrs, this, this.db, faker).then(
