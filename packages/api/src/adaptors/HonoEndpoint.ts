@@ -92,7 +92,33 @@ export class HonoEndpoint<
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
-    for (const endpoint of endpoints) {
+    // Sort endpoints to ensure static routes come before dynamic ones
+    const sortedEndpoints = endpoints.sort((a, b) => {
+      const aSegments = a.route.split('/');
+      const bSegments = b.route.split('/');
+      
+      // Compare each segment
+      for (let i = 0; i < Math.max(aSegments.length, bSegments.length); i++) {
+        const aSegment = aSegments[i] || '';
+        const bSegment = bSegments[i] || '';
+        
+        // If one is dynamic and the other is not, static comes first
+        const aIsDynamic = aSegment.startsWith(':');
+        const bIsDynamic = bSegment.startsWith(':');
+        
+        if (!aIsDynamic && bIsDynamic) return -1;
+        if (aIsDynamic && !bIsDynamic) return 1;
+        
+        // If both are the same type, compare alphabetically
+        if (aSegment !== bSegment) {
+          return aSegment.localeCompare(bSegment);
+        }
+      }
+      
+      return 0;
+    });
+    
+    for (const endpoint of sortedEndpoints) {
       HonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
     }
   }
