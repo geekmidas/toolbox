@@ -11,6 +11,7 @@ import {
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpoint';
+import { parseQueryParams } from './utils/parseQueryParams';
 
 export class AmazonApiGatewayV1Endpoint<
   TRoute extends string,
@@ -31,9 +32,30 @@ export class AmazonApiGatewayV1Endpoint<
   TSession
 > {
   getInput(e: APIGatewayProxyEvent): GetInputResponse {
+    // For arrays, AWS API Gateway V1 provides multiValueQueryStringParameters
+    const multiValueParams = e.multiValueQueryStringParameters || {};
+    const singleValueParams = e.queryStringParameters || {};
+
+    // Merge single and multi-value parameters
+    const mergedParams: Record<string, string | string[]> = {};
+
+    // Add single value parameters
+    for (const [key, value] of Object.entries(singleValueParams)) {
+      if (value !== undefined) {
+        mergedParams[key] = value;
+      }
+    }
+
+    // Override with multi-value parameters where applicable
+    for (const [key, values] of Object.entries(multiValueParams)) {
+      if (values && values.length > 1) {
+        mergedParams[key] = values;
+      }
+    }
+
     return {
       body: e.body ? JSON.parse(e.body) : undefined,
-      query: e.queryStringParameters || {},
+      query: parseQueryParams(mergedParams),
       params: e.pathParameters || {},
     };
   }

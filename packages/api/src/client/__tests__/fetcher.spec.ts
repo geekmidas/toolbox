@@ -107,6 +107,67 @@ describe('TypedFetcher', () => {
     });
   });
 
+  it('should handle array query parameters', async () => {
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // Mock fetch to capture the request URL
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ items: ['a', 'b', 'c'] }),
+    });
+    global.fetch = mockFetch;
+
+    await client('GET /search', {
+      query: { tags: ['nodejs', 'typescript', 'javascript'] as any },
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/search?tags=nodejs&tags=typescript&tags=javascript',
+      expect.any(Object),
+    );
+
+    global.fetch = originalFetch;
+  });
+
+  it('should handle object query parameters with dot notation', async () => {
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // Mock fetch to capture the request URL
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ results: [] }),
+    });
+    global.fetch = mockFetch;
+
+    await client('GET /products', {
+      query: {
+        filter: {
+          category: 'electronics',
+          minPrice: 100,
+          maxPrice: 500,
+        },
+        sort: 'price',
+      } as any,
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/products?filter.category=electronics&filter.minPrice=100&filter.maxPrice=500&sort=price',
+      expect.any(Object),
+    );
+
+    global.fetch = originalFetch;
+  });
+
   it('should handle 404 errors', async () => {
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',

@@ -831,6 +831,117 @@ describe('AmazonApiGatewayV1Endpoint', () => {
   });
 
   describe('combined inputs', () => {
+    it('should handle array query parameters', async () => {
+      const querySchema = z.object({
+        tags: z.array(z.string()),
+        page: z.coerce.number().default(1),
+      });
+      const outputSchema = z.object({
+        tags: z.array(z.string()),
+        page: z.number(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/items',
+        method: 'GET',
+        fn: async ({ query }) => ({
+          tags: query.tags,
+          page: query.page,
+        }),
+        input: { query: querySchema },
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        description: 'List items with tags',
+        getSession: () => ({}),
+        status: 200,
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent({
+        queryStringParameters: { tags: 'nodejs', page: '2' },
+        multiValueQueryStringParameters: {
+          tags: ['nodejs', 'typescript', 'javascript'],
+          page: ['2'],
+        },
+      });
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body!);
+      expect(body).toEqual({
+        tags: ['nodejs', 'typescript', 'javascript'],
+        page: 2,
+      });
+    });
+
+    it('should handle object query parameters with dot notation', async () => {
+      const querySchema = z.object({
+        filter: z.object({
+          name: z.string(),
+          status: z.string(),
+          priority: z.coerce.number(),
+        }),
+        sort: z.string().default('name'),
+      });
+      const outputSchema = z.object({
+        filter: z.object({
+          name: z.string(),
+          status: z.string(),
+          priority: z.number(),
+        }),
+        sort: z.string(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/search',
+        method: 'GET',
+        fn: async ({ query }) => ({
+          filter: query.filter,
+          sort: query.sort,
+        }),
+        input: { query: querySchema },
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        description: 'Search with filters',
+        getSession: () => ({}),
+        status: 200,
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockEvent({
+        queryStringParameters: {
+          'filter.name': 'john',
+          'filter.status': 'active',
+          'filter.priority': '1',
+          sort: 'priority',
+        },
+      });
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body!);
+      expect(body).toEqual({
+        filter: {
+          name: 'john',
+          status: 'active',
+          priority: 1,
+        },
+        sort: 'priority',
+      });
+    });
+
     it('should handle body, query, and params together', async () => {
       const bodySchema = z.object({ name: z.string() });
       const querySchema = z.object({ filter: z.string() });

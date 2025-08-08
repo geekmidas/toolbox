@@ -154,7 +154,7 @@ describe('URL Path Parameter Parsing', () => {
 
   it('should handle empty baseURL', async () => {
     const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
+      baseURL: '',
     });
 
     const mockFetch = vi.fn().mockResolvedValue(

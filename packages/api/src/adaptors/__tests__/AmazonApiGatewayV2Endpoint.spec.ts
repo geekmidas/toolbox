@@ -252,6 +252,141 @@ describe('AmazonApiGatewayV2Endpoint', () => {
       });
     });
 
+    it('should handle array query parameters (comma-separated)', async () => {
+      const endpoint = e
+        .get('/search')
+        .query(
+          z.object({
+            tags: z.array(z.string()),
+            limit: z.coerce.number().default(10),
+          }),
+        )
+        .output(
+          z.object({
+            tags: z.array(z.string()),
+            limit: z.number(),
+          }),
+        )
+        .handle(async ({ query }) => ({
+          tags: query.tags,
+          limit: query.limit,
+        }));
+
+      const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+      const event: APIGatewayProxyEventV2 = {
+        version: '2.0',
+        routeKey: 'GET /search',
+        rawPath: '/search',
+        rawQueryString: 'tags=nodejs,typescript,javascript&limit=20',
+        cookies: [],
+        headers: {},
+        queryStringParameters: {
+          tags: 'nodejs,typescript,javascript',
+          limit: '20',
+        },
+        requestContext: {
+          accountId: '123456789012',
+          apiId: 'api-id',
+          domainName: 'api.example.com',
+          domainPrefix: 'api',
+          http: {
+            method: 'GET',
+            path: '/search',
+            protocol: 'HTTP/1.1',
+            sourceIp: '127.0.0.1',
+            userAgent: 'test',
+          },
+          requestId: 'request-id',
+          routeKey: 'GET /search',
+          stage: 'prod',
+          time: '01/Jan/2024:00:00:00 +0000',
+          timeEpoch: 1704067200000,
+        },
+        isBase64Encoded: false,
+      };
+      // @ts-ignore
+      const response = await adapter.handler(event, mockContext);
+
+      expect(response).toEqual({
+        statusCode: 200,
+        body: JSON.stringify({
+          tags: ['nodejs', 'typescript', 'javascript'],
+          limit: 20,
+        }),
+      });
+    });
+
+    it('should handle object query parameters with dot notation', async () => {
+      const endpoint = e
+        .get('/search')
+        .query(
+          z.object({
+            filter: z.object({
+              category: z.string(),
+              active: z.coerce.boolean(),
+            }),
+          }),
+        )
+        .output(
+          z.object({
+            filter: z.object({
+              category: z.string(),
+              active: z.boolean(),
+            }),
+          }),
+        )
+        .handle(async ({ query }) => ({
+          filter: query.filter,
+        }));
+
+      const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+      const event: APIGatewayProxyEventV2 = {
+        version: '2.0',
+        routeKey: 'GET /search',
+        rawPath: '/search',
+        rawQueryString: 'filter.category=electronics&filter.active=true',
+        cookies: [],
+        headers: {},
+        queryStringParameters: {
+          'filter.category': 'electronics',
+          'filter.active': 'true',
+        },
+        requestContext: {
+          accountId: '123456789012',
+          apiId: 'api-id',
+          domainName: 'api.example.com',
+          domainPrefix: 'api',
+          http: {
+            method: 'GET',
+            path: '/search',
+            protocol: 'HTTP/1.1',
+            sourceIp: '127.0.0.1',
+            userAgent: 'test',
+          },
+          requestId: 'request-id',
+          routeKey: 'GET /search',
+          stage: 'prod',
+          time: '01/Jan/2024:00:00:00 +0000',
+          timeEpoch: 1704067200000,
+        },
+        isBase64Encoded: false,
+      };
+      // @ts-ignore
+      const response = await adapter.handler(event, mockContext);
+
+      expect(response).toEqual({
+        statusCode: 200,
+        body: JSON.stringify({
+          filter: {
+            category: 'electronics',
+            active: true,
+          },
+        }),
+      });
+    });
+
     it('should handle endpoint with query and params', async () => {
       const endpoint = e
         .get('/users/:id')

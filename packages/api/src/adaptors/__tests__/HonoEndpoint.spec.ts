@@ -589,6 +589,112 @@ describe('HonoEndpointAdaptor', () => {
     });
   });
 
+  describe('query parameter handling', () => {
+    it('should handle array query parameters', async () => {
+      const querySchema = z.object({
+        tags: z.array(z.string()),
+        limit: z.coerce.number().default(10),
+      });
+      const outputSchema = z.object({
+        tags: z.array(z.string()),
+        limit: z.number(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/search',
+        method: 'GET',
+        fn: async ({ query }) => ({
+          tags: query.tags,
+          limit: query.limit,
+        }),
+        input: {
+          query: querySchema,
+        },
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        status: 200,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request(
+        '/search?tags=nodejs&tags=typescript&tags=javascript&limit=20',
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        tags: ['nodejs', 'typescript', 'javascript'],
+        limit: 20,
+      });
+    });
+
+    it('should handle object query parameters with dot notation', async () => {
+      const querySchema = z.object({
+        filter: z.object({
+          category: z.string(),
+          active: z.coerce.boolean(),
+          minPrice: z.coerce.number(),
+        }),
+        sort: z.string().default('name'),
+      });
+      const outputSchema = z.object({
+        filter: z.object({
+          category: z.string(),
+          active: z.boolean(),
+          minPrice: z.number(),
+        }),
+        sort: z.string(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/products',
+        method: 'GET',
+        fn: async ({ query }) => ({
+          filter: query.filter,
+          sort: query.sort,
+        }),
+        input: {
+          query: querySchema,
+        },
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        authorize: undefined,
+        status: 200,
+        getSession: undefined,
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request(
+        '/products?filter.category=electronics&filter.active=true&filter.minPrice=100&sort=price',
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        filter: {
+          category: 'electronics',
+          active: true,
+          minPrice: 100,
+        },
+        sort: 'price',
+      });
+    });
+  });
+
   describe('validate', () => {
     it('should return undefined when no schema is provided', async () => {
       const mockContext: any = {

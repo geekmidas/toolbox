@@ -11,6 +11,7 @@ import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
 import type { Logger } from '../logger';
 import { checkRateLimit, getRateLimitHeaders } from '../rate-limit';
+import { parseHonoQuery } from './utils/parseHonoQuery';
 
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { wrapError } from '../errors';
@@ -125,9 +126,10 @@ export class HonoEndpoint<
       validator('json', (value, c) =>
         HonoEndpoint.validate(c, value, endpoint.input?.body),
       ),
-      validator('query', (query, c) =>
-        HonoEndpoint.validate(c, query, endpoint.input?.query),
-      ),
+      validator('query', (_, c) => {
+        const parsedQuery = parseHonoQuery(c);
+        return HonoEndpoint.validate(c, parsedQuery, endpoint.input?.query);
+      }),
       validator('param', (params, c) =>
         HonoEndpoint.validate(c, params, endpoint.input?.params),
       ),

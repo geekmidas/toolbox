@@ -12,7 +12,9 @@
       "Bash(pnpm typecheck:*)",
       "Bash(pnpm ts:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(pnpm vitest run:*)",
+      "Bash(pnpm exec vitest run:*)"
     ],
     "deny": []
   }

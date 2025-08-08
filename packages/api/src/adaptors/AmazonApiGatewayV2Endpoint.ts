@@ -11,6 +11,7 @@ import {
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpoint';
+import { parseQueryParams } from './utils/parseQueryParams';
 
 export class AmazonApiGatewayV2Endpoint<
   TRoute extends string,
@@ -31,9 +32,25 @@ export class AmazonApiGatewayV2Endpoint<
   TSession
 > {
   getInput(e: APIGatewayProxyEventV2): GetInputResponse {
+    // API Gateway V2 handles arrays as comma-separated values
+    const queryParams = e.queryStringParameters || {};
+    const processedParams: Record<string, string | string[]> = {};
+
+    for (const [key, value] of Object.entries(queryParams)) {
+      if (value !== undefined) {
+        // Check if value contains comma and could be an array
+        // Be careful not to split values that legitimately contain commas
+        if (value.includes(',') && !value.includes('"')) {
+          processedParams[key] = value.split(',').map((v) => v.trim());
+        } else {
+          processedParams[key] = value;
+        }
+      }
+    }
+
     return {
       body: e.body ? JSON.parse(e.body) : undefined,
-      query: e.queryStringParameters || {},
+      query: parseQueryParams(processedParams),
       params: e.pathParameters || {},
     };
   }

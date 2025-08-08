@@ -40,7 +40,23 @@ export class TypedFetcher<Paths> {
       Object.entries(config.query as Record<string, unknown>).forEach(
         ([key, value]) => {
           if (value !== undefined && value !== null) {
-            queryParams.append(key, String(value));
+            if (Array.isArray(value)) {
+              // Handle arrays by appending multiple values with the same key
+              value.forEach((item) => {
+                queryParams.append(key, String(item));
+              });
+            } else if (typeof value === 'object') {
+              // For objects, flatten into dot notation
+              Object.entries(value as Record<string, unknown>).forEach(
+                ([subKey, subValue]) => {
+                  if (subValue !== undefined && subValue !== null) {
+                    queryParams.append(`${key}.${subKey}`, String(subValue));
+                  }
+                },
+              );
+            } else {
+              queryParams.append(key, String(value));
+            }
           }
         },
       );
