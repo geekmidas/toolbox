@@ -4,6 +4,7 @@ export {
   TypedQueryClient,
   useTypedQuery,
   useTypedMutation,
+  useTypedInfiniteQuery,
   type TypedQueryClientOptions,
 } from './react-query';
 export { createOpenAPIHooks } from './openapi-hooks';

@@ -1,8 +1,9 @@
 import type {
+  UseInfiniteQueryOptions,
   UseMutationOptions,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { createTypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
@@ -17,11 +18,9 @@ export interface TypedQueryClientOptions extends FetcherOptions {}
 
 export class TypedQueryClient<Paths> {
   private fetcher: ReturnType<typeof createTypedFetcher<Paths>>;
-  private options: TypedQueryClientOptions;
 
   constructor(options: TypedQueryClientOptions = {}) {
     this.fetcher = createTypedFetcher<Paths>(options);
-    this.options = options;
   }
 
   useQuery<T extends QueryEndpoint<Paths>>(
@@ -59,6 +58,46 @@ export class TypedQueryClient<Paths> {
     >({
       mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
         this.fetcher(endpoint, config),
+      ...options,
+    });
+  }
+
+  useInfiniteQuery<
+    T extends QueryEndpoint<Paths>,
+    TData = ExtractEndpointResponse<Paths, T>,
+    TPageParam = unknown,
+  >(
+    endpoint: T,
+    options: Omit<
+      UseInfiniteQueryOptions<TData, Response, TData, unknown[], TPageParam>,
+      'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
+    > & {
+      getNextPageParam: (
+        lastPage: TData,
+        allPages: TData[],
+        lastPageParam: TPageParam,
+        allPageParams: TPageParam[],
+      ) => TPageParam | undefined;
+      initialPageParam: TPageParam;
+    },
+    config?: FilteredRequestConfig<Paths, T>,
+  ) {
+    const queryKey = this.buildQueryKey(endpoint, config);
+
+    return useInfiniteQuery<TData, Response, TData, unknown[], TPageParam>({
+      queryKey,
+      queryFn: ({ pageParam }) => {
+        let mergedConfig = config;
+        if (pageParam && config) {
+          mergedConfig = {
+            ...config,
+            query: { ...(config as any).query, ...pageParam },
+          } as any;
+        } else if (pageParam && !config) {
+          mergedConfig = { query: pageParam } as any;
+        }
+        return this.fetcher(endpoint, mergedConfig) as Promise<TData>;
+      },
       ...options,
     });
   }
@@ -113,4 +152,29 @@ export function useTypedMutation<Paths, T extends MutationEndpoint<Paths>>(
   >,
 ) {
   return client.useMutation(endpoint, options);
+}
+
+export function useTypedInfiniteQuery<
+  Paths,
+  T extends QueryEndpoint<Paths>,
+  TData = ExtractEndpointResponse<Paths, T>,
+  TPageParam = unknown,
+>(
+  client: TypedQueryClient<Paths>,
+  endpoint: T,
+  options: Omit<
+    UseInfiniteQueryOptions<TData, Response, TData, unknown[], TPageParam>,
+    'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
+  > & {
+    getNextPageParam: (
+      lastPage: TData,
+      allPages: TData[],
+      lastPageParam: TPageParam,
+      allPageParams: TPageParam[],
+    ) => TPageParam | undefined;
+    initialPageParam: TPageParam;
+  },
+  config?: FilteredRequestConfig<Paths, T>,
+) {
+  return client.useInfiniteQuery(endpoint, options, config);
 }

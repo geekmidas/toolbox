@@ -14,7 +14,9 @@
       "Bash(npx tsc:*)",
       "Bash(npx tsx:*)",
       "Bash(pnpm vitest run:*)",
-      "Bash(pnpm exec vitest run:*)"
+      "Bash(pnpm exec vitest run:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(pnpm build:*)"
     ],
     "deny": []
   }
