@@ -34,3 +34,31 @@ export async function convertStandardSchemaToJsonSchema(
     `Unsupported vendor "${vendor}" for Standard Schema. Supported vendors are: ${Object.keys(StandardSchemaJsonSchema).join(', ')}`,
   );
 }
+
+export async function getZodMetadata(
+  schema: StandardSchemaV1,
+): Promise<SchemaMeta | undefined> {
+  const { ZodAny } = await import('zod/v4');
+
+  if (schema instanceof ZodAny) {
+    return schema.meta();
+  }
+
+  return undefined;
+}
+
+export async function getSchemaMetadata(
+  schema: StandardSchemaV1,
+): Promise<SchemaMeta | undefined> {
+  const vendor = schema['~standard']?.vendor;
+
+  if (vendor === 'zod') {
+    return getZodMetadata(schema);
+  }
+
+  return undefined;
+}
+
+interface SchemaMeta {
+  id?: string;
+}
