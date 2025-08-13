@@ -218,4 +218,197 @@ describe('OpenAPI Components', () => {
       $ref: '#/components/schemas/Error',
     });
   });
+
+  it('should handle array schemas with component references', async () => {
+    // Define a schema with metadata
+    const UserSchema = z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        email: z.email(),
+      })
+      .meta({ id: 'ArrayUser' });
+
+    // Create an endpoint that returns an array of users
+    const getUsersEndpoint = new Endpoint({
+      route: '/users',
+      method: 'GET',
+      output: z.array(UserSchema).meta({ id: 'UserList' }),
+      fn: async () => [
+        { id: '1', name: 'John', email: 'john@example.com' },
+        { id: '2', name: 'Jane', email: 'jane@example.com' },
+      ],
+      authorize: undefined,
+      description: undefined,
+      timeout: undefined,
+      input: undefined,
+      services: [],
+      status: undefined,
+      getSession: undefined,
+      logger: {} as any,
+    });
+
+    const openApiSchema = await buildOpenApiSchema([getUsersEndpoint]);
+
+    // Check if both ArrayUser and UserList are in components
+    expect(openApiSchema.components?.schemas).toBeDefined();
+    expect(openApiSchema.components?.schemas?.ArrayUser).toBeDefined();
+    expect(openApiSchema.components?.schemas?.UserList).toBeDefined();
+
+    // Verify UserList schema structure
+    expect(openApiSchema.components?.schemas?.UserList).toMatchObject({
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/ArrayUser',
+      },
+    });
+
+    // Verify the endpoint uses the UserList reference
+    const response =
+      openApiSchema.paths?.['/users']?.get?.responses?.['200'];
+    expect(
+      (response as any)?.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/UserList',
+    });
+  });
+
+  it('should handle arrays without metadata', async () => {
+    const ItemSchema = z
+      .object({
+        id: z.string(),
+        value: z.number(),
+      })
+      .meta({ id: 'Item' });
+
+    // Array without its own metadata
+    const endpoint = new Endpoint({
+      route: '/items',
+      method: 'GET',
+      output: z.array(ItemSchema), // No .meta() on the array
+      fn: async () => [{ id: '1', value: 100 }],
+      authorize: undefined,
+      description: undefined,
+      timeout: undefined,
+      input: undefined,
+      services: [],
+      status: undefined,
+      getSession: undefined,
+      logger: {} as any,
+    });
+
+    const openApiSchema = await buildOpenApiSchema([endpoint]);
+
+    // Item should be in components
+    expect(openApiSchema.components?.schemas?.Item).toBeDefined();
+
+    // Response should have inline array with Item reference
+    const response =
+      openApiSchema.paths?.['/items']?.get?.responses?.['200'];
+    expect(
+      (response as any)?.content?.['application/json']?.schema,
+    ).toMatchObject({
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/Item',
+      },
+    });
+  });
+
+  it('should handle nested arrays with components', async () => {
+    const TagSchema = z
+      .object({
+        id: z.string(),
+        name: z.string(),
+      })
+      .meta({ id: 'Tag' });
+
+    const PostSchema = z
+      .object({
+        id: z.string(),
+        title: z.string(),
+        tags: z.array(TagSchema),
+      })
+      .meta({ id: 'Post' });
+
+    const endpoint = new Endpoint({
+      route: '/posts',
+      method: 'GET',
+      output: z.array(PostSchema).meta({ id: 'PostList' }),
+      fn: async () => [
+        {
+          id: '1',
+          title: 'Test Post',
+          tags: [{ id: 't1', name: 'tech' }],
+        },
+      ],
+      authorize: undefined,
+      description: undefined,
+      timeout: undefined,
+      input: undefined,
+      services: [],
+      status: undefined,
+      getSession: undefined,
+      logger: {} as any,
+    });
+
+    const openApiSchema = await buildOpenApiSchema([endpoint]);
+
+    // All schemas should be in components
+    expect(openApiSchema.components?.schemas?.Tag).toBeDefined();
+    expect(openApiSchema.components?.schemas?.Post).toBeDefined();
+    expect(openApiSchema.components?.schemas?.PostList).toBeDefined();
+
+    // Verify Post schema has array of Tag references
+    expect(openApiSchema.components?.schemas?.Post).toMatchObject({
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        title: { type: 'string' },
+        tags: {
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/Tag',
+          },
+        },
+      },
+      required: ['id', 'title', 'tags'],
+    });
+  });
+
+  it('should handle arrays of primitives', async () => {
+    const endpoint = new Endpoint({
+      route: '/tags',
+      method: 'GET',
+      output: z.array(z.string()).meta({ id: 'StringArray' }),
+      fn: async () => ['tag1', 'tag2', 'tag3'],
+      authorize: undefined,
+      description: undefined,
+      timeout: undefined,
+      input: undefined,
+      services: [],
+      status: undefined,
+      getSession: undefined,
+      logger: {} as any,
+    });
+
+    const openApiSchema = await buildOpenApiSchema([endpoint]);
+
+    // StringArray should be in components
+    expect(openApiSchema.components?.schemas?.StringArray).toBeDefined();
+    expect(openApiSchema.components?.schemas?.StringArray).toMatchObject({
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    });
+
+    // Response should use the reference
+    const response = openApiSchema.paths?.['/tags']?.get?.responses?.['200'];
+    expect(
+      (response as any)?.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/StringArray',
+    });
+  });
 });

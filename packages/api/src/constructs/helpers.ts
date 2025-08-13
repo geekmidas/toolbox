@@ -11,8 +11,71 @@ export const StandardSchemaJsonSchema = {
   },
 };
 
+function extractAndConvertDefs(
+  jsonSchema: any,
+  componentCollector?: {
+    addSchema(id: string, schema: any): void;
+    getReference(id: string): { $ref: string };
+  },
+): any {
+  if (!jsonSchema || typeof jsonSchema !== 'object') {
+    return jsonSchema;
+  }
+
+  // Process the schema recursively to update references
+  const processSchema = (schema: any): any => {
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    // Handle $ref
+    if (schema.$ref && typeof schema.$ref === 'string') {
+      // Convert #/$defs/X to #/components/schemas/X
+      if (schema.$ref.startsWith('#/$defs/')) {
+        const refName = schema.$ref.replace('#/$defs/', '');
+        return componentCollector ? componentCollector.getReference(refName) : schema;
+      }
+      return schema;
+    }
+
+    // Handle arrays
+    if (Array.isArray(schema)) {
+      return schema.map(processSchema);
+    }
+
+    // Process all properties recursively
+    const processed: any = {};
+    for (const [key, value] of Object.entries(schema)) {
+      if (key === '$defs') {
+        // Skip $defs as they've been extracted
+        continue;
+      }
+      processed[key] = processSchema(value);
+    }
+    return processed;
+  };
+
+  // Extract $defs if present
+  if (jsonSchema.$defs && componentCollector) {
+    for (const [defName, defSchema] of Object.entries(jsonSchema.$defs)) {
+      // Process the definition recursively to handle nested $refs
+      const processedDefSchema = processSchema(defSchema);
+      // Add each definition to the component collector
+      componentCollector.addSchema(defName, processedDefSchema);
+    }
+  }
+
+  // Process the schema and remove $defs
+  const { $defs, ...schemaWithoutDefs } = jsonSchema;
+  return processSchema(schemaWithoutDefs);
+}
+
 export async function convertStandardSchemaToJsonSchema(
   schema?: StandardSchemaV1,
+  componentCollector?: {
+    addSchema(id: string, schema: any): void;
+    getReference(id: string): { $ref: string };
+  },
 ): Promise<any> {
   if (!schema) {
     return undefined;
@@ -26,8 +89,10 @@ export async function convertStandardSchemaToJsonSchema(
   }
   if (vendor in StandardSchemaJsonSchema) {
     const toJSONSchema = StandardSchemaJsonSchema[vendor];
-
-    return toJSONSchema(schema);
+    const jsonSchema = await toJSONSchema(schema);
+    
+    // Extract and convert $defs to components
+    return extractAndConvertDefs(jsonSchema, componentCollector);
   }
 
   throw new Error(
@@ -63,6 +128,7 @@ interface SchemaMeta {
   id?: string;
 }
 
+
 export async function convertSchemaWithComponents(
   schema: StandardSchemaV1 | undefined,
   componentCollector?: {
@@ -74,19 +140,25 @@ export async function convertSchemaWithComponents(
     return undefined;
   }
 
-  const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
-  if (!jsonSchema || !componentCollector) {
+  // Convert to JSON Schema with component collector to handle $defs
+  const jsonSchema = await convertStandardSchemaToJsonSchema(schema, componentCollector);
+  
+  if (!componentCollector) {
     return jsonSchema;
   }
 
   // Check if this schema has metadata with an ID
   const metadata = await getSchemaMetadata(schema);
-
-  if (metadata?.id) {
-    // Add the schema to components
-    componentCollector.addSchema(metadata.id, jsonSchema);
-    // Return a reference to the component
-    return componentCollector.getReference(metadata.id);
+  
+  // Also check if the JSON Schema itself has an id field (from Zod's meta)
+  const schemaId = metadata?.id || jsonSchema?.id;
+  
+  if (schemaId) {
+    // Remove the id from the schema before adding to components
+    const { id, ...schemaWithoutId } = jsonSchema;
+    // Add this schema to components and return a reference
+    componentCollector.addSchema(schemaId, schemaWithoutId);
+    return componentCollector.getReference(schemaId);
   }
 
   return jsonSchema;
