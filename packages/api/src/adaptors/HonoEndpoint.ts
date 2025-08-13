@@ -96,28 +96,28 @@ export class HonoEndpoint<
     const sortedEndpoints = endpoints.sort((a, b) => {
       const aSegments = a.route.split('/');
       const bSegments = b.route.split('/');
-      
+
       // Compare each segment
       for (let i = 0; i < Math.max(aSegments.length, bSegments.length); i++) {
         const aSegment = aSegments[i] || '';
         const bSegment = bSegments[i] || '';
-        
+
         // If one is dynamic and the other is not, static comes first
         const aIsDynamic = aSegment.startsWith(':');
         const bIsDynamic = bSegment.startsWith(':');
-        
+
         if (!aIsDynamic && bIsDynamic) return -1;
         if (aIsDynamic && !bIsDynamic) return 1;
-        
+
         // If both are the same type, compare alphabetically
         if (aSegment !== bSegment) {
           return aSegment.localeCompare(bSegment);
         }
       }
-      
+
       return 0;
     });
-    
+
     for (const endpoint of sortedEndpoints) {
       HonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
     }
@@ -169,8 +169,6 @@ export class HonoEndpoint<
         }) as TLogger;
 
         try {
-          logger.debug('Processing endpoint request');
-
           const headerValues = c.req.header();
 
           const header = Endpoint.createHeaders(headerValues);
@@ -235,7 +233,6 @@ export class HonoEndpoint<
 
           return c.json(response);
         } catch (e) {
-          console.error('Error processing endpoint request', e);
           logger.error(e, 'Error processing endpoint request');
           const error = wrapError(e, 500, 'Internal Server Error');
           return c.json(error, error.statusCode as ContentfulStatusCode);

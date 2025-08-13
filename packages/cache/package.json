@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cache",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Type-safe email client with SMTP support and React templates",
   "private": false,
   "type": "module",
@@ -19,15 +19,23 @@
       "types": "./dist/upstash.d.ts",
       "import": "./dist/upstash.mjs",
       "require": "./dist/upstash.cjs"
+    },
+    "./expo": {
+      "types": "./dist/expo.d.ts",
+      "import": "./dist/expo.mjs",
+      "require": "./dist/expo.cjs"
     }
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
-  "dependencies": {},
+  "dependencies": {
+    "date-fns": "~4.1.0"
+  },
   "devDependencies": {},
   "peerDependencies": {
-    "@upstash/redis": "~1.35.1"
+    "@upstash/redis": "~1.35.1",
+    "expo-secure-store": "^14.2.3"
   }
 }

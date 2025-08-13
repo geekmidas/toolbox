@@ -69,7 +69,7 @@ function UserProfile({ userId }: { userId: string }) {
   );
 
   if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
+  if (error) return <div>Error: There is an error</div>;
   if (!user) return null;
 
   return (

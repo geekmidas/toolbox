@@ -16,7 +16,9 @@
       "Bash(pnpm vitest run:*)",
       "Bash(pnpm exec vitest run:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(pnpm fmt:*)",
+      "Bash(pnpm lint:*)"
     ],
     "deny": []
   }

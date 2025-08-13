@@ -38,9 +38,9 @@ export async function convertStandardSchemaToJsonSchema(
 export async function getZodMetadata(
   schema: StandardSchemaV1,
 ): Promise<SchemaMeta | undefined> {
-  const { ZodAny } = await import('zod/v4');
+  const { ZodObject } = await import('zod/v4');
 
-  if (schema instanceof ZodAny) {
+  if (schema instanceof ZodObject) {
     return schema.meta();
   }
 
@@ -61,4 +61,33 @@ export async function getSchemaMetadata(
 
 interface SchemaMeta {
   id?: string;
+}
+
+export async function convertSchemaWithComponents(
+  schema: StandardSchemaV1 | undefined,
+  componentCollector?: {
+    addSchema(id: string, schema: any): void;
+    getReference(id: string): { $ref: string };
+  },
+): Promise<any> {
+  if (!schema) {
+    return undefined;
+  }
+
+  const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
+  if (!jsonSchema || !componentCollector) {
+    return jsonSchema;
+  }
+
+  // Check if this schema has metadata with an ID
+  const metadata = await getSchemaMetadata(schema);
+
+  if (metadata?.id) {
+    // Add the schema to components
+    componentCollector.addSchema(metadata.id, jsonSchema);
+    // Return a reference to the component
+    return componentCollector.getReference(metadata.id);
+  }
+
+  return jsonSchema;
 }

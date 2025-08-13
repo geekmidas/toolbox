@@ -12,8 +12,15 @@ import {
   type FunctionContext,
   type FunctionHandler,
 } from './Function';
-import { convertStandardSchemaToJsonSchema } from './helpers';
-import { type OpenApiSchemaOptions, buildOpenApiSchema } from './openapi';
+import {
+  convertSchemaWithComponents,
+  convertStandardSchemaToJsonSchema,
+} from './helpers';
+import {
+  type ComponentCollector,
+  type OpenApiSchemaOptions,
+  buildOpenApiSchema,
+} from './openapi';
 import {
   FunctionType,
   type HttpMethod,
@@ -275,7 +282,9 @@ export class Endpoint<
    *
    * @returns OpenAPI route definition with operation details
    */
-  async toOpenApi3Route(): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
+  async toOpenApi3Route(
+    componentCollector?: ComponentCollector,
+  ): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
     const operation: OpenAPIV3_1.OperationObject = {
       operationId: this.operationId,
       ...(this.description && { description: this.description }),
@@ -288,8 +297,9 @@ export class Endpoint<
 
     // Add response schema
     if (this.outputSchema) {
-      const responseSchema = await convertStandardSchemaToJsonSchema(
+      const responseSchema = await convertSchemaWithComponents(
         this.outputSchema,
+        componentCollector,
       );
       if (responseSchema) {
         set(
@@ -314,8 +324,9 @@ export class Endpoint<
         'body' in this.input &&
         this.input.body
       ) {
-        const bodySchema = await convertStandardSchemaToJsonSchema(
+        const bodySchema = await convertSchemaWithComponents(
           this.input.body as StandardSchemaV1,
+          componentCollector,
         );
         if (bodySchema) {
           set(operation, ['requestBody'], {

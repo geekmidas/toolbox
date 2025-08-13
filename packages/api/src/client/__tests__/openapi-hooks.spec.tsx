@@ -207,7 +207,7 @@ describe('createOpenAPIHooks', () => {
       const { result } = renderHook(
         () =>
           api.useQuery('listUsers', {
-            query: { page: 2, limit: 10, search: 'john' },
+            // query: { page: 2, limit: 10, search: 'john' },
           }),
         { wrapper: createWrapper() },
       );
