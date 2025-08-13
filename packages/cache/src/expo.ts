@@ -1,13 +1,13 @@
-import { differenceInSeconds } from 'date-fns';
+import { addSeconds } from 'date-fns';
 import * as SecureStore from 'expo-secure-store';
-import type { Cache } from './index';
+import { type Cache, getExpirationInSeconds } from './index';
 
 export class ExpoSecureCache<T> implements Cache<T> {
   static getExpiryKey(key: string): string {
     return `${key}:expiresAt`;
   }
 
-  private async getExpiration(key: string): Promise<number> {
+  async ttl(key: string): Promise<number> {
     const result = await SecureStore.getItemAsync(
       ExpoSecureCache.getExpiryKey(key),
     );
@@ -15,9 +15,7 @@ export class ExpoSecureCache<T> implements Cache<T> {
       return 0;
     }
 
-    const date = new Date(JSON.parse(result));
-
-    const secondsLeft = differenceInSeconds(date, new Date());
+    const secondsLeft = getExpirationInSeconds(result);
 
     return Math.max(secondsLeft, 0);
   }
@@ -29,7 +27,7 @@ export class ExpoSecureCache<T> implements Cache<T> {
       return undefined;
     }
 
-    const expiresAt = await this.getExpiration(key);
+    const expiresAt = await this.ttl(key);
     if (expiresAt === 0) {
       return undefined;
     }
@@ -37,12 +35,12 @@ export class ExpoSecureCache<T> implements Cache<T> {
     return JSON.parse(result) as T;
   }
 
-  async set(key: string, value: T, ttl?: number): Promise<void> {
-    const expiresAt = ttl ? Date.now() + ttl * 1000 : 0;
+  async set(key: string, value: T, ttl: number = 600): Promise<void> {
+    const expiresAt = addSeconds(new Date(), ttl).toISOString();
     await SecureStore.setItemAsync(key, JSON.stringify(value));
     await SecureStore.setItemAsync(
       ExpoSecureCache.getExpiryKey(key),
-      JSON.stringify(expiresAt),
+      expiresAt,
     );
   }
 

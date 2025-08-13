@@ -11,6 +11,16 @@ export class UpstashCache<T> implements Cache<T> {
     });
   }
 
+  async ttl(key: string): Promise<number> {
+    const ttl = await this.client.ttl(key);
+
+    if (ttl === -2) {
+      return 0; // Key does not exist
+    }
+
+    return ttl; // Returns TTL in seconds
+  }
+
   async get(key: string): Promise<T | undefined> {
     const v = await this.client.get(key);
 
