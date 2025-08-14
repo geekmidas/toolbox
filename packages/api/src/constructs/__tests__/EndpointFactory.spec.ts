@@ -279,8 +279,8 @@ describe('EndpointFactory', () => {
     it('should add services to factory', () => {
       const factory = new EndpointFactory().services([Service1, Service2]);
       const endpoint = factory.get('/test').handle(async ({ services }) => ({
-        result1: (await services.get(Service1.serviceName)).method1(),
-        result2: (await services.get(Service2.serviceName)).method2(),
+        result1: (await services[Service1.serviceName]).method1(),
+        result2: (await services[Service2.serviceName]).method2(),
       }));
 
       expect(endpoint.services).toEqual([Service1, Service2]);
@@ -467,7 +467,7 @@ describe('EndpointFactory', () => {
         .handle(async ({ body, services }) => ({
           result:
             body.input +
-            (await services.get(TypedService.serviceName)).getData().value,
+            (await services[TypedService.serviceName]).getData().value,
         }));
 
       // Type assertions to ensure type safety

@@ -190,4 +190,5 @@ export type FunctionContext<
 > = {
   services: ServiceRecord<TServices>;
   logger: TLogger;
-} & Input;
+  input: InferComposableStandardSchema<Input>;
+};

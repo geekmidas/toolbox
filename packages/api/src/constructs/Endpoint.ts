@@ -443,7 +443,7 @@ export class Endpoint<
     TSession
   >) {
     super(
-      fn as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+      fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
       timeout,
       FunctionType.Endpoint,
       input,
@@ -557,6 +557,16 @@ export type EndpointSchemas = Partial<{
   body: StandardSchemaV1;
 }>;
 
+export type AuthorizeContext<
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
+  TSession = unknown,
+> = {
+  services: ServiceRecord<TServices>;
+  logger: TLogger;
+  header: HeaderFn;
+  session: TSession;
+};
 /**
  * Function type for endpoint authorization checks.
  *
@@ -579,12 +589,17 @@ export type AuthorizeFn<
   TLogger extends Logger = Logger,
   TSession = unknown,
 > = (
-  ctx: FunctionContext<{}, TServices, TLogger> & {
-    header: HeaderFn;
-    session: TSession;
-  },
+  ctx: AuthorizeContext<TServices, TLogger, TSession>,
 ) => Promise<boolean> | boolean;
 
+export type SessionContext<
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
+> = {
+  services: ServiceRecord<TServices>;
+  logger: TLogger;
+  header: HeaderFn;
+};
 /**
  * Function type for extracting session data from a request.
  *
@@ -607,9 +622,7 @@ export type SessionFn<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-> = (
-  ctx: FunctionContext<{}, TServices, TLogger> & { header: HeaderFn },
-) => Promise<TSession> | TSession;
+> = (ctx: SessionContext<TServices, TLogger>) => Promise<TSession> | TSession;
 
 /**
  * Utility type that converts Express-style route parameters to OpenAPI format.
