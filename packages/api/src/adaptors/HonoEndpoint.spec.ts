@@ -98,4 +98,88 @@ describe('HonoEndpoint route precedence', () => {
       postId: '789',
     });
   });
+
+  it('should handle array query parameters correctly', async () => {
+    const app = new Hono();
+    const logger = new ConsoleLogger();
+    const serviceDiscovery = ServiceDiscovery.getInstance(logger, {} as any);
+
+    // Create endpoint that accepts array query parameters
+    const endpoint = e
+      .get('/api/search')
+      .query(
+        z.object({
+          tags: z.array(z.string()).optional(),
+          categories: z.array(z.string()).optional(),
+          status: z.string().optional(),
+        }),
+      )
+      .handle(async ({ query }) => ({
+        receivedQuery: query,
+      }));
+
+    HonoEndpoint.addRoutes(
+      [endpoint] as Endpoint<any, any, any, any, any, any>[],
+      serviceDiscovery,
+      app,
+    );
+
+    // Test with array parameters
+    const response = await app.request(
+      '/api/search?tags=typescript&tags=javascript&tags=node&categories=web&categories=api&status=active',
+    );
+    const data = await response.json();
+
+    expect(data).toEqual({
+      receivedQuery: {
+        tags: ['typescript', 'javascript', 'node'],
+        categories: ['web', 'api'],
+        status: 'active',
+      },
+    });
+  });
+
+  it('should handle mixed query parameters with arrays and nested objects', async () => {
+    const app = new Hono();
+    const logger = new ConsoleLogger();
+    const serviceDiscovery = ServiceDiscovery.getInstance(logger, {} as any);
+
+    // Create endpoint that accepts both arrays and nested objects
+    const endpoint = e
+      .get('/api/filter')
+      .query(
+        z.object({
+          ids: z.array(z.string()),
+          filter: z.object({
+            status: z.string(),
+            type: z.string(),
+          }),
+        }),
+      )
+      .handle(async ({ query }) => ({
+        receivedQuery: query,
+      }));
+
+    HonoEndpoint.addRoutes(
+      [endpoint] as Endpoint<any, any, any, any, any, any>[],
+      serviceDiscovery,
+      app,
+    );
+
+    // Test with both arrays and nested objects
+    const response = await app.request(
+      '/api/filter?ids=1&ids=2&ids=3&filter.status=active&filter.type=user',
+    );
+    const data = await response.json();
+
+    expect(data).toEqual({
+      receivedQuery: {
+        ids: ['1', '2', '3'],
+        filter: {
+          status: 'active',
+          type: 'user',
+        },
+      },
+    });
+  });
 });

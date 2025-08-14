@@ -28,9 +28,14 @@ export function parseHonoQuery(c: Context): Record<string, any> {
         current = current[part];
       }
 
-      // Set the final value
+      // Set the final value, checking for arrays in nested keys
       const lastPart = parts[parts.length - 1];
-      current[lastPart] = value;
+      const multipleValues = c.req.queries(key);
+      if (multipleValues && multipleValues.length > 1) {
+        current[lastPart] = multipleValues;
+      } else {
+        current[lastPart] = value;
+      }
     } else {
       // For regular keys, check if there are multiple values
       const multipleValues = c.req.queries(key);

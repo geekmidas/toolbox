@@ -37,29 +37,37 @@ export class TypedFetcher<Paths> {
     // Add query parameters
     if (config && 'query' in config && config.query) {
       const queryParams = new URLSearchParams();
+      
+      // Recursive function to handle nested objects and arrays
+      const appendQueryParam = (prefix: string, value: unknown) => {
+        if (value === undefined || value === null) {
+          return;
+        }
+        
+        if (Array.isArray(value)) {
+          // Handle arrays by appending multiple values with the same key
+          value.forEach((item) => {
+            queryParams.append(prefix, String(item));
+          });
+        } else if (typeof value === 'object') {
+          // For objects, recursively flatten into dot notation
+          Object.entries(value as Record<string, unknown>).forEach(
+            ([subKey, subValue]) => {
+              appendQueryParam(`${prefix}.${subKey}`, subValue);
+            },
+          );
+        } else {
+          queryParams.append(prefix, String(value));
+        }
+      };
+      
+      // Process all query parameters
       Object.entries(config.query as Record<string, unknown>).forEach(
         ([key, value]) => {
-          if (value !== undefined && value !== null) {
-            if (Array.isArray(value)) {
-              // Handle arrays by appending multiple values with the same key
-              value.forEach((item) => {
-                queryParams.append(key, String(item));
-              });
-            } else if (typeof value === 'object') {
-              // For objects, flatten into dot notation
-              Object.entries(value as Record<string, unknown>).forEach(
-                ([subKey, subValue]) => {
-                  if (subValue !== undefined && subValue !== null) {
-                    queryParams.append(`${key}.${subKey}`, String(subValue));
-                  }
-                },
-              );
-            } else {
-              queryParams.append(key, String(value));
-            }
-          }
+          appendQueryParam(key, value);
         },
       );
+      
       const queryString = queryParams.toString();
       if (queryString) {
         url += `?${queryString}`;

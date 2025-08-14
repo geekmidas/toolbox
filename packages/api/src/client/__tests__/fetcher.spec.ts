@@ -168,6 +168,44 @@ describe('TypedFetcher', () => {
     global.fetch = originalFetch;
   });
 
+  it('should handle arrays within nested objects', async () => {
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+    });
+
+    // Mock fetch to capture the request URL
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ results: [] }),
+    });
+    global.fetch = mockFetch;
+
+    await client('GET /advanced-search', {
+      query: {
+        user: {
+          roles: ['admin', 'moderator', 'user'],
+          status: 'active',
+        },
+        settings: {
+          notifications: {
+            types: ['email', 'sms', 'push'],
+            enabled: true,
+          },
+        },
+      } as any,
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/advanced-search?user.roles=admin&user.roles=moderator&user.roles=user&user.status=active&settings.notifications.types=email&settings.notifications.types=sms&settings.notifications.types=push&settings.notifications.enabled=true',
+      expect.any(Object),
+    );
+
+    global.fetch = originalFetch;
+  });
+
   it('should handle 404 errors', async () => {
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
