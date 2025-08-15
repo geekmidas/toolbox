@@ -701,6 +701,20 @@ function UserProfile({ userId }: { userId: string }) {
   return <div>{user?.name}</div>;
 }
 
+// Query Invalidation
+async function refreshUser(userId: string) {
+  // Invalidate specific user query
+  await queryClient.invalidateQueries('GET /users/{id}', {
+    params: { id: userId }
+  });
+  
+  // Invalidate all user queries
+  await queryClient.invalidateQueries('GET /users');
+  
+  // Invalidate all queries
+  await queryClient.invalidateAllQueries();
+}
+
 // Mutations
 function CreateUser() {
   const { mutate: createUser } = queryClient.useMutation(

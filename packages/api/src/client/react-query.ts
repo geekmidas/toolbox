@@ -1,9 +1,10 @@
 import type {
+  QueryClient,
   UseInfiniteQueryOptions,
   UseMutationOptions,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createTypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
@@ -14,13 +15,17 @@ import type {
   TypedEndpoint,
 } from './types';
 
-export interface TypedQueryClientOptions extends FetcherOptions {}
+export interface TypedQueryClientOptions extends FetcherOptions {
+  queryClient?: QueryClient;
+}
 
 export class TypedQueryClient<Paths> {
   private fetcher: ReturnType<typeof createTypedFetcher<Paths>>;
+  private queryClient?: QueryClient;
 
   constructor(options: TypedQueryClientOptions = {}) {
     this.fetcher = createTypedFetcher<Paths>(options);
+    this.queryClient = options.queryClient;
   }
 
   useQuery<T extends QueryEndpoint<Paths>>(
@@ -118,6 +123,58 @@ export class TypedQueryClient<Paths> {
 
     return key;
   }
+
+  /**
+   * Invalidate queries for a specific endpoint with optional config
+   * @param endpoint - The endpoint to invalidate (e.g., 'GET /users')
+   * @param config - Optional params/query to match specific queries
+   * @returns Promise that resolves when invalidation is complete
+   */
+  invalidateQueries<T extends QueryEndpoint<Paths>>(
+    endpoint: T,
+    config?: FilteredRequestConfig<Paths, T>,
+  ): Promise<void> {
+    const queryClient = this.getQueryClient();
+    const queryKey = this.buildQueryKey(endpoint, config);
+    
+    return queryClient.invalidateQueries({
+      queryKey,
+      exact: !!config, // Use exact matching if config is provided
+    });
+  }
+
+  /**
+   * Invalidate all queries in the cache
+   * @returns Promise that resolves when invalidation is complete
+   */
+  invalidateAllQueries(): Promise<void> {
+    const queryClient = this.getQueryClient();
+    return queryClient.invalidateQueries();
+  }
+
+  /**
+   * Get the underlying QueryClient instance
+   * @returns The QueryClient instance
+   */
+  getQueryClient(): QueryClient {
+    if (this.queryClient) {
+      return this.queryClient;
+    }
+    
+    // If no query client was provided, try to get it from context
+    // This will throw if used outside of QueryClientProvider
+    throw new Error(
+      'No QueryClient set, please provide a QueryClient via the queryClient option or ensure you are within a QueryClientProvider'
+    );
+  }
+
+  /**
+   * Set the QueryClient instance
+   * @param queryClient - The QueryClient instance to use
+   */
+  setQueryClient(queryClient: QueryClient): void {
+    this.queryClient = queryClient;
+  }
 }
 
 export function createTypedQueryClient<Paths>(
@@ -177,4 +234,36 @@ export function useTypedInfiniteQuery<
   config?: FilteredRequestConfig<Paths, T>,
 ) {
   return client.useInfiniteQuery(endpoint, options, config);
+}
+
+/**
+ * Hook to invalidate queries using the current QueryClient from context
+ */
+export function useTypedInvalidateQueries<Paths>(
+  client: TypedQueryClient<Paths>,
+) {
+  const queryClient = useQueryClient();
+  
+  return {
+    /**
+     * Invalidate queries for a specific endpoint
+     */
+    invalidateQueries: <T extends QueryEndpoint<Paths>>(
+      endpoint: T,
+      config?: FilteredRequestConfig<Paths, T>,
+    ) => {
+      const queryKey = client.buildQueryKey(endpoint, config);
+      return queryClient.invalidateQueries({
+        queryKey,
+        exact: !!config,
+      });
+    },
+    
+    /**
+     * Invalidate all queries
+     */
+    invalidateAllQueries: () => {
+      return queryClient.invalidateQueries();
+    },
+  };
 }

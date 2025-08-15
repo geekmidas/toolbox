@@ -113,6 +113,12 @@ importers:
       openapi-typescript:
         specifier: ~7.8.0
         version: 7.8.0(typescript@5.8.2)
+      react:
+        specifier: '>=18.0.0'
+        version: 19.1.0
+      react-dom:
+        specifier: '>=18.0.0'
+        version: 19.1.0(react@19.1.0)
       zod:
         specifier: '>=3.25.67'
         version: 3.25.67
@@ -156,12 +162,6 @@ importers:
       jsdom:
         specifier: ~26.1.0
         version: 26.1.0
-      react:
-        specifier: ~19.1.0
-        version: 19.1.0
-      react-dom:
-        specifier: ~19.1.0
-        version: 19.1.0(react@19.1.0)
 
   packages/auth:
     dependencies:
@@ -241,10 +241,10 @@ importers:
         specifier: ^6.9.7
         version: 6.10.1
       react:
-        specifier: ~19.1.0
+        specifier: '>=18.0.0'
         version: 19.1.0
       react-dom:
-        specifier: ~19.1.0
+        specifier: '>=18.0.0'
         version: 19.1.0(react@19.1.0)
     devDependencies:
       '@types/node':

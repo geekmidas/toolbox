@@ -19,7 +19,9 @@
       "Bash(pnpm build:*)",
       "Bash(pnpm fmt:*)",
       "Bash(pnpm lint:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(NODE_OPTIONS=\"--import tsx\" vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)",
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)"
     ],
     "deny": []
   }

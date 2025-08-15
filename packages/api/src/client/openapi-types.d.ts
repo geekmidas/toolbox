@@ -173,6 +173,13 @@ export interface paths {
   '/users': {
     get: {
       operationId: 'listUsers';
+      parameters: {
+        query: {
+          page?: number;
+          limit?: number;
+          sort?: 'asc' | 'desc';
+        };
+      };
       responses: {
         200: {
           content: {
