@@ -21,7 +21,8 @@
       "Bash(pnpm lint:*)",
       "Bash(find:*)",
       "Bash(NODE_OPTIONS=\"--import tsx\" vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)",
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/testkit/src/__tests__/PostgresKyselyMigrator.spec.ts)"
     ],
     "deny": []
   }
