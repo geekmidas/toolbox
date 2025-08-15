@@ -6,11 +6,12 @@ A type-safe, flexible caching library for TypeScript applications with support f
 
 - **Type-safe**: Full TypeScript support with generics for strongly-typed cache values
 - **Unified interface**: Common `Cache<T>` interface for all implementations
-- **Multiple backends**: In-memory and Redis (Upstash) implementations included
+- **Multiple backends**: In-memory, Redis (Upstash), and Expo Secure Store implementations
 - **Async API**: Promise-based interface for consistency across implementations
-- **Flexible TTL**: Support for time-to-live where applicable
+- **Flexible TTL**: Support for time-to-live across all implementations
 - **Easy testing**: Simple interface makes mocking and testing straightforward
 - **Modular exports**: Import only what you need
+- **React Native support**: Expo Secure Store implementation for mobile apps
 
 ## Installation
 
@@ -23,6 +24,11 @@ npm install @geekmidas/cache
 For Redis support via Upstash:
 ```bash
 npm install @upstash/redis
+```
+
+For React Native support via Expo:
+```bash
+npm install expo-secure-store
 ```
 
 ## Quick Start
@@ -208,6 +214,58 @@ await cache.set('user:1', {
 const user = await cache.get('user:1');
 ```
 
+### ExpoSecureCache
+
+Secure storage for React Native apps using Expo SecureStore.
+
+```typescript
+import { ExpoSecureCache } from '@geekmidas/cache/expo';
+
+class ExpoSecureCache<T> implements Cache<T>
+```
+
+#### Features
+
+- ✅ Secure, encrypted storage on device
+- ✅ TTL support with automatic expiration
+- ✅ Persistent across app restarts
+- ✅ iOS Keychain & Android Keystore backed
+- ❌ React Native/Expo only
+- ❌ Limited storage capacity (varies by platform)
+- ❌ Slower than in-memory cache
+
+#### Example
+
+```typescript
+import { ExpoSecureCache } from '@geekmidas/cache/expo';
+
+interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+const cache = new ExpoSecureCache<AuthTokens>();
+
+// Store tokens securely with 1 hour TTL
+await cache.set('auth:tokens', {
+  accessToken: 'eyJhbGciOiJIUzI1NiIs...',
+  refreshToken: 'dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...'
+}, 3600);
+
+// Retrieve tokens
+const tokens = await cache.get('auth:tokens');
+
+// Clear tokens on logout
+await cache.delete('auth:tokens');
+```
+
+#### Platform Considerations
+
+- **iOS**: Uses Keychain Services, data persists across app reinstalls
+- **Android**: Uses Android Keystore, data cleared on app uninstall
+- **Storage Limits**: Approximately 2KB per item on most devices
+- **Performance**: Async operations can be slower than memory cache
+
 ## Advanced Usage
 
 ### Type Safety
@@ -289,7 +347,7 @@ Create cache instances based on configuration:
 
 ```typescript
 interface CacheConfig {
-  type: 'memory' | 'redis';
+  type: 'memory' | 'redis' | 'expo';
   redis?: {
     url: string;
     token: string;
@@ -303,6 +361,8 @@ function createCache<T>(config: CacheConfig): Cache<T> {
     case 'redis':
       if (!config.redis) throw new Error('Redis config required');
       return new UpstashCache<T>(config.redis.url, config.redis.token);
+    case 'expo':
+      return new ExpoSecureCache<T>();
     default:
       throw new Error(`Unsupported cache type: ${config.type}`);
   }
@@ -417,6 +477,11 @@ describe('UserService', () => {
 - **Pros**: Persistent, distributed, scalable
 - **Cons**: Network latency, external dependency
 - **Best for**: Production, multi-instance apps, shared cache
+
+### ExpoSecureCache
+- **Pros**: Secure, encrypted, persistent on device
+- **Cons**: React Native only, storage limits, slower operations
+- **Best for**: Mobile apps, sensitive data (tokens, credentials)
 
 ### Key Strategies
 

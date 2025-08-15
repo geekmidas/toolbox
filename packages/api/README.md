@@ -9,10 +9,13 @@ A comprehensive REST API framework for building type-safe HTTP endpoints with bu
 - 🚀 **Multiple runtime support**: AWS Lambda adapters and test adapter included
 - 💉 **Dependency injection**: Built-in service discovery and registration
 - 🔐 **Authorization**: Flexible authorization system with session management
-- 📄 **OpenAPI generation**: Automatic OpenAPI schema generation
+- 📄 **OpenAPI generation**: Automatic OpenAPI schema generation with reusable components
 - 🚨 **Error handling**: Comprehensive HTTP error classes and handling
 - 📊 **Structured logging**: Built-in logger with context propagation
 - 🎯 **Zero config**: Works out of the box with sensible defaults
+- 🔍 **Advanced query parameters**: Support for nested objects and arrays in query strings
+- ♾️ **Infinite queries**: Built-in React Query infinite pagination support
+- 🪝 **OpenAPI hooks**: Generate type-safe hooks from operation IDs
 
 ### Available Adapters
 
@@ -110,6 +113,18 @@ The v2 adapter automatically handles the differences in the API Gateway v2 event
 - HTTP API-specific features
 
 ## Core Concepts
+
+### Endpoint vs Function
+
+This package provides two main constructs:
+
+1. **RestEndpoint** (`e` export) - For HTTP REST APIs
+   - Handler receives destructured parameters: `{ params, query, body, headers, services, logger, session }`
+   - Designed for web services with HTTP-specific concepts
+
+2. **Function** - For general-purpose functions
+   - Handler receives an `input` object: `{ input, services, logger }`
+   - More generic construct for non-HTTP use cases
 
 ### Endpoint Builder
 
@@ -304,6 +319,40 @@ const endpoint = api
   });
 ```
 
+### Advanced Query Parameters
+
+The framework supports complex query parameter structures including nested objects and arrays:
+
+```typescript
+const endpoint = e
+  .get('/users')
+  .query(z.object({
+    // Simple parameters
+    page: z.number().optional(),
+    limit: z.number().optional(),
+    
+    // Arrays
+    ids: z.array(z.string()).optional(),
+    
+    // Nested objects using dot notation
+    'filter.status': z.enum(['active', 'inactive']).optional(),
+    'filter.role': z.string().optional(),
+    
+    // Nested arrays
+    'user.roles': z.array(z.string()).optional()
+  }))
+  .handle(async ({ query }) => {
+    // Query: ?ids=1&ids=2&filter.status=active&user.roles=admin&user.roles=moderator
+    // Parsed as:
+    // {
+    //   ids: ['1', '2'],
+    //   filter: { status: 'active' },
+    //   user: { roles: ['admin', 'moderator'] }
+    // }
+    return queryUsers(query);
+  });
+```
+
 ### Logging
 
 Built-in structured logging with context:
@@ -358,15 +407,15 @@ class EmailService extends HermodService<EmailClient> {
 const endpoint = e
   .services([DatabaseService, CacheService, EmailService])
   .post('/users')
-  .handle(async ({ body, services }) => {
+  .handle(async ({ input, services }) => {
     const { Database, Cache, Email } = services;
     
     // Check cache first
-    const cached = await Cache.get(`user:${body.email}`);
+    const cached = await Cache.get(`user:${input.body.email}`);
     if (cached) return cached;
     
     // Create user
-    const user = await Database.users.create(body);
+    const user = await Database.users.create(input.body);
     
     // Cache result
     await Cache.set(`user:${user.email}`, user, 3600);
@@ -385,6 +434,8 @@ const endpoint = e
 ### OpenAPI Generation
 
 Generate OpenAPI schemas from your endpoints:
+
+#### Basic OpenAPI Generation
 
 ```typescript
 const endpoint = e
@@ -414,6 +465,46 @@ const endpoint = e
 
 // Generate OpenAPI document
 const openApiDoc = generateOpenApiDocument([endpoint]);
+```
+
+#### OpenAPI Components (Reusable Schemas)
+
+You can extract schemas to the OpenAPI components section for reuse:
+
+```typescript
+import { z } from 'zod';
+
+// Mark schema for extraction to components
+const UserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().email()
+}).describe('User').openapi('User');
+
+const ProfileSchema = z.object({
+  bio: z.string(),
+  avatar: z.string().url()
+}).describe('UserProfile').openapi('UserProfile');
+
+// Use in endpoints - will generate $ref in OpenAPI
+const endpoint = e
+  .get('/users/:id')
+  .output(UserSchema.extend({
+    profile: ProfileSchema.optional()
+  }))
+  .handle(async ({ params }) => {
+    // Implementation
+  });
+
+// Generated OpenAPI will include:
+// components:
+//   schemas:
+//     User:
+//       type: object
+//       properties: ...
+//     UserProfile:
+//       type: object
+//       properties: ...
 ```
 
 ### Middleware Pattern
@@ -609,6 +700,26 @@ function UserProfile({ userId }: { userId: string }) {
   // TypeScript knows user has properties: id, name, email
   return <div>{user?.name}</div>;
 }
+
+// Mutations
+function CreateUser() {
+  const { mutate: createUser } = queryClient.useMutation(
+    'POST /users',
+    {
+      onSuccess: (data) => {
+        console.log('User created:', data);
+      }
+    }
+  );
+  
+  const handleSubmit = () => {
+    createUser({
+      body: { name: 'New User', email: 'new@example.com' }
+    });
+  };
+  
+  return <button onClick={handleSubmit}>Create User</button>;
+}
 ```
 
 ## API Reference
@@ -678,6 +789,72 @@ const client = createTypedFetcher<paths>({
     }
   },
 });
+```
+
+### Infinite Queries (Pagination)
+
+The client supports React Query's infinite queries for pagination:
+
+```typescript
+function PostList() {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = queryClient.useInfiniteQuery(
+    'GET /posts',
+    {
+      query: { limit: 20 }, // Will be merged with pageParam
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+      initialPageParam: undefined,
+    }
+  );
+
+  return (
+    <div>
+      {data?.pages.map((page) =>
+        page.items.map((post) => <PostCard key={post.id} post={post} />)
+      )}
+      
+      {hasNextPage && (
+        <button 
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? 'Loading...' : 'Load More'}
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+### OpenAPI Hooks (Operation ID-based)
+
+Generate hooks using OpenAPI operation IDs for better organization:
+
+```typescript
+import { createOpenAPIHooks } from '@geekmidas/api/client';
+import type { paths } from './openapi-types';
+
+// Create hooks based on operation IDs
+const api = createOpenAPIHooks<paths>({
+  baseURL: 'https://api.example.com',
+});
+
+// Use hooks with operation IDs
+function UserProfile() {
+  // Assumes your OpenAPI spec has operationId: "getUser"
+  const { data: user } = api.useGetUser({
+    params: { id: '123' }
+  });
+  
+  // Assumes operationId: "updateUser"
+  const { mutate: updateUser } = api.useUpdateUser();
+  
+  return <div>{user?.name}</div>;
+}
 ```
 
 ### Type-Safe Error Handling

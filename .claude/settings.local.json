@@ -18,7 +18,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(pnpm build:*)",
       "Bash(pnpm fmt:*)",
-      "Bash(pnpm lint:*)"
+      "Bash(pnpm lint:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

@@ -119,10 +119,11 @@ Turbo orchestrates tasks across packages:
 
 ```typescript
 // Builder chain creates immutable endpoint instances
-endpoint
-  .method(verb)        // Returns new instance
-  .path(pattern)       // Returns new instance
-  .validate(schema)    // Returns new instance
+e.get('/users/:id')
+  .params(schema)      // Returns new instance
+  .query(schema)       // Returns new instance
+  .body(schema)        // Returns new instance
+  .output(schema)      // Returns new instance
   .handle(handler)     // Final configuration
 ```
 
@@ -132,6 +133,7 @@ endpoint
    - Immutable configuration
    - Type-safe method chaining
    - Runtime validation
+   - OpenAPI generation
 
 2. **HermodService**: Service base class
    - Dependency injection
@@ -147,6 +149,7 @@ endpoint
    - Conditional types for inference
    - Branded types for safety
    - Mapped types for transforms
+   - StandardSchema support
 
 ### @geekmidas/envkit
 
@@ -175,6 +178,53 @@ const config = builder.parse();
    - Schema composition
    - Transform support
    - Custom validators
+
+### @geekmidas/cache
+
+**Architecture Pattern**: Unified Cache Interface with Multiple Implementations
+
+```typescript
+// Common interface across all implementations
+interface Cache<T> {
+  get(key: string): Promise<T | undefined>;
+  set(key: string, value: T, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+```
+
+**Implementations**:
+
+1. **InMemoryCache**: Simple Map-based cache
+2. **UpstashCache**: Redis-backed distributed cache
+3. **ExpoSecureCache**: React Native secure storage
+
+### @geekmidas/auth
+
+**Architecture Pattern**: Token Management with Storage Abstraction
+
+**Key Components**:
+
+1. **TokenClient**: Client-side token management
+   - Automatic refresh
+   - Multiple storage backends
+   - Event callbacks
+
+2. **TokenManager**: Server-side JWT handling
+   - Token generation
+   - Verification
+   - Refresh logic
+
+### @geekmidas/testkit
+
+**Architecture Pattern**: Factory Pattern for Test Data Generation
+
+**Key Components**:
+
+1. **Factory Base Class**: Abstract factory implementation
+2. **KyselyFactory**: Kysely-specific implementation
+3. **ObjectionFactory**: Objection.js implementation
+4. **Builders**: Table-specific data builders
+5. **Seeds**: Complex scenario generators
 
 ## 🔐 Type Safety Strategy
 
@@ -298,12 +348,20 @@ pnpm --filter @geekmidas/api dev
 3. **Performance Monitoring**: Built-in metrics
 4. **Distributed Tracing**: Request tracking
 
-### Potential Packages
+### Implemented Packages
 
-- **@geekmidas/cli**: CLI tooling
+- **@geekmidas/cli**: CLI tooling ✅
+- **@geekmidas/auth**: Authentication helpers ✅
+- **@geekmidas/cache**: Cache abstractions ✅
+- **@geekmidas/storage**: Cloud storage utilities ✅
+- **@geekmidas/emailkit**: Email sending utilities ✅
+
+### Potential Future Packages
+
 - **@geekmidas/db**: Database utilities
-- **@geekmidas/auth**: Authentication helpers
 - **@geekmidas/queue**: Job queue abstractions
+- **@geekmidas/metrics**: Observability and metrics
+- **@geekmidas/websocket**: WebSocket abstractions
 
 ## 📚 Further Reading
 
