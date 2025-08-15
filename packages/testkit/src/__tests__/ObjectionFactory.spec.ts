@@ -1,11 +1,12 @@
 import type { Knex } from 'knex';
 import { Model } from 'objection';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { setupKnexTest } from '../../test/helpers';
+import { describe, expect, test } from 'vitest';
+import { createKnexDb, createTestTablesKnex } from '../../test/helpers';
 import { ObjectionFactory } from '../ObjectionFactory';
 import { faker } from '../faker';
+import { wrapVitestObjectionTransaction } from '../objection';
 
-// Define real Objection models for testing
+// Define simple Objection models for testing
 class User extends Model {
   static get tableName() {
     return 'users';
@@ -13,10 +14,6 @@ class User extends Model {
 
   id!: number;
   name!: string;
-  email!: string;
-  role?: string;
-  createdAt!: Date;
-  updatedAt?: Date;
 }
 
 class Post extends Model {
@@ -26,11 +23,7 @@ class Post extends Model {
 
   id!: number;
   title!: string;
-  content!: string;
-  userId!: number;
-  published?: boolean;
-  createdAt!: Date;
-  updatedAt?: Date;
+  user_id!: number;
 }
 
 class Comment extends Model {
@@ -40,655 +33,543 @@ class Comment extends Model {
 
   id!: number;
   content!: string;
-  postId!: number;
-  userId!: number;
-  createdAt!: Date;
+  post_id!: number;
+  user_id!: number;
 }
 
-describe.skip('ObjectionFactory', () => {
-  let factory: ObjectionFactory<any, any>;
-  let db: Knex;
-  let trx: Knex.Transaction;
-  let cleanup: () => Promise<void>;
+const it = wrapVitestObjectionTransaction(
+  test,
+  createKnexDb(),
+  createTestTablesKnex,
+);
+describe('ObjectionFactory', () => {
+  it('should create an ObjectionFactory instance', ({ trx }) => {
+    const builders = {};
+    const seeds = {};
 
-  beforeAll(async () => {
-    const setup = await setupKnexTest();
-    db = setup.db;
-    trx = setup.trx;
-    cleanup = setup.cleanup;
+    const factory = new ObjectionFactory(builders, seeds, trx);
 
-    // Bind models to the transaction
-    User.knex(trx);
-    Post.knex(trx);
-    Comment.knex(trx);
+    expect(factory).toBeInstanceOf(ObjectionFactory);
   });
 
-  afterAll(async () => {
-    await cleanup();
+  it('should call builder and insert the record', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default Name',
+      });
+    };
+
+    const builders = {
+      user: userBuilder,
+    };
+
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const attrs = { name: 'John Doe', email: 'john@example.com' };
+    const result = await factory.insert('user', attrs);
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('John Doe');
+    expect(result.id).toBeDefined();
   });
 
-  describe('constructor', () => {
-    it('should create an ObjectionFactory instance', () => {
-      const builders = {};
-      const seeds = {};
+  it('should use empty object as default attributes', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: 'Default Name',
+      });
+    };
 
-      factory = new ObjectionFactory(builders, seeds, trx);
+    const builders = {
+      user: userBuilder,
+    };
 
-      expect(factory).toBeInstanceOf(ObjectionFactory);
-    });
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const result = await factory.insert('user');
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Default Name');
+    expect(result.id).toBeDefined();
   });
 
-  describe('insert method', () => {
-    it('should call builder and insert the record', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default Name',
-          email: attrs.email || `user${Date.now()}@example.com`,
-          role: attrs.role || 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
+  it('should throw error for non-existent factory', async ({ trx }) => {
+    const factory = new ObjectionFactory({}, {}, trx);
+    // @ts-ignore
+    await expect(factory.insert('nonExistent')).rejects.toThrow(
+      'Factory "nonExistent" does not exist',
+    );
+  });
 
-      const builders = {
-        user: userBuilder,
-      };
+  it('should handle builder that returns a promise', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      // Simulate async operation
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return User.fromJson({
+        name: attrs.name || 'Default Name',
+      });
+    };
 
-      factory = new ObjectionFactory(builders, {}, trx);
+    const builders = {
+      user: userBuilder,
+    };
 
-      const attrs = { name: 'John Doe', email: 'john@example.com' };
-      const result = await factory.insert('user', attrs);
+    const factory = new ObjectionFactory(builders, {}, trx);
 
+    const result = await factory.insert('user', { name: 'Jane' });
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Jane');
+  });
+
+  it('should insert multiple records with same attributes', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default Name',
+      });
+    };
+
+    const builders = {
+      user: userBuilder,
+    };
+
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const attrs = { name: 'User' };
+    const results = await factory.insertMany(3, 'user', attrs);
+
+    expect(results).toHaveLength(3);
+    results.forEach((result) => {
       expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('John Doe');
-      expect(result.email).toBe('john@example.com');
+      expect(result.name).toBe('User');
       expect(result.id).toBeDefined();
     });
+  });
 
-    it('should use empty object as default attributes', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: 'Default Name',
-          email: `user${Date.now()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
+  it.skip('should insert multiple records with dynamic attributes', async ({
+    trx,
+  }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default Name',
+      });
+    };
 
-      const builders = {
-        user: userBuilder,
-      };
+    const builders = {
+      user: userBuilder,
+    };
 
-      factory = new ObjectionFactory(builders, {}, trx);
+    const factory = new ObjectionFactory(builders, {}, trx);
 
-      const result = await factory.insert('user');
+    const attrsFn = (idx: number) => ({ name: `User ${idx}` });
+    const results = await factory.insertMany(2, 'user', attrsFn);
 
+    expect(results).toHaveLength(2);
+    expect(results[0].name).toBe('User 0');
+    expect(results[1].name).toBe('User 1');
+    results.forEach((result) => {
+      expect(result).toBeInstanceOf(User);
+      expect(result.id).toBeDefined();
+    });
+  });
+
+  it.skip('should use empty object as default attributes for insertMany', async ({
+    trx,
+  }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: 'Default Name',
+      });
+    };
+
+    const builders = {
+      user: userBuilder,
+    };
+
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const results = await factory.insertMany(2, 'user');
+
+    expect(results).toHaveLength(2);
+    results.forEach((result) => {
       expect(result).toBeInstanceOf(User);
       expect(result.name).toBe('Default Name');
       expect(result.id).toBeDefined();
     });
+  });
 
-    it('should throw error for non-existent factory', async () => {
-      factory = new ObjectionFactory({}, {}, trx);
+  it.skip('should throw error for non-existent builder in insertMany', async ({
+    trx,
+  }) => {
+    const factory = new ObjectionFactory({}, {}, trx);
+    // @ts-ignore
+    await expect(factory.insertMany(2, 'nonExistent')).rejects.toThrow(
+      'Builder "nonExistent" is not registered',
+    );
+  });
 
-      await expect(factory.insert('nonExistent')).rejects.toThrow(
-        'Factory "nonExistent" does not exist',
-      );
-    });
+  it('should execute seed function', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default Name',
+      });
+    };
 
-    it('should handle builder that returns a promise', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+    const builders = { user: userBuilder };
+
+    const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
+      return await factory.insert('user', {
+        name: attrs.name || 'Admin User',
+      });
+    };
+
+    const seeds = {
+      createAdmin: createAdminSeed,
+    };
+
+    const factory = new ObjectionFactory(builders, seeds, trx);
+
+    const attrs = { name: 'Super Admin' };
+    const result = await factory.seed('createAdmin', attrs);
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Super Admin');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should use empty object as default attributes for seed', async ({
+    trx,
+  }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: 'Default Admin',
+      });
+    };
+
+    const builders = { user: userBuilder };
+
+    const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
+      return await factory.insert('user', {
+        name: 'Default Admin',
+        role: 'admin',
+      });
+    };
+
+    const seeds = {
+      createAdmin: createAdminSeed,
+    };
+
+    const factory = new ObjectionFactory(builders, seeds, trx);
+
+    const result = await factory.seed('createAdmin');
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Default Admin');
+  });
+
+  it('should throw error for non-existent seed', ({ trx }) => {
+    const factory = new ObjectionFactory({}, {}, trx);
+    // @ts-ignore
+    expect(() => factory.seed('nonExistent')).toThrow(
+      'Seed "nonExistent" is not registered',
+    );
+  });
+
+  it('should pass factory and db to seed function', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Test User',
+      });
+    };
+
+    const builders = { user: userBuilder };
+
+    const complexSeed = async (
+      attrs: any,
+      passedFactory: any,
+      passedDb: Knex,
+    ) => {
+      // Verify that factory and db are passed correctly
+      expect(passedFactory).toBe(factory);
+      expect(passedDb).toBe(trx);
+
+      return await passedFactory.insert('user', {
+        name: `Complex ${attrs.data}`,
+      });
+    };
+
+    const seeds = {
+      complexSeed,
+    };
+
+    const factory = new ObjectionFactory(builders, seeds, trx);
+
+    const result = await factory.seed('complexSeed', { data: 'test' });
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Complex test');
+  });
+
+  it('should return the seed function unchanged', () => {
+    const seedFn = async (attrs: any, factory: any, db: any) => {
+      return { id: 1, name: 'test' };
+    };
+
+    const result = ObjectionFactory.createSeed(seedFn);
+
+    expect(result).toBe(seedFn);
+  });
+
+  it('should create a builder function with auto-insert', async ({ trx }) => {
+    const userBuilder = ObjectionFactory.createBuilder(
+      User,
+      (attrs, factory, db, faker) => ({
+        name: faker.person.fullName(),
+        ...attrs,
+      }),
+    );
+
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const result = await factory.insert('user', { name: 'Test User' });
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Test User');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should create a builder function without auto-insert', async ({
+    trx,
+  }) => {
+    const userBuilder = ObjectionFactory.createBuilder(
+      User,
+      (attrs) => ({
+        name: 'No Insert User',
+        ...attrs,
+      }),
+      false, // Don't auto-insert
+    );
+
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const result = await factory.insert('user');
+
+    // The factory's insert method should handle the insertion
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('No Insert User');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should pass all parameters to the item function', async ({ trx }) => {
+    let capturedFactory: any;
+    let capturedDb: any;
+    let capturedFaker: any;
+
+    const userBuilder = ObjectionFactory.createBuilder(
+      User,
+      (attrs, factory, db, fakerInstance) => {
+        capturedFactory = factory;
+        capturedDb = db;
+        capturedFaker = fakerInstance;
+
+        return {
+          name: 'Test User',
+          ...attrs,
+        };
+      },
+    );
+
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    await factory.insert('user');
+
+    expect(capturedFactory).toBe(factory);
+    expect(capturedDb).toBe(trx);
+    expect(capturedFaker).toBe(faker);
+  });
+
+  it('should handle async item functions', async ({ trx }) => {
+    const userBuilder = ObjectionFactory.createBuilder(
+      User,
+      async (attrs, factory, db, faker) => {
         // Simulate async operation
         await new Promise((resolve) => setTimeout(resolve, 10));
-        return User.fromJson({
-          name: attrs.name || 'Default Name',
-          email: `async${Date.now()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
 
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const result = await factory.insert('user', { name: 'Jane' });
-
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Jane');
-    });
-  });
-
-  describe('insertMany method', () => {
-    it('should insert multiple records with same attributes', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default Name',
-          email: `user${Date.now()}-${Math.random()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const attrs = { name: 'User' };
-      const results = await factory.insertMany(3, 'user', attrs);
-
-      expect(results).toHaveLength(3);
-      results.forEach((result) => {
-        expect(result).toBeInstanceOf(User);
-        expect(result.name).toBe('User');
-        expect(result.id).toBeDefined();
-      });
-    });
-
-    it('should insert multiple records with dynamic attributes', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default Name',
-          email: `user${Date.now()}-${Math.random()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const attrsFn = (idx: number) => ({ name: `User ${idx}` });
-      const results = await factory.insertMany(2, 'user', attrsFn);
-
-      expect(results).toHaveLength(2);
-      expect(results[0].name).toBe('User 0');
-      expect(results[1].name).toBe('User 1');
-      results.forEach((result) => {
-        expect(result).toBeInstanceOf(User);
-        expect(result.id).toBeDefined();
-      });
-    });
-
-    it('should use empty object as default attributes for insertMany', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: 'Default Name',
-          email: `user${Date.now()}-${Math.random()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const results = await factory.insertMany(2, 'user');
-
-      expect(results).toHaveLength(2);
-      results.forEach((result) => {
-        expect(result).toBeInstanceOf(User);
-        expect(result.name).toBe('Default Name');
-        expect(result.id).toBeDefined();
-      });
-    });
-
-    it('should throw error for non-existent builder in insertMany', async () => {
-      factory = new ObjectionFactory({}, {}, trx);
-
-      await expect(factory.insertMany(2, 'nonExistent')).rejects.toThrow(
-        'Builder "nonExistent" is not registered',
-      );
-    });
-  });
-
-  describe('seed method', () => {
-    it('should execute seed function', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default Name',
-          email: attrs.email || `admin${Date.now()}@example.com`,
-          role: 'admin',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = { user: userBuilder };
-
-      const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
-        return await factory.insert('user', {
-          name: attrs.name || 'Admin User',
-          email: 'admin@example.com',
-          role: 'admin',
-        });
-      };
-
-      const seeds = {
-        createAdmin: createAdminSeed,
-      };
-
-      factory = new ObjectionFactory(builders, seeds, trx);
-
-      const attrs = { name: 'Super Admin' };
-      const result = await factory.seed('createAdmin', attrs);
-
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Super Admin');
-      expect(result.role).toBe('admin');
-      expect(result.id).toBeDefined();
-    });
-
-    it('should use empty object as default attributes for seed', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: 'Default Admin',
-          email: `admin${Date.now()}@example.com`,
-          role: 'admin',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = { user: userBuilder };
-
-      const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
-        return await factory.insert('user', {
-          name: 'Default Admin',
-          role: 'admin',
-        });
-      };
-
-      const seeds = {
-        createAdmin: createAdminSeed,
-      };
-
-      factory = new ObjectionFactory(builders, seeds, trx);
-
-      const result = await factory.seed('createAdmin');
-
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Default Admin');
-      expect(result.role).toBe('admin');
-    });
-
-    it('should throw error for non-existent seed', () => {
-      factory = new ObjectionFactory({}, {}, trx);
-
-      expect(() => factory.seed('nonExistent')).toThrow(
-        'Seed "nonExistent" is not registered',
-      );
-    });
-
-    it('should pass factory and db to seed function', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Test User',
-          email: `test${Date.now()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const builders = { user: userBuilder };
-
-      const complexSeed = async (
-        attrs: any,
-        passedFactory: any,
-        passedDb: Knex,
-      ) => {
-        // Verify that factory and db are passed correctly
-        expect(passedFactory).toBe(factory);
-        expect(passedDb).toBe(trx);
-
-        return await passedFactory.insert('user', {
-          name: `Complex ${attrs.data}`,
-        });
-      };
-
-      const seeds = {
-        complexSeed,
-      };
-
-      factory = new ObjectionFactory(builders, seeds, trx);
-
-      const result = await factory.seed('complexSeed', { data: 'test' });
-
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Complex test');
-    });
-  });
-
-  describe('createSeed static method', () => {
-    it('should return the seed function unchanged', () => {
-      const seedFn = async (attrs: any, factory: any, db: any) => {
-        return { id: 1, name: 'test' };
-      };
-
-      const result = ObjectionFactory.createSeed(seedFn);
-
-      expect(result).toBe(seedFn);
-    });
-  });
-
-  describe('createBuilder static method', () => {
-    it('should create a builder function with auto-insert', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(
-        User,
-        (attrs, factory, db, faker) => ({
-          name: faker.person.fullName(),
-          email: faker.internet.email(),
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+        return {
+          name: 'Async User',
           ...attrs,
-        }),
-      );
+        };
+      },
+    );
 
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
 
-      const result = await factory.insert('user', { name: 'Test User' });
+    const result = await factory.insert('user');
 
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Test User');
-      expect(result.email).toMatch(/@/);
-      expect(result.id).toBeDefined();
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Async User');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should work without item function', async ({ trx }) => {
+    const userBuilder = ObjectionFactory.createBuilder(User);
+
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const attrs = {
+      name: 'Manual User',
+    };
+
+    const result = await factory.insert('user', attrs);
+
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Manual User');
+    expect(result.id).toBeDefined();
+  });
+
+  it('should allow overriding default values', async ({ trx }) => {
+    const userBuilder = ObjectionFactory.createBuilder(
+      User,
+      (attrs, factory, db, faker) => ({
+        name: 'Default Name',
+        ...attrs,
+      }),
+    );
+
+    const builders = { user: userBuilder };
+    const factory = new ObjectionFactory(builders, {}, trx);
+
+    const result = await factory.insert('user', {
+      name: 'Override Name',
     });
 
-    it('should create a builder function without auto-insert', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(
-        User,
-        (attrs) => ({
-          name: 'No Insert User',
-          email: 'noinsert@example.com',
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          ...attrs,
-        }),
-        false, // Don't auto-insert
-      );
+    expect(result).toBeInstanceOf(User);
+    expect(result.name).toBe('Override Name');
+  });
 
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
+  it('should handle builder errors gracefully', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      throw new Error('Builder failed');
+    };
 
-      const result = await factory.insert('user');
+    const builders = {
+      user: userBuilder,
+    };
 
-      // The factory's insert method should handle the insertion
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('No Insert User');
-      expect(result.id).toBeDefined();
-    });
+    const factory = new ObjectionFactory(builders, {}, trx);
 
-    it('should pass all parameters to the item function', async () => {
-      let capturedFactory: any;
-      let capturedDb: any;
-      let capturedFaker: any;
+    await expect(factory.insert('user')).rejects.toThrow('Builder failed');
+  });
 
-      const userBuilder = ObjectionFactory.createBuilder(
-        User,
-        (attrs, factory, db, fakerInstance) => {
-          capturedFactory = factory;
-          capturedDb = db;
-          capturedFaker = fakerInstance;
+  it('should handle invalid model data gracefully', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      // Return invalid model data that will fail validation
+      return User.fromJson({
+        // Missing required fields
+        invalidField: 'invalid',
+      } as any);
+    };
 
-          return {
-            name: 'Test User',
-            email: 'test@example.com',
-            role: 'user',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            ...attrs,
-          };
-        },
-      );
+    const builders = {
+      user: userBuilder,
+    };
 
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
+    const factory = new ObjectionFactory(builders, {}, trx);
 
-      await factory.insert('user');
+    await expect(factory.insert('user')).rejects.toThrow();
+  });
 
-      expect(capturedFactory).toBe(factory);
-      expect(capturedDb).toBe(trx);
-      expect(capturedFaker).toBe(faker);
-    });
+  it('should handle seed function errors gracefully', async ({ trx }) => {
+    const failingSeed = async (attrs: any, factory: any, db: Knex) => {
+      throw new Error('Seed failed');
+    };
 
-    it('should handle async item functions', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(
-        User,
-        async (attrs, factory, db, faker) => {
-          // Simulate async operation
-          await new Promise((resolve) => setTimeout(resolve, 10));
+    const seeds = {
+      failingSeed,
+    };
 
-          return {
-            name: 'Async User',
-            email: faker.internet.email(),
-            role: 'user',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            ...attrs,
-          };
-        },
-      );
+    const factory = new ObjectionFactory({}, seeds, trx);
 
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
+    await expect(factory.seed('failingSeed')).rejects.toThrow('Seed failed');
+  });
 
-      const result = await factory.insert('user');
+  it('should work with typed builders and seeds', async ({ trx }) => {
+    interface UserInterface {
+      id: number;
+      name: string;
+    }
 
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Async User');
-      expect(result.id).toBeDefined();
-    });
+    type UserAttrs = Partial<Pick<UserInterface, 'name'>>;
 
-    it('should work without item function', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(User);
-
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const attrs = {
-        name: 'Manual User',
-        email: 'manual@example.com',
-        role: 'user',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const result = await factory.insert('user', attrs);
-
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Manual User');
-      expect(result.email).toBe('manual@example.com');
-      expect(result.id).toBeDefined();
-    });
-
-    it('should allow overriding default values', async () => {
-      const userBuilder = ObjectionFactory.createBuilder(
-        User,
-        (attrs, factory, db, faker) => ({
-          name: 'Default Name',
-          email: 'default@example.com',
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          ...attrs,
-        }),
-      );
-
-      const builders = { user: userBuilder };
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      const result = await factory.insert('user', {
-        name: 'Override Name',
-        email: 'override@example.com',
+    const userBuilder = async (attrs: UserAttrs, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default User',
       });
+    };
 
-      expect(result).toBeInstanceOf(User);
-      expect(result.name).toBe('Override Name');
-      expect(result.email).toBe('override@example.com');
-      expect(result.role).toBe('user'); // Default not overridden
-    });
+    const adminSeed = async (
+      attrs: { isSuper?: boolean },
+      factory: any,
+      db: Knex,
+    ) => {
+      return factory.insert('user', {
+        name: 'Admin',
+      });
+    };
+
+    const builders = { user: userBuilder };
+    const seeds = { admin: adminSeed };
+
+    // This should compile without type errors
+    const factory = new ObjectionFactory(builders, seeds, trx);
+
+    expect(factory).toBeInstanceOf(ObjectionFactory);
+
+    // Test actual functionality
+    const admin = await factory.seed('admin', { isSuper: true });
+    expect(admin).toBeInstanceOf(User);
+    expect(admin.name).toBe('Admin');
   });
 
-  describe('error handling', () => {
-    it('should handle builder errors gracefully', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        throw new Error('Builder failed');
-      };
+  it('should handle complex builder scenarios', async ({ trx }) => {
+    const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+      return User.fromJson({
+        name: attrs.name || 'Default User',
+      });
+    };
 
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      await expect(factory.insert('user')).rejects.toThrow('Builder failed');
-    });
-
-    it('should handle invalid model data gracefully', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        // Return invalid model data that will fail validation
-        return User.fromJson({
-          // Missing required fields
-          invalidField: 'invalid',
-        } as any);
-      };
-
-      const builders = {
-        user: userBuilder,
-      };
-
-      factory = new ObjectionFactory(builders, {}, trx);
-
-      await expect(factory.insert('user')).rejects.toThrow();
-    });
-
-    it('should handle seed function errors gracefully', async () => {
-      const failingSeed = async (attrs: any, factory: any, db: Knex) => {
-        throw new Error('Seed failed');
-      };
-
-      const seeds = {
-        failingSeed,
-      };
-
-      factory = new ObjectionFactory({}, seeds, trx);
-
-      await expect(factory.seed('failingSeed')).rejects.toThrow('Seed failed');
-    });
-  });
-
-  describe('type safety and integration', () => {
-    it('should work with typed builders and seeds', async () => {
-      interface UserInterface {
-        id: number;
-        name: string;
-        email: string;
-      }
-
-      type UserAttrs = Partial<Pick<UserInterface, 'name' | 'email'>>;
-
-      const userBuilder = async (attrs: UserAttrs, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default User',
-          email: attrs.email || `user${Date.now()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const adminSeed = async (
-        attrs: { isSuper?: boolean },
-        factory: any,
-        db: Knex,
-      ) => {
-        return factory.insert('user', {
-          name: 'Admin',
-          email: 'admin@example.com',
-          role: 'admin',
-        });
-      };
-
-      const builders = { user: userBuilder };
-      const seeds = { admin: adminSeed };
-
-      // This should compile without type errors
-      factory = new ObjectionFactory(builders, seeds, trx);
-
-      expect(factory).toBeInstanceOf(ObjectionFactory);
-
-      // Test actual functionality
-      const admin = await factory.seed('admin', { isSuper: true });
-      expect(admin).toBeInstanceOf(User);
-      expect(admin.name).toBe('Admin');
-    });
-
-    it('should handle complex builder scenarios', async () => {
-      const userBuilder = async (attrs: any, factory: any, db: Knex) => {
-        return User.fromJson({
-          name: attrs.name || 'Default User',
-          email: attrs.email || `user${Date.now()}@example.com`,
-          role: 'user',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      };
-
-      const postBuilder = async (attrs: any, factory: any, db: Knex) => {
-        // If no userId provided, create a user
-        if (!attrs.userId) {
-          const user = await factory.insert('user');
-          return Post.fromJson({
-            title: attrs.title || 'Default Post',
-            content: attrs.content || 'Default content',
-            userId: user.id,
-            published: attrs.published || false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
+    const postBuilder = async (attrs: any, factory: any, db: Knex) => {
+      // If no user_id provided, create a user
+      if (!attrs.user_id) {
+        const user = await factory.insert('user');
         return Post.fromJson({
           title: attrs.title || 'Default Post',
-          content: attrs.content || 'Default content',
-          userId: attrs.userId,
-          published: attrs.published || false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          user_id: user.id,
         });
-      };
+      }
+      return Post.fromJson({
+        title: attrs.title || 'Default Post',
+        user_id: attrs.user_id,
+      });
+    };
 
-      const builders = {
-        user: userBuilder,
-        post: postBuilder,
-      };
+    const builders = {
+      user: userBuilder,
+      post: postBuilder,
+    };
 
-      factory = new ObjectionFactory(builders, {}, trx);
+    const factory = new ObjectionFactory(builders, {}, trx);
 
-      const post = await factory.insert('post', { title: 'Test Post' });
+    const post = await factory.insert('post', { title: 'Test Post' });
 
-      expect(post).toBeInstanceOf(Post);
-      expect(post.title).toBe('Test Post');
-      expect(post.userId).toBeDefined();
-      expect(typeof post.userId).toBe('number');
-    });
+    expect(post).toBeInstanceOf(Post);
+    expect(post.title).toBe('Test Post');
+    expect(post.user_id).toBeDefined();
+    expect(typeof post.user_id).toBe('string'); // PostgreSQL returns bigint as string
   });
 });

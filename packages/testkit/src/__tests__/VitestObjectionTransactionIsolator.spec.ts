@@ -110,9 +110,6 @@ class Comment extends Model {
 // Create database connection
 const knex = createKnexDb();
 
-// Bind models to Knex instance
-Model.knex(knex);
-
 // Create wrapped test with transaction isolation
 const it = wrapVitestObjectionTransaction(base, knex, async (trx) => {
   // Create tables in the transaction

@@ -165,49 +165,41 @@ export async function createTestTables(
 export async function createTestTablesKnex(
   trx: Knex.Transaction,
 ): Promise<void> {
-  // Create users table
-  await trx.schema.createTable('users', (table) => {
-    table.bigIncrements('id').primary();
+  // Create simple users table for testing factory
+  await trx.raw(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+  await trx.schema.createTableIfNotExists('users', (table) => {
+    table.uuid('id').primary().defaultTo(trx.raw('uuid_generate_v4()'));
     table.string('name').notNullable();
-    table.string('email').notNullable().unique();
-    table.string('role').defaultTo('user');
-    table.timestamp('created_at').defaultTo(trx.fn.now()).notNullable();
-    table.timestamp('updated_at').defaultTo(trx.fn.now()).notNullable();
   });
 
-  // Create posts table
-  await trx.schema.createTable('posts', (table) => {
-    table.bigIncrements('id').primary();
+  // Create simple posts table for testing factory
+  await trx.schema.createTableIfNotExists('posts', (table) => {
+    table.uuid('id').primary().defaultTo(trx.raw('uuid_generate_v4()'));
     table.string('title').notNullable();
-    table.text('content').notNullable();
     table
-      .bigInteger('user_id')
+      .uuid('user_id')
       .notNullable()
       .references('id')
       .inTable('users')
       .onDelete('cascade');
-    table.boolean('published').defaultTo(false);
-    table.timestamp('created_at').defaultTo(trx.fn.now()).notNullable();
-    table.timestamp('updated_at').defaultTo(trx.fn.now()).notNullable();
   });
 
-  // Create comments table
-  await trx.schema.createTable('comments', (table) => {
-    table.bigIncrements('id').primary();
+  // Create simple comments table for testing factory
+  await trx.schema.createTableIfNotExists('comments', (table) => {
+    table.uuid('id').primary().defaultTo(trx.raw('uuid_generate_v4()'));
     table.text('content').notNullable();
     table
-      .bigInteger('post_id')
+      .uuid('post_id')
       .notNullable()
       .references('id')
       .inTable('posts')
       .onDelete('cascade');
     table
-      .bigInteger('user_id')
+      .uuid('user_id')
       .notNullable()
       .references('id')
       .inTable('users')
       .onDelete('cascade');
-    table.timestamp('created_at').defaultTo(trx.fn.now()).notNullable();
   });
 }
 
