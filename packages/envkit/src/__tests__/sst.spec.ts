@@ -306,7 +306,9 @@ describe('sst', () => {
 
     describe('edge cases', () => {
       it('should warn for unknown resource types', () => {
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const consoleWarnSpy = vi
+          .spyOn(console, 'warn')
+          .mockImplementation(() => {});
 
         const unknownResource = {
           type: 'unknown.resource.Type' as any,
@@ -320,7 +322,7 @@ describe('sst', () => {
         expect(result).toEqual({});
         expect(consoleWarnSpy).toHaveBeenCalledWith(
           'No processor found for resource type: ',
-          { value: unknownResource }
+          { value: unknownResource },
         );
 
         consoleWarnSpy.mockRestore();
@@ -374,7 +376,8 @@ describe('sst', () => {
         });
 
         expect(result).toEqual({
-          THIS_IS_A_VERY_LONG_KEY_NAME_THAT_SHOULD_BE_CONVERTED_PROPERLY: 'value',
+          THIS_IS_A_VERY_LONG_KEY_NAME_THAT_SHOULD_BE_CONVERTED_PROPERLY:
+            'value',
         });
       });
 
@@ -385,8 +388,8 @@ describe('sst', () => {
         };
 
         const result = normalizeResourceEnv({
-          's3_bucket_v2_1': bucket,
-          'bucket_123_456': bucket,
+          s3_bucket_v2_1: bucket,
+          bucket_123_456: bucket,
         });
 
         expect(result).toEqual({

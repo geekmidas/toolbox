@@ -33,7 +33,9 @@ function extractAndConvertDefs(
       // Convert #/$defs/X to #/components/schemas/X
       if (schema.$ref.startsWith('#/$defs/')) {
         const refName = schema.$ref.replace('#/$defs/', '');
-        return componentCollector ? componentCollector.getReference(refName) : schema;
+        return componentCollector
+          ? componentCollector.getReference(refName)
+          : schema;
       }
       return schema;
     }
@@ -90,7 +92,7 @@ export async function convertStandardSchemaToJsonSchema(
   if (vendor in StandardSchemaJsonSchema) {
     const toJSONSchema = StandardSchemaJsonSchema[vendor];
     const jsonSchema = await toJSONSchema(schema);
-    
+
     // Extract and convert $defs to components
     return extractAndConvertDefs(jsonSchema, componentCollector);
   }
@@ -128,7 +130,6 @@ interface SchemaMeta {
   id?: string;
 }
 
-
 export async function convertSchemaWithComponents(
   schema: StandardSchemaV1 | undefined,
   componentCollector?: {
@@ -141,18 +142,21 @@ export async function convertSchemaWithComponents(
   }
 
   // Convert to JSON Schema with component collector to handle $defs
-  const jsonSchema = await convertStandardSchemaToJsonSchema(schema, componentCollector);
-  
+  const jsonSchema = await convertStandardSchemaToJsonSchema(
+    schema,
+    componentCollector,
+  );
+
   if (!componentCollector) {
     return jsonSchema;
   }
 
   // Check if this schema has metadata with an ID
   const metadata = await getSchemaMetadata(schema);
-  
+
   // Also check if the JSON Schema itself has an id field (from Zod's meta)
   const schemaId = metadata?.id || jsonSchema?.id;
-  
+
   if (schemaId) {
     // Remove the id from the schema before adding to components
     const { id, ...schemaWithoutId } = jsonSchema;

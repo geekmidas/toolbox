@@ -37,13 +37,13 @@ export class TypedFetcher<Paths> {
     // Add query parameters
     if (config && 'query' in config && config.query) {
       const queryParams = new URLSearchParams();
-      
+
       // Recursive function to handle nested objects and arrays
       const appendQueryParam = (prefix: string, value: unknown) => {
         if (value === undefined || value === null) {
           return;
         }
-        
+
         if (Array.isArray(value)) {
           // Handle arrays by appending multiple values with the same key
           value.forEach((item) => {
@@ -60,14 +60,14 @@ export class TypedFetcher<Paths> {
           queryParams.append(prefix, String(value));
         }
       };
-      
+
       // Process all query parameters
       Object.entries(config.query as Record<string, unknown>).forEach(
         ([key, value]) => {
           appendQueryParam(key, value);
         },
       );
-      
+
       const queryString = queryParams.toString();
       if (queryString) {
         url += `?${queryString}`;

@@ -264,11 +264,8 @@ describe('OpenAPI Components', () => {
     });
 
     // Verify the endpoint uses the UserList reference
-    const response =
-      openApiSchema.paths?.['/users']?.get?.responses?.['200'];
-    expect(
-      (response as any)?.content?.['application/json']?.schema,
-    ).toEqual({
+    const response = openApiSchema.paths?.['/users']?.get?.responses?.['200'];
+    expect((response as any)?.content?.['application/json']?.schema).toEqual({
       $ref: '#/components/schemas/UserList',
     });
   });
@@ -303,8 +300,7 @@ describe('OpenAPI Components', () => {
     expect(openApiSchema.components?.schemas?.Item).toBeDefined();
 
     // Response should have inline array with Item reference
-    const response =
-      openApiSchema.paths?.['/items']?.get?.responses?.['200'];
+    const response = openApiSchema.paths?.['/items']?.get?.responses?.['200'];
     expect(
       (response as any)?.content?.['application/json']?.schema,
     ).toMatchObject({
@@ -405,9 +401,7 @@ describe('OpenAPI Components', () => {
 
     // Response should use the reference
     const response = openApiSchema.paths?.['/tags']?.get?.responses?.['200'];
-    expect(
-      (response as any)?.content?.['application/json']?.schema,
-    ).toEqual({
+    expect((response as any)?.content?.['application/json']?.schema).toEqual({
       $ref: '#/components/schemas/StringArray',
     });
   });

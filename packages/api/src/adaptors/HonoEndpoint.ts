@@ -179,7 +179,6 @@ export class HonoEndpoint<
             services,
             logger,
             header,
-            
           });
 
           const isAuthorized = await endpoint.authorize({

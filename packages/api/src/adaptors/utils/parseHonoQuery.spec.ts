@@ -1,5 +1,5 @@
-import { Context } from 'hono';
-import { describe, expect, it, vi } from 'vitest';
+import type { Context } from 'hono';
+import { describe, expect, it } from 'vitest';
 import { parseHonoQuery } from './parseHonoQuery';
 
 describe('parseHonoQuery', () => {

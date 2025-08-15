@@ -151,7 +151,7 @@ export class ObjectionFactory<
           }
           return acc;
         }, {} as any);
-        
+
         // Use static query method to insert data directly
         // @ts-ignore
         const result = await ModelClass.query(db).insert(insertData);
@@ -237,7 +237,7 @@ export class ObjectionFactory<
         }
         return acc;
       }, {} as any);
-      
+
       // Use the model's constructor to get the query builder
       return await result.constructor.query(this.db).insert(insertData);
     }
@@ -309,13 +309,16 @@ export class ObjectionFactory<
             // If the builder returns a model instance, insert it
             if (record && typeof record.$query === 'function') {
               // Extract data from model, excluding undefined values and id
-              const insertData = Object.entries(record).reduce((acc, [key, value]) => {
-                if (value !== undefined && key !== 'id') {
-                  acc[key] = value;
-                }
-                return acc;
-              }, {} as any);
-              
+              const insertData = Object.entries(record).reduce(
+                (acc, [key, value]) => {
+                  if (value !== undefined && key !== 'id') {
+                    acc[key] = value;
+                  }
+                  return acc;
+                },
+                {} as any,
+              );
+
               // Use the model's constructor to get the query builder
               return record.constructor.query(this.db).insert(insertData);
             }

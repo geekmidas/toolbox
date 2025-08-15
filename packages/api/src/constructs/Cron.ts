@@ -62,7 +62,12 @@ export class CronBuilder<
     services: T,
   ): CronBuilder<TInput, [...TServices, ...T], TLogger, OutSchema> {
     super.services(services);
-    return this as unknown as CronBuilder<TInput, [...TServices, ...T], TLogger, OutSchema>;
+    return this as unknown as CronBuilder<
+      TInput,
+      [...TServices, ...T],
+      TLogger,
+      OutSchema
+    >;
   }
 
   override logger<T extends Logger>(
@@ -76,7 +81,12 @@ export class CronBuilder<
     timeout: number,
   ): CronBuilder<TInput, TServices, TLogger, OutSchema> {
     super.timeout(timeout);
-    return this as unknown as CronBuilder<TInput, TServices, TLogger, OutSchema>;
+    return this as unknown as CronBuilder<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema
+    >;
   }
 
   override output<T extends StandardSchemaV1>(

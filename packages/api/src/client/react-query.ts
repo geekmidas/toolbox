@@ -4,7 +4,12 @@ import type {
   UseMutationOptions,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { createTypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
@@ -136,7 +141,7 @@ export class TypedQueryClient<Paths> {
   ): Promise<void> {
     const queryClient = this.getQueryClient();
     const queryKey = this.buildQueryKey(endpoint, config);
-    
+
     return queryClient.invalidateQueries({
       queryKey,
       exact: !!config, // Use exact matching if config is provided
@@ -160,11 +165,11 @@ export class TypedQueryClient<Paths> {
     if (this.queryClient) {
       return this.queryClient;
     }
-    
+
     // If no query client was provided, try to get it from context
     // This will throw if used outside of QueryClientProvider
     throw new Error(
-      'No QueryClient set, please provide a QueryClient via the queryClient option or ensure you are within a QueryClientProvider'
+      'No QueryClient set, please provide a QueryClient via the queryClient option or ensure you are within a QueryClientProvider',
     );
   }
 
@@ -243,7 +248,7 @@ export function useTypedInvalidateQueries<Paths>(
   client: TypedQueryClient<Paths>,
 ) {
   const queryClient = useQueryClient();
-  
+
   return {
     /**
      * Invalidate queries for a specific endpoint
@@ -258,7 +263,7 @@ export function useTypedInvalidateQueries<Paths>(
         exact: !!config,
       });
     },
-    
+
     /**
      * Invalidate all queries
      */
