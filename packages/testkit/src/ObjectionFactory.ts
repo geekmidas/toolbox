@@ -144,8 +144,17 @@ export class ObjectionFactory<
       // Handle insertion based on autoInsert flag
       if (autoInsert !== false) {
         // Auto insert is enabled by default
+        // Extract only defined values for insertion
+        const insertData = Object.entries(model).reduce((acc, [key, value]) => {
+          if (value !== undefined && key !== 'id') {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as any);
+        
+        // Use static query method to insert data directly
         // @ts-ignore
-        const result = await model.$query(db).insertGraph(model).execute();
+        const result = await ModelClass.query(db).insert(insertData);
         return result as Result;
       } else {
         // Return model for factory to handle insertion
@@ -221,7 +230,16 @@ export class ObjectionFactory<
 
     // If the builder returns a model instance, insert it
     if (result && typeof result.$query === 'function') {
-      return await result.$query(this.db).insertGraph(result).execute();
+      // Extract data from model, excluding undefined values and id
+      const insertData = Object.entries(result).reduce((acc, [key, value]) => {
+        if (value !== undefined && key !== 'id') {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as any);
+      
+      // Use the model's constructor to get the query builder
+      return await result.constructor.query(this.db).insert(insertData);
     }
 
     // Otherwise, assume the builder handled insertion itself
@@ -290,7 +308,16 @@ export class ObjectionFactory<
           (record: any) => {
             // If the builder returns a model instance, insert it
             if (record && typeof record.$query === 'function') {
-              return record.$query(this.db).insertGraph(record).execute();
+              // Extract data from model, excluding undefined values and id
+              const insertData = Object.entries(record).reduce((acc, [key, value]) => {
+                if (value !== undefined && key !== 'id') {
+                  acc[key] = value;
+                }
+                return acc;
+              }, {} as any);
+              
+              // Use the model's constructor to get the query builder
+              return record.constructor.query(this.db).insert(insertData);
             }
             // Otherwise, assume the builder handled insertion itself
             return record;

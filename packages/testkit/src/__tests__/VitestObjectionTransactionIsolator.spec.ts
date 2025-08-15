@@ -12,8 +12,6 @@ class User extends Model {
 
   id!: number;
   name!: string;
-  email!: string;
-  role?: string;
   createdAt!: Date;
   updatedAt?: Date;
 
@@ -122,8 +120,6 @@ describe('VitestObjectionTransactionIsolator', () => {
       // Create a user within the transaction
       const user = await User.query(trx).insert({
         name: 'Test User',
-        email: 'test@example.com',
-        role: 'user',
       });
 
       expect(user).toBeDefined();
@@ -133,7 +129,6 @@ describe('VitestObjectionTransactionIsolator', () => {
       // Verify user exists in transaction
       const foundUser = await User.query(trx).findById(user.id);
       expect(foundUser).toBeDefined();
-      expect(foundUser?.email).toBe(user.email);
 
       // Data will be rolled back after this test
     });

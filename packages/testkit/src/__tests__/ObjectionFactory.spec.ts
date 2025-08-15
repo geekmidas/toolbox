@@ -12,7 +12,7 @@ class User extends Model {
     return 'users';
   }
 
-  id!: number;
+  id!: string;
   name!: string;
 }
 
@@ -21,9 +21,9 @@ class Post extends Model {
     return 'posts';
   }
 
-  id!: number;
+  id!: string;
   title!: string;
-  user_id!: number;
+  user_id!: string;
 }
 
 class Comment extends Model {
@@ -31,10 +31,10 @@ class Comment extends Model {
     return 'comments';
   }
 
-  id!: number;
+  id!: string;
   content!: string;
-  post_id!: number;
-  user_id!: number;
+  post_id!: string;
+  user_id!: string;
 }
 
 const it = wrapVitestObjectionTransaction(
@@ -146,7 +146,7 @@ describe('ObjectionFactory', () => {
     });
   });
 
-  it.skip('should insert multiple records with dynamic attributes', async ({
+  it('should insert multiple records with dynamic attributes', async ({
     trx,
   }) => {
     const userBuilder = async (attrs: any, factory: any, db: Knex) => {
@@ -173,7 +173,7 @@ describe('ObjectionFactory', () => {
     });
   });
 
-  it.skip('should use empty object as default attributes for insertMany', async ({
+  it('should use empty object as default attributes for insertMany', async ({
     trx,
   }) => {
     const userBuilder = async (attrs: any, factory: any, db: Knex) => {
@@ -198,7 +198,7 @@ describe('ObjectionFactory', () => {
     });
   });
 
-  it.skip('should throw error for non-existent builder in insertMany', async ({
+  it('should throw error for non-existent builder in insertMany', async ({
     trx,
   }) => {
     const factory = new ObjectionFactory({}, {}, trx);
@@ -500,7 +500,7 @@ describe('ObjectionFactory', () => {
 
   it('should work with typed builders and seeds', async ({ trx }) => {
     interface UserInterface {
-      id: number;
+      id: string;
       name: string;
     }
 
