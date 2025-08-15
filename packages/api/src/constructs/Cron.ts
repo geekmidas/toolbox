@@ -57,6 +57,42 @@ export class CronBuilder<
     return this;
   }
 
+  // Override parent methods to return CronBuilder instead of FunctionBuilder
+  override services<T extends Service[]>(
+    services: T,
+  ): CronBuilder<TInput, [...TServices, ...T], TLogger, OutSchema> {
+    super.services(services);
+    return this as unknown as CronBuilder<TInput, [...TServices, ...T], TLogger, OutSchema>;
+  }
+
+  override logger<T extends Logger>(
+    logger: T,
+  ): CronBuilder<TInput, TServices, T, OutSchema> {
+    super.logger(logger);
+    return this as unknown as CronBuilder<TInput, TServices, T, OutSchema>;
+  }
+
+  override timeout(
+    timeout: number,
+  ): CronBuilder<TInput, TServices, TLogger, OutSchema> {
+    super.timeout(timeout);
+    return this as unknown as CronBuilder<TInput, TServices, TLogger, OutSchema>;
+  }
+
+  override output<T extends StandardSchemaV1>(
+    schema: T,
+  ): CronBuilder<TInput, TServices, TLogger, T> {
+    super.output(schema);
+    return this as unknown as CronBuilder<TInput, TServices, TLogger, T>;
+  }
+
+  override input<T extends ComposableStandardSchema>(
+    schema: T,
+  ): CronBuilder<T, TServices, TLogger, OutSchema> {
+    super.input(schema);
+    return this as unknown as CronBuilder<T, TServices, TLogger, OutSchema>;
+  }
+
   handle(
     fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   ): Cron<TInput, TServices, TLogger, OutSchema> {
@@ -80,7 +116,9 @@ type CronMinute =
   | `${number}`
   | `${number}-${number}`
   | `${number}/${number}`
-  | `*/${number}`;
+  | `*/${number}`
+  | `${number},${number}`
+  | string; // Allow more complex patterns
 
 type CronHour =
   | '*'
@@ -88,7 +126,9 @@ type CronHour =
   | `${number}`
   | `${number}-${number}`
   | `${number}/${number}`
-  | `*/${number}`;
+  | `*/${number}`
+  | `${number},${number}`
+  | string; // Allow more complex patterns
 
 type CronDay =
   | '*'
@@ -96,7 +136,9 @@ type CronDay =
   | `${number}`
   | `${number}-${number}`
   | `${number}/${number}`
-  | `*/${number}`;
+  | `*/${number}`
+  | `${number},${number}`
+  | string; // Allow more complex patterns
 
 type CronMonth =
   | '*'
@@ -116,7 +158,8 @@ type CronMonth =
   | 'SEP'
   | 'OCT'
   | 'NOV'
-  | 'DEC';
+  | 'DEC'
+  | string; // Allow more complex patterns
 
 type CronWeekday =
   | '*'
@@ -131,7 +174,10 @@ type CronWeekday =
   | 'WED'
   | 'THU'
   | 'FRI'
-  | 'SAT';
+  | 'SAT'
+  | `${string}-${string}` // Allow patterns like MON-FRI
+  | string; // Allow more complex patterns
+
 export type CronExpression =
   `cron(${CronMinute} ${CronHour} ${CronDay} ${CronMonth} ${CronWeekday})`;
 
