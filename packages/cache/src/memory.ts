@@ -33,5 +33,6 @@ export class InMemoryCache<T> implements Cache<T> {
 
   async delete(key: string): Promise<void> {
     this.store.delete(key);
+    this.expirations.delete(key);
   }
 }
