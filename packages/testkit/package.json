@@ -10,7 +10,7 @@
       "require": "./dist/objection.cjs"
     },
     "./kysely": {
-      "types": "./dist/kysely.ts",
+      "types": "./dist/kysely.d.ts",
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
     },

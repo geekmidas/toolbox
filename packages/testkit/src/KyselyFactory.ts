@@ -289,7 +289,7 @@ export class KyselyFactory<
     attrs: (
       idx: number,
       faker: FakerFactory,
-    ) => Promise<Parameters<Builders[K]>[0]>,
+    ) => Parameters<Builders[K]>[0] | Promise<Parameters<Builders[K]>[0]>,
   ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
   async insertMany<K extends keyof Builders>(
     count: number,
