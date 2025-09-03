@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/api",
-  "version": "0.0.40",
+  "version": "0.0.41",
   "private": false,
   "type": "module",
   "exports": {
@@ -24,6 +24,9 @@
       "import": "./dist/client/index.mjs",
       "require": "./dist/client/index.cjs"
     }
+  },
+  "scripts": {
+    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
   },
   "repository": {
     "type": "git",
@@ -59,9 +62,7 @@
     "fast-glob": "~3.3.3",
     "jsdom": "~26.1.0"
   },
-  "scripts": {
-    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
-  },
+
   "peerDependencies": {
     "@geekmidas/envkit": "workspace:*",
     "@middy/core": ">=6.3.1",

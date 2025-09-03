@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "private": false,
   "type": "module",
   "bin": {
@@ -15,8 +15,10 @@
     "lodash.get": "~4.4.2",
     "lodash.set": "~4.3.2",
     "zod": "~3.25.67",
-    "fast-glob": "~3.3.3",
-    "@geekmidas/api": "workspace:*"
+    "fast-glob": "~3.3.3"
+  },
+  "peerDependencies": {
+    "@geekmidas/api": "^0.0.41"
   },
   "devDependencies": {
     "@types/lodash.get": "~4.4.9",

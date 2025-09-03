@@ -23,7 +23,11 @@
       "Bash(NODE_OPTIONS=\"--import tsx\" vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)",
       "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/api/src/client/__tests__/react-query-invalidation.spec.tsx)",
       "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/testkit/src/__tests__/PostgresKyselyMigrator.spec.ts)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/testkit/src/__tests__/ObjectionFactory.spec.ts)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/testkit/src/__tests__/ObjectionFactory.spec.ts)",
+      "Bash(pnpm run:*)",
+      "Bash(pnpm cli build:*)",
+      "Bash(pnpm -w test:once packages/api/src/adaptors/HonoEndpoint.openapi.test.ts)",
+      "Bash(pnpm vitest:*)"
     ],
     "deny": []
   }

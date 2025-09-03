@@ -45,3 +45,5 @@ src/playground/**
 .vitepress
 
 bad-migrations
+
+*.p8

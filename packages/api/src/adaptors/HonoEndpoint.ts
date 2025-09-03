@@ -21,6 +21,23 @@ import {
   type ServiceRecord,
 } from '../services';
 
+export interface HonoEndpointOptions {
+  /**
+   * Path where OpenAPI documentation will be served.
+   * Set to false to disable docs route.
+   * @default '/docs'
+   */
+  docsPath?: string | false;
+  /**
+   * OpenAPI schema options
+   */
+  openApiOptions?: {
+    title?: string;
+    version?: string;
+    description?: string;
+  };
+}
+
 export class HonoEndpoint<
   TRoute extends string,
   TMethod extends HttpMethod,
@@ -72,6 +89,7 @@ export class HonoEndpoint<
     app = new Hono(),
     logger: TLogger,
     cwd = process.cwd(),
+    options?: HonoEndpointOptions,
   ): Promise<Hono> {
     const endpoints = await getEndpointsFromRoutes<TServices>(routes, cwd);
     const serviceDiscovery = ServiceDiscovery.getInstance<
@@ -79,7 +97,7 @@ export class HonoEndpoint<
       TLogger
     >(logger, envParser);
 
-    HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app);
+    HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 
     return app;
   }
@@ -91,7 +109,20 @@ export class HonoEndpoint<
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
+    options?: HonoEndpointOptions,
   ): void {
+    // Add docs route if not disabled
+    const docsPath =
+      options?.docsPath !== false ? options?.docsPath || '/docs' : null;
+    if (docsPath) {
+      HonoEndpoint.addDocsRoute(
+        endpoints,
+        app,
+        docsPath,
+        options?.openApiOptions,
+      );
+    }
+
     // Sort endpoints to ensure static routes come before dynamic ones
     const sortedEndpoints = endpoints.sort((a, b) => {
       const aSegments = a.route.split('/');
@@ -239,5 +270,32 @@ export class HonoEndpoint<
         }
       },
     );
+  }
+
+  static addDocsRoute<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
+    endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
+    app: Hono,
+    docsPath: string,
+    openApiOptions?: HonoEndpointOptions['openApiOptions'],
+  ): void {
+    app.get(docsPath, async (c) => {
+      try {
+        const openApiSchema = await Endpoint.buildOpenApiSchema(
+          endpoints,
+          openApiOptions,
+        );
+
+        return c.json(openApiSchema);
+      } catch (error) {
+        console.error('Error generating OpenAPI schema:', error);
+        return c.json(
+          { error: 'Failed to generate OpenAPI documentation' },
+          500,
+        );
+      }
+    });
   }
 }
