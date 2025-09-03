@@ -17,7 +17,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
   } as unknown as Logger;
   const mockEnvParser = {} as EnvironmentParser<{}>;
 
-  it.only('should generate OpenAPI documentation at /docs by default', async () => {
+  it('should generate OpenAPI documentation at /docs by default', async () => {
     // Create test endpoints
     const getUserEndpoint = new Endpoint({
       route: '/users/:id',
@@ -81,7 +81,6 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
     expect(response.status).toBe(200);
 
     const openApiSchema = await response.json();
-    console.log('Generated OpenAPI Schema:', JSON.stringify(openApiSchema, null, 2));
     expect(openApiSchema).toMatchObject({
       openapi: '3.0.0',
       info: {

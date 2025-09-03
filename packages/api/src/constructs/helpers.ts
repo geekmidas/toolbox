@@ -3,11 +3,24 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 export const StandardSchemaJsonSchema = {
   zod: async (schema): Promise<any> => {
     try {
+      const { z } = await import('zod/v4').catch(() => ({ z: {} }));
+
+      if ('toJSONSchema' in z && typeof z.toJSONSchema === 'function') {
+        return z.toJSONSchema(schema);
+      }
       const { zodToJsonSchema } = await import('zod-to-json-schema');
-      return zodToJsonSchema(schema, { removeAdditionalStrategy: 'strict' });
+
+      const result = zodToJsonSchema(schema, {
+        removeAdditionalStrategy: 'strict',
+      });
+
+      return result;
     } catch (error) {
       // Fallback to basic conversion if zod-to-json-schema is not available
-      console.warn('zod-to-json-schema not available, using basic conversion');
+      console.warn(
+        'zod-to-json-schema not available, using basic conversion',
+        error,
+      );
       return { type: 'object' };
     }
   },
@@ -111,7 +124,7 @@ export async function convertStandardSchemaToJsonSchema(
 export async function getZodMetadata(
   schema: StandardSchemaV1,
 ): Promise<SchemaMeta | undefined> {
-  const { ZodObject } = await import('zod');
+  const { ZodObject } = await import('zod/v4');
 
   if (schema instanceof ZodObject) {
     return schema.meta();
