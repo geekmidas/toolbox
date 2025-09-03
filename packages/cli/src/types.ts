@@ -10,6 +10,7 @@ export interface GkmConfig {
 
 export interface BuildOptions {
   providers: Provider[];
+  enableOpenApi?: boolean;
 }
 
 export interface RouteInfo {

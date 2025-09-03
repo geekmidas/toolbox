@@ -23,7 +23,11 @@ program
     'Target providers for generated handlers (comma-separated)',
     'aws-apigatewayv1',
   )
-  .action(async (options: { providers: string }) => {
+  .option(
+    '--enable-openapi',
+    'Enable OpenAPI documentation generation for server builds',
+  )
+  .action(async (options: { providers: string; enableOpenapi?: boolean }) => {
     try {
       const globalOptions = program.opts();
       if (globalOptions.cwd) {
@@ -32,7 +36,10 @@ program
       const providerList = [
         ...new Set(options.providers.split(',').map((p) => p.trim())),
       ] as Provider[];
-      await buildCommand({ providers: providerList });
+      await buildCommand({ 
+        providers: providerList, 
+        enableOpenApi: options.enableOpenapi || false 
+      });
     } catch (error) {
       console.error('Build failed:', (error as Error).message);
       process.exit(1);

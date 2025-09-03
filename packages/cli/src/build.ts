@@ -80,6 +80,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         envParserImportPattern,
         loggerPath,
         loggerImportPattern,
+        options.enableOpenApi || false,
       );
 
       routes.push({
@@ -88,7 +89,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         handler: relative(process.cwd(), serverFile),
       });
 
-      logger.log(`Generated server app with ${allEndpoints.length} endpoints`);
+      logger.log(`Generated server app with ${allEndpoints.length} endpoints${options.enableOpenApi ? ' (OpenAPI enabled)' : ''}`);
     } else {
       // Generate individual handler files for AWS providers
       for (const { file, exportName, routeInfo } of allEndpoints) {
@@ -140,6 +141,7 @@ async function generateServerFile(
   envParserImportPattern: string,
   loggerPath: string,
   loggerImportPattern: string,
+  enableOpenApi: boolean,
 ): Promise<string> {
   const serverFileName = 'app.ts';
   const serverPath = join(outputDir, serverFileName);
@@ -178,7 +180,7 @@ import ${envParserImportPattern} from '${relativeEnvParserPath}';
 import ${loggerImportPattern} from '${relativeLoggerPath}';
 ${imports}
 
-export function createApp(app?: Hono): Hono {
+export function createApp(app?: Hono, enableOpenApi: boolean = ${enableOpenApi}): Hono {
   const honoApp = app || new Hono();
   
   const endpoints: Endpoint<any, any, any, any, any, any>[] = [
@@ -190,7 +192,17 @@ export function createApp(app?: Hono): Hono {
     envParser
   );
 
-  HonoEndpoint.addRoutes(endpoints, serviceDiscovery, honoApp);
+  // Configure OpenAPI options based on enableOpenApi flag
+  const openApiOptions = enableOpenApi ? {
+    docsPath: '/docs',
+    openApiOptions: {
+      title: 'API Documentation',
+      version: '1.0.0',
+      description: 'Generated API documentation'
+    }
+  } : { docsPath: false };
+
+  HonoEndpoint.addRoutes(endpoints, serviceDiscovery, honoApp, openApiOptions);
 
   return honoApp;
 }
