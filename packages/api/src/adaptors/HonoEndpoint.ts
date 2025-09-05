@@ -262,7 +262,29 @@ export class HonoEndpoint<
             TSession
           >);
 
-          return c.json(response);
+          const status = endpoint.status as ContentfulStatusCode;
+
+          if (!endpoint.outputSchema) {
+            return c.json(response, status);
+          }
+
+          // Validate output if schema is defined
+
+          try {
+            const validatedResponse = (await endpoint.parseOutput(
+              response,
+            )) as any;
+
+            return c.json(validatedResponse, status);
+          } catch (validationError) {
+            logger.error(validationError, 'Output validation failed');
+            const error = wrapError(
+              validationError,
+              422,
+              'Response validation failed',
+            );
+            return c.json(error, error.statusCode as ContentfulStatusCode);
+          }
         } catch (e) {
           logger.error(e, 'Error processing endpoint request');
           const error = wrapError(e, 500, 'Internal Server Error');

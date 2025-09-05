@@ -953,4 +953,108 @@ describe('HonoEndpointAdaptor', () => {
       expect(response.status).toBe(500);
     });
   });
+
+  describe('output validation', () => {
+    it('should validate output against schema and return validated response', async () => {
+      const outputSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        age: z.number(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/users/validated',
+        method: 'GET',
+        fn: async () => ({ id: '123', name: 'John', age: 30 }),
+        input: undefined,
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: 200,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users/validated');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        id: '123',
+        name: 'John',
+        age: 30,
+      });
+    });
+
+    it('should return 422 when output validation fails', async () => {
+      const outputSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        age: z.number(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/users/invalid-output',
+        method: 'GET',
+        // @ts-ignore
+        fn: async () => ({ id: 123, name: 'John', age: 'not-a-number' }), // Invalid output
+        input: undefined,
+        output: outputSchema,
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: 200,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users/invalid-output');
+      expect(response.status).toBe(422);
+
+      const error = await response.json();
+      expect(error).toHaveProperty('statusCode', 422);
+      expect(error).toHaveProperty('message', 'Validation failed');
+    });
+
+    it('should return response without validation when no output schema is defined', async () => {
+      const endpoint = new Endpoint({
+        route: '/users/no-schema',
+        method: 'GET',
+        fn: async () => ({ anything: 'goes', here: true, number: 42 }),
+        input: undefined,
+        output: undefined, // No output schema
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: 200,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users/no-schema');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        anything: 'goes',
+        here: true,
+        number: 42,
+      });
+    });
+  });
 });

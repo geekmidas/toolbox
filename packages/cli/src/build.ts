@@ -195,7 +195,7 @@ export function createApp(app?: Hono, enableOpenApi: boolean = ${enableOpenApi})
   );
 
   // Configure OpenAPI options based on enableOpenApi flag
-  const openApiOptions = enableOpenApi ? {
+  const openApiOptions: any = enableOpenApi ? {
     docsPath: '/docs',
     openApiOptions: {
       title: 'API Documentation',
