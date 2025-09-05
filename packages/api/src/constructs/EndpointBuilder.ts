@@ -24,6 +24,7 @@ export class EndpointBuilder<
   protected schemas: TInput = {} as TInput;
   protected _description?: string;
   protected _status?: SuccessStatus;
+  protected _tags?: string[];
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
@@ -42,6 +43,11 @@ export class EndpointBuilder<
 
   status(status: SuccessStatus): this {
     this._status = status;
+    return this;
+  }
+
+  tags(tags: string[]): this {
+    this._tags = tags;
     return this;
   }
 
@@ -164,6 +170,7 @@ export class EndpointBuilder<
       method: this.method,
       route: this.route,
       description: this._description,
+      tags: this._tags,
       input: this.schemas,
       output: this.outputSchema,
       services: this._services,

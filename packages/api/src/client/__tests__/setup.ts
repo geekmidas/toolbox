@@ -135,6 +135,62 @@ export const handlers = [
     }
     return HttpResponse.json({ message: 'Protected data' });
   }),
+
+  // Paginated users endpoint for infinite queries
+  http.get('https://api.example.com/users/paginated', ({ request }) => {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '10');
+
+    const allUsers = Array.from({ length: 50 }, (_, i) => ({
+      id: `user-${i + 1}`,
+      name: `User ${i + 1}`,
+      email: `user${i + 1}@example.com`,
+    }));
+
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const users = allUsers.slice(startIndex, endIndex);
+    const hasMore = endIndex < allUsers.length;
+
+    return HttpResponse.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total: allUsers.length,
+        hasMore,
+      },
+    });
+  }),
+
+  // Cursor-based pagination endpoint for infinite queries
+  http.get('https://api.example.com/messages', ({ request }) => {
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get('cursor');
+    const limit = parseInt(url.searchParams.get('limit') || '10');
+
+    const allMessages = Array.from({ length: 100 }, (_, i) => ({
+      id: `msg-${i + 1}`,
+      text: `Message ${i + 1}`,
+      timestamp: new Date(Date.now() - i * 60000).toISOString(),
+    }));
+
+    let startIndex = 0;
+    if (cursor) {
+      const cursorIndex = allMessages.findIndex((m) => m.id === cursor);
+      startIndex = cursorIndex !== -1 ? cursorIndex + 1 : 0;
+    }
+
+    const messages = allMessages.slice(startIndex, startIndex + limit);
+    const nextCursor =
+      messages.length === limit ? messages[messages.length - 1].id : null;
+
+    return HttpResponse.json({
+      messages,
+      nextCursor,
+    });
+  }),
 ];
 
 export const server = setupServer(...handlers);

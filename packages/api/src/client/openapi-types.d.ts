@@ -336,6 +336,61 @@ export interface paths {
       };
     };
   };
+  '/users/paginated': {
+    get: {
+      operationId: 'getUsersPaginated';
+      parameters: {
+        query: {
+          page?: number;
+          limit?: number;
+        };
+      };
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              users: Array<{
+                id: string;
+                name: string;
+                email: string;
+              }>;
+              pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                hasMore: boolean;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  '/messages': {
+    get: {
+      operationId: 'getMessages';
+      parameters: {
+        query: {
+          cursor?: string;
+          limit?: number;
+        };
+      };
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              messages: Array<{
+                id: string;
+                text: string;
+                timestamp: string;
+              }>;
+              nextCursor: string | null;
+            };
+          };
+        };
+      };
+    };
+  };
 }
 
 export interface components {

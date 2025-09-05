@@ -71,6 +71,8 @@ export class Endpoint<
   method: TMethod;
   /** Optional description for OpenAPI documentation */
   description?: string;
+  /** Optional tags for OpenAPI documentation */
+  tags?: string[];
   /** The HTTP success status code to return (default: 200) */
   public readonly status: SuccessStatus;
   /** Function to extract session data from the request context */
@@ -288,6 +290,7 @@ export class Endpoint<
     const operation: OpenAPIV3_1.OperationObject = {
       operationId: this.operationId,
       ...(this.description && { description: this.description }),
+      ...(this.tags && this.tags.length > 0 && { tags: this.tags }),
       responses: {
         '200': {
           description: 'Successful response',
@@ -424,6 +427,7 @@ export class Endpoint<
     method,
     route,
     description,
+    tags,
     input,
     logger,
     output: outputSchema,
@@ -455,6 +459,7 @@ export class Endpoint<
     this.route = route;
     this.method = method;
     this.description = description;
+    this.tags = tags;
     this.status = status;
     if (getSession) {
       this.getSession = getSession;
@@ -526,6 +531,8 @@ export interface EndpointOptions<
   authorize: AuthorizeFn<TServices, TLogger, TSession> | undefined;
   /** Optional description for documentation */
   description: string | undefined;
+  /** Optional tags for OpenAPI documentation */
+  tags?: string[];
   /** Optional execution timeout in milliseconds */
   timeout: number | undefined;
   /** Input validation schemas */

@@ -258,4 +258,56 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
       description: 'This is a custom API description',
     });
   });
+
+  it('should include tags in OpenAPI documentation', async () => {
+    const userEndpoint = e
+      .get('/users/:id')
+      .description('Get user by ID')
+      .tags(['users', 'profile'])
+      .params(z.object({ id: z.string().describe('User ID') }))
+      .output(z.object({ id: z.string(), name: z.string() }))
+      .handle(({ params }) => ({ id: params.id, name: 'John Doe' }));
+
+    const adminEndpoint = e
+      .post('/admin/settings')
+      .description('Update admin settings')
+      .tags(['admin', 'settings'])
+      .body(z.object({ setting: z.string() }))
+      .output(z.object({ success: z.boolean() }))
+      .handle(() => ({ success: true }));
+
+    const endpoints = [userEndpoint, adminEndpoint] as Endpoint<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >[];
+
+    const app = new Hono();
+    HonoEndpoint.addRoutes(
+      endpoints,
+      { register: async () => ({}) } as any,
+      app,
+    );
+
+    const response = await app.request('/docs');
+    expect(response.status).toBe(200);
+
+    const openApiSchema = await response.json();
+
+    // Check that the user endpoint has the correct tags
+    expect(openApiSchema.paths['/users/{id}'].get.tags).toEqual([
+      'users',
+      'profile',
+    ]);
+
+    // Check that the admin endpoint has the correct tags
+    expect(openApiSchema.paths['/admin/settings'].post.tags).toEqual([
+      'admin',
+      'settings',
+    ]);
+  });
 });

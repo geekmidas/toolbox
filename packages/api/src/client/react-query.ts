@@ -74,17 +74,23 @@ export class TypedQueryClient<Paths> {
 
   useInfiniteQuery<
     T extends QueryEndpoint<Paths>,
-    TData = ExtractEndpointResponse<Paths, T>,
+    TPageData = ExtractEndpointResponse<Paths, T>,
     TPageParam = unknown,
   >(
     endpoint: T,
     options: Omit<
-      UseInfiniteQueryOptions<TData, Response, TData, unknown[], TPageParam>,
+      UseInfiniteQueryOptions<
+        TPageData,
+        Response,
+        { pages: TPageData[]; pageParams: TPageParam[] },
+        unknown[],
+        TPageParam
+      >,
       'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
     > & {
       getNextPageParam: (
-        lastPage: TData,
-        allPages: TData[],
+        lastPage: TPageData,
+        allPages: TPageData[],
         lastPageParam: TPageParam,
         allPageParams: TPageParam[],
       ) => TPageParam | undefined;
@@ -94,19 +100,31 @@ export class TypedQueryClient<Paths> {
   ) {
     const queryKey = this.buildQueryKey(endpoint, config);
 
-    return useInfiniteQuery<TData, Response, TData, unknown[], TPageParam>({
+    return useInfiniteQuery<
+      TPageData,
+      Response,
+      { pages: TPageData[]; pageParams: TPageParam[] },
+      unknown[],
+      TPageParam
+    >({
       queryKey,
       queryFn: ({ pageParam }) => {
         let mergedConfig = config;
-        if (pageParam && config) {
+        if (pageParam !== undefined && config) {
+          // If pageParam is an object, spread it into query
+          const pageQuery =
+            typeof pageParam === 'object' ? pageParam : { page: pageParam };
           mergedConfig = {
             ...config,
-            query: { ...(config as any).query, ...pageParam },
+            query: { ...(config as any).query, ...pageQuery },
           } as any;
-        } else if (pageParam && !config) {
-          mergedConfig = { query: pageParam } as any;
+        } else if (pageParam !== undefined && !config) {
+          // If pageParam is an object, use it directly, otherwise wrap in page property
+          const pageQuery =
+            typeof pageParam === 'object' ? pageParam : { page: pageParam };
+          mergedConfig = { query: pageQuery } as any;
         }
-        return this.fetcher(endpoint, mergedConfig) as Promise<TData>;
+        return this.fetcher(endpoint, mergedConfig) as Promise<TPageData>;
       },
       ...options,
     });
@@ -219,18 +237,24 @@ export function useTypedMutation<Paths, T extends MutationEndpoint<Paths>>(
 export function useTypedInfiniteQuery<
   Paths,
   T extends QueryEndpoint<Paths>,
-  TData = ExtractEndpointResponse<Paths, T>,
+  TPageData = ExtractEndpointResponse<Paths, T>,
   TPageParam = unknown,
 >(
   client: TypedQueryClient<Paths>,
   endpoint: T,
   options: Omit<
-    UseInfiniteQueryOptions<TData, Response, TData, unknown[], TPageParam>,
+    UseInfiniteQueryOptions<
+      TPageData,
+      Response,
+      { pages: TPageData[]; pageParams: TPageParam[] },
+      unknown[],
+      TPageParam
+    >,
     'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
   > & {
     getNextPageParam: (
-      lastPage: TData,
-      allPages: TData[],
+      lastPage: TPageData,
+      allPages: TPageData[],
       lastPageParam: TPageParam,
       allPageParams: TPageParam[],
     ) => TPageParam | undefined;

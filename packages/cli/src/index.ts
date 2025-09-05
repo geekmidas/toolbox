@@ -36,9 +36,9 @@ program
       const providerList = [
         ...new Set(options.providers.split(',').map((p) => p.trim())),
       ] as Provider[];
-      await buildCommand({ 
-        providers: providerList, 
-        enableOpenApi: options.enableOpenapi || false 
+      await buildCommand({
+        providers: providerList,
+        enableOpenApi: options.enableOpenapi || false,
       });
     } catch (error) {
       console.error('Build failed:', (error as Error).message);

@@ -89,7 +89,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         handler: relative(process.cwd(), serverFile),
       });
 
-      logger.log(`Generated server app with ${allEndpoints.length} endpoints${options.enableOpenApi ? ' (OpenAPI enabled)' : ''}`);
+      logger.log(
+        `Generated server app with ${allEndpoints.length} endpoints${options.enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
+      );
     } else {
       // Generate individual handler files for AWS providers
       for (const { file, exportName, routeInfo } of allEndpoints) {
