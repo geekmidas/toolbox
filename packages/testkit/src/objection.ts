@@ -1,7 +1,10 @@
 import type { Knex } from 'knex';
 import type { TestAPI } from 'vitest';
 import { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
-import { IsolationLevel } from './VitestTransactionIsolator';
+import {
+  type DatabaseConnection,
+  IsolationLevel,
+} from './VitestTransactionIsolator';
 
 /**
  * Objection.js-specific exports for test utilities.
@@ -20,7 +23,7 @@ export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
  * This ensures tests don't affect each other's data and run faster than truncating tables.
  *
  * @param api - The Vitest test API (usually `test` from vitest)
- * @param knex - The Knex database connection instance
+ * @param conn - The Knex database connection instance
  * @param setup - Optional setup function to run before each test in the transaction
  * @param level - Transaction isolation level (defaults to REPEATABLE_READ)
  * @returns A wrapped test API that provides transaction isolation
@@ -87,11 +90,11 @@ export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
  */
 export function wrapVitestObjectionTransaction(
   api: TestAPI,
-  knex: Knex,
+  conn: DatabaseConnection<Knex>,
   setup?: (trx: Knex.Transaction) => Promise<void>,
   level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
 ) {
   const wrapper = new VitestObjectionTransactionIsolator(api);
 
-  return wrapper.wrapVitestWithTransaction(knex, setup, level);
+  return wrapper.wrapVitestWithTransaction(conn, setup, level);
 }

@@ -6,7 +6,7 @@ import { KyselyFactory } from '../KyselyFactory';
 import { createKyselyDb } from '../helpers';
 import { wrapVitestKyselyTransaction } from '../kysely';
 
-const db = createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
+const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
 const itWithTransaction = wrapVitestKyselyTransaction<TestDatabase>(
   it,
   db,

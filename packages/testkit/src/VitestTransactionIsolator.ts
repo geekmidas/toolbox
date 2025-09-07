@@ -48,7 +48,7 @@ export enum IsolationLevel {
  * Provides automatic transaction rollback after each test to maintain test isolation.
  * Subclasses must implement the transact() method for their specific database driver.
  *
- * @template Connection - The database connection type
+ * @template TConn - The database connection type
  * @template Transaction - The transaction type
  *
  * @example
@@ -70,10 +70,7 @@ export enum IsolationLevel {
  * });
  * ```
  */
-export abstract class VitestPostgresTransactionIsolator<
-  Connection,
-  Transaction,
-> {
+export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
   /**
    * Abstract method to create a transaction with the specified isolation level.
    * Must be implemented by subclasses for specific database drivers.
@@ -84,11 +81,12 @@ export abstract class VitestPostgresTransactionIsolator<
    * @returns Promise that resolves when the transaction completes
    */
   abstract transact(
-    conn: Connection,
+    conn: TConn,
     isolationLevel: IsolationLevel,
     fn: (trx: Transaction) => Promise<void>,
   ): Promise<void>;
 
+  abstract destroy(conn: TConn): Promise<void>;
   /**
    * Creates a new VitestPostgresTransactionIsolator instance.
    *
@@ -119,7 +117,7 @@ export abstract class VitestPostgresTransactionIsolator<
    * ```
    */
   wrapVitestWithTransaction(
-    conn: Connection,
+    createConnection: DatabaseConnection<TConn>,
     setup?: (trx: Transaction) => Promise<void>,
     level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
   ) {
@@ -135,7 +133,7 @@ export abstract class VitestPostgresTransactionIsolator<
         }
 
         let testError: Error | undefined;
-
+        const conn = await createConnection();
         try {
           await this.transact(conn, level, async (transaction) => {
             try {
@@ -160,8 +158,13 @@ export abstract class VitestPostgresTransactionIsolator<
           if (testError) {
             throw testError;
           }
+        } finally {
+          await this.destroy(conn);
         }
       },
     });
   }
 }
+
+export type DatabaseConnectionFn<Conn> = () => Conn | Promise<Conn>;
+export type DatabaseConnection<Conn> = DatabaseConnectionFn<Conn>;

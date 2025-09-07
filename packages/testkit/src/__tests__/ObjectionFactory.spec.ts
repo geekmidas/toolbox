@@ -39,7 +39,7 @@ class Comment extends Model {
 
 const it = wrapVitestObjectionTransaction(
   test,
-  createKnexDb(),
+  createKnexDb,
   createTestTablesKnex,
 );
 describe('ObjectionFactory', () => {

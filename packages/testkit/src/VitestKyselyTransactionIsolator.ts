@@ -47,6 +47,9 @@ export class VitestKyselyTransactionIsolator<
   Kysely<Database>,
   Transaction<Database>
 > {
+  destroy(conn: Kysely<Database>): Promise<void> {
+    return conn.destroy();
+  }
   /**
    * Creates a Kysely transaction with the specified isolation level.
    * Implements the abstract transact method from VitestPostgresTransactionIsolator.

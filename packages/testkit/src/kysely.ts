@@ -1,7 +1,10 @@
 import type { Kysely, Transaction } from 'kysely';
 import type { TestAPI } from 'vitest';
 import { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
-import { IsolationLevel } from './VitestTransactionIsolator';
+import {
+  type DatabaseConnection,
+  IsolationLevel,
+} from './VitestTransactionIsolator';
 
 /**
  * Kysely-specific exports for test utilities.
@@ -71,11 +74,11 @@ export { IsolationLevel } from './VitestTransactionIsolator';
  */
 export function wrapVitestKyselyTransaction<Database>(
   api: TestAPI,
-  db: Kysely<Database>,
+  connection: DatabaseConnection<Kysely<Database>>,
   setup?: (trx: Transaction<Database>) => Promise<void>,
   level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
 ) {
   const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
 
-  return wrapper.wrapVitestWithTransaction(db, setup, level);
+  return wrapper.wrapVitestWithTransaction(connection, setup, level);
 }
