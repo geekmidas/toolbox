@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/storage",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
@@ -20,10 +20,9 @@
     }
   },
   "scripts": {},
-  "dependencies": {
-    "zod": "~3.25.67"
-  },
+  "dependencies": {},
   "peerDependencies": {
+    "zod": "~3.25.67",
     "@aws-sdk/client-s3": "~3.844.0",
     "@aws-sdk/s3-presigned-post": "^3.844.0",
     "@aws-sdk/s3-request-presigner": "~3.844.0"

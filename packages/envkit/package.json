@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/envkit",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": false,
   "type": "module",
   "exports": {
@@ -20,10 +20,12 @@
     "access": "public"
   },
   "dependencies": {
-    "zod": "~3.25.67",
     "lodash.set": "~4.3.2",
     "lodash.get": "~4.4.2",
     "lodash.snakecase": "~4.1.1"
+  },
+  "peerDependencies": {
+    "zod": "~3.25.67"
   },
   "devDependencies": {
     "@types/lodash.set": "~4.3.9",
