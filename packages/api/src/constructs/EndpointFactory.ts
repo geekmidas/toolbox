@@ -1,6 +1,5 @@
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger';
-
 import type { Service } from '../services';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
@@ -199,7 +198,8 @@ export class EndpointFactory<
     TServices,
     TLogger,
     undefined,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     const fullPath = EndpointFactory.joinPaths(path, this.basePath);
     const builder = new EndpointBuilder<
@@ -232,6 +232,12 @@ export class EndpointFactory<
       >;
     }
 
+    if (this.defaultEventPublisher) {
+      // @ts-ignore
+      builder._eventPublisher = this
+        .defaultEventPublisher as NonNullable<TEventPublisher>;
+    }
+
     return builder as unknown as EndpointBuilder<
       JoinPaths<TBasePath, TPath>,
       TMethod,
@@ -239,7 +245,8 @@ export class EndpointFactory<
       TServices,
       TLogger,
       undefined,
-      TSession
+      TSession,
+      TEventPublisher
     >;
   }
 
@@ -310,14 +317,7 @@ export interface EndpointFactoryOptions<
   defaultLogger?: TLogger;
   defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
   defaultEventPublisher?: TEventPublisher;
-  defaultEvents?: MappedEvent<
-    TEventPublisher,
-    {},
-    TServices,
-    TLogger,
-    TSession,
-    undefined
-  >[];
+  defaultEvents?: MappedEvent<TEventPublisher, undefined>[];
 }
 
 export const e = new EndpointFactory();

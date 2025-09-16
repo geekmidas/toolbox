@@ -12,7 +12,12 @@ import {
   type FunctionContext,
   type FunctionHandler,
 } from './Function';
-import type { EventPublisher, MappedEvent, PublishableMessage } from './events';
+import type {
+  EventPublisher,
+  ExtractPublisherMessage,
+  MappedEvent,
+  PublishableMessage,
+} from './events';
 import {
   convertSchemaWithComponents,
   convertStandardSchemaToJsonSchema,
@@ -86,6 +91,10 @@ export class Endpoint<
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
+  /** Event publisher for publishing events from this endpoint */
+  public publisher?: TEventPublisher;
+  /** Events to publish after successful execution */
+  public events?: MappedEvent<TEventPublisher, OutSchema>[];
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -441,6 +450,8 @@ export class Endpoint<
     authorize,
     rateLimit,
     status = SuccessStatus.OK,
+    publisher,
+    events,
   }: EndpointOptions<
     TRoute,
     TMethod,
@@ -477,6 +488,14 @@ export class Endpoint<
 
     if (rateLimit) {
       this.rateLimit = rateLimit;
+    }
+
+    if (publisher) {
+      this.publisher = publisher;
+    }
+
+    if (events) {
+      this.events = events;
     }
   }
 }
@@ -564,14 +583,7 @@ export interface EndpointOptions<
    */
   publisher?: TEventPublisher;
 
-  events?: MappedEvent<
-    TEventPublisher,
-    TInput,
-    TServices,
-    TLogger,
-    TSession,
-    OutSchema
-  >[];
+  events?: MappedEvent<TEventPublisher, OutSchema>[];
 }
 
 /**
@@ -785,3 +797,25 @@ export enum SuccessStatus {
   /** Server is delivering only part of the resource due to a range header */
   PartialContent = 206,
 }
+
+export type EndpointOutput<T> = T extends Endpoint<
+  any,
+  any,
+  any,
+  infer OutSchema
+>
+  ? InferStandardSchema<OutSchema>
+  : never;
+
+export type EndpointEvent<T> = T extends Endpoint<
+  any,
+  any,
+  any,
+  any,
+  any,
+  any,
+  any,
+  infer TEventPublisher
+>
+  ? ExtractPublisherMessage<TEventPublisher>
+  : never;

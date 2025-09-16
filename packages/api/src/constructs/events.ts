@@ -30,17 +30,11 @@ export type EventContext<
 
 export type MappedEvent<
   T extends EventPublisher<any> | undefined,
-  TInput extends EndpointSchemas = {},
-  TServices extends Service[] = [],
-  TLogger extends Logger = Logger,
-  TSession = unknown,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
 > = {
   type: ExtractPublisherMessage<T>['type'];
   payload: (
-    ctx: EventContext<TInput, TServices, TLogger, TSession, OutSchema>,
+    ctx: InferStandardSchema<OutSchema>,
   ) => ExtractPublisherMessage<T>['payload'];
-  when?: (
-    ctx: EventContext<TInput, TServices, TLogger, TSession, OutSchema>,
-  ) => boolean | Promise<boolean>;
+  when?: (ctx: InferStandardSchema<OutSchema>) => boolean;
 };

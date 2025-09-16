@@ -1,6 +1,13 @@
 export { e } from '../constructs/EndpointFactory.ts';
 export { Endpoint } from '../constructs/Endpoint.ts';
 export {
+  type EventPublisher,
+  type EventContext,
+  type MappedEvent,
+  type PublishableMessage,
+  type ExtractPublisherMessage,
+} from '../constructs/events.ts';
+export {
   type RateLimitConfig,
   type RateLimitContext,
   type RateLimitInfo,

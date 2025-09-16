@@ -33,14 +33,7 @@ export class EndpointBuilder<
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
   _eventPublisher: TEventPublisher;
-  private _events: MappedEvent<
-    TEventPublisher,
-    {},
-    TServices,
-    TLogger,
-    TSession,
-    undefined
-  >[] = [];
+  private _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 
   constructor(
     readonly route: TRoute,
@@ -59,16 +52,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  event(
-    event: MappedEvent<
-      TEventPublisher,
-      {},
-      TServices,
-      TLogger,
-      TSession,
-      undefined
-    >,
-  ): this {
+  event(event: MappedEvent<TEventPublisher, OutSchema>): this {
     this._events.push(event);
     return this;
   }
@@ -225,6 +209,7 @@ export class EndpointBuilder<
       getSession: this._getSession,
       rateLimit: this._rateLimit,
       publisher: this._eventPublisher,
+      events: this._events,
     });
   }
 }

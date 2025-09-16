@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
+import type { EventContext } from '../constructs/events';
 import type {
   HttpMethod,
   InferComposableStandardSchema,
@@ -24,6 +25,56 @@ import {
   ServiceDiscovery,
   type ServiceRecord,
 } from '../services';
+
+// Helper function to publish events
+async function publishEndpointEvents<
+  TInput extends EndpointSchemas,
+  TServices extends Service[],
+  TLogger extends Logger,
+  TSession,
+>(
+  endpoint: Endpoint<any, any, TInput, any, TServices, TLogger, TSession, any>,
+  context: {
+    body: any;
+    query: any;
+    params: any;
+    services: ServiceRecord<TServices>;
+    logger: TLogger;
+    session: TSession;
+    response: any;
+    header: (key: string) => string | undefined;
+  },
+): Promise<void> {
+  if (!endpoint.publisher || !endpoint.events || endpoint.events.length === 0) {
+    return;
+  }
+
+  const eventContext: EventContext<TInput, TServices, TLogger, TSession, any> = {
+    body: context.body,
+    query: context.query,
+    params: context.params,
+    services: context.services,
+    logger: context.logger,
+    session: context.session,
+    response: context.response,
+    header: context.header,
+  };
+
+  const eventsToPublish: any[] = [];
+  for (const event of endpoint.events) {
+    // Check if event should be published
+    if (!event.when || (await event.when(eventContext))) {
+      eventsToPublish.push({
+        type: event.type,
+        payload: await event.payload(eventContext),
+      });
+    }
+  }
+
+  if (eventsToPublish.length > 0) {
+    await endpoint.publisher.publish(eventsToPublish);
+  }
+}
 
 export abstract class AmazonApiGatewayEndpoint<
   TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
@@ -51,7 +102,7 @@ export abstract class AmazonApiGatewayEndpoint<
   private error(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
       onError: (req) => {
-        req.event.logger.error(req.error || {}, 'Error processing request');
+        (req.event.logger || this.endpoint.logger).error(req.error || {}, 'Error processing request');
         const wrappedError = wrapError(req.error);
 
         // Set the response with the proper status code from the HttpError
@@ -168,6 +219,31 @@ export abstract class AmazonApiGatewayEndpoint<
     };
   }
 
+  private events(): Middleware<TEvent, TInput, TServices, TLogger> {
+    return {
+      after: async (req) => {
+        const event = req.event;
+        const response = (event as any).__response;
+        const input = (event as any).__input;
+
+        if (!response || !input) {
+          return;
+        }
+
+        await publishEndpointEvents(this.endpoint, {
+          body: input.body,
+          query: input.query,
+          params: input.params,
+          services: event.services,
+          logger: event.logger,
+          session: event.session,
+          response,
+          header: event.header,
+        });
+      },
+    };
+  }
+
   private async _handler(
     event: Event<TEvent, TInput, TServices, TLogger, TSession>,
   ) {
@@ -185,6 +261,10 @@ export abstract class AmazonApiGatewayEndpoint<
 
     const body = output ? JSON.stringify(output) : undefined;
 
+    // Store response for middleware access
+    (event as any).__response = output || response;
+    (event as any).__input = input;
+
     return {
       statusCode: this.endpoint.status,
       body,
@@ -199,7 +279,8 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.services())
       .use(this.input())
       .use(this.session())
-      .use(this.authorize()) as unknown as AmazonApiGatewayV1EndpointHandler;
+      .use(this.authorize())
+      .use(this.events()) as unknown as AmazonApiGatewayV1EndpointHandler;
   }
 }
 

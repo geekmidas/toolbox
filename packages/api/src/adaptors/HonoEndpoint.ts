@@ -7,6 +7,7 @@ import {
   type EndpointContext,
   type EndpointSchemas,
 } from '../constructs/Endpoint';
+import type { EventPublisher, PublishableMessage } from '../constructs/events';
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
 import type { Logger } from '../logger';
@@ -46,6 +47,9 @@ export class HonoEndpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  TEventPublisher extends
+    | EventPublisher<PublishableMessage<string, any>>
+    | undefined = undefined,
 > {
   constructor(
     private readonly endpoint: Endpoint<
@@ -55,7 +59,8 @@ export class HonoEndpoint<
       TOutSchema,
       TServices,
       TLogger,
-      TSession
+      TSession,
+      TEventPublisher
     >,
   ) {}
 
@@ -162,6 +167,9 @@ export class HonoEndpoint<
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
     TSession = unknown,
+    TEventPublisher extends
+      | EventPublisher<PublishableMessage<string, any>>
+      | undefined = undefined,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -170,7 +178,8 @@ export class HonoEndpoint<
       TOutSchema,
       TServices,
       TLogger,
-      TSession
+      TSession,
+      TEventPublisher
     >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -262,20 +271,15 @@ export class HonoEndpoint<
             TSession
           >);
 
-          const status = endpoint.status as ContentfulStatusCode;
-
-          if (!endpoint.outputSchema) {
-            return c.json(response, status);
-          }
-
           // Validate output if schema is defined
 
           try {
-            const validatedResponse = (await endpoint.parseOutput(
-              response,
-            )) as any;
+            const status = endpoint.status as ContentfulStatusCode;
+            const output = endpoint.outputSchema
+              ? await endpoint.parseOutput(response)
+              : (undefined as any);
 
-            return c.json(validatedResponse, status);
+            return c.json(output, status);
           } catch (validationError) {
             logger.error(validationError, 'Output validation failed');
             const error = wrapError(
