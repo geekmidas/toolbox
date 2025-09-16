@@ -391,6 +391,35 @@ export interface paths {
       };
     };
   };
+  '/echo': {
+    get: {
+      operationId: 'echo';
+      parameters: {
+        query: {
+          [key: string]: string | number | boolean;
+        };
+      };
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              queryParams: Record<string, string>;
+              data: Array<{
+                id: string;
+                value: string;
+              }>;
+              pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                hasMore: boolean;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
 }
 
 export interface components {

@@ -77,20 +77,25 @@ export const handlers = [
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const sort = url.searchParams.get('sort') || 'asc';
 
+    // Generate posts based on page to simulate pagination
+    const totalPosts = 50;
+    const startIndex = (page - 1) * limit;
+    const endIndex = Math.min(startIndex + limit, totalPosts);
+    
+    const posts = Array.from({ length: endIndex - startIndex }, (_, i) => ({
+      id: `post-${startIndex + i + 1}`,
+      title: `Test Post ${startIndex + i + 1}`,
+      content: `Test content for post ${startIndex + i + 1}`,
+      authorId: `author-${(startIndex + i) % 5 + 1}`,
+      createdAt: new Date(Date.now() - (startIndex + i) * 3600000).toISOString(),
+    }));
+
     return HttpResponse.json({
-      posts: [
-        {
-          id: '1',
-          title: 'Test Post',
-          content: 'Test content',
-          authorId: '1',
-          createdAt: '2023-01-01T00:00:00Z',
-        },
-      ],
+      posts,
       pagination: {
         page,
         limit,
-        total: 1,
+        total: totalPosts,
       },
       sort,
     });
@@ -189,6 +194,32 @@ export const handlers = [
     return HttpResponse.json({
       messages,
       nextCursor,
+    });
+  }),
+
+  // Echo endpoint that returns all query parameters
+  http.get('https://api.example.com/echo', ({ request }) => {
+    const url = new URL(request.url);
+    const queryParams: Record<string, string> = {};
+    
+    // Collect all query parameters
+    url.searchParams.forEach((value, key) => {
+      queryParams[key] = value;
+    });
+
+    return HttpResponse.json({
+      queryParams,
+      // Also include some pagination data for infinite query testing
+      data: Array.from({ length: 5 }, (_, i) => ({
+        id: `item-${i + 1}`,
+        value: `Value ${i + 1}`,
+      })),
+      pagination: {
+        page: parseInt(queryParams.page || '1'),
+        limit: parseInt(queryParams.limit || '10'),
+        total: 50,
+        hasMore: parseInt(queryParams.page || '1') < 5,
+      },
     });
   }),
 ];

@@ -28,7 +28,8 @@
       "Bash(pnpm cli build:*)",
       "Bash(pnpm -w test:once packages/api/src/adaptors/HonoEndpoint.openapi.test.ts)",
       "Bash(pnpm vitest:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }
