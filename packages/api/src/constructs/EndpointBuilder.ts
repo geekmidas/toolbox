@@ -10,6 +10,7 @@ import type {
   SuccessStatus,
 } from './Endpoint';
 import { FunctionBuilder } from './Function';
+import type { EventPublisher, MappedEvent, PublishableMessage } from './events';
 import { FunctionType, type HttpMethod } from './types';
 
 export class EndpointBuilder<
@@ -20,6 +21,9 @@ export class EndpointBuilder<
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
+  TEventPublisher extends
+    | EventPublisher<PublishableMessage<string, any>>
+    | undefined = undefined,
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   protected schemas: TInput = {} as TInput;
   protected _description?: string;
@@ -28,6 +32,15 @@ export class EndpointBuilder<
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
+  _eventPublisher: TEventPublisher;
+  private _events: MappedEvent<
+    TEventPublisher,
+    {},
+    TServices,
+    TLogger,
+    TSession,
+    undefined
+  >[] = [];
 
   constructor(
     readonly route: TRoute,
@@ -46,6 +59,20 @@ export class EndpointBuilder<
     return this;
   }
 
+  event(
+    event: MappedEvent<
+      TEventPublisher,
+      {},
+      TServices,
+      TLogger,
+      TSession,
+      undefined
+    >,
+  ): this {
+    this._events.push(event);
+    return this;
+  }
+
   tags(tags: string[]): this {
     this._tags = tags;
     return this;
@@ -60,7 +87,8 @@ export class EndpointBuilder<
     [...TServices, ...T],
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     return super.services(services) as EndpointBuilder<
       TRoute,
@@ -69,13 +97,23 @@ export class EndpointBuilder<
       [...TServices, ...T],
       TLogger,
       OutSchema,
-      TSession
+      TSession,
+      TEventPublisher
     >;
   }
 
   output<T extends StandardSchemaV1>(
     schema: T,
-  ): EndpointBuilder<TRoute, TMethod, TInput, TServices, TLogger, T, TSession> {
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    T,
+    TSession,
+    TEventPublisher
+  > {
     return super.output(schema) as EndpointBuilder<
       TRoute,
       TMethod,
@@ -83,7 +121,8 @@ export class EndpointBuilder<
       TServices,
       TLogger,
       T,
-      TSession
+      TSession,
+      TEventPublisher
     >;
   }
 
@@ -96,7 +135,8 @@ export class EndpointBuilder<
     TServices,
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     this.schemas.body = schema as unknown as T;
     // @ts-ignore
@@ -112,7 +152,8 @@ export class EndpointBuilder<
     TServices,
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     this.schemas.query = schema as unknown as T;
     // @ts-ignore
@@ -128,7 +169,8 @@ export class EndpointBuilder<
     TServices,
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     return this.search(schema);
   }
@@ -142,7 +184,8 @@ export class EndpointBuilder<
     TServices,
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     this.schemas.params = schema as unknown as T;
     // @ts-ignore
@@ -163,7 +206,8 @@ export class EndpointBuilder<
     OutSchema,
     TServices,
     TLogger,
-    TSession
+    TSession,
+    TEventPublisher
   > {
     return new Endpoint({
       fn,
@@ -180,6 +224,7 @@ export class EndpointBuilder<
       status: this._status,
       getSession: this._getSession,
       rateLimit: this._rateLimit,
+      publisher: this._eventPublisher,
     });
   }
 }

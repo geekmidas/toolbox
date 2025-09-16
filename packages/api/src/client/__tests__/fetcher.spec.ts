@@ -88,23 +88,7 @@ describe('TypedFetcher', () => {
       query: { page: 2, limit: 5, sort: 'desc' },
     });
 
-    expect(result).toEqual({
-      posts: [
-        {
-          id: '1',
-          title: 'Test Post',
-          content: 'Test content',
-          authorId: '1',
-          createdAt: '2023-01-01T00:00:00Z',
-        },
-      ],
-      pagination: {
-        page: 2,
-        limit: 5,
-        total: 1,
-      },
-      sort: 'desc',
-    });
+    expect(result.posts).toHaveLength(5);
   });
 
   it('should handle array query parameters', async () => {

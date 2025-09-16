@@ -12,6 +12,7 @@ import {
   type FunctionContext,
   type FunctionHandler,
 } from './Function';
+import type { EventPublisher, MappedEvent, PublishableMessage } from './events';
 import {
   convertSchemaWithComponents,
   convertStandardSchemaToJsonSchema,
@@ -63,6 +64,9 @@ export class Endpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  TEventPublisher extends
+    | EventPublisher<PublishableMessage<string, any>>
+    | undefined = undefined,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
   operationId?: string;
   /** The route path pattern with parameter placeholders */
@@ -444,7 +448,9 @@ export class Endpoint<
     OutSchema,
     TServices,
     TLogger,
-    TSession
+    TSession,
+    OutSchema,
+    TEventPublisher
   >) {
     super(
       fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
@@ -520,6 +526,10 @@ export interface EndpointOptions<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  OutSchema extends StandardSchemaV1 | undefined = undefined,
+  TEventPublisher extends
+    | EventPublisher<PublishableMessage<string, any>>
+    | undefined = undefined,
 > {
   /** The route path with parameter placeholders */
   route: TRoute;
@@ -549,6 +559,19 @@ export interface EndpointOptions<
   rateLimit?: RateLimitConfig;
   /** Success HTTP status code */
   status: SuccessStatus | undefined;
+  /**
+   * Event publisher for publishing events from this endpoint
+   */
+  publisher?: TEventPublisher;
+
+  events?: MappedEvent<
+    TEventPublisher,
+    TInput,
+    TServices,
+    TLogger,
+    TSession,
+    OutSchema
+  >[];
 }
 
 /**

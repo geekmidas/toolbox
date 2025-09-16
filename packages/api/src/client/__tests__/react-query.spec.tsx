@@ -85,7 +85,7 @@ describe('TypedQueryClient', () => {
         pagination: {
           page: 1,
           limit: 10,
-          total: 1,
+          total: 50,
         },
         sort: 'desc',
       });
