@@ -7,7 +7,7 @@ This is a TypeScript monorepo containing utilities and frameworks for building m
 ### Key Characteristics
 - **Language**: TypeScript 5.8.2
 - **Runtime**: Node.js ≥ 22.0.0
-- **Package Manager**: pnpm 10.11.0
+- **Package Manager**: pnpm 10.13.1
 - **Build Tool**: tsdown (generates both ESM and CJS)
 - **Code Style**: Biome (2-space indentation, single quotes, semicolons)
 - **Testing**: Vitest
@@ -20,13 +20,23 @@ This is a TypeScript monorepo containing utilities and frameworks for building m
 toolbox/
 ├── packages/
 │   ├── api/          # REST API framework with AWS Lambda support
-│   ├── testkit/      # Testing utilities and database factories
-│   └── envkit/       # Environment configuration parser
+│   ├── auth/         # JWT authentication and token management
+│   ├── cache/        # Unified caching interface with multiple backends
+│   ├── cli/          # CLI tools for building and deployment
+│   ├── cloud/        # Cloud infrastructure utilities (private)
+│   ├── emailkit/     # Type-safe email client with React templates
+│   ├── envkit/       # Environment configuration parser
+│   ├── storage/      # Cloud storage abstraction (S3)
+│   └── testkit/      # Testing utilities and database factories
+├── apps/
+│   └── docs/         # VitePress documentation site
+├── test-cli/         # Test CLI application
 ├── turbo.json        # Turbo configuration
 ├── pnpm-workspace.yaml
 ├── tsdown.config.ts  # Build configuration
 ├── vitest.config.ts  # Test configuration
-└── biome.json        # Linting and formatting
+├── biome.json        # Linting and formatting
+└── docker-compose.yml # Docker configuration for development
 ```
 
 ### Package Descriptions
@@ -43,6 +53,9 @@ A comprehensive REST API framework for building type-safe HTTP endpoints.
 - Built-in error handling with HTTP-specific error classes
 - Session and authorization management
 - Structured logging with context propagation
+- Rate limiting with configurable windows and storage
+- Hono framework adapter support
+- OpenAPI components extraction
 
 **Usage Pattern:**
 ```typescript
@@ -54,6 +67,17 @@ const endpoint = e
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string() }))
   .handle(async ({ body }) => ({ id: '123' }));
+
+// With rate limiting
+const rateLimited = e
+  .post('/api/messages')
+  .rateLimit({
+    limit: 10,
+    windowMs: 60000, // 1 minute
+    cache: new InMemoryCache<RateLimitData>(),
+  })
+  .body(z.object({ content: z.string() }))
+  .handle(async ({ body }) => ({ success: true }));
 ```
 
 #### @geekmidas/testkit
@@ -97,6 +121,179 @@ const config = new EnvironmentParser(process.env)
     }
   }))
   .parse();
+```
+
+#### @geekmidas/auth
+JWT-based authentication with token management and automatic refresh.
+
+**Key Features:**
+- Access/refresh token pattern with automatic refresh
+- Multiple storage backends (localStorage, memory, cache)
+- Type-safe token payloads with generics
+- Built on @openauthjs/openauth
+- Configurable expiration and refresh behavior
+
+**Usage Pattern:**
+```typescript
+// Server-side token generation
+import { TokenManager } from '@geekmidas/auth/server';
+
+const tokenManager = new TokenManager({
+  accessTokenSecret: process.env.ACCESS_TOKEN_SECRET,
+  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET,
+  accessTokenExpiresIn: '15m',
+  refreshTokenExpiresIn: '7d'
+});
+
+const tokens = await tokenManager.createTokens({ userId: '123' });
+
+// Client-side token management
+import { TokenClient, LocalStorageTokenStorage } from '@geekmidas/auth/client';
+
+const client = new TokenClient({
+  storage: new LocalStorageTokenStorage(),
+  refreshEndpoint: '/api/auth/refresh',
+  onTokenExpired: () => window.location.href = '/login'
+});
+```
+
+#### @geekmidas/cache
+Unified caching interface with multiple backend implementations.
+
+**Key Features:**
+- Type-safe cache with TypeScript generics
+- Consistent async API across all backends
+- TTL (time-to-live) support
+- Implementations: InMemoryCache, UpstashCache, ExpoSecureCache
+- Easy testing with swappable backends
+
+**Usage Pattern:**
+```typescript
+import { InMemoryCache } from '@geekmidas/cache/memory';
+import { UpstashCache } from '@geekmidas/cache/upstash';
+
+// Development/testing
+const cache = new InMemoryCache<User>();
+
+// Production with Redis
+const cache = new UpstashCache<User>({
+  url: process.env.UPSTASH_REDIS_URL,
+  token: process.env.UPSTASH_REDIS_TOKEN
+});
+
+// Usage is identical
+await cache.set('user:123', userData, 3600); // 1 hour TTL
+const user = await cache.get('user:123');
+await cache.delete('user:123');
+```
+
+#### @geekmidas/cli
+Command-line tools for building and deployment.
+
+**Key Features:**
+- Build command for generating Lambda handlers or server applications
+- OpenAPI specification generation from endpoints
+- React Query hooks generation from OpenAPI
+- Auto-discovery of endpoints via glob patterns
+- Environment and logger configuration
+
+**Usage Pattern:**
+```bash
+# Install globally or use via npx
+npm install -g @geekmidas/cli
+
+# Generate AWS Lambda handlers
+gkm build --provider aws-apigatewayv1 --source "./src/endpoints/**/*.ts"
+
+# Generate server application
+gkm build --provider server --port 3000
+
+# Generate OpenAPI specification
+gkm openapi --source "./src/endpoints/**/*.ts" --output api-docs.json
+
+# Generate React Query hooks
+gkm generate:react-query --input api-docs.json --output ./src/hooks
+```
+
+#### @geekmidas/storage
+Cloud storage abstraction with S3 implementation.
+
+**Key Features:**
+- Presigned URL generation for secure uploads/downloads
+- Direct file uploads with content type support
+- File versioning and metadata
+- Compatible with S3-compatible services
+- Type-safe operations
+
+**Usage Pattern:**
+```typescript
+import { AmazonStorageClient } from '@geekmidas/storage/aws';
+
+const storage = AmazonStorageClient.create({
+  bucket: process.env.S3_BUCKET,
+  region: process.env.AWS_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+});
+
+// Upload file
+await storage.upload('documents/report.pdf', fileBuffer, 'application/pdf');
+
+// Get presigned download URL (expires in 1 hour)
+const url = await storage.getDownloadURL({ 
+  path: 'documents/report.pdf',
+  expiresIn: 3600 
+});
+
+// Get presigned upload URL
+const uploadUrl = await storage.getUploadURL({
+  path: 'documents/new-file.pdf',
+  contentType: 'application/pdf'
+});
+```
+
+#### @geekmidas/emailkit
+Type-safe email client with React template support.
+
+**Key Features:**
+- React-based email templates with full TypeScript support
+- SMTP support via nodemailer
+- Type-safe template names and props
+- Attachment support
+- Batch sending capabilities
+
+**Usage Pattern:**
+```typescript
+import { createEmailClient } from '@geekmidas/emailkit';
+import { WelcomeEmail, PasswordResetEmail } from './templates';
+
+const templates = {
+  welcome: WelcomeEmail,
+  passwordReset: PasswordResetEmail
+};
+
+const client = createEmailClient({
+  smtp: {
+    host: process.env.SMTP_HOST,
+    port: 587,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  },
+  templates,
+  defaults: { from: 'noreply@example.com' }
+});
+
+// Type-safe template sending
+await client.sendTemplate('welcome', {
+  to: 'user@example.com',
+  subject: 'Welcome to our platform!',
+  props: { 
+    name: 'John Doe',
+    confirmationUrl: 'https://example.com/confirm/123' 
+  }
+});
 ```
 
 ## Code Style Guidelines
@@ -431,6 +628,20 @@ pnpm test path/to/file   # Test specific file
 - Export parsed config as singleton
 - Provide sensible defaults
 
+## Documentation Site
+
+The project includes a VitePress-based documentation site located in `apps/docs/`. This provides:
+- Interactive API documentation
+- Package guides and examples
+- Architecture overview
+- Contributing guidelines
+
+Run the documentation locally:
+```bash
+cd apps/docs
+pnpm dev  # Start development server on http://localhost:5173
+```
+
 ## Common Tasks
 
 ### Adding a New Package
@@ -467,11 +678,43 @@ pnpm fmt   # Format code with Biome
 ## Package Exports
 
 Each package uses subpath exports for better tree-shaking:
-- `@geekmidas/api/server` - Server-side utilities
-- `@geekmidas/api/aws-lambda` - AWS Lambda adapters
-- `@geekmidas/api/errors` - Error classes
-- `@geekmidas/testkit/kysely` - Kysely factories
-- `@geekmidas/testkit/objection` - Objection.js factories
+
+### @geekmidas/api
+- `/server` - Server-side utilities and endpoint builder
+- `/client` - Client-side typed fetcher
+- `/errors` - HTTP error classes
+- `/services` - Service base classes
+- `/aws-apigateway` - AWS Lambda adapters (v1 and v2)
+- `/hono` - Hono framework adapter
+- `/testing` - Testing utilities
+
+### @geekmidas/auth
+- `/` - Core interfaces and types
+- `/server` - Server-side token management
+- `/client` - Client-side token management
+
+### @geekmidas/cache
+- `/` - Core cache interface
+- `/memory` - In-memory cache implementation
+- `/upstash` - Upstash Redis cache
+- `/expo` - Expo Secure Store cache
+
+### @geekmidas/storage
+- `/` - Core storage interface
+- `/aws` - AWS S3 implementation
+
+### @geekmidas/testkit
+- `/kysely` - Kysely database factories
+- `/objection` - Objection.js factories
+
+### @geekmidas/envkit
+- Main export only - environment parser
+
+### @geekmidas/emailkit
+- Main export only - email client factory
+
+### @geekmidas/cli
+- Binary `gkm` - command line interface
 
 ## Important Notes
 
