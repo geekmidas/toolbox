@@ -5,6 +5,7 @@ import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
+import type { EventPublisher, PublishableMessage } from '../constructs/events';
 import type { Service } from '../services';
 import {
   AmazonApiGatewayEndpoint,
@@ -21,6 +22,9 @@ export class AmazonApiGatewayV1Endpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  TEventPublisher extends
+    | EventPublisher<PublishableMessage<string, any>>
+    | undefined = undefined,
 > extends AmazonApiGatewayEndpoint<
   APIGatewayProxyEvent,
   TRoute,
@@ -29,7 +33,8 @@ export class AmazonApiGatewayV1Endpoint<
   TOutSchema,
   TServices,
   TLogger,
-  TSession
+  TSession,
+  TEventPublisher
 > {
   getInput(e: APIGatewayProxyEvent): GetInputResponse {
     // For arrays, AWS API Gateway V1 provides multiValueQueryStringParameters

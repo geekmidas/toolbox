@@ -18,8 +18,11 @@ describe('HonoEndpoint route precedence', () => {
       e
         .get('/jobs/:id')
         .params(z.object({ id: z.string() }))
+        .output(z.object({ id: z.string() }))
         .handle(async ({ params }) => ({ id: params.id })),
-      e.get('/jobs/me').handle(async () => ({ id: 'current-user' })),
+      e.get('/jobs/me')
+        .output(z.object({ id: z.string() }))
+        .handle(async () => ({ id: 'current-user' })),
     ] as Endpoint<any, any, any, any, any, any>[];
 
     // Add routes to Hono app
@@ -46,6 +49,7 @@ describe('HonoEndpoint route precedence', () => {
       e
         .get('/api/users/:userId/posts/:postId')
         .params(z.object({ userId: z.string(), postId: z.string() }))
+        .output(z.object({ type: z.string(), userId: z.string(), postId: z.string() }))
         .handle(async ({ params }) => ({
           type: 'dynamic-both',
           userId: params.userId,
@@ -54,6 +58,7 @@ describe('HonoEndpoint route precedence', () => {
       e
         .get('/api/users/me/posts/:postId')
         .params(z.object({ postId: z.string() }))
+        .output(z.object({ type: z.string(), postId: z.string() }))
         .handle(async ({ params }) => ({
           type: 'static-user-dynamic-post',
           postId: params.postId,
@@ -61,13 +66,16 @@ describe('HonoEndpoint route precedence', () => {
       e
         .get('/api/users/:userId/posts/featured')
         .params(z.object({ userId: z.string() }))
+        .output(z.object({ type: z.string(), userId: z.string() }))
         .handle(async ({ params }) => ({
           type: 'dynamic-user-static-post',
           userId: params.userId,
         })),
-      e.get('/api/users/me/posts/featured').handle(async () => ({
-        type: 'static-both',
-      })),
+      e.get('/api/users/me/posts/featured')
+        .output(z.object({ type: z.string() }))
+        .handle(async () => ({
+          type: 'static-both',
+        })),
     ] as Endpoint<any, any, any, any, any, any>[];
 
     // Add routes (they should be sorted automatically)
@@ -114,6 +122,13 @@ describe('HonoEndpoint route precedence', () => {
           status: z.string().optional(),
         }),
       )
+      .output(z.object({
+        receivedQuery: z.object({
+          tags: z.array(z.string()).optional(),
+          categories: z.array(z.string()).optional(),
+          status: z.string().optional(),
+        })
+      }))
       .handle(async ({ query }) => ({
         receivedQuery: query,
       }));
@@ -156,6 +171,15 @@ describe('HonoEndpoint route precedence', () => {
           }),
         }),
       )
+      .output(z.object({
+        receivedQuery: z.object({
+          ids: z.array(z.string()),
+          filter: z.object({
+            status: z.string(),
+            type: z.string(),
+          }),
+        })
+      }))
       .handle(async ({ query }) => ({
         receivedQuery: query,
       }));

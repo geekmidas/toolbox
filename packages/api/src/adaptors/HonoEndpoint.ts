@@ -277,7 +277,7 @@ export class HonoEndpoint<
             const status = endpoint.status as ContentfulStatusCode;
             const output = endpoint.outputSchema
               ? await endpoint.parseOutput(response)
-              : (undefined as any);
+              : ({} as any);
 
             return c.json(output, status);
           } catch (validationError) {

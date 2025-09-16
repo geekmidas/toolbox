@@ -27,7 +27,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ users: [] }),
         input: undefined,
-        output: undefined,
+        output: z.object({ users: z.array(z.any()) }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -60,7 +60,7 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           body: bodySchema,
         },
-        output: undefined,
+        output: z.object({ id: z.string(), name: z.string(), email: z.string() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -106,7 +106,7 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           query: querySchema,
         },
-        output: undefined,
+        output: z.object({ page: z.number(), limit: z.number(), users: z.array(z.any()) }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -145,7 +145,7 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           params: paramsSchema,
         },
-        output: undefined,
+        output: z.object({ id: z.string(), name: z.string() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -293,7 +293,7 @@ describe('HonoEndpointAdaptor', () => {
           body: bodySchema,
           params: paramsSchema,
         },
-        output: undefined,
+        output: z.object({ id: z.string(), name: z.string() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -333,7 +333,7 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           params: paramsSchema,
         },
-        output: undefined,
+        output: z.object({ deleted: z.boolean(), id: z.string() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -380,7 +380,7 @@ describe('HonoEndpointAdaptor', () => {
           body: bodySchema,
           params: paramsSchema,
         },
-        output: undefined,
+        output: z.object({ id: z.string(), updated: z.boolean(), name: z.string().optional(), email: z.string().optional() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -417,7 +417,7 @@ describe('HonoEndpointAdaptor', () => {
           authorized: header('authorization') === 'Bearer valid-token',
         }),
         input: undefined,
-        output: undefined,
+        output: z.object({ authorized: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -465,7 +465,7 @@ describe('HonoEndpointAdaptor', () => {
           };
         },
         input: undefined,
-        output: undefined,
+        output: z.object({ message: z.string() }),
         services: [TestService],
         logger: mockLogger,
         timeout: undefined,
@@ -506,7 +506,7 @@ describe('HonoEndpointAdaptor', () => {
           return { logged: true };
         },
         input: undefined,
-        output: undefined,
+        output: z.object({ logged: z.boolean() }),
         services: [],
         logger: customLogger as Logger,
         timeout: undefined,
@@ -556,7 +556,13 @@ describe('HonoEndpointAdaptor', () => {
           query: querySchema,
           params: paramsSchema,
         },
-        output: undefined,
+        output: z.object({
+          userId: z.string(),
+          postId: z.string(),
+          format: z.enum(['json', 'xml']),
+          content: z.string(),
+          updated: z.boolean()
+        }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -742,7 +748,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -771,7 +777,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -803,7 +809,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -856,12 +862,12 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [AuthService],
         logger: mockLogger,
         authorize: async ({ header, services }) => {
           const token = header('authorization')?.replace('Bearer ', '') || '';
-          return (await services.authService).isValidToken(token);
+          return services.authService.isValidToken(token);
         },
         timeout: undefined,
         status: undefined,
@@ -894,7 +900,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -935,7 +941,7 @@ describe('HonoEndpointAdaptor', () => {
         method: 'GET',
         fn: async () => ({ success: true }),
         input: undefined,
-        output: undefined,
+        output: z.object({ success: z.boolean() }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -1030,7 +1036,7 @@ describe('HonoEndpointAdaptor', () => {
       expect(error).toHaveProperty('message', 'Validation failed');
     });
 
-    it('should return response without validation when no output schema is defined', async () => {
+    it('should return empty object when no output schema is defined', async () => {
       const endpoint = new Endpoint({
         route: '/users/no-schema',
         method: 'GET',
@@ -1053,11 +1059,7 @@ describe('HonoEndpointAdaptor', () => {
 
       const response = await app.request('/users/no-schema');
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        anything: 'goes',
-        here: true,
-        number: 42,
-      });
+      expect(await response.json()).toEqual({});
     });
   });
 });
