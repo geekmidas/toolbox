@@ -65,8 +65,10 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     // Verify the fetch URL contains all query parameters
     expect(fetchSpy).toHaveBeenCalled();
     const callArg = fetchSpy.mock.calls[0][0];
-    const url = new URL(callArg instanceof Request ? callArg.url : callArg.toString());
-    
+    const url = new URL(
+      callArg instanceof Request ? callArg.url : callArg.toString(),
+    );
+
     expect(url.searchParams.get('page')).toBe('1');
     expect(url.searchParams.get('sort')).toBe('desc');
     expect(url.searchParams.get('limit')).toBe('10');
@@ -186,7 +188,9 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
           {
             initialPageParam: 1,
             getNextPageParam: (lastPage) => {
-              const nextPage = lastPage?.pagination?.page ? lastPage.pagination.page + 1 : undefined;
+              const nextPage = lastPage?.pagination?.page
+                ? lastPage.pagination.page + 1
+                : undefined;
               return nextPage && nextPage <= 3 ? nextPage : undefined;
             },
           },
@@ -251,7 +255,10 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
         typedClient.useInfiniteQuery(
           'GET /messages',
           {
-            initialPageParam: { cursor: undefined as string | undefined, limit: 10 },
+            initialPageParam: {
+              cursor: undefined as string | undefined,
+              limit: 10,
+            },
             getNextPageParam: (lastPage) =>
               lastPage.nextCursor
                 ? { cursor: lastPage.nextCursor, limit: 10 }
@@ -427,7 +434,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 
     // The complex pageParam should properly merge with config
     expect(result.current.data?.pages[0]).toBeDefined();
-    
+
     // Fetch next page to ensure complex objects continue to work
     if (result.current.hasNextPage) {
       await waitFor(async () => {
@@ -446,18 +453,18 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     const queryKey1 = typedClient.buildQueryKey('GET /posts', {
       query: { sort: 'asc', limit: 10 },
     });
-    
-    expect(queryKey1).toEqual(['GET /posts', { query: { sort: 'asc', limit: 10 } }]);
+
+    expect(queryKey1).toEqual([
+      'GET /posts',
+      { query: { sort: 'asc', limit: 10 } },
+    ]);
 
     // Test with both params and query
     const queryKey2 = typedClient.buildQueryKey('GET /users/{id}', {
       params: { id: '123' },
     });
-    
-    expect(queryKey2).toEqual([
-      'GET /users/{id}',
-      { params: { id: '123' } },
-    ]);
+
+    expect(queryKey2).toEqual(['GET /users/{id}', { params: { id: '123' } }]);
   });
 
   it('should handle undefined pageParam correctly', async () => {
@@ -515,7 +522,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const firstPage = result.current.data?.pages[0];
-    
+
     // Type checks - these should compile
     if (firstPage) {
       const posts: Array<{
@@ -525,13 +532,13 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
         authorId: string;
         createdAt: string;
       }> = firstPage.posts;
-      
+
       const pagination: {
         page: number;
         limit: number;
         total: number;
       } = firstPage.pagination;
-      
+
       const sort: 'asc' | 'desc' = firstPage.sort;
 
       // Runtime checks
@@ -579,8 +586,10 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     // Check that the fetch was called with correct URL including all query params
     expect(fetchSpy).toHaveBeenCalled();
     const callArg = fetchSpy.mock.calls[0][0];
-    const url = new URL(callArg instanceof Request ? callArg.url : callArg.toString());
-    
+    const url = new URL(
+      callArg instanceof Request ? callArg.url : callArg.toString(),
+    );
+
     expect(url.searchParams.get('page')).toBe('2');
     expect(url.searchParams.get('sort')).toBe('desc');
     expect(url.searchParams.get('limit')).toBe('25');
@@ -683,7 +692,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     // Fetch next page
     await result.current.fetchNextPage();
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
-    
+
     const secondPage = result.current.data?.pages[1];
     expect(secondPage?.queryParams).toEqual({
       page: '2',
@@ -740,13 +749,13 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     // Fetch next page
     await result.current.fetchNextPage();
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
-    
+
     // Verify second page also has all parameters with updated page
     const secondPage = result.current.data?.pages[1];
     expect(secondPage?.queryParams).toEqual({
       page: '2', // Updated pageParam
       sort: 'desc',
-      filter: 'active', 
+      filter: 'active',
       category: 'tech',
       includeArchived: 'false',
       limit: '25',

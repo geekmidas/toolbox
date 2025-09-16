@@ -81,13 +81,15 @@ export const handlers = [
     const totalPosts = 50;
     const startIndex = (page - 1) * limit;
     const endIndex = Math.min(startIndex + limit, totalPosts);
-    
+
     const posts = Array.from({ length: endIndex - startIndex }, (_, i) => ({
       id: `post-${startIndex + i + 1}`,
       title: `Test Post ${startIndex + i + 1}`,
       content: `Test content for post ${startIndex + i + 1}`,
-      authorId: `author-${(startIndex + i) % 5 + 1}`,
-      createdAt: new Date(Date.now() - (startIndex + i) * 3600000).toISOString(),
+      authorId: `author-${((startIndex + i) % 5) + 1}`,
+      createdAt: new Date(
+        Date.now() - (startIndex + i) * 3600000,
+      ).toISOString(),
     }));
 
     return HttpResponse.json({
@@ -201,7 +203,7 @@ export const handlers = [
   http.get('https://api.example.com/echo', ({ request }) => {
     const url = new URL(request.url);
     const queryParams: Record<string, string> = {};
-    
+
     // Collect all query parameters
     url.searchParams.forEach((value, key) => {
       queryParams[key] = value;
