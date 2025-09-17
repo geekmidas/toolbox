@@ -57,6 +57,7 @@ export class Function<
     OutSchema
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   __IS_FUNCTION__ = true;
 
@@ -72,7 +73,7 @@ export class Function<
     public outputSchema?: OutSchema,
     public services: TServices = [] as Service[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
-    public publisher?: TEventPublisher,
+    public publisher?: Service<TEventPublisherServiceName, TEventPublisher>,
   ) {}
 }
 
@@ -82,11 +83,12 @@ export class FunctionBuilder<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   protected inputSchema?: TInput;
   protected outputSchema?: OutSchema;
   protected _timeout?: number;
-  protected _publisher?: TPublisher;
+  protected _publisher?: Service<TEventPublisherServiceName, TPublisher>;
 
   public _services: TServices = [] as Service[] as TServices;
   public _logger: TLogger = DEFAULT_LOGGER;
@@ -173,17 +175,19 @@ export class FunctionBuilder<
     return this;
   }
 
-  publisher<T extends EventPublisher<any>>(
-    publisher: T,
+  publisher<T extends EventPublisher<any>, TName extends string>(
+    publisher: Service<TName, T>,
   ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T> {
-    this._publisher = publisher as unknown as TPublisher;
+    // @ts-ignore
+    this._publisher = publisher as unknown as Service<TName, TPublisher>;
 
     return this as unknown as FunctionBuilder<
       TInput,
       OutSchema,
       TServices,
       TLogger,
-      T
+      T,
+      TName
     >;
   }
 

@@ -8,6 +8,7 @@ import type {
   PublishableMessage,
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
+import type { Service } from '../../services';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2Endpoint';
 import { createMockContext, createMockV2Event } from './aws-test-helpers';
 
@@ -46,6 +47,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -72,7 +81,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -112,6 +121,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -142,7 +159,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -186,6 +203,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({
       id: z.string(),
       email: z.string(),
@@ -226,7 +251,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -294,7 +319,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: undefined, // No publisher
+      publisherService: undefined, // No publisher service
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -322,12 +347,22 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
     );
 
     // No publisher calls should be made
-    expect(mockLogger.warn).toHaveBeenCalledWith('No publisher available');
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'No publisher service available',
+    );
   });
 
   it('should not publish events when no events are configured', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -346,7 +381,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events: undefined, // No events
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -384,6 +419,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockRejectedValue(publishError),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -410,7 +453,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -450,6 +493,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const bodySchema = z.object({ name: z.string(), email: z.string() });
     const outputSchema = z.object({
       id: z.string(),
@@ -485,7 +536,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -529,6 +580,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -557,7 +616,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
@@ -589,6 +648,14 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
   it('should handle comma-separated array query parameters', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const querySchema = z.object({
@@ -629,7 +696,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);

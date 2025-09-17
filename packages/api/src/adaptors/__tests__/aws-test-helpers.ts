@@ -1,4 +1,8 @@
-import type { APIGatewayProxyEvent, APIGatewayProxyEventV2, Context } from 'aws-lambda';
+import type {
+  APIGatewayProxyEvent,
+  APIGatewayProxyEventV2,
+  Context,
+} from 'aws-lambda';
 import { vi } from 'vitest';
 import type { Logger } from '../../logger';
 

@@ -1,14 +1,46 @@
+import type { ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
 
 export async function publishEndpointEvents<
   T extends Endpoint<any, any, any, any, any, any, any, any>,
->(endpoint: T, response: EndpointOutput<T>) {
+>(
+  endpoint: T,
+  response: EndpointOutput<T>,
+  serviceDiscovery?: ServiceDiscovery<any, any>,
+) {
   if (!endpoint.events?.length) {
     endpoint.logger.debug('No events to publish');
     return;
   }
-  if (!endpoint.publisher) {
-    endpoint.logger.warn('No publisher available');
+
+  if (!endpoint.publisherService) {
+    endpoint.logger.warn('No publisher service available');
+    return;
+  }
+
+  if (!serviceDiscovery) {
+    endpoint.logger.warn(
+      'No service discovery available for publisher resolution',
+    );
+    return;
+  }
+
+  let publisher: any;
+  try {
+    // Check if the service is already registered
+    if (serviceDiscovery.has(endpoint.publisherService.serviceName)) {
+      publisher = await serviceDiscovery.get(
+        endpoint.publisherService.serviceName,
+      );
+    } else {
+      // Register the service and get the instance
+      const services = await serviceDiscovery.register([
+        endpoint.publisherService,
+      ]);
+      publisher = services[endpoint.publisherService.serviceName];
+    }
+  } catch (error) {
+    endpoint.logger.error({ error }, 'Failed to resolve publisher service');
     return;
   }
 
@@ -31,7 +63,7 @@ export async function publishEndpointEvents<
   if (events.length) {
     endpoint.logger.debug({ eventCount: events.length }, 'Publishing events');
 
-    await endpoint.publisher.publish(events).catch((err) => {
+    await publisher.publish(events).catch((err: any) => {
       endpoint.logger.error({ err }, 'Failed to publish events');
     });
   }

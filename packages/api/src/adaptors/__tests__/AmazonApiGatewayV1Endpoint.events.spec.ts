@@ -8,11 +8,12 @@ import type {
   PublishableMessage,
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
+import type { Service } from '../../services';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
 import {
   createMockContext,
-  createMockLogger,
   createMockV1Event as createMockEvent,
+  createMockLogger,
 } from './aws-test-helpers';
 
 // Test event types
@@ -36,6 +37,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
   it('should publish events after successful endpoint execution', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -64,7 +73,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -93,6 +102,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
   it('should publish multiple events after successful endpoint execution', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -125,7 +142,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -158,6 +175,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
   it('should respect when conditions for events', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({
@@ -200,7 +225,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -259,7 +284,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: undefined, // No publisher
+      publisherService: undefined, // No publisher service
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -278,12 +303,22 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
     );
 
     // No publisher calls should be made
-    expect(mockLogger.warn).toHaveBeenCalledWith('No publisher available');
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'No publisher service available',
+    );
   });
 
   it('should not publish events when no events are configured', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -302,7 +337,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events: undefined, // No events
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -331,6 +366,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       publish: vi.fn().mockRejectedValue(publishError),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -357,7 +400,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -386,6 +429,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
   it('should publish events with input data context', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const bodySchema = z.object({ name: z.string(), email: z.string() });
@@ -423,7 +474,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -458,6 +509,14 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -486,7 +545,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
@@ -501,7 +560,7 @@ describe('AmazonApiGatewayV1Endpoint Events', () => {
 
     // The endpoint should return an error response
     expect(response.statusCode).toBe(500);
-    
+
     // Events should not be published when handler fails
     expect(mockPublisher.publish).not.toHaveBeenCalled();
   });

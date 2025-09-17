@@ -88,7 +88,10 @@ export class HonoEndpoint<
     HonoEndpoint.addRoute(this.endpoint, serviceDiscovery, app);
   }
 
-  static applyEventMiddleware(app: Hono) {
+  static applyEventMiddleware(
+    app: Hono,
+    serviceDiscovery?: ServiceDiscovery<any, any>,
+  ) {
     app.use(async (c, next) => {
       await next();
       // @ts-ignore
@@ -106,7 +109,7 @@ export class HonoEndpoint<
       const response = c.get('__response');
 
       if (isSuccessStatus(c.res.status) && endpoint) {
-        await publishEndpointEvents(endpoint, response);
+        await publishEndpointEvents(endpoint, response, serviceDiscovery);
       }
     });
   }
@@ -124,7 +127,7 @@ export class HonoEndpoint<
       ServiceRecord<TServices>,
       TLogger
     >(logger, envParser);
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 

@@ -4,10 +4,10 @@
 
 /**
  * Checks if an HTTP status code represents a successful response (2xx range)
- * 
+ *
  * @param status - The HTTP status code to check
  * @returns True if the status code is in the 2xx range (200-299), false otherwise
- * 
+ *
  * @example
  * ```typescript
  * isSuccessStatus(200) // true

@@ -60,7 +60,11 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           body: bodySchema,
         },
-        output: z.object({ id: z.string(), name: z.string(), email: z.string() }),
+        output: z.object({
+          id: z.string(),
+          name: z.string(),
+          email: z.string(),
+        }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -106,7 +110,11 @@ describe('HonoEndpointAdaptor', () => {
         input: {
           query: querySchema,
         },
-        output: z.object({ page: z.number(), limit: z.number(), users: z.array(z.any()) }),
+        output: z.object({
+          page: z.number(),
+          limit: z.number(),
+          users: z.array(z.any()),
+        }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -380,7 +388,12 @@ describe('HonoEndpointAdaptor', () => {
           body: bodySchema,
           params: paramsSchema,
         },
-        output: z.object({ id: z.string(), updated: z.boolean(), name: z.string().optional(), email: z.string().optional() }),
+        output: z.object({
+          id: z.string(),
+          updated: z.boolean(),
+          name: z.string().optional(),
+          email: z.string().optional(),
+        }),
         services: [],
         logger: mockLogger,
         timeout: undefined,
@@ -473,7 +486,7 @@ describe('HonoEndpointAdaptor', () => {
         getSession: undefined,
         authorize: undefined,
         description: undefined,
-        publisher: undefined,
+        publisherService: undefined,
       });
 
       const adaptor = new HonoEndpoint(endpoint);
@@ -514,7 +527,7 @@ describe('HonoEndpointAdaptor', () => {
         getSession: undefined,
         authorize: undefined,
         description: undefined,
-        publisher: undefined,
+        publisherService: undefined,
       });
 
       const adaptor = new HonoEndpoint(endpoint);
@@ -561,7 +574,7 @@ describe('HonoEndpointAdaptor', () => {
           postId: z.string(),
           format: z.enum(['json', 'xml']),
           content: z.string(),
-          updated: z.boolean()
+          updated: z.boolean(),
         }),
         services: [],
         logger: mockLogger,
@@ -569,7 +582,7 @@ describe('HonoEndpointAdaptor', () => {
         status: undefined,
         getSession: undefined,
         authorize: undefined,
-        publisher: undefined,
+        publisherService: undefined,
         description: undefined,
       });
 

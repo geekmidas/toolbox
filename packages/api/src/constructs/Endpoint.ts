@@ -69,13 +69,15 @@ export class Endpoint<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > extends Function<
   TInput,
   TServices,
   TLogger,
   OutSchema,
   FunctionHandler<TInput, TServices, TLogger, OutSchema>,
-  TEventPublisher
+  TEventPublisher,
+  TEventPublisherServiceName
 > {
   operationId?: string;
   /** The route path pattern with parameter placeholders */
@@ -97,6 +99,11 @@ export class Endpoint<
   public rateLimit?: RateLimitConfig;
   /** Events to publish after successful execution */
   public events?: MappedEvent<TEventPublisher, OutSchema>[];
+  /** Event publisher service for publishing events */
+  public publisherService?: Service<
+    TEventPublisherServiceName,
+    TEventPublisher
+  >;
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -452,7 +459,7 @@ export class Endpoint<
     authorize,
     rateLimit,
     status = SuccessStatus.OK,
-    publisher,
+    publisherService,
     events,
   }: EndpointOptions<
     TRoute,
@@ -463,7 +470,8 @@ export class Endpoint<
     TLogger,
     TSession,
     OutSchema,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   >) {
     super(
       fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
@@ -492,8 +500,8 @@ export class Endpoint<
       this.rateLimit = rateLimit;
     }
 
-    if (publisher) {
-      this.publisher = publisher;
+    if (publisherService) {
+      this.publisherService = publisherService;
     }
 
     if (events) {
@@ -549,6 +557,7 @@ export interface EndpointOptions<
   TSession = unknown,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   /** The route path with parameter placeholders */
   route: TRoute;
@@ -579,9 +588,9 @@ export interface EndpointOptions<
   /** Success HTTP status code */
   status: SuccessStatus | undefined;
   /**
-   * Event publisher for publishing events from this endpoint
+   * Event publisher service for publishing events from this endpoint
    */
-  publisher?: TEventPublisher;
+  publisherService?: Service<TEventPublisherServiceName, TEventPublisher>;
 
   events?: MappedEvent<TEventPublisher, OutSchema>[];
 }

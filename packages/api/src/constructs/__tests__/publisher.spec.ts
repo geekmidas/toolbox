@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Logger } from '../../logger';
-import type { EndpointOutput } from '../Endpoint';
+import type { Service, ServiceDiscovery } from '../../services';
+
 import { e } from '../EndpointFactory';
 import type { EventPublisher, PublishableMessage } from '../events';
 import { publishEndpointEvents } from '../publisher';
@@ -26,6 +27,16 @@ describe('publishEndpointEvents', () => {
   const warnSpy = mockLogger.warn as any;
   const errorSpy = mockLogger.error as any;
 
+  // Mock ServiceDiscovery
+  const mockServiceDiscovery: Partial<ServiceDiscovery<any, any>> = {
+    has: vi.fn(),
+    get: vi.fn(),
+    getMany: vi.fn(),
+    register: vi.fn(),
+    logger: mockLogger,
+    envParser: {} as any,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -37,7 +48,11 @@ describe('publishEndpointEvents', () => {
       .output(z.object({ success: z.boolean() }))
       .handle(async () => ({ success: true }));
 
-    await publishEndpointEvents(endpoint, { success: true });
+    await publishEndpointEvents(
+      endpoint,
+      { success: true },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(debugSpy).toHaveBeenCalledWith('No events to publish');
   });
@@ -47,14 +62,26 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn(),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(z.object({ success: z.boolean() }))
       .handle(async () => ({ success: true }));
 
-    await publishEndpointEvents(endpoint, { success: true });
+    await publishEndpointEvents(
+      endpoint,
+      { success: true },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(debugSpy).toHaveBeenCalledWith('No events to publish');
     expect(mockPublisher.publish).not.toHaveBeenCalled();
@@ -79,12 +106,16 @@ describe('publishEndpointEvents', () => {
       })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
-    expect(warnSpy).toHaveBeenCalledWith('No publisher available');
+    expect(warnSpy).toHaveBeenCalledWith('No publisher service available');
   });
 
   it('should publish single event successfully', async () => {
@@ -92,11 +123,23 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    // Mock ServiceDiscovery to return the publisher
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -107,13 +150,15 @@ describe('publishEndpointEvents', () => {
         }),
       })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
-    type E = typeof endpoint;
-    type Out = EndpointOutput<E>;
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(debugSpy).toHaveBeenCalledWith(
       { event: 'user.created' },
@@ -136,10 +181,24 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    // Mock ServiceDiscovery to register and return the publisher
+    (mockServiceDiscovery.has as any).mockReturnValue(false);
+    (mockServiceDiscovery.register as any).mockResolvedValue({
+      publisher: mockPublisher,
+    });
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
 
       .post('/test')
       .output(outputSchema)
@@ -157,10 +216,14 @@ describe('publishEndpointEvents', () => {
 
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {
@@ -179,6 +242,17 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({
       id: z.string(),
       email: z.string(),
@@ -187,7 +261,7 @@ describe('publishEndpointEvents', () => {
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -209,11 +283,15 @@ describe('publishEndpointEvents', () => {
         isNew: false,
       }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-      isNew: false,
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+        isNew: false,
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     // Only the user.updated event should be published
     expect(mockPublisher.publish).toHaveBeenCalledWith([
@@ -229,11 +307,22 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -251,10 +340,14 @@ describe('publishEndpointEvents', () => {
       })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(mockPublisher.publish).not.toHaveBeenCalled();
   });
@@ -264,11 +357,22 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -281,10 +385,14 @@ describe('publishEndpointEvents', () => {
       })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {
@@ -300,11 +408,22 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockRejectedValue(publishError),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -317,10 +436,14 @@ describe('publishEndpointEvents', () => {
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
     // Should not throw
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(errorSpy).toHaveBeenCalledWith(
       { err: publishError },
@@ -333,11 +456,22 @@ describe('publishEndpointEvents', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
+    (mockServiceDiscovery.has as any).mockReturnValue(true);
+    (mockServiceDiscovery.get as any).mockResolvedValue(mockPublisher);
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const endpoint = e
       .logger(mockLogger)
-      .publisher(mockPublisher)
+      .publisher(mockPublisherService)
       .post('/test')
       .output(outputSchema)
       .event({
@@ -352,10 +486,14 @@ describe('publishEndpointEvents', () => {
       } as any)
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-    await publishEndpointEvents(endpoint, {
-      id: '123',
-      email: 'test@example.com',
-    });
+    await publishEndpointEvents(
+      endpoint,
+      {
+        id: '123',
+        email: 'test@example.com',
+      },
+      mockServiceDiscovery as ServiceDiscovery<any, any>,
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {

@@ -22,7 +22,15 @@ export class EndpointBuilder<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
-> extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
+  TEventPublisherServiceName extends string = string,
+> extends FunctionBuilder<
+  TInput,
+  OutSchema,
+  TServices,
+  TLogger,
+  TEventPublisher,
+  TEventPublisherServiceName
+> {
   protected schemas: TInput = {} as TInput;
   protected _description?: string;
   protected _status?: SuccessStatus;
@@ -30,7 +38,7 @@ export class EndpointBuilder<
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
-  _eventPublisher: TEventPublisher;
+  _eventPublisherService?: Service<string, TEventPublisher>;
   private _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 
   constructor(
@@ -70,7 +78,8 @@ export class EndpointBuilder<
     TLogger,
     OutSchema,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   > {
     return super.services(services) as EndpointBuilder<
       TRoute,
@@ -80,7 +89,34 @@ export class EndpointBuilder<
       TLogger,
       OutSchema,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
+  }
+
+  publisher<T extends EventPublisher<any>, TName extends string>(
+    publisher: Service<TName, T>,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    T,
+    TName
+  > {
+    return super.publisher(publisher) as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      T,
+      TName
     >;
   }
 
@@ -94,7 +130,8 @@ export class EndpointBuilder<
     TLogger,
     T,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   > {
     return super.output(schema) as EndpointBuilder<
       TRoute,
@@ -104,7 +141,8 @@ export class EndpointBuilder<
       TLogger,
       T,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName
     >;
   }
 
@@ -206,7 +244,7 @@ export class EndpointBuilder<
       status: this._status,
       getSession: this._getSession,
       rateLimit: this._rateLimit,
-      publisher: this._eventPublisher,
+      publisherService: this._eventPublisherService,
       events: this._events,
     });
   }

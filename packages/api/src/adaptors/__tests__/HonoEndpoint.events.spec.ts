@@ -9,7 +9,7 @@ import type {
   PublishableMessage,
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
-import { ServiceDiscovery } from '../../services';
+import { type Service, ServiceDiscovery } from '../../services';
 import { HonoEndpoint } from '../HonoEndpoint';
 
 // Test event types
@@ -34,6 +34,14 @@ describe('HonoEndpoint Events', () => {
   it('should publish events after successful endpoint execution', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -62,7 +70,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -96,6 +104,14 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -126,7 +142,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -163,6 +179,14 @@ describe('HonoEndpoint Events', () => {
   it('should respect when conditions for events', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({
@@ -205,7 +229,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -263,7 +287,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: undefined, // No publisher
+      publisherService: undefined, // No publisher service
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -285,12 +309,22 @@ describe('HonoEndpoint Events', () => {
     });
 
     // No publisher calls should be made
-    expect(mockLogger.warn).toHaveBeenCalledWith('No publisher available');
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'No publisher service available',
+    );
   });
 
   it('should not publish events when no events are configured', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const outputSchema = z.object({ id: z.string(), email: z.string() });
@@ -309,7 +343,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events: undefined, // No events
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -341,6 +375,14 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockRejectedValue(publishError),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -367,7 +409,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -399,6 +441,14 @@ describe('HonoEndpoint Events', () => {
   it('should publish events with input data context', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
     const bodySchema = z.object({ name: z.string(), email: z.string() });
@@ -436,7 +486,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);
@@ -471,6 +521,14 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<
+      'publisher',
+      EventPublisher<TestEvent>
+    > = {
+      serviceName: 'publisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const outputSchema = z.object({ id: z.string(), email: z.string() });
 
     const events: MappedEvent<
@@ -499,7 +557,7 @@ describe('HonoEndpoint Events', () => {
       authorize: undefined,
       description: undefined,
       events,
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
     });
 
     const adaptor = new HonoEndpoint(endpoint);

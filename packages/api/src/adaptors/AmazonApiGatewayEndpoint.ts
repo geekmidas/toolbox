@@ -190,8 +190,16 @@ export abstract class AmazonApiGatewayEndpoint<
 
         // Only publish events on successful responses (2xx status codes)
         if (isSuccessStatus(statusCode)) {
-          // @ts-ignore
-          await publishEndpointEvents(this.endpoint, response);
+          const logger = event.logger as TLogger;
+          const serviceDiscovery = ServiceDiscovery.getInstance<
+            ServiceRecord<TServices>,
+            TLogger
+          >(logger, this.envParser);
+          await publishEndpointEvents(
+            this.endpoint,
+            response,
+            serviceDiscovery,
+          );
         }
       },
     };

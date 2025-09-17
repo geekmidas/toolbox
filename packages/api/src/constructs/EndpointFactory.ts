@@ -14,12 +14,15 @@ export class EndpointFactory<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   // @ts-ignore
   private defaultServices: TServices;
   private basePath: TBasePath = '' as TBasePath;
   private defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
-  private defaultEventPublisher: TEventPublisher | undefined;
+  private defaultEventPublisher:
+    | Service<TEventPublisherServiceName, TEventPublisher>
+    | undefined;
   private defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
   private defaultLogger: TLogger = DEFAULT_LOGGER;
 
@@ -36,7 +39,8 @@ export class EndpointFactory<
     TBasePath,
     TLogger,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   > = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -161,8 +165,11 @@ export class EndpointFactory<
     } as EndpointFactoryOptions<TServices, TBasePath, L, TSession>);
   }
 
-  publisher<T extends EventPublisher<any>>(
-    publisher: T,
+  publisher<
+    T extends EventPublisher<any>,
+    TServiceName extends string = string,
+  >(
+    publisher: Service<TServiceName, T>,
   ): EndpointFactory<TServices, TBasePath, TLogger, TSession, T> {
     return new EndpointFactory<TServices, TBasePath, TLogger, TSession, T>({
       defaultServices: this.defaultServices,
@@ -231,9 +238,7 @@ export class EndpointFactory<
     }
 
     if (this.defaultEventPublisher) {
-      // @ts-ignore
-      builder._eventPublisher = this
-        .defaultEventPublisher as NonNullable<TEventPublisher>;
+      builder._eventPublisherService = this.defaultEventPublisher;
     }
 
     return builder as unknown as EndpointBuilder<
@@ -306,13 +311,14 @@ export interface EndpointFactoryOptions<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;
   defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
   defaultLogger?: TLogger;
   defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
-  defaultEventPublisher?: TEventPublisher;
+  defaultEventPublisher?: Service<TEventPublisherServiceName, TEventPublisher>;
   defaultEvents?: MappedEvent<TEventPublisher, undefined>[];
 }
 
