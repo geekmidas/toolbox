@@ -7,7 +7,8 @@ import {
   type EndpointContext,
   type EndpointSchemas,
 } from '../constructs/Endpoint';
-import type { EventPublisher, PublishableMessage } from '../constructs/events';
+import type { EventPublisher } from '../constructs/events';
+import { publishEndpointEvents } from '../constructs/publisher';
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
 import type { Logger } from '../logger';
@@ -47,9 +48,7 @@ export class HonoEndpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   constructor(
     private readonly endpoint: Endpoint<
@@ -167,9 +166,7 @@ export class HonoEndpoint<
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
     TSession = unknown,
-    TEventPublisher extends
-      | EventPublisher<PublishableMessage<string, any>>
-      | undefined = undefined,
+    TEventPublisher extends EventPublisher<any> | undefined = undefined,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -270,6 +267,9 @@ export class HonoEndpoint<
             TLogger,
             TSession
           >);
+
+          // Publish events if configured
+          await publishEndpointEvents(endpoint as any, response);
 
           // Validate output if schema is defined
 

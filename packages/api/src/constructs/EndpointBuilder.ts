@@ -10,7 +10,7 @@ import type {
   SuccessStatus,
 } from './Endpoint';
 import { FunctionBuilder } from './Function';
-import type { EventPublisher, MappedEvent, PublishableMessage } from './events';
+import type { EventPublisher, MappedEvent } from './events';
 import { FunctionType, type HttpMethod } from './types';
 
 export class EndpointBuilder<
@@ -21,9 +21,7 @@ export class EndpointBuilder<
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   protected schemas: TInput = {} as TInput;
   protected _description?: string;

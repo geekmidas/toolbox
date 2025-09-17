@@ -3,7 +3,7 @@ import { ConsoleLogger, type Logger } from '../logger';
 import type { Service } from '../services';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
-import type { EventPublisher, MappedEvent, PublishableMessage } from './events';
+import type { EventPublisher, MappedEvent } from './events';
 import type { HttpMethod } from './types';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
@@ -13,9 +13,7 @@ export class EndpointFactory<
   TBasePath extends string = '',
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -33,7 +31,6 @@ export class EndpointFactory<
     // @ts-ignore
     defaultServices = [] as TServices,
     defaultEventPublisher,
-    defaultEvents = [],
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
@@ -209,7 +206,8 @@ export class EndpointFactory<
       TServices,
       TLogger,
       undefined,
-      TSession
+      TSession,
+      TEventPublisher
     >(fullPath, method);
 
     if (this.defaultAuthorizeFn) {
@@ -307,9 +305,7 @@ export interface EndpointFactoryOptions<
   TBasePath extends string = '',
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;

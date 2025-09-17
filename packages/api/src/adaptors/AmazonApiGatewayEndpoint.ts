@@ -14,7 +14,7 @@ import type {
   Context,
 } from 'aws-lambda';
 import set from 'lodash.set';
-import type { EventPublisher, PublishableMessage } from '../constructs/events';
+import type { EventPublisher } from '../constructs/events';
 import { publishEndpointEvents } from '../constructs/publisher';
 import {
   UnauthorizedError,
@@ -38,9 +38,7 @@ export abstract class AmazonApiGatewayEndpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   constructor(
     protected envParser: EnvironmentParser<{}>,

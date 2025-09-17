@@ -5,7 +5,7 @@ import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
-import type { EventPublisher, PublishableMessage } from '../constructs/events';
+import type { EventPublisher } from '../constructs/events';
 import type { Service } from '../services';
 import {
   AmazonApiGatewayEndpoint,
@@ -22,9 +22,7 @@ export class AmazonApiGatewayV1Endpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends AmazonApiGatewayEndpoint<
   APIGatewayProxyEvent,
   TRoute,

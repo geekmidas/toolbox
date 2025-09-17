@@ -1,14 +1,9 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Logger } from '../logger';
-import type { Endpoint, EndpointEvent, EndpointOutput } from './Endpoint';
-import type { EventPublisher } from './events';
+import type { Endpoint } from './Endpoint';
 
-export async function publishEndpointEvents<
-  TPublisher extends EventPublisher<any>,
-  OutSchema extends StandardSchemaV1 | undefined,
-  TLogger extends Logger,
-  T extends Endpoint<any, any, any, OutSchema, any, TLogger, any, TPublisher>,
->(endpoint: T, response: EndpointOutput<T>) {
+export async function publishEndpointEvents(
+  endpoint: Endpoint<any, any, any, any, any, any, any, any>,
+  response: any,
+) {
   if (!endpoint.events?.length) {
     endpoint.logger.debug('No events to publish');
     return;
@@ -18,7 +13,7 @@ export async function publishEndpointEvents<
     return;
   }
 
-  const events: EndpointEvent<T>[] = [];
+  const events: any[] = [];
 
   for (const { when, payload, type, ...e } of endpoint.events) {
     endpoint.logger.debug({ event: type }, 'Processing event');
@@ -27,7 +22,7 @@ export async function publishEndpointEvents<
       ...e,
       type,
       payload: resolvedPayload,
-    } as unknown as EndpointEvent<T>;
+    };
 
     if (!when || when(response as any)) {
       events.push(event);

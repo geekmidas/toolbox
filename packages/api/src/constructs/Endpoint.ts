@@ -16,7 +16,6 @@ import type {
   EventPublisher,
   ExtractPublisherMessage,
   MappedEvent,
-  PublishableMessage,
 } from './events';
 import {
   convertSchemaWithComponents,
@@ -69,9 +68,7 @@ export class Endpoint<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends Function<TInput, TServices, TLogger, OutSchema> {
   operationId?: string;
   /** The route path pattern with parameter placeholders */
@@ -546,9 +543,7 @@ export interface EndpointOptions<
   TLogger extends Logger = Logger,
   TSession = unknown,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TEventPublisher extends
-    | EventPublisher<PublishableMessage<string, any>>
-    | undefined = undefined,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   /** The route path with parameter placeholders */
   route: TRoute;
