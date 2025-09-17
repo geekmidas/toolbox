@@ -12,6 +12,7 @@ A comprehensive REST API framework for building type-safe HTTP endpoints with bu
 - 📄 **OpenAPI generation**: Automatic OpenAPI schema generation with reusable components
 - 🚨 **Error handling**: Comprehensive HTTP error classes and handling
 - 📊 **Structured logging**: Built-in logger with context propagation
+- 📡 **Event publishing**: Automatic event publishing after successful endpoint execution
 - 🎯 **Zero config**: Works out of the box with sensible defaults
 - 🔍 **Advanced query parameters**: Support for nested objects and arrays in query strings
 - ♾️ **Infinite queries**: Built-in React Query infinite pagination support
@@ -954,6 +955,30 @@ The framework provides a comprehensive set of HTTP error classes:
 | `BadGatewayError` | 502 | Gateway errors |
 | `ServiceUnavailableError` | 503 | Service unavailable |
 
+## Documentation
+
+### Event Publishing
+
+The framework includes powerful event publishing capabilities for building event-driven architectures:
+
+- **[Events Quick Start](./docs/events-quick-start.md)** - Get started with event publishing in 5 minutes
+- **[Complete Events Guide](./docs/events.md)** - Comprehensive documentation with examples and best practices
+
+```typescript
+const createUserEndpoint = e
+  .publisher(eventPublisher)
+  .post('/users')
+  .body(userSchema)
+  .event({
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+  })
+  .handle(async ({ body }) => {
+    const user = await createUser(body);
+    return user; // Event published automatically after success
+  });
+```
+
 ## Best Practices
 
 1. **Use structured services**: Keep endpoint handlers thin by moving logic to services
@@ -963,6 +988,7 @@ The framework provides a comprehensive set of HTTP error classes:
 5. **Group related endpoints**: Use route prefixes to organize your API
 6. **Document with OpenAPI**: Add OpenAPI metadata to your endpoints
 7. **Test thoroughly**: Use the testing utilities to test endpoints in isolation
+8. **Publish events wisely**: Use events for cross-service communication and audit trails
 
 ## License
 

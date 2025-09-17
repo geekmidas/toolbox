@@ -1,43 +1,60 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { APIGatewayProxyEvent, APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import { z } from 'zod';
-import { e } from '../src/constructs/EndpointFactory';
-import type { EventPublisher, PublishableMessage } from '../src/constructs/events';
 import { AmazonApiGatewayV1Endpoint } from '../src/adaptors/AmazonApiGatewayV1Endpoint';
 import { AmazonApiGatewayV2Endpoint } from '../src/adaptors/AmazonApiGatewayV2Endpoint';
+import { e } from '../src/constructs/EndpointFactory';
+import type {
+  EventPublisher,
+  PublishableMessage,
+} from '../src/constructs/events';
+import type { Service } from '../src/services';
 
+const logger = console;
 // Define event types for the application
 type UserEvent =
-  | PublishableMessage<'user.created', { userId: string; email: string; source: string }>
+  | PublishableMessage<
+      'user.created',
+      { userId: string; email: string; source: string }
+    >
   | PublishableMessage<'user.updated', { userId: string; changes: string[] }>
-  | PublishableMessage<'notification.sent', { userId: string; type: string; channel: string }>;
+  | PublishableMessage<
+      'notification.sent',
+      { userId: string; type: string; channel: string }
+    >;
 
 // Simple event publisher implementation
 class SimpleEventPublisher implements EventPublisher<UserEvent> {
   async publish(events: UserEvent[]): Promise<void> {
     for (const event of events) {
-      console.log(`Publishing event: ${event.type}`, event.payload);
+      logger.log(`Publishing event: ${event.type}`, event.payload);
       // In a real application, this would send to an event bus like EventBridge, SQS, etc.
     }
   }
 }
 
-const publisher = new SimpleEventPublisher();
+const publisher: Service<'EventPublisherService', SimpleEventPublisher> = {
+  serviceName: 'EventPublisherService',
+  register: async () => new SimpleEventPublisher(),
+};
 
 // Create an endpoint with event publishing
 const createUserEndpoint = e
   .publisher(publisher)
   .post('/users')
-  .body(z.object({
-    name: z.string(),
-    email: z.string().email(),
-  }))
-  .output(z.object({
-    id: z.string(),
-    name: z.string(),
-    email: z.string(),
-    createdAt: z.string(),
-  }))
+  .body(
+    z.object({
+      name: z.string(),
+      email: z.string().email(),
+    }),
+  )
+  .output(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+      createdAt: z.string(),
+    }),
+  )
   .event({
     type: 'user.created',
     payload: (response) => ({
@@ -63,7 +80,7 @@ const createUserEndpoint = e
       createdAt: new Date().toISOString(),
     };
 
-    console.log('Created user:', user);
+    logger.log('Created user:', user);
     return user;
   });
 
@@ -72,20 +89,24 @@ const updateUserEndpoint = e
   .publisher(publisher)
   .put('/users/:id')
   .params(z.object({ id: z.string() }))
-  .body(z.object({
-    name: z.string().optional(),
-    email: z.string().email().optional(),
-  }))
-  .output(z.object({
-    id: z.string(),
-    name: z.string(),
-    email: z.string(),
-    emailChanged: z.boolean(),
-  }))
+  .body(
+    z.object({
+      name: z.string().optional(),
+      email: z.string().email().optional(),
+    }),
+  )
+  .output(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+      emailChanged: z.boolean(),
+    }),
+  )
   .event({
     type: 'user.updated',
     payload: (response) => {
-      const changes = [];
+      const changes: string[] = [];
       if (response.emailChanged) changes.push('email');
       return {
         userId: response.id,
@@ -106,7 +127,7 @@ const updateUserEndpoint = e
   .handle(async ({ params, body }) => {
     // Simulate user update
     const emailChanged = !!body.email;
-    
+
     const user = {
       id: params.id,
       name: body.name || 'John Doe',
@@ -114,7 +135,7 @@ const updateUserEndpoint = e
       emailChanged,
     };
 
-    console.log('Updated user:', user);
+    logger.log('Updated user:', user);
     return user;
   });
 
