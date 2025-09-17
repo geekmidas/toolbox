@@ -185,7 +185,7 @@ ${imports}
 export function createApp(app?: Hono, enableOpenApi: boolean = ${enableOpenApi}): Hono {
   const honoApp = app || new Hono();
   
-  const endpoints: Endpoint<any, any, any, any, any, any>[] = [
+  const endpoints: Endpoint<any, any, any, any, any, any, any>[] = [
     ${allExportNames.join(',\n    ')}
   ];
 

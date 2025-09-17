@@ -399,7 +399,7 @@ describe('publishEndpointEvents', () => {
     );
 
     expect(errorSpy).toHaveBeenCalledWith(
-      { err: publishError },
+      publishError,
       'Failed to publish events',
     );
   });

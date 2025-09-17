@@ -471,7 +471,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 
     expect(mockPublisher.publish).toHaveBeenCalled();
     expect(mockLogger.error).toHaveBeenCalledWith(
-      { err: publishError },
+      publishError,
       'Failed to publish events',
     );
   });

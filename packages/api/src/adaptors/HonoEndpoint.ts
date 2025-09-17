@@ -127,7 +127,6 @@ export class HonoEndpoint<
       ServiceRecord<TServices>,
       TLogger
     >(logger, envParser);
-    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 
@@ -180,7 +179,7 @@ export class HonoEndpoint<
 
       return 0;
     });
-
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
     for (const endpoint of sortedEndpoints) {
       HonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
     }

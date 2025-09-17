@@ -1,9 +1,10 @@
+import type { Logger } from '../logger';
 import type { ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
 import type { EventPublisher } from './events';
 
 export async function publishEndpointEvents<
-  T extends Endpoint<any, any, any, any, any, any, any, any>,
+  T extends Endpoint<any, any, any, any, any, Logger, any, any>,
 >(
   endpoint: T,
   response: EndpointOutput<T>,
@@ -46,7 +47,7 @@ export async function publishEndpointEvents<
     endpoint.logger.debug({ eventCount: events.length }, 'Publishing events');
 
     await publisher.publish(events).catch((err: any) => {
-      endpoint.logger.error({ err }, 'Failed to publish events');
+      endpoint.logger.error(err, 'Failed to publish events');
     });
   }
 }
