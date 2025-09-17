@@ -1,12 +1,19 @@
+import { EnvironmentParser } from '@geekmidas/envkit';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
+import type { EventPublisher } from '../constructs/events';
+import { publishEndpointEvents } from '../constructs/publisher';
 import type {
   HttpMethod,
   InferComposableStandardSchema,
   InferStandardSchema,
 } from '../constructs/types';
 import type { Logger } from '../logger';
-import type { Service, ServiceRecord } from '../services';
+import {
+  type Service,
+  ServiceDiscovery,
+  type ServiceRecord,
+} from '../services';
 
 export class TestEndpointAdaptor<
   TRoute extends string,
@@ -16,7 +23,37 @@ export class TestEndpointAdaptor<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
+  static getDefaultServiceDiscover<
+    TRoute extends string,
+    TMethod extends HttpMethod,
+    TInput extends EndpointSchemas = {},
+    TOutSchema extends StandardSchemaV1 | undefined = undefined,
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+    TSession = unknown,
+    TEventPublisher extends EventPublisher<any> | undefined = undefined,
+    TEventPublisherServiceName extends string = string,
+  >(
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >,
+  ) {
+    return ServiceDiscovery.getInstance(
+      endpoint.logger,
+      new EnvironmentParser({}),
+    );
+  }
   constructor(
     private readonly endpoint: Endpoint<
       TRoute,
@@ -25,12 +62,23 @@ export class TestEndpointAdaptor<
       TOutSchema,
       TServices,
       TLogger,
-      TSession
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
     >,
+    private serviceDiscovery: ServiceDiscovery<
+      any,
+      any
+    > = TestEndpointAdaptor.getDefaultServiceDiscover(endpoint),
   ) {}
 
   async request(
-    ctx: TestRequestAdaptor<TInput, TServices>,
+    ctx: TestRequestAdaptor<
+      TInput,
+      TServices,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >,
   ): Promise<InferStandardSchema<TOutSchema>> {
     const body = await this.endpoint.parseInput((ctx as any).body, 'body');
     const query = await this.endpoint.parseInput((ctx as any).query, 'query');
@@ -61,14 +109,22 @@ export class TestEndpointAdaptor<
       header,
     } as any);
 
-    return this.endpoint.parseOutput(response);
+    const output = await this.endpoint.parseOutput(response);
+    ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
+    // @ts-ignore
+    await publishEndpointEvents(this.endpoint, output, this.serviceDiscovery);
+
+    return output;
   }
 }
 
 export type TestRequestAdaptor<
   TInput extends EndpointSchemas = {},
   TServices extends Service[] = [],
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > = {
   services: ServiceRecord<TServices>;
   headers: Record<string, string>;
+  publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 } & InferComposableStandardSchema<TInput>;
