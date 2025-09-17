@@ -4,6 +4,7 @@ import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
 import type { Service, ServiceRecord } from '../services.ts';
 
+import type { EventPublisher } from './events.ts';
 import {
   type ComposableStandardSchema,
   FunctionType,
@@ -55,10 +56,11 @@ export class Function<
     TLogger,
     OutSchema
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   __IS_FUNCTION__ = true;
 
-  static isFunction(obj: any): obj is Function<any, any, any, any> {
+  static isFunction(obj: any): obj is Function<any, any, any, any, any> {
     return obj && obj.__IS_FUNCTION__ === true;
   }
 
@@ -70,6 +72,7 @@ export class Function<
     public outputSchema?: OutSchema,
     public services: TServices = [] as Service[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
+    public publisher?: TEventPublisher,
   ) {}
 }
 
@@ -78,10 +81,12 @@ export class FunctionBuilder<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
+  TPublisher extends EventPublisher<any> | undefined = undefined,
 > {
   protected inputSchema?: TInput;
   protected outputSchema?: OutSchema;
   protected _timeout?: number;
+  protected _publisher?: TPublisher;
 
   public _services: TServices = [] as Service[] as TServices;
   public _logger: TLogger = DEFAULT_LOGGER;
@@ -127,7 +132,13 @@ export class FunctionBuilder<
 
   services<T extends Service[]>(
     services: T,
-  ): FunctionBuilder<TInput, OutSchema, [...TServices, ...T], TLogger> {
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    [...TServices, ...T],
+    TLogger,
+    TPublisher
+  > {
     this._services = uniqBy(
       [...this._services, ...services],
       (s) => s.serviceName,
@@ -136,39 +147,72 @@ export class FunctionBuilder<
       TInput,
       OutSchema,
       [...TServices, ...T],
-      TLogger
+      TLogger,
+      TPublisher
     >;
   }
 
   logger<T extends Logger>(
     logger: T,
-  ): FunctionBuilder<TInput, OutSchema, TServices, T> {
+  ): FunctionBuilder<TInput, OutSchema, TServices, T, TPublisher> {
     this._logger = logger as unknown as TLogger;
 
-    return this as unknown as FunctionBuilder<TInput, OutSchema, TServices, T>;
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      T,
+      TPublisher
+    >;
   }
 
   timeout(
     timeout: number,
-  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
+  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, TPublisher> {
     this._timeout = timeout;
     return this;
   }
 
+  publisher<T extends EventPublisher<any>>(
+    publisher: T,
+  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T> {
+    this._publisher = publisher as unknown as TPublisher;
+
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      T
+    >;
+  }
+
   output<T extends StandardSchemaV1>(
     schema: T,
-  ): FunctionBuilder<TInput, T, TServices, TLogger> {
+  ): FunctionBuilder<TInput, T, TServices, TLogger, TPublisher> {
     this.outputSchema = schema as unknown as OutSchema;
 
-    return this as unknown as FunctionBuilder<TInput, T, TServices, TLogger>;
+    return this as unknown as FunctionBuilder<
+      TInput,
+      T,
+      TServices,
+      TLogger,
+      TPublisher
+    >;
   }
 
   input<T extends ComposableStandardSchema>(
     schema: T,
-  ): FunctionBuilder<T, OutSchema, TServices, TLogger> {
+  ): FunctionBuilder<T, OutSchema, TServices, TLogger, TPublisher> {
     this.inputSchema = schema as unknown as TInput;
 
-    return this as unknown as FunctionBuilder<T, OutSchema, TServices, TLogger>;
+    return this as unknown as FunctionBuilder<
+      T,
+      OutSchema,
+      TServices,
+      TLogger,
+      TPublisher
+    >;
   }
 }
 

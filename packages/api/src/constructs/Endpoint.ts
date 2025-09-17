@@ -69,7 +69,14 @@ export class Endpoint<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
-> extends Function<TInput, TServices, TLogger, OutSchema> {
+> extends Function<
+  TInput,
+  TServices,
+  TLogger,
+  OutSchema,
+  FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+  TEventPublisher
+> {
   operationId?: string;
   /** The route path pattern with parameter placeholders */
   route: TRoute;
@@ -88,8 +95,6 @@ export class Endpoint<
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
-  /** Event publisher for publishing events from this endpoint */
-  public publisher?: TEventPublisher;
   /** Events to publish after successful execution */
   public events?: MappedEvent<TEventPublisher, OutSchema>[];
 
@@ -797,7 +802,11 @@ export type EndpointOutput<T> = T extends Endpoint<
   any,
   any,
   any,
-  infer OutSchema
+  infer OutSchema,
+  any,
+  any,
+  any,
+  any
 >
   ? InferStandardSchema<OutSchema>
   : never;

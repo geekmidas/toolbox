@@ -1,9 +1,8 @@
-import type { Endpoint } from './Endpoint';
+import type { Endpoint, EndpointOutput } from './Endpoint';
 
-export async function publishEndpointEvents(
-  endpoint: Endpoint<any, any, any, any, any, any, any, any>,
-  response: any,
-) {
+export async function publishEndpointEvents<
+  T extends Endpoint<any, any, any, any, any, any, any, any>,
+>(endpoint: T, response: EndpointOutput<T>) {
   if (!endpoint.events?.length) {
     endpoint.logger.debug('No events to publish');
     return;
@@ -17,7 +16,7 @@ export async function publishEndpointEvents(
 
   for (const { when, payload, type, ...e } of endpoint.events) {
     endpoint.logger.debug({ event: type }, 'Processing event');
-    const resolvedPayload = await payload(response as any);
+    const resolvedPayload = await payload(response);
     const event = {
       ...e,
       type,

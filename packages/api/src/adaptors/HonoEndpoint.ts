@@ -8,7 +8,6 @@ import {
   type EndpointSchemas,
 } from '../constructs/Endpoint';
 import type { EventPublisher } from '../constructs/events';
-import { publishEndpointEvents } from '../constructs/publisher';
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
 import type { Logger } from '../logger';
@@ -16,6 +15,7 @@ import { checkRateLimit, getRateLimitHeaders } from '../rate-limit';
 import { parseHonoQuery } from './utils/parseHonoQuery';
 
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { publishEndpointEvents } from '../constructs/publisher';
 import { wrapError } from '../errors';
 import {
   type Service,
@@ -87,6 +87,29 @@ export class HonoEndpoint<
     HonoEndpoint.addRoute(this.endpoint, serviceDiscovery, app);
   }
 
+  static applyEventMiddleware(app: Hono) {
+    app.use(async (c, next) => {
+      await next();
+      // @ts-ignore
+      const endpoint = c.get('__endpoint') as Endpoint<
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any
+      >;
+      // @ts-ignore
+      const response = c.get('__response');
+
+      if (c.res.status > 199 && c.res.status < 300 && endpoint) {
+        await publishEndpointEvents(endpoint, response);
+      }
+    });
+  }
+
   static async fromRoutes<TLogger extends Logger, TServices extends Service[]>(
     routes: string[],
     envParser: EnvironmentParser<{}>,
@@ -100,6 +123,7 @@ export class HonoEndpoint<
       ServiceRecord<TServices>,
       TLogger
     >(logger, envParser);
+    HonoEndpoint.applyEventMiddleware(app);
 
     HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 
@@ -269,7 +293,6 @@ export class HonoEndpoint<
           >);
 
           // Publish events if configured
-          await publishEndpointEvents(endpoint as any, response);
 
           // Validate output if schema is defined
 
@@ -278,6 +301,10 @@ export class HonoEndpoint<
             const output = endpoint.outputSchema
               ? await endpoint.parseOutput(response)
               : ({} as any);
+            // @ts-ignore
+            c.set('__response', output);
+            // @ts-ignore
+            c.set('__endpoint', endpoint);
 
             return c.json(output, status);
           } catch (validationError) {

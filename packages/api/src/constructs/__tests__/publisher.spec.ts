@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Logger } from '../../logger';
+import type { EndpointOutput } from '../Endpoint';
 import { e } from '../EndpointFactory';
 import type { EventPublisher, PublishableMessage } from '../events';
 import { publishEndpointEvents } from '../publisher';
@@ -106,6 +107,8 @@ describe('publishEndpointEvents', () => {
         }),
       })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
+    type E = typeof endpoint;
+    type Out = EndpointOutput<E>;
 
     await publishEndpointEvents(endpoint, {
       id: '123',

@@ -67,6 +67,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -130,6 +131,8 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -207,6 +210,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -264,6 +268,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -309,6 +314,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -366,6 +372,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -434,6 +441,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
+    HonoEndpoint.applyEventMiddleware(app);
 
     adaptor.addRoute(serviceDiscovery, app);
 
