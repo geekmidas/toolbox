@@ -1,6 +1,5 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { Hono } from 'hono';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../../constructs/Endpoint';
 import type {
@@ -9,8 +8,8 @@ import type {
   PublishableMessage,
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
-import { ServiceDiscovery } from '../../services';
-import { HonoEndpoint } from '../HonoEndpoint';
+import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2Endpoint';
+import { createMockContext, createMockV2Event } from './aws-test-helpers';
 
 // Test event types
 type TestEvent =
@@ -18,18 +17,29 @@ type TestEvent =
   | PublishableMessage<'user.updated', { userId: string; changes: string[] }>
   | PublishableMessage<'notification.sent', { userId: string; type: string }>;
 
-describe('HonoEndpoint Events', () => {
-  const mockLogger: Logger = {
+// Mock logger
+const createMockLogger = (): Logger => {
+  const logger: Logger = {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     fatal: vi.fn(),
     trace: vi.fn(),
-    child: vi.fn(() => mockLogger),
+    child: vi.fn(() => logger),
   };
-  const envParser = new EnvironmentParser({});
-  const serviceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
+  return logger;
+};
+
+describe('AmazonApiGatewayV2Endpoint Events', () => {
+  let mockLogger: Logger;
+  let envParser: EnvironmentParser<{}>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLogger = createMockLogger();
+    envParser = new EnvironmentParser({});
+  });
 
   it('should publish events after successful endpoint execution', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
@@ -65,23 +75,29 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      id: '123',
-      email: 'test@example.com',
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({ id: '123', email: 'test@example.com' }),
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {
@@ -129,24 +145,29 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    HonoEndpoint.applyEventMiddleware(app);
-
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(201);
-    expect(await response.json()).toEqual({
-      id: '456',
-      email: 'user@example.com',
-    });
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toBe(
+      JSON.stringify({ id: '456', email: 'user@example.com' }),
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {
@@ -208,24 +229,34 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users/789', {
-      method: 'PUT',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'PUT',
+          path: '/users/789',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
+      pathParameters: { id: '789' },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      id: '789',
-      email: 'updated@example.com',
-      isNew: false,
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({
+        id: '789',
+        email: 'updated@example.com',
+        isNew: false,
+      }),
+    );
 
     // Only user.updated event should be published due to when condition
     expect(mockPublisher.publish).toHaveBeenCalledWith([
@@ -266,23 +297,29 @@ describe('HonoEndpoint Events', () => {
       publisher: undefined, // No publisher
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      id: '999',
-      email: 'test@example.com',
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({ id: '999', email: 'test@example.com' }),
+    );
 
     // No publisher calls should be made
     expect(mockLogger.warn).toHaveBeenCalledWith('No publisher available');
@@ -312,23 +349,29 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      id: '111',
-      email: 'test@example.com',
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({ id: '111', email: 'test@example.com' }),
+    );
 
     // No events should be published
     expect(mockPublisher.publish).not.toHaveBeenCalled();
@@ -370,24 +413,30 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
     // The endpoint should still succeed despite event publishing failure
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      id: '888',
-      email: 'error@example.com',
-    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({ id: '888', email: 'error@example.com' }),
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalled();
     expect(mockLogger.error).toHaveBeenCalledWith(
@@ -439,24 +488,33 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({ name: 'John Doe', email: 'john@example.com' }),
-      headers: { 'Content-Type': 'application/json' },
     });
+    const context = createMockContext();
+    const response = await handler(event, context);
 
-    expect(response.status).toBe(201);
-    expect(await response.json()).toEqual({
-      id: '777',
-      name: 'John Doe',
-      email: 'john@example.com',
-    });
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toBe(
+      JSON.stringify({
+        id: '777',
+        name: 'John Doe',
+        email: 'john@example.com',
+      }),
+    );
 
     expect(mockPublisher.publish).toHaveBeenCalledWith([
       {
@@ -466,7 +524,7 @@ describe('HonoEndpoint Events', () => {
     ]);
   });
 
-  it('should not publish events when endpoint throws an error', async () => {
+  it('should not publish events when handler throws an error', async () => {
     const mockPublisher: EventPublisher<TestEvent> = {
       publish: vi.fn().mockResolvedValue(undefined),
     };
@@ -487,7 +545,7 @@ describe('HonoEndpoint Events', () => {
       route: '/users',
       method: 'POST',
       fn: async () => {
-        throw new Error('Something went wrong');
+        throw new Error('Database connection failed');
       },
       input: undefined,
       output: outputSchema,
@@ -502,22 +560,116 @@ describe('HonoEndpoint Events', () => {
       publisher: mockPublisher,
     });
 
-    const adaptor = new HonoEndpoint(endpoint);
-    const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
 
-    adaptor.addRoute(serviceDiscovery, app);
-
-    const response = await app.request('/users', {
-      method: 'POST',
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'POST',
+          path: '/users',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
+    });
+    const context = createMockContext();
+    const response = await handler(event, context);
+
+    // The endpoint should return an error response
+    expect(response.statusCode).toBe(500);
+
+    // Events should not be published when handler fails
+    expect(mockPublisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('should handle comma-separated array query parameters', async () => {
+    const mockPublisher: EventPublisher<TestEvent> = {
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const querySchema = z.object({
+      tags: z.array(z.string()),
+    });
+    const outputSchema = z.object({
+      id: z.string(),
+      tags: z.array(z.string()),
     });
 
-    // Should return 500 due to error
-    expect(response.status).toBe(500);
+    const events: MappedEvent<
+      EventPublisher<TestEvent>,
+      typeof outputSchema
+    >[] = [
+      {
+        type: 'user.updated',
+        payload: (response) => ({
+          userId: response.id,
+          changes: response.tags.map((tag) => `tag:${tag}`),
+        }),
+      },
+    ];
 
-    // No events should be published when endpoint throws an error
-    expect(mockPublisher.publish).not.toHaveBeenCalled();
+    const endpoint = new Endpoint({
+      route: '/users/:id/tags',
+      method: 'PUT',
+      fn: async ({ query }) => ({
+        id: '123',
+        tags: query.tags,
+      }),
+      input: { query: querySchema },
+      output: outputSchema,
+      services: [],
+      logger: mockLogger,
+      timeout: undefined,
+      status: 200,
+      getSession: undefined,
+      authorize: undefined,
+      description: undefined,
+      events,
+      publisher: mockPublisher,
+    });
+
+    const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+    const handler = adapter.handler;
+
+    const event = createMockV2Event({
+      requestContext: {
+        ...createMockV2Event().requestContext,
+        http: {
+          method: 'PUT',
+          path: '/users/123/tags',
+          protocol: 'HTTP/1.1',
+          sourceIp: '192.168.1.1',
+          userAgent: 'test-agent',
+        },
+      },
+      pathParameters: { id: '123' },
+      queryStringParameters: {
+        tags: 'javascript, typescript, nodejs', // V2 handles arrays as comma-separated
+      },
+    });
+    const context = createMockContext();
+    const response = await handler(event, context);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(
+      JSON.stringify({
+        id: '123',
+        tags: ['javascript', 'typescript', 'nodejs'],
+      }),
+    );
+
+    expect(mockPublisher.publish).toHaveBeenCalledWith([
+      {
+        type: 'user.updated',
+        payload: {
+          userId: '123',
+          changes: ['tag:javascript', 'tag:typescript', 'tag:nodejs'],
+        },
+      },
+    ]);
   });
 });

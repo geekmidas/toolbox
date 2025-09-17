@@ -9,6 +9,7 @@ import type { EventPublisher } from '../constructs/events';
 import type { Service } from '../services';
 import {
   AmazonApiGatewayEndpoint,
+  type AmazonApiGatewayV2EndpointHandler,
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpoint';
@@ -24,6 +25,7 @@ export class AmazonApiGatewayV2Endpoint<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends AmazonApiGatewayEndpoint<
+  AmazonApiGatewayV2EndpointHandler,
   APIGatewayProxyEventV2,
   TRoute,
   TMethod,
@@ -84,7 +86,8 @@ export class AmazonApiGatewayV2Endpoint<
       TOutSchema,
       TServices,
       TLogger,
-      TSession
+      TSession,
+      TEventPublisher
     >,
   ) {
     super(envParser, endpoint);

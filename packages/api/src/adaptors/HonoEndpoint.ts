@@ -10,6 +10,7 @@ import {
 import type { EventPublisher } from '../constructs/events';
 import type { HttpMethod, LowerHttpMethod } from '../constructs/types';
 import { getEndpointsFromRoutes } from '../helpers';
+import { isSuccessStatus } from '../helpers/http-status';
 import type { Logger } from '../logger';
 import { checkRateLimit, getRateLimitHeaders } from '../rate-limit';
 import { parseHonoQuery } from './utils/parseHonoQuery';
@@ -104,7 +105,7 @@ export class HonoEndpoint<
       // @ts-ignore
       const response = c.get('__response');
 
-      if (c.res.status > 199 && c.res.status < 300 && endpoint) {
+      if (isSuccessStatus(c.res.status) && endpoint) {
         await publishEndpointEvents(endpoint, response);
       }
     });

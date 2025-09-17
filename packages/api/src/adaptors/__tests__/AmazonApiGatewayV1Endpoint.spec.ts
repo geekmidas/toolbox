@@ -1,5 +1,5 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
+import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../../constructs/Endpoint';
@@ -14,6 +14,7 @@ import {
 import type { Logger } from '../../logger';
 
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
+import { createMockV1Event } from './aws-test-helpers';
 
 // Mock logger
 const createMockLogger = (): Logger => {
@@ -57,59 +58,6 @@ const createMockContext = (): Context => ({
   succeed: vi.fn(),
 });
 
-// Mock API Gateway event
-const createMockEvent = (
-  overrides: Partial<APIGatewayProxyEvent> = {},
-): APIGatewayProxyEvent => ({
-  body: null,
-  headers: {
-    'content-type': 'application/json',
-    'user-agent': 'test-agent',
-    host: 'test.example.com',
-  },
-  multiValueHeaders: {},
-  httpMethod: 'GET',
-  isBase64Encoded: false,
-  path: '/test',
-  pathParameters: null,
-  queryStringParameters: null,
-  multiValueQueryStringParameters: null,
-  stageVariables: null,
-  requestContext: {
-    accountId: '123456789012',
-    apiId: 'api-id',
-    authorizer: null,
-    protocol: 'HTTP/1.1',
-    httpMethod: 'GET',
-    path: '/test',
-    stage: 'test',
-    requestId: 'request-id',
-    requestTime: '01/Jan/2024:00:00:00 +0000',
-    requestTimeEpoch: 1704067200000,
-    resourceId: 'resource-id',
-    resourcePath: '/test',
-    identity: {
-      accessKey: null,
-      accountId: null,
-      apiKey: null,
-      apiKeyId: null,
-      caller: null,
-      clientCert: null,
-      cognitoAuthenticationProvider: null,
-      cognitoAuthenticationType: null,
-      cognitoIdentityId: null,
-      cognitoIdentityPoolId: null,
-      principalOrgId: null,
-      sourceIp: '192.168.1.1',
-      user: null,
-      userAgent: 'test-agent',
-      userArn: null,
-    },
-  },
-  resource: '/test',
-  ...overrides,
-});
-
 describe('AmazonApiGatewayV1Endpoint', () => {
   let mockLogger: Logger;
   let envParser: EnvironmentParser<{}>;
@@ -140,7 +88,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
       const response = await handler(event, context);
 
@@ -170,7 +118,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         httpMethod: 'POST',
         body: JSON.stringify({ name: 'John Doe' }),
       });
@@ -211,7 +159,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         queryStringParameters: { page: '2' },
       });
       const context = createMockContext();
@@ -245,7 +193,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         pathParameters: { id: '123' },
       });
       const context = createMockContext();
@@ -276,7 +224,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({ httpMethod: 'POST' });
+      const event = createMockV1Event({ httpMethod: 'POST' });
       const context = createMockContext();
       const response = await handler(event, context);
 
@@ -308,7 +256,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
       await handler(event, context);
 
@@ -321,7 +269,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
           version: '1',
         },
         req: {
-          ip: '192.168.1.1',
+          ip: expect.any(String),
           awsRequestId: 'test-request-id',
           id: 'request-id',
           userAgent: 'test-agent',
@@ -351,7 +299,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
 
       const response = await handler(event, context);
@@ -387,7 +335,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler.bind(adapter);
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
       const response = await handler(event, context);
 
@@ -416,7 +364,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
       const response = await handler(event, context);
 
@@ -448,7 +396,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
 
       const response = await handler(event, context);
@@ -484,7 +432,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
 
       const response = await handler(event, context);
@@ -540,7 +488,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
         const handler = adapter.handler;
 
-        const event = createMockEvent();
+        const event = createMockV1Event();
         const context = createMockContext();
 
         const response = await handler(event, context);
@@ -579,7 +527,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         httpMethod: 'POST',
         body: JSON.stringify({ name: 'Jo', age: -5 }), // Invalid: name too short, age negative
       });
@@ -617,7 +565,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         queryStringParameters: { page: '0', limit: '200' }, // Invalid: page not positive, limit too high
       });
       const context = createMockContext();
@@ -652,7 +600,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         pathParameters: { id: 'not-a-uuid' }, // Invalid: not a valid UUID
       });
       const context = createMockContext();
@@ -691,7 +639,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer token123',
@@ -733,7 +681,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
       const response = await handler(event, context);
 
@@ -763,7 +711,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent();
+      const event = createMockV1Event();
       const context = createMockContext();
 
       const response = await handler(event, context);
@@ -804,7 +752,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const handler = adapter.handler;
 
       // Test with valid token
-      const validEvent = createMockEvent({
+      const validEvent = createMockV1Event({
         headers: {
           authorization: 'Bearer valid-token',
         },
@@ -816,7 +764,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       expect(response.body).toBe(JSON.stringify({ success: true }));
 
       // Test with invalid token
-      const invalidEvent = createMockEvent({
+      const invalidEvent = createMockV1Event({
         headers: {
           authorization: 'Bearer invalid-token',
         },
@@ -862,7 +810,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         queryStringParameters: { tags: 'nodejs', page: '2' },
         multiValueQueryStringParameters: {
           tags: ['nodejs', 'typescript', 'javascript'],
@@ -919,7 +867,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         queryStringParameters: {
           'filter.name': 'john',
           'filter.status': 'active',
@@ -978,7 +926,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
       const handler = adapter.handler;
 
-      const event = createMockEvent({
+      const event = createMockV1Event({
         httpMethod: 'PUT',
         body: JSON.stringify({ name: 'Updated Name' }),
         queryStringParameters: { filter: 'active' },

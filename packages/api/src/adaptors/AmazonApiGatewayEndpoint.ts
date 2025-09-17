@@ -21,6 +21,7 @@ import {
   UnprocessableEntityError,
   wrapError,
 } from '../errors';
+import { isSuccessStatus } from '../helpers/http-status';
 import {
   type Service,
   ServiceDiscovery,
@@ -30,7 +31,10 @@ import {
 // Helper function to publish events
 
 export abstract class AmazonApiGatewayEndpoint<
-  TEvent extends APIGatewayProxyEvent | APIGatewayProxyEventV2,
+  THandler extends
+    | AmazonApiGatewayV1EndpointHandler
+    | AmazonApiGatewayV2EndpointHandler,
+  TEvent extends HandlerEvent<THandler>,
   TRoute extends string,
   TMethod extends HttpMethod,
   TInput extends EndpointSchemas = {},
@@ -182,8 +186,13 @@ export abstract class AmazonApiGatewayEndpoint<
       after: async (req) => {
         const event = req.event;
         const response = (event as any).__response;
-        // @ts-ignore
-        await publishEndpointEvents(this.endpoint, response);
+        const statusCode = req.response?.statusCode ?? this.endpoint.status;
+
+        // Only publish events on successful responses (2xx status codes)
+        if (isSuccessStatus(statusCode)) {
+          // @ts-ignore
+          await publishEndpointEvents(this.endpoint, response);
+        }
       },
     };
   }
@@ -223,7 +232,7 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.input())
       .use(this.session())
       .use(this.authorize())
-      .use(this.events()) as unknown as AmazonApiGatewayV1EndpointHandler;
+      .use(this.events()) as unknown as THandler;
   }
 }
 
@@ -249,7 +258,7 @@ type Middleware<
   TSession = unknown,
 > = MiddlewareObj<Event<TEvent, TInput, TServices, TLogger, TSession>>;
 
-export type AmazonApiGatewayV1EndpointHandlerResponse = {
+export type AmazonApiGatewayEndpointHandlerResponse = {
   statusCode: number;
   body: string | undefined;
 };
@@ -277,4 +286,16 @@ export type GetInputResponse = {
 export type AmazonApiGatewayV1EndpointHandler = (
   event: APIGatewayProxyEvent,
   context: Context,
-) => Promise<AmazonApiGatewayV1EndpointHandlerResponse>;
+) => Promise<AmazonApiGatewayEndpointHandlerResponse>;
+
+export type AmazonApiGatewayV2EndpointHandler = (
+  event: APIGatewayProxyEventV2,
+  context: Context,
+) => Promise<AmazonApiGatewayEndpointHandlerResponse>;
+
+export type HandlerEvent<T extends Function> = T extends (
+  event: infer E,
+  context: Context,
+) => any
+  ? E
+  : never;

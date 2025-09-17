@@ -47,7 +47,8 @@
     "uuidv",
     "valibot",
     "wagerwars",
-    "wiseguylegion"
+    "wiseguylegion",
+    "Millis"
   ],
   "[json]": {
     "editor.defaultFormatter": "biomejs.biome"

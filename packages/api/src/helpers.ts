@@ -4,6 +4,9 @@ import { Endpoint } from './constructs/Endpoint';
 import type { HttpMethod } from './constructs/types';
 import type { Service } from './services';
 
+// Re-export utility functions
+export { isSuccessStatus } from './helpers/http-status';
+
 /**
  * Recursively finds the project root directory by looking for lock files.
  * Traverses up the directory tree until it finds a package manager lock file.
