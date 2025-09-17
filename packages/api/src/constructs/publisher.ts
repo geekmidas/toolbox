@@ -1,12 +1,13 @@
 import type { ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
+import type { EventPublisher } from './events';
 
 export async function publishEndpointEvents<
   T extends Endpoint<any, any, any, any, any, any, any, any>,
 >(
   endpoint: T,
   response: EndpointOutput<T>,
-  serviceDiscovery?: ServiceDiscovery<any, any>,
+  serviceDiscovery: ServiceDiscovery<any, any>,
 ) {
   if (!endpoint.events?.length) {
     endpoint.logger.debug('No events to publish');
@@ -18,31 +19,12 @@ export async function publishEndpointEvents<
     return;
   }
 
-  if (!serviceDiscovery) {
-    endpoint.logger.warn(
-      'No service discovery available for publisher resolution',
-    );
-    return;
-  }
+  // Register the service and get the instance
+  const services = await serviceDiscovery.register([endpoint.publisherService]);
 
-  let publisher: any;
-  try {
-    // Check if the service is already registered
-    if (serviceDiscovery.has(endpoint.publisherService.serviceName)) {
-      publisher = await serviceDiscovery.get(
-        endpoint.publisherService.serviceName,
-      );
-    } else {
-      // Register the service and get the instance
-      const services = await serviceDiscovery.register([
-        endpoint.publisherService,
-      ]);
-      publisher = services[endpoint.publisherService.serviceName];
-    }
-  } catch (error) {
-    endpoint.logger.error({ error }, 'Failed to resolve publisher service');
-    return;
-  }
+  const publisher = services[
+    endpoint.publisherService.serviceName
+  ] as EventPublisher<any>;
 
   const events: any[] = [];
 

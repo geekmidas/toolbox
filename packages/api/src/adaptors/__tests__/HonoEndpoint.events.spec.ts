@@ -75,7 +75,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -104,11 +104,8 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
-    const mockPublisherService: Service<
-      'publisher',
-      EventPublisher<TestEvent>
-    > = {
-      serviceName: 'publisher' as const,
+    const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
+      serviceName: Math.random().toString(),
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
@@ -148,7 +145,7 @@ describe('HonoEndpoint Events', () => {
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
 
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -181,11 +178,8 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
-    const mockPublisherService: Service<
-      'publisher',
-      EventPublisher<TestEvent>
-    > = {
-      serviceName: 'publisher' as const,
+    const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
+      serviceName: Math.random().toString(),
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
@@ -234,7 +228,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -292,7 +286,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -348,7 +342,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -375,11 +369,8 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockRejectedValue(publishError),
     };
 
-    const mockPublisherService: Service<
-      'publisher',
-      EventPublisher<TestEvent>
-    > = {
-      serviceName: 'publisher' as const,
+    const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
+      serviceName: Math.random().toString(),
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
@@ -414,7 +405,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -443,11 +434,8 @@ describe('HonoEndpoint Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
-    const mockPublisherService: Service<
-      'publisher',
-      EventPublisher<TestEvent>
-    > = {
-      serviceName: 'publisher' as const,
+    const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
+      serviceName: Math.random().toString(),
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
 
@@ -491,7 +479,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 
@@ -562,7 +550,7 @@ describe('HonoEndpoint Events', () => {
 
     const adaptor = new HonoEndpoint(endpoint);
     const app = new Hono();
-    HonoEndpoint.applyEventMiddleware(app);
+    HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
 
     adaptor.addRoute(serviceDiscovery, app);
 

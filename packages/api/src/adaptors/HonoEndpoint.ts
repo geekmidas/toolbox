@@ -90,7 +90,7 @@ export class HonoEndpoint<
 
   static applyEventMiddleware(
     app: Hono,
-    serviceDiscovery?: ServiceDiscovery<any, any>,
+    serviceDiscovery: ServiceDiscovery<any, any>,
   ) {
     app.use(async (c, next) => {
       await next();
