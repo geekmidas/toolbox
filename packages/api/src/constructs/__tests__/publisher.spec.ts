@@ -430,7 +430,7 @@ describe('publishEndpointEvents', () => {
         // Additional properties that should be preserved
         metadata: { source: 'api', version: '1.0' },
         priority: 'high',
-      } as any)
+      })
       .handle(async () => ({ id: '123', email: 'test@example.com' }));
 
     await publishEndpointEvents(

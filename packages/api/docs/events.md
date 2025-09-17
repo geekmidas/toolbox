@@ -368,12 +368,17 @@ describe('User Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<'eventPublisher', typeof mockPublisher> = {
+      serviceName: 'eventPublisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const endpoint = new Endpoint({
       route: '/users',
       method: 'POST',
       fn: async () => ({ id: '123', email: 'test@example.com' }),
       output: z.object({ id: z.string(), email: z.string() }),
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
       events: [
         {
           type: 'user.created',
@@ -411,13 +416,18 @@ describe('User Events', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
+    const mockPublisherService: Service<'eventPublisher', typeof mockPublisher> = {
+      serviceName: 'eventPublisher' as const,
+      register: vi.fn().mockResolvedValue(mockPublisher),
+    };
+
     const endpoint = new Endpoint({
       route: '/users',
       method: 'POST',
       fn: async () => {
         throw new Error('Something went wrong');
       },
-      publisher: mockPublisher,
+      publisherService: mockPublisherService,
       events: [
         {
           type: 'user.created',
@@ -452,6 +462,11 @@ it('should only publish events when conditions are met', async () => {
     publish: vi.fn().mockResolvedValue(undefined),
   };
 
+  const mockPublisherService: Service<'eventPublisher', typeof mockPublisher> = {
+    serviceName: 'eventPublisher' as const,
+    register: vi.fn().mockResolvedValue(mockPublisher),
+  };
+
   const endpoint = new Endpoint({
     route: '/users/:id',
     method: 'PUT',
@@ -465,7 +480,7 @@ it('should only publish events when conditions are met', async () => {
       emailChanged: z.boolean(),
       nameChanged: z.boolean(),
     }),
-    publisher: mockPublisher,
+    publisherService: mockPublisherService,
     events: [
       {
         type: 'user.email.changed',

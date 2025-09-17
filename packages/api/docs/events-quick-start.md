@@ -12,10 +12,11 @@ type UserEvent =
   | { type: 'user.updated'; payload: { userId: string; changes: string[] } };
 ```
 
-### 2. Create an Event Publisher
+### 2. Create an Event Publisher Service
 
 ```typescript
-import { EventPublisher } from '@geekmidas/api/server';
+import { EventPublisher, Service } from '@geekmidas/api/server';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
 class MyEventPublisher implements EventPublisher<UserEvent> {
   async publish(events: UserEvent[]): Promise<void> {
@@ -26,7 +27,15 @@ class MyEventPublisher implements EventPublisher<UserEvent> {
   }
 }
 
-const publisher = new MyEventPublisher();
+class MyEventPublisherService implements Service<'eventPublisher', MyEventPublisher> {
+  serviceName = 'eventPublisher' as const;
+
+  async register(envParser: EnvironmentParser<{}>): Promise<MyEventPublisher> {
+    return new MyEventPublisher();
+  }
+}
+
+const publisherService = new MyEventPublisherService();
 ```
 
 ### 3. Add Events to Your Endpoint
@@ -36,7 +45,7 @@ import { e } from '@geekmidas/api/server';
 import { z } from 'zod';
 
 const createUserEndpoint = e
-  .publisher(publisher)
+  .publisher(publisherService)
   .post('/users')
   .body(z.object({
     name: z.string(),
@@ -66,7 +75,7 @@ Publish events only when certain conditions are met:
 
 ```typescript
 const updateUserEndpoint = e
-  .publisher(publisher)
+  .publisher(publisherService)
   .put('/users/:id')
   .params(z.object({ id: z.string() }))
   .body(z.object({
@@ -97,7 +106,7 @@ Publish multiple events from a single endpoint:
 
 ```typescript
 const processOrderEndpoint = e
-  .publisher(publisher)
+  .publisher(publisherService)
   .post('/orders')
   .body(orderSchema)
   .output(orderResponseSchema)
@@ -121,10 +130,12 @@ const processOrderEndpoint = e
 
 ## AWS Integration
 
-### EventBridge Publisher
+### EventBridge Publisher Service
 
 ```typescript
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { EventPublisher, Service } from '@geekmidas/api/server';
 
 class EventBridgePublisher implements EventPublisher<UserEvent> {
   constructor(
@@ -145,12 +156,28 @@ class EventBridgePublisher implements EventPublisher<UserEvent> {
     await this.client.send(new PutEventsCommand({ Entries: entries }));
   }
 }
+
+class EventBridgePublisherService implements Service<'eventPublisher', EventBridgePublisher> {
+  serviceName = 'eventPublisher' as const;
+
+  async register(envParser: EnvironmentParser<{}>): Promise<EventBridgePublisher> {
+    const config = envParser.create((get) => ({
+      eventBusName: get('EVENT_BUS_NAME').string(),
+      region: get('AWS_REGION').string().default('us-east-1'),
+    })).parse();
+
+    const client = new EventBridgeClient({ region: config.region });
+    return new EventBridgePublisher(client, config.eventBusName);
+  }
+}
 ```
 
-### SQS Publisher
+### SQS Publisher Service
 
 ```typescript
 import { SQSClient, SendMessageBatchCommand } from '@aws-sdk/client-sqs';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { EventPublisher, Service } from '@geekmidas/api/server';
 
 class SQSPublisher implements EventPublisher<UserEvent> {
   constructor(
@@ -172,6 +199,20 @@ class SQSPublisher implements EventPublisher<UserEvent> {
     }));
   }
 }
+
+class SQSPublisherService implements Service<'eventPublisher', SQSPublisher> {
+  serviceName = 'eventPublisher' as const;
+
+  async register(envParser: EnvironmentParser<{}>): Promise<SQSPublisher> {
+    const config = envParser.create((get) => ({
+      queueUrl: get('SQS_QUEUE_URL').string(),
+      region: get('AWS_REGION').string().default('us-east-1'),
+    })).parse();
+
+    const client = new SQSClient({ region: config.region });
+    return new SQSPublisher(client, config.queueUrl);
+  }
+}
 ```
 
 ## Important Notes
@@ -186,14 +227,27 @@ class SQSPublisher implements EventPublisher<UserEvent> {
 
 ```typescript
 import { vi } from 'vitest';
+import { Service } from '@geekmidas/api/server';
 
 it('should publish events', async () => {
   const mockPublisher = {
     publish: vi.fn().mockResolvedValue(undefined),
   };
 
-  // Create endpoint with mock publisher
-  const endpoint = createUserEndpoint.withPublisher(mockPublisher);
+  const mockPublisherService: Service<'eventPublisher', typeof mockPublisher> = {
+    serviceName: 'eventPublisher' as const,
+    register: vi.fn().mockResolvedValue(mockPublisher),
+  };
+
+  // Create endpoint with mock publisher service
+  const endpoint = e
+    .publisher(mockPublisherService)
+    .post('/users')
+    .event({
+      type: 'user.created',
+      payload: (response) => ({ userId: response.id, email: response.email }),
+    })
+    .handle(async () => ({ id: '123', email: 'test@example.com' }));
   
   // Test your endpoint...
   

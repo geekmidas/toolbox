@@ -58,7 +58,9 @@ export class EndpointBuilder<
     return this;
   }
 
-  event(event: MappedEvent<TEventPublisher, OutSchema>): this {
+  event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
+    event: TEvent,
+  ): this {
     this._events.push(event);
     return this;
   }
