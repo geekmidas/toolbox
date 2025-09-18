@@ -13,6 +13,7 @@
     "test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@biomejs/biome": "~1.9.4",
     "@changesets/changelog-github": "~0.5.1",
     "@changesets/cli": "~2.29.4",

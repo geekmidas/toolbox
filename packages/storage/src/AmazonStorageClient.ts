@@ -7,6 +7,7 @@ import {
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+import type { Cache } from '@geekmidas/cache';
 import {
   type DocumentVersion,
   type File,
@@ -18,6 +19,7 @@ import {
 
 export class AmazonStorageClient implements StorageClient {
   readonly provider = StorageProvider.AWSS3;
+
   static create(
     options: AmazonStorageClientCreateOptions,
   ): AmazonStorageClient {
@@ -29,6 +31,7 @@ export class AmazonStorageClient implements StorageClient {
       endpoint,
       secretAccessKey,
       forcePathStyle = false,
+      cache,
     } = options;
     const hasCredentials = accessKeyId && secretAccessKey;
     const credentials = hasCredentials
@@ -42,12 +45,13 @@ export class AmazonStorageClient implements StorageClient {
       forcePathStyle,
     });
 
-    return new AmazonStorageClient(client, bucket, acl);
+    return new AmazonStorageClient(client, bucket, acl, cache);
   }
   constructor(
     private readonly client: S3Client,
     private readonly bucket: string,
     private readonly acl = AmazonCannedAccessControlList.AuthenticatedRead,
+    readonly cache?: Cache<string>,
   ) {}
 
   getVersionDownloadURL(file: File, versionId: string): Promise<string> {
@@ -79,7 +83,14 @@ export class AmazonStorageClient implements StorageClient {
     }));
   }
 
-  getDownloadURL(file: File, expiresIn = 60 * 60): Promise<string> {
+  async getDownloadURL(file: File, expiresIn = 60 * 60): Promise<string> {
+    const cacheKey = `download-url:${file.path}`;
+    const cachedURL = await this.cache?.get(cacheKey);
+
+    if (cachedURL) {
+      return cachedURL;
+    }
+
     const ResponseContentDisposition = file.name
       ? `attachment; filename=${encodeURIComponent(file.name)}`
       : undefined;
@@ -90,7 +101,14 @@ export class AmazonStorageClient implements StorageClient {
       ResponseContentDisposition,
     });
 
-    return getSignedUrl(this.client, command, { expiresIn });
+    const url = await getSignedUrl(this.client, command, { expiresIn });
+    const cacheExpiration = Math.max(expiresIn - 60, 0);
+
+    if (cacheExpiration) {
+      await this.cache?.set(cacheKey, url, cacheExpiration);
+    }
+
+    return url;
   }
 
   async getUploadURL(
@@ -173,4 +191,5 @@ interface AmazonStorageClientCreateOptions {
   secretAccessKey?: string;
   endpoint?: string;
   forcePathStyle?: boolean;
+  cache?: Cache<string>;
 }

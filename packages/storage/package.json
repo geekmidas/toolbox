@@ -20,7 +20,9 @@
     }
   },
   "scripts": {},
-  "dependencies": {},
+  "dependencies": {
+    "@geekmidas/cache": "workspace:*"
+  },
   "peerDependencies": {
     "zod": "~3.25.67",
     "@aws-sdk/client-s3": "~3.844.0",

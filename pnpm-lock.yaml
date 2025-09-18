@@ -20,6 +20,9 @@ importers:
       '@tsconfig/node22':
         specifier: ~22.0.2
         version: 22.0.2
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.16.3
       '@vitest/coverage-v8':
         specifier: ~3.2.4
         version: 3.2.4(vitest@3.2.4)
@@ -247,9 +250,6 @@ importers:
         specifier: '>=18.0.0'
         version: 19.1.0(react@19.1.0)
     devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.16.3
       '@types/nodemailer':
         specifier: ^6.4.14
         version: 6.4.17
@@ -305,6 +305,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ~3.844.0
         version: 3.844.0
+      '@geekmidas/cache':
+        specifier: workspace:*
+        version: link:../cache
       zod:
         specifier: ~3.25.67
         version: 3.25.67

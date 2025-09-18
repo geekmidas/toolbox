@@ -1,3 +1,4 @@
+import type { Cache } from '@geekmidas/cache';
 export interface DocumentVersion {
   id: string;
   createdAt: Date;
@@ -11,6 +12,7 @@ export enum StorageProvider {
 
 export interface StorageClient {
   readonly provider: StorageProvider;
+  readonly cache?: Cache<string>;
   /**
    * Get a URL to upload a file to.
    *
