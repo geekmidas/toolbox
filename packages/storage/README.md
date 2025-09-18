@@ -11,6 +11,7 @@ A comprehensive, type-safe storage client for cloud storage services with suppor
 - **Direct uploads**: Upload files directly to storage without intermediate servers
 - **Flexible configuration**: Support for custom endpoints (useful for MinIO, LocalStack, etc.)
 - **Modern async/await API**: Promise-based interface throughout
+- **URL caching**: Built-in support for caching presigned URLs to reduce API calls and improve performance
 
 ## Installation
 
@@ -32,6 +33,7 @@ npm install @aws-sdk/client-s3 @aws-sdk/s3-presigned-post @aws-sdk/s3-request-pr
 
 ```typescript
 import { AmazonStorageClient } from '@geekmidas/storage/aws';
+import { InMemoryCache } from '@geekmidas/cache/memory';
 
 // Create client with credentials
 const storage = AmazonStorageClient.create({
@@ -39,6 +41,16 @@ const storage = AmazonStorageClient.create({
   region: 'us-east-1',
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+});
+
+// Create client with caching enabled
+const cache = new InMemoryCache<string>();
+const storageWithCache = AmazonStorageClient.create({
+  bucket: 'my-bucket',
+  region: 'us-east-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  cache,
 });
 
 // Upload a file directly
@@ -82,6 +94,7 @@ The core interface that all storage providers implement:
 ```typescript
 interface StorageClient {
   readonly provider: StorageProvider;
+  readonly cache?: Cache<string>;
   
   // Direct upload
   upload(key: string, data: string | Buffer, contentType: string): Promise<void>;
@@ -114,6 +127,8 @@ AmazonStorageClient.create(options: AmazonStorageClientCreateOptions)
 - `secretAccessKey`: AWS secret access key
 - `endpoint`: Custom S3 endpoint (useful for MinIO, LocalStack)
 - `acl`: Canned ACL for uploads (default: `authenticated-read`)
+- `cache`: Optional cache implementation for storing presigned URLs
+- `forcePathStyle`: Force path-style URLs (useful for MinIO)
 
 #### Methods
 
@@ -132,7 +147,7 @@ await storage.upload('files/binary.dat', buffer, 'application/octet-stream');
 
 ##### `getDownloadURL(file: File, expiresIn?: number): Promise<string>`
 
-Generate a presigned download URL.
+Generate a presigned download URL. When a cache is configured, URLs will be cached based on the file path.
 
 ```typescript
 // Simple download URL
@@ -147,6 +162,12 @@ const url = await storage.getDownloadURL({
 // Custom expiration (in seconds)
 const url = await storage.getDownloadURL({ path: 'documents/file.pdf' }, 3600);
 ```
+
+**Caching behavior:**
+- URLs are cached with key format: `download-url:{file.path}`
+- Cache TTL is set to `expiresIn - 60` seconds (with 1 minute buffer)
+- URLs with expiration < 60 seconds are not cached
+- Cached URLs are returned immediately without generating new presigned URLs
 
 ##### `getUploadURL(params: GetUploadParams, expiresIn?: number): Promise<string>`
 
@@ -257,6 +278,7 @@ enum StorageProvider {
 ```typescript
 import { S3Client } from '@aws-sdk/client-s3';
 import { AmazonStorageClient, AmazonCannedAccessControlList } from '@geekmidas/storage/aws';
+import { InMemoryCache } from '@geekmidas/cache/memory';
 
 const s3Client = new S3Client({
   region: 'us-east-1',
@@ -266,10 +288,20 @@ const s3Client = new S3Client({
   },
 });
 
+// Without cache
 const storage = new AmazonStorageClient(
   s3Client,
   'my-bucket',
   AmazonCannedAccessControlList.PublicRead
+);
+
+// With cache
+const cache = new InMemoryCache<string>();
+const storageWithCache = new AmazonStorageClient(
+  s3Client,
+  'my-bucket',
+  AmazonCannedAccessControlList.PublicRead,
+  cache
 );
 ```
 
@@ -293,6 +325,44 @@ Available ACLs:
 - `BucketOwnerFullControl` - Object and bucket owner get full control
 - `LogDeliveryWrite` - Log delivery service gets write access
 - `AwsExecRead` - Amazon EC2 gets read access for AMI bundles
+
+### Caching
+
+Caching presigned URLs can significantly reduce the number of API calls to AWS S3 and improve performance.
+
+```typescript
+import { AmazonStorageClient } from '@geekmidas/storage/aws';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+import { UpstashCache } from '@geekmidas/cache/upstash';
+
+// In-memory cache for development/testing
+const memoryCache = new InMemoryCache<string>();
+const storage = AmazonStorageClient.create({
+  bucket: 'my-bucket',
+  cache: memoryCache,
+});
+
+// Redis cache for production
+const redisCache = new UpstashCache<string>({
+  url: process.env.UPSTASH_REDIS_URL,
+  token: process.env.UPSTASH_REDIS_TOKEN,
+});
+const productionStorage = AmazonStorageClient.create({
+  bucket: 'my-bucket',
+  cache: redisCache,
+});
+
+// Cache behavior example
+const url1 = await storage.getDownloadURL({ path: 'file.pdf' }); // Generates new URL
+const url2 = await storage.getDownloadURL({ path: 'file.pdf' }); // Returns cached URL
+console.log(url1 === url2); // true
+```
+
+**Cache keys and TTL:**
+- Download URLs are cached with key: `download-url:{path}`
+- Cache TTL is automatically calculated as `expiresIn - 60` seconds
+- URLs expiring in less than 60 seconds are not cached
+- Upload URLs are not cached (they are typically single-use)
 
 ### Error Handling
 
