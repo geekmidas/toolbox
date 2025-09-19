@@ -249,7 +249,8 @@ export class EndpointFactory<
       TLogger,
       undefined,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName
     >;
   }
 

@@ -481,6 +481,7 @@ export class Endpoint<
       outputSchema,
       services,
       logger,
+      publisherService,
     );
 
     this.route = route;

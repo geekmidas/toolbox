@@ -139,7 +139,8 @@ export class FunctionBuilder<
     OutSchema,
     [...TServices, ...T],
     TLogger,
-    TPublisher
+    TPublisher,
+    TEventPublisherServiceName
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -150,13 +151,21 @@ export class FunctionBuilder<
       OutSchema,
       [...TServices, ...T],
       TLogger,
-      TPublisher
+      TPublisher,
+      TEventPublisherServiceName
     >;
   }
 
   logger<T extends Logger>(
     logger: T,
-  ): FunctionBuilder<TInput, OutSchema, TServices, T, TPublisher> {
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    T,
+    TPublisher,
+    TEventPublisherServiceName
+  > {
     this._logger = logger as unknown as TLogger;
 
     return this as unknown as FunctionBuilder<
@@ -164,22 +173,32 @@ export class FunctionBuilder<
       OutSchema,
       TServices,
       T,
-      TPublisher
+      TPublisher,
+      TEventPublisherServiceName
     >;
   }
 
   timeout(
     timeout: number,
-  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, TPublisher> {
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TPublisher,
+    TEventPublisherServiceName
+  > {
     this._timeout = timeout;
     return this;
   }
 
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
-  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T> {
-    // @ts-ignore
-    this._publisher = publisher as unknown as Service<TName, TPublisher>;
+  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
+    this._publisher = publisher as unknown as Service<
+      TEventPublisherServiceName,
+      TPublisher
+    >;
 
     return this as unknown as FunctionBuilder<
       TInput,
@@ -201,13 +220,21 @@ export class FunctionBuilder<
       T,
       TServices,
       TLogger,
-      TPublisher
+      TPublisher,
+      TEventPublisherServiceName
     >;
   }
 
   input<T extends ComposableStandardSchema>(
     schema: T,
-  ): FunctionBuilder<T, OutSchema, TServices, TLogger, TPublisher> {
+  ): FunctionBuilder<
+    T,
+    OutSchema,
+    TServices,
+    TLogger,
+    TPublisher,
+    TEventPublisherServiceName
+  > {
     this.inputSchema = schema as unknown as TInput;
 
     return this as unknown as FunctionBuilder<
@@ -215,7 +242,8 @@ export class FunctionBuilder<
       OutSchema,
       TServices,
       TLogger,
-      TPublisher
+      TPublisher,
+      TEventPublisherServiceName
     >;
   }
 }

@@ -109,6 +109,7 @@ export class EndpointBuilder<
     T,
     TName
   > {
+    this._eventPublisherService = publisher as unknown as Service<string, TEventPublisher>;
     return super.publisher(publisher) as unknown as EndpointBuilder<
       TRoute,
       TMethod,
