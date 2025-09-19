@@ -189,6 +189,7 @@ export class EndpointFactory<
       defaultAuthorizeFn: this.defaultAuthorizeFn,
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: session,
+      defaultEventPublisher: this.defaultEventPublisher as any,
     });
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.0.24",
+  "version": "0.0.26",
   "private": false,
   "type": "module",
   "bin": {
