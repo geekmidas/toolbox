@@ -4,7 +4,7 @@ import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
 import type { Service, ServiceRecord } from '../services.ts';
 
-import type { EventPublisher } from './events.ts';
+import type { EventPublisher, MappedEvent } from './events.ts';
 import {
   type ComposableStandardSchema,
   FunctionType,
@@ -73,7 +73,11 @@ export class Function<
     public outputSchema?: OutSchema,
     public services: TServices = [] as Service[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
-    public publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
+    public publisherService?: Service<
+      TEventPublisherServiceName,
+      TEventPublisher
+    >,
+    public events?: MappedEvent<TEventPublisher, OutSchema>[],
   ) {}
 }
 

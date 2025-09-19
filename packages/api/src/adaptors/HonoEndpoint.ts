@@ -107,9 +107,16 @@ export class HonoEndpoint<
       >;
       // @ts-ignore
       const response = c.get('__response');
+      // @ts-ignore
+      const logger = c.get('__logger') as Logger;
 
       if (isSuccessStatus(c.res.status) && endpoint) {
-        await publishEndpointEvents(endpoint, response, serviceDiscovery);
+        await publishEndpointEvents(
+          endpoint,
+          response,
+          serviceDiscovery,
+          logger,
+        );
       }
     });
   }
@@ -308,9 +315,11 @@ export class HonoEndpoint<
             c.set('__response', output);
             // @ts-ignore
             c.set('__endpoint', endpoint);
+            // @ts-ignore
+            c.set('__logger', logger);
 
             return c.json(output, status);
-          } catch (validationError) {
+          } catch (validationError: any) {
             logger.error(validationError, 'Output validation failed');
             const error = wrapError(
               validationError,
@@ -319,7 +328,7 @@ export class HonoEndpoint<
             );
             return c.json(error, error.statusCode as ContentfulStatusCode);
           }
-        } catch (e) {
+        } catch (e: any) {
           logger.error(e, 'Error processing endpoint request');
           const error = wrapError(e, 500, 'Internal Server Error');
           return c.json(error, error.statusCode as ContentfulStatusCode);

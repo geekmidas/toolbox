@@ -43,6 +43,7 @@ export abstract class AmazonApiGatewayEndpoint<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
 > {
   constructor(
     protected envParser: EnvironmentParser<{}>,
@@ -54,7 +55,8 @@ export abstract class AmazonApiGatewayEndpoint<
       TServices,
       TLogger,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName
     >,
   ) {}
 
@@ -196,9 +198,11 @@ export abstract class AmazonApiGatewayEndpoint<
             TLogger
           >(logger, this.envParser);
           await publishEndpointEvents(
+            // @ts-ignore
             this.endpoint,
             response,
             serviceDiscovery,
+            logger,
           );
         }
       },

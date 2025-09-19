@@ -97,13 +97,6 @@ export class Endpoint<
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
-  /** Events to publish after successful execution */
-  public events?: MappedEvent<TEventPublisher, OutSchema>[];
-  /** Event publisher service for publishing events */
-  public publisherService?: Service<
-    TEventPublisherServiceName,
-    TEventPublisher
-  >;
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -482,6 +475,7 @@ export class Endpoint<
       services,
       logger,
       publisherService,
+      events,
     );
 
     this.route = route;
@@ -499,14 +493,6 @@ export class Endpoint<
 
     if (rateLimit) {
       this.rateLimit = rateLimit;
-    }
-
-    if (publisherService) {
-      this.publisherService = publisherService;
-    }
-
-    if (events) {
-      this.events = events;
     }
   }
 }

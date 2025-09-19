@@ -4,20 +4,22 @@ import type { Endpoint, EndpointOutput } from './Endpoint';
 import type { EventPublisher } from './events';
 
 export async function publishEndpointEvents<
-  T extends Endpoint<any, any, any, any, any, Logger, any, any>,
+  TLogger extends Logger,
+  T extends Endpoint<any, any, any, any, any, TLogger, any, any>,
 >(
   endpoint: T,
   response: EndpointOutput<T>,
   serviceDiscovery: ServiceDiscovery<any, any>,
+  logger: Logger = endpoint.logger,
 ) {
   try {
     if (!endpoint.events?.length) {
-      endpoint.logger.debug('No events to publish');
+      logger.debug('No events to publish');
       return;
     }
 
     if (!endpoint.publisherService) {
-      endpoint.logger.warn('No publisher service available');
+      logger.warn('No publisher service available');
       return;
     }
 
@@ -47,16 +49,13 @@ export async function publishEndpointEvents<
     }
 
     if (events.length) {
-      endpoint.logger.debug({ eventCount: events.length }, 'Publishing events');
+      logger.debug({ eventCount: events.length }, 'Publishing events');
 
       await publisher.publish(events).catch((err) => {
-        endpoint.logger.error(err, 'Failed to publish events');
+        logger.error(err, 'Failed to publish events');
       });
     }
   } catch (error) {
-    endpoint.logger.error(
-      error as any,
-      'Something went wrong publishing events',
-    );
+    logger.error(error as any, 'Something went wrong publishing events');
   }
 }

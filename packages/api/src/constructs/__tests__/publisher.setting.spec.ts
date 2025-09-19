@@ -172,9 +172,8 @@ describe('publisher service setting combinations', () => {
         .mockResolvedValue(factoryPublisher);
 
       const endpointPublisher = createMockPublisher('endpoint-override');
-      const endpointPublisherService = createMockPublisherService(
-        'endpoint-override',
-      );
+      const endpointPublisherService =
+        createMockPublisherService('endpoint-override');
       endpointPublisherService.register = vi
         .fn()
         .mockResolvedValue(endpointPublisher);
@@ -414,8 +413,11 @@ describe('publisher service setting combinations', () => {
         .logger(mockLogger)
         .post('/test')
         .output(z.object({ id: z.string() }))
+
         .event({
+          // @ts-ignore
           type: 'test.created',
+          // @ts-ignore
           payload: (response) => ({ id: response.id }),
         })
         .handle(async () => ({ id: '000' }));
