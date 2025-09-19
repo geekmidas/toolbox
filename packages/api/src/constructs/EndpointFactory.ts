@@ -238,7 +238,7 @@ export class EndpointFactory<
     }
 
     if (this.defaultEventPublisher) {
-      builder._eventPublisherService = this.defaultEventPublisher;
+      builder._setPublisher(this.defaultEventPublisher);
     }
 
     return builder as unknown as EndpointBuilder<

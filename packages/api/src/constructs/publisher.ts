@@ -54,6 +54,9 @@ export async function publishEndpointEvents<
       });
     }
   } catch (error) {
-    endpoint.logger.error(error, 'Something went wrong publishing events');
+    endpoint.logger.error(
+      error as any,
+      'Something went wrong publishing events',
+    );
   }
 }

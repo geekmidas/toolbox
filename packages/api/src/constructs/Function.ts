@@ -73,7 +73,7 @@ export class Function<
     public outputSchema?: OutSchema,
     public services: TServices = [] as Service[] as TServices,
     public logger: TLogger = DEFAULT_LOGGER,
-    public publisher?: Service<TEventPublisherServiceName, TEventPublisher>,
+    public publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
   ) {}
 }
 

@@ -38,7 +38,6 @@ export class EndpointBuilder<
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
-  _eventPublisherService?: Service<string, TEventPublisher>;
   private _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 
   constructor(
@@ -46,6 +45,11 @@ export class EndpointBuilder<
     readonly method: TMethod,
   ) {
     super(FunctionType.Endpoint);
+  }
+
+  // Internal setter for EndpointFactory to set default publisher
+  _setPublisher(publisher: Service<TEventPublisherServiceName, TEventPublisher>) {
+    this._publisher = publisher;
   }
 
   description(description: string): this {
@@ -109,7 +113,6 @@ export class EndpointBuilder<
     T,
     TName
   > {
-    this._eventPublisherService = publisher as unknown as Service<string, TEventPublisher>;
     return super.publisher(publisher) as unknown as EndpointBuilder<
       TRoute,
       TMethod,
@@ -247,7 +250,7 @@ export class EndpointBuilder<
       status: this._status,
       getSession: this._getSession,
       rateLimit: this._rateLimit,
-      publisherService: this._eventPublisherService,
+      publisherService: this._publisher,
       events: this._events,
     });
   }
