@@ -1,41 +1,42 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
-import type { ServiceDiscovery } from '../services';
+import type { Service, ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
-import type { EventPublisher } from './events';
+import type { EventPublisher, MappedEvent } from './events';
+import type { InferStandardSchema } from './types';
 
-export async function publishEndpointEvents<
-  TLogger extends Logger,
-  T extends Endpoint<any, any, any, any, any, TLogger, any, any>,
+export async function publishEvents<
+  T extends EventPublisher<any> | undefined,
+  OutSchema extends StandardSchemaV1 | undefined = undefined,
+  TServiceName extends string = string,
+  TPublisherService extends Service<TServiceName, T> | undefined = undefined,
 >(
-  endpoint: T,
-  response: EndpointOutput<T>,
+  logger: Logger,
   serviceDiscovery: ServiceDiscovery<any, any>,
-  logger: Logger = endpoint.logger,
+  ev: MappedEvent<T, OutSchema>[] = [],
+  response: InferStandardSchema<OutSchema>,
+  publisherService: TPublisherService,
 ) {
   try {
-    if (!endpoint.events?.length) {
+    if (!ev?.length) {
       logger.debug('No events to publish');
       return;
     }
-
-    if (!endpoint.publisherService) {
+    if (!publisherService) {
       logger.warn('No publisher service available');
       return;
     }
 
-    // Register the service and get the instance
-    const services = await serviceDiscovery.register([
-      endpoint.publisherService,
-    ]);
+    const services = await serviceDiscovery.register([publisherService]);
 
     const publisher = services[
-      endpoint.publisherService.serviceName
+      publisherService.serviceName
     ] as EventPublisher<any>;
 
-    const events: any[] = [];
+    const events: MappedEvent<T, OutSchema>[] = [];
 
-    for (const { when, payload, type, ...e } of endpoint.events) {
-      endpoint.logger.debug({ event: type }, 'Processing event');
+    for (const { when, payload, type, ...e } of ev) {
+      logger.debug({ event: type }, 'Processing event');
       const resolvedPayload = await payload(response);
       const event = {
         ...e,
@@ -49,13 +50,29 @@ export async function publishEndpointEvents<
     }
 
     if (events.length) {
-      logger.debug({ eventCount: events.length }, 'Publishing events');
+      logger.debug({ eventCount: ev.length }, 'Publishing events');
 
       await publisher.publish(events).catch((err) => {
         logger.error(err, 'Failed to publish events');
       });
     }
-  } catch (error) {
-    logger.error(error as any, 'Something went wrong publishing events');
-  }
+  } catch (error) {}
+}
+
+export async function publishEndpointEvents<
+  TLogger extends Logger,
+  T extends Endpoint<any, any, any, any, any, TLogger, any, any>,
+>(
+  endpoint: T,
+  response: EndpointOutput<T>,
+  serviceDiscovery: ServiceDiscovery<any, any>,
+  logger: Logger = endpoint.logger,
+) {
+  return publishEvents(
+    logger,
+    serviceDiscovery,
+    endpoint.events,
+    response,
+    endpoint.publisherService,
+  );
 }
