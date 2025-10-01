@@ -9,12 +9,12 @@ import type {
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
 import type { Service } from '../../services';
-import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
 import {
   createMockContext,
   createMockV1Event as createMockEvent,
   createMockLogger,
-} from './aws-test-helpers';
+} from '../../testing/aws-test-helpers';
+import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
 
 // Test event types
 type TestEvent =
