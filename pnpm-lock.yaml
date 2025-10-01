@@ -238,6 +238,34 @@ importers:
         specifier: ~4.3.9
         version: 4.3.9
 
+  packages/db:
+    dependencies:
+      '@faker-js/faker':
+        specifier: ~9.9.0
+        version: 9.9.0
+      db-errors:
+        specifier: ~0.2.3
+        version: 0.2.3
+      knex:
+        specifier: ~3.1.0
+        version: 3.1.0(pg@8.16.3)
+      kysely:
+        specifier: ~0.28.2
+        version: 0.28.2
+      objection:
+        specifier: ~3.1.5
+        version: 3.1.5(knex@3.1.0(pg@8.16.3))
+      pg:
+        specifier: ~8.16.3
+        version: 8.16.3
+      vitest:
+        specifier: ~3.2.4
+        version: 3.2.4(@types/node@22.16.3)(@vitest/ui@3.2.4)(jiti@2.4.2)(jsdom@26.1.0)(lightningcss@1.27.0)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.3)
+    devDependencies:
+      '@types/pg':
+        specifier: ~8.15.4
+        version: 8.15.4
+
   packages/emailkit:
     dependencies:
       nodemailer:
@@ -8765,7 +8793,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

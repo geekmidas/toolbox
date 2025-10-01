@@ -1,0 +1,31 @@
+{
+  "name": "@geekmidas/db",
+  "version": "0.0.1",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./kysely": {
+      "types": "./dist/kysely.d.ts",
+      "import": "./dist/kysely.mjs",
+      "require": "./dist/kysely.cjs"
+    }
+  },
+  "dependencies": {
+    "@faker-js/faker": "~9.9.0"
+  },
+  "devDependencies": {
+    "@types/pg": "~8.15.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "kysely": "~0.28.2",
+    "pg": "~8.16.3",
+    "knex": "~3.1.0",
+    "objection": "~3.1.5",
+    "db-errors": "~0.2.3",
+    "vitest": "~3.2.4"
+  }
+}
