@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTypedFetcher } from '../fetcher';
+import { type FetchFn, createTypedFetcher } from '../fetcher';
 import type { paths } from '../openapi-types';
 import './setup';
 
@@ -92,19 +92,18 @@ describe('TypedFetcher', () => {
   });
 
   it('should handle array query parameters', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to capture the request URL
-    const originalFetch = global.fetch;
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ items: ['a', 'b', 'c'] }),
     });
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /search', {
       query: { tags: ['nodejs', 'typescript', 'javascript'] as any },
@@ -114,24 +113,21 @@ describe('TypedFetcher', () => {
       'https://api.example.com/search?tags=nodejs&tags=typescript&tags=javascript',
       expect.any(Object),
     );
-
-    global.fetch = originalFetch;
   });
 
   it('should handle object query parameters with dot notation', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to capture the request URL
-    const originalFetch = global.fetch;
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ results: [] }),
     });
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /products', {
       query: {
@@ -148,24 +144,21 @@ describe('TypedFetcher', () => {
       'https://api.example.com/products?filter.category=electronics&filter.minPrice=100&filter.maxPrice=500&sort=price',
       expect.any(Object),
     );
-
-    global.fetch = originalFetch;
   });
 
   it('should handle arrays within nested objects', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to capture the request URL
-    const originalFetch = global.fetch;
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ results: [] }),
     });
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /advanced-search', {
       query: {
@@ -186,8 +179,6 @@ describe('TypedFetcher', () => {
       'https://api.example.com/advanced-search?user.roles=admin&user.roles=moderator&user.roles=user&user.status=active&settings.notifications.types=email&settings.notifications.types=sms&settings.notifications.types=push&settings.notifications.enabled=true',
       expect.any(Object),
     );
-
-    global.fetch = originalFetch;
   });
 
   it('should handle 404 errors', async () => {
@@ -195,12 +186,18 @@ describe('TypedFetcher', () => {
       baseURL: 'https://api.example.com',
     });
 
-    const response = (await client('GET /users/{id}', {
-      params: { id: '404' },
-    }).catch((error) => error)) as Response;
-
-    const data = await response.json();
-    expect(data.message).toBe('User not found');
+    try {
+      await client('GET /users/{id}', {
+        params: { id: '404' },
+      });
+      expect.fail('Should have thrown an error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      const response = error as Response;
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.message).toBe('User not found');
+    }
   });
 
   it('should handle 500 errors', async () => {
@@ -208,12 +205,16 @@ describe('TypedFetcher', () => {
       baseURL: 'https://api.example.com',
     });
 
-    const response = (await client('GET /error').catch(
-      (error) => error,
-    )) as Response;
-
-    const data = await response.json();
-    expect(data.message).toBe('Internal server error');
+    try {
+      await client('GET /error');
+      expect.fail('Should have thrown an error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      const response = error as Response;
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.message).toBe('Internal server error');
+    }
   });
 
   it('should apply request interceptor', async () => {
@@ -284,7 +285,16 @@ describe('TypedFetcher', () => {
       headers: { Authorization: 'Bearer broken-token' },
     });
 
-    await expect(() => client('GET /protected')).rejects.toThrow();
+    try {
+      await client('GET /protected');
+      expect.fail('Should have thrown an error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      const response = error as Response;
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.message).toBe('Unauthorized');
+    }
   });
 
   it('should handle empty query parameters', async () => {
@@ -318,13 +328,8 @@ describe('TypedFetcher', () => {
   });
 
   it('should correctly substitute multiple path parameters', async () => {
-    const client = createTypedFetcher<paths>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Add a mock handler for this test
-    const originalFetch = global.fetch;
-    const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const mockFetch = vi.fn(async (url: string) => {
       if (url === 'https://api.example.com/posts/123/comments/456') {
         return new Response(
           JSON.stringify({
@@ -335,10 +340,13 @@ describe('TypedFetcher', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
-      return originalFetch(url, init);
+      return new Response('Not found', { status: 404 });
+    }) as FetchFn;
+
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
     });
-    // @ts-ignore
-    global.fetch = mockFetch;
 
     const result = await client(
       'GET /posts/{postId}/comments/{commentId}' as any,
@@ -356,18 +364,11 @@ describe('TypedFetcher', () => {
       commentId: '456',
       content: 'Test comment',
     });
-
-    global.fetch = originalFetch;
   });
 
   it('should URL encode special characters in path parameters', async () => {
-    const client = createTypedFetcher<paths>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to verify the actual URL being called
-    const originalFetch = global.fetch;
-    const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const mockFetch = vi.fn(async (url: string) => {
       if (
         url ===
         'https://api.example.com/users/user%20with%20spaces%2Fand%2Fslashes'
@@ -381,10 +382,13 @@ describe('TypedFetcher', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
-      return originalFetch(url, init);
+      return new Response('Not found', { status: 404 });
+    }) as typeof fetch;
+    
+    const client = createTypedFetcher<paths>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
     });
-    // @ts-ignore
-    global.fetch = mockFetch;
 
     const result = await client('GET /users/{id}', {
       params: { id: 'user with spaces/and/slashes' },
@@ -401,7 +405,5 @@ describe('TypedFetcher', () => {
       name: 'Test User',
       email: 'test@example.com',
     });
-
-    global.fetch = originalFetch;
   });
 });

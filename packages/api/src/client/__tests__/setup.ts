@@ -143,6 +143,42 @@ export const handlers = [
     return HttpResponse.json({ message: 'Protected data' });
   }),
 
+  // Search endpoint
+  http.get('https://api.example.com/search', ({ request }) => {
+    const url = new URL(request.url);
+    const tags = url.searchParams.getAll('tags');
+    return HttpResponse.json({
+      items: tags,
+      results: tags.map((tag, i) => ({ id: i, tag })),
+    });
+  }),
+
+  // Products endpoint with filters
+  http.get('https://api.example.com/products', ({ request }) => {
+    const url = new URL(request.url);
+    const params: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      params[key] = value;
+    });
+    return HttpResponse.json({
+      results: [],
+      filters: params,
+    });
+  }),
+
+  // Advanced search endpoint
+  http.get('https://api.example.com/advanced-search', ({ request }) => {
+    const url = new URL(request.url);
+    const params: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      params[key] = value;
+    });
+    return HttpResponse.json({
+      results: [],
+      query: params,
+    });
+  }),
+
   // Paginated users endpoint for infinite queries
   http.get('https://api.example.com/users/paginated', ({ request }) => {
     const url = new URL(request.url);

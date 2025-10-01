@@ -170,4 +170,4 @@ export function createTypedFetcher<Paths>(options?: FetcherOptions) {
   ) => fetcher.request(endpoint, config);
 }
 
-type FetchFn = typeof fetch;
+export type FetchFn = typeof fetch;
