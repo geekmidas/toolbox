@@ -1,11 +1,11 @@
 import type { ControlledTransaction, Kysely, Transaction } from 'kysely';
 
-export function withTransaction<T>(
-  db: DatabaseConnection<any>,
-  cb: (trx: DatabaseConnection<any>) => Promise<T>,
+export function withTransaction<DB, T>(
+  db: DatabaseConnection<DB>,
+  cb: (trx: Transaction<DB>) => Promise<T>,
 ): Promise<T> {
   if (db.isTransaction) {
-    return cb(db);
+    return cb(db as Transaction<DB>);
   }
 
   return db.transaction().execute(cb);
