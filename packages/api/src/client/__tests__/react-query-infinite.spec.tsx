@@ -30,14 +30,15 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
   });
 
   it('should correctly merge query parameters with pageParam', async () => {
-    const typedClient = createTypedQueryClient<paths>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to verify the URL
     const originalFetch = global.fetch;
     const fetchSpy = vi.fn(originalFetch);
     global.fetch = fetchSpy;
+
+    const typedClient = createTypedQueryClient<paths>({
+      baseURL: 'https://api.example.com',
+      fetch: fetchSpy,
+    });
 
     const { result } = renderHook(
       () =>
@@ -551,14 +552,14 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
   });
 
   it('should send all query parameters in HTTP request', async () => {
-    const typedClient = createTypedQueryClient<paths>({
-      baseURL: 'https://api.example.com',
-    });
-
     // Mock fetch to capture the actual request
     const originalFetch = global.fetch;
     const fetchSpy = vi.fn(originalFetch);
-    global.fetch = fetchSpy;
+
+    const typedClient = createTypedQueryClient<paths>({
+      baseURL: 'https://api.example.com',
+      fetch: fetchSpy,
+    });
 
     const { result } = renderHook(
       () =>
@@ -579,9 +580,6 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    // Restore original fetch
-    global.fetch = originalFetch;
 
     // Check that the fetch was called with correct URL including all query params
     expect(fetchSpy).toHaveBeenCalled();
