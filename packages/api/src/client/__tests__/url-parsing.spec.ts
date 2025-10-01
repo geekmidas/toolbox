@@ -3,17 +3,17 @@ import { createTypedFetcher } from '../fetcher';
 
 describe('URL Path Parameter Parsing', () => {
   it('should correctly parse single path parameter', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /users/{userId}' as any, {
       params: { userId: '12345' },
@@ -26,17 +26,17 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should correctly parse multiple path parameters', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      fetch: mockFetch,
+      baseURL: 'https://api.example.com',
+    });
 
     await client(
       'GET /organizations/{orgId}/projects/{projectId}/tasks/{taskId}' as any,
@@ -56,17 +56,17 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should URL encode special characters in path parameters', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /files/{filename}' as any, {
       params: {
@@ -81,17 +81,17 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should handle path parameters with forward slashes', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /repositories/{repoPath}' as any, {
       params: {
@@ -106,17 +106,16 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should handle path parameters and query parameters together', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /users/{userId}/posts' as any, {
       params: { userId: 'user-123' },
@@ -130,17 +129,16 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should handle numeric path parameters', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     await client('GET /api/v{version}/users/{id}' as any, {
       params: { version: 2, id: 12345 },
@@ -153,17 +151,16 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should handle empty baseURL', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: '',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+    const client = createTypedFetcher<any>({
+      baseURL: '',
+      fetch: mockFetch,
+    });
 
     await client('GET /users/{id}' as any, {
       params: { id: '123' },
@@ -173,17 +170,17 @@ describe('URL Path Parameter Parsing', () => {
   });
 
   it('should not replace parameters that are not provided', async () => {
-    const client = createTypedFetcher<any>({
-      baseURL: 'https://api.example.com',
-    });
-
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    global.fetch = mockFetch;
+
+    const client = createTypedFetcher<any>({
+      baseURL: 'https://api.example.com',
+      fetch: mockFetch,
+    });
 
     // Missing the userId parameter
     await client('GET /users/{userId}/posts/{postId}' as any, {
