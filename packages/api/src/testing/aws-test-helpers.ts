@@ -4,7 +4,7 @@ import type {
   Context,
 } from 'aws-lambda';
 import { vi } from 'vitest';
-import type { Logger } from '../../logger';
+import type { Logger } from '../logger';
 
 /**
  * Shared test utilities for AWS Lambda adapter testing

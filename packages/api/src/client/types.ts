@@ -145,4 +145,5 @@ export interface FetcherOptions {
   onRequest?: (config: RequestInit) => RequestInit | Promise<RequestInit>;
   onResponse?: (response: Response) => Response | Promise<Response>;
   onError?: (error: Error) => void | Promise<void>;
+  fetch?: typeof fetch;
 }

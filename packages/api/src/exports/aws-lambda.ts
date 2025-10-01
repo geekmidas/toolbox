@@ -1,0 +1,1 @@
+export { AWSLambdaFunction } from '../adaptors/AWSLambdaFunction';

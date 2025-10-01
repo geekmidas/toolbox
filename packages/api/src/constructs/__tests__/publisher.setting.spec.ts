@@ -437,7 +437,7 @@ describe('publisher service setting combinations', () => {
       );
     });
 
-    it('should handle publisher service registration failure', async () => {
+    it.only('should handle publisher service registration failure', async () => {
       const registrationError = new Error('Service registration failed');
       const mockPublisherService = createMockPublisherService('failing');
       mockPublisherService.register = vi

@@ -56,7 +56,9 @@ export async function publishEvents<
         logger.error(err, 'Failed to publish events');
       });
     }
-  } catch (error) {}
+  } catch (error) {
+    logger.error(error as any, 'Something went wrong publishing events');
+  }
 }
 
 export async function publishEndpointEvents<

@@ -1,7 +1,12 @@
+import { EnvironmentParser } from '@geekmidas/envkit';
+
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
+import { AWSLambdaFunction } from '../../adaptors/AWSLambdaFunction';
+import { TestFunctionAdaptor } from '../../adaptors/TestFunctionAdaptor';
 import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
+import { createMockContext } from '../../testing/aws-test-helpers';
 import {
   Function,
   FunctionBuilder,
@@ -332,6 +337,72 @@ describe('Function', () => {
       });
 
       expect(result).toEqual({ message: 'Hello John' });
+    });
+  });
+
+  describe('Function Adaptors Integration', () => {
+    describe('TestFunctionAdaptor', () => {
+      it('should work with TestFunctionAdaptor for testing', async () => {
+        const inputSchema = z.object({ name: z.string() });
+        const outputSchema = z.object({ greeting: z.string() });
+
+        const fn = new Function(
+          async ({ input }) => ({
+            greeting: `Hello ${input.name}!`,
+          }),
+          undefined,
+          undefined,
+          inputSchema,
+          outputSchema,
+          [],
+        );
+
+        const adaptor = new TestFunctionAdaptor(fn);
+
+        const result = await adaptor.invoke({
+          services: {},
+          input: { name: 'Integration Test' },
+        });
+
+        expect(result).toEqual({
+          greeting: 'Hello Integration Test!',
+        });
+      });
+    });
+
+    describe('AWSLambdaFunction', () => {
+      it('should work with AWSLambdaFunction for AWS Lambda', async () => {
+        const inputSchema = { message: z.string() };
+        const outputSchema = z.object({ processed: z.string() });
+
+        const fn = new Function(
+          async ({ logger, ...rest }) => {
+            logger.info('Processing message');
+            return { processed: `Processed: ${rest.input.message}` };
+          },
+          undefined,
+          undefined,
+          inputSchema,
+          outputSchema,
+          [],
+          new ConsoleLogger(),
+        );
+
+        const adaptor = new AWSLambdaFunction(new EnvironmentParser({}), fn);
+        const handler = adaptor.handler.bind(adaptor);
+
+        const mockContext = createMockContext();
+
+        const result = await handler(
+          { message: 'Hello Lambda!' },
+          mockContext,
+          () => {},
+        );
+
+        expect(result).toEqual({
+          processed: 'Processed: Hello Lambda!',
+        });
+      });
     });
   });
 });

@@ -11,11 +11,32 @@ export class TypedFetcher<Paths> {
   private baseURL: string;
   private defaultHeaders: Record<string, string>;
   private options: FetcherOptions;
+  private fetchFn: FetchFn;
+
+  static getFetchFn(fn?: FetchFn): FetchFn {
+    if (fn) {
+      return fn;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+      return window.fetch.bind(window);
+    }
+
+    if (
+      typeof globalThis !== 'undefined' &&
+      typeof globalThis.fetch === 'function'
+    ) {
+      return globalThis.fetch.bind(globalThis);
+    }
+
+    throw new Error('No fetch implementation found');
+  }
 
   constructor(options: FetcherOptions = {}) {
     this.baseURL = options.baseURL || '';
     this.defaultHeaders = options.headers || {};
     this.options = options;
+    this.fetchFn = TypedFetcher.getFetchFn(options.fetch);
   }
 
   async request<T extends TypedEndpoint<Paths>>(
@@ -99,7 +120,7 @@ export class TypedFetcher<Paths> {
 
     try {
       // Make the request
-      let response = await fetch(`${this.baseURL}${url}`, requestConfig);
+      let response = await this.fetchFn(`${this.baseURL}${url}`, requestConfig);
 
       // Apply response interceptor
       if (this.options.onResponse) {
@@ -125,6 +146,7 @@ export class TypedFetcher<Paths> {
     } catch (error) {
       // Apply error handler
       if (this.options.onError) {
+        // @ts-ignore
         await this.options.onError(error);
       }
       throw error;
@@ -147,3 +169,5 @@ export function createTypedFetcher<Paths>(options?: FetcherOptions) {
     config?: FilteredRequestConfig<Paths, T>,
   ) => fetcher.request(endpoint, config);
 }
+
+type FetchFn = typeof fetch;

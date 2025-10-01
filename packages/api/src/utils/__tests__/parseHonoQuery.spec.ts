@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { parseHonoQuery } from './parseHonoQuery';
+import { parseHonoQuery } from '../parseHonoQuery';
 
 describe('parseHonoQuery', () => {
   const createMockContext = (

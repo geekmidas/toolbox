@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseQueryParams } from './parseQueryParams';
+import { parseQueryParams } from '../parseQueryParams';
 
 describe('parseQueryParams', () => {
   it('should handle null input', () => {

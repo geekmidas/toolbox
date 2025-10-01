@@ -4,6 +4,7 @@ import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
 import type { Service, ServiceRecord } from '../services.ts';
 
+import { UnprocessableEntityError } from '../errors.ts';
 import type { EventPublisher, MappedEvent } from './events.ts';
 import {
   type ComposableStandardSchema,
@@ -63,6 +64,58 @@ export class Function<
 
   static isFunction(obj: any): obj is Function<any, any, any, any, any> {
     return obj && obj.__IS_FUNCTION__ === true;
+  }
+
+  /**
+   * Validates data against a StandardSchema.
+   *
+   * @param schema - The StandardSchema to validate against
+   * @param data - The data to validate
+   * @returns Validation result with value or issues
+   */
+  static validate<T extends StandardSchemaV1>(schema: T, data: unknown) {
+    return schema['~standard'].validate(data);
+  }
+
+  /**
+   * Parses and validates data against a schema, throwing an error if validation fails.
+   *
+   * @param schema - The StandardSchema to validate against
+   * @param data - The data to parse and validate
+   * @returns The validated data with proper typing
+   * @throws {UnprocessableEntityError} When validation fails
+   */
+  static async parseSchema<T extends StandardSchemaV1>(
+    schema: T,
+    data: unknown,
+  ): Promise<InferStandardSchema<T>> {
+    if (!schema) {
+      return undefined as InferStandardSchema<T>;
+    }
+
+    const parsed = await Function.validate(
+      schema as unknown as StandardSchemaV1,
+      data,
+    );
+    if (parsed.issues) {
+      throw new UnprocessableEntityError('Validation failed', parsed.issues);
+    }
+
+    return parsed.value as InferStandardSchema<T>;
+  }
+
+  /**
+   * Parses and validates the endpoint output against the output schema.
+   *
+   * @param output - The raw output data to validate
+   * @returns The validated output data
+   * @throws {UnprocessableEntityError} When output validation fails
+   */
+  async parseOutput(output: unknown): Promise<InferStandardSchema<OutSchema>> {
+    return Function.parseSchema(
+      this.outputSchema as StandardSchemaV1,
+      output,
+    ) as Promise<InferStandardSchema<OutSchema>>;
   }
 
   constructor(

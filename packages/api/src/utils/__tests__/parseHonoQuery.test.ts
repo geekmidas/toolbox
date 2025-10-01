@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseHonoQuery } from './parseHonoQuery';
+import { parseHonoQuery } from '../parseHonoQuery';
 
 // Mock Hono Context
 function createMockContext(url: string) {

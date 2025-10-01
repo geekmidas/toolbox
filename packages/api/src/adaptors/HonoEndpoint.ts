@@ -13,7 +13,7 @@ import { getEndpointsFromRoutes } from '../helpers';
 import { isSuccessStatus } from '../helpers/http-status';
 import type { Logger } from '../logger';
 import { checkRateLimit, getRateLimitHeaders } from '../rate-limit';
-import { parseHonoQuery } from './utils/parseHonoQuery';
+import { parseHonoQuery } from '../utils/parseHonoQuery';
 
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { publishEndpointEvents } from '../constructs/publisher';
