@@ -13,8 +13,8 @@ import {
 } from '../../errors';
 import type { Logger } from '../../logger';
 
+import { createMockV1Event } from '../../testing/aws-test-helpers';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';
-import { createMockV1Event } from './aws-test-helpers';
 
 // Mock logger
 const createMockLogger = (): Logger => {

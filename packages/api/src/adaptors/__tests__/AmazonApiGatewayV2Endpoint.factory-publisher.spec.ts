@@ -8,12 +8,12 @@ import type {
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
 import type { Service } from '../../services';
-import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2Endpoint';
 import {
   createMockContext,
-  createMockV2Event,
   createMockLogger,
-} from './aws-test-helpers';
+  createMockV2Event,
+} from '../../testing/aws-test-helpers';
+import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2Endpoint';
 
 // Test event types
 type TestEvent =
@@ -42,10 +42,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
     };
 
     // Create factory with publisher exactly as user described
-    const r = e
-      .logger(mockLogger)
-      .services([])
-      .publisher(EventsService);
+    const r = e.logger(mockLogger).services([]).publisher(EventsService);
 
     // Create endpoint from factory
     const endpoint = r
@@ -113,7 +110,10 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ConditionalEventsService: Service<'ConditionalEventsService', EventPublisher<TestEvent>> = {
+    const ConditionalEventsService: Service<
+      'ConditionalEventsService',
+      EventPublisher<TestEvent>
+    > = {
       serviceName: 'ConditionalEventsService' as const,
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
@@ -124,11 +124,13 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
       .put('/orders/:id')
       .params(z.object({ id: z.string() }))
       .body(z.object({ status: z.enum(['pending', 'completed', 'cancelled']) }))
-      .output(z.object({ 
-        orderId: z.string(), 
-        status: z.string(), 
-        isNew: z.boolean() 
-      }))
+      .output(
+        z.object({
+          orderId: z.string(),
+          status: z.string(),
+          isNew: z.boolean(),
+        }),
+      )
       .event({
         type: 'user.created',
         payload: (response) => ({
@@ -189,7 +191,10 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
       publish: vi.fn().mockResolvedValue(undefined),
     };
 
-    const SharedEventsService: Service<'SharedEventsService', EventPublisher<TestEvent>> = {
+    const SharedEventsService: Service<
+      'SharedEventsService',
+      EventPublisher<TestEvent>
+    > = {
       serviceName: 'SharedEventsService' as const,
       register: vi.fn().mockResolvedValue(mockPublisher),
     };
@@ -203,9 +208,9 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
       .output(z.object({ orderId: z.string() }))
       .event({
         type: 'user.created',
-        payload: (response) => ({ 
-          userId: response.orderId, 
-          email: 'create@example.com' 
+        payload: (response) => ({
+          userId: response.orderId,
+          email: 'create@example.com',
         }),
       })
       .handle(async () => ({ orderId: 'create-order' }));
@@ -216,19 +221,26 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
       .output(z.object({ orderId: z.string() }))
       .event({
         type: 'user.updated',
-        payload: (response) => ({ 
-          userId: response.orderId, 
-          changes: ['status'] 
+        payload: (response) => ({
+          userId: response.orderId,
+          changes: ['status'],
         }),
       })
       .handle(async ({ params }) => ({ orderId: params.id }));
 
     // Both endpoints should have the shared publisher
-    expect(createEndpoint.publisherService?.serviceName).toBe('SharedEventsService');
-    expect(updateEndpoint.publisherService?.serviceName).toBe('SharedEventsService');
+    expect(createEndpoint.publisherService?.serviceName).toBe(
+      'SharedEventsService',
+    );
+    expect(updateEndpoint.publisherService?.serviceName).toBe(
+      'SharedEventsService',
+    );
 
     // Test create endpoint
-    const createAdapter = new AmazonApiGatewayV2Endpoint(envParser, createEndpoint);
+    const createAdapter = new AmazonApiGatewayV2Endpoint(
+      envParser,
+      createEndpoint,
+    );
     const createHandler = createAdapter.handler;
 
     const createEvent = createMockV2Event({
@@ -258,7 +270,10 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
     (SharedEventsService.register as any).mockResolvedValue(mockPublisher);
 
     // Test update endpoint
-    const updateAdapter = new AmazonApiGatewayV2Endpoint(envParser, updateEndpoint);
+    const updateAdapter = new AmazonApiGatewayV2Endpoint(
+      envParser,
+      updateEndpoint,
+    );
     const updateHandler = updateAdapter.handler;
 
     const updateEvent = createMockV2Event({

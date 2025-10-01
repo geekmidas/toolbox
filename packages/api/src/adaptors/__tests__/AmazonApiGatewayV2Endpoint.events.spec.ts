@@ -9,8 +9,11 @@ import type {
 } from '../../constructs/events';
 import type { Logger } from '../../logger';
 import type { Service } from '../../services';
+import {
+  createMockContext,
+  createMockV2Event,
+} from '../../testing/aws-test-helpers';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2Endpoint';
-import { createMockContext, createMockV2Event } from './aws-test-helpers';
 
 // Test event types
 type TestEvent =
@@ -718,5 +721,4 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
       },
     ]);
   });
-
 });

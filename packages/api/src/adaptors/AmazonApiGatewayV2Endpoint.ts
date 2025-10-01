@@ -7,13 +7,13 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import type { EventPublisher } from '../constructs/events';
 import type { Service } from '../services';
+import { parseQueryParams } from '../utils/parseQueryParams';
 import {
   AmazonApiGatewayEndpoint,
   type AmazonApiGatewayV2EndpointHandler,
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpoint';
-import { parseQueryParams } from './utils/parseQueryParams';
 
 export class AmazonApiGatewayV2Endpoint<
   TRoute extends string,
