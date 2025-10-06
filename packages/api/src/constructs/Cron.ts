@@ -37,6 +37,10 @@ export class Cron<
       logger,
     );
   }
+
+  get schedule(): ScheduleExpression | undefined {
+    return this._schedule;
+  }
 }
 
 export class CronBuilder<

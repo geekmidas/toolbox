@@ -63,7 +63,9 @@ export class Function<
   __IS_FUNCTION__ = true;
 
   static isFunction(obj: any): obj is Function<any, any, any, any, any> {
-    return obj && obj.__IS_FUNCTION__ === true;
+    return (
+      obj && obj.__IS_FUNCTION__ === true && obj.type === FunctionType.Function
+    );
   }
 
   /**

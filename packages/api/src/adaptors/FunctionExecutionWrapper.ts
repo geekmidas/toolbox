@@ -79,4 +79,11 @@ export abstract class FunctionExecutionWrapper<
       this.fn.publisherService,
     );
   }
+
+  async parseComposableStandardSchema<T extends ComposableStandardSchema>(
+    data: unknown,
+    schema: T,
+  ): Promise<InferComposableStandardSchema<T>> {
+    return FunctionBuilder.parseComposableStandardSchema(data, schema);
+  }
 }

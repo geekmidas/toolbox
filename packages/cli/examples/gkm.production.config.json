@@ -1,0 +1,27 @@
+{
+  "routes": "./src/endpoints/**/*.ts",
+  "functions": "./src/functions/**/*.ts",
+  "crons": "./src/crons/**/*.ts",
+  "envParser": "./src/env.ts#envParser",
+  "logger": "./src/logger.ts#logger",
+  "providers": {
+    "aws": {
+      "apiGateway": {
+        "v2": {
+          "enabled": true,
+          "outputDir": "dist/api-gateway"
+        }
+      },
+      "lambda": {
+        "functions": {
+          "enabled": true,
+          "outputDir": "dist/functions"
+        },
+        "crons": {
+          "enabled": true,
+          "outputDir": "dist/crons"
+        }
+      }
+    }
+  }
+}

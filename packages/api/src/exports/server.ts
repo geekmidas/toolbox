@@ -1,5 +1,7 @@
 export { e } from '../constructs/EndpointFactory.ts';
 export { Endpoint } from '../constructs/Endpoint.ts';
+export { Cron } from '../constructs/Cron.ts';
+export { Function } from '../constructs/Function.ts';
 export {
   type EventPublisher,
   type EventContext,

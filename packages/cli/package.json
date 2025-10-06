@@ -13,6 +13,8 @@
   "dependencies": {
     "commander": "~14.0.0",
     "lodash.get": "~4.4.2",
+    "lodash.snakecase": "~4.1.1",
+    "lodash.kebabcase": "~4.1.1",
     "lodash.set": "~4.3.2",
     "fast-glob": "~3.3.3"
   },
@@ -21,6 +23,8 @@
   },
   "devDependencies": {
     "@types/lodash.get": "~4.4.9",
-    "@types/lodash.set": "~4.3.9"
+    "@types/lodash.set": "~4.3.9",
+    "@types/lodash.snakecase": "~4.1.9",
+    "@types/lodash.kebabcase": "~4.1.9"
   }
 }
