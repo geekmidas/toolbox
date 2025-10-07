@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConsoleLogger, type Logger } from '../../logger';
+import { ConstructType } from '../Construct';
 import { Endpoint } from '../Endpoint';
 import { EndpointBuilder } from '../EndpointBuilder';
-import { FunctionType } from '../types';
 
 describe('EndpointBuilder', () => {
   describe('constructor', () => {
@@ -18,7 +18,7 @@ describe('EndpointBuilder', () => {
       const builder = new EndpointBuilder('/users', 'POST');
 
       // Access protected member through inheritance
-      expect((builder as any).type).toBe(FunctionType.Endpoint);
+      expect((builder as any).type).toBe(ConstructType.Endpoint);
     });
   });
 

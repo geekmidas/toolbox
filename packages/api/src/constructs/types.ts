@@ -26,12 +26,6 @@ export type RemoveUndefined<T> = {
   [K in keyof T as T[K] extends undefined ? never : K]: T[K];
 };
 
-export enum FunctionType {
-  Cron = 'dev.geekmidas.function.cron',
-  Endpoint = 'dev.geekmidas.function.endpoint',
-  Function = 'dev.geekmidas.function.function',
-}
-
 export type HttpMethod =
   | 'GET'
   | 'POST'

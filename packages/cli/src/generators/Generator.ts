@@ -1,46 +1,56 @@
-import { join, relative } from 'path';
+import { relative } from 'path';
+import type { Construct } from '@geekmidas/api/constructs';
 import fg from 'fast-glob';
-import { mkdir } from 'fs/promises';
-import kebabcase from 'lodash.kebabcase';
+import kebabCase from 'lodash.kebabcase';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, Routes } from '../types';
 
-export abstract class ConstructGenerator<T> {
+export interface GeneratorOptions {
+  provider?: LegacyProvider;
+  [key: string]: any;
+}
+
+export abstract class ConstructGenerator<
+  T extends Construct,
+  R = void,
+> {
   abstract isConstruct(value: any): value is T;
 
-  abstract buildConstruct(provider: LegacyProvider): Promise<string>;
-  abstract generateHandlerFile(
+  static async build<T extends Construct, R = void>(
     context: BuildContext,
-    construct: GeneratedConstruct<T>,
-  ): Promise<string>;
+    outputDir: string,
+    generator: ConstructGenerator<T, R>,
+    patterns?: Routes,
+    options?: GeneratorOptions,
+  ): Promise<R> {
+    const constructs = await generator.load(patterns);
+    return generator.build(context, constructs, outputDir, options);
+  }
 
-  async build(
+  abstract build(
     context: BuildContext,
     constructs: GeneratedConstruct<T>[],
     outputDir: string,
-  ): Promise<void> {
-    // For aws-lambda, create routes subdirectory
-    const routesDir = join(outputDir, 'routes');
-    await mkdir(routesDir, { recursive: true });
-  }
+    options?: GeneratorOptions,
+  ): Promise<R>;
 
   async load(patterns?: Routes): Promise<GeneratedConstruct<T>[]> {
     const logger = console;
 
     // Normalize patterns to array
-    const cronPatterns = Array.isArray(patterns)
+    const globPatterns = Array.isArray(patterns)
       ? patterns
       : patterns
         ? [patterns]
         : [];
 
-    // Find all cron files
-    const files = fg.stream(cronPatterns, {
+    // Find all files
+    const files = fg.stream(globPatterns, {
       cwd: process.cwd(),
       absolute: true,
     });
 
-    // Load crons
+    // Load constructs
     const constructs: GeneratedConstruct<T>[] = [];
 
     for await (const f of files) {
@@ -48,12 +58,12 @@ export abstract class ConstructGenerator<T> {
         const file = f.toString();
         const module = await import(file);
 
-        // Check all exports for crons
+        // Check all exports for constructs
         for (const [key, construct] of Object.entries(module)) {
           if (this.isConstruct(construct)) {
             constructs.push({
               key,
-              name: kebabcase(key),
+              name: kebabCase(key),
               construct,
               path: {
                 absolute: file,
@@ -65,7 +75,7 @@ export abstract class ConstructGenerator<T> {
       } catch (error) {
         logger.warn(`Failed to load ${f}:`, (error as Error).message);
         throw new Error(
-          'Failed to load crons. Please check the logs for details.',
+          'Failed to load constructs. Please check the logs for details.',
         );
       }
     }
@@ -74,7 +84,7 @@ export abstract class ConstructGenerator<T> {
   }
 }
 
-export interface GeneratedConstruct<T> {
+export interface GeneratedConstruct<T extends Construct> {
   key: string;
   name: string;
   construct: T;

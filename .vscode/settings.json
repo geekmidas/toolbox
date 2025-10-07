@@ -32,7 +32,9 @@
     "hoverkraft",
     "Insertable",
     "isready",
+    "kebabcase",
     "kysely",
+    "Millis",
     "openauth",
     "openauthjs",
     "ossp",
@@ -47,8 +49,7 @@
     "uuidv",
     "valibot",
     "wagerwars",
-    "wiseguylegion",
-    "Millis"
+    "wiseguylegion"
   ],
   "[json]": {
     "editor.defaultFormatter": "biomejs.biome"

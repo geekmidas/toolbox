@@ -7,13 +7,13 @@ import { TestFunctionAdaptor } from '../../adaptors/TestFunctionAdaptor';
 import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { createMockContext } from '../../testing/aws-test-helpers';
+import { ConstructType } from '../Construct';
 import {
   Function,
   FunctionBuilder,
   FunctionFactory,
   type FunctionHandler,
 } from '../Function';
-import { FunctionType } from '../types';
 
 // Mock service for testing
 class TestService implements Service<'TestService', TestService> {
@@ -93,7 +93,7 @@ describe('Function', () => {
       expect(fn).toBeDefined();
       expect(fn.__IS_FUNCTION__).toBe(true);
       expect(fn.timeout).toBe(30000); // Default timeout
-      expect(fn.type).toBe(FunctionType.Function);
+      expect(fn.type).toBe(ConstructType.Function);
     });
 
     it('should create a function with custom timeout', () => {
@@ -111,7 +111,7 @@ describe('Function', () => {
       const fn = new Function(
         handler,
         30000,
-        FunctionType.Function,
+        ConstructType.Function,
         inputSchema,
         outputSchema,
       );
@@ -236,7 +236,7 @@ describe('Function', () => {
     describe('builder methods', () => {
       it('should create a builder with default type', () => {
         const builder = new FunctionBuilder();
-        expect(builder.type).toBe(FunctionType.Function);
+        expect(builder.type).toBe(ConstructType.Function);
       });
 
       it('should add services', () => {

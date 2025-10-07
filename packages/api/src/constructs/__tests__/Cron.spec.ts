@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
+import { ConstructType } from '../Construct';
 import {
   Cron,
   CronBuilder,
   type CronExpression,
   type RateExpression,
 } from '../Cron';
-import { FunctionType } from '../types';
 
 // Mock service for testing
 class MockService implements Service<'MockService', MockService> {
@@ -30,7 +30,7 @@ describe('Cron', () => {
       const cron = new Cron(handler);
 
       expect(cron).toBeInstanceOf(Cron);
-      expect(cron.type).toBe(FunctionType.Cron);
+      expect(cron.type).toBe(ConstructType.Cron);
       expect(cron.timeout).toBe(30000); // Default timeout
       // The handler is stored in the protected fn property
     });
@@ -49,7 +49,7 @@ describe('Cron', () => {
       const cron = new Cron(handler, undefined, schedule);
 
       expect(cron).toBeInstanceOf(Cron);
-      expect(cron.type).toBe(FunctionType.Cron);
+      expect(cron.type).toBe(ConstructType.Cron);
       // Schedule is protected, so we can't directly test it, but it should be set
     });
 
@@ -162,7 +162,7 @@ describe('Cron', () => {
       );
 
       expect(cron).toBeInstanceOf(Cron);
-      expect(cron.type).toBe(FunctionType.Cron);
+      expect(cron.type).toBe(ConstructType.Cron);
       expect(cron.timeout).toBe(timeout);
       expect(cron.input).toBe(inputSchema);
       expect(cron.outputSchema).toBe(outputSchema);
@@ -197,7 +197,7 @@ describe('Cron', () => {
     it('should return false for objects with __IS_FUNCTION__ but wrong type', () => {
       const fakeFunction = {
         __IS_FUNCTION__: true,
-        type: FunctionType.Function,
+        type: ConstructType.Function,
       };
       expect(Cron.isCron(fakeFunction)).toBe(false);
     });
@@ -224,7 +224,7 @@ describe('Cron', () => {
       const cron = builder.handle(handler);
 
       expect(cron).toBeInstanceOf(Cron);
-      expect(cron.type).toBe(FunctionType.Cron);
+      expect(cron.type).toBe(ConstructType.Cron);
     });
 
     it('should build Cron with full builder chain', () => {
@@ -248,7 +248,7 @@ describe('Cron', () => {
         .handle(handler);
 
       expect(cron).toBeInstanceOf(Cron);
-      expect(cron.type).toBe(FunctionType.Cron);
+      expect(cron.type).toBe(ConstructType.Cron);
       expect(cron.timeout).toBe(45000);
       expect(cron.input).toBe(inputSchema);
       expect(cron.outputSchema).toBe(outputSchema);

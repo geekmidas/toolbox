@@ -1,66 +1,65 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Cron } from '@geekmidas/api/constructs';
+import { Function } from '@geekmidas/api/constructs';
 import type { BuildContext } from '../build/types';
-import type { CronInfo } from '../types';
+import type { FunctionInfo } from '../types';
 import {
   ConstructGenerator,
   type GeneratedConstruct,
   type GeneratorOptions,
 } from './Generator';
 
-export class CronGenerator extends ConstructGenerator<
-  Cron<any, any, any, any>,
-  CronInfo[]
+export class FunctionGenerator extends ConstructGenerator<
+  Function<any, any, any, any>,
+  FunctionInfo[]
 > {
+  isConstruct(value: any): value is Function<any, any, any, any> {
+    return Function.isFunction(value);
+  }
+
   async build(
     context: BuildContext,
-    constructs: GeneratedConstruct<Cron<any, any, any, any>>[],
+    constructs: GeneratedConstruct<Function<any, any, any, any>>[],
     outputDir: string,
     options?: GeneratorOptions,
-  ): Promise<CronInfo[]> {
+  ): Promise<FunctionInfo[]> {
     const provider = options?.provider || 'aws-lambda';
     const logger = console;
-    const cronInfos: CronInfo[] = [];
+    const functionInfos: FunctionInfo[] = [];
 
     if (constructs.length === 0 || provider !== 'aws-lambda') {
-      return cronInfos;
+      return functionInfos;
     }
 
-    // Create crons subdirectory
-    const cronsDir = join(outputDir, 'crons');
-    await mkdir(cronsDir, { recursive: true });
+    // Create functions subdirectory
+    const functionsDir = join(outputDir, 'functions');
+    await mkdir(functionsDir, { recursive: true });
 
-    // Generate cron handlers
+    // Generate function handlers
     for (const { key, construct, path } of constructs) {
-      const handlerFile = await this.generateCronHandler(
-        cronsDir,
+      const handlerFile = await this.generateFunctionHandler(
+        functionsDir,
         path.relative,
         key,
         context,
       );
 
-      cronInfos.push({
+      functionInfos.push({
         name: key,
         handler: relative(process.cwd(), handlerFile).replace(
           /\.ts$/,
           '.handler',
         ),
-        schedule: construct.schedule || 'rate(1 hour)',
         timeout: construct.timeout,
       });
 
-      logger.log(`Generated cron handler: ${key}`);
+      logger.log(`Generated function handler: ${key}`);
     }
 
-    return cronInfos;
+    return functionInfos;
   }
 
-  isConstruct(value: any): value is Cron<any, any, any, any> {
-    return Cron.isCron(value);
-  }
-
-  private async generateCronHandler(
+  private async generateFunctionHandler(
     outputDir: string,
     sourceFile: string,
     exportName: string,
@@ -81,12 +80,12 @@ export class CronGenerator extends ConstructGenerator<
       context.loggerPath,
     );
 
-    const content = `import { AWSScheduledFunction } from '@geekmidas/api/aws-lambda';
+    const content = `import { AWSLambdaFunction } from '@geekmidas/api/aws-lambda';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 
-const adapter = new AWSScheduledFunction(envParser, ${exportName});
+const adapter = new AWSLambdaFunction(envParser, ${exportName});
 
 export const handler = adapter.handler;
 `;
