@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'path';
 import { loadFunctions } from '../loadFunctions';
-import type { LegacyProvider, FunctionInfo } from '../types';
+import type { FunctionInfo, LegacyProvider } from '../types';
 import type { BuildContext, ProcessedFunction } from './types';
 
 const logger = console;

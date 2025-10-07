@@ -10,7 +10,11 @@ export const f = new FunctionBuilder();
  */
 export const functionFactory = new FunctionFactory([]);
 
-export { Function, FunctionBuilder, FunctionFactory } from '../constructs/Function';
+export {
+  Function,
+  FunctionBuilder,
+  FunctionFactory,
+} from '../constructs/Function';
 export type {
   FunctionHandler,
   FunctionContext,

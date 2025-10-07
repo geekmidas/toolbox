@@ -1,13 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import { join, relative } from 'path';
 import type {
+  CronInfo,
+  CronsManifest,
+  FunctionInfo,
+  FunctionsManifest,
   LegacyProvider,
   RouteInfo,
-  FunctionInfo,
-  CronInfo,
   RoutesManifest,
-  FunctionsManifest,
-  CronsManifest,
 } from '../types';
 
 const logger = console;

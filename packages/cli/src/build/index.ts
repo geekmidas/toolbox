@@ -2,21 +2,21 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'path';
 import { loadConfig } from '../config';
 import type { BuildOptions, LegacyProvider } from '../types';
-import type { BuildContext } from './types';
-import { processEndpoints, buildEndpoints } from './endpoints';
-import { processFunctions, buildFunctions } from './functions';
-import { processCrons, buildCrons } from './crons';
+import { buildCrons, processCrons } from './crons';
+import { buildEndpoints, processEndpoints } from './endpoints';
+import { buildFunctions, processFunctions } from './functions';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';
+import type { BuildContext } from './types';
 
 const logger = console;
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
   const config = await loadConfig();
-  
+
   // Resolve providers from new config format
   const resolved = resolveProviders(config, options);
-  
+
   logger.log(`Building with providers: ${resolved.providers.join(', ')}`);
   logger.log(`Loading routes from: ${config.routes}`);
   if (config.functions) {
@@ -104,5 +104,11 @@ async function buildForProvider(
   ]);
 
   // Generate manifests
-  await generateManifests(provider, outputDir, routes, functionInfos, cronInfos);
+  await generateManifests(
+    provider,
+    outputDir,
+    routes,
+    functionInfos,
+    cronInfos,
+  );
 }

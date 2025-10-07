@@ -384,7 +384,7 @@ describe('TypedFetcher', () => {
       }
       return new Response('Not found', { status: 404 });
     }) as typeof fetch;
-    
+
     const client = createTypedFetcher<paths>({
       baseURL: 'https://api.example.com',
       fetch: mockFetch,

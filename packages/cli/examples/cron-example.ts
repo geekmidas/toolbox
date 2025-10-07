@@ -1,5 +1,4 @@
 import { cron } from '@geekmidas/api/cron';
-import { z } from 'zod';
 
 /**
  * Example cron that generates a daily report at 9 AM UTC
@@ -11,12 +10,12 @@ export const dailyReport = cron
     logger.info('Generating daily report');
 
     const reportDate = new Date().toISOString().split('T')[0];
-    
+
     // Generate report logic here
     const reportData = {
       date: reportDate,
       totalOrders: 150,
-      totalRevenue: 12500.00,
+      totalRevenue: 12500.0,
       topProducts: [
         { id: 'prod-1', name: 'Widget A', sales: 45 },
         { id: 'prod-2', name: 'Widget B', sales: 32 },
@@ -24,7 +23,7 @@ export const dailyReport = cron
     };
 
     logger.info('Daily report generated', reportData);
-    
+
     return reportData;
   });
 
@@ -39,8 +38,8 @@ export const hourlyCleanup = cron
 
     // Cleanup logic here
     const itemsCleaned = 42;
-    
+
     logger.info(`Cleaned ${itemsCleaned} items`);
-    
+
     return { itemsCleaned };
   });

@@ -1,4 +1,8 @@
-export { Function, FunctionBuilder, FunctionFactory } from '../constructs/Function';
+export {
+  Function,
+  FunctionBuilder,
+  FunctionFactory,
+} from '../constructs/Function';
 export type {
   FunctionHandler,
   FunctionContext,
@@ -11,4 +15,4 @@ export type {
   RateExpression,
 } from '../constructs/Cron';
 
-export { FunctionType } from '../constructs/types';
+export { Construct, ConstructType } from '../constructs/Construct';

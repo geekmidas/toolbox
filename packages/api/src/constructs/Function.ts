@@ -5,12 +5,12 @@ import { ConsoleLogger, type Logger } from '../logger.ts';
 import type { Service, ServiceRecord } from '../services.ts';
 
 import { UnprocessableEntityError } from '../errors.ts';
+import { type Construct, ConstructType } from './Construct.ts';
 import type { EventPublisher, MappedEvent } from './events.ts';
-import {
-  type ComposableStandardSchema,
-  FunctionType,
-  type InferComposableStandardSchema,
-  type InferStandardSchema,
+import type {
+  ComposableStandardSchema,
+  InferComposableStandardSchema,
+  InferStandardSchema,
 } from './types.ts';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
@@ -59,12 +59,13 @@ export class Function<
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
-> {
+> implements Construct
+{
   __IS_FUNCTION__ = true;
 
   static isFunction(obj: any): obj is Function<any, any, any, any, any> {
     return (
-      obj && obj.__IS_FUNCTION__ === true && obj.type === FunctionType.Function
+      obj && obj.__IS_FUNCTION__ === true && obj.type === ConstructType.Function
     );
   }
 
@@ -123,7 +124,7 @@ export class Function<
   constructor(
     protected readonly fn: Fn,
     readonly timeout = 30000, // Default timeout of 30 seconds
-    public readonly type = FunctionType.Function,
+    public readonly type = ConstructType.Function,
     public input?: TInput,
     public outputSchema?: OutSchema,
     public services: TServices = [] as Service[] as TServices,
@@ -189,7 +190,7 @@ export class FunctionBuilder<
     return result as InferComposableStandardSchema<T>;
   }
 
-  constructor(public type = FunctionType.Function) {}
+  constructor(public type = ConstructType.Function) {}
 
   services<T extends Service[]>(
     services: T,

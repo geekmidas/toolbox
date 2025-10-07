@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'path';
 import { loadCrons } from '../loadCrons';
-import type { LegacyProvider, CronInfo } from '../types';
+import type { CronInfo, LegacyProvider } from '../types';
 import type { BuildContext, ProcessedCron } from './types';
 
 const logger = console;
@@ -59,14 +59,11 @@ export async function processCrons(
 
   const loadedCrons = await loadCrons(cronPatterns);
 
-  return loadedCrons.map(({ name, cron, file, schedule }) => {
-    logger.log(`Found cron: ${name} - ${schedule || 'no schedule'}`);
-
+  return loadedCrons.map(({ name, cron, file }) => {
     return {
       file: relative(process.cwd(), file),
       exportName: name,
       cron,
-      schedule,
     };
   });
 }

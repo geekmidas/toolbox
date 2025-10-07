@@ -65,9 +65,7 @@ export async function buildEndpoints(
         ),
       });
 
-      logger.log(
-        `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-      );
+      logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
     }
   } else {
     // Generate individual handler files for AWS API Gateway providers
@@ -90,9 +88,7 @@ export async function buildEndpoints(
         ),
       });
 
-      logger.log(
-        `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-      );
+      logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
     }
   }
 
@@ -158,10 +154,7 @@ export const handler = adapter.handler;
 `;
 }
 
-function generateServerHandler(
-  importPath: string,
-  exportName: string,
-): string {
+function generateServerHandler(importPath: string, exportName: string): string {
   return `import { ${exportName} } from '${importPath}';
 
 // Server handler - implement based on your server framework

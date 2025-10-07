@@ -1,5 +1,9 @@
 export type MainProvider = 'aws' | 'server';
-export type LegacyProvider = 'server' | 'aws-apigatewayv1' | 'aws-apigatewayv2' | 'aws-lambda';
+export type LegacyProvider =
+  | 'server'
+  | 'aws-apigatewayv1'
+  | 'aws-apigatewayv2'
+  | 'aws-lambda';
 
 export type Routes = string | string[];
 

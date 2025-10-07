@@ -3,7 +3,6 @@ import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler, ScheduledEvent } from 'aws-lambda';
 import type { Cron } from '../constructs/Cron';
-import type { FunctionHandler } from '../constructs/Function';
 import type { EventPublisher } from '../constructs/events';
 import type {
   ComposableStandardSchema,
@@ -56,7 +55,14 @@ export class AWSScheduledFunction<
 > {
   constructor(
     envParser: EnvironmentParser<{}>,
-    readonly cron: Cron<TInput, TServices, TLogger, TOutSchema>,
+    readonly cron: Cron<
+      TInput,
+      TServices,
+      TLogger,
+      TOutSchema,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >,
   ) {
     super(envParser, cron);
   }
@@ -80,11 +86,10 @@ export class AWSScheduledFunction<
           // For scheduled events, we might want to parse the input from event.detail
           // or use a default input if no schema is provided
           if (this.fn.input && req.event.detail) {
-            const parsedInput =
-              await this.parseComposableStandardSchema(
-                req.event.detail,
-                this.fn.input,
-              );
+            const parsedInput = await this.parseComposableStandardSchema(
+              req.event.detail,
+              this.fn.input,
+            );
 
             req.event.parsedInput =
               parsedInput as InferComposableStandardSchema<TInput>;

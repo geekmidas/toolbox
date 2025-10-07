@@ -6,6 +6,7 @@ import type { Logger } from '../logger';
 import type { RateLimitConfig } from '../rate-limit';
 
 import type { Service, ServiceRecord } from '../services';
+import { ConstructType } from './Construct';
 import {
   Function,
   type FunctionContext,
@@ -25,13 +26,12 @@ import {
   type OpenApiSchemaOptions,
   buildOpenApiSchema,
 } from './openapi';
-import {
-  FunctionType,
-  type HttpMethod,
-  type InferComposableStandardSchema,
-  type InferStandardSchema,
-  type LowerHttpMethod,
-  type RemoveUndefined,
+import type {
+  HttpMethod,
+  InferComposableStandardSchema,
+  InferStandardSchema,
+  LowerHttpMethod,
+  RemoveUndefined,
 } from './types';
 
 /**
@@ -129,8 +129,6 @@ export class Endpoint<
   get fullPath() {
     return `${this.method} ${this._path}` as const;
   }
-
- 
 
   /**
    * Parses and validates input data for a specific input type (body, query, params).
@@ -230,7 +228,7 @@ export class Endpoint<
     return (
       obj &&
       (obj as Function).__IS_FUNCTION__ === true &&
-      obj.type === FunctionType.Endpoint
+      obj.type === ConstructType.Endpoint
     );
   }
 
@@ -418,7 +416,7 @@ export class Endpoint<
     super(
       fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
       timeout,
-      FunctionType.Endpoint,
+      ConstructType.Endpoint,
       input,
       outputSchema,
       services,

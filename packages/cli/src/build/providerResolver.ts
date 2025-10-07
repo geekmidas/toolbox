@@ -1,12 +1,12 @@
-import type { 
-  MainProvider, 
-  LegacyProvider, 
-  BuildOptions, 
-  GkmConfig,
-  ProvidersConfig,
+import type {
   AWSApiGatewayConfig,
   AWSLambdaConfig,
-  ServerConfig 
+  BuildOptions,
+  GkmConfig,
+  LegacyProvider,
+  MainProvider,
+  ProvidersConfig,
+  ServerConfig,
 } from '../types';
 
 export interface ResolvedProviders {
@@ -68,7 +68,7 @@ function resolveMainProvider(
 
   if (mainProvider === 'aws') {
     const awsConfig = providersConfig?.aws;
-    
+
     // Resolve API Gateway providers
     if (awsConfig?.apiGateway) {
       if (isEnabled(awsConfig.apiGateway.v1)) {
@@ -84,7 +84,10 @@ function resolveMainProvider(
 
     // Resolve Lambda providers
     if (awsConfig?.lambda) {
-      if (isEnabled(awsConfig.lambda.functions) || isEnabled(awsConfig.lambda.crons)) {
+      if (
+        isEnabled(awsConfig.lambda.functions) ||
+        isEnabled(awsConfig.lambda.crons)
+      ) {
         providers.push('aws-lambda');
       }
     } else {
@@ -94,7 +97,7 @@ function resolveMainProvider(
   } else if (mainProvider === 'server') {
     providers.push('server');
     const serverConfig = providersConfig?.server;
-    
+
     if (typeof serverConfig === 'object' && serverConfig?.enableOpenApi) {
       enableOpenApi = true;
     }
@@ -118,7 +121,10 @@ function resolveAllConfiguredProviders(
   // Server provider
   if (providersConfig.server && isEnabled(providersConfig.server)) {
     providers.push('server');
-    if (typeof providersConfig.server === 'object' && providersConfig.server.enableOpenApi) {
+    if (
+      typeof providersConfig.server === 'object' &&
+      providersConfig.server.enableOpenApi
+    ) {
       enableOpenApi = true;
     }
   }
@@ -126,7 +132,14 @@ function resolveAllConfiguredProviders(
   return { providers, enableOpenApi };
 }
 
-function isEnabled(config: boolean | AWSApiGatewayConfig | AWSLambdaConfig | ServerConfig | undefined): boolean {
+function isEnabled(
+  config:
+    | boolean
+    | AWSApiGatewayConfig
+    | AWSLambdaConfig
+    | ServerConfig
+    | undefined,
+): boolean {
   if (config === undefined) return false;
   if (typeof config === 'boolean') return config;
   return config.enabled !== false; // Default to true if enabled is not explicitly false
@@ -135,7 +148,9 @@ function isEnabled(config: boolean | AWSApiGatewayConfig | AWSLambdaConfig | Ser
 /**
  * Gets configuration for a specific AWS service
  */
-export function getAWSServiceConfig<T extends AWSApiGatewayConfig | AWSLambdaConfig>(
+export function getAWSServiceConfig<
+  T extends AWSApiGatewayConfig | AWSLambdaConfig,
+>(
   config: GkmConfig,
   service: 'apiGateway' | 'lambda',
   subService?: 'v1' | 'v2' | 'functions' | 'crons',
@@ -144,12 +159,16 @@ export function getAWSServiceConfig<T extends AWSApiGatewayConfig | AWSLambdaCon
   if (!awsConfig) return undefined;
 
   if (service === 'apiGateway' && awsConfig.apiGateway) {
-    const apiConfig = subService ? awsConfig.apiGateway[subService as 'v1' | 'v2'] : undefined;
+    const apiConfig = subService
+      ? awsConfig.apiGateway[subService as 'v1' | 'v2']
+      : undefined;
     return typeof apiConfig === 'object' ? (apiConfig as T) : undefined;
   }
 
   if (service === 'lambda' && awsConfig.lambda) {
-    const lambdaConfig = subService ? awsConfig.lambda[subService as 'functions' | 'crons'] : undefined;
+    const lambdaConfig = subService
+      ? awsConfig.lambda[subService as 'functions' | 'crons']
+      : undefined;
     return typeof lambdaConfig === 'object' ? (lambdaConfig as T) : undefined;
   }
 

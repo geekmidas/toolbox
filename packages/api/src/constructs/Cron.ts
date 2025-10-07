@@ -1,20 +1,32 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
 import type { Service } from '../services';
+import { ConstructType } from './Construct';
 import { Function, FunctionBuilder, type FunctionHandler } from './Function';
-import { type ComposableStandardSchema, FunctionType } from './types';
+import type { EventPublisher } from './events';
+import type { ComposableStandardSchema } from './types';
 
 export class Cron<
-  TInput extends ComposableStandardSchema,
+  TInput extends ComposableStandardSchema | undefined = undefined,
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
-> extends Function<TInput, TServices, TLogger, OutSchema> {
+  TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
+> extends Function<
+  TInput,
+  TServices,
+  TLogger,
+  OutSchema,
+  FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+  TEventPublisher,
+  TEventPublisherServiceName
+> {
   static isCron(obj: any): obj is Cron<any, any, any, any> {
     return (
       obj &&
       (obj as Function).__IS_FUNCTION__ === true &&
-      obj.type === FunctionType.Cron
+      obj.type === ConstructType.Cron
     );
   }
 
@@ -30,7 +42,7 @@ export class Cron<
     super(
       fn,
       timeout,
-      FunctionType.Cron,
+      ConstructType.Cron,
       input,
       outputSchema,
       services,
@@ -51,7 +63,7 @@ export class CronBuilder<
 > extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
   private _schedule?: ScheduleExpression;
   constructor() {
-    super(FunctionType.Cron);
+    super(ConstructType.Cron);
   }
 
   schedule(

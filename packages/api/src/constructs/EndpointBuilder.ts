@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
 import type { RateLimitConfig } from '../rate-limit';
 import type { Service } from '../services';
+import { ConstructType } from './Construct';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
   AuthorizeFn,
@@ -11,7 +12,7 @@ import type {
 } from './Endpoint';
 import { FunctionBuilder } from './Function';
 import type { EventPublisher, MappedEvent } from './events';
-import { FunctionType, type HttpMethod } from './types';
+import type { HttpMethod } from './types';
 
 export class EndpointBuilder<
   TRoute extends string,
@@ -44,11 +45,13 @@ export class EndpointBuilder<
     readonly route: TRoute,
     readonly method: TMethod,
   ) {
-    super(FunctionType.Endpoint);
+    super(ConstructType.Endpoint);
   }
 
   // Internal setter for EndpointFactory to set default publisher
-  _setPublisher(publisher: Service<TEventPublisherServiceName, TEventPublisher>) {
+  _setPublisher(
+    publisher: Service<TEventPublisherServiceName, TEventPublisher>,
+  ) {
     this._publisher = publisher;
   }
 

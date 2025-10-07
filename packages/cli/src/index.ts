@@ -5,7 +5,7 @@ import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index.ts';
 import { generateReactQueryCommand } from './openapi-react-query.ts';
 import { openapiCommand } from './openapi.ts';
-import type { MainProvider, LegacyProvider } from './types.ts';
+import type { LegacyProvider, MainProvider } from './types.ts';
 
 const program = new Command();
 
@@ -30,50 +30,56 @@ program
     '--enable-openapi',
     'Enable OpenAPI documentation generation for server builds',
   )
-  .action(async (options: { 
-    provider?: string; 
-    providers?: string; 
-    enableOpenapi?: boolean;
-  }) => {
-    try {
-      const globalOptions = program.opts();
-      if (globalOptions.cwd) {
-        process.chdir(globalOptions.cwd);
-      }
-
-      // Handle new single provider option
-      if (options.provider) {
-        if (!['aws', 'server'].includes(options.provider)) {
-          console.error(`Invalid provider: ${options.provider}. Must be 'aws' or 'server'.`);
-          process.exit(1);
+  .action(
+    async (options: {
+      provider?: string;
+      providers?: string;
+      enableOpenapi?: boolean;
+    }) => {
+      try {
+        const globalOptions = program.opts();
+        if (globalOptions.cwd) {
+          process.chdir(globalOptions.cwd);
         }
-        await buildCommand({
-          provider: options.provider as MainProvider,
-          enableOpenApi: options.enableOpenapi || false,
-        });
+
+        // Handle new single provider option
+        if (options.provider) {
+          if (!['aws', 'server'].includes(options.provider)) {
+            console.error(
+              `Invalid provider: ${options.provider}. Must be 'aws' or 'server'.`,
+            );
+            process.exit(1);
+          }
+          await buildCommand({
+            provider: options.provider as MainProvider,
+            enableOpenApi: options.enableOpenapi || false,
+          });
+        }
+        // Handle legacy providers option
+        else if (options.providers) {
+          console.warn(
+            '⚠️  --providers flag is deprecated. Use --provider instead.',
+          );
+          const providerList = [
+            ...new Set(options.providers.split(',').map((p) => p.trim())),
+          ] as LegacyProvider[];
+          await buildCommand({
+            providers: providerList,
+            enableOpenApi: options.enableOpenapi || false,
+          });
+        }
+        // Default to config-driven build
+        else {
+          await buildCommand({
+            enableOpenApi: options.enableOpenapi || false,
+          });
+        }
+      } catch (error) {
+        console.error('Build failed:', (error as Error).message);
+        process.exit(1);
       }
-      // Handle legacy providers option
-      else if (options.providers) {
-        console.warn('⚠️  --providers flag is deprecated. Use --provider instead.');
-        const providerList = [
-          ...new Set(options.providers.split(',').map((p) => p.trim())),
-        ] as LegacyProvider[];
-        await buildCommand({
-          providers: providerList,
-          enableOpenApi: options.enableOpenapi || false,
-        });
-      }
-      // Default to config-driven build
-      else {
-        await buildCommand({
-          enableOpenApi: options.enableOpenapi || false,
-        });
-      }
-    } catch (error) {
-      console.error('Build failed:', (error as Error).message);
-      process.exit(1);
-    }
-  });
+    },
+  );
 
 program
   .command('cron')
