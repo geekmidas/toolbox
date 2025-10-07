@@ -230,6 +230,9 @@ importers:
       '@geekmidas/api':
         specifier: workspace:*
         version: link:../api
+      lodash.snakecase:
+        specifier: ~4.1.1
+        version: 4.1.1
     devDependencies:
       '@types/lodash.get':
         specifier: ~4.4.9
@@ -237,6 +240,9 @@ importers:
       '@types/lodash.set':
         specifier: ~4.3.9
         version: 4.3.9
+      '@types/lodash.snakecase':
+        specifier: ~4.1.9
+        version: 4.1.9
 
   packages/db:
     dependencies:
@@ -8793,9 +8799,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
