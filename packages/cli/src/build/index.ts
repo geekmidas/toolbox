@@ -1,10 +1,15 @@
 import { mkdir } from 'node:fs/promises';
-import { join } from 'path';
+import { join } from 'node:path';
+import type { Cron, Function } from '@geekmidas/api/constructs';
+import type { Endpoint } from '@geekmidas/api/server';
 import { loadConfig } from '../config';
+import {
+  CronGenerator,
+  EndpointGenerator,
+  FunctionGenerator,
+  type GeneratedConstruct,
+} from '../generators';
 import type { BuildOptions, LegacyProvider } from '../types';
-import { buildCrons, processCrons } from './crons';
-import { buildEndpoints, processEndpoints } from './endpoints';
-import { buildFunctions, processFunctions } from './functions';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';
@@ -50,12 +55,21 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     loggerImportPattern,
   };
 
-  // Process all constructs in parallel
+  // Initialize generators
+  const endpointGenerator = new EndpointGenerator();
+  const functionGenerator = new FunctionGenerator();
+  const cronGenerator = new CronGenerator();
+
+  // Load all constructs in parallel
   const [allEndpoints, allFunctions, allCrons] = await Promise.all([
-    processEndpoints(config.routes),
-    processFunctions(config.functions),
-    processCrons(config.crons),
+    endpointGenerator.load(config.routes),
+    config.functions ? functionGenerator.load(config.functions) : [],
+    config.crons ? cronGenerator.load(config.crons) : [],
   ]);
+
+  logger.log(`Found ${allEndpoints.length} endpoints`);
+  logger.log(`Found ${allFunctions.length} functions`);
+  logger.log(`Found ${allCrons.length} crons`);
 
   if (
     allEndpoints.length === 0 &&
@@ -72,6 +86,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       buildForProvider(
         provider,
         buildContext,
+        endpointGenerator,
+        functionGenerator,
+        cronGenerator,
         allEndpoints,
         allFunctions,
         allCrons,
@@ -84,9 +101,12 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 async function buildForProvider(
   provider: LegacyProvider,
   context: BuildContext,
-  endpoints: Awaited<ReturnType<typeof processEndpoints>>,
-  functions: Awaited<ReturnType<typeof processFunctions>>,
-  crons: Awaited<ReturnType<typeof processCrons>>,
+  endpointGenerator: EndpointGenerator,
+  functionGenerator: FunctionGenerator,
+  cronGenerator: CronGenerator,
+  endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
+  functions: GeneratedConstruct<Function<any, any, any, any>>[],
+  crons: GeneratedConstruct<Cron<any, any, any, any>>[],
   enableOpenApi: boolean,
 ): Promise<void> {
   const outputDir = join(process.cwd(), '.gkm', provider);
@@ -98,9 +118,12 @@ async function buildForProvider(
 
   // Build all constructs in parallel
   const [routes, functionInfos, cronInfos] = await Promise.all([
-    buildEndpoints(provider, outputDir, endpoints, context, enableOpenApi),
-    buildFunctions(provider, outputDir, functions, context),
-    buildCrons(provider, outputDir, crons, context),
+    endpointGenerator.build(context, endpoints, outputDir, {
+      provider,
+      enableOpenApi,
+    }),
+    functionGenerator.build(context, functions, outputDir, { provider }),
+    cronGenerator.build(context, crons, outputDir, { provider }),
   ]);
 
   // Generate manifests

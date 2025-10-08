@@ -32,13 +32,15 @@ describe('FunctionGenerator', () => {
       // Import the actual FunctionBuilder to create a real Function instance
       const { FunctionBuilder } = await import('@geekmidas/api/constructs');
       const { z } = await import('zod');
-      
+
       const testFunction = new FunctionBuilder()
         .input(z.object({ name: z.string() }))
         .output(z.object({ greeting: z.string() }))
         .timeout(30)
-        .handle(async ({ input }: any) => ({ greeting: `Hello, ${input.name}!` }));
-      
+        .handle(async ({ input }: any) => ({
+          greeting: `Hello, ${input.name}!`,
+        }));
+
       expect(generator.isConstruct(testFunction)).toBe(true);
     });
 
@@ -138,9 +140,11 @@ describe('FunctionGenerator', () => {
         const handlerContent = await readFile(handlerPath, 'utf-8');
 
         // Check relative imports are correct - the path will be relative from outputDir
-        expect(handlerContent).toMatch(/from ['"].*src\/functions\/deep\/processor\.js['"]/);
+        expect(handlerContent).toMatch(
+          /from ['"].*src\/functions\/deep\/processor\.js['"]/,
+        );
         expect(handlerContent).toMatch(/from ['"].*\/env['"]/);
-        expect(handlerContent).toMatch(/from ['"].*\/logger['"]/);  
+        expect(handlerContent).toMatch(/from ['"].*\/logger['"]/);
       });
 
       it('should log generation progress', async () => {

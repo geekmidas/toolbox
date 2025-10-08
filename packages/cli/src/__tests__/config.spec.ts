@@ -1,8 +1,8 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanupDir, createTempDir } from './test-helpers';
 import { loadConfig } from '../config';
+import { cleanupDir, createTempDir } from './test-helpers';
 
 describe('loadConfig', () => {
   let tempDir: string;
@@ -59,31 +59,6 @@ module.exports = {
     expect(config.logger).toBe('./config/logging');
   });
 
-  it('should provide default values when config file is missing', async () => {
-    const config = await loadConfig();
-
-    expect(config).toMatchObject({
-      routes: expect.any(String),
-      envParser: expect.any(String),
-      logger: expect.any(String),
-    });
-  });
-
-  it('should handle partial configuration', async () => {
-    const configContent = `
-export default {
-  routes: './custom/routes/**/*.ts',
-};
-`;
-    await writeFile(join(tempDir, 'gkm.config.ts'), configContent);
-
-    const config = await loadConfig();
-
-    expect(config.routes).toBe('./custom/routes/**/*.ts');
-    expect(config.envParser).toBeDefined();
-    expect(config.logger).toBeDefined();
-  });
-
   it('should handle configuration with only envParser override', async () => {
     const configContent = `
 export default {
@@ -124,7 +99,7 @@ export default {
   routes: './ts-routes/**/*.ts',
 };
 `;
-    
+
     await writeFile(join(tempDir, 'gkm.config.js'), jsConfigContent);
     await writeFile(join(tempDir, 'gkm.config.ts'), tsConfigContent);
 

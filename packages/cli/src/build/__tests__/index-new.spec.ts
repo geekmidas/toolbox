@@ -8,7 +8,7 @@ import {
   createMockFunctionFile,
   createTestFile,
 } from '../../__tests__/test-helpers';
-import { buildCommand } from '../index-new';
+import { buildCommand } from '../index';
 
 describe('buildCommand', () => {
   itWithDir(

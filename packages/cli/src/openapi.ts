@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Endpoint } from '@geekmidas/api/server';
 import { loadConfig } from './config.js';
-import { loadEndpoints } from './loadEndpoints.js';
+import { EndpointGenerator } from './generators/EndpointGenerator.js';
 
 interface OpenAPIOptions {
   output?: string;
@@ -18,9 +18,10 @@ export async function openapiCommand(
   try {
     // Load config using existing function
     const config = await loadConfig();
+    const generator = new EndpointGenerator();
 
     // Load all endpoints using the refactored function
-    const loadedEndpoints = await loadEndpoints(config.routes);
+    const loadedEndpoints = await generator.load(config.routes);
 
     if (loadedEndpoints.length === 0) {
       logger.log('No valid endpoints found');
@@ -28,7 +29,7 @@ export async function openapiCommand(
     }
 
     // Extract just the endpoint instances for OpenAPI generation
-    const endpoints = loadedEndpoints.map(({ endpoint }) => endpoint);
+    const endpoints = loadedEndpoints.map(({ construct }) => construct);
 
     // Generate OpenAPI spec using built-in method
     const spec = await Endpoint.buildOpenApiSchema(endpoints, {

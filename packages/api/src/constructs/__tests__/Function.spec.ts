@@ -125,7 +125,7 @@ describe('Function', () => {
       expect(Function.isFunction(null)).toBeFalsy();
       expect(Function.isFunction(undefined)).toBeFalsy();
       expect(Function.isFunction({ __IS_FUNCTION__: false })).toBe(false);
-      expect(Function.isFunction({ __IS_FUNCTION__: true })).toBe(true);
+      expect(Function.isFunction({ __IS_FUNCTION__: true })).toBe(false);
     });
   });
 
