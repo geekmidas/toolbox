@@ -10,7 +10,7 @@ import type {
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
-import { FunctionBuilder } from './Function';
+import { FunctionBuilder } from './FunctionBuilder';
 import type { EventPublisher, MappedEvent } from './events';
 import type { HttpMethod } from './types';
 
@@ -39,7 +39,6 @@ export class EndpointBuilder<
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
-  private _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 
   constructor(
     readonly route: TRoute,
@@ -75,84 +74,6 @@ export class EndpointBuilder<
   tags(tags: string[]): this {
     this._tags = tags;
     return this;
-  }
-
-  services<T extends Service[]>(
-    services: T,
-  ): EndpointBuilder<
-    TRoute,
-    TMethod,
-    TInput,
-    [...TServices, ...T],
-    TLogger,
-    OutSchema,
-    TSession,
-    TEventPublisher,
-    TEventPublisherServiceName
-  > {
-    return super.services(services) as EndpointBuilder<
-      TRoute,
-      TMethod,
-      TInput,
-      [...TServices, ...T],
-      TLogger,
-      OutSchema,
-      TSession,
-      TEventPublisher,
-      TEventPublisherServiceName
-    >;
-  }
-
-  publisher<T extends EventPublisher<any>, TName extends string>(
-    publisher: Service<TName, T>,
-  ): EndpointBuilder<
-    TRoute,
-    TMethod,
-    TInput,
-    TServices,
-    TLogger,
-    OutSchema,
-    TSession,
-    T,
-    TName
-  > {
-    return super.publisher(publisher) as unknown as EndpointBuilder<
-      TRoute,
-      TMethod,
-      TInput,
-      TServices,
-      TLogger,
-      OutSchema,
-      TSession,
-      T,
-      TName
-    >;
-  }
-
-  output<T extends StandardSchemaV1>(
-    schema: T,
-  ): EndpointBuilder<
-    TRoute,
-    TMethod,
-    TInput,
-    TServices,
-    TLogger,
-    T,
-    TSession,
-    TEventPublisher,
-    TEventPublisherServiceName
-  > {
-    return super.output(schema) as EndpointBuilder<
-      TRoute,
-      TMethod,
-      TInput,
-      TServices,
-      TLogger,
-      T,
-      TSession,
-      TEventPublisher,
-      TEventPublisherServiceName
-    >;
   }
 
   body<T extends StandardSchemaV1>(
@@ -226,7 +147,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  handle(
+  override handle(
     fn: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>,
   ): Endpoint<
     TRoute,

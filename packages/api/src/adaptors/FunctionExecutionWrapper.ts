@@ -1,10 +1,7 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import {
-  type Function,
-  FunctionBuilder,
-  type FunctionHandler,
-} from '../constructs/Function';
+import type { Function, FunctionHandler } from '../constructs/Function';
+import { FunctionBuilder } from '../constructs/FunctionBuilder';
 import type { EventPublisher } from '../constructs/events';
 import { publishEvents } from '../constructs/publisher';
 import type {

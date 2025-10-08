@@ -2,7 +2,8 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
 import type { Service } from '../services';
 import { ConstructType } from './Construct';
-import { Function, FunctionBuilder, type FunctionHandler } from './Function';
+import { Function, type FunctionHandler } from './Function';
+import { FunctionBuilder } from './FunctionBuilder';
 import type { EventPublisher } from './events';
 import type { ComposableStandardSchema } from './types';
 
@@ -23,10 +24,10 @@ export class Cron<
   TEventPublisherServiceName
 > {
   static isCron(obj: any): obj is Cron<any, any, any, any> {
-    return (
+    return Boolean(
       obj &&
-      (obj as Function).__IS_FUNCTION__ === true &&
-      obj.type === ConstructType.Cron
+        (obj as Function).__IS_FUNCTION__ === true &&
+        obj.type === ConstructType.Cron,
     );
   }
 
@@ -71,52 +72,6 @@ export class CronBuilder<
   ): CronBuilder<TInput, TServices, TLogger, OutSchema> {
     this._schedule = _expression;
     return this;
-  }
-
-  // Override parent methods to return CronBuilder instead of FunctionBuilder
-  override services<T extends Service[]>(
-    services: T,
-  ): CronBuilder<TInput, [...TServices, ...T], TLogger, OutSchema> {
-    super.services(services);
-    return this as unknown as CronBuilder<
-      TInput,
-      [...TServices, ...T],
-      TLogger,
-      OutSchema
-    >;
-  }
-
-  override logger<T extends Logger>(
-    logger: T,
-  ): CronBuilder<TInput, TServices, T, OutSchema> {
-    super.logger(logger);
-    return this as unknown as CronBuilder<TInput, TServices, T, OutSchema>;
-  }
-
-  override timeout(
-    timeout: number,
-  ): CronBuilder<TInput, TServices, TLogger, OutSchema> {
-    super.timeout(timeout);
-    return this as unknown as CronBuilder<
-      TInput,
-      TServices,
-      TLogger,
-      OutSchema
-    >;
-  }
-
-  override output<T extends StandardSchemaV1>(
-    schema: T,
-  ): CronBuilder<TInput, TServices, TLogger, T> {
-    super.output(schema);
-    return this as unknown as CronBuilder<TInput, TServices, TLogger, T>;
-  }
-
-  override input<T extends ComposableStandardSchema>(
-    schema: T,
-  ): CronBuilder<T, TServices, TLogger, OutSchema> {
-    super.input(schema);
-    return this as unknown as CronBuilder<T, TServices, TLogger, OutSchema>;
   }
 
   handle(

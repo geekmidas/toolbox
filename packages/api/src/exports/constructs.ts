@@ -1,6 +1,7 @@
+export { FunctionBuilder } from '../constructs/FunctionBuilder';
+
 export {
   Function,
-  FunctionBuilder,
   FunctionFactory,
 } from '../constructs/Function';
 export type {

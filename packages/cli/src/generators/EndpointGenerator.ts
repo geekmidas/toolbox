@@ -19,9 +19,7 @@ export class EndpointGenerator extends ConstructGenerator<
 
   async build(
     context: BuildContext,
-    constructs: GeneratedConstruct<
-      Endpoint<any, any, any, any, any, any>
-    >[],
+    constructs: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
     outputDir: string,
     options?: GeneratorOptions,
   ): Promise<RouteInfo[]> {
@@ -78,7 +76,9 @@ export class EndpointGenerator extends ConstructGenerator<
         };
 
         routes.push(routeInfo);
-        logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
+        logger.log(
+          `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+        );
       }
     } else {
       // Generate individual handler files for AWS API Gateway providers
@@ -102,7 +102,9 @@ export class EndpointGenerator extends ConstructGenerator<
         };
 
         routes.push(routeInfo);
-        logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
+        logger.log(
+          `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+        );
       }
     }
 
@@ -239,6 +241,7 @@ export default createApp;
 `;
 
     await writeFile(serverPath, content);
+
     return serverPath;
   }
 

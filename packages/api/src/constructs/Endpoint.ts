@@ -225,10 +225,10 @@ export class Endpoint<
    * @returns True if the object is an Endpoint
    */
   static isEndpoint(obj: any): obj is Endpoint<any, any, any, any> {
-    return (
+    return Boolean(
       obj &&
-      (obj as Function).__IS_FUNCTION__ === true &&
-      obj.type === ConstructType.Endpoint
+        (obj as Function).__IS_FUNCTION__ === true &&
+        obj.type === ConstructType.Endpoint,
     );
   }
 

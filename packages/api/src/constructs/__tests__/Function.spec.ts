@@ -8,12 +8,8 @@ import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { createMockContext } from '../../testing/aws-test-helpers';
 import { ConstructType } from '../Construct';
-import {
-  Function,
-  FunctionBuilder,
-  FunctionFactory,
-  type FunctionHandler,
-} from '../Function';
+import { Function, FunctionFactory, type FunctionHandler } from '../Function';
+import { FunctionBuilder } from '../FunctionBuilder';
 
 // Mock service for testing
 class TestService implements Service<'TestService', TestService> {
@@ -308,8 +304,8 @@ describe('Function', () => {
         expect(finalBuilder._logger).toBe(logger);
         // _timeout is protected, so we just verify the builder chain works
         expect(finalBuilder).toBeInstanceOf(FunctionBuilder);
-        expect(finalBuilder['inputSchema']).toBe(inputSchema);
-        expect(finalBuilder['outputSchema']).toBe(outputSchema);
+        expect(finalBuilder.inputSchema).toBe(inputSchema);
+        expect(finalBuilder.outputSchema).toBe(outputSchema);
       });
     });
   });

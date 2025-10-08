@@ -2,11 +2,8 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler } from 'aws-lambda';
-import {
-  type Function,
-  FunctionBuilder,
-  type FunctionHandler,
-} from '../constructs/Function';
+import type { Function, FunctionHandler } from '../constructs/Function';
+import { FunctionBuilder } from '../constructs/FunctionBuilder';
 import type { EventPublisher } from '../constructs/events';
 import type {
   ComposableStandardSchema,

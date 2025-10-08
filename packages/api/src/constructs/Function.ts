@@ -1,5 +1,4 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import get from 'lodash.get';
 import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger.ts';
 import type { Service, ServiceRecord } from '../services.ts';
@@ -64,8 +63,10 @@ export class Function<
   __IS_FUNCTION__ = true;
 
   static isFunction(obj: any): obj is Function<any, any, any, any, any> {
-    return (
-      obj && obj.__IS_FUNCTION__ === true && obj.type === ConstructType.Function
+    return Boolean(
+      obj &&
+        obj.__IS_FUNCTION__ === true &&
+        obj.type === ConstructType.Function,
     );
   }
 
@@ -135,177 +136,6 @@ export class Function<
     >,
     public events?: MappedEvent<TEventPublisher, OutSchema>[],
   ) {}
-}
-
-export class FunctionBuilder<
-  TInput extends ComposableStandardSchema,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends Service[] = [],
-  TLogger extends Logger = Logger,
-  TPublisher extends EventPublisher<any> | undefined = undefined,
-  TEventPublisherServiceName extends string = string,
-> {
-  protected inputSchema?: TInput;
-  protected outputSchema?: OutSchema;
-  protected _timeout?: number;
-  protected _publisher?: Service<TEventPublisherServiceName, TPublisher>;
-
-  public _services: TServices = [] as Service[] as TServices;
-  public _logger: TLogger = DEFAULT_LOGGER;
-
-  static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
-    const schema = (s as StandardSchemaV1)['~standard'];
-
-    return schema && typeof schema.validate === 'function';
-  }
-
-  static async parseComposableStandardSchema<
-    T extends ComposableStandardSchema | undefined,
-  >(data: unknown, schema: T): Promise<InferComposableStandardSchema<T>> {
-    if (FunctionBuilder.isStandardSchemaV1(schema)) {
-      const validated = await schema['~standard'].validate(data);
-
-      if (validated.issues) {
-        throw validated.issues;
-      }
-
-      return validated.value as InferComposableStandardSchema<T>;
-    }
-
-    const result: any = {};
-    for (const key in schema) {
-      const item = schema[key];
-      if (FunctionBuilder.isStandardSchemaV1(item)) {
-        const value = get(data, key);
-        const validated = await item['~standard'].validate(value);
-
-        if (validated.issues) {
-          throw validated.issues;
-        }
-
-        result[key] = validated.value;
-      }
-    }
-
-    return result as InferComposableStandardSchema<T>;
-  }
-
-  constructor(public type = ConstructType.Function) {}
-
-  services<T extends Service[]>(
-    services: T,
-  ): FunctionBuilder<
-    TInput,
-    OutSchema,
-    [...TServices, ...T],
-    TLogger,
-    TPublisher,
-    TEventPublisherServiceName
-  > {
-    this._services = uniqBy(
-      [...this._services, ...services],
-      (s) => s.serviceName,
-    ) as TServices;
-    return this as unknown as FunctionBuilder<
-      TInput,
-      OutSchema,
-      [...TServices, ...T],
-      TLogger,
-      TPublisher,
-      TEventPublisherServiceName
-    >;
-  }
-
-  logger<T extends Logger>(
-    logger: T,
-  ): FunctionBuilder<
-    TInput,
-    OutSchema,
-    TServices,
-    T,
-    TPublisher,
-    TEventPublisherServiceName
-  > {
-    this._logger = logger as unknown as TLogger;
-
-    return this as unknown as FunctionBuilder<
-      TInput,
-      OutSchema,
-      TServices,
-      T,
-      TPublisher,
-      TEventPublisherServiceName
-    >;
-  }
-
-  timeout(
-    timeout: number,
-  ): FunctionBuilder<
-    TInput,
-    OutSchema,
-    TServices,
-    TLogger,
-    TPublisher,
-    TEventPublisherServiceName
-  > {
-    this._timeout = timeout;
-    return this;
-  }
-
-  publisher<T extends EventPublisher<any>, TName extends string>(
-    publisher: Service<TName, T>,
-  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
-    this._publisher = publisher as unknown as Service<
-      TEventPublisherServiceName,
-      TPublisher
-    >;
-
-    return this as unknown as FunctionBuilder<
-      TInput,
-      OutSchema,
-      TServices,
-      TLogger,
-      T,
-      TName
-    >;
-  }
-
-  output<T extends StandardSchemaV1>(
-    schema: T,
-  ): FunctionBuilder<TInput, T, TServices, TLogger, TPublisher> {
-    this.outputSchema = schema as unknown as OutSchema;
-
-    return this as unknown as FunctionBuilder<
-      TInput,
-      T,
-      TServices,
-      TLogger,
-      TPublisher,
-      TEventPublisherServiceName
-    >;
-  }
-
-  input<T extends ComposableStandardSchema>(
-    schema: T,
-  ): FunctionBuilder<
-    T,
-    OutSchema,
-    TServices,
-    TLogger,
-    TPublisher,
-    TEventPublisherServiceName
-  > {
-    this.inputSchema = schema as unknown as TInput;
-
-    return this as unknown as FunctionBuilder<
-      T,
-      OutSchema,
-      TServices,
-      TLogger,
-      TPublisher,
-      TEventPublisherServiceName
-    >;
-  }
 }
 
 export type FunctionHandler<

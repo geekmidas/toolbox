@@ -10,10 +10,7 @@ export interface GeneratorOptions {
   [key: string]: any;
 }
 
-export abstract class ConstructGenerator<
-  T extends Construct,
-  R = void,
-> {
+export abstract class ConstructGenerator<T extends Construct, R = void> {
   abstract isConstruct(value: any): value is T;
 
   static async build<T extends Construct, R = void>(
@@ -34,7 +31,10 @@ export abstract class ConstructGenerator<
     options?: GeneratorOptions,
   ): Promise<R>;
 
-  async load(patterns?: Routes): Promise<GeneratedConstruct<T>[]> {
+  async load(
+    patterns?: Routes,
+    cwd = process.cwd(),
+  ): Promise<GeneratedConstruct<T>[]> {
     const logger = console;
 
     // Normalize patterns to array
@@ -46,7 +46,7 @@ export abstract class ConstructGenerator<
 
     // Find all files
     const files = fg.stream(globPatterns, {
-      cwd: process.cwd(),
+      cwd,
       absolute: true,
     });
 

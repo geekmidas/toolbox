@@ -117,8 +117,9 @@ export const ${exportName} = new CronBuilder()
 /**
  * Helper functions to create real constructs for testing
  */
-export function createTestEndpoint(path: string, method: string = 'GET') {
-  return e[method.toLowerCase()](path)
+export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
+  const m = method.toLowerCase() as Lowercase<HttpMethod>;
+  return e[m](path)
     .output(z.object({ message: z.string() }))
     .handle(async () => ({ message: `Hello from ${path}` }));
 }
@@ -174,3 +175,4 @@ export async function waitFor(
 }
 
 import { dirname } from 'node:path';
+import type { HttpMethod } from '../../../api/src/constructs/types';
