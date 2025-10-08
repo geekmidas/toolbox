@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Logger } from '../logger';
 import type { RateLimitConfig } from '../rate-limit';
 import type { Service } from '../services';
+import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { ConstructType } from './Construct';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
@@ -10,7 +11,6 @@ import type {
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
-import { FunctionBuilder } from './FunctionBuilder';
 import type { EventPublisher, MappedEvent } from './events';
 import type { HttpMethod } from './types';
 
@@ -24,7 +24,7 @@ export class EndpointBuilder<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
-> extends FunctionBuilder<
+> extends BaseFunctionBuilder<
   TInput,
   OutSchema,
   TServices,
@@ -147,7 +147,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  override handle(
+  handle(
     fn: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>,
   ): Endpoint<
     TRoute,
