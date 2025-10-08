@@ -144,7 +144,7 @@ export class FunctionBuilder<
     return new Function(
       fn,
       this._timeout,
-      ConstructType.Endpoint,
+      this.type,
       this.inputSchema,
       this.outputSchema,
       this._services,

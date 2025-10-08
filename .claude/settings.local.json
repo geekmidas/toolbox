@@ -30,7 +30,8 @@
       "Bash(pnpm vitest:*)",
       "Bash(grep:*)",
       "Bash(sed:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }
