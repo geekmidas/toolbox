@@ -1,20 +1,28 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { readFile } from 'fs/promises';
 import type { GkmConfig } from './types.ts';
 
 export async function loadConfig(): Promise<GkmConfig> {
-  const configPath = join(process.cwd(), 'gkm.config.json');
+  const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
+  let configPath = '';
 
-  if (!existsSync(configPath)) {
+  for (const file of files) {
+    const path = join(process.cwd(), file);
+    if (existsSync(path)) {
+      configPath = path;
+      break;
+    }
+  }
+
+  if (!configPath) {
     throw new Error(
-      'gkm.config.json not found. Please create a configuration file.',
+      'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
     );
   }
 
   try {
-    const config = await readFile(configPath, 'utf-8');
-    return JSON.parse(config);
+    const config = await import(configPath);
+    return config.default;
   } catch (error) {
     throw new Error(
       `Failed to load gkm.config.json: ${(error as Error).message}`,

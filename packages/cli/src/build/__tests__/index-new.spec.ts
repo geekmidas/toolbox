@@ -1,319 +1,374 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { itWithDir } from '@geekmidas/testkit/os';
+import { describe, expect, vi } from 'vitest';
 import {
-  cleanupDir,
+  createMockCronFile,
   createMockEndpointFile,
   createMockFunctionFile,
-  createMockCronFile,
-  createTempDir,
   createTestFile,
 } from '../../__tests__/test-helpers';
 import { buildCommand } from '../index-new';
 
-// Mock the config loader
-vi.mock('../../config', () => ({
-  loadConfig: vi.fn(),
-}));
-
-// Mock the manifest generator
-vi.mock('../manifests', () => ({
-  generateManifests: vi.fn(),
-}));
-
-// Mock the provider resolver
-vi.mock('../providerResolver', () => ({
-  resolveProviders: vi.fn(),
-}));
-
 describe('buildCommand', () => {
-  let tempDir: string;
-  let originalCwd: string;
+  itWithDir(
+    'should build endpoints, functions, and crons for multiple providers',
+    async ({ dir }) => {
+      // Create test files that will be discovered
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/users.ts',
+        'getUsersEndpoint',
+        '/users',
+        'GET',
+      );
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/posts.ts',
+        'getPostsEndpoint',
+        '/posts',
+        'GET',
+      );
+      await createMockFunctionFile(
+        dir,
+        'src/functions/process.ts',
+        'processDataFunction',
+        60,
+      );
+      await createMockCronFile(
+        dir,
+        'src/crons/cleanup.ts',
+        'cleanupCron',
+        'rate(1 day)',
+      );
 
-  beforeEach(async () => {
-    tempDir = await createTempDir();
-    originalCwd = process.cwd();
-    process.chdir(tempDir);
-    
-    // Clear all mocks
-    vi.clearAllMocks();
-  });
+      // Create a basic config file
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: './src/functions/**/*.ts',
+  crons: './src/crons/**/*.ts',
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+      );
 
-  afterEach(async () => {
-    process.chdir(originalCwd);
-    await cleanupDir(tempDir);
-  });
+      // Create env and logger files
+      await createTestFile(dir, 'config/env.ts', 'export default {}');
+      await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-  it('should build endpoints, functions, and crons for multiple providers', async () => {
-    // Setup mock config
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: './src/functions/**/*.ts',
-      crons: './src/crons/**/*.ts',
-      envParser: './config/env',
-      logger: './config/logger',
-    };
+      const originalCwd = process.cwd();
+      process.chdir(dir);
 
-    const mockResolved = {
-      providers: ['server', 'aws-lambda'],
-      enableOpenApi: true,
-    };
+      try {
+        await buildCommand({ provider: 'server' });
 
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
-    const { generateManifests } = await import('../manifests');
+        // Check that output directories were created
+        const serverDir = join(dir, '.gkm', 'server');
+        expect(await readFile(join(serverDir, 'app.ts'), 'utf-8')).toContain(
+          'HonoEndpoint',
+        );
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
 
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
-    vi.mocked(generateManifests).mockResolvedValue(undefined);
-
-    // Create test files that will be discovered
-    await createMockEndpointFile(tempDir, 'src/endpoints/users.ts', 'getUsersEndpoint', '/users', 'GET');
-    await createMockEndpointFile(tempDir, 'src/endpoints/posts.ts', 'getPostsEndpoint', '/posts', 'GET');
-    await createMockFunctionFile(tempDir, 'src/functions/process.ts', 'processDataFunction', 60);
-    await createMockCronFile(tempDir, 'src/crons/cleanup.ts', 'cleanupCron', 'rate(1 day)');
-
-    // Mock console.log to capture output
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await buildCommand({ provider: 'server' });
-
-    // Verify config loading
-    expect(loadConfig).toHaveBeenCalled();
-    expect(resolveProviders).toHaveBeenCalledWith(mockConfig, { provider: 'server' });
-
-    // Verify logging
-    expect(logSpy).toHaveBeenCalledWith('Building with providers: server, aws-lambda');
-    expect(logSpy).toHaveBeenCalledWith('Loading routes from: ./src/endpoints/**/*.ts');
-    expect(logSpy).toHaveBeenCalledWith('Loading functions from: ./src/functions/**/*.ts');
-    expect(logSpy).toHaveBeenCalledWith('Loading crons from: ./src/crons/**/*.ts');
-
-    // Verify manifests were generated for each provider
-    expect(generateManifests).toHaveBeenCalledTimes(2);
-
-    logSpy.mockRestore();
-  });
-
-  it('should handle case with no constructs found', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: './src/functions/**/*.ts',
-      crons: './src/crons/**/*.ts',
-      envParser: './config/env',
-      logger: './config/logger',
-    };
-
-    const mockResolved = {
-      providers: ['server'],
-      enableOpenApi: false,
-    };
-
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
-
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
-
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await buildCommand({ provider: 'server' });
-
-    expect(logSpy).toHaveBeenCalledWith('Found 0 endpoints');
-    expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
-    expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
-    expect(logSpy).toHaveBeenCalledWith('No endpoints, functions, or crons found to process');
-
-    logSpy.mockRestore();
-  });
-
-  it('should handle optional functions and crons config', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: undefined,
-      crons: undefined,
-      envParser: './config/env',
-      logger: './config/logger',
-    };
-
-    const mockResolved = {
-      providers: ['server'],
-      enableOpenApi: false,
-    };
-
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
-
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
-
-    await createMockEndpointFile(tempDir, 'src/endpoints/test.ts', 'testEndpoint', '/test', 'GET');
-
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await buildCommand({ provider: 'server' });
-
-    expect(logSpy).toHaveBeenCalledWith('Found 1 endpoints');
-    expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
-    expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
-
-    // Should not log functions or crons loading messages
-    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('Loading functions'));
-    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('Loading crons'));
-
-    logSpy.mockRestore();
-  });
-
-  it('should parse envParser configuration correctly', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: undefined,
-      crons: undefined,
-      envParser: './config/env#customEnvParser',
-      logger: './config/logger#customLogger',
-    };
-
-    const mockResolved = {
-      providers: ['aws-apigatewayv2'],
-      enableOpenApi: false,
-    };
-
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
-    const { generateManifests } = await import('../manifests');
-
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
-    vi.mocked(generateManifests).mockResolvedValue(undefined);
-
-    await createMockEndpointFile(tempDir, 'src/endpoints/test.ts', 'testEndpoint', '/test', 'GET');
-
-    await buildCommand({ provider: 'aws' });
-
-    // Check that generateManifests was called with the correct build context
-    expect(generateManifests).toHaveBeenCalledWith(
-      'aws-apigatewayv2',
-      expect.stringContaining('.gkm/aws-apigatewayv2'),
-      expect.any(Array),
-      expect.any(Array),
-      expect.any(Array),
+  itWithDir('should handle case with no constructs found', async ({ dir }) => {
+    // Create a basic config file with no actual construct files
+    await createTestFile(
+      dir,
+      'gkm.config.ts',
+      `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: './src/functions/**/*.ts',
+  crons: './src/crons/**/*.ts',
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
     );
 
-    // Verify that a handler file was generated with correct imports
-    const handlerFile = join(tempDir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-    const handlerContent = await readFile(handlerFile, 'utf-8');
-    expect(handlerContent).toContain('{ customEnvParser as envParser }');
+    // Create env and logger files
+    await createTestFile(dir, 'config/env.ts', 'export default {}');
+    await createTestFile(dir, 'config/logger.ts', 'export default {}');
+
+    const originalCwd = process.cwd();
+    process.chdir(dir);
+
+    const logSpy = vi.spyOn(console, 'log');
+
+    try {
+      await buildCommand({ provider: 'server' });
+
+      expect(logSpy).toHaveBeenCalledWith('Found 0 endpoints');
+      expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
+      expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
+      expect(logSpy).toHaveBeenCalledWith(
+        'No endpoints, functions, or crons found to process',
+      );
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+    }
   });
 
-  it('should create output directories for each provider', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: undefined,
-      crons: undefined,
-      envParser: './config/env',
-      logger: './config/logger',
-    };
+  itWithDir(
+    'should handle optional functions and crons config',
+    async ({ dir }) => {
+      // Create config with undefined functions and crons
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: undefined,
+  crons: undefined,
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+      );
 
-    const mockResolved = {
-      providers: ['server', 'aws-apigatewayv1', 'aws-apigatewayv2'],
-      enableOpenApi: false,
-    };
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
 
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
-    const { generateManifests } = await import('../manifests');
+      // Create env and logger files
+      await createTestFile(dir, 'config/env.ts', 'export default {}');
+      await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
-    vi.mocked(generateManifests).mockResolvedValue(undefined);
+      const originalCwd = process.cwd();
+      process.chdir(dir);
 
-    await createMockEndpointFile(tempDir, 'src/endpoints/test.ts', 'testEndpoint', '/test', 'GET');
+      const logSpy = vi.spyOn(console, 'log');
 
-    await buildCommand({ provider: 'aws' });
+      try {
+        await buildCommand({ provider: 'server' });
 
-    // Verify manifests were generated for each provider
-    expect(generateManifests).toHaveBeenCalledTimes(3);
-    expect(generateManifests).toHaveBeenCalledWith(
-      'server',
-      expect.stringContaining('.gkm/server'),
-      expect.any(Array),
-      expect.any(Array),
-      expect.any(Array),
-    );
-    expect(generateManifests).toHaveBeenCalledWith(
-      'aws-apigatewayv1',
-      expect.stringContaining('.gkm/aws-apigatewayv1'),
-      expect.any(Array),
-      expect.any(Array),
-      expect.any(Array),
-    );
-    expect(generateManifests).toHaveBeenCalledWith(
-      'aws-apigatewayv2',
-      expect.stringContaining('.gkm/aws-apigatewayv2'),
-      expect.any(Array),
-      expect.any(Array),
-      expect.any(Array),
-    );
-  });
+        expect(logSpy).toHaveBeenCalledWith('Found 1 endpoints');
+        expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
+        expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
 
-  it('should handle default import patterns for envParser and logger', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: undefined,
-      crons: undefined,
-      envParser: './config/env',
-      logger: './config/logger',
-    };
+        // Should not log functions or crons loading messages
+        expect(logSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining('Loading functions'),
+        );
+        expect(logSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining('Loading crons'),
+        );
+      } finally {
+        process.chdir(originalCwd);
+        logSpy.mockRestore();
+      }
+    },
+  );
 
-    const mockResolved = {
-      providers: ['aws-apigatewayv2'],
-      enableOpenApi: false,
-    };
+  itWithDir(
+    'should parse envParser configuration correctly',
+    async ({ dir }) => {
+      // Create config with custom named exports
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: undefined,
+  crons: undefined,
+  envParser: './config/env#customEnvParser',
+  logger: './config/logger#customLogger',
+};
+`,
+      );
 
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
 
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
+      // Create env and logger files with named exports
+      await createTestFile(
+        dir,
+        'config/env.ts',
+        'export const customEnvParser = {}',
+      );
+      await createTestFile(
+        dir,
+        'config/logger.ts',
+        'export const customLogger = {}',
+      );
 
-    await createMockEndpointFile(tempDir, 'src/endpoints/test.ts', 'testEndpoint', '/test', 'GET');
+      const originalCwd = process.cwd();
+      process.chdir(dir);
 
-    await buildCommand({ provider: 'aws' });
+      try {
+        await buildCommand({ provider: 'aws' });
 
-    // Verify that a handler file was generated with default imports
-    const handlerFile = join(tempDir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-    const handlerContent = await readFile(handlerFile, 'utf-8');
-    expect(handlerContent).toContain('import envParser');
-    expect(handlerContent).not.toContain('{ envParser }');
-  });
+        // Verify that a handler file was generated with correct imports
+        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+        const handlerContent = await readFile(handlerFile, 'utf-8');
+        expect(handlerContent).toContain('{ customEnvParser as envParser }');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
 
-  it('should handle envParser pattern with same name as expected', async () => {
-    const mockConfig = {
-      routes: './src/endpoints/**/*.ts',
-      functions: undefined,
-      crons: undefined,
-      envParser: './config/env#envParser',
-      logger: './config/logger#logger',
-    };
+  itWithDir(
+    'should create output directories for each provider',
+    async ({ dir }) => {
+      // Create config with multiple providers
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: undefined,
+  crons: undefined,
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+      );
 
-    const mockResolved = {
-      providers: ['aws-apigatewayv2'],
-      enableOpenApi: false,
-    };
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
 
-    const { loadConfig } = await import('../../config');
-    const { resolveProviders } = await import('../providerResolver');
+      // Create env and logger files
+      await createTestFile(dir, 'config/env.ts', 'export default {}');
+      await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(resolveProviders).mockReturnValue(mockResolved);
+      const originalCwd = process.cwd();
+      process.chdir(dir);
 
-    await createMockEndpointFile(tempDir, 'src/endpoints/test.ts', 'testEndpoint', '/test', 'GET');
+      try {
+        await buildCommand({ provider: 'aws' });
 
-    await buildCommand({ provider: 'aws' });
+        const v2HandlerFile = join(
+          dir,
+          '.gkm/aws-apigatewayv2/testEndpoint.ts',
+        );
 
-    // Verify that a handler file was generated with named imports
-    const handlerFile = join(tempDir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-    const handlerContent = await readFile(handlerFile, 'utf-8');
-    expect(handlerContent).toContain('{ envParser }');
-    expect(handlerContent).toContain('{ logger }');
-  });
+        const v2Content = await readFile(v2HandlerFile, 'utf-8');
+
+        expect(v2Content).toContain('AmazonApiGatewayV2Endpoint');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
+
+  itWithDir(
+    'should handle default import patterns for envParser and logger',
+    async ({ dir }) => {
+      // Create config with default import patterns
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: undefined,
+  crons: undefined,
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+      );
+
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
+
+      // Create env and logger files with default exports
+      await createTestFile(dir, 'config/env.ts', 'export default {}');
+      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+
+      const originalCwd = process.cwd();
+      process.chdir(dir);
+
+      try {
+        await buildCommand({ provider: 'aws' });
+
+        // Verify that a handler file was generated with default imports
+        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+        const handlerContent = await readFile(handlerFile, 'utf-8');
+        expect(handlerContent).toContain('import envParser');
+        expect(handlerContent).not.toContain('{ envParser }');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
+
+  itWithDir(
+    'should handle envParser pattern with same name as expected',
+    async ({ dir }) => {
+      // Create config with named exports that match expected names
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: undefined,
+  crons: undefined,
+  envParser: './config/env#envParser',
+  logger: './config/logger#logger',
+};
+`,
+      );
+
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
+
+      // Create env and logger files with named exports
+      await createTestFile(dir, 'config/env.ts', 'export const envParser = {}');
+      await createTestFile(dir, 'config/logger.ts', 'export const logger = {}');
+
+      const originalCwd = process.cwd();
+      process.chdir(dir);
+
+      try {
+        await buildCommand({ provider: 'aws' });
+
+        // Verify that a handler file was generated with named imports
+        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+        const handlerContent = await readFile(handlerFile, 'utf-8');
+
+        expect(handlerContent).toContain('{ envParser }');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
 });

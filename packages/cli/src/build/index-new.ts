@@ -1,5 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Cron, Function } from '@geekmidas/api/constructs';
+import type { Endpoint } from '@geekmidas/api/server';
 import { loadConfig } from '../config';
 import {
   CronGenerator,
@@ -7,8 +9,6 @@ import {
   FunctionGenerator,
   type GeneratedConstruct,
 } from '../generators';
-import type { Cron, Function } from '@geekmidas/api/constructs';
-import type { Endpoint } from '@geekmidas/api/server';
 import type { BuildOptions, LegacyProvider } from '../types';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';
@@ -115,6 +115,8 @@ async function buildForProvider(
   await mkdir(outputDir, { recursive: true });
 
   logger.log(`\nGenerating handlers for provider: ${provider}`);
+
+  console.log({ provider, outputDir });
 
   // Build all constructs in parallel
   const [routes, functionInfos, cronInfos] = await Promise.all([
