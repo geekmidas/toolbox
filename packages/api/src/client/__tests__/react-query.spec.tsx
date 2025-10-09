@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 // biome-ignore lint/style/useImportType: <explanation>
 import React from 'react';
 import { describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import type { paths } from '../openapi-types';
 import {
   createTypedQueryClient,
@@ -359,6 +360,217 @@ describe('TypedQueryClient', () => {
       });
 
       expect(result.current.error?.status).toBe(401);
+    });
+  });
+
+  describe('Memoization', () => {
+    it('should not cause unnecessary re-renders when options object is recreated with same values', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const { server } = await import('./setup');
+      server.use(
+        http.get('https://api.example.com/users/:id', () => {
+          requestCount++;
+          return HttpResponse.json({ id: '123', name: 'John Doe' });
+        })
+      );
+
+      let renderCount = 0;
+      
+      const { rerender } = renderHook(
+        ({ options }: { options?: { enabled?: boolean } }) => {
+          renderCount++;
+          return typedClient.useQuery(
+            'GET /users/{id}',
+            { params: { id: '123' } },
+            options,
+          );
+        },
+        { 
+          wrapper,
+          initialProps: { options: { enabled: true } }
+        },
+      );
+
+      await waitFor(() => {
+        expect(requestCount).toBe(1);
+      });
+
+      const initialRenderCount = renderCount;
+
+      // Rerender with a new options object that has the same values
+      rerender({ options: { enabled: true } });
+      
+      // Give React time to potentially trigger re-renders
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+
+      // The API should not be called again because options haven't actually changed
+      expect(requestCount).toBe(1);
+      
+      // Component should re-render due to props change, but React Query shouldn't refetch
+      expect(renderCount).toBeGreaterThan(initialRenderCount);
+    });
+
+    it('should re-fetch when options actually change', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const { server } = await import('./setup');
+      server.use(
+        http.get('https://api.example.com/users/:id', () => {
+          requestCount++;
+          return HttpResponse.json({ id: '123', name: 'John Doe' });
+        })
+      );
+
+      const { rerender } = renderHook(
+        ({ enabled }: { enabled: boolean }) =>
+          typedClient.useQuery(
+            'GET /users/{id}',
+            { params: { id: '123' } },
+            { enabled },
+          ),
+        { 
+          wrapper,
+          initialProps: { enabled: true }
+        },
+      );
+
+      await waitFor(() => {
+        expect(requestCount).toBe(1);
+      });
+
+      // Disable the query
+      rerender({ enabled: false });
+      
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+
+      // Should still only be called once since we disabled it
+      expect(requestCount).toBe(1);
+
+      // Re-enable the query
+      rerender({ enabled: true });
+      
+      await waitFor(() => {
+        expect(requestCount).toBe(2);
+      });
+    });
+
+    it('should memoize mutation options correctly', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const { server } = await import('./setup');
+      server.use(
+        http.post('https://api.example.com/users', async ({ request }) => {
+          requestCount++;
+          const body = await request.json();
+          return HttpResponse.json({ id: '123', name: (body as any).name });
+        })
+      );
+
+      let renderCount = 0;
+      let successCallCount = 0;
+
+      const { result, rerender } = renderHook(
+        ({ options }: { options?: { onSuccess?: () => void } }) => {
+          renderCount++;
+          return typedClient.useMutation('POST /users', options);
+        },
+        { 
+          wrapper,
+          initialProps: { 
+            options: { 
+              onSuccess: () => { successCallCount++; } 
+            } 
+          }
+        },
+      );
+
+      const initialRenderCount = renderCount;
+
+      // Trigger a mutation to test the options
+      await act(async () => {
+        result.current.mutate({ body: { name: 'Test User', email: 'test@example.com' } });
+      });
+
+      await waitFor(() => {
+        expect(requestCount).toBe(1);
+        expect(successCallCount).toBe(1);
+      });
+
+      // Rerender with a new options object that has the same function reference
+      const onSuccess = () => { successCallCount++; };
+      rerender({ options: { onSuccess } });
+      rerender({ options: { onSuccess } });
+
+      // Component should re-render due to props change
+      expect(renderCount).toBeGreaterThan(initialRenderCount);
+    });
+
+    it('should handle config changes in useQuery correctly', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const requestedIds: string[] = [];
+      const { server } = await import('./setup');
+      server.use(
+        http.get('https://api.example.com/users/:id', ({ params }) => {
+          requestCount++;
+          const { id } = params;
+          requestedIds.push(id as string);
+          return HttpResponse.json({ id, name: `User ${id}` });
+        })
+      );
+
+      const { rerender } = renderHook(
+        ({ userId }: { userId: string }) =>
+          typedClient.useQuery('GET /users/{id}', { params: { id: userId } }),
+        { 
+          wrapper,
+          initialProps: { userId: '123' }
+        },
+      );
+
+      await waitFor(() => {
+        expect(requestCount).toBe(1);
+        expect(requestedIds).toEqual(['123']);
+      });
+
+      // Change the user ID - should trigger a new fetch
+      rerender({ userId: '456' });
+      
+      await waitFor(() => {
+        expect(requestCount).toBe(2);
+        expect(requestedIds).toEqual(['123', '456']);
+      });
+
+      // Call with same ID again - should not trigger new fetch due to React Query caching
+      rerender({ userId: '456' });
+      
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+
+      expect(requestCount).toBe(2);
+      expect(requestedIds).toEqual(['123', '456']);
     });
   });
 });

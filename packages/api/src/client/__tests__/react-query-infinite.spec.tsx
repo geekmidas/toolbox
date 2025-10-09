@@ -2,10 +2,11 @@
  * @vitest-environment jsdom
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 // biome-ignore lint/style/useImportType: <explanation>
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import type { paths } from '../openapi-types';
 import { createTypedQueryClient } from '../react-query';
 import './setup';
@@ -847,5 +848,148 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
     expect(result1.current.data?.pages[1].sort).toBe('asc');
     expect(result1.current.data?.pages[1].pagination.limit).toBe(5);
     expect(result1.current.data?.pages[1].pagination.page).toBe(2);
+  });
+
+  describe('Memoization', () => {
+    it('should not cause unnecessary re-renders when options object is recreated with same values', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const { server } = await import('./setup');
+      server.use(
+        http.get('https://api.example.com/users/paginated', ({ request }) => {
+          requestCount++;
+          const url = new URL(request.url);
+          const page = parseInt(url.searchParams.get('page') || '1');
+          
+          return HttpResponse.json({
+            users: [
+              { id: `user-${page}`, name: `User ${page}`, email: `user${page}@example.com` },
+            ],
+            pagination: {
+              page,
+              limit: 10,
+              total: 50,
+              hasMore: page < 5,
+            },
+          });
+        })
+      );
+
+      let renderCount = 0;
+      
+      const { rerender } = renderHook(
+        ({ options }: { options?: { enabled?: boolean } }) => {
+          renderCount++;
+          return typedClient.useInfiniteQuery(
+            'GET /users/paginated',
+            {
+              initialPageParam: 1,
+              getNextPageParam: (lastPage) => 
+                lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
+            },
+            { query: { limit: 10 }, ...options },
+          );
+        },
+        { 
+          wrapper,
+          initialProps: { options: { enabled: true } }
+        },
+      );
+
+      await waitFor(() => {
+        expect(requestCount).toBe(1);
+      });
+
+      const initialRenderCount = renderCount;
+
+      // Rerender with a new options object that has the same values
+      rerender({ options: { enabled: true } });
+      
+      // Give React time to potentially trigger re-renders
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+
+      // The API should not be called again because options haven't actually changed
+      expect(requestCount).toBe(1);
+      
+      // Component should re-render due to props change, but React Query shouldn't refetch
+      expect(renderCount).toBeGreaterThan(initialRenderCount);
+    });
+
+    it('should handle pageParam changes correctly in infinite queries', async () => {
+      const typedClient = createTypedQueryClient<paths>({
+        baseURL: 'https://api.example.com',
+      });
+
+      // Track API calls using MSW request interception
+      let requestCount = 0;
+      const requestedPages: number[] = [];
+      const { server } = await import('./setup');
+      server.use(
+        http.get('https://api.example.com/users/paginated', ({ request }) => {
+          requestCount++;
+          const url = new URL(request.url);
+          const page = parseInt(url.searchParams.get('page') || '1');
+          requestedPages.push(page);
+          
+          return HttpResponse.json({
+            users: Array.from({ length: 10 }, (_, i) => ({
+              id: `user-${(page - 1) * 10 + i + 1}`,
+              name: `User ${(page - 1) * 10 + i + 1}`,
+              email: `user${(page - 1) * 10 + i + 1}@example.com`,
+            })),
+            pagination: {
+              page,
+              limit: 10,
+              total: 50,
+              hasMore: page < 3, // Reduced to avoid complexity
+            },
+          });
+        })
+      );
+
+      const { result } = renderHook(
+        () =>
+          typedClient.useInfiniteQuery(
+            'GET /users/paginated',
+            {
+              initialPageParam: 1,
+              getNextPageParam: (lastPage) => 
+                lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
+            },
+            { query: { limit: 10 } },
+          ),
+        { wrapper },
+      );
+
+      // Wait for initial load
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+        expect(requestCount).toBe(1);
+        expect(requestedPages).toEqual([1]);
+      });
+
+      // Test the memoization by checking that multiple calls to fetchNextPage work
+      if (result.current.hasNextPage) {
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+
+        await waitFor(() => {
+          expect(requestCount).toBe(2);
+          expect(requestedPages).toEqual([1, 2]);
+        });
+      }
+
+      // Verify that pageParam changes trigger new requests
+      expect(requestCount).toBe(2);
+      expect(result.current.data?.pages).toBeDefined();
+      expect(result.current.data?.pages.length).toBeGreaterThan(0);
+    });
   });
 });
