@@ -7,6 +7,7 @@ export default defineConfig({
   entry: ['src/'],
   format: ['cjs', 'esm'],
   external: ['vitest'],
+  sourcemap: true,
   dts: true,
   outExtensions: (ctx) => ({
     js: ctx.format === 'es' ? '.mjs' : '.cjs',

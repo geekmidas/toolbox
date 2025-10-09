@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Function } from '@geekmidas/api/constructs';
+import { type Function, FunctionBuilder } from '@geekmidas/api/constructs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanupDir,
@@ -30,7 +30,7 @@ describe('FunctionGenerator', () => {
   describe('isConstruct', () => {
     it('should identify valid functions', async () => {
       // Import the actual FunctionBuilder to create a real Function instance
-      const { FunctionBuilder } = await import('@geekmidas/api/constructs');
+
       const { z } = await import('zod');
 
       const testFunction = new FunctionBuilder()

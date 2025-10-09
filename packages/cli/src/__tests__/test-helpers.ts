@@ -119,30 +119,30 @@ export const ${exportName} = new CronBuilder()
  */
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
   const m = method.toLowerCase() as Lowercase<HttpMethod>;
-  return e[m](path)
-    .output(z.object({ message: z.string() }))
-    .handle(async () => ({ message: `Hello from ${path}` }));
+  const builder = e[m](path);
+  builder.output(z.object({ message: z.string() }));
+  return builder.handle(async () => ({ message: `Hello from ${path}` }));
 }
 
 export function createTestFunction(timeout: number = 30) {
-  return new FunctionBuilder()
-    .input(z.object({ name: z.string() }))
-    .output(z.object({ greeting: z.string() }))
-    .timeout(timeout)
-    .handle(async ({ input }: any) => ({ greeting: `Hello, ${input.name}!` }));
+  const builder = new FunctionBuilder();
+  builder.input(z.object({ name: z.string() }));
+  builder.output(z.object({ greeting: z.string() }));
+  builder.timeout(timeout);
+  return builder.handle(async ({ input }: any) => ({ greeting: `Hello, ${input.name}!` }));
 }
 
 export function createTestCron(
   schedule: ScheduleExpression = 'rate(1 hour)',
   timeout: number = 30,
 ) {
-  return new CronBuilder()
-    .schedule(schedule)
-    .output(z.object({ processed: z.number() }))
-    .timeout(timeout)
-    .handle(async () => {
-      return { processed: 10 };
-    });
+  const builder = new CronBuilder();
+  builder.schedule(schedule);
+  builder.output(z.object({ processed: z.number() }));
+  builder.timeout(timeout);
+  return builder.handle(async () => {
+    return { processed: 10 };
+  });
 }
 
 /**

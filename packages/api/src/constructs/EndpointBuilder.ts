@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import uniqBy from 'lodash.uniqby';
 import type { Logger } from '../logger';
 import type { RateLimitConfig } from '../rate-limit';
 import type { Service } from '../services';
@@ -145,6 +146,56 @@ export class EndpointBuilder<
   rateLimit(config: RateLimitConfig): this {
     this._rateLimit = config;
     return this;
+  }
+
+  services<T extends Service[]>(
+    services: T,
+  ): EndpointBuilder<TRoute, TMethod, TInput, [...TServices, ...T], TLogger, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName> {
+    this._services = uniqBy(
+      [...this._services, ...services],
+      (s) => s.serviceName,
+    ) as TServices;
+
+    return this as unknown as EndpointBuilder<TRoute, TMethod, TInput, [...TServices, ...T], TLogger, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName>;
+  }
+
+  logger<T extends Logger>(logger: T): EndpointBuilder<TRoute, TMethod, TInput, TServices, T, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName> {
+    this._logger = logger as unknown as TLogger;
+
+    return this as unknown as EndpointBuilder<TRoute, TMethod, TInput, TServices, T, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName>;
+  }
+
+  output<T extends StandardSchemaV1>(
+    schema: T,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    T,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
+    this.outputSchema = schema as unknown as OutSchema;
+
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      T,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
+  }
+
+  // EndpointBuilder doesn't have a generic input method - it uses body, query, params instead
+  input(_schema: any): any {
+    throw new Error('EndpointBuilder does not support generic input. Use body(), query(), or params() instead.');
   }
 
   handle(

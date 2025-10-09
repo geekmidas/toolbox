@@ -78,6 +78,210 @@ export default {
     },
   );
 
+  itWithDir(
+    'should perform complete build with all construct types for AWS Lambda',
+    async ({ dir }) => {
+      // Create comprehensive test setup with all construct types
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/users.ts',
+        'getUsersEndpoint',
+        '/users',
+        'GET',
+      );
+      await createMockEndpointFile(
+        dir,
+        'src/endpoints/posts.ts',
+        'getPostsEndpoint',
+        '/posts',
+        'POST',
+      );
+      await createMockFunctionFile(
+        dir,
+        'src/functions/processData.ts',
+        'processDataFunction',
+        300,
+      );
+      await createMockFunctionFile(
+        dir,
+        'src/functions/sendEmail.ts',
+        'sendEmailFunction',
+        30,
+      );
+      await createMockCronFile(
+        dir,
+        'src/crons/dailyCleanup.ts',
+        'dailyCleanupCron',
+        'rate(1 day)',
+      );
+      await createMockCronFile(
+        dir,
+        'src/crons/hourlyReport.ts',
+        'hourlyReportCron',
+        'cron(0 * * * ? *)',
+      );
+
+      // Create config
+      await createTestFile(
+        dir,
+        'gkm.config.ts',
+        `
+export default {
+  routes: './src/endpoints/**/*.ts',
+  functions: './src/functions/**/*.ts',
+  crons: './src/crons/**/*.ts',
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+      );
+
+      // Create env and logger files
+      await createTestFile(dir, 'config/env.ts', 'export default {}');
+      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+
+      const originalCwd = process.cwd();
+      process.chdir(dir);
+
+      try {
+        // Build for AWS Lambda
+        await buildCommand({ provider: 'aws' });
+
+        const awsLambdaDir = join(dir, '.gkm', 'aws-lambda');
+        const awsApiGatewayV2Dir = join(dir, '.gkm', 'aws-apigatewayv2');
+
+        // Verify Lambda handlers were created
+        expect(
+          await readFile(
+            join(awsLambdaDir, 'functions', 'processDataFunction.ts'),
+            'utf-8',
+          ),
+        ).toContain('AWSLambdaFunction');
+        expect(
+          await readFile(
+            join(awsLambdaDir, 'functions', 'sendEmailFunction.ts'),
+            'utf-8',
+          ),
+        ).toContain('AWSLambdaFunction');
+
+        // Verify Cron handlers were created
+        expect(
+          await readFile(
+            join(awsLambdaDir, 'crons', 'dailyCleanupCron.ts'),
+            'utf-8',
+          ),
+        ).toContain('AWSScheduledFunction');
+        expect(
+          await readFile(
+            join(awsLambdaDir, 'crons', 'hourlyReportCron.ts'),
+            'utf-8',
+          ),
+        ).toContain('AWSScheduledFunction');
+
+        // Verify API Gateway handlers were created
+        expect(
+          await readFile(
+            join(awsApiGatewayV2Dir, 'getUsersEndpoint.ts'),
+            'utf-8',
+          ),
+        ).toContain('AmazonApiGatewayV2Endpoint');
+        expect(
+          await readFile(
+            join(awsApiGatewayV2Dir, 'getPostsEndpoint.ts'),
+            'utf-8',
+          ),
+        ).toContain('AmazonApiGatewayV2Endpoint');
+
+        // Verify unified manifests were created with all construct types
+        const lambdaManifestPath = join(awsLambdaDir, 'manifest.json');
+        const apiGatewayManifestPath = join(awsApiGatewayV2Dir, 'manifest.json');
+
+        const lambdaManifest = JSON.parse(
+          await readFile(lambdaManifestPath, 'utf-8'),
+        );
+        const apiGatewayManifest = JSON.parse(
+          await readFile(apiGatewayManifestPath, 'utf-8'),
+        );
+
+        // Verify Lambda manifest structure
+        expect(lambdaManifest).toMatchObject({
+          routes: expect.arrayContaining([
+            expect.objectContaining({
+              path: '/users',
+              method: 'GET',
+              handler: expect.stringContaining('routes/getUsersEndpoint.handler'),
+            }),
+            expect.objectContaining({
+              path: '/posts',
+              method: 'POST',
+              handler: expect.stringContaining('routes/getPostsEndpoint.handler'),
+            }),
+          ]),
+          functions: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'processDataFunction',
+              handler: expect.stringContaining(
+                'functions/processDataFunction.handler',
+              ),
+              timeout: 300,
+            }),
+            expect.objectContaining({
+              name: 'sendEmailFunction',
+              handler: expect.stringContaining(
+                'functions/sendEmailFunction.handler',
+              ),
+              timeout: 30,
+            }),
+          ]),
+          crons: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'dailyCleanupCron',
+              handler: expect.stringContaining(
+                'crons/dailyCleanupCron.handler',
+              ),
+              schedule: 'rate(1 day)',
+            }),
+            expect.objectContaining({
+              name: 'hourlyReportCron',
+              handler: expect.stringContaining(
+                'crons/hourlyReportCron.handler',
+              ),
+              schedule: 'cron(0 * * * ? *)',
+            }),
+          ]),
+        });
+
+        // Verify API Gateway manifest structure
+        expect(apiGatewayManifest).toMatchObject({
+          routes: expect.arrayContaining([
+            expect.objectContaining({
+              path: '/users',
+              method: 'GET',
+              handler: expect.stringContaining('getUsersEndpoint.handler'),
+            }),
+            expect.objectContaining({
+              path: '/posts',
+              method: 'POST',
+              handler: expect.stringContaining('getPostsEndpoint.handler'),
+            }),
+          ]),
+          functions: [],
+          crons: [],
+        });
+
+        // Verify counts
+        expect(lambdaManifest.routes).toHaveLength(2);
+        expect(lambdaManifest.functions).toHaveLength(2);
+        expect(lambdaManifest.crons).toHaveLength(2);
+        expect(apiGatewayManifest.routes).toHaveLength(2);
+        expect(apiGatewayManifest.functions).toHaveLength(0);
+        expect(apiGatewayManifest.crons).toHaveLength(0);
+      } finally {
+        process.chdir(originalCwd);
+      }
+    },
+  );
+
   itWithDir('should handle case with no constructs found', async ({ dir }) => {
     // Create a basic config file with no actual construct files
     await createTestFile(

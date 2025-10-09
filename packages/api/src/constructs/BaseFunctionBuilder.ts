@@ -1,6 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
-import uniqBy from 'lodash.uniqby';
 import { ConsoleLogger, type Logger } from '../logger';
 import type { Service } from '../services';
 import { ConstructType } from './Construct';
@@ -12,7 +11,7 @@ import type {
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
-export class BaseFunctionBuilder<
+export abstract class BaseFunctionBuilder<
   TInput extends ComposableStandardSchema,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends Service[] = [],
@@ -69,73 +68,18 @@ export class BaseFunctionBuilder<
 
   constructor(public type = ConstructType.Function) {}
 
-  services<T extends Service[]>(
-    services: T,
-  ): Omit<this, '_services'> & { _services: [...TServices, ...T] } {
-    this._services = uniqBy(
-      [...this._services, ...services],
-      (s) => s.serviceName,
-    ) as TServices;
+  abstract services<T extends Service[]>(services: T): any;
 
-    return this as unknown as Omit<this, '_services'> & {
-      _services: [...TServices, ...T];
-    };
-  }
-
-  logger<T extends Logger>(logger: T): Omit<this, '_logger'> & { _logger: T } {
-    this._logger = logger as unknown as TLogger;
-
-    return this as unknown as Omit<this, '_logger'> & { _logger: T };
-  }
+  abstract logger<T extends Logger>(logger: T): any;
 
   timeout(timeout: number): this {
     this._timeout = timeout;
     return this;
   }
 
-  output<T extends StandardSchemaV1>(
-    schema: T,
-  ): BaseFunctionBuilder<
-    TInput,
-    T,
-    TServices,
-    TLogger,
-    TEventPublisher,
-    TEventPublisherServiceName
-  > {
-    this.outputSchema = schema as unknown as OutSchema;
+  abstract output<T extends StandardSchemaV1>(schema: T): any;
 
-    return this as unknown as BaseFunctionBuilder<
-      TInput,
-      T,
-      TServices,
-      TLogger,
-      TEventPublisher,
-      TEventPublisherServiceName
-    >;
-  }
-
-  input<T extends ComposableStandardSchema>(
-    schema: T,
-  ): BaseFunctionBuilder<
-    T,
-    OutSchema,
-    TServices,
-    TLogger,
-    TEventPublisher,
-    TEventPublisherServiceName
-  > {
-    this.inputSchema = schema as unknown as TInput;
-
-    return this as unknown as BaseFunctionBuilder<
-      T,
-      OutSchema,
-      TServices,
-      TLogger,
-      TEventPublisher,
-      TEventPublisherServiceName
-    >;
-  }
+  abstract input<T extends ComposableStandardSchema>(schema: T): any;
 
   event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
     event: TEvent,
@@ -161,4 +105,5 @@ export class BaseFunctionBuilder<
       TName
     >;
   }
+
 }

@@ -236,12 +236,11 @@ describe('Function', () => {
       });
 
       it('should add services', () => {
-        const builder = new FunctionBuilder();
         const service = new TestService();
+        const builder = new FunctionBuilder().services([service]);
 
-        const newBuilder = builder.services([service]);
-        expect(newBuilder._services.length).toBe(1);
-        expect(newBuilder._services[0]).toBe(service);
+        expect(builder._services.length).toBe(1);
+        expect(builder._services[0]).toBe(service);
       });
 
       it('should deduplicate services when adding', () => {
