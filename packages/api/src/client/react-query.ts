@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import type {
   QueryClient,
+  QueryFunctionContext,
   UseInfiniteQueryOptions,
   UseMutationOptions,
   UseQueryOptions,
@@ -43,11 +45,20 @@ export class TypedQueryClient<Paths> {
   ) {
     const queryKey = this.buildQueryKey(endpoint, config);
 
-    return useQuery<ExtractEndpointResponse<Paths, T>, Response>({
-      queryKey,
-      queryFn: () => this.fetcher(endpoint, config),
-      ...options,
-    });
+    // Memoize the combined options to prevent unnecessary re-renders
+    const memoizedOptions = useMemo(
+      () => ({
+        queryKey,
+        queryFn: () => this.fetcher(endpoint, config),
+        ...options,
+      }),
+      // Dependencies: queryKey, endpoint, config, and options
+      // Note: We stringify config and options to ensure stable references
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [queryKey.join(','), endpoint, JSON.stringify(config), JSON.stringify(options)],
+    );
+
+    return useQuery<ExtractEndpointResponse<Paths, T>, Response>(memoizedOptions);
   }
 
   useMutation<T extends MutationEndpoint<Paths>>(
@@ -61,15 +72,24 @@ export class TypedQueryClient<Paths> {
       'mutationFn'
     >,
   ) {
+    // Memoize the combined options to prevent unnecessary re-renders
+    const memoizedOptions = useMemo(
+      () => ({
+        mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
+          this.fetcher(endpoint, config),
+        ...options,
+      }),
+      // Dependencies: endpoint and options
+      // Note: We stringify options to ensure stable reference
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [endpoint, JSON.stringify(options)],
+    );
+
     return useMutation<
       ExtractEndpointResponse<Paths, T>,
       Response,
       FilteredRequestConfig<Paths, T>
-    >({
-      mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
-        this.fetcher(endpoint, config),
-      ...options,
-    });
+    >(memoizedOptions);
   }
 
   useInfiniteQuery<
@@ -100,34 +120,43 @@ export class TypedQueryClient<Paths> {
   ) {
     const queryKey = this.buildQueryKey(endpoint, config);
 
+    // Memoize the combined options to prevent unnecessary re-renders
+    const memoizedOptions = useMemo(
+      () => ({
+        queryKey,
+        queryFn: ({ pageParam }: QueryFunctionContext<unknown[], TPageParam>) => {
+          let mergedConfig = config;
+          if (pageParam !== undefined && config) {
+            // If pageParam is an object, spread it into query
+            const pageQuery =
+              typeof pageParam === 'object' ? pageParam : { page: pageParam };
+            mergedConfig = {
+              ...config,
+              query: { ...(config as any).query, ...pageQuery },
+            } as any;
+          } else if (pageParam !== undefined && !config) {
+            // If pageParam is an object, use it directly, otherwise wrap in page property
+            const pageQuery =
+              typeof pageParam === 'object' ? pageParam : { page: pageParam };
+            mergedConfig = { query: pageQuery } as any;
+          }
+          return this.fetcher(endpoint, mergedConfig) as Promise<TPageData>;
+        },
+        ...options,
+      }),
+      // Dependencies: queryKey, endpoint, config, and options
+      // Note: We stringify config and options to ensure stable references
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [queryKey.join(','), endpoint, JSON.stringify(config), JSON.stringify(options)],
+    );
+
     return useInfiniteQuery<
       TPageData,
       Response,
       { pages: TPageData[]; pageParams: TPageParam[] },
       unknown[],
       TPageParam
-    >({
-      queryKey,
-      queryFn: ({ pageParam }) => {
-        let mergedConfig = config;
-        if (pageParam !== undefined && config) {
-          // If pageParam is an object, spread it into query
-          const pageQuery =
-            typeof pageParam === 'object' ? pageParam : { page: pageParam };
-          mergedConfig = {
-            ...config,
-            query: { ...(config as any).query, ...pageQuery },
-          } as any;
-        } else if (pageParam !== undefined && !config) {
-          // If pageParam is an object, use it directly, otherwise wrap in page property
-          const pageQuery =
-            typeof pageParam === 'object' ? pageParam : { page: pageParam };
-          mergedConfig = { query: pageQuery } as any;
-        }
-        return this.fetcher(endpoint, mergedConfig) as Promise<TPageData>;
-      },
-      ...options,
-    });
+    >(memoizedOptions);
   }
 
   buildQueryKey<T extends TypedEndpoint<Paths>>(
