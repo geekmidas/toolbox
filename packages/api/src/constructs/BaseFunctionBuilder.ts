@@ -95,18 +95,46 @@ export class BaseFunctionBuilder<
 
   output<T extends StandardSchemaV1>(
     schema: T,
-  ): Omit<this, 'outputSchema'> & { outputSchema: T } {
+  ): BaseFunctionBuilder<
+    TInput,
+    T,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this.outputSchema = schema as unknown as OutSchema;
 
-    return this as unknown as Omit<this, 'outputSchema'> & { outputSchema: T };
+    return this as unknown as BaseFunctionBuilder<
+      TInput,
+      T,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
   input<T extends ComposableStandardSchema>(
     schema: T,
-  ): Omit<this, 'inputSchema'> & { inputSchema: T } {
+  ): BaseFunctionBuilder<
+    T,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this.inputSchema = schema as unknown as TInput;
 
-    return this as unknown as Omit<this, 'inputSchema'> & { inputSchema: T };
+    return this as unknown as BaseFunctionBuilder<
+      T,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
   event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
@@ -118,14 +146,19 @@ export class BaseFunctionBuilder<
 
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
-  ): Omit<this, '_publisher'> & { _publisher: Service<TName, T> } {
+  ): BaseFunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
       TEventPublisher
     >;
 
-    return this as unknown as Omit<this, '_publisher'> & {
-      _publisher: Service<TName, T>;
-    };
+    return this as unknown as BaseFunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      T,
+      TName
+    >;
   }
 }

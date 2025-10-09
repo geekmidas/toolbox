@@ -128,7 +128,6 @@ async function buildForProvider(
 
   // Generate manifests
   await generateManifests(
-    provider,
     outputDir,
     routes,
     functionInfos,

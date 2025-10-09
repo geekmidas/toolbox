@@ -316,16 +316,16 @@ The CLI generates files in the `.gkm/<provider>` directory:
 ├── aws-apigatewayv1/
 │   ├── getUsers.ts          # Individual Lambda handler
 │   ├── createUser.ts        # Individual Lambda handler
-│   └── routes.json          # Routes manifest
+│   └── manifest.json        # Build manifest
 ├── server/
 │   ├── app.ts               # Server application
-│   └── routes.json          # Routes manifest
+│   └── manifest.json        # Build manifest
 └── openapi.json             # OpenAPI specification
 ```
 
-### Routes Manifest
+### Build Manifest
 
-Each provider generates a `routes.json` file with routing information:
+Each provider generates a `manifest.json` file with build information:
 
 ```json
 {
@@ -339,6 +339,23 @@ Each provider generates a `routes.json` file with routing information:
       "path": "/users",
       "method": "POST",
       "handler": ".gkm/aws-apigatewayv1/createUser.handler"
+    }
+  ],
+  "functions": [
+    {
+      "name": "processData",
+      "handler": ".gkm/aws-lambda/functions/processData.handler",
+      "timeout": 60,
+      "memorySize": 256
+    }
+  ],
+  "crons": [
+    {
+      "name": "dailyCleanup",
+      "handler": ".gkm/aws-lambda/crons/dailyCleanup.handler",
+      "schedule": "rate(1 day)",
+      "timeout": 300,
+      "memorySize": 512
     }
   ]
 }

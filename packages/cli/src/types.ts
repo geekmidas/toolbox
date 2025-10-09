@@ -89,7 +89,7 @@ export interface CronsManifest {
 }
 
 export interface BuildManifest {
-  routes?: RouteInfo[];
-  functions?: FunctionInfo[];
-  crons?: CronInfo[];
+  routes: RouteInfo[];
+  functions: FunctionInfo[];
+  crons: CronInfo[];
 }

@@ -165,35 +165,36 @@ This generates:
     │   └── [function handlers]
     ├── crons/
     │   └── [cron handlers]
-    ├── routes.json
-    ├── functions.json
-    └── crons.json
+    └── manifest.json
 ```
 
-## Generated Manifests
+## Generated Manifest
 
-### functions.json
+### manifest.json
 ```json
 {
+  "routes": [
+    {
+      "path": "/api/health",
+      "method": "GET",
+      "handler": ".gkm/aws-lambda/routes/health.handler"
+    }
+  ],
   "functions": [
     {
       "name": "processOrder",
       "handler": ".gkm/aws-lambda/functions/processOrder.handler",
-      "timeout": 300000
+      "timeout": 300000,
+      "memorySize": 256
     }
-  ]
-}
-```
-
-### crons.json
-```json
-{
+  ],
   "crons": [
     {
       "name": "dailyReport",
       "handler": ".gkm/aws-lambda/crons/dailyReport.handler",
       "schedule": "cron(0 9 * * ? *)",
-      "timeout": 600000
+      "timeout": 600000,
+      "memorySize": 256
     }
   ]
 }
@@ -207,26 +208,28 @@ The generated manifests can be consumed by infrastructure tools like AWS CDK or 
 // AWS CDK Example
 import { Function, Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
-import functionsManifest from './.gkm/aws-lambda/functions.json';
-import cronsManifest from './.gkm/aws-lambda/crons.json';
+import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+import manifest from './.gkm/aws-lambda/manifest.json';
 
 // Deploy functions
-for (const fn of functionsManifest.functions) {
+for (const fn of manifest.functions) {
   new Function(stack, fn.name, {
     runtime: Runtime.NODEJS_20_X,
     handler: fn.handler,
     code: Code.fromAsset('.'),
-    timeout: Duration.millis(fn.timeout || 30000)
+    timeout: Duration.millis(fn.timeout || 30000),
+    memorySize: fn.memorySize || 256
   });
 }
 
 // Deploy crons
-for (const cron of cronsManifest.crons) {
+for (const cron of manifest.crons) {
   const fn = new Function(stack, cron.name, {
     runtime: Runtime.NODEJS_20_X,
     handler: cron.handler,
     code: Code.fromAsset('.'),
-    timeout: Duration.millis(cron.timeout || 30000)
+    timeout: Duration.millis(cron.timeout || 30000),
+    memorySize: cron.memorySize || 256
   });
   
   new Rule(stack, `${cron.name}Rule`, {
