@@ -11,10 +11,10 @@ import {
 } from '../generators';
 import type {
   BuildOptions,
+  CronInfo,
+  FunctionInfo,
   LegacyProvider,
   RouteInfo,
-  FunctionInfo,
-  CronInfo,
 } from '../types';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';

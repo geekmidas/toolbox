@@ -3,10 +3,10 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 // biome-ignore lint/style/useImportType: <explanation>
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { http, HttpResponse } from 'msw';
 import type { paths } from '../openapi-types';
 import { createTypedQueryClient } from '../react-query';
 import './setup';

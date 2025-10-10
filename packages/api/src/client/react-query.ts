@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import type {
   QueryClient,
   QueryFunctionContext,
@@ -12,6 +11,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { createTypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
