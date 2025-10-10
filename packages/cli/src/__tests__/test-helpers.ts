@@ -78,10 +78,10 @@ export async function createMockFunctionFile(
   timeout = 30,
 ): Promise<string> {
   const content = `
-import { FunctionBuilder } from '@geekmidas/api/constructs';
+import { f } from '@geekmidas/api/function';
 import { z } from 'zod';
 
-export const ${exportName} = new FunctionBuilder()
+export const ${exportName} = f
   .input(z.object({ name: z.string() }))
   .output(z.object({ greeting: z.string() }))
   .timeout(${timeout})
@@ -129,7 +129,9 @@ export function createTestFunction(timeout: number = 30) {
   builder.input(z.object({ name: z.string() }));
   builder.output(z.object({ greeting: z.string() }));
   builder.timeout(timeout);
-  return builder.handle(async ({ input }: any) => ({ greeting: `Hello, ${input.name}!` }));
+  return builder.handle(async ({ input }: any) => ({
+    greeting: `Hello, ${input.name}!`,
+  }));
 }
 
 export function createTestCron(

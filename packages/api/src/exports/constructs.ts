@@ -1,5 +1,3 @@
-export { FunctionBuilder } from '../constructs/FunctionBuilder';
-
 export {
   Function,
   FunctionFactory,

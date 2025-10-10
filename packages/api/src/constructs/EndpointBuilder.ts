@@ -150,19 +150,61 @@ export class EndpointBuilder<
 
   services<T extends Service[]>(
     services: T,
-  ): EndpointBuilder<TRoute, TMethod, TInput, [...TServices, ...T], TLogger, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName> {
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    [...TServices, ...T],
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this._services = uniqBy(
       [...this._services, ...services],
       (s) => s.serviceName,
     ) as TServices;
 
-    return this as unknown as EndpointBuilder<TRoute, TMethod, TInput, [...TServices, ...T], TLogger, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName>;
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      [...TServices, ...T],
+      TLogger,
+      OutSchema,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
-  logger<T extends Logger>(logger: T): EndpointBuilder<TRoute, TMethod, TInput, TServices, T, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName> {
+  logger<T extends Logger>(
+    logger: T,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    T,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this._logger = logger as unknown as TLogger;
 
-    return this as unknown as EndpointBuilder<TRoute, TMethod, TInput, TServices, T, OutSchema, TSession, TEventPublisher, TEventPublisherServiceName>;
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      T,
+      OutSchema,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
   output<T extends StandardSchemaV1>(
@@ -195,7 +237,9 @@ export class EndpointBuilder<
 
   // EndpointBuilder doesn't have a generic input method - it uses body, query, params instead
   input(_schema: any): any {
-    throw new Error('EndpointBuilder does not support generic input. Use body(), query(), or params() instead.');
+    throw new Error(
+      'EndpointBuilder does not support generic input. Use body(), query(), or params() instead.',
+    );
   }
 
   handle(

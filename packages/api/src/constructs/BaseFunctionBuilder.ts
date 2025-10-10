@@ -105,5 +105,4 @@ export abstract class BaseFunctionBuilder<
       TName
     >;
   }
-
 }

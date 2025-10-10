@@ -9,7 +9,13 @@ import {
   FunctionGenerator,
   type GeneratedConstruct,
 } from '../generators';
-import type { BuildOptions, LegacyProvider } from '../types';
+import type {
+  BuildOptions,
+  LegacyProvider,
+  RouteInfo,
+  FunctionInfo,
+  CronInfo,
+} from '../types';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';
@@ -80,8 +86,12 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     return;
   }
 
-  // Build for each provider in parallel
-  await Promise.all(
+  // Ensure .gkm directory exists
+  const rootOutputDir = join(process.cwd(), '.gkm');
+  await mkdir(rootOutputDir, { recursive: true });
+
+  // Collect all build results from each provider
+  const allBuildResults = await Promise.all(
     resolved.providers.map((provider) =>
       buildForProvider(
         provider,
@@ -96,6 +106,27 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       ),
     ),
   );
+
+  // Aggregate all routes, functions, and crons from all providers
+  const aggregatedRoutes = allBuildResults.flatMap((result) => result.routes);
+  const aggregatedFunctions = allBuildResults.flatMap(
+    (result) => result.functions,
+  );
+  const aggregatedCrons = allBuildResults.flatMap((result) => result.crons);
+
+  // Generate single manifest at root .gkm directory
+  await generateManifests(
+    rootOutputDir,
+    aggregatedRoutes,
+    aggregatedFunctions,
+    aggregatedCrons,
+  );
+}
+
+interface BuildResult {
+  routes: RouteInfo[];
+  functions: FunctionInfo[];
+  crons: CronInfo[];
 }
 
 async function buildForProvider(
@@ -108,7 +139,7 @@ async function buildForProvider(
   functions: GeneratedConstruct<Function<any, any, any, any>>[],
   crons: GeneratedConstruct<Cron<any, any, any, any>>[],
   enableOpenApi: boolean,
-): Promise<void> {
+): Promise<BuildResult> {
   const outputDir = join(process.cwd(), '.gkm', provider);
 
   // Ensure output directory exists
@@ -126,11 +157,14 @@ async function buildForProvider(
     cronGenerator.build(context, crons, outputDir, { provider }),
   ]);
 
-  // Generate manifests
-  await generateManifests(
-    outputDir,
-    routes,
-    functionInfos,
-    cronInfos,
+  logger.log(
+    `Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons for ${provider}`,
   );
+
+  // Return build results instead of generating manifest here
+  return {
+    routes,
+    functions: functionInfos,
+    crons: cronInfos,
+  };
 }

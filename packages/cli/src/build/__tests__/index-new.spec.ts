@@ -192,29 +192,38 @@ export default {
           ),
         ).toContain('AmazonApiGatewayV2Endpoint');
 
-        // Verify unified manifests were created with all construct types
-        const lambdaManifestPath = join(awsLambdaDir, 'manifest.json');
-        const apiGatewayManifestPath = join(awsApiGatewayV2Dir, 'manifest.json');
+        // Verify unified manifest was created at root .gkm directory
+        const manifestPath = join(dir, '.gkm', 'manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
 
-        const lambdaManifest = JSON.parse(
-          await readFile(lambdaManifestPath, 'utf-8'),
-        );
-        const apiGatewayManifest = JSON.parse(
-          await readFile(apiGatewayManifestPath, 'utf-8'),
-        );
-
-        // Verify Lambda manifest structure
-        expect(lambdaManifest).toMatchObject({
+        // Verify manifest structure includes all routes from both providers
+        expect(manifest).toMatchObject({
           routes: expect.arrayContaining([
+            // Routes from aws-lambda provider
             expect.objectContaining({
               path: '/users',
               method: 'GET',
-              handler: expect.stringContaining('routes/getUsersEndpoint.handler'),
+              handler: expect.stringContaining(
+                'routes/getUsersEndpoint.handler',
+              ),
             }),
             expect.objectContaining({
               path: '/posts',
               method: 'POST',
-              handler: expect.stringContaining('routes/getPostsEndpoint.handler'),
+              handler: expect.stringContaining(
+                'routes/getPostsEndpoint.handler',
+              ),
+            }),
+            // Routes from aws-apigatewayv2 provider
+            expect.objectContaining({
+              path: '/users',
+              method: 'GET',
+              handler: expect.stringContaining('getUsersEndpoint.handler'),
+            }),
+            expect.objectContaining({
+              path: '/posts',
+              method: 'POST',
+              handler: expect.stringContaining('getPostsEndpoint.handler'),
             }),
           ]),
           functions: expect.arrayContaining([
@@ -251,31 +260,10 @@ export default {
           ]),
         });
 
-        // Verify API Gateway manifest structure
-        expect(apiGatewayManifest).toMatchObject({
-          routes: expect.arrayContaining([
-            expect.objectContaining({
-              path: '/users',
-              method: 'GET',
-              handler: expect.stringContaining('getUsersEndpoint.handler'),
-            }),
-            expect.objectContaining({
-              path: '/posts',
-              method: 'POST',
-              handler: expect.stringContaining('getPostsEndpoint.handler'),
-            }),
-          ]),
-          functions: [],
-          crons: [],
-        });
-
-        // Verify counts
-        expect(lambdaManifest.routes).toHaveLength(2);
-        expect(lambdaManifest.functions).toHaveLength(2);
-        expect(lambdaManifest.crons).toHaveLength(2);
-        expect(apiGatewayManifest.routes).toHaveLength(2);
-        expect(apiGatewayManifest.functions).toHaveLength(0);
-        expect(apiGatewayManifest.crons).toHaveLength(0);
+        // Verify counts - should have duplicated routes (one for each provider)
+        expect(manifest.routes).toHaveLength(4); // 2 routes x 2 providers
+        expect(manifest.functions).toHaveLength(2);
+        expect(manifest.crons).toHaveLength(2);
       } finally {
         process.chdir(originalCwd);
       }

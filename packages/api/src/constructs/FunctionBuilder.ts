@@ -78,19 +78,49 @@ export class FunctionBuilder<
 
   services<T extends Service[]>(
     services: T,
-  ): FunctionBuilder<TInput, OutSchema, [...TServices, ...T], TLogger, TEventPublisher, TEventPublisherServiceName> {
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    [...TServices, ...T],
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this._services = uniqBy(
       [...this._services, ...services],
       (s) => s.serviceName,
     ) as TServices;
 
-    return this as unknown as FunctionBuilder<TInput, OutSchema, [...TServices, ...T], TLogger, TEventPublisher, TEventPublisherServiceName>;
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      [...TServices, ...T],
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
-  logger<T extends Logger>(logger: T): FunctionBuilder<TInput, OutSchema, TServices, T, TEventPublisher, TEventPublisherServiceName> {
+  logger<T extends Logger>(
+    logger: T,
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    T,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
     this._logger = logger as unknown as TLogger;
 
-    return this as unknown as FunctionBuilder<TInput, OutSchema, TServices, T, TEventPublisher, TEventPublisherServiceName>;
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      T,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >;
   }
 
   handle(

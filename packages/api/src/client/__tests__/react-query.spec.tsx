@@ -376,11 +376,11 @@ describe('TypedQueryClient', () => {
         http.get('https://api.example.com/users/:id', () => {
           requestCount++;
           return HttpResponse.json({ id: '123', name: 'John Doe' });
-        })
+        }),
       );
 
       let renderCount = 0;
-      
+
       const { rerender } = renderHook(
         ({ options }: { options?: { enabled?: boolean } }) => {
           renderCount++;
@@ -390,9 +390,9 @@ describe('TypedQueryClient', () => {
             options,
           );
         },
-        { 
+        {
           wrapper,
-          initialProps: { options: { enabled: true } }
+          initialProps: { options: { enabled: true } },
         },
       );
 
@@ -404,15 +404,15 @@ describe('TypedQueryClient', () => {
 
       // Rerender with a new options object that has the same values
       rerender({ options: { enabled: true } });
-      
+
       // Give React time to potentially trigger re-renders
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       // The API should not be called again because options haven't actually changed
       expect(requestCount).toBe(1);
-      
+
       // Component should re-render due to props change, but React Query shouldn't refetch
       expect(renderCount).toBeGreaterThan(initialRenderCount);
     });
@@ -429,7 +429,7 @@ describe('TypedQueryClient', () => {
         http.get('https://api.example.com/users/:id', () => {
           requestCount++;
           return HttpResponse.json({ id: '123', name: 'John Doe' });
-        })
+        }),
       );
 
       const { rerender } = renderHook(
@@ -439,9 +439,9 @@ describe('TypedQueryClient', () => {
             { params: { id: '123' } },
             { enabled },
           ),
-        { 
+        {
           wrapper,
-          initialProps: { enabled: true }
+          initialProps: { enabled: true },
         },
       );
 
@@ -451,9 +451,9 @@ describe('TypedQueryClient', () => {
 
       // Disable the query
       rerender({ enabled: false });
-      
+
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       // Should still only be called once since we disabled it
@@ -461,7 +461,7 @@ describe('TypedQueryClient', () => {
 
       // Re-enable the query
       rerender({ enabled: true });
-      
+
       await waitFor(() => {
         expect(requestCount).toBe(2);
       });
@@ -480,7 +480,7 @@ describe('TypedQueryClient', () => {
           requestCount++;
           const body = await request.json();
           return HttpResponse.json({ id: '123', name: (body as any).name });
-        })
+        }),
       );
 
       let renderCount = 0;
@@ -491,13 +491,15 @@ describe('TypedQueryClient', () => {
           renderCount++;
           return typedClient.useMutation('POST /users', options);
         },
-        { 
+        {
           wrapper,
-          initialProps: { 
-            options: { 
-              onSuccess: () => { successCallCount++; } 
-            } 
-          }
+          initialProps: {
+            options: {
+              onSuccess: () => {
+                successCallCount++;
+              },
+            },
+          },
         },
       );
 
@@ -505,7 +507,9 @@ describe('TypedQueryClient', () => {
 
       // Trigger a mutation to test the options
       await act(async () => {
-        result.current.mutate({ body: { name: 'Test User', email: 'test@example.com' } });
+        result.current.mutate({
+          body: { name: 'Test User', email: 'test@example.com' },
+        });
       });
 
       await waitFor(() => {
@@ -514,7 +518,9 @@ describe('TypedQueryClient', () => {
       });
 
       // Rerender with a new options object that has the same function reference
-      const onSuccess = () => { successCallCount++; };
+      const onSuccess = () => {
+        successCallCount++;
+      };
       rerender({ options: { onSuccess } });
       rerender({ options: { onSuccess } });
 
@@ -537,15 +543,15 @@ describe('TypedQueryClient', () => {
           const { id } = params;
           requestedIds.push(id as string);
           return HttpResponse.json({ id, name: `User ${id}` });
-        })
+        }),
       );
 
       const { rerender } = renderHook(
         ({ userId }: { userId: string }) =>
           typedClient.useQuery('GET /users/{id}', { params: { id: userId } }),
-        { 
+        {
           wrapper,
-          initialProps: { userId: '123' }
+          initialProps: { userId: '123' },
         },
       );
 
@@ -556,7 +562,7 @@ describe('TypedQueryClient', () => {
 
       // Change the user ID - should trigger a new fetch
       rerender({ userId: '456' });
-      
+
       await waitFor(() => {
         expect(requestCount).toBe(2);
         expect(requestedIds).toEqual(['123', '456']);
@@ -564,9 +570,9 @@ describe('TypedQueryClient', () => {
 
       // Call with same ID again - should not trigger new fetch due to React Query caching
       rerender({ userId: '456' });
-      
+
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       expect(requestCount).toBe(2);

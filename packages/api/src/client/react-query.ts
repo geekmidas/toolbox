@@ -55,10 +55,17 @@ export class TypedQueryClient<Paths> {
       // Dependencies: queryKey, endpoint, config, and options
       // Note: We stringify config and options to ensure stable references
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [queryKey.join(','), endpoint, JSON.stringify(config), JSON.stringify(options)],
+      [
+        queryKey.join(','),
+        endpoint,
+        JSON.stringify(config),
+        JSON.stringify(options),
+      ],
     );
 
-    return useQuery<ExtractEndpointResponse<Paths, T>, Response>(memoizedOptions);
+    return useQuery<ExtractEndpointResponse<Paths, T>, Response>(
+      memoizedOptions,
+    );
   }
 
   useMutation<T extends MutationEndpoint<Paths>>(
@@ -124,7 +131,9 @@ export class TypedQueryClient<Paths> {
     const memoizedOptions = useMemo(
       () => ({
         queryKey,
-        queryFn: ({ pageParam }: QueryFunctionContext<unknown[], TPageParam>) => {
+        queryFn: ({
+          pageParam,
+        }: QueryFunctionContext<unknown[], TPageParam>) => {
           let mergedConfig = config;
           if (pageParam !== undefined && config) {
             // If pageParam is an object, spread it into query
@@ -147,7 +156,12 @@ export class TypedQueryClient<Paths> {
       // Dependencies: queryKey, endpoint, config, and options
       // Note: We stringify config and options to ensure stable references
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [queryKey.join(','), endpoint, JSON.stringify(config), JSON.stringify(options)],
+      [
+        queryKey.join(','),
+        endpoint,
+        JSON.stringify(config),
+        JSON.stringify(options),
+      ],
     );
 
     return useInfiniteQuery<

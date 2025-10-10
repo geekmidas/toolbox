@@ -864,10 +864,14 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
           requestCount++;
           const url = new URL(request.url);
           const page = parseInt(url.searchParams.get('page') || '1');
-          
+
           return HttpResponse.json({
             users: [
-              { id: `user-${page}`, name: `User ${page}`, email: `user${page}@example.com` },
+              {
+                id: `user-${page}`,
+                name: `User ${page}`,
+                email: `user${page}@example.com`,
+              },
             ],
             pagination: {
               page,
@@ -876,11 +880,11 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
               hasMore: page < 5,
             },
           });
-        })
+        }),
       );
 
       let renderCount = 0;
-      
+
       const { rerender } = renderHook(
         ({ options }: { options?: { enabled?: boolean } }) => {
           renderCount++;
@@ -888,15 +892,17 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
             'GET /users/paginated',
             {
               initialPageParam: 1,
-              getNextPageParam: (lastPage) => 
-                lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
+              getNextPageParam: (lastPage) =>
+                lastPage.pagination.hasMore
+                  ? lastPage.pagination.page + 1
+                  : undefined,
             },
             { query: { limit: 10 }, ...options },
           );
         },
-        { 
+        {
           wrapper,
-          initialProps: { options: { enabled: true } }
+          initialProps: { options: { enabled: true } },
         },
       );
 
@@ -908,15 +914,15 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 
       // Rerender with a new options object that has the same values
       rerender({ options: { enabled: true } });
-      
+
       // Give React time to potentially trigger re-renders
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       // The API should not be called again because options haven't actually changed
       expect(requestCount).toBe(1);
-      
+
       // Component should re-render due to props change, but React Query shouldn't refetch
       expect(renderCount).toBeGreaterThan(initialRenderCount);
     });
@@ -936,7 +942,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
           const url = new URL(request.url);
           const page = parseInt(url.searchParams.get('page') || '1');
           requestedPages.push(page);
-          
+
           return HttpResponse.json({
             users: Array.from({ length: 10 }, (_, i) => ({
               id: `user-${(page - 1) * 10 + i + 1}`,
@@ -950,7 +956,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
               hasMore: page < 3, // Reduced to avoid complexity
             },
           });
-        })
+        }),
       );
 
       const { result } = renderHook(
@@ -959,8 +965,10 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
             'GET /users/paginated',
             {
               initialPageParam: 1,
-              getNextPageParam: (lastPage) => 
-                lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
+              getNextPageParam: (lastPage) =>
+                lastPage.pagination.hasMore
+                  ? lastPage.pagination.page + 1
+                  : undefined,
             },
             { query: { limit: 10 } },
           ),

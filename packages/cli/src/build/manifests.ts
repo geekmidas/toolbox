@@ -26,7 +26,7 @@ export async function generateManifests(
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
   logger.log(
-    `Generated ${routes.length} routes, ${functions.length} functions, ${crons.length} crons in ${relative(process.cwd(), outputDir)}`,
+    `\nGenerated unified manifest with ${routes.length} routes, ${functions.length} functions, ${crons.length} crons`,
   );
   logger.log(`Manifest: ${relative(process.cwd(), manifestPath)}`);
 }
