@@ -28,6 +28,9 @@
     "typescript": "5.8.2",
     "vitest": "~3.2.4"
   },
+  "dependencies": {
+    "@standard-schema/spec": "~1.0.0"
+  },
   "packageManager": "pnpm@10.13.1",
   "engines": {
     "node": ">=22"

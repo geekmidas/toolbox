@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@standard-schema/spec':
+        specifier: ~1.0.0
+        version: 1.0.0
     devDependencies:
       '@biomejs/biome':
         specifier: ~1.9.4
@@ -68,6 +72,9 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
+      '@geekmidas/events':
+        specifier: workspace:*
+        version: link:../events
       '@middy/core':
         specifier: '>=6.3.1'
         version: 6.3.2
@@ -77,9 +84,6 @@ importers:
       '@middy/http-json-body-parser':
         specifier: '>=6.3.1'
         version: 6.3.2
-      '@standard-schema/spec':
-        specifier: ~1.0.0
-        version: 1.0.0
       '@tanstack/react-query':
         specifier: '>=5.0.0'
         version: 5.83.0(react@19.1.0)
@@ -339,6 +343,14 @@ importers:
       '@types/lodash.snakecase':
         specifier: ~4.1.9
         version: 4.1.9
+
+  packages/events:
+    dependencies:
+      '@geekmidas/schema':
+        specifier: workspace:*
+        version: link:../schema
+
+  packages/schema: {}
 
   packages/storage:
     dependencies:

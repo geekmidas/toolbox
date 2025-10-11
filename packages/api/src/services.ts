@@ -130,24 +130,6 @@ export class ServiceDiscovery<
     readonly logger: TLogger,
     readonly envParser: EnvironmentParser<{}>,
   ) {}
-  /**
-   * Add a service to the service discovery.
-   * Services are only added if they don't already exist.
-   *
-   * @template TName - The literal string type for the service name
-   * @template TInstance - The type of the service instance
-   * @param name - The service name
-   * @param service - The service to add
-   * @private
-   */
-  private add<TName extends string, TInstance>(
-    name: TName,
-    service: Service<TName, TInstance>,
-  ): void {
-    if (!this.services.has(name)) {
-      this.services.set(name, service);
-    }
-  }
 
   /**
    * Register multiple services with the service discovery.
@@ -174,11 +156,11 @@ export class ServiceDiscovery<
    * ```
    */
   async register<T extends Service[]>(services: T): Promise<ServiceRecord<T>> {
-    const registeredServices: ServiceRecord<T> = {} as ServiceRecord<T>;
+    const registeredServices = {} as ServiceRecord<T>;
     for (const service of services) {
-      const name = service.serviceName;
+      const name = service.serviceName as T[number]['serviceName'];
       if (this.instances.has(name)) {
-        registeredServices[name] = this.instances.get(
+        (registeredServices as any)[name] = this.instances.get(
           name,
         ) as TServices[keyof TServices];
         continue;
@@ -187,7 +169,7 @@ export class ServiceDiscovery<
       const instance = await service.register(this.envParser);
 
       this.instances.set(name, instance as TServices[keyof TServices]);
-      registeredServices[name] = instance as TServices[keyof TServices];
+      (registeredServices as any)[name] = instance as TServices[keyof TServices];
     }
 
     return registeredServices;

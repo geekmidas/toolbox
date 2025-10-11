@@ -1,0 +1,25 @@
+{
+  "name": "@geekmidas/events",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./rabbitmq": {
+      "types": "./dist/rabbitmq/index.d.ts",
+      "import": "./dist/rabbitmq/index.mjs",
+      "require": "./dist/rabbitmq/index.cjs"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "@geekmidas/schema": "workspace:*"
+  },
+  "devDependencies": {}
+}

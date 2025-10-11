@@ -41,6 +41,7 @@
     "paysafe",
     "pgcrypto",
     "presigner",
+    "rabbitmq",
     "snakecase",
     "testkit",
     "trgm",

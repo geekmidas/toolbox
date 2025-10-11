@@ -14,4 +14,10 @@ export type {
   RateExpression,
 } from '../constructs/Cron';
 
+export { Subscriber, SubscriberBuilder } from '../constructs/Subscriber';
+export type {
+  SubscriberHandler,
+  SubscriberContext,
+} from '../constructs/Subscriber';
+
 export { Construct, ConstructType } from '../constructs/Construct';
