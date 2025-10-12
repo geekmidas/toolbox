@@ -13,6 +13,29 @@ export type PublishableMessage<TType extends string, TPayload> = {
 };
 
 /**
+ * Event publisher/subscriber types
+ */
+export enum EventPublisherType {
+  Basic = 'basic',
+  EventBridge = 'eventbridge',
+  SQS = 'sqs',
+  SNS = 'sns',
+  Kafka = 'kafka',
+  RabbitMQ = 'rabbitmq',
+}
+
+/**
+ * Base interface for event connections
+ * Connections manage the underlying transport (RabbitMQ channel, SQS client, etc.)
+ */
+export interface EventConnection {
+  readonly type: EventPublisherType;
+  connect(): Promise<void>;
+  close(): Promise<void>;
+  isConnected(): boolean;
+}
+
+/**
  * Interface for event publishers that handle the actual publishing of events.
  * Implementations can send to EventBridge, SQS, Kafka, or any other event system.
  *
@@ -22,6 +45,11 @@ export type EventPublisher<TMessage extends PublishableMessage<string, any>> = {
   publish: (message: TMessage[]) => Promise<void>;
 };
 
+/**
+ * Interface for event subscribers that handle receiving and processing events.
+ *
+ * @template TMessage - The union type of all publishable messages
+ */
 export type EventSubscriber<TMessage extends PublishableMessage<string, any>> =
   {
     subscribe: (

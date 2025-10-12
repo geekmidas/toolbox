@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PublishableMessage } from '../../types';
+import { RabbitMQConnection } from '../RabbitMQConnection';
 import { RabbitMQPublisher } from '../RabbitMQPublisher';
 
 type TestMessage = PublishableMessage<'user.created' | 'user.updated', any>;
@@ -13,57 +14,61 @@ const uniqueExchange = () =>
 describe('RabbitMQPublisher - Integration Tests', () => {
   describe('constructor', () => {
     it('should create instance with default configuration', () => {
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: uniqueExchange(),
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       expect(publisher).toBeDefined();
     });
 
     it('should connect lazily on first publish', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       // Should not throw - connection happens on publish
       await publisher.publish([
         { type: 'user.created', payload: { userId: 'test' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
 
     it('should work with custom exchange type', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
         exchangeType: 'direct',
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([
         { type: 'user.created', payload: { userId: 'test' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
 
     it('should apply custom timeout', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
         timeout: 10000,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([
         { type: 'user.created', payload: { userId: 'test' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
   });
 
@@ -159,10 +164,11 @@ describe('RabbitMQPublisher - Integration Tests', () => {
   describe('publish', () => {
     it('should publish single message successfully', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       const messages: TestMessage[] = [
         {
@@ -172,15 +178,16 @@ describe('RabbitMQPublisher - Integration Tests', () => {
       ];
 
       await publisher.publish(messages);
-      await publisher.close();
+      await connection.close();
     });
 
     it('should publish multiple messages with different routing keys', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       const messages: TestMessage[] = [
         { type: 'user.created', payload: { userId: '1' } },
@@ -190,15 +197,16 @@ describe('RabbitMQPublisher - Integration Tests', () => {
       ];
 
       await publisher.publish(messages);
-      await publisher.close();
+      await connection.close();
     });
 
     it('should serialize complex payloads to JSON', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       const complexPayload = {
         userId: '123',
@@ -218,15 +226,16 @@ describe('RabbitMQPublisher - Integration Tests', () => {
         { type: 'user.created', payload: complexPayload },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
 
     it('should handle large batch of messages', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       // Create 100 messages
       const messages: TestMessage[] = Array.from({ length: 100 }, (_, i) => ({
@@ -235,91 +244,97 @@ describe('RabbitMQPublisher - Integration Tests', () => {
       }));
 
       await publisher.publish(messages);
-      await publisher.close();
+      await connection.close();
     });
 
     it('should handle empty array', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([]);
-      await publisher.close();
+      await connection.close();
     });
   });
 
   describe('close', () => {
     it('should close connection gracefully', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([
         { type: 'user.created', payload: { userId: 'test' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
 
     it('should allow reconnection after close', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([
         { type: 'user.created', payload: { userId: '1' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
 
       // Should reconnect on next publish
       await publisher.publish([
         { type: 'user.created', payload: { userId: '2' } },
       ]);
 
-      await publisher.close();
+      await connection.close();
     });
 
     it('should not throw error if already closed', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await publisher.publish([
         { type: 'user.created', payload: { userId: 'test' } },
       ]);
 
-      await publisher.close();
-      await expect(publisher.close()).resolves.toBeUndefined();
+      await connection.close();
+      await expect(connection.close()).resolves.toBeUndefined();
     });
 
     it('should handle close without ever connecting', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: RABBITMQ_URL,
         exchange: testExchange,
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
-      await expect(publisher.close()).resolves.toBeUndefined();
+      await expect(connection.close()).resolves.toBeUndefined();
     });
   });
 
   describe('connection error handling', () => {
     it('should throw error for invalid hostname', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: 'amqp://geekmidas:geekmidas@invalid-host:5672',
         exchange: testExchange,
         timeout: 1000, // Short timeout for faster test
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await expect(
         publisher.publish([
@@ -330,11 +345,12 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 
     it('should throw error for invalid credentials', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: 'amqp://wrong:wrong@localhost:5672',
         exchange: testExchange,
         timeout: 1000, // Short timeout for faster test
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await expect(
         publisher.publish([
@@ -345,11 +361,12 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 
     it('should throw error for invalid port', async () => {
       const testExchange = uniqueExchange();
-      const publisher = new RabbitMQPublisher<TestMessage>({
+      const connection = new RabbitMQConnection({
         url: 'amqp://geekmidas:geekmidas@localhost:9999',
         exchange: testExchange,
         timeout: 1000, // Short timeout for faster test
       });
+      const publisher = new RabbitMQPublisher<TestMessage>(connection);
 
       await expect(
         publisher.publish([
