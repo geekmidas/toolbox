@@ -32,7 +32,8 @@
     "@geekmidas/schema": "workspace:*"
   },
   "peerDependencies": {
-    "amqplib": "^0.10.3"
+    "amqplib": "^0.10.3",
+    "@aws-sdk/client-sqs": "~3.908.0"
   },
   "devDependencies": {
     "@types/amqplib": "~0.10.7"

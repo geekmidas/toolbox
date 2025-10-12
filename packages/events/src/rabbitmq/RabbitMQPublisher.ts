@@ -43,8 +43,6 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
     // Extract connection URL without query params
     const baseUrl = `amqp://${url.username ? `${url.username}:${url.password}@` : ''}${url.host}${url.pathname}`;
 
-    console.log('Connecting to RabbitMQ with URL:', baseUrl);
-
     const timeoutParam = params.get('timeout');
     const config: RabbitMQPublisherConfig = {
       url: baseUrl,

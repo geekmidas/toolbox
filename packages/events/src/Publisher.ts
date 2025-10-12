@@ -17,7 +17,11 @@ export class Publisher {
         const { RabbitMQPublisher } = await import('./rabbitmq');
         return RabbitMQPublisher.fromConnectionString<TMessage>(connectionStr);
       }
-      // Future implementations for EventBridge, SQS, SNS, Kafka, etc.
+      case EventPublisherType.SQS: {
+        const { SQSPublisher } = await import('./sqs');
+        return SQSPublisher.fromConnectionString<TMessage>(connectionStr);
+      }
+      // Future implementations for EventBridge, SNS, Kafka, etc.
       default:
         throw new Error(`Unsupported event publisher type: ${url.protocol}`);
     }
