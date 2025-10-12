@@ -17,9 +17,8 @@ export class SQSConnection implements EventConnection {
   readonly type = EventPublisherType.SQS;
   private client: SQSClient;
   private connected = false;
-  private config: SQSConnectionConfig;
 
-  constructor(config: SQSConnectionConfig) {
+  constructor(readonly config: SQSConnectionConfig) {
     this.config = config;
 
     const clientConfig: SQSClientConfig = {

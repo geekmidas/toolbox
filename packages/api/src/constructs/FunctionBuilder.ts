@@ -1,6 +1,6 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
-import type { Logger } from '../logger';
 import type { Service } from '../services';
 import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { ConstructType } from './Construct';

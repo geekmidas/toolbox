@@ -1,10 +1,10 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { Endpoint } from '../../constructs/Endpoint';
 import { e } from '../../constructs/EndpointFactory';
-import type { Logger } from '../../logger';
 import { HonoEndpoint } from '../HonoEndpoint';
 
 describe('HonoEndpoint OpenAPI Documentation', () => {

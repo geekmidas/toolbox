@@ -1,10 +1,10 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
 import type {
   HttpMethod,
   InferComposableStandardSchema,
 } from '../constructs/types';
-import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -14,7 +14,8 @@ import type {
   Context,
 } from 'aws-lambda';
 import set from 'lodash.set';
-import type { EventPublisher } from '../constructs/events';
+
+import type { EventPublisher } from '@geekmidas/events';
 import { publishEndpointEvents } from '../constructs/publisher';
 import {
   UnauthorizedError,

@@ -1,13 +1,13 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
-import { Endpoint } from '../../constructs/Endpoint';
 import type {
   EventPublisher,
   MappedEvent,
   PublishableMessage,
-} from '../../constructs/events';
-import type { Logger } from '../../logger';
+} from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { Endpoint } from '../../constructs/Endpoint';
 import type { Service } from '../../services';
 import {
   createMockContext,

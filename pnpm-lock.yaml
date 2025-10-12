@@ -75,6 +75,9 @@ importers:
       '@geekmidas/events':
         specifier: workspace:*
         version: link:../events
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@middy/core':
         specifier: '>=6.3.1'
         version: 6.3.2
@@ -358,10 +361,18 @@ importers:
       amqplib:
         specifier: ^0.10.3
         version: 0.10.9
+      lodash.chunk:
+        specifier: ~4.2.0
+        version: 4.2.0
     devDependencies:
       '@types/amqplib':
         specifier: ~0.10.7
         version: 0.10.7
+      '@types/lodash.chunk':
+        specifier: ~4.2.0
+        version: 4.2.9
+
+  packages/logger: {}
 
   packages/schema: {}
 
@@ -3042,6 +3053,9 @@ packages:
   '@types/linkify-it@5.0.0':
     resolution: {integrity: sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q==}
 
+  '@types/lodash.chunk@4.2.9':
+    resolution: {integrity: sha512-Z9VtFUSnmT0No/QymqfG9AGbfOA4O5qB/uyP89xeZBqDAsKsB4gQFTqt7d0pHjbsTwtQ4yZObQVHuKlSOhIJ5Q==}
+
   '@types/lodash.get@4.4.9':
     resolution: {integrity: sha512-J5dvW98sxmGnamqf+/aLP87PYXyrha9xIgc2ZlHl6OHMFR2Ejdxep50QfU0abO1+CH6+ugx+8wEUN1toImAinA==}
 
@@ -4875,6 +4889,9 @@ packages:
   locate-path@6.0.0:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
+
+  lodash.chunk@4.2.0:
+    resolution: {integrity: sha512-ZzydJKfUHJwHa+hF5X66zLFCBrWn5GeF28OHEr4WVWtNDXlQ/IjWKPBiikqKo2ne0+v6JgCgJ0GzJp8k8bHC7w==}
 
   lodash.debounce@4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
@@ -10505,6 +10522,10 @@ snapshots:
 
   '@types/linkify-it@5.0.0': {}
 
+  '@types/lodash.chunk@4.2.9':
+    dependencies:
+      '@types/lodash': 4.17.18
+
   '@types/lodash.get@4.4.9':
     dependencies:
       '@types/lodash': 4.17.18
@@ -12469,6 +12490,8 @@ snapshots:
   locate-path@6.0.0:
     dependencies:
       p-locate: 5.0.0
+
+  lodash.chunk@4.2.0: {}
 
   lodash.debounce@4.0.8: {}
 

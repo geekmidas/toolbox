@@ -6,13 +6,13 @@ import type { Function, FunctionHandler } from '../constructs/Function';
 import { FunctionBuilder } from '../constructs/FunctionBuilder';
 
 import type { EventPublisher } from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
 import type {
   ComposableStandardSchema,
   InferComposableStandardSchema,
   InferStandardSchema,
 } from '../constructs/types';
 import { wrapError } from '../errors';
-import type { Logger } from '../logger';
 import type { Service, ServiceRecord } from '../services';
 import { FunctionExecutionWrapper } from './FunctionExecutionWrapper';
 

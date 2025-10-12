@@ -1,3 +1,4 @@
+// Generic types and interfaces
 export type {
   EventConnection,
   EventPublisher,
@@ -8,6 +9,7 @@ export type {
 } from './types';
 export { EventPublisherType } from './types';
 
+// Generic factories
 export { Publisher } from './Publisher';
 export type { EventPublisherConnectionString } from './Publisher';
 
@@ -16,29 +18,8 @@ export type { EventSubscriberConnectionString } from './Subscriber';
 
 export { EventConnectionFactory } from './EventConnection';
 
-// Basic
-export { BasicConnection, BasicPublisher, BasicSubscriber } from './basic';
-
-// RabbitMQ
-export {
-  RabbitMQConnection,
-  RabbitMQPublisher,
-  RabbitMQSubscriber,
-} from './rabbitmq';
-export type {
-  RabbitMQConnectionConfig,
-  RabbitMQPublisherOptions,
-  RabbitMQSubscriberOptions,
-} from './rabbitmq';
-
-// SQS (Publisher only - use SNS for push-based subscriptions)
-export { SQSConnection, SQSPublisher } from './sqs';
-export type { SQSConnectionConfig, SQSPublisherOptions } from './sqs';
-
-// SNS
-export { SNSConnection, SNSPublisher, SNSSubscriber } from './sns';
-export type {
-  SNSConnectionConfig,
-  SNSPublisherOptions,
-  SNSSubscriberOptions,
-} from './sns';
+// Specific integrations should be imported via subpaths:
+// - @geekmidas/events/basic
+// - @geekmidas/events/rabbitmq
+// - @geekmidas/events/sqs
+// - @geekmidas/events/sns

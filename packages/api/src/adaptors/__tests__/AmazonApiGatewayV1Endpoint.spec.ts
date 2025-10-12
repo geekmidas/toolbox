@@ -1,4 +1,5 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -11,7 +12,6 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from '../../errors';
-import type { Logger } from '../../logger';
 
 import { createMockV1Event } from '../../testing/aws-test-helpers';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1Endpoint';

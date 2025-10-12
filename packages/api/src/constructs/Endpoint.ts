@@ -1,8 +1,8 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import pick from 'lodash.pick';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
-import type { Logger } from '../logger';
 import type { RateLimitConfig } from '../rate-limit';
 
 import type { Service, ServiceRecord } from '../services';

@@ -9,7 +9,7 @@ export {
   type MappedEvent,
   type PublishableMessage,
   type ExtractPublisherMessage,
-} from '../constructs/events.ts';
+} from '@geekmidas/events.ts';
 export {
   type RateLimitConfig,
   type RateLimitContext,

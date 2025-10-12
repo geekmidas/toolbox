@@ -1,7 +1,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-import type { Logger } from '../../logger';
 import { ServiceDiscovery } from '../../services';
 import { Endpoint } from '../Endpoint';
 

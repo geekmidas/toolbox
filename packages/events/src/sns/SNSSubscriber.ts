@@ -1,15 +1,14 @@
 import {
   CreateQueueCommand,
   DeleteQueueCommand,
-  DeleteMessageCommand,
   GetQueueAttributesCommand,
-  ReceiveMessageCommand,
   SetQueueAttributesCommand,
   SQSClient,
-  type Message,
 } from '@aws-sdk/client-sqs';
 import { SubscribeCommand, UnsubscribeCommand } from '@aws-sdk/client-sns';
 import type { EventSubscriber, PublishableMessage } from '../types';
+import { SQSConnection } from '../sqs/SQSConnection';
+import { SQSSubscriber } from '../sqs/SQSSubscriber';
 import type { SNSConnection } from './SNSConnection';
 
 export interface SNSSubscriberOptions {
@@ -21,13 +20,21 @@ export interface SNSSubscriberOptions {
 }
 
 /**
- * SNS Subscriber - receives messages via SQS queue subscribed to SNS topic
+ * SNS Subscriber - receives push-based messages from SNS via SQS queue
+ *
+ * Architecture:
+ * SNS Topic → (push) → SQS Queue → Subscriber
  *
  * This subscriber automatically:
  * 1. Creates an SQS queue (or uses existing one)
  * 2. Subscribes the queue to the SNS topic
- * 3. Receives messages from the queue (push-based via SNS)
- * 4. Processes and deletes messages
+ * 3. Receives messages pushed from SNS to the queue
+ * 4. Filters messages by topic ARN and message type
+ * 5. Processes and acknowledges messages
+ *
+ * Note: While SQS long-polling is used internally to receive messages,
+ * this is an implementation detail of the SNS push delivery mechanism.
+ * Messages are pushed from SNS to SQS, and we receive those pushed messages.
  */
 export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
   implements EventSubscriber<TMessage>
@@ -36,9 +43,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
   private queueUrl?: string;
   private queueArn?: string;
   private subscriptionArn?: string;
-  private polling = false;
-  private messageTypes: Set<TMessage['type']> = new Set();
-  private listener?: (payload: TMessage) => Promise<void>;
+  private sqsSubscriber?: SQSSubscriber<TMessage>;
   private options: Required<SNSSubscriberOptions>;
 
   constructor(
@@ -94,23 +99,37 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
     messages: TMessage['type'][],
     listener: (payload: TMessage) => Promise<void>,
   ): Promise<void> {
-    this.messageTypes = new Set(messages);
-    this.listener = listener;
-
     // Setup SQS queue and SNS subscription
     await this.setupQueue();
     await this.subscribeToTopic();
 
-    // Start polling
-    this.polling = true;
-    this.poll();
+    // Create SQS connection for the subscriber
+    const sqsConnection = new SQSConnection({
+      queueUrl: this.queueUrl!,
+      region: (this.connection as any).config.region,
+      endpoint: (this.connection as any).config.endpoint,
+      credentials: (this.connection as any).config.credentials,
+    });
+    await sqsConnection.connect();
+
+    // Use SQSSubscriber to receive messages, with topic filtering
+    this.sqsSubscriber = new SQSSubscriber<TMessage>(sqsConnection, {
+      waitTimeSeconds: this.options.waitTimeSeconds,
+      maxMessages: this.options.maxMessages,
+      expectedTopicArn: this.connection.topicArn,
+    });
+
+    await this.sqsSubscriber.subscribe(messages, listener);
   }
 
   /**
    * Stop receiving messages and clean up resources
    */
   async stop(): Promise<void> {
-    this.polling = false;
+    // Stop SQS subscriber
+    if (this.sqsSubscriber) {
+      this.sqsSubscriber.stop();
+    }
 
     // Unsubscribe from topic
     if (this.subscriptionArn) {
@@ -202,77 +221,5 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
 
     const response = await this.connection.snsClient.send(command);
     this.subscriptionArn = response.SubscriptionArn!;
-  }
-
-  private async poll(): Promise<void> {
-    while (this.polling) {
-      try {
-        const command = new ReceiveMessageCommand({
-          QueueUrl: this.queueUrl,
-          MaxNumberOfMessages: this.options.maxMessages,
-          WaitTimeSeconds: this.options.waitTimeSeconds,
-          MessageAttributeNames: ['All'],
-        });
-
-        const response = await this.sqsClient.send(command);
-
-        if (response.Messages && response.Messages.length > 0) {
-          await this.processMessages(response.Messages);
-        }
-      } catch (error) {
-        console.error('Error polling SQS:', error);
-        await this.sleep(1000);
-      }
-    }
-  }
-
-  private async processMessages(messages: Message[]): Promise<void> {
-    for (const message of messages) {
-      try {
-        if (!message.Body) continue;
-
-        // Parse SNS notification wrapper
-        const snsNotification = JSON.parse(message.Body);
-
-        // Extract the actual message from SNS
-        const actualMessage = JSON.parse(snsNotification.Message);
-        const messageType =
-          snsNotification.MessageAttributes?.type?.Value ||
-          actualMessage.type;
-
-        // Check if we're subscribed to this message type
-        if (
-          messageType &&
-          this.messageTypes.has(messageType as TMessage['type'])
-        ) {
-          // Call listener
-          if (this.listener) {
-            await this.listener(actualMessage as TMessage);
-          }
-
-          // Delete message after successful processing
-          await this.deleteMessage(message.ReceiptHandle!);
-        }
-      } catch (error) {
-        console.error('Error processing message:', error);
-        // Message will become visible again
-      }
-    }
-  }
-
-  private async deleteMessage(receiptHandle: string): Promise<void> {
-    try {
-      const command = new DeleteMessageCommand({
-        QueueUrl: this.queueUrl,
-        ReceiptHandle: receiptHandle,
-      });
-      await this.sqsClient.send(command);
-    } catch (error) {
-      console.error('Error deleting message:', error);
-    }
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

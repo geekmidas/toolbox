@@ -1,9 +1,9 @@
+import { ConsoleLogger } from '@geekmidas/logger';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { Endpoint } from '../constructs/Endpoint';
 import { e } from '../constructs/EndpointFactory';
-import { ConsoleLogger } from '../logger';
 import { ServiceDiscovery } from '../services';
 import { HonoEndpoint } from './HonoEndpoint';
 

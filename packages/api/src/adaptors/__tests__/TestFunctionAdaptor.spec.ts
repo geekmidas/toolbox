@@ -1,10 +1,7 @@
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { Function } from '../../constructs/Function';
-import type {
-  EventPublisher,
-  PublishableMessage,
-} from '../../constructs/events';
 import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { TestFunctionAdaptor } from '../TestFunctionAdaptor';

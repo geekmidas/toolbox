@@ -1,5 +1,5 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Logger } from '../logger';
 import type { Service, ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
 import type { EventPublisher, MappedEvent } from './events';

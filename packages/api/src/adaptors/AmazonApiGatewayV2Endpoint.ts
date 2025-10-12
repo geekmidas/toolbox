@@ -1,11 +1,11 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Endpoint, EndpointSchemas } from '../constructs/Endpoint';
 import type { HttpMethod } from '../constructs/types';
-import type { Logger } from '../logger';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { EventPublisher } from '@geekmidas/events';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
-import type { EventPublisher } from '../constructs/events';
 import type { Service } from '../services';
 import { parseQueryParams } from '../utils/parseQueryParams';
 import {

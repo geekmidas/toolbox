@@ -1,5 +1,5 @@
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Logger } from '../logger';
 import type { Service } from '../services';
 import { ConstructType } from './Construct';
 import { Function, type FunctionHandler } from './Function';

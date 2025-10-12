@@ -1,10 +1,10 @@
+import type { Logger } from '@geekmidas/logger';
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
 import { vi } from 'vitest';
-import type { Logger } from '../logger';
 
 /**
  * Shared test utilities for AWS Lambda adapter testing

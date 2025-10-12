@@ -1,14 +1,14 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import type { EventPublisher } from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Endpoint, type EndpointSchemas } from '../constructs/Endpoint';
-import type { EventPublisher } from '../constructs/events';
 import { publishEndpointEvents } from '../constructs/publisher';
 import type {
   HttpMethod,
   InferComposableStandardSchema,
   InferStandardSchema,
 } from '../constructs/types';
-import type { Logger } from '../logger';
 import {
   type Service,
   ServiceDiscovery,

@@ -3,6 +3,7 @@ import {
   type SendMessageBatchCommandInput,
   type SendMessageBatchRequestEntry,
 } from '@aws-sdk/client-sqs';
+import chunk from 'lodash.chunk';
 import type { EventPublisher, PublishableMessage } from '../types';
 import type { SQSConnection } from './SQSConnection';
 
@@ -13,10 +14,10 @@ export interface SQSPublisherOptions {
 export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
   implements EventPublisher<TMessage>
 {
-  private options: Required<SQSPublisherOptions>;
+  readonly options: Required<SQSPublisherOptions>;
 
   constructor(
-    private connection: SQSConnection,
+    readonly connection: SQSConnection,
     options: SQSPublisherOptions = {},
   ) {
     this.options = {
@@ -35,9 +36,8 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
     const params = url.searchParams;
 
     const { SQSConnection } = await import('./SQSConnection');
-    const connection = await SQSConnection.fromConnectionString(
-      connectionString,
-    );
+    const connection =
+      await SQSConnection.fromConnectionString(connectionString);
 
     const options: SQSPublisherOptions = {
       maxBatchSize: params.get('maxBatchSize')
@@ -56,18 +56,10 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
     }
 
     // Split messages into batches (SQS limit is 10 messages per batch)
-    const batches = this.createBatches(messages);
+    const batches = chunk(messages, this.options.maxBatchSize);
 
     // Send all batches
     await Promise.all(batches.map((batch) => this.sendBatch(batch)));
-  }
-
-  private createBatches(messages: TMessage[]): TMessage[][] {
-    const batches: TMessage[][] = [];
-    for (let i = 0; i < messages.length; i += this.options.maxBatchSize) {
-      batches.push(messages.slice(i, i + this.options.maxBatchSize));
-    }
-    return batches;
   }
 
   private async sendBatch(messages: TMessage[]): Promise<void> {

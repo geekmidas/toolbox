@@ -1,17 +1,14 @@
+import type { Logger } from '@geekmidas/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { Logger } from '../../logger';
 import type { Service } from '../../services';
+import { ConstructType } from '../Construct';
 import {
   Subscriber,
   SubscriberBuilder,
   type SubscriberContext,
 } from '../Subscriber';
-import { ConstructType } from '../Construct';
-import type {
-  EventPublisher,
-  PublishableMessage,
-} from '../events';
+import type { EventPublisher, PublishableMessage } from '../events';
 
 // Define test event types
 type UserEvent =

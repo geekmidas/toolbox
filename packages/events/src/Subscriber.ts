@@ -34,12 +34,26 @@ export class Subscriber {
         const { SNSSubscriber } = await import('./sns');
         return SNSSubscriber.fromConnectionString<TMessage>(connectionStr);
       }
-      // Note: SQS is pull-based and not supported for subscribers
-      // Use SNS → SQS for push-based messaging
-      case EventPublisherType.SQS:
-        throw new Error(
-          `SQS does not support subscribers (pull-based). Use SNS → SQS subscription pattern instead.`,
+      case EventPublisherType.SQS: {
+        const url = new URL(connectionStr);
+        const topicArn = url.searchParams.get('topicArn');
+
+        // If topicArn is present, use managed SNS→SQS subscription
+        if (topicArn) {
+          const { SNSSubscriber } = await import('./sns');
+          // Convert SQS connection string to SNS connection string
+          const snsConnectionStr = connectionStr.replace('sqs://', 'sns://');
+          return SNSSubscriber.fromConnectionString<TMessage>(snsConnectionStr);
+        }
+
+        // Direct SQS subscriber
+        const { SQSSubscriber } = await import('./sqs');
+        const { SQSConnection } = await import('./sqs');
+        const connection = await SQSConnection.fromConnectionString(
+          connectionStr,
         );
+        return new SQSSubscriber<TMessage>(connection);
+      }
       // Future implementations for EventBridge, Kafka, etc.
       default:
         throw new Error(`Unsupported event subscriber type: ${url.protocol}`);
@@ -73,13 +87,15 @@ export class Subscriber {
         const { SNSConnection } = await import('./sns');
         return new SNSSubscriber<TMessage>(
           connection as InstanceType<typeof SNSConnection>,
-          { endpoint: '' }, // Endpoint must be provided separately
         );
       }
-      case EventPublisherType.SQS:
-        throw new Error(
-          `SQS does not support subscribers (pull-based). Use SNS → SQS subscription pattern instead.`,
+      case EventPublisherType.SQS: {
+        const { SQSSubscriber } = await import('./sqs');
+        const { SQSConnection } = await import('./sqs');
+        return new SQSSubscriber<TMessage>(
+          connection as InstanceType<typeof SQSConnection>,
         );
+      }
       default:
         throw new Error(`Unsupported connection type: ${connection.type}`);
     }

@@ -71,7 +71,7 @@ describe('SQSPublisher', () => {
       const publisher = new SQSPublisher<TestMessage>(connection);
 
       // Access private options through any to test default
-      expect((publisher as any).options.maxBatchSize).toBe(10);
+      expect(publisher.options.maxBatchSize).toBe(10);
     });
   });
 
@@ -90,7 +90,7 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).connection.config.region).toBe('us-west-2');
+      expect(publisher.connection.config.region).toBe('us-west-2');
     });
 
     it('should parse connection string with credentials', async () => {
@@ -99,7 +99,7 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).connection.config.credentials).toEqual({
+      expect(publisher.connection.config.credentials).toEqual({
         accessKeyId: 'test-key',
         secretAccessKey: 'test-secret',
         sessionToken: undefined,
@@ -112,7 +112,7 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).connection.config.credentials).toEqual({
+      expect(publisher.connection.config.credentials).toEqual({
         accessKeyId: 'test-key',
         secretAccessKey: 'test-secret',
         sessionToken: 'test-token',
@@ -125,7 +125,7 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).options.maxBatchSize).toBe(5);
+      expect(publisher.options.maxBatchSize).toBe(5);
     });
 
     it('should parse connection string with endpoint', async () => {
@@ -134,7 +134,9 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).connection.config.endpoint).toBe('http://localhost:4566');
+      expect(publisher.connection.config.endpoint).toBe(
+        'http://localhost:4566',
+      );
     });
 
     it('should parse connection string with all parameters', async () => {
@@ -143,10 +145,12 @@ describe('SQSPublisher', () => {
       );
 
       expect(publisher).toBeDefined();
-      expect((publisher as any).connection.config.region).toBe('us-west-2');
-      expect((publisher as any).connection.config.endpoint).toBe('http://localhost:4566');
-      expect((publisher as any).options.maxBatchSize).toBe(5);
-      expect((publisher as any).connection.config.credentials).toEqual({
+      expect(publisher.connection.config.region).toBe('us-west-2');
+      expect(publisher.connection.config.endpoint).toBe(
+        'http://localhost:4566',
+      );
+      expect(publisher.options.maxBatchSize).toBe(5);
+      expect(publisher.connection.config.credentials).toEqual({
         accessKeyId: 'test',
         secretAccessKey: 'secret',
         sessionToken: undefined,
@@ -155,77 +159,10 @@ describe('SQSPublisher', () => {
 
     it('should throw error if queueUrl is missing', async () => {
       await expect(
-        SQSPublisher.fromConnectionString<TestMessage>('sqs://?region=us-east-1'),
+        SQSPublisher.fromConnectionString<TestMessage>(
+          'sqs://?region=us-east-1',
+        ),
       ).rejects.toThrow('queueUrl parameter is required');
-    });
-  });
-
-  describe('batch creation', () => {
-    it('should split messages into batches of 10', () => {
-      const connection = new SQSConnection({
-        queueUrl: TEST_QUEUE_URL,
-      });
-      const publisher = new SQSPublisher<TestMessage>(connection);
-
-      const messages: TestMessage[] = Array.from({ length: 25 }, (_, i) => ({
-        type: 'user.created',
-        payload: { userId: `user-${i}` },
-      }));
-
-      const batches = (publisher as any).createBatches(messages);
-
-      expect(batches).toHaveLength(3);
-      expect(batches[0]).toHaveLength(10);
-      expect(batches[1]).toHaveLength(10);
-      expect(batches[2]).toHaveLength(5);
-    });
-
-    it('should respect custom batch size', () => {
-      const connection = new SQSConnection({
-        queueUrl: TEST_QUEUE_URL,
-      });
-      const publisher = new SQSPublisher<TestMessage>(connection, {
-        maxBatchSize: 5,
-      });
-
-      const messages: TestMessage[] = Array.from({ length: 12 }, (_, i) => ({
-        type: 'user.created',
-        payload: { userId: `user-${i}` },
-      }));
-
-      const batches = (publisher as any).createBatches(messages);
-
-      expect(batches).toHaveLength(3);
-      expect(batches[0]).toHaveLength(5);
-      expect(batches[1]).toHaveLength(5);
-      expect(batches[2]).toHaveLength(2);
-    });
-
-    it('should handle empty message array', () => {
-      const connection = new SQSConnection({
-        queueUrl: TEST_QUEUE_URL,
-      });
-      const publisher = new SQSPublisher<TestMessage>(connection);
-
-      const batches = (publisher as any).createBatches([]);
-
-      expect(batches).toHaveLength(0);
-    });
-
-    it('should handle single message', () => {
-      const connection = new SQSConnection({
-        queueUrl: TEST_QUEUE_URL,
-      });
-      const publisher = new SQSPublisher<TestMessage>(connection);
-
-      const messages: TestMessage[] = [
-        { type: 'user.created', payload: { userId: 'user-1' } },
-      ];
-
-      const batches = (publisher as any).createBatches(messages);
-
-      expect(batches).toHaveLength(1);
-      expect(batches[0]).toHaveLength(1);
     });
   });
 

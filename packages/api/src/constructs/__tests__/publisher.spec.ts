@@ -1,6 +1,6 @@
+import type { Logger } from '@geekmidas/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { Logger } from '../../logger';
 import { type Service, ServiceDiscovery } from '../../services';
 
 import { EnvironmentParser } from '@geekmidas/envkit';
