@@ -2,17 +2,17 @@ services:
   redis:
     image: redis
     ports:
-      - '6379:6379'
+      - "6379:6379"
     volumes:
-      - 'cache:/data'
+      - "cache:/data"
   cache:
     ports:
-      - '8079:80'
+      - "8079:80"
     image: hiett/serverless-redis-http:latest
     environment:
       SRH_MODE: env
       SRH_TOKEN: example_token
-      SRH_CONNECTION_STRING: 'redis://redis:6379' # Using `redis` hostname since they're in the same Docker network.
+      SRH_CONNECTION_STRING: "redis://redis:6379" # Using `redis` hostname since they're in the same Docker network.
   postgres:
     restart: unless-stopped
     image: postgres:17
@@ -30,6 +30,22 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+  rabbitmq:
+    image: rabbitmq:4.1.1-management
+    ports:
+      - "5672:5672" # Map the default AMQP port
+      - "15672:15672" # Map the management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: geekmidas # Set the default username
+      RABBITMQ_DEFAULT_PASS: geekmidas # Set the default password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/mnesia/ # Persist RabbitMQ data
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"] # Basic health check
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    restart: always # Ensure the container restarts automatically
   minio:
     image: minio/minio:latest
     entrypoint: sh
@@ -56,3 +72,4 @@ volumes:
   dbdata:
   minio-data:
   cache:
+  rabbitmq_data:

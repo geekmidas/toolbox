@@ -1,0 +1,1 @@
+export { RabbitMQPublisher } from './RabbitMQPublisher';

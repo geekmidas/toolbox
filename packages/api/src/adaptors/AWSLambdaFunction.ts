@@ -4,7 +4,8 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler } from 'aws-lambda';
 import type { Function, FunctionHandler } from '../constructs/Function';
 import { FunctionBuilder } from '../constructs/FunctionBuilder';
-import type { EventPublisher } from '../constructs/events';
+
+import type { EventPublisher } from '@geekmidas/events';
 import type {
   ComposableStandardSchema,
   InferComposableStandardSchema,

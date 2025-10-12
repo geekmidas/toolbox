@@ -12,6 +12,16 @@
       "types": "./dist/rabbitmq/index.d.ts",
       "import": "./dist/rabbitmq/index.mjs",
       "require": "./dist/rabbitmq/index.cjs"
+    },
+    "./basic": {
+      "types": "./dist/basic/index.d.ts",
+      "import": "./dist/basic/index.mjs",
+      "require": "./dist/basic/index.cjs"
+    },
+    "./sqs": {
+      "types": "./dist/sqs/index.d.ts",
+      "import": "./dist/sqs/index.mjs",
+      "require": "./dist/sqs/index.cjs"
     }
   },
   "publishConfig": {
@@ -21,5 +31,10 @@
   "dependencies": {
     "@geekmidas/schema": "workspace:*"
   },
-  "devDependencies": {}
+  "peerDependencies": {
+    "amqplib": "^0.10.3"
+  },
+  "devDependencies": {
+    "@types/amqplib": "~0.10.7"
+  }
 }

@@ -12,7 +12,8 @@ import type {
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
-import type { EventPublisher, MappedEvent } from './events';
+
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { HttpMethod } from './types';
 
 export class EndpointBuilder<

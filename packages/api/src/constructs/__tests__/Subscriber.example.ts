@@ -1,4 +1,4 @@
-import type { EventPublisher, PublishableMessage } from '../events';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Service } from '../../services';
 import { SubscriberBuilder } from '../Subscriber';
 
