@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  external: ['amqplib'],
+  external: ['amqplib', '@aws-sdk/client-sqs', '@aws-sdk/client-sns'],
 });
