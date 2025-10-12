@@ -7,6 +7,8 @@ export interface RabbitMQPublisherConfig {
   exchangeType?: 'topic' | 'direct' | 'fanout' | 'headers';
   exchangeOptions?: amqplib.Options.AssertExchange;
   publishOptions?: amqplib.Options.Publish;
+  autoConnect?: boolean; // Default: true - connect immediately on construction
+  timeout?: number; // Connection timeout in milliseconds (default: 5000)
 }
 
 export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
@@ -20,6 +22,8 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
     // Set defaults
     this.config.exchange = this.config.exchange || 'events';
     this.config.exchangeType = this.config.exchangeType || 'topic';
+    this.config.autoConnect = this.config.autoConnect ?? true;
+    this.config.timeout = this.config.timeout ?? 5000; // 5 seconds default
     this.config.exchangeOptions = {
       durable: true,
       ...this.config.exchangeOptions,
@@ -28,24 +32,34 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
 
   /**
    * Create a RabbitMQPublisher from a connection string
-   * Format: rabbitmq://user:pass@host:port/vhost?exchange=name&type=topic
+   * Format: rabbitmq://user:pass@host:port/vhost?exchange=name&type=topic&autoConnect=false&timeout=5000
    */
-  static fromConnectionString<TMessage extends PublishableMessage<string, any>>(
-    connectionString: string,
-  ): RabbitMQPublisher<TMessage> {
+  static async fromConnectionString<
+    TMessage extends PublishableMessage<string, any>,
+  >(connectionString: string): Promise<RabbitMQPublisher<TMessage>> {
     const url = new URL(connectionString);
     const params = url.searchParams;
 
     // Extract connection URL without query params
     const baseUrl = `amqp://${url.username ? `${url.username}:${url.password}@` : ''}${url.host}${url.pathname}`;
 
+    console.log('Connecting to RabbitMQ with URL:', baseUrl);
+
+    const timeoutParam = params.get('timeout');
     const config: RabbitMQPublisherConfig = {
       url: baseUrl,
       exchange: params.get('exchange') || 'geekmidas.events',
       exchangeType: (params.get('type') as any) || 'topic',
+      autoConnect: params.get('autoConnect') === 'true', // Default to false if not specified
+      timeout: timeoutParam ? Number.parseInt(timeoutParam, 10) : undefined,
     };
 
-    return new RabbitMQPublisher<TMessage>(config);
+    const publisher = new RabbitMQPublisher<TMessage>(config);
+    if (config.autoConnect) {
+      await publisher.connect();
+    }
+
+    return publisher;
   }
 
   private async connect(): Promise<void> {
@@ -59,7 +73,9 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
 
     this.connecting = (async () => {
       try {
-        const connection = await amqplib.connect(this.config.url);
+        const connection = await amqplib.connect(this.config.url, {
+          timeout: this.config.timeout,
+        });
         const channel = await connection.createChannel();
 
         // Assert the exchange exists
