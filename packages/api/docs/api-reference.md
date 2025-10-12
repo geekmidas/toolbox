@@ -25,7 +25,7 @@ class Endpoint<TConfig extends EndpointConfig = EndpointConfig> {
   output<T>(schema: StandardSchema<T>): Endpoint
   
   // Middleware
-  services<T extends HermodServiceConstructor[]>(services: T): Endpoint
+  services<T extends Service[]>(services: T): Endpoint
   authorize<T>(authorizer: Authorizer<T>): Endpoint
   session<T>(sessionResolver: SessionResolver<T>): Endpoint
   
@@ -56,17 +56,31 @@ class CompiledEndpoint<TConfig, TOutput> {
 }
 ```
 
-### `HermodService`
+### `Service`
 
-Base class for creating injectable services.
+Interface for creating injectable services.
 
 ```typescript
-abstract class HermodService<T> {
-  static readonly serviceName: string
-  
-  abstract register(context: ServiceContext): Promise<T> | T
-  cleanup?(service: T): Promise<void> | void
+interface Service<TName extends string = string, TInstance = unknown> {
+  serviceName: TName
+  register(envParser: EnvironmentParser<{}>): TInstance | Promise<TInstance>
 }
+```
+
+**Usage:**
+```typescript
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
+    await db.connect();
+    return db;
+  }
+} satisfies Service<'database', Database>;
 ```
 
 ### `AWSApiGatewayV1EndpointAdaptor`
@@ -111,21 +125,20 @@ interface HandlerContext<TConfig> {
 ### Service Types
 
 ```typescript
-// Service constructor
-type HermodServiceConstructor = {
-  new (): HermodService<any>
-  readonly serviceName: string
+// Service interface
+interface Service<TName extends string = string, TInstance = unknown> {
+  serviceName: TName
+  register(envParser: EnvironmentParser<{}>): TInstance | Promise<TInstance>
 }
+
+// Extract service names from array of services
+type ExtractServiceNames<T extends Service[]> = T[number]['serviceName']
 
 // Service map in handler context
-type ServiceMap<T extends HermodServiceConstructor[]> = {
-  [K in T[number]['serviceName']]: InstanceType<Extract<T[number], { serviceName: K }>>
-}
-
-// Service context passed to register()
-interface ServiceContext {
-  logger: Logger
-  [key: string]: any
+type ServiceRecord<T extends Service[]> = {
+  [K in T[number] as K['serviceName']]: K extends Service
+    ? Awaited<ReturnType<K['register']>>
+    : never
 }
 ```
 

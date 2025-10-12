@@ -22,9 +22,8 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
     TMessage extends PublishableMessage<string, any>,
   >(connectionString: string): Promise<RabbitMQPublisher<TMessage>> {
     const { RabbitMQConnection } = await import('./RabbitMQConnection');
-    const connection = await RabbitMQConnection.fromConnectionString(
-      connectionString,
-    );
+    const connection =
+      await RabbitMQConnection.fromConnectionString(connectionString);
     return new RabbitMQPublisher<TMessage>(connection);
   }
 

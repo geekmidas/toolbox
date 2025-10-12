@@ -283,7 +283,7 @@ gkm build --provider server
 **Generated Server:**
 ```typescript
 import { HonoEndpoint } from '@geekmidas/api/hono';
-import { HermodServiceDiscovery } from '@geekmidas/api/services';
+import { ServiceDiscovery } from '@geekmidas/api/services';
 import { Hono } from 'hono';
 import { envParser } from '../src/env.js';
 import { logger } from '../src/logger.js';
@@ -291,10 +291,10 @@ import { getUsers, createUser } from '../src/routes/users.js';
 
 export function createApp(app?: Hono): Hono {
   const honoApp = app || new Hono();
-  
+
   const endpoints = [getUsers, createUser];
-  
-  const serviceDiscovery = HermodServiceDiscovery.getInstance(
+
+  const serviceDiscovery = ServiceDiscovery.getInstance(
     logger,
     envParser
   );

@@ -19,9 +19,8 @@ export class Publisher {
     switch (url.protocol.replace(':', '')) {
       case EventPublisherType.Basic: {
         const { BasicConnection, BasicPublisher } = await import('./basic');
-        const connection = await BasicConnection.fromConnectionString(
-          connectionStr,
-        );
+        const connection =
+          await BasicConnection.fromConnectionString(connectionStr);
         return new BasicPublisher<TMessage>(connection);
       }
       case EventPublisherType.RabbitMQ: {
@@ -46,9 +45,9 @@ export class Publisher {
    * Create a publisher from an existing connection
    * This allows sharing connections between publishers and subscribers
    */
-  static async fromConnection<
-    TMessage extends PublishableMessage<string, any>,
-  >(connection: EventConnection): Promise<EventPublisher<TMessage>> {
+  static async fromConnection<TMessage extends PublishableMessage<string, any>>(
+    connection: EventConnection,
+  ): Promise<EventPublisher<TMessage>> {
     switch (connection.type) {
       case EventPublisherType.Basic: {
         const { BasicPublisher } = await import('./basic');

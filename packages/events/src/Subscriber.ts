@@ -19,16 +19,13 @@ export class Subscriber {
     switch (url.protocol.replace(':', '')) {
       case EventPublisherType.Basic: {
         const { BasicConnection, BasicSubscriber } = await import('./basic');
-        const connection = await BasicConnection.fromConnectionString(
-          connectionStr,
-        );
+        const connection =
+          await BasicConnection.fromConnectionString(connectionStr);
         return new BasicSubscriber<TMessage>(connection);
       }
       case EventPublisherType.RabbitMQ: {
         const { RabbitMQSubscriber } = await import('./rabbitmq');
-        return RabbitMQSubscriber.fromConnectionString<TMessage>(
-          connectionStr,
-        );
+        return RabbitMQSubscriber.fromConnectionString<TMessage>(connectionStr);
       }
       case EventPublisherType.SNS: {
         const { SNSSubscriber } = await import('./sns');
@@ -49,9 +46,8 @@ export class Subscriber {
         // Direct SQS subscriber
         const { SQSSubscriber } = await import('./sqs');
         const { SQSConnection } = await import('./sqs');
-        const connection = await SQSConnection.fromConnectionString(
-          connectionStr,
-        );
+        const connection =
+          await SQSConnection.fromConnectionString(connectionStr);
         return new SQSSubscriber<TMessage>(connection);
       }
       // Future implementations for EventBridge, Kafka, etc.
@@ -64,9 +60,9 @@ export class Subscriber {
    * Create a subscriber from an existing connection
    * This allows sharing connections between publishers and subscribers
    */
-  static async fromConnection<
-    TMessage extends PublishableMessage<string, any>,
-  >(connection: EventConnection): Promise<EventSubscriber<TMessage>> {
+  static async fromConnection<TMessage extends PublishableMessage<string, any>>(
+    connection: EventConnection,
+  ): Promise<EventSubscriber<TMessage>> {
     switch (connection.type) {
       case EventPublisherType.Basic: {
         const { BasicSubscriber } = await import('./basic');

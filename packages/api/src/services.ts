@@ -169,7 +169,8 @@ export class ServiceDiscovery<
       const instance = await service.register(this.envParser);
 
       this.instances.set(name, instance as TServices[keyof TServices]);
-      (registeredServices as any)[name] = instance as TServices[keyof TServices];
+      (registeredServices as any)[name] =
+        instance as TServices[keyof TServices];
     }
 
     return registeredServices;

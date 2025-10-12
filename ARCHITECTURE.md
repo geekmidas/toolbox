@@ -135,10 +135,10 @@ e.get('/users/:id')
    - Runtime validation
    - OpenAPI generation
 
-2. **HermodService**: Service base class
-   - Dependency injection
-   - Lifecycle management
-   - Shared context
+2. **Service Pattern**: Object-based dependency injection
+   - Service registration with EnvironmentParser
+   - Type-safe service discovery
+   - Shared context across endpoints
 
 3. **Error System**: Comprehensive HTTP errors
    - One class per status code

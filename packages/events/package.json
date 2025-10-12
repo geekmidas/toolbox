@@ -8,20 +8,25 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
-    "./rabbitmq": {
-      "types": "./dist/rabbitmq/index.d.ts",
-      "import": "./dist/rabbitmq/index.mjs",
-      "require": "./dist/rabbitmq/index.cjs"
-    },
     "./basic": {
       "types": "./dist/basic/index.d.ts",
       "import": "./dist/basic/index.mjs",
       "require": "./dist/basic/index.cjs"
     },
+    "./rabbitmq": {
+      "types": "./dist/rabbitmq/index.d.ts",
+      "import": "./dist/rabbitmq/index.mjs",
+      "require": "./dist/rabbitmq/index.cjs"
+    },
     "./sqs": {
       "types": "./dist/sqs/index.d.ts",
       "import": "./dist/sqs/index.mjs",
       "require": "./dist/sqs/index.cjs"
+    },
+    "./sns": {
+      "types": "./dist/sns/index.d.ts",
+      "import": "./dist/sns/index.mjs",
+      "require": "./dist/sns/index.cjs"
     }
   },
   "publishConfig": {

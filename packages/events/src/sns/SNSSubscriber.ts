@@ -55,8 +55,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
         options.queueName ||
         `sns-sub-${Date.now()}-${Math.random().toString(36).substring(7)}`,
       createQueue: options.createQueue ?? true,
-      deleteQueueOnClose:
-        options.deleteQueueOnClose ?? !options.queueName, // Delete auto-generated queues
+      deleteQueueOnClose: options.deleteQueueOnClose ?? !options.queueName, // Delete auto-generated queues
       waitTimeSeconds: options.waitTimeSeconds ?? 20,
       maxMessages: options.maxMessages ?? 10,
     };
@@ -167,9 +166,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
       const response = await this.sqsClient.send(createCommand);
       this.queueUrl = response.QueueUrl!;
     } else {
-      throw new Error(
-        'Queue must exist or createQueue option must be true',
-      );
+      throw new Error('Queue must exist or createQueue option must be true');
     }
 
     // Get queue ARN

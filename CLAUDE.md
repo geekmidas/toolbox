@@ -24,8 +24,12 @@ toolbox/
 │   ├── cache/        # Unified caching interface with multiple backends
 │   ├── cli/          # CLI tools for building and deployment
 │   ├── cloud/        # Cloud infrastructure utilities (private)
+│   ├── db/           # Database utilities for Kysely
 │   ├── emailkit/     # Type-safe email client with React templates
 │   ├── envkit/       # Environment configuration parser
+│   ├── events/       # Unified event messaging library
+│   ├── logger/       # Structured logging library
+│   ├── schema/       # StandardSchema type utilities
 │   ├── storage/      # Cloud storage abstraction (S3)
 │   └── testkit/      # Testing utilities and database factories
 ├── apps/
@@ -42,13 +46,16 @@ toolbox/
 ### Package Descriptions
 
 #### @geekmidas/api
-A comprehensive REST API framework for building type-safe HTTP endpoints.
+A comprehensive framework for building type-safe HTTP endpoints, cloud functions, scheduled tasks, and event subscribers.
 
 **Key Features:**
 - Fluent endpoint builder pattern using `e` export
+- Cloud function builder using `f` export
+- Scheduled task builder using `cron` export
+- Event subscriber builder using `s` export (integrates with @geekmidas/events)
 - Full TypeScript type inference
 - StandardSchema validation (Zod, Valibot, etc.)
-- AWS Lambda adapter support
+- AWS Lambda adapter support (API Gateway and direct Lambda)
 - Service dependency injection system
 - Built-in error handling with HTTP-specific error classes
 - Session and authorization management
@@ -81,7 +88,7 @@ const rateLimited = e
 ```
 
 #### @geekmidas/testkit
-Testing utilities focused on database factories for test data creation.
+Testing utilities focused on database factories and enhanced test data generation.
 
 **Key Features:**
 - Factory pattern for Kysely and Objection.js
@@ -90,13 +97,26 @@ Testing utilities focused on database factories for test data creation.
 - Batch operations support
 - Database migration utilities
 - Seed functions for complex scenarios
+- Enhanced faker with custom utilities (timestamps, sequences, coordinates)
+- Async wait utilities for testing
+- Directory operation helpers for tests
 
 **Usage Pattern:**
 ```typescript
 import { KyselyFactory } from '@geekmidas/testkit/kysely';
+import { faker } from '@geekmidas/testkit/faker';
 
+// Database factories
 const factory = new KyselyFactory(builders, seeds, db);
 const user = await factory.insert('user', { name: 'Test User' });
+
+// Enhanced faker utilities
+const userData = {
+  name: faker.person.fullName(),
+  email: `user${faker.sequence('email')}@example.com`,
+  ...faker.timestamps(),
+  price: faker.price(),
+};
 ```
 
 #### @geekmidas/envkit
@@ -296,6 +316,139 @@ await client.sendTemplate('welcome', {
 });
 ```
 
+#### @geekmidas/events
+Unified event messaging library with support for multiple backends.
+
+**Key Features:**
+- Unified interface for publishing and subscribing across messaging systems
+- Type-safe message types with full TypeScript inference
+- Multiple backends: Basic (in-memory), RabbitMQ, AWS SQS, AWS SNS
+- Connection string-based configuration
+- Factory pattern for publishers and subscribers
+- SNS→SQS integration with automatic queue management
+- Message filtering by event type
+
+**Usage Pattern:**
+```typescript
+import { Publisher, Subscriber } from '@geekmidas/events';
+
+// Define message types
+type UserEvents =
+  | PublishableMessage<'user.created', { userId: string }>
+  | PublishableMessage<'user.updated', { userId: string }>;
+
+// Create publisher from connection string
+const publisher = await Publisher.fromConnectionString<UserEvents>(
+  'rabbitmq://localhost:5672?exchange=events'
+);
+
+// Create subscriber
+const subscriber = await Subscriber.fromConnectionString<UserEvents>(
+  'rabbitmq://localhost:5672?exchange=events&queue=user-service'
+);
+
+// Subscribe to events
+await subscriber.subscribe(['user.created'], async (message) => {
+  console.log('User created:', message.payload.userId);
+});
+
+// Publish events
+await publisher.publish([
+  { type: 'user.created', payload: { userId: '123' } }
+]);
+```
+
+#### @geekmidas/logger
+Simple structured logging library for Node.js and browsers.
+
+**Key Features:**
+- Standard logger interface with multiple log levels
+- Structured logging with context objects
+- Child logger support with context inheritance
+- Automatic timestamp injection
+- Console-based implementation
+
+**Usage Pattern:**
+```typescript
+import { ConsoleLogger } from '@geekmidas/logger';
+
+const logger = new ConsoleLogger({ app: 'myApp', version: '1.0.0' });
+
+// Structured logging
+logger.info({ userId: 123, action: 'login' }, 'User logged in');
+
+// Simple logging
+logger.info('Application started');
+
+// Child logger with inherited context
+const childLogger = logger.child({ module: 'auth' });
+childLogger.debug({ action: 'validate' }, 'Validating token');
+```
+
+#### @geekmidas/schema
+Type utilities for StandardSchema-compatible validation libraries.
+
+**Key Features:**
+- Type inference helpers for StandardSchema
+- ComposableStandardSchema type for nested schemas
+- Works with any StandardSchema-compatible library (Zod, Valibot, etc.)
+- Zero runtime overhead
+
+**Usage Pattern:**
+```typescript
+import type { InferStandardSchema, ComposableStandardSchema } from '@geekmidas/schema';
+import { z } from 'zod';
+
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string().email()
+});
+
+// Infer type from schema
+type User = InferStandardSchema<typeof userSchema>;
+
+// Composable schemas
+const schemas: ComposableStandardSchema = {
+  user: userSchema,
+  post: z.object({ title: z.string() })
+};
+```
+
+#### @geekmidas/db
+Database utilities for Kysely with flexible transaction management.
+
+**Key Features:**
+- Transaction helper that works with any DatabaseConnection type
+- Handles Kysely, Transaction, and ControlledTransaction seamlessly
+- Automatic transaction detection and reuse
+- Type-safe database operations
+
+**Usage Pattern:**
+```typescript
+import { withTransaction } from '@geekmidas/db/kysely';
+import type { DatabaseConnection } from '@geekmidas/db/kysely';
+
+async function createUser(
+  db: DatabaseConnection<Database>,
+  data: UserData
+) {
+  return withTransaction(db, async (trx) => {
+    const user = await trx
+      .insertInto('users')
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    await trx
+      .insertInto('audit_log')
+      .values({ userId: user.id, action: 'created' })
+      .execute();
+
+    return user;
+  });
+}
+```
+
 ## Code Style Guidelines
 
 ### TypeScript
@@ -333,9 +486,38 @@ await client.sendTemplate('welcome', {
 - Use error factories like `createError.forbidden()`
 
 ### Service Pattern
-- Extend `HermodService` for dependency injection
-- Define `serviceName` as static property
-- Implement `register()` and optionally `cleanup()`
+- Define services as object literals with `Service<TName, TInstance>` interface
+- Define `serviceName` as object property with `as const` assertion
+- Implement `register(envParser)` method that receives EnvironmentParser
+- Use `satisfies Service<'name', Type>` for type safety
+- Pass service objects directly (not class instances) to `.services([])`
+
+Example:
+```typescript
+import type { Service } from '@geekmidas/api/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
+    await db.connect();
+    return db;
+  }
+} satisfies Service<'database', Database>;
+
+// Use in endpoints/functions
+const endpoint = e
+  .services([databaseService])
+  .handle(async ({ services }) => {
+    const db = services.database;
+    // Use database
+  });
+```
 
 ### Testing
 - Use factories from @geekmidas/testkit for test data
@@ -680,11 +862,16 @@ pnpm fmt   # Format code with Biome
 Each package uses subpath exports for better tree-shaking:
 
 ### @geekmidas/api
-- `/server` - Server-side utilities and endpoint builder
+- `/server` - Server-side utilities and endpoint builder (`e` export)
 - `/client` - Client-side typed fetcher
 - `/errors` - HTTP error classes
 - `/services` - Service base classes
-- `/aws-apigateway` - AWS Lambda adapters (v1 and v2)
+- `/function` - Cloud function builder (`f` export)
+- `/cron` - Scheduled function builder (`cron` export)
+- `/subscriber` - Event subscriber builder (`s` export, uses @geekmidas/events)
+- `/constructs` - All constructs (Function, Cron, Subscriber)
+- `/aws-apigateway` - AWS API Gateway adapters (v1 and v2)
+- `/aws-lambda` - AWS Lambda function adaptors
 - `/hono` - Hono framework adapter
 - `/testing` - Testing utilities
 
@@ -699,6 +886,31 @@ Each package uses subpath exports for better tree-shaking:
 - `/upstash` - Upstash Redis cache
 - `/expo` - Expo Secure Store cache
 
+### @geekmidas/cli
+- Binary `gkm` - Command line interface for builds and code generation
+
+### @geekmidas/db
+- `/kysely` - Kysely transaction utilities
+
+### @geekmidas/emailkit
+- Main export only - Email client factory
+
+### @geekmidas/envkit
+- Main export only - Environment parser
+
+### @geekmidas/events
+- `/` - Core interfaces and factory functions
+- `/basic` - Basic (in-memory) implementation
+- `/rabbitmq` - RabbitMQ implementation
+- `/sqs` - AWS SQS implementation
+- `/sns` - AWS SNS implementation with managed queues
+
+### @geekmidas/logger
+- Main export only - Logger interface and ConsoleLogger
+
+### @geekmidas/schema
+- Main export only - StandardSchema type utilities
+
 ### @geekmidas/storage
 - `/` - Core storage interface
 - `/aws` - AWS S3 implementation
@@ -706,15 +918,9 @@ Each package uses subpath exports for better tree-shaking:
 ### @geekmidas/testkit
 - `/kysely` - Kysely database factories
 - `/objection` - Objection.js factories
-
-### @geekmidas/envkit
-- Main export only - environment parser
-
-### @geekmidas/emailkit
-- Main export only - email client factory
-
-### @geekmidas/cli
-- Binary `gkm` - command line interface
+- `/faker` - Enhanced faker with custom utilities (timestamps, sequences, etc.)
+- `/timer` - Async wait utilities
+- `/os` - OS test utilities (directory operations)
 
 ## Important Notes
 

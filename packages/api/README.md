@@ -115,17 +115,22 @@ The v2 adapter automatically handles the differences in the API Gateway v2 event
 
 ## Core Concepts
 
-### Endpoint vs Function
+### Endpoint vs Function vs Subscriber
 
-This package provides two main constructs:
+This package provides three main constructs:
 
 1. **RestEndpoint** (`e` export) - For HTTP REST APIs
    - Handler receives destructured parameters: `{ params, query, body, headers, services, logger, session }`
    - Designed for web services with HTTP-specific concepts
 
-2. **Function** - For general-purpose functions
+2. **Function** (`f` export) - For general-purpose functions
    - Handler receives an `input` object: `{ input, services, logger }`
    - More generic construct for non-HTTP use cases
+
+3. **Subscriber** (`s` export) - For event-driven processing
+   - Handler receives batched events: `{ events, services, logger }`
+   - Integrates with `@geekmidas/events` for message queue processing
+   - Processes events from RabbitMQ, AWS SQS/SNS, or in-memory publishers
 
 ### Endpoint Builder
 
@@ -160,30 +165,30 @@ const endpoint = e
 Define and use services across your endpoints:
 
 ```typescript
-import { HermodService } from '@geekmidas/api/server';
+import type { Service } from '@geekmidas/api/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
 
-// Define a service
-class DatabaseService extends HermodService<Database> {
-  static readonly serviceName = 'Database';
-  
-  async register() {
-    const db = new Database(process.env.DATABASE_URL);
+// Define a service as an object
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
     await db.connect();
     return db;
   }
-  
-  async cleanup(db: Database) {
-    await db.disconnect();
-  }
-}
+} satisfies Service<'database', Database>;
 
 // Use in endpoints
 const endpoint = e
-  .services([DatabaseService])
+  .services([databaseService])
   .post('/users')
   .body(userSchema)
   .handle(async ({ body, services }) => {
-    const db = services.Database;
+    const db = services.database;
     const user = await db.users.create(body);
     return user;
   });
@@ -376,6 +381,374 @@ const endpoint = e
   });
 ```
 
+### Subscriber Builder
+
+Build event subscribers that process batched events from message queues. Subscribers integrate with `@geekmidas/events` to consume messages from RabbitMQ, AWS SQS/SNS, or in-memory event systems.
+
+#### Basic Subscriber
+
+```typescript
+import { s } from '@geekmidas/api/subscriber';
+import type { Service } from '@geekmidas/api/services';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+
+// Define your event types
+type UserEvents =
+  | PublishableMessage<'user.created', { userId: string; email: string }>
+  | PublishableMessage<'user.updated', { userId: string; changes: Record<string, any> }>
+  | PublishableMessage<'user.deleted', { userId: string }>;
+
+// Create event publisher service
+const userEventPublisher = {
+  serviceName: 'userEventPublisher' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      publisherUrl: get('EVENT_PUBLISHER_URL').string()
+    })).parse();
+
+    const { Publisher } = await import('@geekmidas/events');
+    return Publisher.fromConnectionString<UserEvents>(config.publisherUrl);
+  }
+} satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
+
+// Build a subscriber
+const userCreatedSubscriber = s
+  .publisher(userEventPublisher)
+  .subscribe('user.created')
+  .handle(async ({ events, logger }) => {
+    logger.info(`Processing ${events.length} user.created events`);
+
+    for (const event of events) {
+      // event is typed as { type: 'user.created', payload: { userId: string, email: string } }
+      logger.info({ userId: event.payload.userId }, 'User created');
+
+      // Process the event
+      await sendWelcomeEmail(event.payload.email);
+    }
+  });
+```
+
+#### Subscribing to Multiple Event Types
+
+```typescript
+const userSubscriber = s
+  .publisher(UserEventPublisher)
+  .subscribe(['user.created', 'user.updated', 'user.deleted'])
+  .handle(async ({ events, logger }) => {
+    for (const event of events) {
+      // TypeScript knows event can be any of the subscribed types
+      switch (event.type) {
+        case 'user.created':
+          logger.info({ userId: event.payload.userId }, 'New user');
+          break;
+        case 'user.updated':
+          logger.info({ userId: event.payload.userId }, 'User updated');
+          break;
+        case 'user.deleted':
+          logger.info({ userId: event.payload.userId }, 'User deleted');
+          break;
+      }
+    }
+  });
+```
+
+#### Subscriber with Services
+
+```typescript
+const emailService = {
+  serviceName: 'email' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      apiKey: get('SENDGRID_API_KEY').string()
+    })).parse();
+
+    return new EmailClient({ apiKey: config.apiKey });
+  }
+} satisfies Service<'email', EmailClient>;
+
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
+    await db.connect();
+    return db;
+  }
+} satisfies Service<'database', Database>;
+
+const userCreatedSubscriber = s
+  .publisher(UserEventPublisher)
+  .services([emailService, databaseService])
+  .subscribe('user.created')
+  .handle(async ({ events, services, logger }) => {
+    const { email, database } = services;
+
+    for (const event of events) {
+      // Update local database
+      await database.users.updateProcessedStatus(event.payload.userId);
+
+      // Send welcome email
+      await email.send({
+        to: event.payload.email,
+        subject: 'Welcome!',
+        template: 'welcome'
+      });
+
+      logger.info({ userId: event.payload.userId }, 'Processed user.created event');
+    }
+  });
+```
+
+#### Subscriber with Timeout
+
+```typescript
+const longRunningSubscriber = s
+  .publisher(UserEventPublisher)
+  .subscribe('user.created')
+  .timeout(60000) // 60 second timeout
+  .handle(async ({ events, logger }) => {
+    // Long-running processing
+    for (const event of events) {
+      await processLongRunningTask(event);
+    }
+  });
+```
+
+#### Subscriber with Output Schema
+
+```typescript
+import { z } from 'zod';
+
+const subscriberWithOutput = s
+  .publisher(UserEventPublisher)
+  .subscribe('user.created')
+  .output(z.object({
+    processedCount: z.number(),
+    failedCount: z.number()
+  }))
+  .handle(async ({ events, logger }) => {
+    let processedCount = 0;
+    let failedCount = 0;
+
+    for (const event of events) {
+      try {
+        await processEvent(event);
+        processedCount++;
+      } catch (error) {
+        logger.error({ error, event }, 'Failed to process event');
+        failedCount++;
+      }
+    }
+
+    return { processedCount, failedCount };
+  });
+```
+
+#### AWS Lambda Integration
+
+Deploy subscribers as AWS Lambda functions:
+
+```typescript
+import { AWSLambdaFunction } from '@geekmidas/api/aws-lambda';
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+const envParser = new EnvironmentParser(process.env);
+
+const subscriber = s
+  .publisher(UserEventPublisher)
+  .subscribe(['user.created', 'user.updated'])
+  .handle(async ({ events, logger }) => {
+    logger.info(`Processing ${events.length} events`);
+    // Process events...
+  });
+
+// Create Lambda handler
+const adapter = new AWSLambdaFunction(envParser, subscriber);
+export const handler = adapter.handler;
+```
+
+#### Event Processing Patterns
+
+**Fan-out Pattern**: Multiple subscribers for the same events
+
+```typescript
+// Subscriber 1: Send emails
+const emailSubscriber = s
+  .publisher(UserEventPublisher)
+  .services([EmailService])
+  .subscribe('user.created')
+  .handle(async ({ events, services }) => {
+    for (const event of events) {
+      await services.Email.sendWelcome(event.payload.email);
+    }
+  });
+
+// Subscriber 2: Update analytics
+const analyticsSubscriber = s
+  .publisher(UserEventPublisher)
+  .services([AnalyticsService])
+  .subscribe('user.created')
+  .handle(async ({ events, services }) => {
+    for (const event of events) {
+      await services.Analytics.trackUserCreated(event.payload.userId);
+    }
+  });
+
+// Subscriber 3: Sync to CRM
+const crmSubscriber = s
+  .publisher(UserEventPublisher)
+  .services([CRMService])
+  .subscribe('user.created')
+  .handle(async ({ events, services }) => {
+    for (const event of events) {
+      await services.CRM.createContact(event.payload);
+    }
+  });
+```
+
+**Batch Processing Pattern**: Process events in batches
+
+```typescript
+const batchSubscriber = s
+  .publisher(UserEventPublisher)
+  .subscribe('user.created')
+  .handle(async ({ events, logger }) => {
+    // Events are already batched
+    logger.info(`Processing batch of ${events.length} events`);
+
+    // Extract all user IDs
+    const userIds = events.map(e => e.payload.userId);
+
+    // Bulk database operation
+    await database.users.updateMany(userIds, { processed: true });
+
+    // Bulk email send
+    await emailService.sendBulk(
+      events.map(e => ({
+        to: e.payload.email,
+        template: 'welcome'
+      }))
+    );
+  });
+```
+
+**Error Handling Pattern**: Graceful error handling with logging
+
+```typescript
+const resilientSubscriber = s
+  .publisher(UserEventPublisher)
+  .subscribe('user.created')
+  .handle(async ({ events, logger }) => {
+    const results = await Promise.allSettled(
+      events.map(async (event) => {
+        try {
+          await processEvent(event);
+          logger.info({ eventId: event.payload.userId }, 'Event processed');
+        } catch (error) {
+          logger.error({
+            error,
+            eventId: event.payload.userId
+          }, 'Failed to process event');
+
+          // Optionally send to dead letter queue
+          await deadLetterQueue.send(event);
+
+          throw error; // Re-throw to mark as failed
+        }
+      })
+    );
+
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+
+    logger.info({ successful, failed, total: events.length }, 'Batch processing complete');
+  });
+```
+
+#### Subscriber Context
+
+The subscriber handler receives a context object with:
+
+- **`events`**: Array of typed events matching the subscribed event types
+- **`services`**: Record of registered services (if `.services()` was called)
+- **`logger`**: Logger instance with request context
+
+```typescript
+type SubscriberContext = {
+  events: Array<{ type: string; payload: any }>;
+  services: ServiceRecord<TServices>;
+  logger: Logger;
+};
+```
+
+#### Best Practices
+
+1. **Process Events Idempotently**: Design handlers to safely reprocess events
+   ```typescript
+   const subscriber = s
+     .subscribe('user.created')
+     .handle(async ({ events, services }) => {
+       for (const event of events) {
+         // Check if already processed
+         const exists = await services.Database.checkProcessed(event.payload.userId);
+         if (exists) continue;
+
+         // Process and mark as complete
+         await processEvent(event);
+         await services.Database.markProcessed(event.payload.userId);
+       }
+     });
+   ```
+
+2. **Use Batch Operations**: Take advantage of batched events for efficiency
+   ```typescript
+   // Extract all IDs upfront
+   const userIds = events.map(e => e.payload.userId);
+
+   // Single bulk database query
+   const users = await database.users.findMany(userIds);
+
+   // Process in batch
+   await emailService.sendBulk(users.map(u => ({ to: u.email })));
+   ```
+
+3. **Handle Errors Gracefully**: Don't let one failure break the entire batch
+   ```typescript
+   for (const event of events) {
+     try {
+       await processEvent(event);
+     } catch (error) {
+       logger.error({ error, event }, 'Event processing failed');
+       // Continue with next event
+     }
+   }
+   ```
+
+4. **Set Appropriate Timeouts**: Adjust based on your processing needs
+   ```typescript
+   const subscriber = s
+     .timeout(30000) // 30 seconds for quick operations
+     .subscribe('user.created')
+     .handle(async ({ events }) => {
+       // Fast processing
+     });
+   ```
+
+5. **Use Structured Logging**: Include event context in all logs
+   ```typescript
+   for (const event of events) {
+     logger.info({
+       eventType: event.type,
+       eventId: event.payload.userId,
+       timestamp: Date.now()
+     }, 'Processing event');
+   }
+   ```
+
 ## Advanced Usage
 
 ### Custom Services
@@ -384,45 +757,50 @@ Create reusable services for your endpoints:
 
 ```typescript
 // Cache service
-class CacheService extends HermodService<Redis> {
-  static readonly serviceName = 'Cache';
-  
-  async register() {
-    const redis = new Redis(process.env.REDIS_URL);
+const cacheService = {
+  serviceName: 'cache' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('REDIS_URL').string()
+    })).parse();
+
+    const redis = new Redis(config.url);
+    await redis.connect();
     return redis;
   }
-}
+} satisfies Service<'cache', Redis>;
 
 // Email service
-class EmailService extends HermodService<EmailClient> {
-  static readonly serviceName = 'Email';
-  
-  async register() {
-    return new EmailClient({
-      apiKey: process.env.SENDGRID_API_KEY
-    });
+const emailService = {
+  serviceName: 'email' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      apiKey: get('SENDGRID_API_KEY').string()
+    })).parse();
+
+    return new EmailClient({ apiKey: config.apiKey });
   }
-}
+} satisfies Service<'email', EmailClient>;
 
 // Use multiple services
 const endpoint = e
-  .services([DatabaseService, CacheService, EmailService])
+  .services([databaseService, cacheService, emailService])
   .post('/users')
   .handle(async ({ input, services }) => {
-    const { Database, Cache, Email } = services;
-    
+    const { database, cache, email } = services;
+
     // Check cache first
-    const cached = await Cache.get(`user:${input.body.email}`);
+    const cached = await cache.get(`user:${input.body.email}`);
     if (cached) return cached;
-    
+
     // Create user
-    const user = await Database.users.create(input.body);
-    
+    const user = await database.users.create(input.body);
+
     // Cache result
-    await Cache.set(`user:${user.email}`, user, 3600);
-    
+    await cache.set(`user:${user.email}`, user, 3600);
+
     // Send welcome email
-    await Email.send({
+    await email.send({
       to: user.email,
       subject: 'Welcome!',
       body: 'Thanks for signing up!'

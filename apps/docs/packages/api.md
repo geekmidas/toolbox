@@ -75,26 +75,25 @@ export const handler = createLambdaHandler([
 ### Service Pattern
 
 ```typescript
-import { HermodService } from '@geekmidas/api/server';
+import type { Service } from '@geekmidas/api/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
 
-export class DatabaseService extends HermodService {
-  static serviceName = 'database' as const;
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
 
-  async register() {
-    // Initialize database connection
-    this.db = await createConnection();
+    const db = await createConnection(config.url);
+    return db;
   }
-
-  async cleanup() {
-    // Close database connection
-    await this.db.close();
-  }
-}
+} satisfies Service<'database', Database>;
 
 // Use in endpoint
 const endpoint = e
   .get('/data')
-  .services(['database'])
+  .services([databaseService])
   .handle(async ({ services }) => {
     const db = services.database;
     return await db.query('...');

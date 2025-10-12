@@ -1,8 +1,7 @@
 import {
   DeleteMessageCommand,
-  ReceiveMessageCommand,
-  SQSClient,
   type Message,
+  ReceiveMessageCommand,
 } from '@aws-sdk/client-sqs';
 import type { EventSubscriber, PublishableMessage } from '../types';
 import type { SQSConnection } from './SQSConnection';
@@ -114,7 +113,10 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
         }
 
         // Check if we're subscribed to this message type
-        if (messageType && this.messageTypes.has(messageType as TMessage['type'])) {
+        if (
+          messageType &&
+          this.messageTypes.has(messageType as TMessage['type'])
+        ) {
           // Call listener
           if (this.listener) {
             await this.listener(payload as TMessage);

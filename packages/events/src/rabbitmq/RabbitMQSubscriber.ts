@@ -9,8 +9,9 @@ export interface RabbitMQSubscriberOptions {
   prefetch?: number; // Number of messages to prefetch (default: 1)
 }
 
-export class RabbitMQSubscriber<TMessage extends PublishableMessage<string, any>>
-  implements EventSubscriber<TMessage>
+export class RabbitMQSubscriber<
+  TMessage extends PublishableMessage<string, any>,
+> implements EventSubscriber<TMessage>
 {
   constructor(
     private connection: RabbitMQConnection,
@@ -28,9 +29,8 @@ export class RabbitMQSubscriber<TMessage extends PublishableMessage<string, any>
     const params = url.searchParams;
 
     const { RabbitMQConnection } = await import('./RabbitMQConnection');
-    const connection = await RabbitMQConnection.fromConnectionString(
-      connectionString,
-    );
+    const connection =
+      await RabbitMQConnection.fromConnectionString(connectionString);
 
     const options: RabbitMQSubscriberOptions = {
       queueName: params.get('queueName') || undefined,

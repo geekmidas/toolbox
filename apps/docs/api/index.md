@@ -8,7 +8,7 @@ Detailed API documentation will be generated from TypeScript source code using T
 
 ### Server
 - `e` - Endpoint builder
-- `HermodService` - Base service class
+- `Service` - Service interface for dependency injection
 - `createError` - Error factory
 
 ### AWS Lambda
