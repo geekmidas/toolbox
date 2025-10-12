@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    testTimeout: 10000,
     projects: ['packages/*'],
     coverage: {
       provider: 'v8',

@@ -9,6 +9,11 @@
       "import": "./dist/objection.mjs",
       "require": "./dist/objection.cjs"
     },
+    "./timer": {
+      "types": "./dist/timer.d.ts",
+      "import": "./dist/timer.mjs",
+      "require": "./dist/timer.cjs"
+    },
     "./kysely": {
       "types": "./dist/kysely.d.ts",
       "import": "./dist/kysely.mjs",

@@ -32,7 +32,11 @@ export class Publisher {
         const { SQSPublisher } = await import('./sqs');
         return SQSPublisher.fromConnectionString<TMessage>(connectionStr);
       }
-      // Future implementations for EventBridge, SNS, Kafka, etc.
+      case EventPublisherType.SNS: {
+        const { SNSPublisher } = await import('./sns');
+        return SNSPublisher.fromConnectionString<TMessage>(connectionStr);
+      }
+      // Future implementations for EventBridge, Kafka, etc.
       default:
         throw new Error(`Unsupported event publisher type: ${url.protocol}`);
     }
@@ -65,6 +69,13 @@ export class Publisher {
         const { SQSConnection } = await import('./sqs');
         return new SQSPublisher<TMessage>(
           connection as InstanceType<typeof SQSConnection>,
+        );
+      }
+      case EventPublisherType.SNS: {
+        const { SNSPublisher } = await import('./sns');
+        const { SNSConnection } = await import('./sns');
+        return new SNSPublisher<TMessage>(
+          connection as InstanceType<typeof SNSConnection>,
         );
       }
       default:

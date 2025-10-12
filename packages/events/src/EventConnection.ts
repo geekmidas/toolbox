@@ -25,6 +25,10 @@ export class EventConnectionFactory {
         const { SQSConnection } = await import('./sqs');
         return SQSConnection.fromConnectionString(connectionStr);
       }
+      case EventPublisherType.SNS: {
+        const { SNSConnection } = await import('./sns');
+        return SNSConnection.fromConnectionString(connectionStr);
+      }
       default:
         throw new Error(`Unsupported connection type: ${protocol}`);
     }

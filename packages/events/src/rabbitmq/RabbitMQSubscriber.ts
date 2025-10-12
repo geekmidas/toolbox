@@ -83,12 +83,21 @@ export class RabbitMQSubscriber<TMessage extends PublishableMessage<string, any>
         if (!msg) return;
 
         try {
-          // Parse message
+          // Parse message payload
           const content = msg.content.toString();
-          const parsed = JSON.parse(content);
+          const payload = JSON.parse(content);
+
+          // Get message type from properties
+          const messageType = msg.properties.type;
+
+          // Reconstruct full message
+          const fullMessage: TMessage = {
+            type: messageType,
+            payload,
+          } as TMessage;
 
           // Call listener
-          await listener(parsed);
+          await listener(fullMessage);
 
           // Ack message
           channel.ack(msg);

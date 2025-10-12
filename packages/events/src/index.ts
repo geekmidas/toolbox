@@ -31,10 +31,14 @@ export type {
   RabbitMQSubscriberOptions,
 } from './rabbitmq';
 
-// SQS
-export { SQSConnection, SQSPublisher, SQSSubscriber } from './sqs';
+// SQS (Publisher only - use SNS for push-based subscriptions)
+export { SQSConnection, SQSPublisher } from './sqs';
+export type { SQSConnectionConfig, SQSPublisherOptions } from './sqs';
+
+// SNS
+export { SNSConnection, SNSPublisher, SNSSubscriber } from './sns';
 export type {
-  SQSConnectionConfig,
-  SQSPublisherOptions,
-  SQSSubscriberOptions,
-} from './sqs';
+  SNSConnectionConfig,
+  SNSPublisherOptions,
+  SNSSubscriberOptions,
+} from './sns';

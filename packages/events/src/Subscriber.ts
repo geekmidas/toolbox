@@ -30,11 +30,17 @@ export class Subscriber {
           connectionStr,
         );
       }
-      case EventPublisherType.SQS: {
-        const { SQSSubscriber } = await import('./sqs');
-        return SQSSubscriber.fromConnectionString<TMessage>(connectionStr);
+      case EventPublisherType.SNS: {
+        const { SNSSubscriber } = await import('./sns');
+        return SNSSubscriber.fromConnectionString<TMessage>(connectionStr);
       }
-      // Future implementations for EventBridge, SNS, Kafka, etc.
+      // Note: SQS is pull-based and not supported for subscribers
+      // Use SNS → SQS for push-based messaging
+      case EventPublisherType.SQS:
+        throw new Error(
+          `SQS does not support subscribers (pull-based). Use SNS → SQS subscription pattern instead.`,
+        );
+      // Future implementations for EventBridge, Kafka, etc.
       default:
         throw new Error(`Unsupported event subscriber type: ${url.protocol}`);
     }
@@ -62,13 +68,18 @@ export class Subscriber {
           connection as InstanceType<typeof RabbitMQConnection>,
         );
       }
-      case EventPublisherType.SQS: {
-        const { SQSSubscriber } = await import('./sqs');
-        const { SQSConnection } = await import('./sqs');
-        return new SQSSubscriber<TMessage>(
-          connection as InstanceType<typeof SQSConnection>,
+      case EventPublisherType.SNS: {
+        const { SNSSubscriber } = await import('./sns');
+        const { SNSConnection } = await import('./sns');
+        return new SNSSubscriber<TMessage>(
+          connection as InstanceType<typeof SNSConnection>,
+          { endpoint: '' }, // Endpoint must be provided separately
         );
       }
+      case EventPublisherType.SQS:
+        throw new Error(
+          `SQS does not support subscribers (pull-based). Use SNS → SQS subscription pattern instead.`,
+        );
       default:
         throw new Error(`Unsupported connection type: ${connection.type}`);
     }
