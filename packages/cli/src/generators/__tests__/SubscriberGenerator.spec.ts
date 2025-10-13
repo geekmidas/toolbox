@@ -8,8 +8,8 @@ import {
   createMockBuildContext,
   createTempDir,
 } from '../../__tests__/test-helpers';
-import { SubscriberGenerator } from '../SubscriberGenerator';
 import type { GeneratedConstruct } from '../Generator';
+import { SubscriberGenerator } from '../SubscriberGenerator';
 
 describe('SubscriberGenerator', () => {
   let tempDir: string;
@@ -32,8 +32,8 @@ describe('SubscriberGenerator', () => {
     it('should identify valid subscribers', async () => {
       const testSubscriber = new SubscriberBuilder()
         .subscribe(['user.created'] as any)
-        .handle(async ({ events }) => {
-          console.log('Processing', events.length, 'events');
+        .handle(async ({ events, logger }) => {
+          logger.info({ eventCount: events.length }, 'Processing events');
         });
 
       expect(generator.isConstruct(testSubscriber)).toBe(true);
@@ -47,35 +47,36 @@ describe('SubscriberGenerator', () => {
   });
 
   describe('build', () => {
-    const createTestSubscriberConstruct = (
+    const createSubscriberConstruct = (
       key: string,
-      subscribedEvents: string[] = ['user.created'],
+      subscribedEvents: string[],
       timeout: number = 30000,
-    ): GeneratedConstruct<Subscriber<any, any, any, any, any, any>> => ({
-      key,
-      name: key.toLowerCase(),
-      construct: {
-        __IS_SUBSCRIBER__: true,
-        type: 'dev.geekmidas.subscriber.subscriber',
-        timeout,
-        subscribedEvents,
-        handler: async () => {
-          console.log('Processing events');
+    ): GeneratedConstruct<Subscriber<any, any, any, any, any, any>> => {
+      const subscriber = new SubscriberBuilder()
+        .subscribe(subscribedEvents as any)
+        .timeout(timeout)
+        .handle(async ({ events, logger }) => {
+          logger.info({ eventCount: events.length }, 'Processing events');
+        });
+
+      return {
+        key,
+        name: key.toLowerCase(),
+        construct: subscriber,
+        path: {
+          absolute: join(tempDir, `${key}.ts`),
+          relative: `${key}.ts`,
         },
-      } as any,
-      path: {
-        absolute: join(tempDir, `${key}.ts`),
-        relative: `${key}.ts`,
-      },
-    });
+      };
+    };
 
     it('should generate subscriber handlers', async () => {
       const constructs = [
-        createTestSubscriberConstruct('userEventSubscriber', [
+        createSubscriberConstruct('userEventSubscriber', [
           'user.created',
           'user.updated',
         ]),
-        createTestSubscriberConstruct('orderEventSubscriber', ['order.placed']),
+        createSubscriberConstruct('orderEventSubscriber', ['order.placed']),
       ];
 
       const subscriberInfos = await generator.build(
@@ -125,16 +126,19 @@ describe('SubscriberGenerator', () => {
     });
 
     it('should generate correct relative import paths', async () => {
+      const subscriber = new SubscriberBuilder()
+        .subscribe(['event.type'] as any)
+        .timeout(45000)
+        .handle(async ({ events, logger }) => {
+          logger.info({ eventCount: events.length }, 'Processing events');
+        });
+
       const construct: GeneratedConstruct<
         Subscriber<any, any, any, any, any, any>
       > = {
         key: 'deepSubscriber',
         name: 'deep-subscriber',
-        construct: createTestSubscriberConstruct(
-          'deepSubscriber',
-          ['event.type'],
-          45000,
-        ).construct,
+        construct: subscriber,
         path: {
           absolute: join(tempDir, 'src/subscribers/deep/processor.ts'),
           relative: 'src/subscribers/deep/processor.ts',
@@ -155,8 +159,8 @@ describe('SubscriberGenerator', () => {
 
     it('should handle subscribers with different timeout values', async () => {
       const constructs = [
-        createTestSubscriberConstruct('quickSubscriber', ['fast.event'], 15000),
-        createTestSubscriberConstruct('slowSubscriber', ['slow.event'], 300000),
+        createSubscriberConstruct('quickSubscriber', ['fast.event'], 15000),
+        createSubscriberConstruct('slowSubscriber', ['slow.event'], 300000),
       ];
 
       const subscriberInfos = await generator.build(
@@ -170,20 +174,18 @@ describe('SubscriberGenerator', () => {
     });
 
     it('should handle subscribers with no subscribed events', async () => {
+      const subscriber = new SubscriberBuilder()
+        .timeout(30000)
+        .handle(async ({ events, logger }) => {
+          logger.info({ eventCount: events.length }, 'Processing all events');
+        });
+
       const construct: GeneratedConstruct<
         Subscriber<any, any, any, any, any, any>
       > = {
         key: 'catchAllSubscriber',
         name: 'catch-all-subscriber',
-        construct: {
-          __IS_SUBSCRIBER__: true,
-          type: 'dev.geekmidas.subscriber.subscriber',
-          timeout: 30000,
-          subscribedEvents: undefined, // No specific events
-          handler: async () => {
-            console.log('Processing all events');
-          },
-        } as any,
+        construct: subscriber,
         path: {
           absolute: join(tempDir, 'catchAllSubscriber.ts'),
           relative: 'catchAllSubscriber.ts',
@@ -201,7 +203,7 @@ describe('SubscriberGenerator', () => {
 
     it('should handle subscribers with multiple event types', async () => {
       const constructs = [
-        createTestSubscriberConstruct('multiEventSubscriber', [
+        createSubscriberConstruct('multiEventSubscriber', [
           'user.created',
           'user.updated',
           'user.deleted',
@@ -227,7 +229,7 @@ describe('SubscriberGenerator', () => {
       const logSpy = vi.spyOn(console, 'log');
 
       const constructs = [
-        createTestSubscriberConstruct('testSubscriber', ['test.event']),
+        createSubscriberConstruct('testSubscriber', ['test.event']),
       ];
 
       await generator.build(context, constructs, outputDir);
@@ -251,7 +253,7 @@ describe('SubscriberGenerator', () => {
       };
 
       const constructs = [
-        createTestSubscriberConstruct('customSubscriber', ['custom.event']),
+        createSubscriberConstruct('customSubscriber', ['custom.event']),
       ];
 
       await generator.build(customContext, constructs, outputDir);
@@ -264,7 +266,7 @@ describe('SubscriberGenerator', () => {
 
     it('should create subscribers directory if it does not exist', async () => {
       const constructs = [
-        createTestSubscriberConstruct('firstSubscriber', ['first.event']),
+        createSubscriberConstruct('firstSubscriber', ['first.event']),
       ];
 
       // outputDir does not exist yet
@@ -279,15 +281,18 @@ describe('SubscriberGenerator', () => {
     });
 
     it('should handle exported subscriber with custom name', async () => {
+      const subscriber = new SubscriberBuilder()
+        .subscribe(['custom.event'] as any)
+        .handle(async ({ events, logger }) => {
+          logger.info({ eventCount: events.length }, 'Processing events');
+        });
+
       const construct: GeneratedConstruct<
         Subscriber<any, any, any, any, any, any>
       > = {
         key: 'myCustomSubscriberName',
         name: 'custom-name',
-        construct: createTestSubscriberConstruct(
-          'myCustomSubscriberName',
-          ['custom.event'],
-        ).construct,
+        construct: subscriber,
         path: {
           absolute: join(tempDir, 'subscriber.ts'),
           relative: 'subscriber.ts',
@@ -313,7 +318,7 @@ describe('SubscriberGenerator', () => {
 
     it('should generate handler files that can be imported', async () => {
       const constructs = [
-        createTestSubscriberConstruct('validSubscriber', ['valid.event']),
+        createSubscriberConstruct('validSubscriber', ['valid.event']),
       ];
 
       await generator.build(context, constructs, outputDir);
@@ -325,7 +330,9 @@ describe('SubscriberGenerator', () => {
       expect(handlerContent).toContain(
         "import { AWSLambdaSubscriber } from '@geekmidas/api/adaptors'",
       );
-      expect(handlerContent).toContain('export const handler = adapter.handler');
+      expect(handlerContent).toContain(
+        'export const handler = adapter.handler',
+      );
     });
   });
 });

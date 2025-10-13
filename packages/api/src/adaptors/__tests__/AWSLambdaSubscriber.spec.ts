@@ -60,8 +60,7 @@ class TestPublisherService
 const createMockContext = (): Context => ({
   functionName: 'test-subscriber',
   functionVersion: '1',
-  invokedFunctionArn:
-    'arn:aws:lambda:region:account:function:test-subscriber',
+  invokedFunctionArn: 'arn:aws:lambda:region:account:function:test-subscriber',
   memoryLimitInMB: '512',
   awsRequestId: 'test-request-id',
   logGroupName: '/aws/lambda/test-subscriber',
@@ -170,8 +169,14 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
-        { type: 'user.created', payload: { userId: '2', email: 'user2@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
+        {
+          type: 'user.created',
+          payload: { userId: '2', email: 'user2@example.com' },
+        },
       ]);
 
       await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
@@ -234,8 +239,14 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const snsEvent = createSNSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
-        { type: 'user.created', payload: { userId: '2', email: 'user2@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
+        {
+          type: 'user.created',
+          payload: { userId: '2', email: 'user2@example.com' },
+        },
       ]);
 
       await lambdaHandler(snsEvent, createMockContext(), vi.fn());
@@ -264,9 +275,15 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
         { type: 'order.placed', payload: { orderId: 'order-1' } }, // Should be filtered out
-        { type: 'user.created', payload: { userId: '2', email: 'user2@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '2', email: 'user2@example.com' },
+        },
       ]);
 
       await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
@@ -292,7 +309,10 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
         { type: 'order.placed', payload: { orderId: 'order-1' } },
         { type: 'user.updated', payload: { userId: '1' } },
       ]);
@@ -318,7 +338,10 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
         { type: 'order.placed', payload: { orderId: 'order-1' } },
       ]);
 
@@ -353,7 +376,10 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
       ]);
 
       await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
@@ -402,7 +428,10 @@ describe('AWSLambdaSubscriber', () => {
 
       const context = createMockContext();
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
       ]);
 
       await lambdaHandler(sqsEvent, context, vi.fn());
@@ -442,8 +471,14 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
-        { type: 'user.created', payload: { userId: '2', email: 'user2@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
+        {
+          type: 'user.created',
+          payload: { userId: '2', email: 'user2@example.com' },
+        },
       ]);
 
       const result = await lambdaHandler(
@@ -476,7 +511,10 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
       ]);
 
       await expect(
@@ -518,7 +556,10 @@ describe('AWSLambdaSubscriber', () => {
       const lambdaHandler = adapter.handler;
 
       const sqsEvent = createSQSEvent([
-        { type: 'user.created', payload: { userId: '1', email: 'user1@example.com' } },
+        {
+          type: 'user.created',
+          payload: { userId: '1', email: 'user1@example.com' },
+        },
       ]);
 
       await expect(

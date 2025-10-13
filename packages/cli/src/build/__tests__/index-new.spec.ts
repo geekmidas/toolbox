@@ -69,9 +69,15 @@ export default {
 
         // Check that output directories were created
         const serverDir = join(dir, '.gkm', 'server');
-        expect(await readFile(join(serverDir, 'app.ts'), 'utf-8')).toContain(
-          'HonoEndpoint',
-        );
+
+        // Check app.ts has the createApp function
+        const appContent = await readFile(join(serverDir, 'app.ts'), 'utf-8');
+        expect(appContent).toContain('function createApp');
+        expect(appContent).toContain('app?: Hono');
+
+        // Check endpoints.ts has the HonoEndpoint setup
+        const endpointsContent = await readFile(join(serverDir, 'endpoints.ts'), 'utf-8');
+        expect(endpointsContent).toContain('HonoEndpoint');
       } finally {
         process.chdir(originalCwd);
       }
@@ -301,8 +307,9 @@ export default {
       expect(logSpy).toHaveBeenCalledWith('Found 0 endpoints');
       expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
       expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
+      expect(logSpy).toHaveBeenCalledWith('Found 0 subscribers');
       expect(logSpy).toHaveBeenCalledWith(
-        'No endpoints, functions, or crons found to process',
+        'No endpoints, functions, crons, or subscribers found to process',
       );
     } finally {
       process.chdir(originalCwd);

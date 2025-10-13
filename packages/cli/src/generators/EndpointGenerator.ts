@@ -33,22 +33,18 @@ export class EndpointGenerator extends ConstructGenerator<
     }
 
     if (provider === 'server') {
-      // Generate single server file with all endpoints
-      const serverFile = await this.generateServerFile(
-        outputDir,
-        constructs,
-        context,
-        enableOpenApi,
-      );
+      // Generate endpoints.ts and app.ts
+      await this.generateEndpointsFile(outputDir, constructs, context);
+      const appFile = await this.generateAppFile(outputDir, context);
 
       routes.push({
         path: '*',
         method: 'ALL',
-        handler: relative(process.cwd(), serverFile),
+        handler: relative(process.cwd(), appFile),
       });
 
       logger.log(
-        `Generated server app with ${constructs.length} endpoints${enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
+        `Generated server with ${constructs.length} endpoints${enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
       );
     } else if (provider === 'aws-lambda') {
       // For aws-lambda, create routes subdirectory
@@ -160,20 +156,19 @@ export class EndpointGenerator extends ConstructGenerator<
     return handlerPath;
   }
 
-  private async generateServerFile(
+  private async generateEndpointsFile(
     outputDir: string,
     endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
     context: BuildContext,
-    enableOpenApi: boolean,
   ): Promise<string> {
-    const serverFileName = 'app.ts';
-    const serverPath = join(outputDir, serverFileName);
+    const endpointsFileName = 'endpoints.ts';
+    const endpointsPath = join(outputDir, endpointsFileName);
 
     // Group imports by file
     const importsByFile = new Map<string, string[]>();
 
     for (const { path, key } of endpoints) {
-      const relativePath = relative(dirname(serverPath), path.relative);
+      const relativePath = relative(dirname(endpointsPath), path.relative);
       const importPath = relativePath.replace(/\.ts$/, '.js');
 
       if (!importsByFile.has(importPath)) {
@@ -181,15 +176,6 @@ export class EndpointGenerator extends ConstructGenerator<
       }
       importsByFile.get(importPath)!.push(key);
     }
-
-    const relativeEnvParserPath = relative(
-      dirname(serverPath),
-      context.envParserPath,
-    );
-    const relativeLoggerPath = relative(
-      dirname(serverPath),
-      context.loggerPath,
-    );
 
     // Generate import statements
     const imports = Array.from(importsByFile.entries())
@@ -201,21 +187,24 @@ export class EndpointGenerator extends ConstructGenerator<
 
     const allExportNames = endpoints.map(({ key }) => key);
 
-    const content = `import { HonoEndpoint } from '@geekmidas/api/hono';
+    const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+import { HonoEndpoint } from '@geekmidas/api/hono';
 import { Endpoint } from '@geekmidas/api/server';
 import { ServiceDiscovery } from '@geekmidas/api/services';
-import { Hono } from 'hono';
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
-import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+import type { Hono } from 'hono';
 ${imports}
 
-export function createApp(app?: Hono, enableOpenApi: boolean = ${enableOpenApi}): Hono {
-  const honoApp = app || new Hono();
-  
-  const endpoints: Endpoint<any, any, any, any, any, any, any>[] = [
-    ${allExportNames.join(',\n    ')}
-  ];
+const endpoints: Endpoint<any, any, any, any, any, any, any>[] = [
+  ${allExportNames.join(',\n  ')}
+];
 
+export function setupEndpoints(
+  app: Hono,
+  envParser: EnvironmentParser<any>,
+  logger: Logger,
+  enableOpenApi: boolean = true,
+): void {
   const serviceDiscovery = ServiceDiscovery.getInstance(
     logger,
     envParser
@@ -231,18 +220,75 @@ export function createApp(app?: Hono, enableOpenApi: boolean = ${enableOpenApi})
     }
   } : { docsPath: false };
 
-  HonoEndpoint.addRoutes(endpoints, serviceDiscovery, honoApp, openApiOptions);
+  HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, openApiOptions);
+}
+`;
+
+    await writeFile(endpointsPath, content);
+
+    return endpointsPath;
+  }
+
+  private async generateAppFile(
+    outputDir: string,
+    context: BuildContext,
+  ): Promise<string> {
+    const appFileName = 'app.ts';
+    const appPath = join(outputDir, appFileName);
+
+    const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
+
+    const relativeEnvParserPath = relative(
+      dirname(appPath),
+      context.envParserPath,
+    );
+
+    const content = `/**
+ * Generated server application
+ *
+ * ⚠️  WARNING: This is for LOCAL DEVELOPMENT ONLY
+ * The subscriber polling mechanism is not production-ready.
+ * For production, use AWS Lambda with SQS/SNS event sources.
+ */
+import { Hono } from 'hono';
+import { setupEndpoints } from './endpoints.js';
+import { setupSubscribers } from './subscribers.js';
+import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
+import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+
+/**
+ * Create and configure the Hono application
+ *
+ * @param app - Optional Hono app instance to configure (creates new one if not provided)
+ * @param enableOpenApi - Enable OpenAPI documentation (default: true)
+ * @returns Configured Hono app
+ */
+export function createApp(app?: Hono, enableOpenApi: boolean = true): Hono {
+  const honoApp = app || new Hono();
+
+  // Setup HTTP endpoints
+  setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 
   return honoApp;
+}
+
+/**
+ * Start event subscribers in polling mode (local development only)
+ *
+ * Call this function to start listening for events.
+ * For production, use AWS Lambda with SQS/SNS event source mappings.
+ */
+export async function startSubscribers(): Promise<void> {
+  await setupSubscribers(envParser, logger);
 }
 
 // Default export for convenience
 export default createApp;
 `;
 
-    await writeFile(serverPath, content);
+    await writeFile(appPath, content);
 
-    return serverPath;
+    return appPath;
   }
 
   private generateAWSApiGatewayV1Handler(

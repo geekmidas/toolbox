@@ -91,11 +91,24 @@ describe('EndpointGenerator', () => {
     const appPath = join(outputDir, 'app.ts');
     const appContent = await readFile(appPath, 'utf-8');
 
-    expect(appContent).toContain('import { HonoEndpoint }');
-    expect(appContent).toContain('import { testEndpoint }');
-    expect(appContent).toContain('import { anotherEndpoint }');
+    expect(appContent).toContain('import { setupEndpoints }');
+    expect(appContent).toContain('import { setupSubscribers }');
+    expect(appContent).toContain('function createApp');
+    expect(appContent).toContain('app?: Hono');
     expect(appContent).toContain('enableOpenApi: boolean = true');
-    expect(appContent).toContain("docsPath: '/docs'");
+    expect(appContent).toContain('async function startSubscribers');
+
+    // Check that the endpoints.ts file was created with endpoint logic
+    const endpointsPath = join(outputDir, 'endpoints.ts');
+    const endpointsContent = await readFile(endpointsPath, 'utf-8');
+
+    expect(endpointsContent).toContain('import { HonoEndpoint }');
+    expect(endpointsContent).toContain('import { testEndpoint }');
+    expect(endpointsContent).toContain('import { anotherEndpoint }');
+    // Function signature always defaults to true
+    expect(endpointsContent).toContain('enableOpenApi: boolean = true');
+    // OpenAPI options are configured based on the parameter
+    expect(endpointsContent).toContain("docsPath: '/docs'");
   });
 
   itWithDir(
@@ -123,8 +136,16 @@ describe('EndpointGenerator', () => {
       const appPath = join(outputDir, 'app.ts');
       const appContent = await readFile(appPath, 'utf-8');
 
-      expect(appContent).toContain('enableOpenApi: boolean = false');
-      expect(appContent).toContain('docsPath: false');
+      expect(appContent).toContain('function createApp');
+
+      // Check that the endpoints.ts file defaults to true (but can be overridden)
+      const endpointsPath = join(outputDir, 'endpoints.ts');
+      const endpointsContent = await readFile(endpointsPath, 'utf-8');
+
+      // The function signature always defaults to true
+      expect(endpointsContent).toContain('enableOpenApi: boolean = true');
+      // But the OpenAPI options are configured dynamically based on the parameter
+      expect(endpointsContent).toContain('docsPath: false');
     },
   );
 
@@ -364,7 +385,7 @@ describe('EndpointGenerator', () => {
     });
 
     expect(logSpy).toHaveBeenCalledWith(
-      'Generated server app with 2 endpoints',
+      'Generated server with 2 endpoints',
     );
 
     logSpy.mockRestore();
