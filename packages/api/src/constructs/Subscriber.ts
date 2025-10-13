@@ -1,8 +1,13 @@
+import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { ConsoleLogger, type Logger } from '../logger';
 import type { Service, ServiceRecord } from '../services';
 import { Construct, ConstructType } from './Construct';
-import type { EventPublisher, ExtractPublisherMessage } from './events';
+
+import type {
+  EventPublisher,
+  ExtractPublisherMessage,
+} from '@geekmidas/events';
 import type { InferStandardSchema } from './types';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;

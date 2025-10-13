@@ -1,14 +1,14 @@
+import { SubscribeCommand, UnsubscribeCommand } from '@aws-sdk/client-sns';
 import {
   CreateQueueCommand,
   DeleteQueueCommand,
   GetQueueAttributesCommand,
-  SetQueueAttributesCommand,
   SQSClient,
+  SetQueueAttributesCommand,
 } from '@aws-sdk/client-sqs';
-import { SubscribeCommand, UnsubscribeCommand } from '@aws-sdk/client-sns';
-import type { EventSubscriber, PublishableMessage } from '../types';
 import { SQSConnection } from '../sqs/SQSConnection';
 import { SQSSubscriber } from '../sqs/SQSSubscriber';
+import type { EventSubscriber, PublishableMessage } from '../types';
 import type { SNSConnection } from './SNSConnection';
 
 export interface SNSSubscriberOptions {

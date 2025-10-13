@@ -370,7 +370,7 @@ Simple structured logging library for Node.js and browsers.
 
 **Usage Pattern:**
 ```typescript
-import { ConsoleLogger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 
 const logger = new ConsoleLogger({ app: 'myApp', version: '1.0.0' });
 

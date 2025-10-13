@@ -1,11 +1,14 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
-import { ConsoleLogger, type Logger } from '../logger.ts';
+
 import type { Service, ServiceRecord } from '../services.ts';
 
 import { UnprocessableEntityError } from '../errors.ts';
 import { type Construct, ConstructType } from './Construct.ts';
-import type { EventPublisher, MappedEvent } from './events.ts';
+
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type {
   ComposableStandardSchema,
   InferComposableStandardSchema,

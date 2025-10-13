@@ -14,6 +14,11 @@
       "types": "./dist/pino.d.ts",
       "import": "./dist/pino.mjs",
       "require": "./dist/pino.cjs"
+    },
+    "./console": {
+      "types": "./dist/console.d.ts",
+      "import": "./dist/console.mjs",
+      "require": "./dist/console.cjs"
     }
   },
   "publishConfig": {

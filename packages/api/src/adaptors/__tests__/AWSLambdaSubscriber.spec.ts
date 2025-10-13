@@ -1,5 +1,6 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type {
   Context,
   SNSEvent,
@@ -10,7 +11,6 @@ import type {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { Subscriber } from '../../constructs/Subscriber';
-import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { AWSLambdaSubscriber } from '../AWSLambdaSubscriber';
 

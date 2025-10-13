@@ -1,4 +1,4 @@
-import { ConsoleLogger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';

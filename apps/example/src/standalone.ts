@@ -6,6 +6,7 @@
  * the configured Hono app instance.
  */
 
+import { serve } from '@hono/node-server';
 import { createApp } from '../.gkm/server/app.js';
 
 // Create the app without starting the server
@@ -19,7 +20,6 @@ const { app } = createApp();
 
 // Example: Add custom middleware
 app.use(async (c, next) => {
-  console.log(`[${c.req.method}] ${c.req.url}`);
   await next();
 });
 
@@ -30,10 +30,7 @@ const mainApp = new Hono();
 mainApp.route('/api/v1', app);
 
 // Example: Use with custom server
-const server = Bun.serve({
+const server = serve({
   port: 4000,
   fetch: mainApp.fetch,
 });
-
-console.log(`Custom server running on http://localhost:${server.port}`);
-console.log(`API available at http://localhost:${server.port}/api/v1`);

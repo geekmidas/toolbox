@@ -1,6 +1,6 @@
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { ConstructType } from '../Construct';
 import {

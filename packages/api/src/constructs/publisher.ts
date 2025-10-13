@@ -2,7 +2,8 @@ import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Service, ServiceDiscovery } from '../services';
 import type { Endpoint, EndpointOutput } from './Endpoint';
-import type { EventPublisher, MappedEvent } from './events';
+
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { InferStandardSchema } from './types';
 
 export async function publishEvents<

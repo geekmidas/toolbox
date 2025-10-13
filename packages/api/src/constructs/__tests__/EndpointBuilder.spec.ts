@@ -1,6 +1,7 @@
+import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ConsoleLogger, type Logger } from '../../logger';
 import { ConstructType } from '../Construct';
 import { Endpoint } from '../Endpoint';
 import { EndpointBuilder } from '../EndpointBuilder';

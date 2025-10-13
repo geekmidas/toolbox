@@ -4,7 +4,8 @@ import type { Service } from '../services';
 import { ConstructType } from './Construct';
 import { Function, type FunctionHandler } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
-import type { EventPublisher } from './events';
+
+import type { EventPublisher } from '@geekmidas/events';
 import type { ComposableStandardSchema } from './types';
 
 export class Cron<

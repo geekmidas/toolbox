@@ -1,8 +1,8 @@
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { Function } from '../../constructs/Function';
-import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { TestFunctionAdaptor } from '../TestFunctionAdaptor';
 
@@ -61,6 +61,7 @@ describe.skip('TestFunctionAdaptor', () => {
 
       const result = await adaptor.invoke({
         input: { name: 'World' },
+        services: {},
       });
 
       expect(result).toEqual({ message: 'Hello World' });
@@ -86,6 +87,7 @@ describe.skip('TestFunctionAdaptor', () => {
 
       const result = await adaptor.invoke({
         input: { name: 'TypeScript' },
+        services: {},
       });
 
       expect(result).toEqual({ message: 'Hello TypeScript' });

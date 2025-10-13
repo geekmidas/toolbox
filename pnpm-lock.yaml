@@ -112,6 +112,9 @@ importers:
       '@geekmidas/events':
         specifier: workspace:*
         version: link:../events
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@middy/core':
         specifier: '>=6.3.1'
         version: 6.3.2

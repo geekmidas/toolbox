@@ -7,8 +7,8 @@ import {
   CronGenerator,
   EndpointGenerator,
   FunctionGenerator,
-  SubscriberGenerator,
   type GeneratedConstruct,
+  SubscriberGenerator,
 } from '../generators';
 import type {
   BuildOptions,

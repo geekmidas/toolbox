@@ -12,11 +12,12 @@ import {
   type FunctionContext,
   type FunctionHandler,
 } from './Function';
+
 import type {
   EventPublisher,
   ExtractPublisherMessage,
   MappedEvent,
-} from './events';
+} from '@geekmidas/events';
 import {
   convertSchemaWithComponents,
   convertStandardSchemaToJsonSchema,

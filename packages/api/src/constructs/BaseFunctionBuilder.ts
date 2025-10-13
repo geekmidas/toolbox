@@ -1,9 +1,11 @@
+import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
-import { ConsoleLogger, type Logger } from '../logger';
 import type { Service } from '../services';
 import { ConstructType } from './Construct';
-import type { EventPublisher, MappedEvent } from './events';
+
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type {
   ComposableStandardSchema,
   InferComposableStandardSchema,

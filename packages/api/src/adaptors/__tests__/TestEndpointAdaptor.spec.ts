@@ -1,8 +1,8 @@
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { e } from '../../constructs/EndpointFactory';
 import { UnprocessableEntityError } from '../../errors';
-import { ConsoleLogger } from '../../logger';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 describe('TestEndpointAdaptor', () => {

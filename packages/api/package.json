@@ -39,6 +39,7 @@
   "dependencies": {
     "@geekmidas/cache": "workspace:*",
     "@geekmidas/events": "workspace:*",
+    "@geekmidas/logger": "workspace:*",
     "lodash.get": "~4.4.2",
     "lodash.merge": "~4.6.2",
     "lodash.set": "~4.3.2",

@@ -1,21 +1,21 @@
 import {
-  CreateQueueCommand,
-  DeleteQueueCommand,
-  GetQueueAttributesCommand,
-  SQSClient,
-  SetQueueAttributesCommand,
-} from '@aws-sdk/client-sqs';
-import {
   CreateTopicCommand,
   DeleteTopicCommand,
   SNSClient,
   SubscribeCommand,
   UnsubscribeCommand,
 } from '@aws-sdk/client-sns';
+import {
+  CreateQueueCommand,
+  DeleteQueueCommand,
+  GetQueueAttributesCommand,
+  SQSClient,
+  SetQueueAttributesCommand,
+} from '@aws-sdk/client-sqs';
 import { describe, expect, it } from 'vitest';
-import type { PublishableMessage } from '../../types';
 import { SQSConnection } from '../../sqs/SQSConnection';
 import { SQSSubscriber } from '../../sqs/SQSSubscriber';
+import type { PublishableMessage } from '../../types';
 import { SNSConnection } from '../SNSConnection';
 import { SNSPublisher } from '../SNSPublisher';
 

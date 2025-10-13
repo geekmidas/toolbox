@@ -1,10 +1,10 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { AWSLambdaFunction } from '../../adaptors/AWSLambdaFunction';
 import { TestFunctionAdaptor } from '../../adaptors/TestFunctionAdaptor';
-import { ConsoleLogger } from '../../logger';
 import type { Service } from '../../services';
 import { createMockContext } from '../../testing/aws-test-helpers';
 import { ConstructType } from '../Construct';

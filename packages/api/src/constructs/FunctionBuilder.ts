@@ -5,7 +5,8 @@ import type { Service } from '../services';
 import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { ConstructType } from './Construct';
 import { Function, type FunctionHandler } from './Function';
-import type { EventPublisher } from './events';
+
+import type { EventPublisher } from '@geekmidas/events';
 import type { ComposableStandardSchema } from './types';
 
 export class FunctionBuilder<

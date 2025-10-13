@@ -1,9 +1,11 @@
+import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import uniqBy from 'lodash.uniqby';
-import { ConsoleLogger, type Logger } from '../logger';
 import type { Service } from '../services';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
-import type { EventPublisher, MappedEvent } from './events';
+
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { HttpMethod } from './types';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
