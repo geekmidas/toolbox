@@ -251,35 +251,86 @@ export function setupEndpoints(
  * For production, use AWS Lambda with SQS/SNS event sources.
  */
 import { Hono } from 'hono';
+import type { Hono as HonoType } from 'hono';
 import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+
+export interface ServerApp {
+  app: HonoType;
+  start: (options?: {
+    port?: number;
+    serve: (app: HonoType, port: number) => void | Promise<void>;
+  }) => Promise<void>;
+}
 
 /**
  * Create and configure the Hono application
  *
  * @param app - Optional Hono app instance to configure (creates new one if not provided)
  * @param enableOpenApi - Enable OpenAPI documentation (default: true)
- * @returns Configured Hono app
+ * @returns Server app with configured Hono app and start function
+ *
+ * @example
+ * // With Bun
+ * import { createApp } from './.gkm/server/app.js';
+ *
+ * const { app, start } = createApp();
+ *
+ * await start({
+ *   port: 3000,
+ *   serve: (app, port) => {
+ *     Bun.serve({ port, fetch: app.fetch });
+ *   }
+ * });
+ *
+ * @example
+ * // With Node.js (using @hono/node-server)
+ * import { serve } from '@hono/node-server';
+ * import { createApp } from './.gkm/server/app.js';
+ *
+ * const { app, start } = createApp();
+ *
+ * await start({
+ *   port: 3000,
+ *   serve: (app, port) => {
+ *     serve({ fetch: app.fetch, port });
+ *   }
+ * });
  */
-export function createApp(app?: Hono, enableOpenApi: boolean = true): Hono {
+export function createApp(app?: HonoType, enableOpenApi: boolean = true): ServerApp {
   const honoApp = app || new Hono();
 
   // Setup HTTP endpoints
   setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 
-  return honoApp;
-}
+  return {
+    app: honoApp,
+    async start(options) {
+      if (!options?.serve) {
+        throw new Error(
+          'serve function is required. Pass a serve function for your runtime:\\n' +
+          '  - Bun: (app, port) => Bun.serve({ port, fetch: app.fetch })\\n' +
+          '  - Node: (app, port) => serve({ fetch: app.fetch, port })'
+        );
+      }
 
-/**
- * Start event subscribers in polling mode (local development only)
- *
- * Call this function to start listening for events.
- * For production, use AWS Lambda with SQS/SNS event source mappings.
- */
-export async function startSubscribers(): Promise<void> {
-  await setupSubscribers(envParser, logger);
+      const port = options.port ?? 3000;
+
+      // Start subscribers in background (non-blocking, local development only)
+      await setupSubscribers(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to start subscribers');
+      });
+
+      logger.info({ port }, 'Starting server');
+
+      // Start HTTP server using provided serve function
+      await options.serve(honoApp, port);
+
+      logger.info({ port }, 'Server started');
+    }
+  };
 }
 
 // Default export for convenience

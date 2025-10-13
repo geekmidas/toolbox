@@ -70,10 +70,11 @@ export default {
         // Check that output directories were created
         const serverDir = join(dir, '.gkm', 'server');
 
-        // Check app.ts has the createApp function
+        // Check app.ts has the createApp function with new API
         const appContent = await readFile(join(serverDir, 'app.ts'), 'utf-8');
         expect(appContent).toContain('function createApp');
-        expect(appContent).toContain('app?: Hono');
+        expect(appContent).toContain('interface ServerApp');
+        expect(appContent).toContain('async start(options');
 
         // Check endpoints.ts has the HonoEndpoint setup
         const endpointsContent = await readFile(join(serverDir, 'endpoints.ts'), 'utf-8');

@@ -94,9 +94,11 @@ describe('EndpointGenerator', () => {
     expect(appContent).toContain('import { setupEndpoints }');
     expect(appContent).toContain('import { setupSubscribers }');
     expect(appContent).toContain('function createApp');
-    expect(appContent).toContain('app?: Hono');
+    expect(appContent).toContain('app?: HonoType');
     expect(appContent).toContain('enableOpenApi: boolean = true');
-    expect(appContent).toContain('async function startSubscribers');
+    expect(appContent).toContain('interface ServerApp');
+    expect(appContent).toContain('async start(options');
+    expect(appContent).toContain('serve: (app: HonoType, port: number)');
 
     // Check that the endpoints.ts file was created with endpoint logic
     const endpointsPath = join(outputDir, 'endpoints.ts');
