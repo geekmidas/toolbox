@@ -32,7 +32,8 @@
       "Bash(sed:*)",
       "Bash(touch:*)",
       "Bash(node:*)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest:*)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest:*)",
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run:*)"
     ],
     "deny": []
   }

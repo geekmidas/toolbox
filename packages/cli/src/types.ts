@@ -43,6 +43,7 @@ export interface GkmConfig {
   routes: Routes;
   functions?: Routes;
   crons?: Routes;
+  subscribers?: Routes;
   envParser: string;
   logger: string;
   providers?: ProvidersConfig;
@@ -76,6 +77,14 @@ export interface CronInfo {
   memorySize?: number;
 }
 
+export interface SubscriberInfo {
+  name: string;
+  handler: string;
+  subscribedEvents: string[];
+  timeout?: number;
+  memorySize?: number;
+}
+
 export interface RoutesManifest {
   routes: RouteInfo[];
 }
@@ -88,8 +97,13 @@ export interface CronsManifest {
   crons: CronInfo[];
 }
 
+export interface SubscribersManifest {
+  subscribers: SubscriberInfo[];
+}
+
 export interface BuildManifest {
   routes: RouteInfo[];
   functions: FunctionInfo[];
   crons: CronInfo[];
+  subscribers: SubscriberInfo[];
 }

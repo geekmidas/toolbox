@@ -1,12 +1,13 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Cron, Function } from '@geekmidas/api/constructs';
+import type { Cron, Function, Subscriber } from '@geekmidas/api/constructs';
 import type { Endpoint } from '@geekmidas/api/server';
 import { loadConfig } from '../config';
 import {
   CronGenerator,
   EndpointGenerator,
   FunctionGenerator,
+  SubscriberGenerator,
   type GeneratedConstruct,
 } from '../generators';
 import type {
@@ -15,6 +16,7 @@ import type {
   FunctionInfo,
   LegacyProvider,
   RouteInfo,
+  SubscriberInfo,
 } from '../types';
 import { generateManifests } from './manifests';
 import { resolveProviders } from './providerResolver';
@@ -35,6 +37,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
   if (config.crons) {
     logger.log(`Loading crons from: ${config.crons}`);
+  }
+  if (config.subscribers) {
+    logger.log(`Loading subscribers from: ${config.subscribers}`);
   }
   logger.log(`Using envParser: ${config.envParser}`);
 
@@ -65,24 +70,31 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const endpointGenerator = new EndpointGenerator();
   const functionGenerator = new FunctionGenerator();
   const cronGenerator = new CronGenerator();
+  const subscriberGenerator = new SubscriberGenerator();
 
   // Load all constructs in parallel
-  const [allEndpoints, allFunctions, allCrons] = await Promise.all([
-    endpointGenerator.load(config.routes),
-    config.functions ? functionGenerator.load(config.functions) : [],
-    config.crons ? cronGenerator.load(config.crons) : [],
-  ]);
+  const [allEndpoints, allFunctions, allCrons, allSubscribers] =
+    await Promise.all([
+      endpointGenerator.load(config.routes),
+      config.functions ? functionGenerator.load(config.functions) : [],
+      config.crons ? cronGenerator.load(config.crons) : [],
+      config.subscribers ? subscriberGenerator.load(config.subscribers) : [],
+    ]);
 
   logger.log(`Found ${allEndpoints.length} endpoints`);
   logger.log(`Found ${allFunctions.length} functions`);
   logger.log(`Found ${allCrons.length} crons`);
+  logger.log(`Found ${allSubscribers.length} subscribers`);
 
   if (
     allEndpoints.length === 0 &&
     allFunctions.length === 0 &&
-    allCrons.length === 0
+    allCrons.length === 0 &&
+    allSubscribers.length === 0
   ) {
-    logger.log('No endpoints, functions, or crons found to process');
+    logger.log(
+      'No endpoints, functions, crons, or subscribers found to process',
+    );
     return;
   }
 
@@ -99,20 +111,25 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         endpointGenerator,
         functionGenerator,
         cronGenerator,
+        subscriberGenerator,
         allEndpoints,
         allFunctions,
         allCrons,
+        allSubscribers,
         resolved.enableOpenApi,
       ),
     ),
   );
 
-  // Aggregate all routes, functions, and crons from all providers
+  // Aggregate all routes, functions, crons, and subscribers from all providers
   const aggregatedRoutes = allBuildResults.flatMap((result) => result.routes);
   const aggregatedFunctions = allBuildResults.flatMap(
     (result) => result.functions,
   );
   const aggregatedCrons = allBuildResults.flatMap((result) => result.crons);
+  const aggregatedSubscribers = allBuildResults.flatMap(
+    (result) => result.subscribers,
+  );
 
   // Generate single manifest at root .gkm directory
   await generateManifests(
@@ -120,6 +137,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     aggregatedRoutes,
     aggregatedFunctions,
     aggregatedCrons,
+    aggregatedSubscribers,
   );
 }
 
@@ -127,6 +145,7 @@ interface BuildResult {
   routes: RouteInfo[];
   functions: FunctionInfo[];
   crons: CronInfo[];
+  subscribers: SubscriberInfo[];
 }
 
 async function buildForProvider(
@@ -135,9 +154,11 @@ async function buildForProvider(
   endpointGenerator: EndpointGenerator,
   functionGenerator: FunctionGenerator,
   cronGenerator: CronGenerator,
+  subscriberGenerator: SubscriberGenerator,
   endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
   functions: GeneratedConstruct<Function<any, any, any, any>>[],
   crons: GeneratedConstruct<Cron<any, any, any, any>>[],
+  subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
   enableOpenApi: boolean,
 ): Promise<BuildResult> {
   const outputDir = join(process.cwd(), '.gkm', provider);
@@ -148,17 +169,20 @@ async function buildForProvider(
   logger.log(`\nGenerating handlers for provider: ${provider}`);
 
   // Build all constructs in parallel
-  const [routes, functionInfos, cronInfos] = await Promise.all([
-    endpointGenerator.build(context, endpoints, outputDir, {
-      provider,
-      enableOpenApi,
-    }),
-    functionGenerator.build(context, functions, outputDir, { provider }),
-    cronGenerator.build(context, crons, outputDir, { provider }),
-  ]);
+  const [routes, functionInfos, cronInfos, subscriberInfos] = await Promise.all(
+    [
+      endpointGenerator.build(context, endpoints, outputDir, {
+        provider,
+        enableOpenApi,
+      }),
+      functionGenerator.build(context, functions, outputDir, { provider }),
+      cronGenerator.build(context, crons, outputDir, { provider }),
+      subscriberGenerator.build(context, subscribers, outputDir, { provider }),
+    ],
+  );
 
   logger.log(
-    `Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons for ${provider}`,
+    `Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers for ${provider}`,
   );
 
   // Return build results instead of generating manifest here
@@ -166,5 +190,6 @@ async function buildForProvider(
     routes,
     functions: functionInfos,
     crons: cronInfos,
+    subscribers: subscriberInfos,
   };
 }

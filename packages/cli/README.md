@@ -36,10 +36,19 @@ import type { GkmConfig } from '@geekmidas/cli';
 const config: GkmConfig = {
   // Glob pattern to find endpoint files
   routes: 'src/routes/**/*.ts',
-  
+
+  // Optional: Functions
+  functions: 'src/functions/**/*.ts',
+
+  // Optional: Cron jobs
+  crons: 'src/crons/**/*.ts',
+
+  // Optional: Event subscribers
+  subscribers: 'src/subscribers/**/*.ts',
+
   // Environment parser configuration
   envParser: './src/env.ts#envParser',
-  
+
   // Logger configuration
   logger: './src/logger.ts#logger',
 };
@@ -107,7 +116,48 @@ export const createUser = e
   });
 ```
 
-### 5. Build Handlers
+### 5. Create Subscribers (Optional)
+
+Create event subscribers in `src/subscribers/`:
+
+```typescript
+// src/subscribers/userSubscriber.ts
+import { s } from '@geekmidas/api/subscriber';
+import type { Service } from '@geekmidas/api/services';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+
+// Define event types
+type UserEvents =
+  | PublishableMessage<'user.created', { userId: string; email: string }>
+  | PublishableMessage<'user.updated', { userId: string }>;
+
+// Create event publisher service
+const userEventPublisher = {
+  serviceName: 'userEventPublisher' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      publisherUrl: get('EVENT_PUBLISHER_URL').string()
+    })).parse();
+
+    const { Publisher } = await import('@geekmidas/events');
+    return Publisher.fromConnectionString<UserEvents>(config.publisherUrl);
+  }
+} satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
+
+// Create subscriber
+export const userCreatedSubscriber = s
+  .publisher(userEventPublisher)
+  .subscribe('user.created')
+  .handle(async ({ events, logger }) => {
+    for (const event of events) {
+      logger.info({ userId: event.payload.userId }, 'Processing user.created event');
+      // Process event...
+    }
+  });
+```
+
+### 6. Build Handlers
 
 ```bash
 # Generate AWS Lambda handlers
