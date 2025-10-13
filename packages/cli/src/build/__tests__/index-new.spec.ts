@@ -77,7 +77,10 @@ export default {
         expect(appContent).toContain('async start(options');
 
         // Check endpoints.ts has the HonoEndpoint setup
-        const endpointsContent = await readFile(join(serverDir, 'endpoints.ts'), 'utf-8');
+        const endpointsContent = await readFile(
+          join(serverDir, 'endpoints.ts'),
+          'utf-8',
+        );
         expect(endpointsContent).toContain('HonoEndpoint');
       } finally {
         process.chdir(originalCwd);

@@ -386,9 +386,7 @@ describe('EndpointGenerator', () => {
       provider: 'server',
     });
 
-    expect(logSpy).toHaveBeenCalledWith(
-      'Generated server with 2 endpoints',
-    );
+    expect(logSpy).toHaveBeenCalledWith('Generated server with 2 endpoints');
 
     logSpy.mockRestore();
   });

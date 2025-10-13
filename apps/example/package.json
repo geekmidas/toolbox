@@ -1,0 +1,26 @@
+{
+  "name": "@geekmidas/example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "gkm build --provider server",
+    "start": "tsx run .gkm/server/app.ts"
+  },
+  "dependencies": {
+    "@geekmidas/api": "workspace:*",
+    "@geekmidas/cli": "workspace:*",
+    "@geekmidas/envkit": "workspace:*",
+    "@geekmidas/events": "workspace:*",
+    "@hono/swagger-ui": "~0.5.2",
+    "@geekmidas/logger": "workspace:*",
+    "@hono/node-server": "~1.19.5",
+    "hono": "^4.7.15",
+    "zod": "~4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "~4.20.6"
+  }
+}

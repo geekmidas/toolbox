@@ -255,7 +255,7 @@ export async function setupSubscribers(
   const shutdown = () => {
     logger.info('Stopping all subscribers');
     for (const eventSubscriber of activeSubscribers) {
-      eventSubscriber.stop();
+      connection.stop();
     }
   };
 

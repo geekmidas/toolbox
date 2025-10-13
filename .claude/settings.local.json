@@ -33,7 +33,9 @@
       "Bash(touch:*)",
       "Bash(node:*)",
       "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest:*)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run:*)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run:*)",
+      "Bash(../../packages/cli/bin/gkm.js build --provider server)",
+      "Bash(pnpm --filter @geekmidas/cli build)"
     ],
     "deny": []
   }
