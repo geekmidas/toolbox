@@ -1,11 +1,12 @@
 import type { Logger } from '@geekmidas/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { type Service, ServiceDiscovery } from '../../services';
 
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { e } from '../EndpointFactory';
-import type { EventPublisher, PublishableMessage } from '../events';
+
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { publishEndpointEvents } from '../publisher';
 
 // Test event types
@@ -437,7 +438,7 @@ describe('publisher service setting combinations', () => {
       );
     });
 
-    it.only('should handle publisher service registration failure', async () => {
+    it('should handle publisher service registration failure', async () => {
       const registrationError = new Error('Service registration failed');
       const mockPublisherService = createMockPublisherService('failing');
       mockPublisherService.register = vi

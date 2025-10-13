@@ -37,9 +37,13 @@
     "access": "public"
   },
   "dependencies": {
+    "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/services": "workspace:*",
+    "@geekmidas/schema": "workspace:*",
     "@geekmidas/cache": "workspace:*",
     "@geekmidas/events": "workspace:*",
     "@geekmidas/logger": "workspace:*",
+    "@geekmidas/rate-limit": "workspace:*",
     "lodash.get": "~4.4.2",
     "lodash.merge": "~4.6.2",
     "lodash.set": "~4.3.2",

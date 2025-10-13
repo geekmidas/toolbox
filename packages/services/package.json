@@ -1,0 +1,30 @@
+{
+  "name": "@geekmidas/services",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geekmidas/toolbox.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "@geekmidas/logger": "workspace:*"
+  },
+  "peerDependencies": {
+    "@geekmidas/envkit": "workspace:*"
+  }
+}

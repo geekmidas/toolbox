@@ -31,8 +31,9 @@
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
-    "@geekmidas/api": "workspace:*",
-
+    "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/schema": "workspace:*",
+    "@geekmidas/envkit": "workspace:*",
     "commander": "^12.1.0",
     "fast-glob": "^3.3.2",
     "lodash.kebabcase": "^4.1.1",

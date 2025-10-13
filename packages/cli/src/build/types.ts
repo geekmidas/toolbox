@@ -1,5 +1,5 @@
-import type { Cron, Function } from '@geekmidas/api/constructs';
-import type { Endpoint } from '@geekmidas/api/server';
+import type { Cron, Function } from '@geekmidas/constructs';
+import type { Endpoint } from '@geekmidas/constructs';
 
 import type { CronInfo, FunctionInfo, RouteInfo } from '../types';
 

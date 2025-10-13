@@ -1,5 +1,5 @@
 import { relative } from 'path';
-import type { Construct } from '@geekmidas/api/constructs';
+import type { Construct } from '@geekmidas/constructs';
 import fg from 'fast-glob';
 import kebabCase from 'lodash.kebabcase';
 import type { BuildContext } from '../build/types';

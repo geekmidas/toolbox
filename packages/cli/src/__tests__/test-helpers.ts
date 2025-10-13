@@ -5,8 +5,8 @@ import {
   CronBuilder,
   FunctionBuilder,
   type ScheduleExpression,
-} from '@geekmidas/api/constructs';
-import { e } from '@geekmidas/api/server';
+} from '@geekmidas/constructs';
+import { e } from '@geekmidas/constructs';
 import { z } from 'zod';
 
 /**
@@ -57,7 +57,7 @@ export async function createMockEndpointFile(
   method: string = 'GET',
 ): Promise<string> {
   const content = `
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs';
 import { z } from 'zod';
 
 export const ${exportName} = e
@@ -100,7 +100,7 @@ export async function createMockCronFile(
   schedule = 'rate(1 hour)',
 ): Promise<string> {
   const content = `
-import { CronBuilder } from '@geekmidas/api/constructs';
+import { CronBuilder } from '@geekmidas/constructs';
 import { z } from 'zod';
 
 export const ${exportName} = new CronBuilder()

@@ -89,3 +89,5 @@ export class ConsoleLogger implements Logger {
  * }
  * ```
  */
+
+export const DEFAULT_LOGGER = new ConsoleLogger() as any;

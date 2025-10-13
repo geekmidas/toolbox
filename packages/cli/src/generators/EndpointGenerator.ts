@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Endpoint } from '@geekmidas/api/server';
+import { Endpoint } from '@geekmidas/constructs';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
 import {
@@ -190,7 +190,7 @@ export class EndpointGenerator extends ConstructGenerator<
     const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { HonoEndpoint } from '@geekmidas/api/hono';
-import { Endpoint } from '@geekmidas/api/server';
+import { Endpoint } from '@geekmidas/constructs';
 import { ServiceDiscovery } from '@geekmidas/api/services';
 import type { Hono } from 'hono';
 ${imports}
