@@ -331,7 +331,7 @@ describe('SubscriberGenerator', () => {
 
       // Check that the generated file has proper structure
       expect(handlerContent).toContain(
-        "import { AWSLambdaSubscriber } from '@geekmidas/api/adaptors'",
+        "import { AWSLambdaSubscriber } from '@geekmidas/constructs/subscribers'",
       );
       expect(handlerContent).toContain(
         'export const handler = adapter.handler',

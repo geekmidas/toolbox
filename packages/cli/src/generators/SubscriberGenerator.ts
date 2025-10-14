@@ -95,7 +95,7 @@ export class SubscriberGenerator extends ConstructGenerator<
       context.envParserPath,
     );
 
-    const content = `import { AWSLambdaSubscriber } from '@geekmidas/api/adaptors';
+    const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/subscribers';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 
@@ -165,7 +165,7 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { EventConnectionFactory, Subscriber } from '@geekmidas/events';
 import type { EventConnection, EventSubscriber } from '@geekmidas/events';
-import { ServiceDiscovery } from '@geekmidas/api/services';
+import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
 
 const subscribers = [

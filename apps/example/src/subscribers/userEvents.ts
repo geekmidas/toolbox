@@ -1,4 +1,4 @@
-import { SubscriberBuilder } from '@geekmidas/api/subscriber';
+import { SubscriberBuilder } from '@geekmidas/constructs/subscribers';
 import { z } from 'zod';
 
 /**

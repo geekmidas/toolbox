@@ -1,4 +1,4 @@
-import { ConsoleLogger } from '@geekmidas/api/logger';
+import { ConsoleLogger } from '@geekmidas/logger';
 
 // Create a console logger instance
 export const logger = new ConsoleLogger({

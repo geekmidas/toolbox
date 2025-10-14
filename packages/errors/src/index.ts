@@ -751,7 +751,7 @@ export enum HttpStatusCode {
  *
  * @example
  * ```typescript
- * import { HttpErrors } from '@geekmidas/api/errors';
+ * import { HttpErrors } from '@geekmidas/errors';
  * throw new HttpErrors.NotFoundError('Resource not found');
  * ```
  */

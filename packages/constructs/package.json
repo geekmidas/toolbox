@@ -33,6 +33,16 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.mjs",
       "require": "./dist/types.cjs"
+    },
+    "./hono": {
+      "types": "./dist/adaptors/hono.d.ts",
+      "import": "./dist/adaptors/hono.mjs",
+      "require": "./dist/adaptors/hono.cjs"
+    },
+    "./aws": {
+      "types": "./dist/adaptors/aws.d.ts",
+      "import": "./dist/adaptors/aws.mjs",
+      "require": "./dist/adaptors/aws.cjs"
     }
   },
   "scripts": {

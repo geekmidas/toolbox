@@ -81,7 +81,7 @@ export class CronGenerator extends ConstructGenerator<
       context.loggerPath,
     );
 
-    const content = `import { AWSScheduledFunction } from '@geekmidas/api/aws-lambda';
+    const content = `import { AWSScheduledFunction } from '@geekmidas/constructs/crons';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';

@@ -1,4 +1,4 @@
-import { cron } from '@geekmidas/api/cron';
+import { cron } from '@geekmidas/constructs/crons';
 
 /**
  * Example cron that generates a daily report at 9 AM UTC

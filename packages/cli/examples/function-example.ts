@@ -1,4 +1,4 @@
-import { f } from '@geekmidas/api/function';
+import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 
 /**
