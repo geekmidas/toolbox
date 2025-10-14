@@ -1,4 +1,3 @@
-import type { Logger } from '@geekmidas/logger';
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyEventV2,
@@ -130,40 +129,3 @@ export function createMockV2Event(
     ...overrides,
   };
 }
-
-/**
- * Creates a mock Logger for testing
- */
-export function createMockLogger(): Logger {
-  const logger: Logger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    trace: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
-
-/**
- * Common test event types for AWS adapter testing
- */
-export type TestEvent =
-  | { type: 'user.created'; payload: { userId: string; email: string } }
-  | { type: 'user.updated'; payload: { userId: string; changes: string[] } }
-  | { type: 'notification.sent'; payload: { userId: string; type: string } };
-
-/**
- * Mock service for testing
- */
-export const TestService = {
-  serviceName: 'TestService' as const,
-
-  async register() {
-    return this;
-  },
-
-  async cleanup() {},
-};

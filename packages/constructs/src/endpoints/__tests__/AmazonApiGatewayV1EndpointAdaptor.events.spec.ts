@@ -6,13 +6,14 @@ import type {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import {
   createMockContext,
   createMockV1Event as createMockEvent,
-  createMockLogger,
-} from '../../testing/aws-test-helpers';
+} from '@geekmidas/testkit/aws';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+
+import { createMockLogger } from '@geekmidas/testkit/logger';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
 import { Endpoint } from '../Endpoint';
 

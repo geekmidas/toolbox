@@ -29,7 +29,12 @@ export class Subscriber<
   TEventPublisherServiceName extends string = string,
   TSubscribedEvents extends
     ExtractPublisherMessage<TEventPublisher>['type'][] = ExtractPublisherMessage<TEventPublisher>['type'][],
-> extends Construct<TLogger, TEventPublisherServiceName, TEventPublisher> {
+> extends Construct<
+  TLogger,
+  TEventPublisherServiceName,
+  TEventPublisher,
+  OutSchema
+> {
   __IS_SUBSCRIBER__ = true;
 
   static isSubscriber(

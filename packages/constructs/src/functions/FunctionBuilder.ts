@@ -124,6 +124,24 @@ export class FunctionBuilder<
     >;
   }
 
+  publisher<T extends EventPublisher<any>, TName extends string>(
+    publisher: Service<TName, T>,
+  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
+    this._publisher = publisher as unknown as Service<
+      TEventPublisherServiceName,
+      TEventPublisher
+    >;
+
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      T,
+      TName
+    >;
+  }
+
   handle(
     fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   ): Function<

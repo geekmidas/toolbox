@@ -6,12 +6,9 @@ import type {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
+import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import {
-  createMockContext,
-  createMockV2Event,
-} from '../../testing/aws-test-helpers';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 import { Endpoint } from '../Endpoint';
 

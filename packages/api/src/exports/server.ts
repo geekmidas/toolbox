@@ -5,11 +5,10 @@ export { Function } from '../constructs/Function.ts';
 export { Subscriber } from '../constructs/Subscriber.ts';
 export {
   type EventPublisher,
-  type EventContext,
   type MappedEvent,
   type PublishableMessage,
   type ExtractPublisherMessage,
-} from '@geekmidas/events.ts';
+} from '@geekmidas/events';
 export {
   type RateLimitConfig,
   type RateLimitContext,

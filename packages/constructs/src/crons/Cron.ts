@@ -40,6 +40,8 @@ export class Cron<
     outputSchema?: OutSchema,
     services: TServices = [] as Service[] as TServices,
     logger?: TLogger,
+    publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
+    events: any[] = [],
   ) {
     super(
       fn,
@@ -49,6 +51,8 @@ export class Cron<
       outputSchema,
       services,
       logger,
+      publisherService,
+      events,
     );
   }
 

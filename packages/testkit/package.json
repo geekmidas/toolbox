@@ -28,10 +28,21 @@
       "types": "./dist/faker.d.ts",
       "import": "./dist/faker.mjs",
       "require": "./dist/faker.cjs"
+    },
+    "./aws": {
+      "types": "./dist/aws.d.ts",
+      "import": "./dist/aws.mjs",
+      "require": "./dist/aws.cjs"
+    },
+    "./logger": {
+      "types": "./dist/logger.d.ts",
+      "import": "./dist/logger.mjs",
+      "require": "./dist/logger.cjs"
     }
   },
   "dependencies": {
-    "@faker-js/faker": "~9.9.0"
+    "@faker-js/faker": "~9.9.0",
+    "@geekmidas/logger": "workspace:*"
   },
   "devDependencies": {
     "@types/pg": "~8.15.4"
@@ -47,6 +58,7 @@
     "objection": "~3.1.5",
     "db-errors": "~0.2.3",
     "@geekmidas/envkit": "workspace:*",
-    "vitest": "~3.2.4"
+    "vitest": "~3.2.4",
+    "@types/aws-lambda": ">=8.10.92"
   }
 }

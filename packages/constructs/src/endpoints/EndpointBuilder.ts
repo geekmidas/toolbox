@@ -78,6 +78,37 @@ export class EndpointBuilder<
     return this;
   }
 
+  publisher<T extends EventPublisher<any>, TName extends string>(
+    publisher: Service<TName, T>,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    T,
+    TName
+  > {
+    this._publisher = publisher as unknown as Service<
+      TEventPublisherServiceName,
+      TEventPublisher
+    >;
+
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      T,
+      TName
+    >;
+  }
+
   body<T extends StandardSchemaV1>(
     schema: T,
   ): EndpointBuilder<

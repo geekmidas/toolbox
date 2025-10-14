@@ -375,6 +375,9 @@ importers:
         specifier: ~12.1.3
         version: 12.1.3
     devDependencies:
+      '@geekmidas/testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/lodash.get':
         specifier: ~4.4.9
         version: 4.4.9
@@ -576,6 +579,12 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@types/aws-lambda':
+        specifier: '>=8.10.92'
+        version: 8.10.150
       db-errors:
         specifier: ~0.2.3
         version: 0.2.3

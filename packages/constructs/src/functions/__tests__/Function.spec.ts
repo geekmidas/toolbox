@@ -5,7 +5,8 @@ import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { ConstructType } from '../../Construct';
-import { createMockContext } from '../../testing/aws-test-helpers';
+
+import { createMockContext } from '@geekmidas/testkit/aws';
 import { AWSLambdaFunction } from '../AWSLambdaFunction';
 import { Function, FunctionFactory, type FunctionHandler } from '../Function';
 import { FunctionBuilder } from '../FunctionBuilder';

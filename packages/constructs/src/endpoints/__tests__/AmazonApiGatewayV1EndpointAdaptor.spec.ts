@@ -12,13 +12,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../Endpoint';
 
-import {
-  createMockContext,
-  createMockLogger,
-  createMockV1Event,
-  TestService,
-} from '../../testing/aws-test-helpers';
+import { createMockContext, createMockV1Event } from '@geekmidas/testkit/aws';
+
+import { createMockLogger } from '@geekmidas/testkit/logger';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
+/**
+ * Common test event types for AWS adapter testing
+ */
+export type TestEvent =
+  | { type: 'user.created'; payload: { userId: string; email: string } }
+  | { type: 'user.updated'; payload: { userId: string; changes: string[] } }
+  | { type: 'notification.sent'; payload: { userId: string; type: string } };
+
+/**
+ * Mock service for testing
+ */
+export const TestService = {
+  serviceName: 'TestService' as const,
+
+  async register() {
+    return this;
+  },
+
+  async cleanup() {},
+};
 
 describe('AmazonApiGatewayV1Endpoint', () => {
   let mockLogger: Logger;

@@ -66,6 +66,7 @@
     "@types/lodash.set": "~4.3.9",
     "@types/lodash.get": "~4.4.9",
     "@types/lodash.uniqby": "~4.7.9",
+    "@geekmidas/testkit": "workspace:*",
     "zod": "~4.1.12"
   },
   "peerDependencies": {
