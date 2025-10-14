@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/services": "workspace:*",
     "@geekmidas/cli": "workspace:*",
     "@geekmidas/envkit": "workspace:*",
     "@geekmidas/events": "workspace:*",

@@ -189,13 +189,13 @@ export class EndpointGenerator extends ConstructGenerator<
 
     const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { HonoEndpoint } from '@geekmidas/constructs/endpoints';
+import { HonoEndpoint } from '@geekmidas/constructs/hono';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import { ServiceDiscovery } from '@geekmidas/services';
 import type { Hono } from 'hono';
 ${imports}
 
-const endpoints: Endpoint<any, any, any, any, any, any, any>[] = [
+const endpoints: Endpoint<any, any, any, any, any, any, any, any>[] = [
   ${allExportNames.join(',\n  ')}
 ];
 
@@ -348,7 +348,7 @@ export default createApp;
     envParserPath: string,
     envParserImportPattern: string,
   ): string {
-    return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/endpoints';
+    return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
 
@@ -364,7 +364,7 @@ export const handler = adapter.handler;
     envParserPath: string,
     envParserImportPattern: string,
   ): string {
-    return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/endpoints';
+    return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
 

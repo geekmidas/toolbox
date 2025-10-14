@@ -95,7 +95,7 @@ export class SubscriberGenerator extends ConstructGenerator<
       context.envParserPath,
     );
 
-    const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/subscribers';
+    const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 

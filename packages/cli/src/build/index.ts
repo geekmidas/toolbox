@@ -1,7 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Cron, Function, Subscriber } from '@geekmidas/constructs';
-import type { Endpoint } from '@geekmidas/constructs';
+import type { Cron } from '@geekmidas/constructs/crons';
+import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import type { Function } from '@geekmidas/constructs/functions';
+import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import { loadConfig } from '../config';
 import {
   CronGenerator,
