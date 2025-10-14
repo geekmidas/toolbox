@@ -1,6 +1,6 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Cron, ScheduleExpression } from '@geekmidas/constructs';
+import type { Cron, ScheduleExpression } from '@geekmidas/constructs/crons';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {

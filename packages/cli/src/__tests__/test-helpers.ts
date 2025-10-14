@@ -3,10 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   CronBuilder,
-  FunctionBuilder,
   type ScheduleExpression,
-} from '@geekmidas/constructs';
-import { e } from '@geekmidas/constructs';
+} from '@geekmidas/constructs/crons';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 /**
@@ -57,7 +56,7 @@ export async function createMockEndpointFile(
   method: string = 'GET',
 ): Promise<string> {
   const content = `
-import { e } from '@geekmidas/constructs';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 export const ${exportName} = e
@@ -78,7 +77,7 @@ export async function createMockFunctionFile(
   timeout = 30,
 ): Promise<string> {
   const content = `
-import { f } from '@geekmidas/api/function';
+import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 
 export const ${exportName} = f
@@ -100,7 +99,7 @@ export async function createMockCronFile(
   schedule = 'rate(1 hour)',
 ): Promise<string> {
   const content = `
-import { CronBuilder } from '@geekmidas/constructs';
+import { CronBuilder } from '@geekmidas/constructs/crons';
 import { z } from 'zod';
 
 export const ${exportName} = new CronBuilder()
@@ -177,4 +176,5 @@ export async function waitFor(
 }
 
 import { dirname } from 'node:path';
+import { FunctionBuilder } from '@geekmidas/constructs/functions';
 import type { HttpMethod } from '../../../api/src/constructs/types';

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Function } from '@geekmidas/constructs';
+import { Function } from '@geekmidas/constructs/functions';
 import type { BuildContext } from '../build/types';
 import type { FunctionInfo } from '../types';
 import {

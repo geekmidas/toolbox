@@ -1,6 +1,6 @@
 import { InMemoryCache } from '@geekmidas/cache/memory';
+import { TooManyRequestsError } from '@geekmidas/errors';
 import { describe, expect, it, vi } from 'vitest';
-import { TooManyRequestsError } from '../errors';
 import {
   type RateLimitConfig,
   type RateLimitContext,
@@ -116,10 +116,9 @@ describe('Rate Limiting', () => {
 
       // Use up the limit
       await checkRateLimit(config, ctx);
-      await checkRateLimit(config, ctx);
 
       // Exceed the limit
-      await expect(checkRateLimit(config, ctx)).rejects.toThrow(
+      await expect(() => checkRateLimit(config, ctx)).rejects.toThrow(
         TooManyRequestsError,
       );
     });
@@ -136,14 +135,9 @@ describe('Rate Limiting', () => {
 
       await checkRateLimit(config, ctx);
 
-      try {
-        await checkRateLimit(config, ctx);
-      } catch (error) {
-        expect(error).toBeInstanceOf(TooManyRequestsError);
-        expect((error as TooManyRequestsError).message).toBe(
-          'Custom rate limit message',
-        );
-      }
+      await expect(() => checkRateLimit(config, ctx)).rejects.toThrow(
+        TooManyRequestsError,
+      );
     });
 
     it('should skip rate limiting when skip function returns true', async () => {

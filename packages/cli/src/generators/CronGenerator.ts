@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Cron } from '@geekmidas/constructs';
+import { Cron } from '@geekmidas/constructs/crons';
 import type { BuildContext } from '../build/types';
 import type { CronInfo } from '../types';
 import {

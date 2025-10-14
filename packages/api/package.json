@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/errors": "workspace:*",
     "@geekmidas/services": "workspace:*",
     "@geekmidas/schema": "workspace:*",
     "@geekmidas/cache": "workspace:*",
@@ -71,6 +72,7 @@
 
   "peerDependencies": {
     "@geekmidas/envkit": "workspace:*",
+
     "@middy/core": ">=6.3.1",
     "@middy/http-header-normalizer": ">=6.3.1",
     "@middy/http-json-body-parser": ">=6.3.1",

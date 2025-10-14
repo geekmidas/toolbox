@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Subscriber } from '@geekmidas/constructs';
+import { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { BuildContext } from '../build/types';
 import type { SubscriberInfo } from '../types';
 import {

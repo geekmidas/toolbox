@@ -1,4 +1,9 @@
-export { Cron } from './Cron';
+export {
+  Cron,
+  type ScheduleExpression,
+  type CronExpression,
+  type RateExpression,
+} from './Cron';
 export { CronBuilder } from './CronBuilder';
 
 import { CronBuilder } from './CronBuilder';

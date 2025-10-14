@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Subscriber } from '@geekmidas/constructs';
-import { SubscriberBuilder } from '@geekmidas/api/subscriber';
+import {
+  type Subscriber,
+  SubscriberBuilder,
+} from '@geekmidas/constructs/subscribers';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanupDir,

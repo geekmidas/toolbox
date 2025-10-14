@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { Endpoint } from '@geekmidas/constructs';
+import { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
 import {
