@@ -37,7 +37,8 @@
       "Bash(../../packages/cli/bin/gkm.js build --provider server)",
       "Bash(pnpm --filter @geekmidas/cli build)",
       "Bash(pnpm --filter @geekmidas/schema build)",
-      "Bash(pnpm --filter @geekmidas/schema ts:*)"
+      "Bash(pnpm --filter @geekmidas/schema ts:*)",
+      "Bash(awk:*)"
     ],
     "deny": []
   }

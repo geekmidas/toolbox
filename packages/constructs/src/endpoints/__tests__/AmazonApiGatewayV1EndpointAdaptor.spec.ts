@@ -8,55 +8,17 @@ import {
   UnauthorizedError,
 } from '@geekmidas/errors';
 import type { Logger } from '@geekmidas/logger';
-import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../Endpoint';
 
-import { createMockV1Event } from '../../testing/aws-test-helpers';
+import {
+  createMockContext,
+  createMockLogger,
+  createMockV1Event,
+  TestService,
+} from '../../testing/aws-test-helpers';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
-
-// Mock logger
-const createMockLogger = (): Logger => {
-  const logger: Logger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    trace: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-};
-
-// Mock service for testing
-const TestService = {
-  serviceName: 'TestService' as const,
-
-  async register() {
-    return this;
-  },
-
-  async cleanup() {},
-};
-
-// Mock context
-const createMockContext = (): Context => ({
-  awsRequestId: 'test-request-id',
-  callbackWaitsForEmptyEventLoop: false,
-  functionName: 'test-function',
-  functionVersion: '1',
-  invokedFunctionArn:
-    'arn:aws:lambda:us-east-1:123456789012:function:test-function',
-  memoryLimitInMB: '128',
-  logGroupName: '/aws/lambda/test-function',
-  logStreamName: '2024/01/01/[$LATEST]abcdef123456',
-  getRemainingTimeInMillis: () => 5000,
-  done: vi.fn(),
-  fail: vi.fn(),
-  succeed: vi.fn(),
-});
 
 describe('AmazonApiGatewayV1Endpoint', () => {
   let mockLogger: Logger;

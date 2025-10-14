@@ -13,23 +13,10 @@ import type {
   InferStandardSchema,
 } from '@geekmidas/schema';
 
+import { UnprocessableEntityError } from '@geekmidas/errors';
 import { parseSchema } from '@geekmidas/schema/parser';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
-
-/**
- * Error thrown when validation fails.
- * This is a construct-level error that can be extended by adapters.
- */
-export class UnprocessableEntityError extends Error {
-  constructor(
-    message: string,
-    public issues?: any[],
-  ) {
-    super(message);
-    this.name = 'UnprocessableEntityError';
-  }
-}
 
 export class FunctionFactory<
   TServices extends Service[] = [],
@@ -75,7 +62,8 @@ export class Function<
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
-> implements Construct<TLogger, TEventPublisherServiceName, TEventPublisher>
+> implements
+    Construct<TLogger, TEventPublisherServiceName, TEventPublisher, OutSchema>
 {
   __IS_FUNCTION__ = true;
 
@@ -113,7 +101,7 @@ export class Function<
     try {
       return await parseSchema(schema, data);
     } catch (issues) {
-      throw new UnprocessableEntityError('Validation failed', issues as any[]);
+      throw new UnprocessableEntityError('Validation failed', issues);
     }
   }
 

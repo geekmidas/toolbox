@@ -3,9 +3,9 @@ import type { Logger } from '@geekmidas/logger';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Endpoint, type EndpointContext } from '../../constructs/Endpoint';
-import { ServiceDiscovery } from '../../services';
-import { HonoEndpoint } from '../HonoEndpoint';
+import { Endpoint, type EndpointContext } from '../Endpoint';
+import { ServiceDiscovery } from '@geekmidas/services';
+import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
 describe('HonoEndpointAdaptor', () => {
   const mockLogger: Logger = {

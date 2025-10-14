@@ -8,9 +8,9 @@ import type { Logger } from '@geekmidas/logger';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Endpoint } from '../../constructs/Endpoint';
-import { type Service, ServiceDiscovery } from '../../services';
-import { HonoEndpoint } from '../HonoEndpoint';
+import { Endpoint } from '../Endpoint';
+import { type Service, ServiceDiscovery } from '@geekmidas/services';
+import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
 // Test event types
 type TestEvent =

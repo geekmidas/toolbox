@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid body 1`] = `
+[
+  {
+    "code": "too_small",
+    "inclusive": true,
+    "message": "Too small: expected string to have >=3 characters",
+    "minimum": 3,
+    "origin": "string",
+    "path": [
+      "name",
+    ],
+  },
+  {
+    "code": "invalid_type",
+    "expected": "number",
+    "message": "Invalid input: expected number, received string",
+    "path": [
+      "age",
+    ],
+  },
+]
+`;
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid path parameters 1`] = `
+[
+  {
+    "code": "invalid_format",
+    "format": "uuid",
+    "message": "Invalid UUID",
+    "origin": "string",
+    "path": [
+      "id",
+    ],
+    "pattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/",
+  },
+]
+`;
+
+exports[`HonoEndpointAdaptor > addRoute > should return 422 for invalid query parameters 1`] = `
+[
+  {
+    "code": "invalid_format",
+    "format": "regex",
+    "message": "Invalid string: must match pattern /^\\d+$/",
+    "origin": "string",
+    "path": [
+      "page",
+    ],
+    "pattern": "/^\\d+$/",
+  },
+]
+`;
