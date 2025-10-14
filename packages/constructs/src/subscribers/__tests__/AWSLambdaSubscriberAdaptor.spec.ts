@@ -1,5 +1,4 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type {
@@ -28,33 +27,6 @@ class TestService implements Service<'TestService', TestService> {
   }
 }
 
-// Mock event publisher
-type UserEvent = PublishableMessage<
-  'user.created',
-  { userId: string; email: string }
->;
-type OrderEvent = PublishableMessage<'order.placed', { orderId: string }>;
-type TestEvents = UserEvent | OrderEvent;
-
-class TestPublisher implements EventPublisher<TestEvents> {
-  publishedEvents: TestEvents[] = [];
-
-  async publish(events: TestEvents[]): Promise<void> {
-    this.publishedEvents.push(...events);
-  }
-}
-
-class TestPublisherService
-  implements Service<'TestPublisherService', TestPublisher>
-{
-  serviceName = 'TestPublisherService' as const;
-  static serviceName = 'TestPublisherService';
-  publisher = new TestPublisher();
-
-  async register() {
-    return this.publisher;
-  }
-}
 
 // Mock Lambda context
 const createMockContext = (): Context => ({
@@ -259,7 +231,7 @@ describe('AWSLambdaSubscriber', () => {
     it('should filter events by subscribed types', async () => {
       const handler = vi.fn(async ({ events }) => {
         expect(events).toHaveLength(2);
-        expect(events.every((e) => e.type === 'user.created')).toBe(true);
+        expect(events.every((e: any) => e.type === 'user.created')).toBe(true);
       });
 
       const subscriber = new Subscriber(
