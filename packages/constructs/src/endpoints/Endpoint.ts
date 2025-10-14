@@ -160,6 +160,10 @@ export class Endpoint<
     >;
   }
 
+  static isSuccessStatus(status: number): boolean {
+    return status >= 200 && status < 300;
+  }
+
   /**
    * Creates a case-insensitive header lookup function from a headers object.
    *

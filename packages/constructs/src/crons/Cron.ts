@@ -3,7 +3,6 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
-import { FunctionBuilder } from '../functions';
 
 import type { EventPublisher } from '@geekmidas/events';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
@@ -55,39 +54,6 @@ export class Cron<
 
   get schedule(): ScheduleExpression | undefined {
     return this._schedule;
-  }
-}
-
-export class CronBuilder<
-  TInput extends ComposableStandardSchema,
-  TServices extends Service[],
-  TLogger extends Logger = Logger,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
-> extends FunctionBuilder<TInput, OutSchema, TServices, TLogger> {
-  private _schedule?: ScheduleExpression;
-  constructor() {
-    super(ConstructType.Cron);
-  }
-
-  schedule(
-    _expression: ScheduleExpression,
-  ): CronBuilder<TInput, TServices, TLogger, OutSchema> {
-    this._schedule = _expression;
-    return this;
-  }
-
-  handle(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
-  ): Cron<TInput, TServices, TLogger, OutSchema> {
-    return new Cron(
-      fn,
-      this._timeout,
-      this._schedule,
-      this.inputSchema,
-      this.outputSchema,
-      this._services,
-      this._logger,
-    );
   }
 }
 

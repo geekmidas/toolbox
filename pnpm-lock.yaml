@@ -326,6 +326,9 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
+      '@geekmidas/errors':
+        specifier: workspace:*
+        version: link:../errors
       '@geekmidas/events':
         specifier: workspace:*
         version: link:../events
@@ -341,9 +344,21 @@ importers:
       '@geekmidas/services':
         specifier: workspace:*
         version: link:../services
+      '@middy/core':
+        specifier: '>=6.3.1'
+        version: 6.3.2
       '@standard-schema/spec':
         specifier: '>=1.0.0'
         version: 1.0.0
+      '@types/aws-lambda':
+        specifier: '>=8.10.92'
+        version: 8.10.150
+      fast-glob:
+        specifier: ~3.3.3
+        version: 3.3.3
+      hono:
+        specifier: '>=4.8.2'
+        version: 4.8.2
       lodash.get:
         specifier: ~4.4.2
         version: 4.4.2
@@ -372,6 +387,9 @@ importers:
       '@types/lodash.uniqby':
         specifier: ~4.7.9
         version: 4.7.9
+      zod:
+        specifier: ~4.1.12
+        version: 4.1.12
 
   packages/db:
     dependencies:
@@ -456,6 +474,8 @@ importers:
       '@types/lodash.snakecase':
         specifier: ~4.1.9
         version: 4.1.9
+
+  packages/errors: {}
 
   packages/events:
     dependencies:
