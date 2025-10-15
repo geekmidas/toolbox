@@ -83,7 +83,7 @@ export const envParser = new EnvironmentParser(process.env)
 Create `src/logger.ts`:
 
 ```typescript
-import { ConsoleLogger } from '@geekmidas/api/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 
 export const logger = new ConsoleLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -97,7 +97,7 @@ Create endpoint files in `src/routes/`:
 
 ```typescript
 // src/routes/users.ts
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 export const getUsers = e
@@ -122,8 +122,8 @@ Create event subscribers in `src/subscribers/`:
 
 ```typescript
 // src/subscribers/userSubscriber.ts
-import { s } from '@geekmidas/api/subscriber';
-import type { Service } from '@geekmidas/api/services';
+import { SubscriberBuilder } from '@geekmidas/constructs/subscribers';
+import type { Service } from '@geekmidas/services';
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 
@@ -146,9 +146,9 @@ const userEventPublisher = {
 } satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
 
 // Create subscriber
-export const userCreatedSubscriber = s
+export const userCreatedSubscriber = new SubscriberBuilder()
   .publisher(userEventPublisher)
-  .subscribe('user.created')
+  .subscribe(['user.created'])
   .handle(async ({ events, logger }) => {
     for (const event of events) {
       logger.info({ userId: event.payload.userId }, 'Processing user.created event');
@@ -294,7 +294,7 @@ gkm build --provider aws-apigatewayv1
 
 **Generated Handler:**
 ```typescript
-import { AmazonApiGatewayV1Endpoint } from '@geekmidas/api/aws-apigateway';
+import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
 import { myEndpoint } from '../src/routes/example.js';
 import { envParser } from '../src/env.js';
 
@@ -313,7 +313,7 @@ gkm build --provider aws-apigatewayv2
 
 **Generated Handler:**
 ```typescript
-import { AmazonApiGatewayV2Endpoint } from '@geekmidas/api/aws-apigateway';
+import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
 import { myEndpoint } from '../src/routes/example.js';
 import { envParser } from '../src/env.js';
 
@@ -332,8 +332,8 @@ gkm build --provider server
 
 **Generated Server:**
 ```typescript
-import { HonoEndpoint } from '@geekmidas/api/hono';
-import { ServiceDiscovery } from '@geekmidas/api/services';
+import { HonoEndpoint } from '@geekmidas/constructs/endpoints';
+import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { envParser } from '../src/env.js';
 import { logger } from '../src/logger.js';
@@ -562,7 +562,7 @@ Set up structured logging with different levels:
 
 ```typescript
 // src/logger.ts
-import { ConsoleLogger } from '@geekmidas/api/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 
 export const logger = new ConsoleLogger({
   level: process.env.LOG_LEVEL || 'info',

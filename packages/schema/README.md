@@ -291,15 +291,15 @@ if (isUser(data)) {
 }
 ```
 
-## Integration with @geekmidas/api
+## Integration with @geekmidas/constructs
 
-This package is used internally by `@geekmidas/api` for type-safe endpoint validation:
+This package is used internally by `@geekmidas/constructs` for type-safe endpoint validation:
 
 ```typescript
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
-// The API package uses InferStandardSchema internally
+// The constructs package uses InferStandardSchema internally
 const endpoint = e
   .post('/users')
   .body(z.object({ name: z.string() }))
@@ -342,7 +342,7 @@ Requires TypeScript 5.0 or higher with strict mode enabled:
 
 ## Related Packages
 
-- [@geekmidas/api](../api) - Uses this package for endpoint validation
+- [@geekmidas/constructs](../constructs) - Uses this package for endpoint validation
 - [@geekmidas/envkit](../envkit) - Environment configuration with schema validation
 - [@standard-schema/spec](https://github.com/standard-schema/standard-schema) - StandardSchema specification
 

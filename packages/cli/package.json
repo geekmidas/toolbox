@@ -44,6 +44,7 @@
     "@geekmidas/testkit": "workspace:*",
     "typescript": "^5.8.2",
     "vitest": "^3.2.4",
+    "@geekmidas/logger": "workspace:*",
     "zod": "^3.23.8"
   }
 }
