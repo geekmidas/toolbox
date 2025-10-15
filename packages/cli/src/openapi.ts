@@ -2,7 +2,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Endpoint } from '@geekmidas/constructs';
+import { Endpoint } from '@geekmidas/constructs/endpoints';
 import { loadConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 

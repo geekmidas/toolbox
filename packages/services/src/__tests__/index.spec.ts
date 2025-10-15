@@ -462,7 +462,7 @@ describe('ServiceDiscovery', () => {
 
       const databaseService = {
         serviceName: 'database' as const,
-        async register(envParser) {
+        async register() {
           // Create a new EnvironmentParser instance for service-specific config
           const serviceEnv = new EnvironmentParser({ ...process.env });
           const config = serviceEnv

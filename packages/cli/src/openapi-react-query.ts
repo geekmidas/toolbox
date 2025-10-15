@@ -63,6 +63,7 @@ export async function generateReactQueryCommand(
       logger.warn('Run: npm install -D openapi-typescript');
 
       // Generate basic types file
+      await mkdir(dirname(typesPath), { recursive: true });
       await writeFile(
         typesPath,
         `// Auto-generated placeholder types
