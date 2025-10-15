@@ -62,8 +62,13 @@ export class Function<
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
-> extends Construct<TLogger, TEventPublisherServiceName, TEventPublisher, OutSchema, TServices>
-{
+> extends Construct<
+  TLogger,
+  TEventPublisherServiceName,
+  TEventPublisher,
+  OutSchema,
+  TServices
+> {
   __IS_FUNCTION__ = true;
 
   static isFunction(obj: any): obj is Function<any, any, any, any, any> {
@@ -126,10 +131,7 @@ export class Function<
     outputSchema?: OutSchema,
     services: TServices = [] as unknown as TServices,
     logger: TLogger = DEFAULT_LOGGER,
-    publisherService?: Service<
-      TEventPublisherServiceName,
-      TEventPublisher
-    >,
+    publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: MappedEvent<TEventPublisher, OutSchema>[] = [],
   ) {
     super(type, logger, services, events, publisherService, outputSchema);

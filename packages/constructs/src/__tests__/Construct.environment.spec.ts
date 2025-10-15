@@ -192,8 +192,14 @@ describe('Construct environment getter', () => {
         .get('/files')
         .handle(async () => []);
 
-      expect(await postEndpoint.getEnvironment()).toEqual(['AWS_REGION', 'S3_BUCKET']);
-      expect(await getEndpoint.getEnvironment()).toEqual(['AWS_REGION', 'S3_BUCKET']);
+      expect(await postEndpoint.getEnvironment()).toEqual([
+        'AWS_REGION',
+        'S3_BUCKET',
+      ]);
+      expect(await getEndpoint.getEnvironment()).toEqual([
+        'AWS_REGION',
+        'S3_BUCKET',
+      ]);
     });
   });
 
