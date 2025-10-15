@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { f } from '@geekmidas/constructs/functions';
 import type { Function } from '@geekmidas/constructs/functions';
-import { FunctionBuilder } from '@geekmidas/constructs/functions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import {
   cleanupDir,
   createMockBuildContext,
@@ -29,16 +30,12 @@ describe('FunctionGenerator', () => {
   });
 
   describe('isConstruct', () => {
-    it('should identify valid functions', async () => {
-      // Import the actual FunctionBuilder to create a real Function instance
-
-      const { z } = await import('zod');
-
-      const testFunction = new FunctionBuilder()
+    it('should identify valid functions', () => {
+      const testFunction = f
         .input(z.object({ name: z.string() }))
         .output(z.object({ greeting: z.string() }))
         .timeout(30)
-        .handle(async ({ input }: any) => ({
+        .handle(async ({ input }) => ({
           greeting: `Hello, ${input.name}!`,
         }));
 
@@ -56,20 +53,21 @@ describe('FunctionGenerator', () => {
     const createTestFunctionConstruct = (
       key: string,
       timeout: number = 30,
-    ): GeneratedConstruct<Function<any, any, any, any>> => ({
-      key,
-      name: key.toLowerCase(),
-      construct: {
-        __IS_FUNCTION__: true,
-        type: 'dev.geekmidas.function.function',
-        timeout,
-        handle: async () => ({ greeting: 'Hello!' }),
-      } as any,
-      path: {
-        absolute: join(tempDir, `${key}.ts`),
-        relative: `${key}.ts`,
-      },
-    });
+    ): GeneratedConstruct<Function<any, any, any, any>> => {
+      const func = f
+        .timeout(timeout)
+        .handle(async () => ({ greeting: 'Hello!' }));
+
+      return {
+        key,
+        name: key.toLowerCase(),
+        construct: func,
+        path: {
+          absolute: join(tempDir, `${key}.ts`),
+          relative: `${key}.ts`,
+        },
+      };
+    };
 
     describe('aws-lambda provider', () => {
       it('should generate function handlers', async () => {
