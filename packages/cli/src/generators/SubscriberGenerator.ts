@@ -69,6 +69,7 @@ export class SubscriberGenerator extends ConstructGenerator<
         ),
         subscribedEvents: construct.subscribedEvents || [],
         timeout: construct.timeout,
+        environment: await construct.getEnvironment(),
       });
 
       logger.log(`Generated subscriber handler: ${key}`);

@@ -15,27 +15,35 @@ type UserEvents =
   | PublishableMessage<'user.deleted', { userId: string }>;
 
 type EventsServicePublisher = EventPublisher<UserEvents>;
-export class EventsService {
-  public static instance: EventsServicePublisher;
-  static serviceName = 'events' as const;
 
-  public static config = (envParser: EnvironmentParser<{}>) =>
-    envParser.create((get) => ({
+let instance: EventsServicePublisher | null = null;
+
+export const EventsService = {
+  serviceName: 'events' as const,
+  register(envParser: EnvironmentParser<{}>): any {
+    // Create the config parser - this tracks environment variables
+    const configParser = envParser.create((get) => ({
       connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string(),
     }));
 
-  static async register(
-    envParser: EnvironmentParser<{}>,
-  ): Promise<EventsServicePublisher> {
-    if (!EventsService.instance) {
-      const config = EventsService.config(envParser).parse();
-      const connection = await EventConnectionFactory.fromConnectionString(
-        config.connectionString,
-      );
-
-      EventsService.instance = await Publisher.fromConnection(connection);
+    // For environment detection (when env is empty), return ConfigParser
+    // This allows build-time detection without needing actual env values
+    // @ts-ignore - accessing internal property to detect sniffer
+    const envData = envParser.env || {};
+    if (Object.keys(envData).length === 0) {
+      return configParser;
     }
 
-    return EventsService.instance;
-  }
-}
+    // Runtime: return a promise that resolves to the service instance
+    return (async () => {
+      if (!instance) {
+        const config = configParser.parse();
+        const connection = await EventConnectionFactory.fromConnectionString(
+          config.connectionString,
+        );
+        instance = await Publisher.fromConnection(connection);
+      }
+      return instance;
+    })();
+  },
+} as const;

@@ -13,8 +13,12 @@ export class ConfigParser<TResponse extends EmptyObject> {
    * Creates a new ConfigParser instance.
    *
    * @param config - The configuration object to parse
+   * @param envVars - Set of environment variable names that were accessed
    */
-  constructor(private readonly config: TResponse) {}
+  constructor(
+    private readonly config: TResponse,
+    private readonly envVars: Set<string> = new Set(),
+  ) {}
   /**
    * Parses the config object and validates it against the Zod schemas
    * @returns The parsed config object
@@ -65,6 +69,26 @@ export class ConfigParser<TResponse extends EmptyObject> {
 
     return parsedConfig;
   }
+
+  /**
+   * Returns an array of environment variable names that were accessed during config creation.
+   * This is useful for deployment and configuration management to know which env vars are required.
+   *
+   * @returns Array of environment variable names, sorted alphabetically
+   *
+   * @example
+   * ```typescript
+   * const config = envParser.create((get) => ({
+   *   dbUrl: get('DATABASE_URL').string(),
+   *   port: get('PORT').number()
+   * }));
+   *
+   * config.getEnvironmentVariables(); // ['DATABASE_URL', 'PORT']
+   * ```
+   */
+  getEnvironmentVariables(): string[] {
+    return Array.from(this.envVars).sort();
+  }
 }
 
 /**
@@ -87,6 +111,11 @@ export class ConfigParser<TResponse extends EmptyObject> {
  * ```
  */
 export class EnvironmentParser<T extends EmptyObject> {
+  /**
+   * Set to track which environment variable names have been accessed
+   */
+  private readonly accessedVars: Set<string> = new Set();
+
   /**
    * Creates a new EnvironmentParser instance.
    *
@@ -177,6 +206,9 @@ export class EnvironmentParser<T extends EmptyObject> {
    * @returns A proxied Zod object with wrapped schema creators
    */
   private getZodGetter = (name: string) => {
+    // Track that this environment variable was accessed
+    this.accessedVars.add(name);
+
     // Return an object that has all Zod schemas but with our wrapper
     return new Proxy(
       { ...z },
@@ -227,7 +259,7 @@ export class EnvironmentParser<T extends EmptyObject> {
     builder: (get: EnvFetcher) => TReturn,
   ): ConfigParser<TReturn> {
     const config = builder(this.getZodGetter);
-    return new ConfigParser(config);
+    return new ConfigParser(config, this.accessedVars);
   }
 }
 

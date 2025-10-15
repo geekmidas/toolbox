@@ -1,1 +1,1 @@
-export { EnvironmentParser } from './EnvironmentParser';
+export { EnvironmentParser, ConfigParser } from './EnvironmentParser';

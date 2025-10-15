@@ -66,8 +66,9 @@ export async function publishConstructEvents<
   T extends EventPublisher<any> | undefined,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServiceName extends string = string,
+  TServices extends Service[] = [],
 >(
-  construct: Construct<Logger, TServiceName, T, OutSchema>,
+  construct: Construct<Logger, TServiceName, T, OutSchema, TServices>,
   response: InferStandardSchema<OutSchema>,
   serviceDiscovery: ServiceDiscovery<any, any>,
   logger: Logger = construct.logger,

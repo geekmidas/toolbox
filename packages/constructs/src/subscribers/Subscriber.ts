@@ -33,7 +33,8 @@ export class Subscriber<
   TLogger,
   TEventPublisherServiceName,
   TEventPublisher,
-  OutSchema
+  OutSchema,
+  TServices
 > {
   __IS_SUBSCRIBER__ = true;
 
@@ -58,7 +59,7 @@ export class Subscriber<
     public readonly timeout: number = 30000,
     protected _subscribedEvents?: TSubscribedEvents,
     public readonly outputSchema?: OutSchema,
-    public readonly services: TServices = [] as Service[] as TServices,
+    public readonly services: TServices = [] as unknown as TServices,
     public readonly logger: TLogger = DEFAULT_LOGGER as TLogger,
     public readonly publisherService?: Service<
       TEventPublisherServiceName,
@@ -68,8 +69,10 @@ export class Subscriber<
     super(
       ConstructType.Subscriber,
       logger,
-      _subscribedEvents,
+      services,
+      [],
       publisherService,
+      outputSchema,
     );
   }
 

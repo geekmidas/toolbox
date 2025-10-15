@@ -38,7 +38,9 @@
       "Bash(pnpm --filter @geekmidas/cli build)",
       "Bash(pnpm --filter @geekmidas/schema build)",
       "Bash(pnpm --filter @geekmidas/schema ts:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(git checkout:*)",
+      "Bash(pnpm --filter @geekmidas/envkit test:once EnvironmentParser)"
     ],
     "deny": []
   }

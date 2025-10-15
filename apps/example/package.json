@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "gkm build --provider server",
+    "build": "gkm build --provider aws",
     "start": "tsx run .gkm/server/app.ts"
   },
   "dependencies": {

@@ -51,6 +51,7 @@ export class FunctionGenerator extends ConstructGenerator<
           '.handler',
         ),
         timeout: construct.timeout,
+        environment: await construct.getEnvironment(),
       });
 
       logger.log(`Generated function handler: ${key}`);

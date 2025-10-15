@@ -459,6 +459,146 @@ const components = extractor.extractComponents([getUsers, createUser]);
 // Use with @geekmidas/cli to generate full OpenAPI spec
 ```
 
+## Environment Variable Detection
+
+All constructs support automatic environment variable detection for build-time infrastructure provisioning. This allows deployment tools to know exactly which environment variables each construct requires.
+
+### Using `getEnvironment()`
+
+Every construct has an async `getEnvironment()` method that returns the environment variables required by its services:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { databaseService } from './services/database';
+import { cacheService } from './services/cache';
+
+const endpoint = e
+  .get('/users')
+  .services([databaseService, cacheService])
+  .handle(async ({ services }) => {
+    // Implementation
+  });
+
+// Detect required environment variables
+const envVars = await endpoint.getEnvironment();
+// Returns: ['CACHE_URL', 'DATABASE_URL'] (sorted alphabetically)
+```
+
+### How It Works
+
+The detection works by:
+
+1. Creating a "sniffer" `EnvironmentParser` with empty configuration
+2. Calling each service's `register()` method with the sniffer
+3. Tracking which environment variables are accessed via `get('VAR_NAME')`
+4. Collecting and deduplicating the variable names
+5. Returning a sorted array of variable names
+
+**Important**: Environment variables are tracked when `get('VAR_NAME')` is called, **before** `.parse()` validates the values. This means detection works even when actual environment values don't exist (build time).
+
+### Service Pattern for Detection
+
+For environment detection to work, services should return the `ConfigParser` from `envParser.create()`:
+
+```typescript
+import type { Service } from '@geekmidas/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+
+// ✅ Sync service - returns ConfigParser directly
+const databaseService = {
+  serviceName: 'database' as const,
+  register(envParser: EnvironmentParser<{}>) {
+    // Return the ConfigParser - this tracks env vars
+    return envParser.create((get) => ({
+      url: get('DATABASE_URL').string(),
+      port: get('DATABASE_PORT').string().transform(Number).default('5432')
+    }));
+  }
+} satisfies Service<'database', any>;
+
+// ✅ Async service - check for empty env to support detection
+const eventService = {
+  serviceName: 'events' as const,
+  register(envParser: EnvironmentParser<{}>) {
+    const configParser = envParser.create((get) => ({
+      connectionString: get('EVENT_CONNECTION_STRING').string()
+    }));
+
+    // Return ConfigParser for environment detection (build time)
+    // @ts-ignore - accessing internal property to detect sniffer
+    if (Object.keys(envParser.env || {}).length === 0) {
+      return configParser;
+    }
+
+    // Return Promise for runtime
+    return (async () => {
+      const config = configParser.parse();
+      // Initialize service with config
+      return await createService(config);
+    })();
+  }
+} satisfies Service<'events', any>;
+```
+
+### Build-Time Usage
+
+The `@geekmidas/cli` automatically calls `getEnvironment()` during build to populate the manifest:
+
+```json
+{
+  "routes": [
+    {
+      "path": "/users",
+      "method": "GET",
+      "handler": ".gkm/getUsers.handler",
+      "environment": [
+        "DATABASE_URL",
+        "DATABASE_PORT"
+      ]
+    }
+  ]
+}
+```
+
+This manifest can then be used by infrastructure-as-code tools (Terraform, CDK, SST, etc.) to automatically configure Lambda functions with the correct environment variables.
+
+### Features
+
+- **Automatic Detection**: No manual configuration needed
+- **Async Service Support**: Works with both sync and async services
+- **Deduplication**: Each variable listed once even if used by multiple services
+- **Sorted Output**: Variables always returned in alphabetical order
+- **Error Resilient**: Parse failures don't affect detection
+- **Publisher Support**: Detects variables from `.publisher()` services
+
+### Example with Multiple Services
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { databaseService } from './services/database';
+import { cacheService } from './services/cache';
+import { emailService } from './services/email';
+
+const endpoint = e
+  .post('/users')
+  .services([databaseService, cacheService, emailService])
+  .handle(async ({ services }) => {
+    // Create user
+  });
+
+// Automatically detects all variables from all services
+const envVars = await endpoint.getEnvironment();
+// Returns: [
+//   'CACHE_URL',
+//   'DATABASE_URL',
+//   'DATABASE_PORT',
+//   'SMTP_HOST',
+//   'SMTP_PORT',
+//   'SMTP_USER',
+//   'SMTP_PASS'
+// ]
+```
+
 ## Related Packages
 
 - [@geekmidas/services](../services) - Service discovery and dependency injection

@@ -689,4 +689,151 @@ describe('EnvironmentParser', () => {
       expect(_typeCheck2).toBe(true);
     });
   });
+
+  describe('Environment variable tracking', () => {
+    it('should track accessed environment variables', () => {
+      const env = { APP_NAME: 'Test App', PORT: '3000' };
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        appName: get('APP_NAME').string(),
+        port: get('PORT').string().transform(Number),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual(['APP_NAME', 'PORT']);
+    });
+
+    it('should track variables even when not parsed', () => {
+      const env = {};
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        database: get('DATABASE_URL').string().optional(),
+        redis: get('REDIS_URL').string().optional(),
+      }));
+
+      // Should track even without calling parse()
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual(['DATABASE_URL', 'REDIS_URL']);
+    });
+
+    it('should track variables in nested configurations', () => {
+      const env = {
+        DB_HOST: 'localhost',
+        DB_PORT: '5432',
+        API_KEY: 'secret',
+      };
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        database: {
+          host: get('DB_HOST').string(),
+          port: get('DB_PORT').string().transform(Number),
+        },
+        api: {
+          key: get('API_KEY').string(),
+        },
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual(['API_KEY', 'DB_HOST', 'DB_PORT']);
+    });
+
+    it('should return sorted environment variable names', () => {
+      const env = {};
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        zValue: get('Z_VALUE').string().optional(),
+        aValue: get('A_VALUE').string().optional(),
+        mValue: get('M_VALUE').string().optional(),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      // Should be sorted alphabetically
+      expect(envVars).toEqual(['A_VALUE', 'M_VALUE', 'Z_VALUE']);
+    });
+
+    it('should deduplicate environment variable names', () => {
+      const env = { SHARED_VAR: 'value' };
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        value1: get('SHARED_VAR').string(),
+        value2: get('SHARED_VAR').string(),
+        value3: get('SHARED_VAR').string(),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      // Should only appear once despite being accessed 3 times
+      expect(envVars).toEqual(['SHARED_VAR']);
+    });
+
+    it('should track variables with default values', () => {
+      const env = {};
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        port: get('PORT').string().default('3000'),
+        host: get('HOST').string().default('localhost'),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      // Should track even when defaults are used
+      expect(envVars).toEqual(['HOST', 'PORT']);
+    });
+
+    it('should work with empty configuration', () => {
+      const env = {};
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create(() => ({}));
+
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual([]);
+    });
+
+    it('should track variables accessed through coerce', () => {
+      const env = { NUM_WORKERS: '4', TIMEOUT: '30000' };
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        workers: get('NUM_WORKERS').coerce.number(),
+        timeout: get('TIMEOUT').coerce.number(),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual(['NUM_WORKERS', 'TIMEOUT']);
+    });
+
+    it('should track variables with complex transformations', () => {
+      const env = {
+        ALLOWED_ORIGINS: 'http://localhost,https://example.com',
+        FEATURE_FLAGS: 'auth,cache',
+      };
+      const parser = new EnvironmentParser(env);
+
+      const config = parser.create((get) => ({
+        origins: get('ALLOWED_ORIGINS')
+          .string()
+          .transform((v) => v.split(',')),
+        features: get('FEATURE_FLAGS')
+          .string()
+          .transform((v) => v.split(',')),
+      }));
+
+      const envVars = config.getEnvironmentVariables();
+
+      expect(envVars).toEqual(['ALLOWED_ORIGINS', 'FEATURE_FLAGS']);
+    });
+  });
 });

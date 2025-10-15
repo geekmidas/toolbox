@@ -60,6 +60,7 @@ export interface RouteInfo {
   path: string;
   method: string;
   handler: string;
+  environment?: string[];
 }
 
 export interface FunctionInfo {
@@ -67,6 +68,7 @@ export interface FunctionInfo {
   handler: string;
   timeout?: number;
   memorySize?: number;
+  environment?: string[];
 }
 
 export interface CronInfo {
@@ -75,6 +77,7 @@ export interface CronInfo {
   schedule: string;
   timeout?: number;
   memorySize?: number;
+  environment?: string[];
 }
 
 export interface SubscriberInfo {
@@ -83,6 +86,7 @@ export interface SubscriberInfo {
   subscribedEvents: string[];
   timeout?: number;
   memorySize?: number;
+  environment?: string[];
 }
 
 export interface RoutesManifest {

@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 
 import type { Service, ServiceRecord } from '@geekmidas/services';
-import { type Construct, ConstructType } from '../Construct';
+import { Construct, ConstructType } from '../Construct';
 
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -62,8 +62,7 @@ export class Function<
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
-> implements
-    Construct<TLogger, TEventPublisherServiceName, TEventPublisher, OutSchema>
+> extends Construct<TLogger, TEventPublisherServiceName, TEventPublisher, OutSchema, TServices>
 {
   __IS_FUNCTION__ = true;
 
@@ -122,17 +121,19 @@ export class Function<
   constructor(
     protected readonly fn: Fn,
     readonly timeout = 30000, // Default timeout of 30 seconds
-    public readonly type = ConstructType.Function,
+    type: ConstructType = ConstructType.Function,
     public input?: TInput,
-    public outputSchema?: OutSchema,
-    public services: TServices = [] as Service[] as TServices,
-    public logger: TLogger = DEFAULT_LOGGER,
-    public publisherService?: Service<
+    outputSchema?: OutSchema,
+    services: TServices = [] as unknown as TServices,
+    logger: TLogger = DEFAULT_LOGGER,
+    publisherService?: Service<
       TEventPublisherServiceName,
       TEventPublisher
     >,
-    public events: MappedEvent<TEventPublisher, OutSchema>[] = [],
-  ) {}
+    events: MappedEvent<TEventPublisher, OutSchema>[] = [],
+  ) {
+    super(type, logger, services, events, publisherService, outputSchema);
+  }
 }
 
 export type FunctionHandler<

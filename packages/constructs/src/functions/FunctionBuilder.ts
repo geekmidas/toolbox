@@ -1,4 +1,5 @@
 import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
@@ -8,6 +9,8 @@ import { Function, type FunctionHandler } from './Function';
 
 import type { EventPublisher } from '@geekmidas/events';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
+
+const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class FunctionBuilder<
   TInput extends ComposableStandardSchema,
@@ -153,7 +156,7 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName
   > {
-    return new Function(
+    const func = new Function(
       fn,
       this._timeout,
       this.type,
@@ -164,5 +167,16 @@ export class FunctionBuilder<
       this._publisher,
       this._events,
     );
+
+    // Reset builder state after creating the function to prevent pollution
+    this._services = [] as Service[] as TServices;
+    this._logger = DEFAULT_LOGGER;
+    this._events = [];
+    this._publisher = undefined;
+    this.inputSchema = undefined;
+    this.outputSchema = undefined;
+    this._timeout = undefined;
+
+    return func;
   }
 }

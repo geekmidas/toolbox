@@ -69,6 +69,7 @@ export class EndpointGenerator extends ConstructGenerator<
             /\.ts$/,
             '.handler',
           ),
+          environment: await construct.getEnvironment(),
         };
 
         routes.push(routeInfo);
@@ -95,6 +96,7 @@ export class EndpointGenerator extends ConstructGenerator<
             /\.ts$/,
             '.handler',
           ),
+          environment: await construct.getEnvironment(),
         };
 
         routes.push(routeInfo);

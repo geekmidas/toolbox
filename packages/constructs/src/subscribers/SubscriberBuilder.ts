@@ -127,7 +127,7 @@ export class SubscriberBuilder<
     TEventPublisherServiceName,
     TSubscribedEvents
   > {
-    return new Subscriber(
+    const subscriber = new Subscriber(
       fn,
       this._timeout,
       this._subscribedEvents,
@@ -136,5 +136,15 @@ export class SubscriberBuilder<
       this._logger,
       this._publisher,
     );
+
+    // Reset builder state after creating the subscriber to prevent pollution
+    this._services = [] as Service[] as TServices;
+    this._logger = DEFAULT_LOGGER;
+    this._publisher = undefined;
+    this._subscribedEvents = [] as any;
+    this._timeout = 30000; // Reset to default
+    this.outputSchema = undefined;
+
+    return subscriber;
   }
 }

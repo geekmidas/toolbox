@@ -1,4 +1,5 @@
 import type { Logger } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -8,6 +9,8 @@ import { FunctionBuilder, type FunctionHandler } from '../functions';
 import { Cron, type ScheduleExpression } from './Cron';
 
 import type { EventPublisher } from '@geekmidas/events';
+
+const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class CronBuilder<
   TInput extends ComposableStandardSchema,
@@ -162,7 +165,7 @@ export class CronBuilder<
     TEventPublisher,
     TEventPublisherServiceName
   > {
-    return new Cron(
+    const cron = new Cron(
       fn,
       this._timeout,
       this._schedule,
@@ -173,5 +176,17 @@ export class CronBuilder<
       this._publisher,
       this._events,
     );
+
+    // Reset builder state after creating the cron to prevent pollution
+    this._services = [] as Service[] as TServices;
+    this._logger = DEFAULT_LOGGER;
+    this._events = [];
+    this._publisher = undefined;
+    this._schedule = undefined;
+    this.inputSchema = undefined;
+    this.outputSchema = undefined;
+    this._timeout = undefined;
+
+    return cron;
   }
 }

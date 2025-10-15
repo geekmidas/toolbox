@@ -38,7 +38,7 @@ export class Cron<
     protected _schedule?: ScheduleExpression,
     input?: TInput,
     outputSchema?: OutSchema,
-    services: TServices = [] as Service[] as TServices,
+    services: TServices = [] as unknown as TServices,
     logger?: TLogger,
     publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: any[] = [],
