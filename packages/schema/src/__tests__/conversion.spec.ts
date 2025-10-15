@@ -274,12 +274,8 @@ describe('Schema Conversion', () => {
     });
 
     it('should convert multiple schemas with collector', async () => {
-      const schema1 = z
-        .object({ name: z.string() })
-        .meta({ id: 'UserMulti' });
-      const schema2 = z
-        .object({ title: z.string() })
-        .meta({ id: 'PostMulti' });
+      const schema1 = z.object({ name: z.string() }).meta({ id: 'UserMulti' });
+      const schema2 = z.object({ title: z.string() }).meta({ id: 'PostMulti' });
 
       const collector = createComponentCollector();
 

@@ -151,7 +151,12 @@ describe('React Query Generation', () => {
             get: {
               operationId: 'getUser',
               parameters: [
-                { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                {
+                  name: 'id',
+                  in: 'path',
+                  required: true,
+                  schema: { type: 'string' },
+                },
               ],
               responses: { '200': { description: 'Success' } },
             },

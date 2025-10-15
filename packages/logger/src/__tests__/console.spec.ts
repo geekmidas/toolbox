@@ -273,7 +273,10 @@ describe('ConsoleLogger', () => {
 
   describe('Child logger', () => {
     it('should create child logger with merged context', () => {
-      const parentLogger = new ConsoleLogger({ app: 'myApp', version: '1.0.0' });
+      const parentLogger = new ConsoleLogger({
+        app: 'myApp',
+        version: '1.0.0',
+      });
       const childLogger = parentLogger.child({ module: 'auth' });
 
       expect(childLogger.data).toEqual({
@@ -302,7 +305,10 @@ describe('ConsoleLogger', () => {
 
     it('should override parent context in child logger', () => {
       const parentLogger = new ConsoleLogger({ env: 'dev', status: 'parent' });
-      const childLogger = parentLogger.child({ status: 'child', module: 'api' });
+      const childLogger = parentLogger.child({
+        status: 'child',
+        module: 'api',
+      });
 
       expect(childLogger.data).toEqual({
         env: 'dev',
@@ -348,7 +354,10 @@ describe('ConsoleLogger', () => {
 
       logger.info({}, 'Empty context');
 
-      expect(console.info).toHaveBeenCalledWith({ ts: 1234567890 }, 'Empty context');
+      expect(console.info).toHaveBeenCalledWith(
+        { ts: 1234567890 },
+        'Empty context',
+      );
     });
 
     it('should handle complex nested objects', () => {

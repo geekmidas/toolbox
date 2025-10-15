@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { Kysely, Transaction } from 'kysely';
-import { withTransaction, type DatabaseConnection } from '../kysely';
+import { describe, expect, it, vi } from 'vitest';
+import { type DatabaseConnection, withTransaction } from '../kysely';
 
 describe('Kysely Transaction Helper', () => {
   describe('withTransaction', () => {
@@ -152,7 +152,10 @@ describe('Kysely Transaction Helper', () => {
       } as unknown as Kysely<any>;
 
       const result = await withTransaction(mockDb, async (trx) => {
-        const users = await (trx as any).selectFrom('users').selectAll().execute();
+        const users = await (trx as any)
+          .selectFrom('users')
+          .selectAll()
+          .execute();
         return users;
       });
 

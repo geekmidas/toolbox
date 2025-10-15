@@ -243,9 +243,7 @@ describe('OpenAPI Generation', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('OpenAPI spec generated'),
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Found'),
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Found'));
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('endpoints'),
       );
@@ -255,7 +253,9 @@ describe('OpenAPI Generation', () => {
       // No config file created
       vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
 
-      await expect(openapiCommand()).rejects.toThrow(/OpenAPI generation failed/);
+      await expect(openapiCommand()).rejects.toThrow(
+        /OpenAPI generation failed/,
+      );
     });
 
     it('should throw error for invalid TypeScript files', async () => {
