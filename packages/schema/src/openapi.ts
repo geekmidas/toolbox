@@ -33,7 +33,9 @@ export function createComponentCollector(): ComponentCollector {
  * The actual implementation is in @geekmidas/constructs to avoid circular dependencies.
  */
 export async function buildOpenApiSchema(
-  endpoints: Array<{ toOpenApi3Route(collector?: ComponentCollector): Promise<any> }>,
+  endpoints: Array<{
+    toOpenApi3Route(collector?: ComponentCollector): Promise<any>;
+  }>,
   options: OpenApiSchemaOptions = {},
 ): Promise<OpenAPIV3_1.Document> {
   const { title = 'API', version = '1.0.0', description } = options;

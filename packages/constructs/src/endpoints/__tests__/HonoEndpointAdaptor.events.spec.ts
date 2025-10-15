@@ -5,11 +5,11 @@ import type {
   PublishableMessage,
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
+import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint } from '../Endpoint';
-import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
 // Test event types

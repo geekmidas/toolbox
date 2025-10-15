@@ -2,8 +2,8 @@ import { EnvironmentParser } from '@geekmidas/envkit';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { e } from '../EndpointFactory';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
+import { e } from '../EndpointFactory';
 
 describe('AmazonApiGatewayV2Endpoint', () => {
   let envParser: EnvironmentParser<{}>;

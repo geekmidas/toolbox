@@ -1,10 +1,10 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
+import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Endpoint, type EndpointContext } from '../Endpoint';
-import { ServiceDiscovery } from '@geekmidas/services';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
 describe('HonoEndpointAdaptor', () => {

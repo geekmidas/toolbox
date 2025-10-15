@@ -27,7 +27,6 @@ class TestService implements Service<'TestService', TestService> {
   }
 }
 
-
 // Mock Lambda context
 const createMockContext = (): Context => ({
   functionName: 'test-subscriber',
