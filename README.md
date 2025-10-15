@@ -23,9 +23,9 @@
 
 ## 📦 Packages
 
-### [@geekmidas/api](./packages/api)
+### [@geekmidas/constructs](./packages/constructs)
 
-A powerful REST API framework for building type-safe HTTP endpoints.
+A powerful framework for building type-safe HTTP endpoints, cloud functions, cron jobs, and event subscribers.
 
 - Type-safe endpoint definitions with automatic type inference
 - Schema validation using StandardSchema (Zod, Valibot, etc.)
@@ -34,18 +34,18 @@ A powerful REST API framework for building type-safe HTTP endpoints.
 - Automatic OpenAPI schema generation with reusable components
 - Service-oriented architecture with dependency injection
 - Advanced query parameter handling with nested object support
-- React Query integration with infinite query support
+- Cloud functions, cron jobs, and event subscriber support
 
 ```typescript
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 const endpoint = e
   .get('/users/:id')
   .params(z.object({ id: z.string().uuid() }))
-  .query(z.object({ 
+  .query(z.object({
     include: z.array(z.string()).optional(),
-    'filter.status': z.enum(['active', 'inactive']).optional() 
+    'filter.status': z.enum(['active', 'inactive']).optional()
   }))
   .output(UserSchema)
   .handle(async ({ params, query }) => {
@@ -53,7 +53,33 @@ const endpoint = e
   });
 ```
 
-[Learn more →](./packages/api/README.md)
+[Learn more →](./packages/constructs/README.md)
+
+### [@geekmidas/client](./packages/client)
+
+Type-safe client utilities for consuming APIs with React Query integration.
+
+- Type-safe API client with automatic type inference
+- React Query hooks generation from OpenAPI specs
+- Typed fetcher with error handling
+- Automatic retries and request/response interceptors
+- OpenAPI-based hooks for seamless integration
+
+```typescript
+import { createTypedQueryClient } from '@geekmidas/client';
+import type { paths } from './openapi-types';
+
+const api = createTypedQueryClient<paths>({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+});
+
+// Use in React components
+const { data, isLoading } = api.useQuery('GET /users/{id}', {
+  params: { id: '123' }
+});
+```
+
+[Learn more →](./packages/client/README.md)
 
 ### [@geekmidas/testkit](./packages/testkit)
 
@@ -109,6 +135,209 @@ const config = new EnvironmentParser(process.env)
 ```
 
 [Learn more →](./packages/envkit/README.md)
+
+### [@geekmidas/db](./packages/db)
+
+Database utilities for Kysely with flexible transaction management.
+
+- Transaction helper that works with any DatabaseConnection type
+- Handles Kysely, Transaction, and ControlledTransaction seamlessly
+- Automatic transaction detection and reuse
+- Type-safe database operations
+
+```typescript
+import { withTransaction } from '@geekmidas/db/kysely';
+import type { DatabaseConnection } from '@geekmidas/db/kysely';
+
+async function createUser(
+  db: DatabaseConnection<Database>,
+  data: UserData
+) {
+  return withTransaction(db, async (trx) => {
+    const user = await trx
+      .insertInto('users')
+      .values(data)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    await trx
+      .insertInto('audit_log')
+      .values({ userId: user.id, action: 'created' })
+      .execute();
+
+    return user;
+  });
+}
+```
+
+[Learn more →](./packages/db/README.md)
+
+### [@geekmidas/schema](./packages/schema)
+
+Type utilities for StandardSchema-compatible validation libraries.
+
+- Type inference helpers for StandardSchema
+- ComposableStandardSchema type for nested schemas
+- Works with any StandardSchema-compatible library (Zod, Valibot, etc.)
+- Schema to JSON Schema conversion utilities
+- Zero runtime overhead
+
+```typescript
+import type { InferStandardSchema } from '@geekmidas/schema';
+import { z } from 'zod';
+
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string().email()
+});
+
+// Infer type from schema
+type User = InferStandardSchema<typeof userSchema>;
+```
+
+[Learn more →](./packages/schema/README.md)
+
+### [@geekmidas/logger](./packages/logger)
+
+Simple structured logging library for Node.js and browsers.
+
+- Standard logger interface with multiple log levels
+- Structured logging with context objects
+- Child logger support with context inheritance
+- Automatic timestamp injection
+- Console-based implementation
+
+```typescript
+import { ConsoleLogger } from '@geekmidas/logger/console';
+
+const logger = new ConsoleLogger({ app: 'myApp', version: '1.0.0' });
+
+// Structured logging
+logger.info({ userId: 123, action: 'login' }, 'User logged in');
+
+// Child logger with inherited context
+const childLogger = logger.child({ module: 'auth' });
+childLogger.debug({ action: 'validate' }, 'Validating token');
+```
+
+[Learn more →](./packages/logger/README.md)
+
+### [@geekmidas/errors](./packages/errors)
+
+HTTP error classes and error handling utilities.
+
+- Comprehensive HTTP error classes (4xx and 5xx)
+- Type-safe error factories with status codes
+- Error serialization for API responses
+- Integration with validation errors
+- Stack trace support for debugging
+
+```typescript
+import { createError } from '@geekmidas/errors';
+
+// Throw specific HTTP errors
+throw createError.notFound('User not found');
+throw createError.unauthorized('Invalid credentials');
+throw createError.badRequest('Invalid input', { field: 'email' });
+```
+
+[Learn more →](./packages/errors/README.md)
+
+### [@geekmidas/services](./packages/services)
+
+Service discovery and dependency injection system.
+
+- Singleton service registry with lazy initialization
+- Type-safe service registration and retrieval
+- Service caching and lifecycle management
+- Integration with EnvironmentParser for configuration
+- Support for async service initialization
+
+```typescript
+import type { Service } from '@geekmidas/services';
+import { ServiceDiscovery } from '@geekmidas/services';
+
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
+    await db.connect();
+    return db;
+  }
+} satisfies Service<'database', Database>;
+
+const discovery = ServiceDiscovery.getInstance(logger, envParser);
+const services = await discovery.register([databaseService]);
+```
+
+[Learn more →](./packages/services/README.md)
+
+### [@geekmidas/events](./packages/events)
+
+Unified event messaging library with support for multiple backends.
+
+- Unified interface for publishing and subscribing across messaging systems
+- Type-safe message types with full TypeScript inference
+- Multiple backends: Basic (in-memory), RabbitMQ, AWS SQS, AWS SNS
+- Connection string-based configuration
+- SNS→SQS integration with automatic queue management
+- Message filtering by event type
+
+```typescript
+import { Publisher, Subscriber } from '@geekmidas/events';
+import type { PublishableMessage } from '@geekmidas/events';
+
+type UserEvents =
+  | PublishableMessage<'user.created', { userId: string }>
+  | PublishableMessage<'user.updated', { userId: string }>;
+
+const publisher = await Publisher.fromConnectionString<UserEvents>(
+  'rabbitmq://localhost:5672?exchange=events'
+);
+
+const subscriber = await Subscriber.fromConnectionString<UserEvents>(
+  'rabbitmq://localhost:5672?exchange=events&queue=user-service'
+);
+
+await subscriber.subscribe(['user.created'], async (message) => {
+  console.log('User created:', message.payload.userId);
+});
+```
+
+[Learn more →](./packages/events/README.md)
+
+### [@geekmidas/rate-limit](./packages/rate-limit)
+
+Rate limiting utilities with configurable windows and storage backends.
+
+- Configurable rate limiting with time windows
+- Multiple storage backends (memory, cache)
+- IP-based and custom identifier support
+- Sliding window algorithm
+- Integration with @geekmidas/constructs endpoints
+
+```typescript
+import { rateLimit } from '@geekmidas/rate-limit';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+
+const limiter = rateLimit({
+  limit: 100,
+  windowMs: 60000, // 1 minute
+  cache: new InMemoryCache(),
+});
+
+// Use with endpoints
+const endpoint = e
+  .post('/api/messages')
+  .rateLimit(limiter)
+  .handle(async () => ({ success: true }));
+```
+
+[Learn more →](./packages/rate-limit/README.md)
 
 ### [@geekmidas/cache](./packages/cache)
 
@@ -302,13 +531,21 @@ pnpm test:watch
 ```
 toolbox/
 ├── packages/
-│   ├── api/          # REST API framework
 │   ├── auth/         # JWT token management
 │   ├── cache/        # Unified cache interface
 │   ├── cli/          # Command-line tools
+│   ├── client/       # Type-safe API client with React Query
 │   ├── cloud/        # Cloud services (in development)
+│   ├── constructs/   # Endpoints, functions, cron jobs, subscribers
+│   ├── db/           # Database utilities for Kysely
 │   ├── emailkit/     # Email sending utilities
 │   ├── envkit/       # Environment configuration parser
+│   ├── errors/       # HTTP error classes and utilities
+│   ├── events/       # Event messaging library
+│   ├── logger/       # Structured logging
+│   ├── rate-limit/   # Rate limiting utilities
+│   ├── schema/       # StandardSchema type utilities
+│   ├── services/     # Service discovery and DI
 │   ├── storage/      # Cloud storage abstraction
 │   └── testkit/      # Testing utilities and database factories
 ├── apps/
@@ -336,28 +573,39 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📋 Roadmap
 
 ### Completed ✅
+- [x] Core constructs package (@geekmidas/constructs)
+- [x] Type-safe API client (@geekmidas/client)
 - [x] CLI tools package (@geekmidas/cli)
 - [x] Authentication helpers (@geekmidas/auth)
 - [x] Cache abstraction layer (@geekmidas/cache)
 - [x] Cloud storage utilities (@geekmidas/storage)
 - [x] Email sending utilities (@geekmidas/emailkit)
-- [x] OpenAPI components support (@geekmidas/api)
-- [x] Infinite query support for React Query (@geekmidas/api)
-- [x] Nested query parameter handling (@geekmidas/api)
-- [x] Expo Secure Cache implementation (@geekmidas/cache)
+- [x] Database utilities package (@geekmidas/db)
+- [x] Schema utilities (@geekmidas/schema)
+- [x] Structured logging (@geekmidas/logger)
+- [x] HTTP errors (@geekmidas/errors)
+- [x] Service discovery (@geekmidas/services)
+- [x] Event messaging (@geekmidas/events)
+- [x] Rate limiting (@geekmidas/rate-limit)
+- [x] Testing utilities (@geekmidas/testkit)
+- [x] OpenAPI components support
+- [x] Infinite query support for React Query
+- [x] Nested query parameter handling
+- [x] Expo Secure Cache implementation
 
 ### In Progress 🚧
 - [ ] Cloud services abstractions (@geekmidas/cloud)
 - [ ] Documentation site improvements
+- [ ] Comprehensive test coverage for all packages
 
 ### Planned 📅
-- [ ] Additional validation adapters for @geekmidas/api
-- [ ] GraphQL support in @geekmidas/api
-- [ ] Database utilities package (@geekmidas/db)
-- [ ] WebSocket support in @geekmidas/api
-- [ ] Middleware system for @geekmidas/api
-- [ ] Rate limiting enhancements
+- [ ] Additional validation adapters (ArkType, Typebox, etc.)
+- [ ] GraphQL support in @geekmidas/constructs
+- [ ] WebSocket support
+- [ ] Enhanced middleware system
 - [ ] Metrics and observability package
+- [ ] Additional event backends (Kafka, Redis Streams)
+- [ ] Distributed tracing support
 
 ## 📄 License
 
@@ -373,13 +621,18 @@ Special thanks to all contributors and the open-source community for the amazing
 
 <p align="center">
   <a href="https://github.com/geekmidas/toolbox">GitHub</a> •
-  <a href="./packages/api">API</a> •
+  <a href="./packages/constructs">Constructs</a> •
+  <a href="./packages/client">Client</a> •
   <a href="./packages/auth">Auth</a> •
   <a href="./packages/cache">Cache</a> •
   <a href="./packages/cli">CLI</a> •
+  <a href="./packages/db">DB</a> •
+  <a href="./packages/schema">Schema</a> •
+  <a href="./packages/logger">Logger</a> •
+  <a href="./packages/errors">Errors</a> •
+  <a href="./packages/services">Services</a> •
+  <a href="./packages/events">Events</a> •
   <a href="./packages/storage">Storage</a> •
   <a href="./packages/testkit">TestKit</a> •
-  <a href="./packages/envkit">EnvKit</a> •
-  <a href="./packages/emailkit">EmailKit</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>

@@ -12,7 +12,6 @@ import {
 
 describe('OpenAPI Generation', () => {
   let tempDir: string;
-  let configFile: string;
 
   beforeEach(async () => {
     tempDir = await createTempDir('openapi-test-');
@@ -35,7 +34,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config file
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -66,7 +65,7 @@ describe('OpenAPI Generation', () => {
 
     it('should handle no endpoints found', async () => {
       // Create config with no matching files
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -93,7 +92,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -134,7 +133,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -165,7 +164,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -192,7 +191,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -226,7 +225,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -267,7 +266,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -294,7 +293,7 @@ describe('OpenAPI Generation', () => {
       );
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
@@ -340,7 +339,7 @@ export const complexEndpoint = e
       await createTestFile(tempDir, 'complex.ts', complexEndpointContent);
 
       // Create config
-      configFile = await createTestFile(
+      await createTestFile(
         tempDir,
         'gkm.config.json',
         JSON.stringify({
