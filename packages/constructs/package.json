@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/constructs",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "type": "module",
   "exports": {
@@ -43,6 +43,11 @@
       "types": "./dist/adaptors/aws.d.ts",
       "import": "./dist/adaptors/aws.mjs",
       "require": "./dist/adaptors/aws.cjs"
+    },
+    "./testing": {
+      "types": "./dist/adaptors/testing.d.ts",
+      "import": "./dist/adaptors/testing.mjs",
+      "require": "./dist/adaptors/testing.cjs"
     }
   },
   "scripts": {
