@@ -4,10 +4,12 @@ import type { Logger } from '@geekmidas/logger';
 import { checkRateLimit, getRateLimitHeaders } from '@geekmidas/rate-limit';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { type Context, Hono } from 'hono';
+import { setCookie } from 'hono/cookie';
 import { validator } from 'hono/validator';
 import type { HttpMethod, LowerHttpMethod } from '../types';
 import {
   Endpoint,
+  ResponseBuilder,
   type EndpointContext,
   type EndpointSchemas,
 } from './Endpoint';
@@ -242,6 +244,7 @@ export class HonoEndpoint<
           const headerValues = c.req.header();
 
           const header = Endpoint.createHeaders(headerValues);
+          const cookie = Endpoint.createCookies(headerValues.cookie);
 
           const services = await serviceDiscovery.register(endpoint.services);
 
@@ -249,10 +252,12 @@ export class HonoEndpoint<
             services,
             logger,
             header,
+            cookie,
           });
 
           const isAuthorized = await endpoint.authorize({
             header,
+            cookie,
             services,
             logger,
             session,
@@ -286,29 +291,60 @@ export class HonoEndpoint<
             }
           }
 
-          const response = await endpoint.handler({
-            services,
-            logger,
-            body: c.req.valid('json'),
-            query: c.req.valid('query'),
-            params: c.req.valid('param'),
-            session,
-            header: Endpoint.createHeaders(headerValues),
-          } as unknown as EndpointContext<
-            TInput,
-            TServices,
-            TLogger,
-            TSession
-          >);
+          const responseBuilder = new ResponseBuilder();
+          const response = await endpoint.handler(
+            {
+              services,
+              logger,
+              body: c.req.valid('json'),
+              query: c.req.valid('query'),
+              params: c.req.valid('param'),
+              session,
+              header: Endpoint.createHeaders(headerValues),
+              cookie: Endpoint.createCookies(headerValues.cookie),
+            } as unknown as EndpointContext<
+              TInput,
+              TServices,
+              TLogger,
+              TSession
+            >,
+            responseBuilder,
+          );
 
           // Publish events if configured
 
           // Validate output if schema is defined
 
           try {
-            const status = endpoint.status as ContentfulStatusCode;
+            // Check if response has metadata
+            let data = response;
+            let metadata = responseBuilder.getMetadata();
+            let status = endpoint.status as ContentfulStatusCode;
+
+            if (Endpoint.hasMetadata(response)) {
+              data = response.data;
+              metadata = response.metadata;
+            }
+
+            // Apply response metadata
+            if (metadata.status) {
+              status = metadata.status as ContentfulStatusCode;
+            }
+
+            if (metadata.headers) {
+              for (const [key, value] of Object.entries(metadata.headers)) {
+                c.header(key, value);
+              }
+            }
+
+            if (metadata.cookies) {
+              for (const [name, { value, options }] of metadata.cookies) {
+                setCookie(c, name, value, options);
+              }
+            }
+
             const output = endpoint.outputSchema
-              ? await endpoint.parseOutput(response)
+              ? await endpoint.parseOutput(data)
               : ({} as any);
             // @ts-ignore
             c.set('__response', output);

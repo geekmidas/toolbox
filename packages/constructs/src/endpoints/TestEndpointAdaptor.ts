@@ -13,7 +13,12 @@ import {
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
-import { Endpoint, type EndpointSchemas } from './Endpoint';
+import {
+  Endpoint,
+  ResponseBuilder,
+  type EndpointSchemas,
+  type ResponseWithMetadata,
+} from './Endpoint';
 
 export class TestEndpointAdaptor<
   TRoute extends string,
@@ -79,7 +84,10 @@ export class TestEndpointAdaptor<
       TEventPublisher,
       TEventPublisherServiceName
     >,
-  ): Promise<InferStandardSchema<TOutSchema>> {
+  ): Promise<
+    | InferStandardSchema<TOutSchema>
+    | ResponseWithMetadata<InferStandardSchema<TOutSchema>>
+  > {
     const body = await this.endpoint.parseInput((ctx as any).body, 'body');
     const query = await this.endpoint.parseInput((ctx as any).query, 'query');
     const params = await this.endpoint.parseInput(
@@ -88,6 +96,7 @@ export class TestEndpointAdaptor<
     );
 
     const header = Endpoint.createHeaders(ctx.headers);
+    const cookie = Endpoint.createCookies(ctx.headers.cookie);
     const logger = this.endpoint.logger.child({
       route: this.endpoint.route,
       host: ctx.headers.host,
@@ -97,22 +106,46 @@ export class TestEndpointAdaptor<
       logger,
       services: ctx.services,
       header,
+      cookie,
     });
 
-    const response = await this.endpoint.handler({
-      body,
-      query,
-      params,
-      session,
-      services: ctx.services,
-      logger,
-      header,
-    } as any);
+    const responseBuilder = new ResponseBuilder();
+    const response = await this.endpoint.handler(
+      {
+        body,
+        query,
+        params,
+        session,
+        services: ctx.services,
+        logger,
+        header,
+        cookie,
+      } as any,
+      responseBuilder,
+    );
 
-    const output = await this.endpoint.parseOutput(response);
+    // Check if response has metadata
+    let data = response;
+    let metadata = responseBuilder.getMetadata();
+
+    if (Endpoint.hasMetadata(response)) {
+      data = response.data;
+      metadata = response.metadata;
+    }
+
+    const output = await this.endpoint.parseOutput(data);
     ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
 
     await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
+
+    // Return with metadata if any was set
+    if (
+      (metadata.headers && Object.keys(metadata.headers).length > 0) ||
+      (metadata.cookies && metadata.cookies.size > 0) ||
+      metadata.status
+    ) {
+      return { data: output, metadata };
+    }
 
     return output;
   }

@@ -88,6 +88,7 @@ export abstract class AmazonApiGatewayEndpoint<
           const { body, query, params } = this.getInput(req.event);
           const headers = req.event.headers as Record<string, string>;
           const header = Endpoint.createHeaders(headers);
+          const cookie = Endpoint.createCookies(headers.cookie);
 
           set(req.event, 'body', await this.endpoint.parseInput(body, 'body'));
 
@@ -102,6 +103,7 @@ export abstract class AmazonApiGatewayEndpoint<
             await this.endpoint.parseInput(params, 'params'),
           );
           set(req.event, 'header', header);
+          set(req.event, 'cookie', cookie);
         } catch (error) {
           // Convert validation errors to 422 Unprocessable Entity
           if (error && typeof error === 'object' && Array.isArray(error)) {
@@ -151,10 +153,12 @@ export abstract class AmazonApiGatewayEndpoint<
         const logger = req.event.logger as TLogger;
         const services = req.event.services;
         const header = req.event.header;
+        const cookie = req.event.cookie;
         const session = req.event.session as TSession;
 
         const isAuthorized = await this.endpoint.authorize({
           header,
+          cookie,
           services,
           logger,
           session,
@@ -180,6 +184,7 @@ export abstract class AmazonApiGatewayEndpoint<
           logger,
           services,
           header: req.event.header,
+          cookie: req.event.cookie,
         })) as TSession;
       },
     };
@@ -218,6 +223,7 @@ export abstract class AmazonApiGatewayEndpoint<
 
     const response = await this.endpoint.handler({
       header: event.header,
+      cookie: event.cookie,
       logger: event.logger,
       services: event.services,
       session: event.session,
@@ -260,6 +266,7 @@ export type Event<
   services: ServiceRecord<TServices>;
   logger: TLogger;
   header(key: string): string | undefined;
+  cookie(name: string): string | undefined;
   session: TSession;
 } & TEvent &
   InferComposableStandardSchema<TInput>;

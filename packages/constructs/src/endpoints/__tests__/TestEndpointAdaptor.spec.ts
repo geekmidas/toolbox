@@ -3,6 +3,7 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { e } from '../EndpointFactory';
+import { SuccessStatus } from '../Endpoint';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 describe('TestEndpointAdaptor', () => {
@@ -191,6 +192,7 @@ describe('TestEndpointAdaptor', () => {
         logger: expect.any(ConsoleLogger),
         services: mockServices,
         header: expect.any(Function),
+        cookie: expect.any(Function),
       });
     });
 
@@ -231,6 +233,348 @@ describe('TestEndpointAdaptor', () => {
       expect(result).toEqual({
         contentType: 'application/json',
       });
+    });
+
+    it('should read cookies from request', async () => {
+      const endpoint = e
+        .get('/cookies')
+        .output(
+          z.object({
+            session: z.string().optional(),
+            theme: z.string().optional(),
+          }),
+        )
+        .handle(async ({ cookie }) => ({
+          session: cookie('session'),
+          theme: cookie('theme'),
+        }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+          cookie: 'session=abc123; theme=dark',
+        },
+      });
+
+      expect(result).toEqual({
+        session: 'abc123',
+        theme: 'dark',
+      });
+    });
+
+    it('should handle missing cookies gracefully', async () => {
+      const endpoint = e
+        .get('/cookies-optional')
+        .output(
+          z.object({
+            session: z.string().optional(),
+          }),
+        )
+        .handle(async ({ cookie }) => ({
+          session: cookie('session') || 'default',
+        }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+        },
+      });
+
+      expect(result).toEqual({
+        session: 'default',
+      });
+    });
+
+    it('should handle URL encoded cookie values', async () => {
+      const endpoint = e
+        .get('/cookies-encoded')
+        .output(z.object({ user: z.string() }))
+        .handle(async ({ cookie }) => ({
+          user: cookie('user') || 'unknown',
+        }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+          cookie: 'user=John%20Doe',
+        },
+      });
+
+      expect(result).toEqual({
+        user: 'John Doe',
+      });
+    });
+
+    it('should use cookies in session extraction', async () => {
+      const endpoint = e
+        .get('/profile')
+        .output(z.object({ userId: z.string() }))
+        .handle(async ({ session }) => ({
+          userId: (session as any).userId,
+        }));
+
+      // Mock getSession that uses cookies
+      endpoint.getSession = vi.fn().mockImplementation(({ cookie }) => {
+        const sessionId = cookie('session');
+        if (sessionId === 'valid-session') {
+          return { userId: 'user-123' };
+        }
+        return null;
+      });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+          cookie: 'session=valid-session',
+        },
+      });
+
+      expect(result).toEqual({ userId: 'user-123' });
+      expect(endpoint.getSession).toHaveBeenCalledWith({
+        logger: expect.any(ConsoleLogger),
+        services: mockServices,
+        header: expect.any(Function),
+        cookie: expect.any(Function),
+      });
+    });
+
+    it('should handle multiple cookies with same name (uses last)', async () => {
+      const endpoint = e
+        .get('/duplicate-cookies')
+        .output(z.object({ value: z.string() }))
+        .handle(async ({ cookie }) => ({
+          value: cookie('test') || 'none',
+        }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+          cookie: 'test=first; test=second',
+        },
+      });
+
+      // When duplicates exist, Map uses the last occurrence
+      expect(result).toEqual({
+        value: 'second',
+      });
+    });
+  });
+
+  describe('response handling', () => {
+    it('should set response cookies', async () => {
+      const endpoint = e
+        .post('/auth/login')
+        .body(z.object({ email: z.string(), password: z.string() }))
+        .output(z.object({ id: z.string(), email: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .cookie('session', 'abc123', {
+              httpOnly: true,
+              secure: true,
+              sameSite: 'strict',
+              maxAge: 3600,
+            })
+            .send({ id: 'user-1', email: body.email });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        body: { email: 'test@example.com', password: 'pass123' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('metadata');
+      expect((result as any).data).toEqual({
+        id: 'user-1',
+        email: 'test@example.com',
+      });
+      expect((result as any).metadata.cookies?.has('session')).toBe(true);
+      expect((result as any).metadata.cookies?.get('session')).toEqual({
+        value: 'abc123',
+        options: {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'strict',
+          maxAge: 3600,
+        },
+      });
+    });
+
+    it('should set custom response headers', async () => {
+      const endpoint = e
+        .post('/users')
+        .body(z.object({ name: z.string() }))
+        .output(z.object({ id: z.string(), name: z.string() }))
+        .handle(async ({ body }, response) => {
+          const user = { id: 'user-123', name: body.name };
+          return response
+            .header('Location', `/users/${user.id}`)
+            .header('X-User-Id', user.id)
+            .send(user);
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        body: { name: 'John Doe' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect((result as any).data).toEqual({
+        id: 'user-123',
+        name: 'John Doe',
+      });
+      expect((result as any).metadata.headers).toEqual({
+        Location: '/users/user-123',
+        'X-User-Id': 'user-123',
+      });
+    });
+
+    it('should set custom status code', async () => {
+      const endpoint = e
+        .post('/resources')
+        .body(z.object({ name: z.string() }))
+        .output(z.object({ id: z.string() }))
+        .handle(async (ctx, response) => {
+          return response.status(SuccessStatus.Created).send({ id: '123' });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        body: { name: 'Resource' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect((result as any).metadata.status).toBe(201);
+    });
+
+    it('should delete cookies', async () => {
+      const endpoint = e
+        .post('/auth/logout')
+        .output(z.object({ success: z.boolean() }))
+        .handle(async (ctx, response) => {
+          return response
+            .deleteCookie('session', { path: '/' })
+            .send({ success: true });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect((result as any).data.success).toBe(true);
+      const sessionCookie = (result as any).metadata.cookies?.get('session');
+      expect(sessionCookie?.value).toBe('');
+      expect(sessionCookie?.options?.maxAge).toBe(0);
+      expect(sessionCookie?.options?.path).toBe('/');
+    });
+
+    it('should combine cookies, headers, and status', async () => {
+      const endpoint = e
+        .post('/complete')
+        .body(z.object({ data: z.string() }))
+        .output(z.object({ id: z.string(), result: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .status(SuccessStatus.Created)
+            .header('Location', '/complete/123')
+            .header('X-Request-Id', 'req-456')
+            .cookie('tracking', 'track-789')
+            .cookie('preference', 'dark', { maxAge: 86400 })
+            .send({ id: '123', result: body.data });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        body: { data: 'test' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect((result as any).data).toEqual({
+        id: '123',
+        result: 'test',
+      });
+      expect((result as any).metadata.status).toBe(201);
+      expect((result as any).metadata.headers).toEqual({
+        Location: '/complete/123',
+        'X-Request-Id': 'req-456',
+      });
+      expect((result as any).metadata.cookies?.size).toBe(2);
+      expect((result as any).metadata.cookies?.get('tracking')?.value).toBe('track-789');
+      expect((result as any).metadata.cookies?.get('preference')).toEqual({
+        value: 'dark',
+        options: { maxAge: 86400 },
+      });
+    });
+
+    it('should return simple response without metadata when not using response builder', async () => {
+      const endpoint = e
+        .get('/simple')
+        .output(z.object({ message: z.string() }))
+        .handle(async () => {
+          // Not using response builder, just returning data
+          return { message: 'Hello' };
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      // Should return just the data, not wrapped in metadata
+      expect(result).toEqual({ message: 'Hello' });
+      expect(result).not.toHaveProperty('metadata');
+    });
+
+    it('should combine request cookies and response cookies', async () => {
+      const endpoint = e
+        .get('/preferences')
+        .output(z.object({ theme: z.string(), updated: z.boolean() }))
+        .handle(async ({ cookie }, response) => {
+          const currentTheme = cookie('theme') || 'light';
+          const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+          return response
+            .cookie('theme', newTheme, { maxAge: 86400 })
+            .send({ theme: newTheme, updated: true });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.request({
+        services: mockServices,
+        headers: {
+          host: 'example.com',
+          cookie: 'theme=light',
+        },
+      });
+
+      expect((result as any).data).toEqual({
+        theme: 'dark',
+        updated: true,
+      });
+      expect((result as any).metadata.cookies?.get('theme')?.value).toBe('dark');
     });
   });
 });

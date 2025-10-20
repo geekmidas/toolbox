@@ -6,11 +6,7 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import { ConstructType } from '../Construct';
-import {
-  Function,
-  type FunctionContext,
-  type FunctionHandler,
-} from '../functions';
+import { Function, type FunctionHandler } from '../functions';
 
 import type {
   EventPublisher,
@@ -88,6 +84,8 @@ export class Endpoint<
   tags?: string[];
   /** The HTTP success status code to return (default: 200) */
   public readonly status: SuccessStatus;
+  /** Default headers to apply to all responses */
+  public readonly defaultHeaders: Record<string, string> = {};
   /** Function to extract session data from the request context */
   public getSession: SessionFn<TServices, TLogger, TSession> = () =>
     ({}) as TSession;
@@ -95,6 +93,8 @@ export class Endpoint<
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
+  /** The endpoint handler function */
+  private endpointFn!: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>;
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -189,6 +189,39 @@ export class Endpoint<
   }
 
   /**
+   * Parses cookie string and creates a cookie lookup function.
+   *
+   * @param cookieHeader - The Cookie header value
+   * @returns Function to retrieve cookie values by name
+   *
+   * @example
+   * ```typescript
+   * const cookieFn = Endpoint.createCookies('session=abc123; theme=dark');
+   * cookieFn('session'); // Returns 'abc123'
+   * cookieFn('theme'); // Returns 'dark'
+   * ```
+   */
+  static createCookies(cookieHeader: string | undefined): CookieFn {
+    const cookieMap = new Map<string, string>();
+
+    if (cookieHeader) {
+      // Parse cookie string: "name1=value1; name2=value2"
+      const cookies = cookieHeader.split(';');
+      for (const cookie of cookies) {
+        const [name, ...valueParts] = cookie.trim().split('=');
+        if (name) {
+          const value = valueParts.join('='); // Handle values with = in them
+          cookieMap.set(name, decodeURIComponent(value));
+        }
+      }
+    }
+
+    return function get(name: string): string | undefined {
+      return cookieMap.get(name);
+    };
+  }
+
+  /**
    * Extracts and refines input data from the endpoint context.
    *
    * @param ctx - The endpoint execution context
@@ -207,18 +240,36 @@ export class Endpoint<
     return input;
   }
 
-  handler: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession> = (
+  handler = (
     ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
+    response: ResponseBuilder,
   ): OutSchema extends StandardSchemaV1
-    ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
-    : void | Promise<void> => {
-    return this.fn({
-      ...this.refineInput(ctx),
-      services: ctx.services,
-      logger: ctx.logger,
-      header: ctx.header,
-      session: ctx.session,
-    } as unknown as FunctionContext<TInput, TServices, TLogger>);
+    ?
+      | InferStandardSchema<OutSchema>
+      | ResponseWithMetadata<InferStandardSchema<OutSchema>>
+      | Promise<InferStandardSchema<OutSchema>>
+      | Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
+    :
+      | any
+      | ResponseWithMetadata<any>
+      | Promise<any>
+      | Promise<ResponseWithMetadata<any>> => {
+    // Apply default headers to response builder
+    for (const [key, value] of Object.entries(this.defaultHeaders)) {
+      response.header(key, value);
+    }
+
+    return this.endpointFn(
+      {
+        ...this.refineInput(ctx),
+        services: ctx.services,
+        logger: ctx.logger,
+        header: ctx.header,
+        cookie: ctx.cookie,
+        session: ctx.session,
+      } as EndpointContext<TInput, TServices, TLogger, TSession>,
+      response,
+    );
   };
 
   /**
@@ -232,6 +283,20 @@ export class Endpoint<
       obj &&
         (obj as Function).__IS_FUNCTION__ === true &&
         obj.type === ConstructType.Endpoint,
+    );
+  }
+
+  /**
+   * Helper to check if response has metadata
+   */
+  static hasMetadata<T>(
+    response: T | ResponseWithMetadata<T>,
+  ): response is ResponseWithMetadata<T> {
+    return (
+      response !== null &&
+      typeof response === 'object' &&
+      'data' in response &&
+      'metadata' in response
     );
   }
 
@@ -433,6 +498,8 @@ export class Endpoint<
     this.description = description;
     this.tags = tags;
     this.status = status;
+    this.endpointFn = fn;
+
     if (getSession) {
       this.getSession = getSession;
     }
@@ -553,6 +620,7 @@ export type AuthorizeContext<
   services: ServiceRecord<TServices>;
   logger: TLogger;
   header: HeaderFn;
+  cookie: CookieFn;
   session: TSession;
 };
 /**
@@ -587,6 +655,7 @@ export type SessionContext<
   services: ServiceRecord<TServices>;
   logger: TLogger;
   header: HeaderFn;
+  cookie: CookieFn;
 };
 /**
  * Function type for extracting session data from a request.
@@ -670,8 +739,95 @@ export type EndpointHeaders = Map<string, string>;
 export type HeaderFn = SingleHeaderFn;
 
 /**
+ * Function type for retrieving cookie values.
+ *
+ * @param name - The cookie name
+ * @returns The cookie value or undefined if not found
+ *
+ * @example
+ * ```typescript
+ * const sessionId = cookie('session');
+ * ```
+ */
+export type CookieFn = (name: string) => string | undefined;
+
+/**
+ * Cookie options matching standard Set-Cookie attributes
+ */
+export interface CookieOptions {
+  domain?: string;
+  path?: string;
+  expires?: Date;
+  maxAge?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+}
+
+/**
+ * Response metadata that handlers can set
+ */
+export interface ResponseMetadata {
+  headers?: Record<string, string>;
+  cookies?: Map<string, { value: string; options?: CookieOptions }>;
+  status?: SuccessStatus;
+}
+
+/**
+ * Return type for handlers that want to set response metadata
+ */
+export interface ResponseWithMetadata<T> {
+  data: T;
+  metadata: ResponseMetadata;
+}
+
+/**
+ * Response builder for fluent API in handlers
+ */
+export class ResponseBuilder {
+  private metadata: ResponseMetadata = {
+    headers: {},
+    cookies: new Map(),
+  };
+
+  header(key: string, value: string): this {
+    this.metadata.headers![key] = value;
+    return this;
+  }
+
+  cookie(name: string, value: string, options?: CookieOptions): this {
+    this.metadata.cookies!.set(name, { value, options });
+    return this;
+  }
+
+  deleteCookie(
+    name: string,
+    options?: Pick<CookieOptions, 'domain' | 'path'>,
+  ): this {
+    this.metadata.cookies!.set(name, {
+      value: '',
+      options: { ...options, maxAge: 0, expires: new Date(0) },
+    });
+    return this;
+  }
+
+  status(code: SuccessStatus): this {
+    this.metadata.status = code;
+    return this;
+  }
+
+  send<T>(data: T): ResponseWithMetadata<T> {
+    return { data, metadata: this.metadata };
+  }
+
+  getMetadata(): ResponseMetadata {
+    return this.metadata;
+  }
+}
+
+/**
  * The execution context provided to endpoint handlers.
- * Contains all parsed input data, services, logger, headers, and session.
+ * Contains all parsed input data, services, logger, headers, cookies, and session.
  *
  * @template Input - The input schemas (body, query, params)
  * @template TServices - Available service dependencies
@@ -690,6 +846,8 @@ export type EndpointContext<
   logger: TLogger;
   /** Function to retrieve request headers */
   header: HeaderFn;
+  /** Function to retrieve request cookies */
+  cookie: CookieFn;
   /** Session data extracted by getSession */
   session: TSession;
 } & InferComposableStandardSchema<Input>;
@@ -704,13 +862,22 @@ export type EndpointContext<
  * @template TSession - Session data type
  *
  * @param ctx - The endpoint execution context
- * @returns The response data (validated if OutSchema is provided)
+ * @param response - Response builder for setting cookies, headers, and status
+ * @returns The response data (validated if OutSchema is provided) or ResponseWithMetadata
  *
  * @example
  * ```typescript
+ * // Simple response
  * const handler: EndpointHandler<Input, [UserService], Logger, UserSchema> =
  *   async ({ params, services }) => {
  *     return await services.users.findById(params.id);
+ *   };
+ *
+ * // With response builder
+ * const handler: EndpointHandler<Input, [UserService], Logger, UserSchema> =
+ *   async ({ params, services }, response) => {
+ *     const user = await services.users.findById(params.id);
+ *     return response.header('X-User-Id', user.id).send(user);
  *   };
  * ```
  */
@@ -722,9 +889,14 @@ export type EndpointHandler<
   TSession = unknown,
 > = (
   ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
+  response: ResponseBuilder,
 ) => OutSchema extends StandardSchemaV1
-  ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
-  : any | Promise<any>;
+  ?
+      | InferStandardSchema<OutSchema>
+      | ResponseWithMetadata<InferStandardSchema<OutSchema>>
+      | Promise<InferStandardSchema<OutSchema>>
+      | Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
+  : unknown | ResponseWithMetadata<unknown> | Promise<unknown> | Promise<ResponseWithMetadata<unknown>>;
 
 /**
  * HTTP success status codes that can be returned by endpoints.
