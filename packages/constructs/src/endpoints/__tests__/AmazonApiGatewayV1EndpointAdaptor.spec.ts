@@ -931,7 +931,10 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         route: '/test',
         method: 'GET',
         fn: async (_, response) => {
-          response.cookie('session', 'abc123', { httpOnly: true, secure: true });
+          response.cookie('session', 'abc123', {
+            httpOnly: true,
+            secure: true,
+          });
           return { success: true };
         },
         input: {},
@@ -1064,7 +1067,10 @@ describe('AmazonApiGatewayV1Endpoint', () => {
         route: '/test',
         method: 'GET',
         fn: async (_, response) => {
-          response.deleteCookie('session', { path: '/', domain: '.example.com' });
+          response.deleteCookie('session', {
+            path: '/',
+            domain: '.example.com',
+          });
           return { success: true };
         },
         input: {},
@@ -1121,7 +1127,9 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 
       expect(response.statusCode).toBe(201);
       expect(response.headers).toEqual({ 'X-Custom': 'value' });
-      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual(['session=abc123']);
+      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+        'session=abc123',
+      ]);
       expect(response.body).toBe(JSON.stringify({ id: '123' }));
     });
 

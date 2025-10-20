@@ -1,7 +1,7 @@
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
-import { Endpoint, ResponseBuilder, type EndpointSchemas } from './Endpoint';
+import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -267,7 +267,9 @@ export abstract class AmazonApiGatewayEndpoint<
     if (metadata.cookies && metadata.cookies.size > 0) {
       const setCookieHeaders: string[] = [];
       for (const [name, { value, options }] of metadata.cookies) {
-        setCookieHeaders.push(Endpoint.formatCookieHeader(name, value, options));
+        setCookieHeaders.push(
+          Endpoint.formatCookieHeader(name, value, options),
+        );
       }
 
       if (setCookieHeaders.length > 0) {

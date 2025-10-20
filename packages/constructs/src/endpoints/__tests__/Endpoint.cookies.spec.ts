@@ -9,7 +9,9 @@ describe('Endpoint.createCookies', () => {
   });
 
   it('should parse multiple cookies', () => {
-    const cookieFn = Endpoint.createCookies('session=abc123; theme=dark; lang=en');
+    const cookieFn = Endpoint.createCookies(
+      'session=abc123; theme=dark; lang=en',
+    );
 
     expect(cookieFn('session')).toBe('abc123');
     expect(cookieFn('theme')).toBe('dark');
@@ -24,14 +26,18 @@ describe('Endpoint.createCookies', () => {
   });
 
   it('should handle URL encoded values', () => {
-    const cookieFn = Endpoint.createCookies('user=John%20Doe; email=john%40example.com');
+    const cookieFn = Endpoint.createCookies(
+      'user=John%20Doe; email=john%40example.com',
+    );
 
     expect(cookieFn('user')).toBe('John Doe');
     expect(cookieFn('email')).toBe('john@example.com');
   });
 
   it('should handle cookies with equals sign in value', () => {
-    const cookieFn = Endpoint.createCookies('data=key=value; token=abc=123=xyz');
+    const cookieFn = Endpoint.createCookies(
+      'data=key=value; token=abc=123=xyz',
+    );
 
     expect(cookieFn('data')).toBe('key=value');
     expect(cookieFn('token')).toBe('abc=123=xyz');
@@ -63,9 +69,13 @@ describe('Endpoint.createCookies', () => {
   });
 
   it('should handle cookies with special characters', () => {
-    const cookieFn = Endpoint.createCookies('token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0');
+    const cookieFn = Endpoint.createCookies(
+      'token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0',
+    );
 
-    expect(cookieFn('token')).toBe('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0');
+    expect(cookieFn('token')).toBe(
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0',
+    );
   });
 
   it('should handle cookies with numeric values', () => {
@@ -98,7 +108,7 @@ describe('Endpoint.createCookies', () => {
 
   it('should handle complex real-world cookie string', () => {
     const cookieFn = Endpoint.createCookies(
-      'session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; user_id=12345; preferences=%7B%22theme%22%3A%22dark%22%7D; _ga=GA1.2.123456789.1234567890; authenticated=true'
+      'session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; user_id=12345; preferences=%7B%22theme%22%3A%22dark%22%7D; _ga=GA1.2.123456789.1234567890; authenticated=true',
     );
 
     expect(cookieFn('session')).toBe('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');

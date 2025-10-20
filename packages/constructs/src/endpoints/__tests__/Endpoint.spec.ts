@@ -468,6 +468,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: {},
+        cookie: vi.fn(),
       });
 
       expect(result).toBe(true);
@@ -497,6 +498,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: {},
+        cookie: vi.fn(),
       };
 
       const result = await endpoint.authorize(mockContext);
@@ -529,6 +531,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: {},
+        cookie: vi.fn(),
       };
 
       const result = endpoint.authorize(mockContext);
@@ -564,6 +567,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: {},
+        cookie: vi.fn(),
       });
 
       expect(result).toBe(true);
@@ -605,6 +609,7 @@ describe('Endpoint', () => {
         services: { TestService: TestService.register() },
         logger: mockLogger,
         session: {},
+        cookie: vi.fn(),
       });
 
       expect(result).toBe(true);
@@ -641,6 +646,7 @@ describe('Endpoint', () => {
         header: vi.fn(),
         services,
         logger: testLogger,
+        cookie: vi.fn(),
         session: {},
       });
 
@@ -675,6 +681,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: mockSession,
+        cookie: vi.fn(),
       });
 
       expect(result).toBe(true);
@@ -705,6 +712,7 @@ describe('Endpoint', () => {
           services,
           logger: mockLogger,
           session: {},
+          cookie: vi.fn(),
         }),
       ).rejects.toThrow('Authorization failed');
     });
@@ -735,6 +743,7 @@ describe('Endpoint', () => {
           services,
           logger: mockLogger,
           session: {},
+          cookie: vi.fn(),
         }),
       ).rejects.toThrow('Async authorization failed');
     });
@@ -771,6 +780,7 @@ describe('Endpoint', () => {
         header: vi.fn().mockReturnValue('Bearer admin-token'),
         services,
         logger: mockLogger,
+        cookie: vi.fn(),
         session: { userId: 'admin1', role: 'admin' },
       });
 
@@ -780,6 +790,7 @@ describe('Endpoint', () => {
       const userResult = await endpoint.authorize({
         header: vi.fn().mockReturnValue('Bearer user-token'),
         services,
+        cookie: vi.fn(),
         logger: mockLogger,
         session: { userId: 'user1', role: 'user' },
       });
@@ -792,6 +803,7 @@ describe('Endpoint', () => {
         services,
         logger: mockLogger,
         session: { userId: 'user1', role: 'admin' },
+        cookie: vi.fn(),
       });
 
       expect(noTokenResult).toBe(false);

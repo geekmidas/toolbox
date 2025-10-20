@@ -217,7 +217,9 @@ describe('ResponseBuilder', () => {
 
       expect(metadata).toEqual({
         headers: { 'X-Test': 'value' },
-        cookies: new Map([['test', { value: 'cookie-value', options: undefined }]]),
+        cookies: new Map([
+          ['test', { value: 'cookie-value', options: undefined }],
+        ]),
       });
     });
 

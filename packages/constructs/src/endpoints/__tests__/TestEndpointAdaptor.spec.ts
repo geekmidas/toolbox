@@ -2,8 +2,8 @@ import { UnprocessableEntityError } from '@geekmidas/errors';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { e } from '../EndpointFactory';
 import { SuccessStatus } from '../Endpoint';
+import { e } from '../EndpointFactory';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 describe('TestEndpointAdaptor', () => {
@@ -521,7 +521,9 @@ describe('TestEndpointAdaptor', () => {
         'X-Request-Id': 'req-456',
       });
       expect((result as any).metadata.cookies?.size).toBe(2);
-      expect((result as any).metadata.cookies?.get('tracking')?.value).toBe('track-789');
+      expect((result as any).metadata.cookies?.get('tracking')?.value).toBe(
+        'track-789',
+      );
       expect((result as any).metadata.cookies?.get('preference')).toEqual({
         value: 'dark',
         options: { maxAge: 86400 },
@@ -574,7 +576,9 @@ describe('TestEndpointAdaptor', () => {
         theme: 'dark',
         updated: true,
       });
-      expect((result as any).metadata.cookies?.get('theme')?.value).toBe('dark');
+      expect((result as any).metadata.cookies?.get('theme')?.value).toBe(
+        'dark',
+      );
     });
   });
 });

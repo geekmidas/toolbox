@@ -94,7 +94,13 @@ export class Endpoint<
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
   /** The endpoint handler function */
-  private endpointFn!: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>;
+  private endpointFn!: EndpointHandler<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession
+  >;
 
   /**
    * Builds a complete OpenAPI 3.1 schema from an array of endpoints.
@@ -287,15 +293,15 @@ export class Endpoint<
     response: ResponseBuilder,
   ): OutSchema extends StandardSchemaV1
     ?
-      | InferStandardSchema<OutSchema>
-      | ResponseWithMetadata<InferStandardSchema<OutSchema>>
-      | Promise<InferStandardSchema<OutSchema>>
-      | Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
+        | InferStandardSchema<OutSchema>
+        | ResponseWithMetadata<InferStandardSchema<OutSchema>>
+        | Promise<InferStandardSchema<OutSchema>>
+        | Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
     :
-      | any
-      | ResponseWithMetadata<any>
-      | Promise<any>
-      | Promise<ResponseWithMetadata<any>> => {
+        | any
+        | ResponseWithMetadata<any>
+        | Promise<any>
+        | Promise<ResponseWithMetadata<any>> => {
     // Apply default headers to response builder
     for (const [key, value] of Object.entries(this.defaultHeaders)) {
       response.header(key, value);
@@ -938,7 +944,11 @@ export type EndpointHandler<
       | ResponseWithMetadata<InferStandardSchema<OutSchema>>
       | Promise<InferStandardSchema<OutSchema>>
       | Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
-  : unknown | ResponseWithMetadata<unknown> | Promise<unknown> | Promise<ResponseWithMetadata<unknown>>;
+  :
+      | unknown
+      | ResponseWithMetadata<unknown>
+      | Promise<unknown>
+      | Promise<ResponseWithMetadata<unknown>>;
 
 /**
  * HTTP success status codes that can be returned by endpoints.

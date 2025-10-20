@@ -15,8 +15,8 @@ import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
 import {
   Endpoint,
-  ResponseBuilder,
   type EndpointSchemas,
+  ResponseBuilder,
   type ResponseWithMetadata,
 } from './Endpoint';
 

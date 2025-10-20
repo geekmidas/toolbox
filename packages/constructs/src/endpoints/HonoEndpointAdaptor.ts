@@ -9,9 +9,9 @@ import { validator } from 'hono/validator';
 import type { HttpMethod, LowerHttpMethod } from '../types';
 import {
   Endpoint,
-  ResponseBuilder,
   type EndpointContext,
   type EndpointSchemas,
+  ResponseBuilder,
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
 import { parseHonoQuery } from './parseHonoQuery';
