@@ -924,4 +924,236 @@ describe('AmazonApiGatewayV1Endpoint', () => {
       );
     });
   });
+
+  describe('response metadata', () => {
+    it('should set response cookies', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async (_, response) => {
+          response.cookie('session', 'abc123', { httpOnly: true, secure: true });
+          return { success: true };
+        },
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+        'session=abc123; HttpOnly; Secure',
+      ]);
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe(JSON.stringify({ success: true }));
+    });
+
+    it('should set custom headers', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async (_, response) => {
+          response.header('X-Custom-Header', 'custom-value');
+          response.header('X-Request-Id', '12345');
+          return { success: true };
+        },
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.headers).toEqual({
+        'X-Custom-Header': 'custom-value',
+        'X-Request-Id': '12345',
+      });
+    });
+
+    it('should set custom status code', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'POST',
+        fn: async (_, response) => {
+          response.status(201);
+          return { id: '123' };
+        },
+        input: {},
+        output: z.object({ id: z.string() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event({ httpMethod: 'POST' });
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(201);
+    });
+
+    it('should combine cookies, headers, and status', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'POST',
+        fn: async (_, response) => {
+          response
+            .status(201)
+            .header('Location', '/test/123')
+            .cookie('session', 'abc123', { httpOnly: true })
+            .cookie('theme', 'dark');
+          return { id: '123' };
+        },
+        input: {},
+        output: z.object({ id: z.string() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event({ httpMethod: 'POST' });
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(201);
+      expect(response.headers).toEqual({ Location: '/test/123' });
+      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+        'session=abc123; HttpOnly',
+        'theme=dark',
+      ]);
+    });
+
+    it('should delete cookies', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async (_, response) => {
+          response.deleteCookie('session', { path: '/', domain: '.example.com' });
+          return { success: true };
+        },
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+        'session=; Domain=.example.com; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0',
+      ]);
+    });
+
+    it('should use send() method with metadata', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async (_, response) => {
+          return response
+            .status(201)
+            .header('X-Custom', 'value')
+            .cookie('session', 'abc123')
+            .send({ id: '123' });
+        },
+        input: {},
+        output: z.object({ id: z.string() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(201);
+      expect(response.headers).toEqual({ 'X-Custom': 'value' });
+      expect(response.multiValueHeaders?.['Set-Cookie']).toEqual(['session=abc123']);
+      expect(response.body).toBe(JSON.stringify({ id: '123' }));
+    });
+
+    it('should return simple response without metadata when not using response builder', async () => {
+      const endpoint = new Endpoint({
+        route: '/test',
+        method: 'GET',
+        fn: async () => ({ success: true }),
+        input: {},
+        output: z.object({ success: z.boolean() }),
+        services: [],
+        logger: mockLogger,
+        timeout: undefined,
+        status: undefined,
+        getSession: undefined,
+        authorize: undefined,
+        description: 'Test endpoint',
+      });
+
+      const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+      const handler = adapter.handler;
+
+      const event = createMockV1Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response).toEqual({
+        statusCode: 200,
+        body: JSON.stringify({ success: true }),
+      });
+      expect(response.headers).toBeUndefined();
+      expect(response.multiValueHeaders).toBeUndefined();
+    });
+  });
 });

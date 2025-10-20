@@ -222,6 +222,48 @@ export class Endpoint<
   }
 
   /**
+   * Formats a cookie as a Set-Cookie header string.
+   *
+   * @param name - Cookie name
+   * @param value - Cookie value
+   * @param options - Cookie options (httpOnly, secure, sameSite, etc.)
+   * @returns Formatted Set-Cookie header string
+   *
+   * @example
+   * ```typescript
+   * const header = Endpoint.formatCookieHeader('session', 'abc123', {
+   *   httpOnly: true,
+   *   secure: true,
+   *   sameSite: 'strict',
+   *   maxAge: 3600
+   * });
+   * // Returns: "session=abc123; Max-Age=3600; HttpOnly; Secure; SameSite=Strict"
+   * ```
+   */
+  static formatCookieHeader(
+    name: string,
+    value: string,
+    options?: CookieOptions,
+  ): string {
+    let cookie = `${name}=${value}`;
+
+    if (options) {
+      if (options.domain) cookie += `; Domain=${options.domain}`;
+      if (options.path) cookie += `; Path=${options.path}`;
+      if (options.expires)
+        cookie += `; Expires=${options.expires.toUTCString()}`;
+      if (options.maxAge !== undefined) cookie += `; Max-Age=${options.maxAge}`;
+      if (options.httpOnly) cookie += '; HttpOnly';
+      if (options.secure) cookie += '; Secure';
+      if (options.sameSite) {
+        cookie += `; SameSite=${options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1)}`;
+      }
+    }
+
+    return cookie;
+  }
+
+  /**
    * Extracts and refines input data from the endpoint context.
    *
    * @param ctx - The endpoint execution context

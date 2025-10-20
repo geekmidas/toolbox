@@ -1,7 +1,7 @@
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
-import { Endpoint, type EndpointSchemas } from './Endpoint';
+import { Endpoint, ResponseBuilder, type EndpointSchemas } from './Endpoint';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -221,26 +221,64 @@ export abstract class AmazonApiGatewayEndpoint<
   ) {
     const input = this.endpoint.refineInput(event);
 
-    const response = await this.endpoint.handler({
-      header: event.header,
-      cookie: event.cookie,
-      logger: event.logger,
-      services: event.services,
-      session: event.session,
-      ...input,
-    });
+    const responseBuilder = new ResponseBuilder();
+    const response = await this.endpoint.handler(
+      {
+        header: event.header,
+        cookie: event.cookie,
+        logger: event.logger,
+        services: event.services,
+        session: event.session,
+        ...input,
+      },
+      responseBuilder,
+    );
 
-    const output = await this.endpoint.parseOutput(response);
+    // Check if response has metadata
+    let data = response;
+    let metadata = responseBuilder.getMetadata();
 
-    const body = output ? JSON.stringify(output) : undefined;
+    if (Endpoint.hasMetadata(response)) {
+      data = response.data;
+      metadata = response.metadata;
+    }
+
+    const output = this.endpoint.outputSchema
+      ? await this.endpoint.parseOutput(data)
+      : undefined;
+
+    const body = output !== undefined ? JSON.stringify(output) : undefined;
 
     // Store response for middleware access
-    (event as any).__response = response;
+    (event as any).__response = output;
 
-    return {
-      statusCode: this.endpoint.status,
+    // Build response with metadata
+    const lambdaResponse: AmazonApiGatewayEndpointHandlerResponse = {
+      statusCode: metadata.status ?? this.endpoint.status,
       body,
     };
+
+    // Add custom headers
+    if (metadata.headers && Object.keys(metadata.headers).length > 0) {
+      lambdaResponse.headers = { ...metadata.headers };
+    }
+
+    // Format cookies as Set-Cookie headers
+    if (metadata.cookies && metadata.cookies.size > 0) {
+      const setCookieHeaders: string[] = [];
+      for (const [name, { value, options }] of metadata.cookies) {
+        setCookieHeaders.push(Endpoint.formatCookieHeader(name, value, options));
+      }
+
+      if (setCookieHeaders.length > 0) {
+        lambdaResponse.multiValueHeaders = {
+          ...lambdaResponse.multiValueHeaders,
+          'Set-Cookie': setCookieHeaders,
+        };
+      }
+    }
+
+    return lambdaResponse;
   }
 
   get handler() {
@@ -282,6 +320,8 @@ type Middleware<
 export type AmazonApiGatewayEndpointHandlerResponse = {
   statusCode: number;
   body: string | undefined;
+  headers?: Record<string, string>;
+  multiValueHeaders?: Record<string, string[]>;
 };
 
 export type LoggerContext = {

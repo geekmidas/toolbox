@@ -1,6 +1,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
+import type { Context } from 'aws-lambda';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 import { e } from '../EndpointFactory';
@@ -11,20 +12,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
   beforeEach(() => {
     envParser = new EnvironmentParser({});
-    mockContext = {
-      functionName: 'test-function',
-      functionVersion: '1',
-      awsRequestId: 'test-request-id',
-      invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test',
-      memoryLimitInMB: '128',
-      logGroupName: '/aws/lambda/test',
-      logStreamName: '2024/01/01/[$LATEST]test',
-      callbackWaitsForEmptyEventLoop: true,
-      getRemainingTimeInMillis: () => 30000,
-      done: vi.fn(),
-      fail: vi.fn(),
-      succeed: vi.fn(),
-    };
+    mockContext = createMockContext();
   });
 
   describe('getInput', () => {
@@ -32,36 +20,12 @@ describe('AmazonApiGatewayV2Endpoint', () => {
       const endpoint = e.get('/test').handle(() => ({ success: true }));
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
-        routeKey: 'GET /test',
-        rawPath: '/test',
+      const event = createMockV2Event({
         rawQueryString: 'foo=bar&baz=qux',
-        cookies: [],
-        headers: {},
         queryStringParameters: { foo: 'bar', baz: 'qux' },
         pathParameters: { id: '123' },
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'GET',
-            path: '/test',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test-agent',
-          },
-          requestId: 'request-id',
-          routeKey: 'GET /test',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
         body: JSON.stringify({ name: 'test' }),
-        isBase64Encoded: false,
-      };
+      });
 
       const result = adapter.getInput(event);
 
@@ -76,33 +40,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
       const endpoint = e.get('/test').handle(() => ({ success: true }));
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
-        routeKey: 'GET /test',
-        rawPath: '/test',
-        rawQueryString: '',
-        cookies: [],
-        headers: {},
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'GET',
-            path: '/test',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test-agent',
-          },
-          requestId: 'request-id',
-          routeKey: 'GET /test',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
-        isBase64Encoded: false,
-      };
+      const event = createMockV2Event();
 
       const result = adapter.getInput(event);
 
@@ -119,18 +57,9 @@ describe('AmazonApiGatewayV2Endpoint', () => {
       const endpoint = e.get('/test').handle(() => ({ success: true }));
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
-        routeKey: 'GET /test',
-        rawPath: '/test',
-        rawQueryString: '',
-        cookies: [],
-        headers: {},
+      const event = createMockV2Event({
         requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
+          ...createMockV2Event().requestContext,
           http: {
             method: 'GET',
             path: '/test/123',
@@ -139,13 +68,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
             userAgent: 'Mozilla/5.0 Test',
           },
           requestId: 'event-request-id',
-          routeKey: 'GET /test',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
         },
-        isBase64Encoded: false,
-      };
+      });
 
       const result = adapter.getLoggerContext(event, mockContext);
 
@@ -168,18 +92,9 @@ describe('AmazonApiGatewayV2Endpoint', () => {
       const endpoint = e.get('/test').handle(() => ({ success: true }));
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
-        routeKey: 'GET /test',
-        rawPath: '/test',
-        rawQueryString: '',
-        cookies: [],
-        headers: {},
+      const event = createMockV2Event({
         requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
+          ...createMockV2Event().requestContext,
           http: {
             method: 'GET',
             path: '/test',
@@ -187,14 +102,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
             sourceIp: '127.0.0.1',
             userAgent: '',
           },
-          requestId: 'request-id',
-          routeKey: 'GET /test',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
         },
-        isBase64Encoded: false,
-      };
+      });
 
       const result = adapter.getLoggerContext(event, mockContext);
 
@@ -215,34 +124,12 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
+      const event = createMockV2Event({
         routeKey: 'POST /users',
         rawPath: '/users',
-        rawQueryString: '',
-        cookies: [],
         headers: { 'content-type': 'application/json' },
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'POST',
-            path: '/users',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test',
-          },
-          requestId: 'request-id',
-          routeKey: 'POST /users',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
         body: JSON.stringify({ name: 'John', age: 30 }),
-        isBase64Encoded: false,
-      };
+      });
       // @ts-ignore
       const response = await adapter.handler(event, mockContext);
 
@@ -274,37 +161,15 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
+      const event = createMockV2Event({
         routeKey: 'GET /search',
         rawPath: '/search',
         rawQueryString: 'tags=nodejs,typescript,javascript&limit=20',
-        cookies: [],
-        headers: {},
         queryStringParameters: {
           tags: 'nodejs,typescript,javascript',
           limit: '20',
         },
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'GET',
-            path: '/search',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test',
-          },
-          requestId: 'request-id',
-          routeKey: 'GET /search',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
-        isBase64Encoded: false,
-      };
+      });
       // @ts-ignore
       const response = await adapter.handler(event, mockContext);
 
@@ -342,37 +207,15 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
+      const event = createMockV2Event({
         routeKey: 'GET /search',
         rawPath: '/search',
         rawQueryString: 'filter.category=electronics&filter.active=true',
-        cookies: [],
-        headers: {},
         queryStringParameters: {
           'filter.category': 'electronics',
           'filter.active': 'true',
         },
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'GET',
-            path: '/search',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test',
-          },
-          requestId: 'request-id',
-          routeKey: 'GET /search',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
-        isBase64Encoded: false,
-      };
+      });
       // @ts-ignore
       const response = await adapter.handler(event, mockContext);
 
@@ -400,41 +243,167 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
       const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 
-      const event: APIGatewayProxyEventV2 = {
-        version: '2.0',
+      const event = createMockV2Event({
         routeKey: 'GET /users/{id}',
         rawPath: '/users/123',
         rawQueryString: 'include=profile',
-        cookies: [],
-        headers: {},
         queryStringParameters: { include: 'profile' },
         pathParameters: { id: '123' },
-        requestContext: {
-          accountId: '123456789012',
-          apiId: 'api-id',
-          domainName: 'api.example.com',
-          domainPrefix: 'api',
-          http: {
-            method: 'GET',
-            path: '/users/123',
-            protocol: 'HTTP/1.1',
-            sourceIp: '127.0.0.1',
-            userAgent: 'test',
-          },
-          requestId: 'request-id',
-          routeKey: 'GET /users/{id}',
-          stage: 'prod',
-          time: '01/Jan/2024:00:00:00 +0000',
-          timeEpoch: 1704067200000,
-        },
-        isBase64Encoded: false,
-      };
+      });
       // @ts-ignore
       const response = await adapter.handler(event, mockContext);
 
       expect(response).toEqual({
         statusCode: 200,
         body: JSON.stringify({ id: '123', include: 'profile' }),
+      });
+    });
+
+    describe('response metadata', () => {
+      it('should set response cookies', async () => {
+        const endpoint = e
+          .get('/test')
+          .output(z.object({ success: z.boolean() }))
+          .handle((_, response) => {
+            response.cookie('session', 'abc123', { httpOnly: true, secure: true });
+            return { success: true };
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event();
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+          'session=abc123; HttpOnly; Secure',
+        ]);
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toBe(JSON.stringify({ success: true }));
+      });
+
+      it('should set custom headers', async () => {
+        const endpoint = e
+          .get('/test')
+          .output(z.object({ success: z.boolean() }))
+          .handle((_, response) => {
+            response.header('X-Custom-Header', 'custom-value');
+            response.header('X-Request-Id', '12345');
+            return { success: true };
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event();
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.headers).toEqual({
+          'X-Custom-Header': 'custom-value',
+          'X-Request-Id': '12345',
+        });
+      });
+
+      it('should set custom status code', async () => {
+        const endpoint = e
+          .post('/test')
+          .output(z.object({ id: z.string() }))
+          .handle((_, response) => {
+            response.status(201);
+            return { id: '123' };
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event({ routeKey: 'POST /test' });
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.statusCode).toBe(201);
+      });
+
+      it('should combine cookies, headers, and status', async () => {
+        const endpoint = e
+          .post('/test')
+          .output(z.object({ id: z.string() }))
+          .handle((_, response) => {
+            response
+              .status(201)
+              .header('Location', '/test/123')
+              .cookie('session', 'abc123', { httpOnly: true })
+              .cookie('theme', 'dark');
+            return { id: '123' };
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event({ routeKey: 'POST /test' });
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.statusCode).toBe(201);
+        expect(response.headers).toEqual({ Location: '/test/123' });
+        expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+          'session=abc123; HttpOnly',
+          'theme=dark',
+        ]);
+      });
+
+      it('should delete cookies', async () => {
+        const endpoint = e
+          .get('/test')
+          .output(z.object({ success: z.boolean() }))
+          .handle((_, response) => {
+            response.deleteCookie('session', { path: '/', domain: '.example.com' });
+            return { success: true };
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event();
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
+          'session=; Domain=.example.com; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0',
+        ]);
+      });
+
+      it('should use send() method with metadata', async () => {
+        const endpoint = e
+          .get('/test')
+          .output(z.object({ id: z.string() }))
+          .handle((_, response) => {
+            return response
+              .status(201)
+              .header('X-Custom', 'value')
+              .cookie('session', 'abc123')
+              .send({ id: '123' });
+          });
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event();
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response.statusCode).toBe(201);
+        expect(response.headers).toEqual({ 'X-Custom': 'value' });
+        expect(response.multiValueHeaders?.['Set-Cookie']).toEqual(['session=abc123']);
+        expect(response.body).toBe(JSON.stringify({ id: '123' }));
+      });
+
+      it('should return simple response without metadata when not using response builder', async () => {
+        const endpoint = e
+          .get('/test')
+          .output(z.object({ success: z.boolean() }))
+          .handle(() => ({ success: true }));
+
+        const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+        const event = createMockV2Event();
+        // @ts-ignore
+        const response = await adapter.handler(event, mockContext);
+
+        expect(response).toEqual({
+          statusCode: 200,
+          body: JSON.stringify({ success: true }),
+        });
+        expect(response.headers).toBeUndefined();
+        expect(response.multiValueHeaders).toBeUndefined();
       });
     });
   });
