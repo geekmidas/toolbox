@@ -27,12 +27,8 @@ export class SubscriberGenerator extends ConstructGenerator<
     const logger = console;
     const subscriberInfos: SubscriberInfo[] = [];
 
-    if (constructs.length === 0) {
-      return subscriberInfos;
-    }
-
     if (provider === 'server') {
-      // Generate subscribers.ts for server-based polling
+      // Generate subscribers.ts for server-based polling (even if empty)
       await this.generateServerSubscribersFile(outputDir, constructs);
 
       logger.log(
@@ -40,6 +36,10 @@ export class SubscriberGenerator extends ConstructGenerator<
       );
 
       // Return empty array as server subscribers don't have individual handlers
+      return subscriberInfos;
+    }
+
+    if (constructs.length === 0) {
       return subscriberInfos;
     }
 
@@ -113,6 +113,9 @@ export const handler = adapter.handler;
     outputDir: string,
     subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
   ): Promise<string> {
+    // Ensure output directory exists
+    await mkdir(outputDir, { recursive: true });
+
     const subscribersFileName = 'subscribers.ts';
     const subscribersPath = join(outputDir, subscribersFileName);
 

@@ -14,6 +14,11 @@
       "import": "./dist/fetcher.mjs",
       "require": "./dist/fetcher.cjs"
     },
+    "./infer": {
+      "types": "./dist/infer.d.ts",
+      "import": "./dist/infer.mjs",
+      "require": "./dist/infer.cjs"
+    },
     "./react-query": {
       "types": "./dist/react-query.d.ts",
       "import": "./dist/react-query.mjs",
@@ -41,6 +46,10 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
+  "dependencies": {
+    "@geekmidas/schema": "workspace:*",
+    "@standard-schema/spec": "^1.0.0"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "~6.6.3",
     "@testing-library/dom": "~10.4.0",
@@ -52,8 +61,23 @@
     "msw": "~2.10.3"
   },
   "peerDependencies": {
+    "@geekmidas/constructs": "workspace:*",
     "@tanstack/react-query": ">=5.0.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@geekmidas/constructs": {
+      "optional": false
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   }
 }

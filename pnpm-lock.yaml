@@ -183,6 +183,15 @@ importers:
 
   packages/client:
     dependencies:
+      '@geekmidas/constructs':
+        specifier: workspace:*
+        version: link:../constructs
+      '@geekmidas/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@tanstack/react-query':
         specifier: '>=5.0.0'
         version: 5.83.0(react@19.1.0)
@@ -9640,7 +9649,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
