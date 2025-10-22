@@ -102,10 +102,18 @@ export class EndpointFactory<
     JoinPaths<TBasePath, TPath>,
     TLogger,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
-    return new EndpointFactory({
+    return new EndpointFactory<
+      TServices,
+      JoinPaths<TBasePath, TPath>,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >({
       defaultServices: this.defaultServices,
       basePath: newBasePath,
       defaultAuthorizeFn: this.defaultAuthorizeFn,
@@ -118,8 +126,22 @@ export class EndpointFactory<
   // Create a new factory with authorization
   authorize(
     fn: AuthorizeFn<TServices, TLogger, TSession>,
-  ): EndpointFactory<TServices, TBasePath, TLogger, TSession, TEventPublisher> {
-    return new EndpointFactory({
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
       defaultAuthorizeFn: fn,
@@ -137,14 +159,16 @@ export class EndpointFactory<
     TBasePath,
     TLogger,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName
   > {
     return new EndpointFactory<
       [...S, ...TServices],
       TBasePath,
       TLogger,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
@@ -157,14 +181,34 @@ export class EndpointFactory<
 
   logger<L extends Logger>(
     logger: L,
-  ): EndpointFactory<TServices, TBasePath, L, TSession> {
-    return new EndpointFactory<TServices, TBasePath, L, TSession>({
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    L,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      L,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
-      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
+        TServices,
+        L,
+        TSession
+      >,
       defaultLogger: logger,
-      defaultSessionExtractor: this.defaultSessionExtractor,
-    } as EndpointFactoryOptions<TServices, TBasePath, L, TSession>);
+      defaultSessionExtractor: this
+        .defaultSessionExtractor as unknown as SessionFn<TServices, L, TSession>,
+      defaultEventPublisher: this.defaultEventPublisher,
+    });
   }
 
   publisher<
@@ -172,8 +216,15 @@ export class EndpointFactory<
     TServiceName extends string = string,
   >(
     publisher: Service<TServiceName, T>,
-  ): EndpointFactory<TServices, TBasePath, TLogger, TSession, T> {
-    return new EndpointFactory<TServices, TBasePath, TLogger, TSession, T>({
+  ): EndpointFactory<TServices, TBasePath, TLogger, TSession, T, TServiceName> {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      T,
+      TServiceName
+    >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
       defaultAuthorizeFn: this.defaultAuthorizeFn,
@@ -183,15 +234,34 @@ export class EndpointFactory<
     });
   }
 
-  session<T>(session: SessionFn<TServices, TLogger, T>) {
-    return new EndpointFactory<TServices, TBasePath, TLogger, T>({
+  session<T>(
+    session: SessionFn<TServices, TLogger, T>,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    T,
+    TEventPublisher,
+    TEventPublisherServiceName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      T,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
-      // @ts-ignore
-      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
+        TServices,
+        TLogger,
+        T
+      >,
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: session,
-      defaultEventPublisher: this.defaultEventPublisher as any,
+      defaultEventPublisher: this.defaultEventPublisher,
     });
   }
 
