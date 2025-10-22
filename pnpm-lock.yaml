@@ -249,7 +249,7 @@ importers:
         specifier: workspace:*
         version: link:../cache
       '@geekmidas/envkit':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../envkit
       '@geekmidas/errors':
         specifier: workspace:*
@@ -272,9 +272,6 @@ importers:
       '@middy/core':
         specifier: '>=6.3.1'
         version: 6.3.2
-      '@standard-schema/spec':
-        specifier: '>=1.0.0'
-        version: 1.0.0
       '@types/aws-lambda':
         specifier: '>=8.10.92'
         version: 8.10.150
@@ -460,7 +457,7 @@ importers:
   packages/schema:
     dependencies:
       '@standard-schema/spec':
-        specifier: '>=1.0.0'
+        specifier: ~1.0.0
         version: 1.0.0
       '@valibot/to-json-schema':
         specifier: '>=1.3.0'
@@ -9649,7 +9646,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
