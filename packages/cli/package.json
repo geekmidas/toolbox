@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "exports": {
@@ -31,9 +31,6 @@
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
-    "@geekmidas/constructs": "workspace:*",
-    "@geekmidas/schema": "workspace:*",
-    "@geekmidas/envkit": "workspace:*",
     "commander": "^12.1.0",
     "fast-glob": "^3.3.2",
     "lodash.kebabcase": "^4.1.1",
@@ -44,7 +41,12 @@
     "@geekmidas/testkit": "workspace:*",
     "typescript": "^5.8.2",
     "vitest": "^3.2.4",
-    "@geekmidas/logger": "workspace:*",
     "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@geekmidas/constructs": "workspace:~",
+    "@geekmidas/schema": "workspace:~",
+    "@geekmidas/envkit": "workspace:~",
+    "@geekmidas/logger": "workspace:~"
   }
 }
