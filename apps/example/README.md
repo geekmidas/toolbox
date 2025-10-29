@@ -18,9 +18,39 @@ This is an example application that demonstrates how to use the `@geekmidas/tool
 pnpm install
 ```
 
-### 2. Build the Application
+### 2. Start Development Server
 
-Generate the server files:
+Run the development server with automatic reload:
+
+```bash
+pnpm run dev
+```
+
+This command:
+- ✨ Automatically builds your endpoints, functions, crons, and subscribers
+- 🔄 Watches for file changes and rebuilds automatically
+- 🚀 Restarts the server on changes
+- 📦 Finds available ports automatically (starts on 3000, uses 3001 if busy, etc.)
+- 📚 Enables OpenAPI documentation by default at `/docs`
+
+The server will start on `http://localhost:3000` (or the next available port) with:
+- 🌐 HTTP endpoints at `/users`, `/health`, etc.
+- 📚 OpenAPI documentation at `/docs`
+- 📡 Event subscribers polling in the background
+
+**Custom Port:**
+```bash
+pnpm run dev --port 8080
+```
+
+**Disable OpenAPI:**
+```bash
+pnpm run dev --enable-openapi false
+```
+
+### 3. Manual Build (Optional)
+
+If you want to build without starting the dev server:
 
 ```bash
 pnpm run build
@@ -31,18 +61,10 @@ This will create the `.gkm` directory with:
 - `endpoints.ts` - HTTP endpoint registration
 - `subscribers.ts` - Event subscriber setup
 
-### 3. Start the Server
-
-For local development with Bun:
-
+Then start the server manually:
 ```bash
-pnpm run dev
+pnpm run start
 ```
-
-The server will start on `http://localhost:3000` with:
-- 🌐 HTTP endpoints at `/users`, `/health`, etc.
-- 📚 OpenAPI documentation at `/docs`
-- 📡 Event subscribers polling in the background
 
 ## Project Structure
 
@@ -232,13 +254,43 @@ export const userEventsSubscriber = new SubscriberBuilder()
 
 ## Development
 
-### Watch Mode
+### Development Mode (`gkm dev`)
 
-The application supports hot reload when running with `bun run dev`.
+The `gkm dev` command provides a complete development experience:
 
-### Rebuild
+```bash
+pnpm run dev
+```
 
-After making changes to endpoints or subscribers, rebuild:
+**Features:**
+- 🔄 **Auto-rebuild**: Watches for changes in endpoints, functions, crons, subscribers, env config, and logger
+- 🚀 **Auto-restart**: Automatically restarts the server after rebuilding
+- 📦 **Smart port selection**: Automatically finds an available port if the default is in use
+- ⚡ **Fast**: Debounced rebuilds (300ms) to avoid excessive rebuilds during rapid changes
+- 📚 **OpenAPI by default**: Documentation available at `/docs`
+
+**What gets watched:**
+- All endpoint files (`src/endpoints/**/*.ts`)
+- All subscriber files (`src/subscribers/**/*.ts`)
+- Environment parser (`src/config/env.ts`)
+- Logger configuration (`src/config/logger.ts`)
+
+**Example workflow:**
+1. Start dev server: `pnpm run dev`
+2. Edit `src/endpoints/users.ts`
+3. Save the file
+4. Watch the terminal output:
+   ```
+   📝 File changed: src/endpoints/users.ts
+   🔄 Rebuilding...
+   ✅ Rebuild complete, restarting server...
+   ✨ Starting server on port 3000...
+   🎉 Server running at http://localhost:3000
+   ```
+
+### Manual Rebuild
+
+If you need to build without starting the server:
 
 ```bash
 pnpm run build
@@ -246,7 +298,7 @@ pnpm run build
 
 ### OpenAPI Documentation
 
-Visit `http://localhost:3000/docs` to see the generated OpenAPI documentation.
+Visit `http://localhost:3000/docs` to see the generated OpenAPI documentation with an interactive UI for testing your endpoints.
 
 ## Production Deployment
 

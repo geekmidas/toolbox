@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "gkm dev",
+    "dev:manual": "tsx watch src/index.ts",
     "build": "gkm build --provider server",
-    "start": "tsx run .gkm/server/app.ts"
+    "start": "node .gkm/server/app.js"
   },
   "dependencies": {
     "@geekmidas/constructs": "workspace:*",
