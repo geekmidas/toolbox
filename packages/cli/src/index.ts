@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index.ts';
+import { devCommand } from './dev/index.ts';
 import { generateReactQueryCommand } from './openapi-react-query.ts';
 import { openapiCommand } from './openapi.ts';
 import type { LegacyProvider, MainProvider } from './types.ts';
@@ -76,6 +77,34 @@ program
         }
       } catch (error) {
         console.error('Build failed:', (error as Error).message);
+        process.exit(1);
+      }
+    },
+  );
+
+program
+  .command('dev')
+  .description('Start development server with automatic reload')
+  .option('--port <port>', 'Port to run the development server on', '3000')
+  .option(
+    '--enable-openapi',
+    'Enable OpenAPI documentation for development server',
+    true,
+  )
+  .action(
+    async (options: { port?: string; enableOpenapi?: boolean }) => {
+      try {
+        const globalOptions = program.opts();
+        if (globalOptions.cwd) {
+          process.chdir(globalOptions.cwd);
+        }
+
+        await devCommand({
+          port: options.port ? Number.parseInt(options.port) : 3000,
+          enableOpenApi: options.enableOpenapi ?? true,
+        });
+      } catch (error) {
+        console.error('Dev server failed:', (error as Error).message);
         process.exit(1);
       }
     },
