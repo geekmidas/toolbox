@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import chokidar from 'chokidar';
 import { loadConfig } from '../config';
@@ -14,6 +15,52 @@ import type { BuildContext } from '../build/types';
 import { resolveProviders } from '../build/providerResolver';
 
 const logger = console;
+
+/**
+ * Check if a port is available
+ * @internal Exported for testing
+ */
+export async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false);
+      } else {
+        resolve(false);
+      }
+    });
+
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+
+    server.listen(port);
+  });
+}
+
+/**
+ * Find an available port starting from the preferred port
+ * @internal Exported for testing
+ */
+export async function findAvailablePort(
+  preferredPort: number,
+  maxAttempts = 10,
+): Promise<number> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = preferredPort + i;
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+    logger.log(`⚠️  Port ${port} is in use, trying ${port + 1}...`);
+  }
+
+  throw new Error(
+    `Could not find an available port after trying ${maxAttempts} ports starting from ${preferredPort}`,
+  );
+}
 
 export interface DevOptions {
   port?: number;
@@ -176,16 +223,28 @@ async function buildServer(
 class DevServer {
   private serverProcess: ChildProcess | null = null;
   private isRunning = false;
+  private actualPort: number;
 
   constructor(
     private provider: LegacyProvider,
-    private port: number,
+    private requestedPort: number,
     private enableOpenApi: boolean,
-  ) {}
+  ) {
+    this.actualPort = requestedPort;
+  }
 
   async start(): Promise<void> {
     if (this.isRunning) {
       await this.stop();
+    }
+
+    // Find an available port
+    this.actualPort = await findAvailablePort(this.requestedPort);
+
+    if (this.actualPort !== this.requestedPort) {
+      logger.log(
+        `ℹ️  Port ${this.requestedPort} was in use, using port ${this.actualPort} instead`,
+      );
     }
 
     const serverEntryPath = join(
@@ -198,12 +257,12 @@ class DevServer {
     // Create server entry file
     await this.createServerEntry();
 
-    logger.log(`\n✨ Starting server on port ${this.port}...`);
+    logger.log(`\n✨ Starting server on port ${this.actualPort}...`);
 
     // Start the server using tsx (TypeScript execution)
     this.serverProcess = spawn(
       'npx',
-      ['tsx', serverEntryPath, '--port', this.port.toString()],
+      ['tsx', serverEntryPath, '--port', this.actualPort.toString()],
       {
         stdio: 'inherit',
         env: { ...process.env, NODE_ENV: 'development' },
@@ -227,10 +286,10 @@ class DevServer {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     if (this.isRunning) {
-      logger.log(`\n🎉 Server running at http://localhost:${this.port}`);
+      logger.log(`\n🎉 Server running at http://localhost:${this.actualPort}`);
       if (this.enableOpenApi) {
         logger.log(
-          `📚 API Docs available at http://localhost:${this.port}/docs`,
+          `📚 API Docs available at http://localhost:${this.actualPort}/docs`,
         );
       }
     }
