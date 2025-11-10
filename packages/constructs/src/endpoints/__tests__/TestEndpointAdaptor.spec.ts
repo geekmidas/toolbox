@@ -393,28 +393,19 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         body: { email: 'test@example.com', password: 'pass123' },
         services: mockServices,
         headers: { host: 'example.com' },
       });
 
-      expect(result).toHaveProperty('data');
-      expect(result).toHaveProperty('metadata');
-      expect((result as any).data).toEqual({
+      expect(result.body).toEqual({
         id: 'user-1',
         email: 'test@example.com',
       });
-      expect((result as any).metadata.cookies?.has('session')).toBe(true);
-      expect((result as any).metadata.cookies?.get('session')).toEqual({
-        value: 'abc123',
-        options: {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'strict',
-          maxAge: 3600,
-        },
-      });
+      expect(result.headers['set-cookie']).toEqual([
+        'session=abc123; Max-Age=3600; HttpOnly; Secure; SameSite=strict',
+      ]);
     });
 
     it('should set custom response headers', async () => {
@@ -431,17 +422,17 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         body: { name: 'John Doe' },
         services: mockServices,
         headers: { host: 'example.com' },
       });
 
-      expect((result as any).data).toEqual({
+      expect(result.body).toEqual({
         id: 'user-123',
         name: 'John Doe',
       });
-      expect((result as any).metadata.headers).toEqual({
+      expect(result.headers).toEqual({
         Location: '/users/user-123',
         'X-User-Id': 'user-123',
       });
@@ -457,13 +448,13 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         body: { name: 'Resource' },
         services: mockServices,
         headers: { host: 'example.com' },
       });
 
-      expect((result as any).metadata.status).toBe(201);
+      expect(result.status).toBe(201);
     });
 
     it('should delete cookies', async () => {
@@ -477,16 +468,17 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         services: mockServices,
         headers: { host: 'example.com' },
       });
 
-      expect((result as any).data.success).toBe(true);
-      const sessionCookie = (result as any).metadata.cookies?.get('session');
-      expect(sessionCookie?.value).toBe('');
-      expect(sessionCookie?.options?.maxAge).toBe(0);
-      expect(sessionCookie?.options?.path).toBe('/');
+      expect(result.body.success).toBe(true);
+      const setCookieHeader = result.headers['set-cookie'] as string[];
+      expect(setCookieHeader).toHaveLength(1);
+      expect(setCookieHeader[0]).toContain('session=');
+      expect(setCookieHeader[0]).toContain('Max-Age=0');
+      expect(setCookieHeader[0]).toContain('Path=/');
     });
 
     it('should combine cookies, headers, and status', async () => {
@@ -505,28 +497,21 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         body: { data: 'test' },
         services: mockServices,
         headers: { host: 'example.com' },
       });
 
-      expect((result as any).data).toEqual({
+      expect(result.body).toEqual({
         id: '123',
         result: 'test',
       });
-      expect((result as any).metadata.status).toBe(201);
-      expect((result as any).metadata.headers).toEqual({
+      expect(result.status).toBe(201);
+      expect(result.headers).toEqual({
         Location: '/complete/123',
         'X-Request-Id': 'req-456',
-      });
-      expect((result as any).metadata.cookies?.size).toBe(2);
-      expect((result as any).metadata.cookies?.get('tracking')?.value).toBe(
-        'track-789',
-      );
-      expect((result as any).metadata.cookies?.get('preference')).toEqual({
-        value: 'dark',
-        options: { maxAge: 86400 },
+        'set-cookie': ['tracking=track-789', 'preference=dark; Max-Age=86400'],
       });
     });
 
@@ -564,7 +549,7 @@ describe('TestEndpointAdaptor', () => {
         });
 
       const adapter = new TestEndpointAdaptor(endpoint);
-      const result = await adapter.request({
+      const result = await adapter.fullRequest({
         services: mockServices,
         headers: {
           host: 'example.com',
@@ -572,13 +557,295 @@ describe('TestEndpointAdaptor', () => {
         },
       });
 
-      expect((result as any).data).toEqual({
+      expect(result.body).toEqual({
         theme: 'dark',
         updated: true,
       });
-      expect((result as any).metadata.cookies?.get('theme')?.value).toBe(
-        'dark',
-      );
+      expect(result.headers['set-cookie']).toEqual([
+        'theme=dark; Max-Age=86400',
+      ]);
+    });
+  });
+
+  describe('fullRequest', () => {
+    it('should return full HTTP response with body, status, and headers', async () => {
+      const endpoint = e
+        .get('/test')
+        .output(z.object({ message: z.string() }))
+        .handle(() => ({ message: 'Hello World' }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      const result = await adapter.fullRequest({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result).toEqual({
+        body: { message: 'Hello World' },
+        status: 200,
+        headers: {},
+      });
+    });
+
+    it('should return custom status code in HTTP response', async () => {
+      const endpoint = e
+        .post('/resources')
+        .body(z.object({ name: z.string() }))
+        .output(z.object({ id: z.string() }))
+        .handle(async (ctx, response) => {
+          return response.status(SuccessStatus.Created).send({ id: '123' });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        body: { name: 'Resource' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.status).toBe(201);
+      expect(result.body).toEqual({ id: '123' });
+    });
+
+    it('should include custom headers in HTTP response', async () => {
+      const endpoint = e
+        .post('/users')
+        .body(z.object({ name: z.string() }))
+        .output(z.object({ id: z.string(), name: z.string() }))
+        .handle(async ({ body }, response) => {
+          const user = { id: 'user-123', name: body.name };
+          return response
+            .header('Location', `/users/${user.id}`)
+            .header('X-User-Id', user.id)
+            .send(user);
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        body: { name: 'John Doe' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.body).toEqual({
+        id: 'user-123',
+        name: 'John Doe',
+      });
+      expect(result.headers).toEqual({
+        Location: '/users/user-123',
+        'X-User-Id': 'user-123',
+      });
+    });
+
+    it('should convert cookies to Set-Cookie headers', async () => {
+      const endpoint = e
+        .post('/auth/login')
+        .body(z.object({ email: z.string(), password: z.string() }))
+        .output(z.object({ id: z.string(), email: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .cookie('session', 'abc123', {
+              httpOnly: true,
+              secure: true,
+              sameSite: 'strict',
+              maxAge: 3600,
+            })
+            .send({ id: 'user-1', email: body.email });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        body: { email: 'test@example.com', password: 'pass123' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.body).toEqual({
+        id: 'user-1',
+        email: 'test@example.com',
+      });
+      expect(result.headers['set-cookie']).toEqual([
+        'session=abc123; Max-Age=3600; HttpOnly; Secure; SameSite=strict',
+      ]);
+    });
+
+    it('should handle multiple cookies as array of Set-Cookie headers', async () => {
+      const endpoint = e
+        .post('/complete')
+        .body(z.object({ data: z.string() }))
+        .output(z.object({ id: z.string(), result: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .cookie('tracking', 'track-789')
+            .cookie('preference', 'dark', { maxAge: 86400, path: '/' })
+            .send({ id: '123', result: body.data });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        body: { data: 'test' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.headers['set-cookie']).toEqual([
+        'tracking=track-789',
+        'preference=dark; Max-Age=86400; Path=/',
+      ]);
+    });
+
+    it('should serialize all cookie options correctly', async () => {
+      const expires = new Date('2025-12-31T23:59:59Z');
+      const endpoint = e
+        .get('/cookies-full')
+        .output(z.object({ success: z.boolean() }))
+        .handle(async (ctx, response) => {
+          return response
+            .cookie('full-cookie', 'value123', {
+              domain: 'example.com',
+              path: '/api',
+              expires: expires,
+              maxAge: 7200,
+              httpOnly: true,
+              secure: true,
+              sameSite: 'lax',
+            })
+            .send({ success: true });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.headers['set-cookie']).toEqual([
+        `full-cookie=value123; Max-Age=7200; Expires=${expires.toUTCString()}; Domain=example.com; Path=/api; HttpOnly; Secure; SameSite=lax`,
+      ]);
+    });
+
+    it('should handle cookie deletion in Set-Cookie header', async () => {
+      const endpoint = e
+        .post('/auth/logout')
+        .output(z.object({ success: z.boolean() }))
+        .handle(async (ctx, response) => {
+          return response
+            .deleteCookie('session', { path: '/' })
+            .send({ success: true });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result.body.success).toBe(true);
+      const setCookieHeader = result.headers['set-cookie'] as string[];
+      expect(setCookieHeader).toHaveLength(1);
+      expect(setCookieHeader[0]).toContain('session=');
+      expect(setCookieHeader[0]).toContain('Max-Age=0');
+      expect(setCookieHeader[0]).toContain('Path=/');
+      expect(setCookieHeader[0]).toContain('Expires=');
+    });
+
+    it('should combine headers and cookies in HTTP response', async () => {
+      const endpoint = e
+        .post('/complete')
+        .body(z.object({ data: z.string() }))
+        .output(z.object({ id: z.string(), result: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .status(SuccessStatus.Created)
+            .header('Location', '/complete/123')
+            .header('X-Request-Id', 'req-456')
+            .cookie('tracking', 'track-789')
+            .cookie('preference', 'dark', { maxAge: 86400 })
+            .send({ id: '123', result: body.data });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        body: { data: 'test' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result).toEqual({
+        body: { id: '123', result: 'test' },
+        status: 201,
+        headers: {
+          Location: '/complete/123',
+          'X-Request-Id': 'req-456',
+          'set-cookie': [
+            'tracking=track-789',
+            'preference=dark; Max-Age=86400',
+          ],
+        },
+      });
+    });
+
+    it('should handle empty response metadata', async () => {
+      const endpoint = e
+        .get('/simple')
+        .output(z.object({ message: z.string() }))
+        .handle(async () => ({ message: 'Hello' }));
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+      const result = await adapter.fullRequest({
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      expect(result).toEqual({
+        body: { message: 'Hello' },
+        status: 200,
+        headers: {},
+      });
+    });
+  });
+
+  describe('request method delegation', () => {
+    it('should return only body from fullRequest', async () => {
+      const endpoint = e
+        .post('/users')
+        .body(z.object({ name: z.string() }))
+        .output(z.object({ id: z.string(), name: z.string() }))
+        .handle(async ({ body }, response) => {
+          return response
+            .status(SuccessStatus.Created)
+            .header('Location', '/users/123')
+            .cookie('session', 'abc')
+            .send({ id: '123', name: body.name });
+        });
+
+      const adapter = new TestEndpointAdaptor(endpoint);
+
+      // Call request (should only return body)
+      const simpleResult = await adapter.request({
+        body: { name: 'John' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      // Call fullRequest (should return full HTTP response)
+      const fullResult = await adapter.fullRequest({
+        body: { name: 'John' },
+        services: mockServices,
+        headers: { host: 'example.com' },
+      });
+
+      // request should only return the body
+      expect(simpleResult).toEqual({ id: '123', name: 'John' });
+      expect(simpleResult).not.toHaveProperty('status');
+      expect(simpleResult).not.toHaveProperty('headers');
+
+      // fullRequest should return complete HTTP response
+      expect(fullResult.body).toEqual({ id: '123', name: 'John' });
+      expect(fullResult.status).toBe(201);
+      expect(fullResult.headers).toHaveProperty('Location');
+      expect(fullResult.headers).toHaveProperty('set-cookie');
     });
   });
 });

@@ -14,11 +14,54 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
 import {
+  type CookieOptions,
   Endpoint,
   type EndpointSchemas,
   ResponseBuilder,
-  type ResponseWithMetadata,
 } from './Endpoint';
+
+export type TestHttpResponse<TBody = any> = {
+  body: TBody;
+  status: number;
+  headers: Record<string, string | string[]>;
+};
+
+/**
+ * Serializes a cookie into a Set-Cookie header string
+ */
+function serializeCookie(
+  name: string,
+  value: string,
+  options?: CookieOptions,
+): string {
+  let cookieString = `${name}=${value}`;
+
+  if (options) {
+    if (options.maxAge !== undefined) {
+      cookieString += `; Max-Age=${options.maxAge}`;
+    }
+    if (options.expires) {
+      cookieString += `; Expires=${options.expires.toUTCString()}`;
+    }
+    if (options.domain) {
+      cookieString += `; Domain=${options.domain}`;
+    }
+    if (options.path) {
+      cookieString += `; Path=${options.path}`;
+    }
+    if (options.httpOnly) {
+      cookieString += '; HttpOnly';
+    }
+    if (options.secure) {
+      cookieString += '; Secure';
+    }
+    if (options.sameSite) {
+      cookieString += `; SameSite=${options.sameSite}`;
+    }
+  }
+
+  return cookieString;
+}
 
 export class TestEndpointAdaptor<
   TRoute extends string,
@@ -77,17 +120,14 @@ export class TestEndpointAdaptor<
     > = TestEndpointAdaptor.getDefaultServiceDiscover(endpoint),
   ) {}
 
-  async request(
+  async fullRequest(
     ctx: TestRequestAdaptor<
       TInput,
       TServices,
       TEventPublisher,
       TEventPublisherServiceName
     >,
-  ): Promise<
-    | InferStandardSchema<TOutSchema>
-    | ResponseWithMetadata<InferStandardSchema<TOutSchema>>
-  > {
+  ): Promise<TestHttpResponse<InferStandardSchema<TOutSchema>>> {
     const body = await this.endpoint.parseInput((ctx as any).body, 'body');
     const query = await this.endpoint.parseInput((ctx as any).query, 'query');
     const params = await this.endpoint.parseInput(
@@ -138,16 +178,37 @@ export class TestEndpointAdaptor<
 
     await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
 
-    // Return with metadata if any was set
-    if (
-      (metadata.headers && Object.keys(metadata.headers).length > 0) ||
-      (metadata.cookies && metadata.cookies.size > 0) ||
-      metadata.status
-    ) {
-      return { data: output, metadata };
+    // Convert cookies to Set-Cookie headers
+    const headers: Record<string, string | string[]> = {
+      ...(metadata.headers || {}),
+    };
+
+    if (metadata.cookies && metadata.cookies.size > 0) {
+      const setCookieValues: string[] = [];
+      for (const [name, cookie] of metadata.cookies.entries()) {
+        setCookieValues.push(serializeCookie(name, cookie.value, cookie.options));
+      }
+      headers['set-cookie'] = setCookieValues;
     }
 
-    return output;
+    // Return HTTP response format
+    return {
+      body: output,
+      status: metadata.status || 200,
+      headers,
+    };
+  }
+
+  async request(
+    ctx: TestRequestAdaptor<
+      TInput,
+      TServices,
+      TEventPublisher,
+      TEventPublisherServiceName
+    >,
+  ): Promise<InferStandardSchema<TOutSchema>> {
+    const response = await this.fullRequest(ctx);
+    return response.body;
   }
 }
 
