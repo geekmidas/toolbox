@@ -1,1 +1,1 @@
-export {};
+export { buildResourceEnv } from './utils';

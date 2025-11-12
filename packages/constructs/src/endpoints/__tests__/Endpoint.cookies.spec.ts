@@ -117,4 +117,89 @@ describe('Endpoint.createCookies', () => {
     expect(cookieFn('_ga')).toBe('GA1.2.123456789.1234567890');
     expect(cookieFn('authenticated')).toBe('true');
   });
+
+  describe('cookie() - get all cookies', () => {
+    it('should return all cookies as object when called without arguments', () => {
+      const cookieFn = Endpoint.createCookies(
+        'session=abc123; theme=dark; lang=en',
+      );
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({
+        session: 'abc123',
+        theme: 'dark',
+        lang: 'en',
+      });
+    });
+
+    it('should return empty object when no cookies exist', () => {
+      const cookieFn = Endpoint.createCookies(undefined);
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({});
+    });
+
+    it('should return empty object for empty cookie string', () => {
+      const cookieFn = Endpoint.createCookies('');
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({});
+    });
+
+    it('should decode URL-encoded values in all cookies', () => {
+      const cookieFn = Endpoint.createCookies(
+        'user=John%20Doe; email=john%40example.com',
+      );
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({
+        user: 'John Doe',
+        email: 'john@example.com',
+      });
+    });
+
+    it('should preserve case in cookie names when getting all', () => {
+      const cookieFn = Endpoint.createCookies('Session=abc; session=xyz; TOKEN=123');
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({
+        Session: 'abc',
+        session: 'xyz',
+        TOKEN: '123',
+      });
+    });
+
+    it('should handle cookies with equals sign in values', () => {
+      const cookieFn = Endpoint.createCookies(
+        'data=key=value; token=abc=123=xyz',
+      );
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({
+        data: 'key=value',
+        token: 'abc=123=xyz',
+      });
+    });
+
+    it('should work with complex real-world cookie string', () => {
+      const cookieFn = Endpoint.createCookies(
+        'session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; user_id=12345; preferences=%7B%22theme%22%3A%22dark%22%7D; authenticated=true',
+      );
+
+      const allCookies = cookieFn();
+
+      expect(allCookies).toEqual({
+        session: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+        user_id: '12345',
+        preferences: '{"theme":"dark"}',
+        authenticated: 'true',
+      });
+    });
+  });
 });

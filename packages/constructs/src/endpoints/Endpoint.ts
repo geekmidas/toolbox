@@ -174,12 +174,13 @@ export class Endpoint<
    * Creates a case-insensitive header lookup function from a headers object.
    *
    * @param headers - Object containing header key-value pairs
-   * @returns Function to retrieve header values by case-insensitive key
+   * @returns Function to retrieve header values by case-insensitive key, or all headers
    *
    * @example
    * ```typescript
    * const headerFn = Endpoint.createHeaders({ 'Content-Type': 'application/json' });
    * headerFn('content-type'); // Returns 'application/json'
+   * headerFn(); // Returns { 'content-type': 'application/json' }
    * ```
    */
   static createHeaders(headers: Record<string, string>): HeaderFn {
@@ -189,22 +190,30 @@ export class Endpoint<
       headerMap.set(key, v);
     }
 
-    return function get(key: string): string | undefined {
+    function get(): Record<string, string>;
+    function get(key: string): string | undefined;
+    function get(key?: string): string | undefined | Record<string, string> {
+      if (key === undefined) {
+        // Return all headers as plain object
+        return Object.fromEntries(headerMap.entries());
+      }
       return headerMap.get(key.toLowerCase());
-    };
+    }
+
+    return get;
   }
 
   /**
    * Parses cookie string and creates a cookie lookup function.
    *
    * @param cookieHeader - The Cookie header value
-   * @returns Function to retrieve cookie values by name
+   * @returns Function to retrieve cookie values by name, or all cookies
    *
    * @example
    * ```typescript
    * const cookieFn = Endpoint.createCookies('session=abc123; theme=dark');
    * cookieFn('session'); // Returns 'abc123'
-   * cookieFn('theme'); // Returns 'dark'
+   * cookieFn(); // Returns { session: 'abc123', theme: 'dark' }
    * ```
    */
   static createCookies(cookieHeader: string | undefined): CookieFn {
@@ -222,9 +231,17 @@ export class Endpoint<
       }
     }
 
-    return function get(name: string): string | undefined {
+    function get(): Record<string, string>;
+    function get(name: string): string | undefined;
+    function get(name?: string): string | undefined | Record<string, string> {
+      if (name === undefined) {
+        // Return all cookies as plain object
+        return Object.fromEntries(cookieMap.entries());
+      }
       return cookieMap.get(name);
-    };
+    }
+
+    return get;
   }
 
   /**
@@ -780,24 +797,45 @@ export type EndpointHeaders = Map<string, string>;
 
 /**
  * Function type for retrieving HTTP header values.
- *
- * @param key - The header name (case-insensitive)
- * @returns The header value or undefined if not found
- */
-export type HeaderFn = SingleHeaderFn;
-
-/**
- * Function type for retrieving cookie values.
- *
- * @param name - The cookie name
- * @returns The cookie value or undefined if not found
+ * Supports two calling patterns:
+ * - `header(key)` - Get a single header value (case-insensitive)
+ * - `header()` - Get all headers as a plain object
  *
  * @example
  * ```typescript
- * const sessionId = cookie('session');
+ * // Get single header
+ * const contentType = header('content-type');
+ *
+ * // Get all headers
+ * const allHeaders = header();
+ * // { 'content-type': 'application/json', 'host': 'example.com', ... }
  * ```
  */
-export type CookieFn = (name: string) => string | undefined;
+export interface HeaderFn {
+  (): Record<string, string>;
+  (key: string): string | undefined;
+}
+
+/**
+ * Function type for retrieving cookie values.
+ * Supports two calling patterns:
+ * - `cookie(name)` - Get a single cookie value
+ * - `cookie()` - Get all cookies as a plain object
+ *
+ * @example
+ * ```typescript
+ * // Get single cookie
+ * const sessionId = cookie('session');
+ *
+ * // Get all cookies
+ * const allCookies = cookie();
+ * // { session: 'abc123', theme: 'dark', ... }
+ * ```
+ */
+export interface CookieFn {
+  (): Record<string, string>;
+  (name: string): string | undefined;
+}
 
 /**
  * Cookie options matching standard Set-Cookie attributes
