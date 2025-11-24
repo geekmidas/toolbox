@@ -41,6 +41,7 @@ export class EndpointGenerator extends ConstructGenerator<
         path: '*',
         method: 'ALL',
         handler: relative(process.cwd(), appFile),
+        authorizer: 'none',
       });
 
       logger.log(
