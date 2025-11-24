@@ -63,7 +63,7 @@ export interface RouteInfo {
   timeout?: number;
   memorySize?: number;
   environment?: string[];
-  authorizer?: string;
+  authorizer: string;
 }
 
 export interface FunctionInfo {

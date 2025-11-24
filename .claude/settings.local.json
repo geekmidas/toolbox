@@ -43,7 +43,8 @@
       "Bash(pnpm --filter @geekmidas/envkit test:once EnvironmentParser)",
       "Bash(pn test packages/constructs/src/endpoints)",
       "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/constructs/src/endpoints/__tests__/AmazonApiGatewayV2EndpointAdaptor.spec.ts)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" node:*)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" node:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

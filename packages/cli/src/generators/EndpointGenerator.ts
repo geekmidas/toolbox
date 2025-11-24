@@ -72,7 +72,7 @@ export class EndpointGenerator extends ConstructGenerator<
           timeout: construct.timeout,
           memorySize: construct.memorySize,
           environment: await construct.getEnvironment(),
-          authorizer: construct.authorizer?.name,
+          authorizer: construct.authorizer?.name ?? 'none',
         };
 
         routes.push(routeInfo);
@@ -102,7 +102,7 @@ export class EndpointGenerator extends ConstructGenerator<
           timeout: construct.timeout,
           memorySize: construct.memorySize,
           environment: await construct.getEnvironment(),
-          authorizer: construct.authorizer?.name,
+          authorizer: construct.authorizer?.name ?? 'none',
         };
 
         routes.push(routeInfo);

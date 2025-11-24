@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DummyService } from '../services/DummyService';
 import { router } from './router';
 
 /**
@@ -6,6 +7,7 @@ import { router } from './router';
  */
 export const health = router
   .get('/health')
+  .services([DummyService])
   .output(
     z.object({
       status: z.literal('ok'),
