@@ -77,6 +77,11 @@ export type TemplatePropsFor<
 export interface EmailClientConfig<T extends TemplateRecord = TemplateRecord> {
   smtp: SMTPConfig;
   templates: T;
+  dkim?: {
+    domainName: string;
+    keySelector: string;
+    privateKey: string;
+  };
   defaults: {
     from?: string | Address;
     replyTo?: string | Address;

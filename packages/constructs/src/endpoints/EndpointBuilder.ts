@@ -3,6 +3,7 @@ import type { RateLimitConfig } from '@geekmidas/rate-limit';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
+import type { Authorizer } from './Authorizer';
 import { ConstructType } from '../Construct';
 import { BaseFunctionBuilder } from '../functions';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
@@ -26,6 +27,7 @@ export class EndpointBuilder<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuthorizers extends readonly string[] = readonly string[],
 > extends BaseFunctionBuilder<
   TInput,
   OutSchema,
@@ -38,9 +40,12 @@ export class EndpointBuilder<
   protected _description?: string;
   protected _status?: SuccessStatus;
   protected _tags?: string[];
+  protected _memorySize?: number;
   _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
+  _availableAuthorizers: Authorizer[] = [];
+  _authorizerName?: TAuthorizers[number];
 
   constructor(
     readonly route: TRoute,
@@ -78,6 +83,11 @@ export class EndpointBuilder<
     return this;
   }
 
+  memorySize(memorySize: number): this {
+    this._memorySize = memorySize;
+    return this;
+  }
+
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
   ): EndpointBuilder<
@@ -89,7 +99,8 @@ export class EndpointBuilder<
     OutSchema,
     TSession,
     T,
-    TName
+    TName,
+    TAuthorizers
   > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
@@ -105,7 +116,8 @@ export class EndpointBuilder<
       OutSchema,
       TSession,
       T,
-      TName
+      TName,
+      TAuthorizers
     >;
   }
 
@@ -119,7 +131,9 @@ export class EndpointBuilder<
     TLogger,
     OutSchema,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this.schemas.body = schema as unknown as T;
     // @ts-ignore
@@ -136,7 +150,9 @@ export class EndpointBuilder<
     TLogger,
     OutSchema,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this.schemas.query = schema as unknown as T;
     // @ts-ignore
@@ -153,7 +169,9 @@ export class EndpointBuilder<
     TLogger,
     OutSchema,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     return this.search(schema);
   }
@@ -168,7 +186,9 @@ export class EndpointBuilder<
     TLogger,
     OutSchema,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this.schemas.params = schema as unknown as T;
     // @ts-ignore
@@ -177,6 +197,40 @@ export class EndpointBuilder<
 
   rateLimit(config: RateLimitConfig): this {
     this._rateLimit = config;
+    return this;
+  }
+
+  authorizer(
+    name: TAuthorizers[number] | 'none',
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
+  > {
+    // Special case: 'none' explicitly marks endpoint as having no authorizer
+    if (name === 'none') {
+      this._authorizerName = undefined;
+      return this;
+    }
+
+    // Validate that the authorizer exists in available authorizers
+    const authorizerExists = this._availableAuthorizers.some(
+      (a) => a.name === name,
+    );
+    if (!authorizerExists && this._availableAuthorizers.length > 0) {
+      const available = this._availableAuthorizers.map((a) => a.name).join(', ');
+      throw new Error(
+        `Authorizer "${name as string}" not found in available authorizers: ${available}`,
+      );
+    }
+    this._authorizerName = name;
     return this;
   }
 
@@ -191,7 +245,8 @@ export class EndpointBuilder<
     OutSchema,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -207,7 +262,8 @@ export class EndpointBuilder<
       OutSchema,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >;
   }
 
@@ -222,7 +278,8 @@ export class EndpointBuilder<
     OutSchema,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -235,7 +292,8 @@ export class EndpointBuilder<
       OutSchema,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >;
   }
 
@@ -250,7 +308,8 @@ export class EndpointBuilder<
     T,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -263,7 +322,8 @@ export class EndpointBuilder<
       T,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >;
   }
 
@@ -286,6 +346,11 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher
   > {
+    // Find authorizer metadata if name is set
+    const authorizer = this._authorizerName
+      ? this._availableAuthorizers.find((a) => a.name === this._authorizerName)
+      : undefined;
+
     return new Endpoint({
       fn,
       method: this.method,
@@ -297,12 +362,14 @@ export class EndpointBuilder<
       services: this._services,
       logger: this._logger,
       timeout: this._timeout,
+      memorySize: this._memorySize,
       authorize: this._authorize,
       status: this._status,
       getSession: this._getSession,
       rateLimit: this._rateLimit,
       publisherService: this._publisher,
       events: this._events,
+      authorizer,
     });
   }
 }

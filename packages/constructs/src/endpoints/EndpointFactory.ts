@@ -2,6 +2,7 @@ import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
+import type { Authorizer } from './Authorizer';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 
@@ -17,6 +18,7 @@ export class EndpointFactory<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuthorizers extends readonly string[] = readonly string[],
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -27,6 +29,8 @@ export class EndpointFactory<
     | undefined;
   private defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
   private defaultLogger: TLogger = DEFAULT_LOGGER;
+  private availableAuthorizers: Authorizer[] = [];
+  private defaultAuthorizerName?: TAuthorizers[number];
 
   constructor({
     basePath,
@@ -36,13 +40,16 @@ export class EndpointFactory<
     // @ts-ignore
     defaultServices = [] as TServices,
     defaultEventPublisher,
+    availableAuthorizers = [],
+    defaultAuthorizerName,
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
     TLogger,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -55,6 +62,8 @@ export class EndpointFactory<
     this.defaultLogger = defaultLogger || (DEFAULT_LOGGER as TLogger);
     this.defaultSessionExtractor = defaultSessionExtractor;
     this.defaultEventPublisher = defaultEventPublisher;
+    this.availableAuthorizers = availableAuthorizers;
+    this.defaultAuthorizerName = defaultAuthorizerName;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -94,6 +103,41 @@ export class EndpointFactory<
     return result as JoinPaths<TBasePath, P>;
   }
 
+  // Configure available authorizers
+  authorizers<const T extends readonly string[]>(
+    authorizers: T,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    T
+  > {
+    const authorizerConfigs = authorizers.map((name) => ({
+      name,
+    }));
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      T
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: authorizerConfigs,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+    });
+  }
+
   // Create a sub-router with a path prefix
   route<TPath extends string>(
     path: TPath,
@@ -103,7 +147,8 @@ export class EndpointFactory<
     TLogger,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
     return new EndpointFactory<
@@ -112,7 +157,8 @@ export class EndpointFactory<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >({
       defaultServices: this.defaultServices,
       basePath: newBasePath,
@@ -120,6 +166,8 @@ export class EndpointFactory<
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -132,7 +180,8 @@ export class EndpointFactory<
     TLogger,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     return new EndpointFactory<
       TServices,
@@ -140,7 +189,8 @@ export class EndpointFactory<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -148,6 +198,8 @@ export class EndpointFactory<
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -160,7 +212,8 @@ export class EndpointFactory<
     TLogger,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     return new EndpointFactory<
       [...S, ...TServices],
@@ -168,7 +221,8 @@ export class EndpointFactory<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
@@ -176,6 +230,8 @@ export class EndpointFactory<
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -187,7 +243,8 @@ export class EndpointFactory<
     L,
     TSession,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     return new EndpointFactory<
       TServices,
@@ -195,7 +252,8 @@ export class EndpointFactory<
       L,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -208,6 +266,8 @@ export class EndpointFactory<
       defaultSessionExtractor: this
         .defaultSessionExtractor as unknown as SessionFn<TServices, L, TSession>,
       defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -216,14 +276,23 @@ export class EndpointFactory<
     TServiceName extends string = string,
   >(
     publisher: Service<TServiceName, T>,
-  ): EndpointFactory<TServices, TBasePath, TLogger, TSession, T, TServiceName> {
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    T,
+    TServiceName,
+    TAuthorizers
+  > {
     return new EndpointFactory<
       TServices,
       TBasePath,
       TLogger,
       TSession,
       T,
-      TServiceName
+      TServiceName,
+      TAuthorizers
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -231,6 +300,8 @@ export class EndpointFactory<
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: publisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -242,7 +313,8 @@ export class EndpointFactory<
     TLogger,
     T,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     return new EndpointFactory<
       TServices,
@@ -250,7 +322,8 @@ export class EndpointFactory<
       TLogger,
       T,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuthorizers
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -262,6 +335,8 @@ export class EndpointFactory<
       defaultLogger: this.defaultLogger,
       defaultSessionExtractor: session,
       defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
     });
   }
 
@@ -276,7 +351,9 @@ export class EndpointFactory<
     TLogger,
     undefined,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers
   > {
     const fullPath = EndpointFactory.joinPaths(path, this.basePath);
     const builder = new EndpointBuilder<
@@ -287,7 +364,9 @@ export class EndpointFactory<
       TLogger,
       undefined,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers
     >(fullPath, method);
 
     if (this.defaultAuthorizeFn) {
@@ -295,7 +374,8 @@ export class EndpointFactory<
       builder._authorize = this.defaultAuthorizeFn;
     }
     if (this.defaultServices.length) {
-      builder._services = this.defaultServices as TServices;
+      // Create a copy to avoid sharing references between builders
+      builder._services = [...this.defaultServices] as TServices;
     }
 
     if (this.defaultLogger) {
@@ -314,17 +394,13 @@ export class EndpointFactory<
       builder._setPublisher(this.defaultEventPublisher);
     }
 
-    return builder as unknown as EndpointBuilder<
-      JoinPaths<TBasePath, TPath>,
-      TMethod,
-      {},
-      TServices,
-      TLogger,
-      undefined,
-      TSession,
-      TEventPublisher,
-      TEventPublisherServiceName
-    >;
+    // Set available authorizers and default
+    builder._availableAuthorizers = this.availableAuthorizers;
+    if (this.defaultAuthorizerName) {
+      builder._authorizerName = this.defaultAuthorizerName;
+    }
+
+    return builder;
   }
 
   post<TPath extends string>(path: TPath) {
@@ -386,6 +462,7 @@ export interface EndpointFactoryOptions<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuthorizers extends readonly string[] = readonly string[],
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;
@@ -394,6 +471,8 @@ export interface EndpointFactoryOptions<
   defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession>;
   defaultEventPublisher?: Service<TEventPublisherServiceName, TEventPublisher>;
   defaultEvents?: MappedEvent<TEventPublisher, undefined>[];
+  availableAuthorizers?: Authorizer[];
+  defaultAuthorizerName?: TAuthorizers[number];
 }
 
 export const e = new EndpointFactory();

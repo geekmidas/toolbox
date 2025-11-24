@@ -27,12 +27,19 @@ export class FunctionBuilder<
   TEventPublisher,
   TEventPublisherServiceName
 > {
+  protected _memorySize?: number;
+
   constructor(public type = ConstructType.Function) {
     super(type);
   }
 
   timeout(timeout: number): this {
     this._timeout = timeout;
+    return this;
+  }
+
+  memorySize(memorySize: number): this {
+    this._memorySize = memorySize;
     return this;
   }
 
@@ -166,6 +173,7 @@ export class FunctionBuilder<
       this._logger,
       this._publisher,
       this._events,
+      this._memorySize,
     );
 
     // Reset builder state after creating the function to prevent pollution
@@ -176,6 +184,7 @@ export class FunctionBuilder<
     this.inputSchema = undefined;
     this.outputSchema = undefined;
     this._timeout = undefined;
+    this._memorySize = undefined;
 
     return func;
   }

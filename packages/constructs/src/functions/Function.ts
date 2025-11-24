@@ -125,7 +125,7 @@ export class Function<
 
   constructor(
     protected readonly fn: Fn,
-    readonly timeout = 30000, // Default timeout of 30 seconds
+    timeout = 30000, // Default timeout of 30 seconds
     type: ConstructType = ConstructType.Function,
     public input?: TInput,
     outputSchema?: OutSchema,
@@ -133,8 +133,18 @@ export class Function<
     logger: TLogger = DEFAULT_LOGGER,
     publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: MappedEvent<TEventPublisher, OutSchema>[] = [],
+    memorySize?: number,
   ) {
-    super(type, logger, services, events, publisherService, outputSchema);
+    super(
+      type,
+      logger,
+      services,
+      events,
+      publisherService,
+      outputSchema,
+      timeout,
+      memorySize,
+    );
   }
 }
 

@@ -60,7 +60,10 @@ export interface RouteInfo {
   path: string;
   method: string;
   handler: string;
+  timeout?: number;
+  memorySize?: number;
   environment?: string[];
+  authorizer?: string;
 }
 
 export interface FunctionInfo {

@@ -69,6 +69,7 @@ export class SubscriberGenerator extends ConstructGenerator<
         ),
         subscribedEvents: construct.subscribedEvents || [],
         timeout: construct.timeout,
+        memorySize: construct.memorySize,
         environment: await construct.getEnvironment(),
       });
 

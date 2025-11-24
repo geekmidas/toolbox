@@ -248,6 +248,123 @@ describe('Kysely Transaction Helper', () => {
         });
       });
     });
+
+    it('should set isolation level when provided', async () => {
+      const executeSpy = vi.fn(async (cb) => {
+        const mockTrx = { isTransaction: true } as Transaction<any>;
+        return cb(mockTrx);
+      });
+
+      const setIsolationLevelSpy = vi.fn(() => ({
+        execute: executeSpy,
+      }));
+
+      const mockDb = {
+        isTransaction: false,
+        transaction: vi.fn(() => ({
+          setIsolationLevel: setIsolationLevelSpy,
+          execute: executeSpy,
+        })),
+      } as unknown as Kysely<any>;
+
+      const callback = vi.fn(async (trx) => 'result');
+
+      const result = await withTransaction(mockDb, callback, {
+        isolationLevel: 'serializable',
+      });
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      expect(setIsolationLevelSpy).toHaveBeenCalledWith('serializable');
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(result).toBe('result');
+    });
+
+    it('should not set isolation level when not provided', async () => {
+      const executeSpy = vi.fn(async (cb) => {
+        const mockTrx = { isTransaction: true } as Transaction<any>;
+        return cb(mockTrx);
+      });
+
+      const setIsolationLevelSpy = vi.fn(() => ({
+        execute: executeSpy,
+      }));
+
+      const mockDb = {
+        isTransaction: false,
+        transaction: vi.fn(() => ({
+          setIsolationLevel: setIsolationLevelSpy,
+          execute: executeSpy,
+        })),
+      } as unknown as Kysely<any>;
+
+      const callback = vi.fn(async (trx) => 'result');
+
+      const result = await withTransaction(mockDb, callback);
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      expect(setIsolationLevelSpy).not.toHaveBeenCalled();
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      expect(result).toBe('result');
+    });
+
+    it('should support different isolation levels', async () => {
+      const executeSpy = vi.fn(async (cb) => {
+        const mockTrx = { isTransaction: true } as Transaction<any>;
+        return cb(mockTrx);
+      });
+
+      const setIsolationLevelSpy = vi.fn(() => ({
+        execute: executeSpy,
+      }));
+
+      const mockDb = {
+        isTransaction: false,
+        transaction: vi.fn(() => ({
+          setIsolationLevel: setIsolationLevelSpy,
+          execute: executeSpy,
+        })),
+      } as unknown as Kysely<any>;
+
+      const levels = [
+        'read uncommitted',
+        'read committed',
+        'repeatable read',
+        'serializable',
+        'snapshot',
+      ] as const;
+
+      for (const level of levels) {
+        setIsolationLevelSpy.mockClear();
+
+        await withTransaction(
+          mockDb,
+          async () => 'result',
+          { isolationLevel: level },
+        );
+
+        expect(setIsolationLevelSpy).toHaveBeenCalledWith(level);
+      }
+    });
+
+    it('should not set isolation level for existing transactions', async () => {
+      const mockTrx = {
+        isTransaction: true,
+        setIsolationLevel: vi.fn(),
+      } as unknown as Transaction<any>;
+
+      const callback = vi.fn(async (trx) => {
+        expect(trx).toBe(mockTrx);
+        return 'reused';
+      });
+
+      const result = await withTransaction(mockTrx, callback, {
+        isolationLevel: 'serializable',
+      });
+
+      expect((mockTrx as any).setIsolationLevel).not.toHaveBeenCalled();
+      expect(result).toBe('reused');
+    });
   });
 
   describe('DatabaseConnection type', () => {

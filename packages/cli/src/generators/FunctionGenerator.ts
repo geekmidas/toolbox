@@ -51,6 +51,7 @@ export class FunctionGenerator extends ConstructGenerator<
           '.handler',
         ),
         timeout: construct.timeout,
+        memorySize: construct.memorySize,
         environment: await construct.getEnvironment(),
       });
 

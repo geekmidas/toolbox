@@ -69,7 +69,10 @@ export class EndpointGenerator extends ConstructGenerator<
             /\.ts$/,
             '.handler',
           ),
+          timeout: construct.timeout,
+          memorySize: construct.memorySize,
           environment: await construct.getEnvironment(),
+          authorizer: construct.authorizer?.name,
         };
 
         routes.push(routeInfo);
@@ -96,7 +99,10 @@ export class EndpointGenerator extends ConstructGenerator<
             /\.ts$/,
             '.handler',
           ),
+          timeout: construct.timeout,
+          memorySize: construct.memorySize,
           environment: await construct.getEnvironment(),
+          authorizer: construct.authorizer?.name,
         };
 
         routes.push(routeInfo);

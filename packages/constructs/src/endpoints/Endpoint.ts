@@ -5,6 +5,7 @@ import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 
 import type { Service, ServiceRecord } from '@geekmidas/services';
+import type { Authorizer } from './Authorizer';
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
 
@@ -93,6 +94,8 @@ export class Endpoint<
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   /** Optional rate limiting configuration */
   public rateLimit?: RateLimitConfig;
+  /** Optional authorizer for this endpoint */
+  public authorizer?: Authorizer;
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
@@ -516,6 +519,7 @@ export class Endpoint<
    * @param options.getSession - Session extraction function
    * @param options.authorize - Authorization check function
    * @param options.status - Success HTTP status code (default: 200)
+   * @param options.authorizer - Optional authorizer configuration
    */
   constructor({
     fn,
@@ -528,12 +532,14 @@ export class Endpoint<
     output: outputSchema,
     services,
     timeout,
+    memorySize,
     getSession,
     authorize,
     rateLimit,
     status = SuccessStatus.OK,
     publisherService,
     events,
+    authorizer,
   }: EndpointOptions<
     TRoute,
     TMethod,
@@ -556,6 +562,7 @@ export class Endpoint<
       logger,
       publisherService,
       events,
+      memorySize,
     );
 
     this.route = route;
@@ -575,6 +582,10 @@ export class Endpoint<
 
     if (rateLimit) {
       this.rateLimit = rateLimit;
+    }
+
+    if (authorizer) {
+      this.authorizer = authorizer;
     }
   }
 }
@@ -642,6 +653,8 @@ export interface EndpointOptions<
   tags?: string[];
   /** Optional execution timeout in milliseconds */
   timeout: number | undefined;
+  /** Optional memory size in MB for serverless deployments */
+  memorySize: number | undefined;
   /** Input validation schemas */
   input: TInput | undefined;
   /** Output validation schema */
@@ -662,6 +675,8 @@ export interface EndpointOptions<
   publisherService?: Service<TEventPublisherServiceName, TEventPublisher>;
 
   events?: MappedEvent<TEventPublisher, OutSchema>[];
+  /** Optional authorizer configuration */
+  authorizer?: Authorizer;
 }
 
 /**

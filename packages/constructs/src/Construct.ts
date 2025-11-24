@@ -20,6 +20,8 @@ export abstract class Construct<
 
     public readonly publisherService?: Service<TServiceName, T>,
     public outputSchema?: OutSchema,
+    public readonly timeout?: number,
+    public readonly memorySize?: number,
   ) {}
 
   /**

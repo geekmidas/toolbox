@@ -42,6 +42,7 @@ export class Cron<
     logger?: TLogger,
     publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: any[] = [],
+    memorySize?: number,
   ) {
     super(
       fn,
@@ -53,6 +54,7 @@ export class Cron<
       logger,
       publisherService,
       events,
+      memorySize,
     );
   }
 

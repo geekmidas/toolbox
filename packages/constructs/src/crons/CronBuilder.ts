@@ -28,8 +28,14 @@ export class CronBuilder<
   TEventPublisherServiceName
 > {
   private _schedule?: ScheduleExpression;
+
   constructor() {
     super(ConstructType.Cron);
+  }
+
+  memorySize(memorySize: number): this {
+    this._memorySize = memorySize;
+    return this;
   }
 
   schedule(
@@ -175,6 +181,7 @@ export class CronBuilder<
       this._logger,
       this._publisher,
       this._events,
+      this._memorySize,
     );
 
     // Reset builder state after creating the cron to prevent pollution
@@ -186,6 +193,7 @@ export class CronBuilder<
     this.inputSchema = undefined;
     this.outputSchema = undefined;
     this._timeout = undefined;
+    this._memorySize = undefined;
 
     return cron;
   }
