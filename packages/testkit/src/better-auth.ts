@@ -65,22 +65,24 @@ function matchesWhere(record: any, where?: Where[]): boolean {
         matches = recordValue !== value;
         break;
       case 'lt':
-        matches = recordValue < value;
+        matches = value != null && recordValue < value;
         break;
       case 'lte':
-        matches = recordValue <= value;
+        matches = value != null && recordValue <= value;
         break;
       case 'gt':
-        matches = recordValue > value;
+        matches = value != null && recordValue > value;
         break;
       case 'gte':
-        matches = recordValue >= value;
+        matches = value != null && recordValue >= value;
         break;
       case 'in':
-        matches = Array.isArray(value) && value.includes(recordValue);
+        matches =
+          Array.isArray(value) && (value as unknown[]).includes(recordValue);
         break;
       case 'not_in':
-        matches = Array.isArray(value) && !value.includes(recordValue);
+        matches =
+          Array.isArray(value) && !(value as unknown[]).includes(recordValue);
         break;
       case 'contains':
         matches =
@@ -207,7 +209,7 @@ export const memoryAdapter = (
         return null;
       },
 
-      findMany: async ({ where, model, limit, offset, sortBy, select }) => {
+      findMany: async ({ where, model, limit, offset, sortBy }) => {
         debugLog('FIND_MANY', { model, where });
 
         const modelName = getModelName(model);
@@ -230,15 +232,11 @@ export const memoryAdapter = (
         }
 
         return Promise.all(
-          results.map(async (record) => {
-            const transformed = await transformOutput(record, model, select);
-
-            return transformed;
-          }),
-        );
+          results.map((record) => transformOutput(record, model)),
+        ) as any;
       },
 
-      update: async ({ where, update, model, select }) => {
+      update: async ({ where, update, model }) => {
         debugLog('UPDATE', { model, where });
 
         const modelName = getModelName(model);
@@ -254,7 +252,7 @@ export const memoryAdapter = (
             );
             const updated = { ...record, ...transformedData };
             modelData.set(id, updated);
-            return transformOutput(updated, model, select) as any;
+            return transformOutput(updated, model) as any;
           }
         }
         return null;
