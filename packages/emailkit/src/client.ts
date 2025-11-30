@@ -1,9 +1,8 @@
+import { render } from '@react-email/components';
 import nodemailer, { type Transporter } from 'nodemailer';
-import { renderToStaticMarkup } from 'react-dom/server';
 import type {
   EmailClient,
   EmailClientConfig,
-  EmailOptions,
   SendOptions,
   SendResult,
   TemplateNames,
@@ -26,6 +25,12 @@ export class SMTPClient<T extends TemplateRecord> implements EmailClient<T> {
       ...options,
     };
 
+    if (!mailOptions.from) {
+      throw new Error(
+        'The "from" field is required in email options or defaults',
+      );
+    }
+
     if (!mailOptions.text && !mailOptions.html) {
       throw new Error('Either text or html content must be provided');
     }
@@ -42,17 +47,17 @@ export class SMTPClient<T extends TemplateRecord> implements EmailClient<T> {
 
   async sendTemplate<K extends TemplateNames<T>>(
     template: K,
-    options: Omit<EmailOptions, 'template'> & {
+    options: Omit<SendOptions, 'template'> & {
       props: TemplatePropsFor<T, K>;
     },
   ): Promise<SendResult> {
-    const templateFn = this.config.templates[template];
-    if (!templateFn) {
+    const Component = this.config.templates[template];
+    if (!Component) {
       throw new Error(`Template "${String(template)}" not found`);
     }
 
-    const element = templateFn(options.props);
-    const html = renderToStaticMarkup(element);
+    const element = Component(options.props);
+    const html = await render(element);
 
     return this.send({
       ...options,

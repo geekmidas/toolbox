@@ -5,6 +5,8 @@ import { checkRateLimit, getRateLimitHeaders } from '@geekmidas/rate-limit';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
+import { logger as honoLogger } from 'hono/logger';
+import { timing } from 'hono/timing';
 import { validator } from 'hono/validator';
 import type { HttpMethod, LowerHttpMethod } from '../types';
 import {
@@ -64,6 +66,8 @@ export class HonoEndpoint<
       TEventPublisher
     >,
   ) {}
+
+  static isDev = process.env.NODE_ENV === 'development';
 
   static async validate<T extends StandardSchemaV1>(
     c: Context<any, string, {}>,
@@ -150,6 +154,15 @@ export class HonoEndpoint<
     app: Hono,
     options?: HonoEndpointOptions,
   ): void {
+    // Add timing middleware (always enabled)
+    app.use('*', timing());
+
+    // Add logger middleware in development mode
+
+    if (HonoEndpoint.isDev) {
+      app.use('*', honoLogger());
+    }
+
     // Add docs route if not disabled
     const docsPath =
       options?.docsPath !== false ? options?.docsPath || '/docs' : null;
@@ -353,6 +366,10 @@ export class HonoEndpoint<
             // @ts-ignore
             c.set('__logger', logger);
 
+            if (HonoEndpoint.isDev) {
+              logger.info({ status, body: output }, 'Outgoing response');
+            }
+
             return c.json(output, status);
           } catch (validationError: any) {
             logger.error(validationError, 'Output validation failed');
@@ -361,11 +378,23 @@ export class HonoEndpoint<
               422,
               'Response validation failed',
             );
+            if (HonoEndpoint.isDev) {
+              logger.info(
+                { status: error.statusCode, body: error },
+                'Outgoing response',
+              );
+            }
             return c.json(error, error.statusCode as ContentfulStatusCode);
           }
         } catch (e: any) {
           logger.error(e, 'Error processing endpoint request');
           const error = wrapError(e, 500, 'Internal Server Error');
+          if (HonoEndpoint.isDev) {
+            logger.info(
+              { status: error.statusCode, body: error },
+              'Outgoing response',
+            );
+          }
           return c.json(error, error.statusCode as ContentfulStatusCode);
         }
       },

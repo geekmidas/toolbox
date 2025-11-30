@@ -25,5 +25,8 @@
     "@types/lodash.get": "~4.4.9",
     "@types/lodash.set": "~4.3.9",
     "@types/lodash.snakecase": "~4.1.9"
+  },
+  "peerDependencies": {
+    "sst": "~3.17.23"
   }
 }

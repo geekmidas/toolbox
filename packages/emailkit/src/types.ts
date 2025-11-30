@@ -92,8 +92,7 @@ export interface EmailClient<T extends TemplateRecord = TemplateRecord> {
   send(options: SendOptions): Promise<SendResult>;
   sendTemplate<K extends TemplateNames<T>>(
     template: K,
-    options: Omit<EmailOptions, 'from'> & {
-      from?: string | Address;
+    options: SendOptions & {
       props: TemplatePropsFor<T, K>;
     },
   ): Promise<SendResult>;

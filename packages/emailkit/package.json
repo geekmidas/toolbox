@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/emailkit",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "Type-safe email client with SMTP support and React templates",
   "private": false,
   "type": "module",
@@ -28,7 +28,8 @@
   },
   "peerDependencies": {
     "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "react-dom": ">=18.0.0",
+    "@react-email/components": "~1.0.1"
   },
   "engines": {
     "node": ">=22.0.0"
