@@ -133,38 +133,81 @@ interface AuditMetadata {
 }
 ```
 
-### Auditor Interface
+### AuditableAction Type
 
-The core abstraction for audit collection. **Generic and extensible** - create custom implementations:
+Define type-safe audit actions (similar to `PublishableMessage` in events):
 
 ```typescript
-interface Auditor<TRecord = AuditRecord> {
+/**
+ * Define an auditable action type with its payload structure.
+ * Use union types to define all possible audit actions for your app.
+ */
+type AuditableAction<TType extends string, TPayload = unknown> = {
+  type: TType;
+  payload: TPayload;
+};
+
+// Example: Define your app's audit types
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'user.updated', { userId: string; changes: string[] }>
+  | AuditableAction<'user.deleted', { userId: string; reason?: string }>
+  | AuditableAction<'order.placed', { orderId: string; total: number }>
+  | AuditableAction<'payment.processed', { orderId: string; transactionId: string }>;
+```
+
+### Type Extraction Utilities
+
+```typescript
+/**
+ * Extract the type string from an AuditableAction union
+ */
+type ExtractAuditType<T extends AuditableAction<string, unknown>> =
+  T extends AuditableAction<infer TType, unknown> ? TType : never;
+
+/**
+ * Extract the payload for a specific audit type
+ */
+type ExtractAuditPayload<
+  T extends AuditableAction<string, unknown>,
+  TType extends ExtractAuditType<T>,
+> = T extends AuditableAction<TType, infer TPayload> ? TPayload : never;
+```
+
+### Auditor Interface
+
+The core abstraction for audit collection. **Generic over audit action types** for full type safety:
+
+```typescript
+interface Auditor<
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<string, unknown>,
+> {
   /**
    * The actor for all audits in this context.
-   * Set at construction time via the actor extractor, immutable.
+   * Set at construction time, immutable.
    */
   readonly actor: AuditActor;
 
   /**
-   * Record a custom audit entry.
-   * Use this for application-level audits that aren't database operations.
+   * Record a type-safe audit entry.
+   * The payload type is inferred from the audit type.
    */
-  audit<TPayload = unknown>(
-    type: string,
-    payload: TPayload,
-    options?: AuditOptions
+  audit<TType extends ExtractAuditType<TAuditAction>>(
+    type: TType,
+    payload: ExtractAuditPayload<TAuditAction, TType>,
+    options?: AuditOptions,
   ): void;
 
   /**
    * Record a raw audit record.
    * Use this when you need full control over the audit structure.
    */
-  record(record: Omit<TRecord, 'id' | 'timestamp' | 'actor'>): void;
+  record(record: Omit<AuditRecord, 'id' | 'timestamp' | 'actor'>): void;
 
   /**
    * Get all collected audit records.
    */
-  getRecords(): TRecord[];
+  getRecords(): AuditRecord[];
 
   /**
    * Flush all collected audits to storage.
@@ -244,28 +287,40 @@ const processOrder = e
 
 ### 2. Declarative Auditing (Builder Pattern)
 
-Similar to events, declare audits on the endpoint:
+Similar to `.events()`, declare audits on the endpoint with `.audit()`:
 
 ```typescript
+// Define app audit types for type safety
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'user.updated', { userId: string; changes: string[] }>;
+
 const createUser = e
   .post('/users')
   .services([databaseService])
-  .auditor(auditStorageService)
+  .auditor(auditStorageService)  // Just the service
+  .actor(({ session, header }) => ({
+    id: session?.userId,
+    type: 'user',
+    ip: header('x-forwarded-for'),
+  }))
   .body(createUserSchema)
   .output(userSchema)
-  // Declarative audit - processed after handler returns
-  .audit({
-    type: 'user.created',
-    payload: (response) => ({
-      userId: response.id,
-      email: response.email
-    }),
-    // Optional: only audit under certain conditions
-    when: (response) => response.role !== 'system',
-    // Optional: specify entity ID for easier querying
-    entityId: (response) => response.id,
-    table: 'users',
-  })
+  // Declarative audits - array like .events()
+  .audit<AppAuditAction>([
+    {
+      type: 'user.created',  // ✅ Type-safe - must be valid audit type
+      payload: (response) => ({
+        userId: response.id,
+        email: response.email,  // ✅ Payload shape enforced
+      }),
+      // Optional: only audit under certain conditions
+      when: (response) => response.role !== 'system',
+      // Optional: specify entity ID for easier querying
+      entityId: (response) => response.id,
+      table: 'users',
+    },
+  ])
   .handle(async ({ body, services }) => {
     return await services.database
       .insertInto('users')
@@ -285,8 +340,8 @@ import { AuditableKysely } from '@geekmidas/audit/kysely';
 const updateUser = e
   .put('/users/:id')
   .services([databaseService])
-  // Actor extractor has full handler context
-  .auditor(auditStorageService, ({ session, header }) => ({
+  .auditor(auditStorageService)  // Just the service
+  .actor(({ session, header }) => ({
     id: session.userId,
     type: 'user',
     ip: header('x-forwarded-for'),
@@ -691,28 +746,58 @@ const transferFunds = e
 
 ### EndpointBuilder Methods
 
+The audit builder pattern mirrors `.publisherService()` and `.events()`:
+
 ```typescript
-// Add auditor service with actor extractor
-// Actor function has access to full handler context
-.auditor(auditStorageService, ({ session, header, services, logger }) => ({
+// Pattern comparison:
+// Events:  .publisherService(service).events([...])
+// Audits:  .auditor(service).audit([...])
+
+// Add auditor service (just the service, no actor extractor)
+.auditor(auditStorageService)
+
+// Optional: Set actor extractor separately
+.actor(({ session, header }) => ({
   id: session?.userId,
   type: session ? 'user' : 'anonymous',
   ip: header('x-forwarded-for'),
 }))
 
-// Add declarative audit
-.audit({
-  type: 'user.created',
-  payload: (response) => ({ userId: response.id }),
-  when: (response) => response.active,
-  entityId: (response) => response.id,
-  table: 'users',
-})
+// Add declarative audits (array, like .events())
+.audit<AppAuditAction>([
+  {
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+    when: (response) => response.active,
+    entityId: (response) => response.id,
+    table: 'users',
+  },
+])
+```
+
+### MappedAudit Type
+
+Similar to `MappedEvent`, defines how to map response to audit:
+
+```typescript
+interface MappedAudit<
+  TAuditAction extends AuditableAction<string, unknown>,
+  TOutput extends StandardSchemaV1,
+> {
+  type: ExtractAuditType<TAuditAction>;
+  payload: (
+    response: InferStandardSchema<TOutput>,
+    ctx: EndpointContext,
+  ) => ExtractAuditPayload<TAuditAction, typeof type>;
+  when?: (response: InferStandardSchema<TOutput>) => boolean;
+  entityId?: (response: InferStandardSchema<TOutput>) => string | Record<string, unknown>;
+  table?: string;
+}
 ```
 
 ### Actor Extractor Type
 
-The actor extractor function is **required** and receives the same context as the handler:
+The actor extractor is **optional** and set via a separate `.actor()` method:
 
 ```typescript
 type ActorExtractor<TServices, TSession, TLogger> = (ctx: {
@@ -723,19 +808,14 @@ type ActorExtractor<TServices, TSession, TLogger> = (ctx: {
   logger: TLogger;
 }) => AuditActor | Promise<AuditActor>;
 
-// Usage - actor function is required!
-.auditor(auditStorageService, ({ session, header }) => ({
+// Usage - actor is optional, defaults to empty actor if not set
+.auditor(auditStorageService)
+.actor(({ session, header }) => ({
   id: session.userId,
   type: 'user',
   ip: header('x-forwarded-for'),
 }))
 ```
-
-This design ensures:
-- **Every audit has an actor** - No audits without attribution
-- **Immutable actor** - Actor is set once at request start, can't be changed
-- **Full context access** - Extract from session, headers, services, etc.
-- **Async support** - Look up additional user data if needed
 
 ### EndpointContext
 
@@ -747,10 +827,18 @@ When `.auditor()` is called, `auditor` is **guaranteed** to exist (not optional)
   // auditor not available
 });
 
-// With .auditor() - auditor is guaranteed
+// With .auditor() - auditor is guaranteed and typed
 .handle(async ({ services, auditor }) => {
-  // auditor: Auditor (not optional!)
-  auditor.audit('action', { data: 'value' });
+  // auditor: Auditor<AppAuditAction> (not optional!)
+
+  // ✅ Type-safe - payload inferred from 'user.created'
+  auditor.audit('user.created', { userId: '123', email: 'test@example.com' });
+
+  // ❌ Type error - wrong payload
+  auditor.audit('user.created', { orderId: '123' });
+
+  // ❌ Type error - unknown audit type
+  auditor.audit('unknown.type', {});
 });
 ```
 
@@ -841,9 +929,9 @@ The `@geekmidas/audit` package provides:
 1. **Transaction-safe auditing** - Audits commit/rollback with mutations
 2. **Database-agnostic core** - Provider wrappers are separate subpath imports
 3. **Three audit methods** - Manual (context), declarative (builder), automatic (wrapper)
-4. **Required actor** - Every audit has attribution via required actor extractor
-5. **Immutable actor** - Actor set once at request start, cannot be changed
-6. **Extensible architecture** - Generic `Auditor` interface for custom implementations
+4. **Type-safe audit types** - `AuditableAction<TType, TPayload>` like `PublishableMessage`
+5. **Consistent API pattern** - `.auditor()` + `.audit()` mirrors `.publisherService()` + `.events()`
+6. **Optional actor extraction** - Separate `.actor()` method for flexibility
 7. **Full change tracking** - Old values, new values, actor, metadata
 8. **Pluggable storage** - Same DB, external service, or custom
-9. **Type-safe** - Full TypeScript inference throughout
+9. **Generic Auditor interface** - Extensible for custom implementations

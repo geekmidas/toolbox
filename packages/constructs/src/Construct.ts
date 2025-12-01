@@ -5,6 +5,10 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
 
+// Cache for service environment variables to handle singleton services
+// Key: service class/constructor, Value: array of env var names
+const serviceEnvCache = new Map<Service, string[]>();
+
 export abstract class Construct<
   TLogger extends Logger = Logger,
   TServiceName extends string = string,
@@ -29,6 +33,9 @@ export abstract class Construct<
    * This is determined by running a "sniffer" EnvironmentParser through each service's
    * register method to track which environment variables are accessed.
    *
+   * Results are cached per service class to handle singleton patterns where
+   * subsequent register() calls may short-circuit and not access env vars.
+   *
    * @returns Promise that resolves to array of environment variable names, sorted alphabetically
    *
    * @example
@@ -42,15 +49,23 @@ export abstract class Construct<
    * ```
    */
   async getEnvironment(): Promise<string[]> {
-    const sniffer = new SnifferEnvironmentParser();
+    const envVars = new Set<string>();
     const services: Service[] = compact([
       ...this.services,
       this.publisherService,
     ]);
 
     try {
-      // Run each service's register method with the sniffer to track env var access
       for (const service of services) {
+        // Check cache first - handles singleton services that short-circuit
+        if (serviceEnvCache.has(service)) {
+          const cached = serviceEnvCache.get(service)!;
+          cached.forEach((v) => envVars.add(v));
+          continue;
+        }
+
+        // Sniff the service for env vars
+        const sniffer = new SnifferEnvironmentParser();
         try {
           const result = service.register(sniffer as any);
 
@@ -60,12 +75,15 @@ export abstract class Construct<
           }
         } catch {
           // Service registration may fail but env vars are still tracked
-          continue;
         }
+
+        // Cache and collect the env vars
+        const serviceEnvVars = sniffer.getEnvironmentVariables();
+        serviceEnvCache.set(service, serviceEnvVars);
+        serviceEnvVars.forEach((v) => envVars.add(v));
       }
 
-      // Get tracked env vars directly from the sniffer
-      return sniffer.getEnvironmentVariables();
+      return Array.from(envVars).sort();
     } catch (error) {
       console.error(
         'Error determining environment variables for construct:',
