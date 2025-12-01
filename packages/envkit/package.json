@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/envkit",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": false,
   "type": "module",
   "exports": {
@@ -13,6 +13,11 @@
       "types": "./dist/sst.d.ts",
       "import": "./dist/sst.mjs",
       "require": "./dist/sst.cjs"
+    },
+    "./sniffer": {
+      "types": "./dist/SnifferEnvironmentParser.d.ts",
+      "import": "./dist/SnifferEnvironmentParser.mjs",
+      "require": "./dist/SnifferEnvironmentParser.cjs"
     }
   },
   "publishConfig": {

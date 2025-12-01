@@ -1,4 +1,4 @@
-import { EnvironmentParser } from '@geekmidas/envkit';
+import { SnifferEnvironmentParser } from '@geekmidas/envkit/sniffer';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
@@ -42,8 +42,7 @@ export abstract class Construct<
    * ```
    */
   async getEnvironment(): Promise<string[]> {
-    const envVars = new Set<string>();
-    const sniffer = new EnvironmentParser({});
+    const sniffer = new SnifferEnvironmentParser();
     const services: Service[] = compact([
       ...this.services,
       this.publisherService,
@@ -53,34 +52,20 @@ export abstract class Construct<
       // Run each service's register method with the sniffer to track env var access
       for (const service of services) {
         try {
-          const config = service.register(sniffer);
+          const result = service.register(sniffer as any);
 
           // Await if it's a Promise (async services)
-          const resolvedConfig =
-            config && typeof config === 'object' && 'then' in config
-              ? await Promise.resolve(config)
-              : config;
-
-          // If register returns a ConfigParser, collect its env vars
-          if (
-            resolvedConfig &&
-            typeof resolvedConfig === 'object' &&
-            'getEnvironmentVariables' in resolvedConfig &&
-            typeof resolvedConfig.getEnvironmentVariables === 'function'
-          ) {
-            const vars = resolvedConfig.getEnvironmentVariables();
-            if (Array.isArray(vars)) {
-              vars.forEach((v: string) => envVars.add(v));
-            }
+          if (result && typeof result === 'object' && 'then' in result) {
+            await Promise.resolve(result);
           }
-        } catch (serviceError) {
-          // Service registration failed (e.g., missing env vars during .parse())
-          // But env vars were already tracked during .create(), so we continue
+        } catch {
+          // Service registration may fail but env vars are still tracked
           continue;
         }
       }
 
-      return Array.from(envVars).sort();
+      // Get tracked env vars directly from the sniffer
+      return sniffer.getEnvironmentVariables();
     } catch (error) {
       console.error(
         'Error determining environment variables for construct:',

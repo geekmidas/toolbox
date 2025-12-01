@@ -261,6 +261,23 @@ export class EnvironmentParser<T extends EmptyObject> {
     const config = builder(this.getZodGetter);
     return new ConfigParser(config, this.accessedVars);
   }
+
+  /**
+   * Returns an array of environment variable names that were accessed via the getter.
+   * This is useful for build-time analysis to determine which env vars a service needs.
+   *
+   * @returns Array of environment variable names, sorted alphabetically
+   *
+   * @example
+   * ```typescript
+   * const sniffer = new EnvironmentParser({});
+   * service.register(sniffer);
+   * const envVars = sniffer.getEnvironmentVariables(); // ['DATABASE_URL', 'PORT']
+   * ```
+   */
+  getEnvironmentVariables(): string[] {
+    return Array.from(this.accessedVars).sort();
+  }
 }
 
 /**
