@@ -104,6 +104,18 @@ importers:
         specifier: ~4.20.6
         version: 4.20.6
 
+  packages/audit:
+    dependencies:
+      '@geekmidas/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@standard-schema/spec':
+        specifier: ~1.0.0
+        version: 1.0.0
+      nanoid:
+        specifier: ~5.1.5
+        version: 5.1.6
+
   packages/auth:
     dependencies:
       '@geekmidas/cache':
@@ -5655,6 +5667,11 @@ packages:
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+    hasBin: true
+
+  nanoid@5.1.6:
+    resolution: {integrity: sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==}
+    engines: {node: ^18 || >=20}
     hasBin: true
 
   nanostores@1.1.0:
@@ -14156,6 +14173,8 @@ snapshots:
       thenify-all: 1.6.0
 
   nanoid@3.3.11: {}
+
+  nanoid@5.1.6: {}
 
   nanostores@1.1.0: {}
 

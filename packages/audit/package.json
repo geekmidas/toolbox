@@ -1,0 +1,21 @@
+{
+  "name": "@geekmidas/audit",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "@geekmidas/schema": "workspace:*",
+    "@standard-schema/spec": "~1.0.0",
+    "nanoid": "~5.1.5"
+  }
+}
