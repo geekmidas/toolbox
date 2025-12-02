@@ -115,6 +115,16 @@ importers:
       nanoid:
         specifier: ~5.1.5
         version: 5.1.6
+    devDependencies:
+      '@types/pg':
+        specifier: ~8.15.6
+        version: 8.15.6
+      kysely:
+        specifier: ~0.28.2
+        version: 0.28.8
+      pg:
+        specifier: ~8.16.0
+        version: 8.16.3
 
   packages/auth:
     dependencies:
@@ -3365,6 +3375,9 @@ packages:
 
   '@types/pg@8.15.4':
     resolution: {integrity: sha512-I6UNVBAoYbvuWkkU3oosC8yxqH21f4/Jc4DK71JLG3dT2mdlGe1z+ep/LQGXaKaOgcvUrsQoPRqfgtMcvZiJhg==}
+
+  '@types/pg@8.15.6':
+    resolution: {integrity: sha512-NoaMtzhxOrubeL/7UZuNTrejB4MPAJ0RpxZqXQf2qXuVlTPuG6Y8p4u9dKRaue4yjmC7ZhzVO2/Yyyn25znrPQ==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -11524,6 +11537,12 @@ snapshots:
       '@types/node': 22.16.3
 
   '@types/pg@8.15.4':
+    dependencies:
+      '@types/node': 22.16.3
+      pg-protocol: 1.10.3
+      pg-types: 2.2.0
+
+  '@types/pg@8.15.6':
     dependencies:
       '@types/node': 22.16.3
       pg-protocol: 1.10.3

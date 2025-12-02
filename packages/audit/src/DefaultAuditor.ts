@@ -54,7 +54,7 @@ export class DefaultAuditor<
 {
   readonly actor: AuditActor;
   private readonly storage: AuditStorage;
-  private readonly metadata?: AuditMetadata;
+  private metadata?: AuditMetadata;
   private readonly generateId: () => string;
   private records: AuditRecord[] = [];
 
@@ -118,5 +118,11 @@ export class DefaultAuditor<
 
   clear(): void {
     this.records = [];
+  }
+
+  addMetadata(metadata: AuditMetadata): void {
+    this.metadata = this.metadata
+      ? { ...this.metadata, ...metadata }
+      : metadata;
   }
 }

@@ -7,6 +7,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
+    },
+    "./kysely": {
+      "types": "./dist/kysely.d.ts",
+      "import": "./dist/kysely.mjs",
+      "require": "./dist/kysely.cjs"
     }
   },
   "publishConfig": {
@@ -17,5 +22,13 @@
     "@geekmidas/schema": "workspace:*",
     "@standard-schema/spec": "~1.0.0",
     "nanoid": "~5.1.5"
+  },
+  "peerDependencies": {
+    "kysely": "^0.28.0"
+  },
+  "devDependencies": {
+    "kysely": "~0.28.2",
+    "pg": "~8.16.0",
+    "@types/pg": "~8.15.6"
   }
 }

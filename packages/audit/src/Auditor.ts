@@ -1,6 +1,7 @@
 import type {
   AuditableAction,
   AuditActor,
+  AuditMetadata,
   AuditOptions,
   AuditRecord,
   ExtractAuditPayload,
@@ -98,4 +99,24 @@ export interface Auditor<
    * Use with caution - collected audits will be lost.
    */
   clear(): void;
+
+  /**
+   * Add metadata to all future audit records.
+   * Merges with existing metadata (new values override existing).
+   * Typically called by adaptors to add request context.
+   *
+   * @param metadata - Metadata to add (requestId, endpoint, method, ip, etc.)
+   *
+   * @example
+   * ```typescript
+   * // In endpoint adaptor
+   * auditor.addMetadata({
+   *   requestId: 'req-123',
+   *   endpoint: '/users',
+   *   method: 'POST',
+   *   ip: '192.168.1.1',
+   * });
+   * ```
+   */
+  addMetadata(metadata: AuditMetadata): void;
 }

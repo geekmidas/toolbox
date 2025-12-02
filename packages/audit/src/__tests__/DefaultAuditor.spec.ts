@@ -319,4 +319,102 @@ describe('DefaultAuditor', () => {
       expect(auditor.getRecords()).toHaveLength(3);
     });
   });
+
+  describe('addMetadata', () => {
+    it('should add metadata when none exists', () => {
+      const auditor = new DefaultAuditor<TestAuditAction>({
+        actor: { id: 'user-123', type: 'user' },
+        storage,
+        generateId: () => 'test-id',
+      });
+
+      auditor.addMetadata({ requestId: 'req-123', endpoint: '/users' });
+      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+
+      const records = auditor.getRecords();
+      expect(records[0].metadata).toEqual({
+        requestId: 'req-123',
+        endpoint: '/users',
+      });
+    });
+
+    it('should merge with existing metadata', () => {
+      const auditor = new DefaultAuditor<TestAuditAction>({
+        actor: { id: 'user-123', type: 'user' },
+        storage,
+        metadata: { requestId: 'req-123' },
+        generateId: () => 'test-id',
+      });
+
+      auditor.addMetadata({ endpoint: '/users', method: 'POST' });
+      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+
+      const records = auditor.getRecords();
+      expect(records[0].metadata).toEqual({
+        requestId: 'req-123',
+        endpoint: '/users',
+        method: 'POST',
+      });
+    });
+
+    it('should override existing metadata values', () => {
+      const auditor = new DefaultAuditor<TestAuditAction>({
+        actor: { id: 'user-123', type: 'user' },
+        storage,
+        metadata: { requestId: 'old-req', endpoint: '/old' },
+        generateId: () => 'test-id',
+      });
+
+      auditor.addMetadata({ endpoint: '/new', ip: '192.168.1.1' });
+      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+
+      const records = auditor.getRecords();
+      expect(records[0].metadata).toEqual({
+        requestId: 'old-req',
+        endpoint: '/new',
+        ip: '192.168.1.1',
+      });
+    });
+
+    it('should apply to all future audits', () => {
+      const auditor = new DefaultAuditor<TestAuditAction>({
+        actor: { id: 'user-123', type: 'user' },
+        storage,
+        generateId: () => 'test-id',
+      });
+
+      // Audit before adding metadata
+      auditor.audit('user.created', { userId: '1', email: 'first@example.com' });
+
+      // Add metadata
+      auditor.addMetadata({ requestId: 'req-123' });
+
+      // Audit after adding metadata
+      auditor.audit('user.created', { userId: '2', email: 'second@example.com' });
+
+      const records = auditor.getRecords();
+      expect(records[0].metadata).toBeUndefined();
+      expect(records[1].metadata).toEqual({ requestId: 'req-123' });
+    });
+
+    it('should allow multiple addMetadata calls', () => {
+      const auditor = new DefaultAuditor<TestAuditAction>({
+        actor: { id: 'user-123', type: 'user' },
+        storage,
+        generateId: () => 'test-id',
+      });
+
+      auditor.addMetadata({ requestId: 'req-123' });
+      auditor.addMetadata({ endpoint: '/users' });
+      auditor.addMetadata({ method: 'POST' });
+      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+
+      const records = auditor.getRecords();
+      expect(records[0].metadata).toEqual({
+        requestId: 'req-123',
+        endpoint: '/users',
+        method: 'POST',
+      });
+    });
+  });
 });
