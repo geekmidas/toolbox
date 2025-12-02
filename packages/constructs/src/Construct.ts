@@ -1,3 +1,4 @@
+import type { AuditStorage } from '@geekmidas/audit';
 import { SnifferEnvironmentParser } from '@geekmidas/envkit/sniffer';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -15,6 +16,8 @@ export abstract class Construct<
   T extends EventPublisher<any> | undefined = undefined,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends Service[] = [],
+  TAuditStorageServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
 > {
   constructor(
     public readonly type: ConstructType,
@@ -26,6 +29,10 @@ export abstract class Construct<
     public outputSchema?: OutSchema,
     public readonly timeout?: number,
     public readonly memorySize?: number,
+    public readonly auditorStorageService?: Service<
+      TAuditStorageServiceName,
+      TAuditStorage
+    >,
   ) {}
 
   /**
@@ -53,6 +60,7 @@ export abstract class Construct<
     const services: Service[] = compact([
       ...this.services,
       this.publisherService,
+      this.auditorStorageService,
     ]);
 
     try {

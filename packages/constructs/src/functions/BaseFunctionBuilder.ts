@@ -1,15 +1,15 @@
+import type { AuditStorage } from '@geekmidas/audit';
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import type { Service } from '@geekmidas/services';
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import get from 'lodash.get';
-import { ConstructType } from '../Construct';
-
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type {
   ComposableStandardSchema,
   InferComposableStandardSchema,
 } from '@geekmidas/schema';
+import type { Service } from '@geekmidas/services';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+import get from 'lodash.get';
+import { ConstructType } from '../Construct';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -20,6 +20,8 @@ export abstract class BaseFunctionBuilder<
   TLogger extends Logger = Logger,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
 > {
   protected inputSchema?: TInput;
   protected outputSchema?: OutSchema;
@@ -30,6 +32,7 @@ export abstract class BaseFunctionBuilder<
 
   protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
   protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
+  protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 
   static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
     const schema = (s as StandardSchemaV1)['~standard'];
@@ -92,7 +95,16 @@ export abstract class BaseFunctionBuilder<
 
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
-  ): BaseFunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
+  ): BaseFunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    T,
+    TName,
+    TAuditStorage,
+    TAuditStorageServiceName
+  > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
       TEventPublisher
@@ -103,6 +115,37 @@ export abstract class BaseFunctionBuilder<
       OutSchema,
       TServices,
       TLogger,
+      T,
+      TName,
+      TAuditStorage,
+      TAuditStorageServiceName
+    >;
+  }
+
+  auditor<T extends AuditStorage, TName extends string>(
+    storage: Service<TName, T>,
+  ): BaseFunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    T,
+    TName
+  > {
+    this._auditorStorage = storage as unknown as Service<
+      TAuditStorageServiceName,
+      TAuditStorage
+    >;
+
+    return this as unknown as BaseFunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName,
       T,
       TName
     >;

@@ -276,6 +276,9 @@ importers:
 
   packages/constructs:
     dependencies:
+      '@geekmidas/audit':
+        specifier: workspace:*
+        version: link:../audit
       '@geekmidas/cache':
         specifier: workspace:*
         version: link:../cache

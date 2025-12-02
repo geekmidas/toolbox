@@ -1,7 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import type { AuditRecord, AuditStorage } from '@geekmidas/audit';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { FunctionBuilder } from '../FunctionBuilder';
 import type { Service } from '@geekmidas/services';
+import { describe, expect, it } from 'vitest';
+import { FunctionBuilder } from '../FunctionBuilder';
+
+// In-memory audit storage for testing
+class InMemoryAuditStorage implements AuditStorage {
+  records: AuditRecord[] = [];
+
+  async write(records: AuditRecord[]): Promise<void> {
+    this.records.push(...records);
+  }
+
+  async query(): Promise<AuditRecord[]> {
+    return this.records;
+  }
+}
 
 const ServiceA = {
   serviceName: 'a' as const,
@@ -155,6 +169,33 @@ describe('FunctionBuilder - State Isolation', () => {
 
       expect((fn1 as any).publisherService).toBe(mockPublisher);
       expect((fn2 as any).publisherService).toBeUndefined();
+    });
+  });
+
+  describe('auditor isolation', () => {
+    const auditStorageService = {
+      serviceName: 'auditStorage' as const,
+      async register() {
+        return new InMemoryAuditStorage();
+      },
+    } satisfies Service<'auditStorage', InMemoryAuditStorage>;
+
+    it('should set auditor storage service', () => {
+      const f = new FunctionBuilder();
+
+      const fn1 = f.auditor(auditStorageService).handle(async () => ({}));
+
+      expect((fn1 as any).auditorStorageService).toBe(auditStorageService);
+    });
+
+    it('should reset auditor storage after handle() is called', () => {
+      const f = new FunctionBuilder();
+
+      const fn1 = f.auditor(auditStorageService).handle(async () => ({}));
+      const fn2 = f.handle(async () => ({}));
+
+      expect((fn1 as any).auditorStorageService).toBe(auditStorageService);
+      expect((fn2 as any).auditorStorageService).toBeUndefined();
     });
   });
 });

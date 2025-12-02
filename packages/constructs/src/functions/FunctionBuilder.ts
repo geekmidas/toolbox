@@ -1,14 +1,14 @@
+import type { AuditStorage } from '@geekmidas/audit';
+import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
+import type { ComposableStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { Function, type FunctionHandler } from './Function';
-
-import type { EventPublisher } from '@geekmidas/events';
-import type { ComposableStandardSchema } from '@geekmidas/schema';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -19,13 +19,17 @@ export class FunctionBuilder<
   TLogger extends Logger = Logger,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
 > extends BaseFunctionBuilder<
   TInput,
   OutSchema,
   TServices,
   TLogger,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  TAuditStorage,
+  TAuditStorageServiceName
 > {
   protected _memorySize?: number;
 
@@ -51,7 +55,9 @@ export class FunctionBuilder<
     TServices,
     TLogger,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -61,7 +67,9 @@ export class FunctionBuilder<
       TServices,
       TLogger,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -73,7 +81,9 @@ export class FunctionBuilder<
     TServices,
     TLogger,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.inputSchema = schema as unknown as TInput;
 
@@ -83,7 +93,9 @@ export class FunctionBuilder<
       TServices,
       TLogger,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -95,7 +107,9 @@ export class FunctionBuilder<
     [...TServices, ...T],
     TLogger,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -108,7 +122,9 @@ export class FunctionBuilder<
       [...TServices, ...T],
       TLogger,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -120,7 +136,9 @@ export class FunctionBuilder<
     TServices,
     T,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -130,13 +148,24 @@ export class FunctionBuilder<
       TServices,
       T,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
-  ): FunctionBuilder<TInput, OutSchema, TServices, TLogger, T, TName> {
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    T,
+    TName,
+    TAuditStorage,
+    TAuditStorageServiceName
+  > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
       TEventPublisher
@@ -147,6 +176,37 @@ export class FunctionBuilder<
       OutSchema,
       TServices,
       TLogger,
+      T,
+      TName,
+      TAuditStorage,
+      TAuditStorageServiceName
+    >;
+  }
+
+  auditor<T extends AuditStorage, TName extends string>(
+    storage: Service<TName, T>,
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    T,
+    TName
+  > {
+    this._auditorStorage = storage as unknown as Service<
+      TAuditStorageServiceName,
+      TAuditStorage
+    >;
+
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName,
       T,
       TName
     >;
@@ -161,7 +221,9 @@ export class FunctionBuilder<
     OutSchema,
     FunctionHandler<TInput, TServices, TLogger, OutSchema>,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     const func = new Function(
       fn,
@@ -174,6 +236,7 @@ export class FunctionBuilder<
       this._publisher,
       this._events,
       this._memorySize,
+      this._auditorStorage,
     );
 
     // Reset builder state after creating the function to prevent pollution
@@ -181,6 +244,7 @@ export class FunctionBuilder<
     this._logger = DEFAULT_LOGGER;
     this._events = [];
     this._publisher = undefined;
+    this._auditorStorage = undefined;
     this.inputSchema = undefined;
     this.outputSchema = undefined;
     this._timeout = undefined;

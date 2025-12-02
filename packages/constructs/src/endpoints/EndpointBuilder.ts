@@ -1,11 +1,15 @@
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
-import type { Authorizer } from './Authorizer';
 import { ConstructType } from '../Construct';
 import { BaseFunctionBuilder } from '../functions';
+import type { HttpMethod } from '../types';
+import type { ActorExtractor, MappedAudit } from './audit';
+import type { Authorizer } from './Authorizer';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
   AuthorizeFn,
@@ -13,9 +17,6 @@ import type {
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
-
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
-import type { HttpMethod } from '../types';
 
 export class EndpointBuilder<
   TRoute extends string,
@@ -28,13 +29,21 @@ export class EndpointBuilder<
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuthorizers extends readonly string[] = readonly string[],
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > extends BaseFunctionBuilder<
   TInput,
   OutSchema,
   TServices,
   TLogger,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  TAuditStorage,
+  TAuditStorageServiceName
 > {
   protected schemas: TInput = {} as TInput;
   protected _description?: string;
@@ -46,6 +55,8 @@ export class EndpointBuilder<
   _rateLimit?: RateLimitConfig;
   _availableAuthorizers: Authorizer[] = [];
   _authorizerName?: TAuthorizers[number];
+  _actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
+  _audits: MappedAudit<TAuditAction, OutSchema>[] = [];
 
   constructor(
     readonly route: TRoute,
@@ -100,7 +111,9 @@ export class EndpointBuilder<
     TSession,
     T,
     TName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
@@ -117,7 +130,9 @@ export class EndpointBuilder<
       TSession,
       T,
       TName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -133,7 +148,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.schemas.body = schema as unknown as T;
     // @ts-ignore
@@ -152,7 +169,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.schemas.query = schema as unknown as T;
     // @ts-ignore
@@ -171,7 +190,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     return this.search(schema);
   }
@@ -188,7 +209,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.schemas.params = schema as unknown as T;
     // @ts-ignore
@@ -212,7 +235,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     // Special case: 'none' explicitly marks endpoint as having no authorizer
     if (name === 'none') {
@@ -246,7 +271,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -263,7 +290,9 @@ export class EndpointBuilder<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -279,7 +308,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -293,7 +324,9 @@ export class EndpointBuilder<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName
     >;
   }
 
@@ -309,7 +342,9 @@ export class EndpointBuilder<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -323,7 +358,129 @@ export class EndpointBuilder<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName
+    >;
+  }
+
+  /**
+   * Set the auditor storage service for this endpoint.
+   * This enables audit functionality and makes `auditor` available in the handler context.
+   */
+  auditor<T extends AuditStorage, TName extends string>(
+    storage: Service<TName, T>,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    T,
+    TName,
+    TAuditAction
+  > {
+    this._auditorStorage = storage as unknown as Service<
+      TAuditStorageServiceName,
+      TAuditStorage
+    >;
+
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      T,
+      TName,
+      TAuditAction
+    >;
+  }
+
+  /**
+   * Set the actor extractor function for audit records.
+   * The actor is extracted from the request context and attached to all audits.
+   */
+  actor(
+    extractor: ActorExtractor<TServices, TSession, TLogger>,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction
+  > {
+    this._actorExtractor = extractor;
+    return this;
+  }
+
+  /**
+   * Add declarative audit definitions that are processed after the handler executes.
+   * Similar to `.event()` for events, but for audits.
+   *
+   * @example
+   * ```typescript
+   * .audit<AppAuditAction>([
+   *   {
+   *     type: 'user.created',
+   *     payload: (response) => ({ userId: response.id, email: response.email }),
+   *     when: (response) => response.active,
+   *     entityId: (response) => response.id,
+   *     table: 'users',
+   *   },
+   * ])
+   * ```
+   */
+  audit<T extends AuditableAction<string, unknown>>(
+    audits: MappedAudit<T, OutSchema>[],
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    T
+  > {
+    this._audits = audits as unknown as MappedAudit<TAuditAction, OutSchema>[];
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      T
     >;
   }
 
@@ -344,7 +501,11 @@ export class EndpointBuilder<
     TServices,
     TLogger,
     TSession,
-    TEventPublisher
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction
   > {
     // Find authorizer metadata if name is set
     const authorizer = this._authorizerName
@@ -370,6 +531,9 @@ export class EndpointBuilder<
       publisherService: this._publisher,
       events: this._events,
       authorizer,
+      auditorStorageService: this._auditorStorage,
+      actorExtractor: this._actorExtractor,
+      audits: this._audits,
     });
   }
 }

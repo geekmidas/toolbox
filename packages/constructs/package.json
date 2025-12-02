@@ -62,6 +62,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@geekmidas/audit": "workspace:*",
     "@geekmidas/schema": "workspace:*",
     "@geekmidas/services": "workspace:*",
     "@geekmidas/logger": "workspace:*",

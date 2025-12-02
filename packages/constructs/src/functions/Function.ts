@@ -1,9 +1,5 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import uniqBy from 'lodash.uniqby';
-
-import type { Service, ServiceRecord } from '@geekmidas/services';
-import { Construct, ConstructType } from '../Construct';
-
+import type { AuditStorage } from '@geekmidas/audit';
+import { UnprocessableEntityError } from '@geekmidas/errors';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
@@ -12,9 +8,11 @@ import type {
   InferComposableStandardSchema,
   InferStandardSchema,
 } from '@geekmidas/schema';
-
-import { UnprocessableEntityError } from '@geekmidas/errors';
 import { parseSchema } from '@geekmidas/schema/parser';
+import type { Service, ServiceRecord } from '@geekmidas/services';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+import uniqBy from 'lodash.uniqby';
+import { Construct, ConstructType } from '../Construct';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -62,12 +60,16 @@ export class Function<
   > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
 > extends Construct<
   TLogger,
   TEventPublisherServiceName,
   TEventPublisher,
   OutSchema,
-  TServices
+  TServices,
+  TAuditStorageServiceName,
+  TAuditStorage
 > {
   __IS_FUNCTION__ = true;
 
@@ -134,6 +136,7 @@ export class Function<
     publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: MappedEvent<TEventPublisher, OutSchema>[] = [],
     memorySize?: number,
+    auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>,
   ) {
     super(
       type,
@@ -144,6 +147,7 @@ export class Function<
       outputSchema,
       timeout,
       memorySize,
+      auditorStorageService,
     );
   }
 }

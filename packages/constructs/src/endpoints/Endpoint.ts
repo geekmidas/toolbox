@@ -1,19 +1,10 @@
-import type { Logger } from '@geekmidas/logger';
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import pick from 'lodash.pick';
-import set from 'lodash.set';
-import type { OpenAPIV3_1 } from 'openapi-types';
-
-import type { Service, ServiceRecord } from '@geekmidas/services';
-import type { Authorizer } from './Authorizer';
-import { ConstructType } from '../Construct';
-import { Function, type FunctionHandler } from '../functions';
-
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type {
   EventPublisher,
   ExtractPublisherMessage,
   MappedEvent,
 } from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
 import type {
   InferComposableStandardSchema,
@@ -28,7 +19,16 @@ import {
   type OpenApiSchemaOptions,
   buildOpenApiSchema,
 } from '@geekmidas/schema/openapi';
+import type { Service, ServiceRecord } from '@geekmidas/services';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+import pick from 'lodash.pick';
+import set from 'lodash.set';
+import type { OpenAPIV3_1 } from 'openapi-types';
+import { ConstructType } from '../Construct';
+import { Function, type FunctionHandler } from '../functions';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
+import type { ActorExtractor, MappedAudit } from './audit';
+import type { Authorizer } from './Authorizer';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -65,6 +65,12 @@ export class Endpoint<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > extends Function<
   TInput,
   TServices,
@@ -72,7 +78,9 @@ export class Endpoint<
   OutSchema,
   FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  TAuditStorage,
+  TAuditStorageServiceName
 > {
   operationId?: string;
   /** The route path pattern with parameter placeholders */
@@ -96,6 +104,10 @@ export class Endpoint<
   public rateLimit?: RateLimitConfig;
   /** Optional authorizer for this endpoint */
   public authorizer?: Authorizer;
+  /** Optional actor extractor for audit records */
+  public actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
+  /** Declarative audit definitions */
+  public audits: MappedAudit<TAuditAction, OutSchema>[] = [];
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
@@ -540,6 +552,9 @@ export class Endpoint<
     publisherService,
     events,
     authorizer,
+    auditorStorageService,
+    actorExtractor,
+    audits,
   }: EndpointOptions<
     TRoute,
     TMethod,
@@ -550,7 +565,10 @@ export class Endpoint<
     TSession,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction
   >) {
     super(
       fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
@@ -563,6 +581,7 @@ export class Endpoint<
       publisherService,
       events,
       memorySize,
+      auditorStorageService,
     );
 
     this.route = route;
@@ -586,6 +605,14 @@ export class Endpoint<
 
     if (authorizer) {
       this.authorizer = authorizer;
+    }
+
+    if (actorExtractor) {
+      this.actorExtractor = actorExtractor;
+    }
+
+    if (audits) {
+      this.audits = audits;
     }
   }
 }
@@ -638,6 +665,12 @@ export interface EndpointOptions<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > {
   /** The route path with parameter placeholders */
   route: TRoute;
@@ -677,6 +710,14 @@ export interface EndpointOptions<
   events?: MappedEvent<TEventPublisher, OutSchema>[];
   /** Optional authorizer configuration */
   authorizer?: Authorizer;
+  /**
+   * Auditor storage service for persisting audit records from this endpoint
+   */
+  auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>;
+  /** Optional actor extractor function for audit records */
+  actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
+  /** Declarative audit definitions */
+  audits?: MappedAudit<TAuditAction, OutSchema>[];
 }
 
 /**

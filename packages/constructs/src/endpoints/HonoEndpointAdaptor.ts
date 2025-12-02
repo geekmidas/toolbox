@@ -26,6 +26,7 @@ import {
 } from '@geekmidas/services';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { publishConstructEvents } from '../publisher';
+import { processEndpointAudits } from './processAudits';
 
 export interface HonoEndpointOptions {
   /**
@@ -114,13 +115,34 @@ export class HonoEndpoint<
       const response = c.get('__response') as InferStandardSchema<TOutSchema>;
       // @ts-ignore
       const logger = c.get('__logger') as Logger;
+      // @ts-ignore
+      const session = c.get('__session');
+      // @ts-ignore
+      const services = c.get('__services') ?? {};
 
       if (Endpoint.isSuccessStatus(c.res.status) && endpoint) {
+        // Process events
         await publishConstructEvents<any, any>(
           endpoint,
           response,
           serviceDiscovery,
           logger,
+        );
+
+        // Process audits
+        await processEndpointAudits(
+          endpoint,
+          response,
+          serviceDiscovery,
+          logger,
+          {
+            session,
+            header: Endpoint.createHeaders(
+              Object.fromEntries(c.req.raw.headers.entries()),
+            ),
+            cookie: Endpoint.createCookies(c.req.header('cookie')),
+            services,
+          },
         );
       }
     });
@@ -365,6 +387,10 @@ export class HonoEndpoint<
             c.set('__endpoint', endpoint);
             // @ts-ignore
             c.set('__logger', logger);
+            // @ts-ignore
+            c.set('__session', session);
+            // @ts-ignore
+            c.set('__services', services);
 
             if (HonoEndpoint.isDev) {
               logger.info({ status, body: output }, 'Outgoing response');
