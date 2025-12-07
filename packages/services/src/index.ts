@@ -106,6 +106,22 @@ export class ServiceDiscovery<
   }
 
   /**
+   * Resets the singleton instance. Use only for testing purposes.
+   * This clears all cached services and allows a fresh instance to be created.
+   *
+   * @example
+   * ```typescript
+   * // In test teardown
+   * afterEach(() => {
+   *   ServiceDiscovery.reset();
+   * });
+   * ```
+   */
+  static reset(): void {
+    ServiceDiscovery._instance = undefined as any;
+  }
+
+  /**
    * Private constructor to enforce singleton pattern.
    *
    * @param logger - Logger instance for service logging

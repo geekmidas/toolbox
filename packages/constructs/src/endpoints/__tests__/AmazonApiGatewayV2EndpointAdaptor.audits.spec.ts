@@ -5,7 +5,7 @@ import type {
 } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import type { Service } from '@geekmidas/services';
+import { ServiceDiscovery, type Service } from '@geekmidas/services';
 import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -56,6 +56,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    ServiceDiscovery.reset();
     mockLogger = createMockLogger();
     envParser = new EnvironmentParser({});
   });

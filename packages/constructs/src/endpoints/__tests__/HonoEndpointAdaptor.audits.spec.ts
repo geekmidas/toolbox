@@ -53,7 +53,7 @@ describe('HonoEndpoint Audits', () => {
   const createServiceDiscovery = (logger: Logger) => {
     const envParser = new EnvironmentParser({});
     // Create a fresh instance by clearing the singleton
-    (ServiceDiscovery as any)._instance = undefined;
+    ServiceDiscovery.reset();
     return ServiceDiscovery.getInstance(logger, envParser);
   };
 
@@ -447,7 +447,7 @@ describe('HonoEndpoint Audits', () => {
     // No audits should be written
     expect(auditStorage.records).toHaveLength(0);
     expect(mockLogger.debug).toHaveBeenCalledWith(
-      'No declarative audits to process',
+      'No audits to process',
     );
   });
 

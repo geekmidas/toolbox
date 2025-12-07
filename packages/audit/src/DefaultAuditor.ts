@@ -30,6 +30,7 @@ export interface DefaultAuditorConfig {
  * Collects audit records in memory and flushes to storage.
  *
  * @template TAuditAction - Union of all allowed audit action types
+ * @template TTransaction - Transaction type (e.g., Kysely Transaction)
  *
  * @example
  * ```typescript
@@ -50,13 +51,15 @@ export class DefaultAuditor<
     string,
     unknown
   >,
-> implements Auditor<TAuditAction>
+  TTransaction = unknown,
+> implements Auditor<TAuditAction, TTransaction>
 {
   readonly actor: AuditActor;
   private readonly storage: AuditStorage;
   private metadata?: AuditMetadata;
   private readonly generateId: () => string;
   private records: AuditRecord[] = [];
+  private transaction?: TTransaction;
 
   constructor(config: DefaultAuditorConfig) {
     this.actor = config.actor;
@@ -105,7 +108,7 @@ export class DefaultAuditor<
     return [...this.records];
   }
 
-  async flush(trx?: unknown): Promise<void> {
+  async flush(trx?: TTransaction): Promise<void> {
     if (this.records.length === 0) {
       return;
     }
@@ -113,7 +116,17 @@ export class DefaultAuditor<
     const recordsToFlush = [...this.records];
     this.records = [];
 
-    await this.storage.write(recordsToFlush, trx);
+    // Use explicitly passed transaction, or fall back to stored transaction
+    const transactionToUse = trx ?? this.transaction;
+    await this.storage.write(recordsToFlush, transactionToUse);
+  }
+
+  setTransaction(trx: TTransaction): void {
+    this.transaction = trx;
+  }
+
+  getTransaction(): TTransaction | undefined {
+    return this.transaction;
   }
 
   clear(): void {

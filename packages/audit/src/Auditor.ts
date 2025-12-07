@@ -13,6 +13,7 @@ import type {
  * Generic over audit action types for full type safety.
  *
  * @template TAuditAction - Union of all allowed audit action types
+ * @template TTransaction - Transaction type (e.g., Kysely Transaction)
  *
  * @example
  * ```typescript
@@ -34,6 +35,7 @@ export interface Auditor<
     string,
     unknown
   >,
+  TTransaction = unknown,
 > {
   /**
    * The actor for all audits in this context.
@@ -92,7 +94,7 @@ export interface Auditor<
    *
    * @param trx - Optional transaction context for atomic writes
    */
-  flush(trx?: unknown): Promise<void>;
+  flush(trx?: TTransaction): Promise<void>;
 
   /**
    * Clear all collected audit records without flushing.
@@ -119,4 +121,37 @@ export interface Auditor<
    * ```
    */
   addMetadata(metadata: AuditMetadata): void;
+
+  /**
+   * Set the transaction context for audit flushing.
+   * When set, flush() will use this transaction instead of requiring
+   * it to be passed explicitly. This enables declarative audits to
+   * participate in the same transaction as the handler's database operations.
+   *
+   * @param trx - The transaction context (e.g., Kysely Transaction)
+   *
+   * @example
+   * ```typescript
+   * // In handler with explicit transaction management
+   * const result = await withTransaction(services.database.raw, async (trx) => {
+   *   // Register transaction with auditor so declarative audits use it
+   *   auditor.setTransaction(trx);
+   *
+   *   const user = await trx.insertInto('users').values(data).returningAll().executeTakeFirstOrThrow();
+   *
+   *   // Manual audits will also use this transaction when flush() is called
+   *   auditor.audit('user.created', { userId: user.id });
+   *
+   *   return user;
+   * });
+   * // After handler, adaptor calls auditor.flush() which uses the stored transaction
+   * ```
+   */
+  setTransaction(trx: TTransaction): void;
+
+  /**
+   * Get the currently set transaction context.
+   * Returns undefined if no transaction has been set.
+   */
+  getTransaction(): TTransaction | undefined;
 }

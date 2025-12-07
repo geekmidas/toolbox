@@ -1,6 +1,125 @@
-import type { Kysely, Transaction } from 'kysely';
+import type {
+  ControlledTransaction,
+  IsolationLevel,
+  Kysely,
+  Transaction,
+} from 'kysely';
 import type { AuditQueryOptions, AuditStorage } from './storage';
 import type { AuditRecord } from './types';
+
+/**
+ * Minimal interface for transaction-aware audit flushing.
+ * Use this when you need to flush audits within a database transaction.
+ *
+ * @template TTransaction - Transaction type (e.g., Kysely Transaction)
+ *
+ * @example
+ * ```typescript
+ * import { withAuditableTransaction } from '@geekmidas/audit/kysely';
+ * import type { TransactionAwareAuditor } from '@geekmidas/audit/kysely';
+ *
+ * const result = await withAuditableTransaction(
+ *   db,
+ *   auditor as TransactionAwareAuditor<Transaction<DB>>,
+ *   async (trx) => {
+ *     // Your transactional operations
+ *     return result;
+ *   },
+ * );
+ * ```
+ */
+export interface TransactionAwareAuditor<TTransaction = unknown> {
+  /** Register the transaction with the auditor for use during flush */
+  setTransaction(trx: TTransaction): void;
+  /** Flush all pending audits, optionally within a transaction */
+  flush(trx?: TTransaction): Promise<void>;
+}
+
+export interface TransactionSettings {
+  isolationLevel?: IsolationLevel;
+}
+
+export type DatabaseConnection<T> =
+  | ControlledTransaction<T>
+  | Kysely<T>
+  | Transaction<T>;
+
+/**
+ * Execute a callback within a database transaction with automatic audit handling.
+ *
+ * This wrapper ensures that:
+ * 1. The transaction is automatically registered with the auditor
+ * 2. Manual audits (via `auditor.audit()`) are flushed BEFORE the transaction commits
+ * 3. If audit flush fails, the entire transaction rolls back
+ * 4. If the callback fails, audits are NOT written (atomic consistency)
+ *
+ * **Note:** Declarative audits (defined via `.audit([...])` on the endpoint builder)
+ * are processed AFTER the handler returns, so they run outside this transaction.
+ * If you need all audits to be atomic with your database operations, use manual
+ * audits via `auditor.audit()` inside this wrapper.
+ *
+ * @param db - Database connection (Kysely, Transaction, or ControlledTransaction)
+ * @param auditor - Auditor instance that will receive the transaction
+ * @param cb - Callback to execute within the transaction
+ * @param settings - Optional transaction settings (isolation level)
+ * @returns The result of the callback
+ *
+ * @example
+ * ```typescript
+ * import { withAuditableTransaction } from '@geekmidas/audit/kysely';
+ *
+ * const result = await withAuditableTransaction(
+ *   services.database,
+ *   auditor,
+ *   async (trx) => {
+ *     const user = await trx
+ *       .insertInto('users')
+ *       .values(data)
+ *       .returningAll()
+ *       .executeTakeFirstOrThrow();
+ *
+ *     // Manual audits are atomic with the transaction
+ *     auditor.audit('user.created', { userId: user.id, email: user.email });
+ *
+ *     return user;
+ *   },
+ * );
+ * // Audits are automatically flushed inside the transaction before commit
+ * ```
+ */
+export async function withAuditableTransaction<DB, T>(
+  db: DatabaseConnection<DB>,
+  auditor: TransactionAwareAuditor<Transaction<DB>>,
+  cb: (trx: Transaction<DB>) => Promise<T>,
+  settings?: TransactionSettings,
+): Promise<T> {
+  const execute = async (trx: Transaction<DB>): Promise<T> => {
+    // Register transaction with auditor
+    auditor.setTransaction(trx);
+
+    // Execute the callback
+    const result = await cb(trx);
+
+    // Flush audits BEFORE transaction commits
+    // If this fails, the transaction will roll back
+    await auditor.flush(trx);
+
+    return result;
+  };
+
+  // If already in a transaction, just run with it
+  if (db.isTransaction) {
+    return execute(db as Transaction<DB>);
+  }
+
+  const builder = db.transaction();
+
+  if (settings?.isolationLevel) {
+    return builder.setIsolationLevel(settings.isolationLevel).execute(execute);
+  }
+
+  return builder.execute(execute);
+}
 
 /**
  * Database table interface for audit records.
