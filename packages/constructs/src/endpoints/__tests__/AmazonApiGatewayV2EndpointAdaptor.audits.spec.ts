@@ -86,6 +86,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,
@@ -133,7 +134,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -170,6 +171,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 201,
       getSession: undefined,
       authorize: undefined,
@@ -211,7 +213,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -247,6 +249,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,
@@ -288,7 +291,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -316,6 +319,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,
@@ -381,6 +385,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,
@@ -425,7 +430,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -449,6 +454,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,
@@ -489,7 +495,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -513,6 +519,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 201,
       getSession: undefined,
       authorize: undefined,
@@ -554,7 +561,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
     const auditStorage = new InMemoryAuditStorage();
 
     const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
-      serviceName: `auditStorage-${Math.random()}` as const,
+      serviceName: 'auditStorage' as const,
       register: vi.fn().mockResolvedValue(auditStorage),
     };
 
@@ -576,6 +583,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
       services: [],
       logger: mockLogger,
       timeout: undefined,
+      memorySize: undefined,
       status: 200,
       getSession: undefined,
       authorize: undefined,

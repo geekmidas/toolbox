@@ -1,3 +1,4 @@
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -54,6 +55,13 @@ export class HonoEndpoint<
   TLogger extends Logger = Logger,
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
+  TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > {
   constructor(
     private readonly endpoint: Endpoint<
@@ -64,7 +72,11 @@ export class HonoEndpoint<
       TServices,
       TLogger,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction
     >,
   ) {}
 
@@ -237,6 +249,13 @@ export class HonoEndpoint<
     TLogger extends Logger = Logger,
     TSession = unknown,
     TEventPublisher extends EventPublisher<any> | undefined = undefined,
+    TEventPublisherServiceName extends string = string,
+    TAuditStorage extends AuditStorage | undefined = undefined,
+    TAuditStorageServiceName extends string = string,
+    TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+      string,
+      unknown
+    >,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -246,7 +265,11 @@ export class HonoEndpoint<
       TServices,
       TLogger,
       TSession,
-      TEventPublisher
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction
     >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,

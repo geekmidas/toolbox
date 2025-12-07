@@ -21,6 +21,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -58,6 +59,7 @@ describe('Endpoint', () => {
         getSession: undefined,
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -96,6 +98,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -142,6 +145,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -190,6 +194,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
       });
@@ -255,6 +260,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
       });
 
       const spec = await endpoint.toOpenApi3Route();
@@ -312,6 +318,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
         description: undefined,
       });
 
@@ -351,6 +358,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
         description: undefined,
       });
 
@@ -383,6 +391,7 @@ describe('Endpoint', () => {
         services: [],
         logger: {} as any,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         authorize: undefined,
@@ -458,6 +467,7 @@ describe('Endpoint', () => {
         authorize: undefined,
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
@@ -485,6 +495,7 @@ describe('Endpoint', () => {
         logger: mockLogger,
         authorize: undefined,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
@@ -517,6 +528,7 @@ describe('Endpoint', () => {
         services: [],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         authorize: undefined,
         status: undefined,
         getSession: undefined,
@@ -551,6 +563,7 @@ describe('Endpoint', () => {
         authorize: undefined,
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
@@ -596,6 +609,7 @@ describe('Endpoint', () => {
         services: [TestService],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         authorize: async ({ services }) => {
           return services.TestService.validateUser('valid');
@@ -626,6 +640,7 @@ describe('Endpoint', () => {
         services: [],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
@@ -665,6 +680,7 @@ describe('Endpoint', () => {
         services: [],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: () => ({ role: 'admin' }),
         description: undefined,
@@ -701,6 +717,7 @@ describe('Endpoint', () => {
 
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
@@ -727,6 +744,7 @@ describe('Endpoint', () => {
         services: [],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         authorize: undefined,
         status: undefined,
         getSession: undefined,
@@ -759,6 +777,7 @@ describe('Endpoint', () => {
         services: [],
         logger: mockLogger,
         timeout: undefined,
+        memorySize: undefined,
         status: undefined,
         getSession: undefined,
         description: undefined,
