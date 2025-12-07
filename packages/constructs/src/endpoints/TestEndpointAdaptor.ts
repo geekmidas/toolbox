@@ -19,6 +19,7 @@ import {
   type EndpointSchemas,
   ResponseBuilder,
 } from './Endpoint';
+import { processEndpointAudits } from './processAudits';
 
 export type TestHttpResponse<TBody = any> = {
   body: TBody;
@@ -177,6 +178,20 @@ export class TestEndpointAdaptor<
     ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
 
     await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
+
+    // Process audits
+    await processEndpointAudits(
+      this.endpoint,
+      output,
+      this.serviceDiscovery,
+      logger,
+      {
+        session,
+        header,
+        cookie,
+        services: ctx.services as Record<string, unknown>,
+      },
+    );
 
     // Convert cookies to Set-Cookie headers
     const headers: Record<string, string | string[]> = {

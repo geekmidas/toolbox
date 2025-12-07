@@ -29,6 +29,7 @@ import type {
   InferStandardSchema,
 } from '@geekmidas/schema';
 import { publishConstructEvents } from '../publisher';
+import { processEndpointAudits } from './processAudits';
 
 // Helper function to publish events
 
@@ -198,18 +199,34 @@ export abstract class AmazonApiGatewayEndpoint<
           .__response as InferStandardSchema<TOutSchema>;
         const statusCode = req.response?.statusCode ?? this.endpoint.status;
 
-        // Only publish events on successful responses (2xx status codes)
+        // Only publish events and process audits on successful responses (2xx status codes)
         if (Endpoint.isSuccessStatus(statusCode)) {
           const logger = event.logger as TLogger;
           const serviceDiscovery = ServiceDiscovery.getInstance<
             ServiceRecord<TServices>,
             TLogger
           >(logger, this.envParser);
+
+          // Publish events
           await publishConstructEvents(
             this.endpoint,
             response,
             serviceDiscovery,
             logger,
+          );
+
+          // Process audits
+          await processEndpointAudits(
+            this.endpoint,
+            response,
+            serviceDiscovery,
+            logger,
+            {
+              session: event.session,
+              header: event.header,
+              cookie: event.cookie,
+              services: event.services as Record<string, unknown>,
+            },
           );
         }
       },
