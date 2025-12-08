@@ -85,6 +85,8 @@ export class TestEndpointAdaptor<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   static getDefaultServiceDiscover<
     TRoute extends string,
@@ -102,6 +104,8 @@ export class TestEndpointAdaptor<
       string,
       unknown
     >,
+    TDatabase = undefined,
+    TDatabaseServiceName extends string = string,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -115,7 +119,9 @@ export class TestEndpointAdaptor<
       TEventPublisherServiceName,
       TAuditStorage,
       TAuditStorageServiceName,
-      TAuditAction
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >,
   ) {
     return ServiceDiscovery.getInstance(
@@ -136,7 +142,9 @@ export class TestEndpointAdaptor<
       TEventPublisherServiceName,
       TAuditStorage,
       TAuditStorageServiceName,
-      TAuditAction
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >,
     private serviceDiscovery: ServiceDiscovery<
       any,
@@ -149,7 +157,11 @@ export class TestEndpointAdaptor<
       TInput,
       TServices,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >,
   ): Promise<TestHttpResponse<InferStandardSchema<TOutSchema>>> {
     const body = await this.endpoint.parseInput((ctx as any).body, 'body');
@@ -174,8 +186,16 @@ export class TestEndpointAdaptor<
     });
 
     // Create audit context if audit storage is configured
+    // The auditorStorage is required when endpoint uses .auditor()
+    const auditorStorageService = (ctx as any).auditorStorage as
+      | Service<TAuditStorageServiceName, TAuditStorage>
+      | undefined;
+    const endpointWithAuditor = auditorStorageService
+      ? { ...this.endpoint, auditorStorageService }
+      : this.endpoint;
+
     const auditContext = await createAuditContext(
-      this.endpoint,
+      endpointWithAuditor as typeof this.endpoint,
       this.serviceDiscovery,
       logger,
       {
@@ -196,13 +216,14 @@ export class TestEndpointAdaptor<
     }
 
     // Resolve database service if configured
-    const rawDb = this.endpoint.databaseService
+    // The database is required when endpoint uses .database()
+    const databaseService = (ctx as any).database as
+      | Service<TDatabaseServiceName, TDatabase>
+      | undefined;
+    const rawDb = databaseService
       ? await this.serviceDiscovery
-          .register([this.endpoint.databaseService])
-          .then(
-            (s) =>
-              s[this.endpoint.databaseService!.serviceName as keyof typeof s],
-          )
+          .register([databaseService])
+          .then((s) => s[databaseService.serviceName as keyof typeof s])
       : undefined;
 
     // Execute handler with automatic audit transaction support
@@ -213,7 +234,7 @@ export class TestEndpointAdaptor<
         const sameDatabase =
           auditContext?.storage?.databaseServiceName &&
           auditContext.storage.databaseServiceName ===
-            this.endpoint.databaseService?.serviceName;
+            databaseService?.serviceName;
         const db = sameDatabase
           ? (auditor?.getTransaction?.() ?? rawDb)
           : rawDb;
@@ -299,7 +320,11 @@ export class TestEndpointAdaptor<
       TInput,
       TServices,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >,
   ): Promise<InferStandardSchema<TOutSchema>> {
     const response = await this.fullRequest(ctx);
@@ -307,13 +332,45 @@ export class TestEndpointAdaptor<
   }
 }
 
+/**
+ * Conditional audit storage requirement - required when TAuditStorage is configured
+ */
+type AuditStorageRequirement<
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+> = TAuditStorage extends undefined
+  ? {}
+  : {
+      /** Audit storage service - required when endpoint uses .auditor() */
+      auditorStorage: Service<TAuditStorageServiceName, TAuditStorage>;
+    };
+
+/**
+ * Conditional database requirement - required when TDatabase is configured
+ */
+type DatabaseRequirement<
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
+> = TDatabase extends undefined
+  ? {}
+  : {
+      /** Database service - required when endpoint uses .database() */
+      database: Service<TDatabaseServiceName, TDatabase>;
+    };
+
 export type TestRequestAdaptor<
   TInput extends EndpointSchemas = {},
   TServices extends Service[] = [],
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > = {
   services: ServiceRecord<TServices>;
   headers: Record<string, string>;
   publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
-} & InferComposableStandardSchema<TInput>;
+} & InferComposableStandardSchema<TInput> &
+  AuditStorageRequirement<TAuditStorage, TAuditStorageServiceName> &
+  DatabaseRequirement<TDatabase, TDatabaseServiceName>;
