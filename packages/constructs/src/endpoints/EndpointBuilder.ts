@@ -1,4 +1,8 @@
-import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type {
+  AuditStorage,
+  AuditableAction,
+  ExtractStorageAuditAction,
+} from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
@@ -172,7 +176,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.schemas.body = schema as unknown as T;
     // @ts-ignore
@@ -193,7 +200,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.schemas.query = schema as unknown as T;
     // @ts-ignore
@@ -214,7 +224,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return this.search(schema);
   }
@@ -233,7 +246,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.schemas.params = schema as unknown as T;
     // @ts-ignore
@@ -412,8 +428,9 @@ export class EndpointBuilder<
   /**
    * Set the auditor storage service for this endpoint.
    * This enables audit functionality and makes `auditor` available in the handler context.
+   * The audit action type is automatically inferred from the storage's generic parameter.
    */
-  auditor<T extends AuditStorage, TName extends string>(
+  auditor<T extends AuditStorage<any>, TName extends string>(
     storage: Service<TName, T>,
   ): EndpointBuilder<
     TRoute,
@@ -428,7 +445,7 @@ export class EndpointBuilder<
     TAuthorizers,
     T,
     TName,
-    TAuditAction,
+    ExtractStorageAuditAction<T>,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -450,7 +467,7 @@ export class EndpointBuilder<
       TAuthorizers,
       T,
       TName,
-      TAuditAction,
+      ExtractStorageAuditAction<T>,
       TDatabase,
       TDatabaseServiceName
     >;
@@ -500,43 +517,9 @@ export class EndpointBuilder<
    * ])
    * ```
    */
-  audit<T extends AuditableAction<string, unknown>>(
-    audits: MappedAudit<T, OutSchema>[],
-  ): EndpointBuilder<
-    TRoute,
-    TMethod,
-    TInput,
-    TServices,
-    TLogger,
-    OutSchema,
-    TSession,
-    TEventPublisher,
-    TEventPublisherServiceName,
-    TAuthorizers,
-    TAuditStorage,
-    TAuditStorageServiceName,
-    T,
-    TDatabase,
-    TDatabaseServiceName
-  > {
-    this._audits = audits as unknown as MappedAudit<TAuditAction, OutSchema>[];
-    return this as unknown as EndpointBuilder<
-      TRoute,
-      TMethod,
-      TInput,
-      TServices,
-      TLogger,
-      OutSchema,
-      TSession,
-      TEventPublisher,
-      TEventPublisherServiceName,
-      TAuthorizers,
-      TAuditStorage,
-      TAuditStorageServiceName,
-      T,
-      TDatabase,
-      TDatabaseServiceName
-    >;
+  audit(audits: MappedAudit<TAuditAction, OutSchema>[]): this {
+    this._audits = audits;
+    return this;
   }
 
   /**

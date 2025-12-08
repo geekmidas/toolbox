@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { AppAuditAction } from '../services/AuditStorageService';
 import { router } from './router';
 
 /**
@@ -13,7 +12,7 @@ export const getProfile = router
     z.object({
       id: z.string(),
       email: z.string(),
-      data: z.record(z.unknown()),
+      data: z.any(),
     }),
   )
   .handle(async ({ query, services, logger, db, auditor }) => {
@@ -34,8 +33,8 @@ export const getProfile = router
       `SELECT * FROM user_data WHERE user_id = '${query.userId}'`,
     );
 
-    // Manual audit logging via auditor
-    auditor.audit<AppAuditAction>('user.updated', {
+    // Manual audit logging via auditor - type is inferred from AuditStorageService
+    auditor.audit('user.updated', {
       userId: user.id,
       changes: ['profile_viewed'],
     });
@@ -43,6 +42,8 @@ export const getProfile = router
     return {
       id: user.id,
       email: user.email,
-      data: Object.fromEntries(data.map((d) => [d.key, d.value])),
+      data: Object.fromEntries(
+        data.map((d: { key: string; value: string }) => [d.key, d.value]),
+      ),
     };
   });

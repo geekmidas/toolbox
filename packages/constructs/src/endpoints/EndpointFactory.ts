@@ -1,4 +1,8 @@
-import type { AuditStorage } from '@geekmidas/audit';
+import type {
+  AuditStorage,
+  AuditableAction,
+  ExtractStorageAuditAction,
+} from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
@@ -20,8 +24,11 @@ export class EndpointFactory<
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuthorizers extends readonly string[] = readonly string[],
-  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorage extends AuditStorage<any> | undefined = undefined,
   TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = ExtractStorageAuditAction<
+    NonNullable<TAuditStorage>
+  >,
   TDatabase = undefined,
   TDatabaseServiceName extends string = string,
 > {
@@ -138,6 +145,7 @@ export class EndpointFactory<
     T,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -154,6 +162,7 @@ export class EndpointFactory<
       T,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -184,6 +193,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -198,6 +208,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -228,6 +239,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -241,6 +253,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -271,6 +284,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -284,6 +298,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -313,6 +328,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -326,6 +342,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -368,6 +385,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -381,6 +399,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -410,6 +429,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -423,6 +443,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -461,6 +482,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     T,
     TName
   > {
@@ -474,6 +496,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       T,
       TName
     >({
@@ -493,8 +516,9 @@ export class EndpointFactory<
   /**
    * Set the auditor storage service for endpoints created from this factory.
    * This enables audit functionality and makes `auditor` available in handler context.
+   * The audit action type is automatically inferred from the storage's generic parameter.
    */
-  auditor<T extends AuditStorage, TName extends string>(
+  auditor<T extends AuditStorage<any>, TName extends string>(
     storage: Service<TName, T>,
   ): EndpointFactory<
     TServices,
@@ -506,6 +530,7 @@ export class EndpointFactory<
     TAuthorizers,
     T,
     TName,
+    ExtractStorageAuditAction<T>,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -519,6 +544,7 @@ export class EndpointFactory<
       TAuthorizers,
       T,
       TName,
+      ExtractStorageAuditAction<T>,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -532,7 +558,11 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: storage,
       defaultDatabaseService: this.defaultDatabaseService,
-      defaultActorExtractor: this.defaultActorExtractor,
+      defaultActorExtractor: this.defaultActorExtractor as unknown as ActorExtractor<
+        TServices,
+        TSession,
+        TLogger
+      >,
     });
   }
 
@@ -552,6 +582,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -565,6 +596,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >({
@@ -598,7 +630,7 @@ export class EndpointFactory<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
-    any,
+    TAuditAction,
     TDatabase,
     TDatabaseServiceName
   > {
@@ -616,7 +648,7 @@ export class EndpointFactory<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
-      any,
+      TAuditAction,
       TDatabase,
       TDatabaseServiceName
     >(fullPath, method);

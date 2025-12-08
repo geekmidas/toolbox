@@ -1,4 +1,4 @@
-import type { AuditRecord } from './types';
+import type { AuditableAction, AuditRecord } from './types';
 
 /**
  * Options for querying audit records.
@@ -50,8 +50,19 @@ export interface AuditQueryOptions {
  *   },
  * };
  * ```
+ *
+ * @template TAuditAction - Optional type parameter for type-safe audit actions.
+ *   When provided, this type is preserved in the Service definition and can be
+ *   extracted by EndpointBuilder to provide type inference for `.audit([...])`.
  */
-export interface AuditStorage {
+export interface AuditStorage<
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+> {
+  /** @internal Type marker for extracting audit action type */
+  readonly __auditActionType?: TAuditAction;
   /**
    * Write audit records to storage.
    * Called by Auditor.flush() to persist collected audits.

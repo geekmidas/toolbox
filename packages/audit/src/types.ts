@@ -143,5 +143,13 @@ export interface MappedAudit<
  */
 export type ExtractAuditorAction<T> = T extends Auditor<infer A> ? A : never;
 
+/**
+ * Extract the AuditableAction type from an AuditStorage.
+ */
+export type ExtractStorageAuditAction<T> = T extends AuditStorage<infer A>
+  ? A
+  : AuditableAction<string, unknown>;
+
 // Forward declaration for Auditor type extraction
 import type { Auditor } from './Auditor';
+import type { AuditStorage } from './storage';

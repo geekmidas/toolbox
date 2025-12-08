@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/audit": "workspace:*",
     "@geekmidas/services": "workspace:*",
     "@geekmidas/cli": "workspace:*",
     "@geekmidas/envkit": "workspace:*",
@@ -18,6 +19,7 @@
     "@hono/swagger-ui": "~0.5.2",
     "@geekmidas/logger": "workspace:*",
     "@hono/node-server": "~1.19.5",
+    "kysely": "~0.28.2",
     "hono": "^4.7.15",
     "zod": "~4.1.12"
   },

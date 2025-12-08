@@ -9,6 +9,7 @@ export type {
   ExtractAuditPayload,
   ExtractAuditType,
   ExtractAuditorAction,
+  ExtractStorageAuditAction,
   MappedAudit,
 } from './types';
 
