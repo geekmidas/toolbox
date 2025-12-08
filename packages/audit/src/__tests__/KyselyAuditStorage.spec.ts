@@ -162,6 +162,89 @@ describe('KyselyAuditStorage', () => {
         }),
       ]);
     });
+
+    it('should generate ID with nanoid when autoId is false (default)', async () => {
+      const records: AuditRecord[] = [
+        {
+          id: '', // Empty ID
+          type: 'user.created',
+          operation: 'CUSTOM',
+          timestamp: new Date(),
+        },
+      ];
+
+      await storage.write(records);
+
+      const calledValues = mockDb.insertBuilder.values.mock.calls[0][0];
+      expect(calledValues[0].id).toBeDefined();
+      expect(calledValues[0].id.length).toBeGreaterThan(0);
+    });
+
+    it('should use provided ID when autoId is false (default)', async () => {
+      const records: AuditRecord[] = [
+        {
+          id: 'my-custom-id',
+          type: 'user.created',
+          operation: 'CUSTOM',
+          timestamp: new Date(),
+        },
+      ];
+
+      await storage.write(records);
+
+      expect(mockDb.insertBuilder.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          id: 'my-custom-id',
+        }),
+      ]);
+    });
+
+    it('should omit ID when autoId is true and no ID provided', async () => {
+      const storageAutoId = new KyselyAuditStorage({
+        db: mockDb.db as any,
+        tableName: 'audit_logs',
+        autoId: true,
+      });
+
+      const records: AuditRecord[] = [
+        {
+          id: '', // Empty ID - let database generate
+          type: 'user.created',
+          operation: 'CUSTOM',
+          timestamp: new Date(),
+        },
+      ];
+
+      await storageAutoId.write(records);
+
+      const calledValues = mockDb.insertBuilder.values.mock.calls[0][0];
+      expect(calledValues[0].id).toBeUndefined();
+    });
+
+    it('should use provided ID when autoId is true', async () => {
+      const storageAutoId = new KyselyAuditStorage({
+        db: mockDb.db as any,
+        tableName: 'audit_logs',
+        autoId: true,
+      });
+
+      const records: AuditRecord[] = [
+        {
+          id: 'explicit-id',
+          type: 'user.created',
+          operation: 'CUSTOM',
+          timestamp: new Date(),
+        },
+      ];
+
+      await storageAutoId.write(records);
+
+      expect(mockDb.insertBuilder.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          id: 'explicit-id',
+        }),
+      ]);
+    });
   });
 
   describe('query', () => {

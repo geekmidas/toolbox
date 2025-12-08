@@ -4,6 +4,7 @@ import type {
   Kysely,
   Transaction,
 } from 'kysely';
+import { nanoid } from 'nanoid';
 import type { AuditQueryOptions, AuditStorage } from './storage';
 import type { AuditRecord } from './types';
 
@@ -152,6 +153,24 @@ export interface AuditLogTable {
 }
 
 /**
+ * Insertable version of AuditLogTable where id is optional.
+ * Use this when your database auto-generates IDs or when using autoId option.
+ *
+ * @example
+ * ```typescript
+ * interface Database {
+ *   audit_logs: AuditLogTable;
+ * }
+ *
+ * // For insertions where id is auto-generated
+ * type NewAuditLog = InsertableAuditLogTable;
+ * ```
+ */
+export type InsertableAuditLogTable = Omit<AuditLogTable, 'id'> & {
+  id?: string;
+};
+
+/**
  * Configuration for KyselyAuditStorage.
  */
 export interface KyselyAuditStorageConfig<DB> {
@@ -165,6 +184,13 @@ export interface KyselyAuditStorageConfig<DB> {
    * in the handler context if the endpoint's database service has the same name.
    */
   databaseServiceName?: string;
+  /**
+   * Let the database auto-generate IDs (e.g., via DEFAULT gen_random_uuid()).
+   * When true, the ID field is omitted from inserts if not provided.
+   * When false (default), IDs are generated using nanoid if not provided.
+   * @default false
+   */
+  autoId?: boolean;
 }
 
 /**
@@ -193,12 +219,14 @@ export interface KyselyAuditStorageConfig<DB> {
 export class KyselyAuditStorage<DB> implements AuditStorage {
   private readonly db: Kysely<DB>;
   private readonly tableName: keyof DB & string;
+  private readonly autoId: boolean;
   readonly databaseServiceName?: string;
 
   constructor(config: KyselyAuditStorageConfig<DB>) {
     this.db = config.db;
     this.tableName = config.tableName;
     this.databaseServiceName = config.databaseServiceName;
+    this.autoId = config.autoId ?? false;
   }
 
   async write(records: AuditRecord[], trx?: unknown): Promise<void> {
@@ -299,8 +327,12 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
   }
 
   private toRow(record: AuditRecord): AuditLogTable {
+    // If autoId is true, let database generate ID (omit if not provided)
+    // If autoId is false (default), generate with nanoid if not provided
+    const id = record.id || (this.autoId ? undefined : nanoid());
+
     return {
-      id: record.id,
+      ...(id && { id }),
       type: record.type,
       operation: record.operation,
       table: record.table ?? null,
@@ -319,7 +351,7 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
       actorData:
         record.actor !== undefined ? this.getActorData(record.actor) : null,
       metadata: record.metadata ?? null,
-    };
+    } as AuditLogTable;
   }
 
   private fromRow(row: AuditLogTable): AuditRecord {
