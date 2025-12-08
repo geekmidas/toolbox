@@ -157,6 +157,12 @@ export interface KyselyAuditStorageConfig<DB> {
   db: Kysely<DB>;
   /** Table name for audit logs (must be a key in DB that extends AuditLogTable) */
   tableName: keyof DB & string;
+  /**
+   * Service name of the database service.
+   * When set, endpoint adaptors will automatically use the audit transaction as `db`
+   * in the handler context if the endpoint's database service has the same name.
+   */
+  databaseServiceName?: string;
 }
 
 /**
@@ -185,10 +191,12 @@ export interface KyselyAuditStorageConfig<DB> {
 export class KyselyAuditStorage<DB> implements AuditStorage {
   private readonly db: Kysely<DB>;
   private readonly tableName: keyof DB & string;
+  readonly databaseServiceName?: string;
 
   constructor(config: KyselyAuditStorageConfig<DB>) {
     this.db = config.db;
     this.tableName = config.tableName;
+    this.databaseServiceName = config.databaseServiceName;
   }
 
   async write(records: AuditRecord[], trx?: unknown): Promise<void> {

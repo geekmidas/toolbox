@@ -35,6 +35,8 @@ export class EndpointBuilder<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > extends BaseFunctionBuilder<
   TInput,
   OutSchema,
@@ -57,6 +59,7 @@ export class EndpointBuilder<
   _authorizerName?: TAuthorizers[number];
   _actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   _audits: MappedAudit<TAuditAction, OutSchema>[] = [];
+  _databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
   constructor(
     readonly route: TRoute,
@@ -237,7 +240,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     // Special case: 'none' explicitly marks endpoint as having no authorizer
     if (name === 'none') {
@@ -273,7 +279,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -292,7 +301,10 @@ export class EndpointBuilder<
       TEventPublisherServiceName,
       TAuthorizers,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -310,7 +322,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -326,7 +341,10 @@ export class EndpointBuilder<
       TEventPublisherServiceName,
       TAuthorizers,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -344,7 +362,10 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -360,7 +381,10 @@ export class EndpointBuilder<
       TEventPublisherServiceName,
       TAuthorizers,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -383,7 +407,9 @@ export class EndpointBuilder<
     TAuthorizers,
     T,
     TName,
-    TAuditAction
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._auditorStorage = storage as unknown as Service<
       TAuditStorageServiceName,
@@ -403,7 +429,9 @@ export class EndpointBuilder<
       TAuthorizers,
       T,
       TName,
-      TAuditAction
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -426,7 +454,9 @@ export class EndpointBuilder<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
-    TAuditAction
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._actorExtractor = extractor;
     return this;
@@ -464,7 +494,9 @@ export class EndpointBuilder<
     TAuthorizers,
     TAuditStorage,
     TAuditStorageServiceName,
-    T
+    T,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._audits = audits as unknown as MappedAudit<TAuditAction, OutSchema>[];
     return this as unknown as EndpointBuilder<
@@ -480,7 +512,67 @@ export class EndpointBuilder<
       TAuthorizers,
       TAuditStorage,
       TAuditStorageServiceName,
-      T
+      T,
+      TDatabase,
+      TDatabaseServiceName
+    >;
+  }
+
+  /**
+   * Set the database service for this endpoint.
+   * The database will be available in the handler context as `db`.
+   * When audit storage is configured and uses the same database,
+   * `db` will automatically be the transaction for ACID compliance.
+   *
+   * @example
+   * ```typescript
+   * .database(databaseService)
+   * .handle(async ({ db }) => {
+   *   // db is the raw database or transaction (when auditor uses same db)
+   *   return await db.selectFrom('users').selectAll().execute();
+   * })
+   * ```
+   */
+  database<T, TName extends string>(
+    service: Service<TName, T>,
+  ): EndpointBuilder<
+    TRoute,
+    TMethod,
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction,
+    T,
+    TName
+  > {
+    this._databaseService = service as unknown as Service<
+      TDatabaseServiceName,
+      TDatabase
+    >;
+
+    return this as unknown as EndpointBuilder<
+      TRoute,
+      TMethod,
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction,
+      T,
+      TName
     >;
   }
 
@@ -492,7 +584,16 @@ export class EndpointBuilder<
   }
 
   handle(
-    fn: EndpointHandler<TInput, TServices, TLogger, OutSchema, TSession>,
+    fn: EndpointHandler<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TSession,
+      TDatabase,
+      TAuditStorage,
+      TAuditAction
+    >,
   ): Endpoint<
     TRoute,
     TMethod,
@@ -505,7 +606,9 @@ export class EndpointBuilder<
     TEventPublisherServiceName,
     TAuditStorage,
     TAuditStorageServiceName,
-    TAuditAction
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     // Find authorizer metadata if name is set
     const authorizer = this._authorizerName
@@ -534,6 +637,7 @@ export class EndpointBuilder<
       auditorStorageService: this._auditorStorage,
       actorExtractor: this._actorExtractor,
       audits: this._audits,
+      databaseService: this._databaseService,
     });
   }
 }

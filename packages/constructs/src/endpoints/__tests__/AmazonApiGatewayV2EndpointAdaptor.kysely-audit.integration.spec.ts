@@ -299,15 +299,21 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit in handler
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: 42,
-              email: 'manual@example.com',
-            });
-          }
+          // Manual audit in handler - auditor is guaranteed to exist when TAuditStorage is configured
+          ctx.auditor.audit('user.created', {
+            userId: 42,
+            email: 'manual@example.com',
+          });
 
           return { id: 42, email: 'manual@example.com' };
         },
@@ -377,15 +383,21 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit before failure
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: 99,
-              email: 'shouldnotexist@example.com',
-            });
-          }
+          // Manual audit before failure - auditor is guaranteed to exist
+          ctx.auditor.audit('user.created', {
+            userId: 99,
+            email: 'shouldnotexist@example.com',
+          });
 
           // Fail after audit
           throw new Error('Handler failed after audit');
@@ -463,7 +475,9 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
             [typeof databaseService],
             Logger,
             unknown,
-            TestAuditAction
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
           >,
         ) => {
           const database = ctx.services.database;
@@ -475,13 +489,11 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
             .returningAll()
             .executeTakeFirstOrThrow();
 
-          // Record audit
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: user.id,
-              email: user.email,
-            });
-          }
+          // Record audit - auditor is guaranteed to exist
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
 
           return { id: user.id, email: user.email };
         },
@@ -566,15 +578,21 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.updated', {
-              userId: 100,
-              changes: ['verified'],
-            });
-          }
+          // Manual audit - auditor is guaranteed to exist
+          ctx.auditor.audit('user.updated', {
+            userId: 100,
+            changes: ['verified'],
+          });
 
           return { id: 100, email: 'combined@example.com' };
         },

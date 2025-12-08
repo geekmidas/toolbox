@@ -195,10 +195,29 @@ export class TestEndpointAdaptor<
       logger.warn('No auditor storage service available');
     }
 
+    // Resolve database service if configured
+    const rawDb = this.endpoint.databaseService
+      ? await this.serviceDiscovery
+          .register([this.endpoint.databaseService])
+          .then(
+            (s) =>
+              s[this.endpoint.databaseService!.serviceName as keyof typeof s],
+          )
+      : undefined;
+
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(
       auditContext,
       async (auditor) => {
+        // Use audit transaction as db only if the storage uses the same database service
+        const sameDatabase =
+          auditContext?.storage?.databaseServiceName &&
+          auditContext.storage.databaseServiceName ===
+            this.endpoint.databaseService?.serviceName;
+        const db = sameDatabase
+          ? (auditor?.getTransaction?.() ?? rawDb)
+          : rawDb;
+
         const responseBuilder = new ResponseBuilder();
         const response = await this.endpoint.handler(
           {
@@ -211,6 +230,7 @@ export class TestEndpointAdaptor<
             header,
             cookie,
             auditor,
+            db,
           } as any,
           responseBuilder,
         );

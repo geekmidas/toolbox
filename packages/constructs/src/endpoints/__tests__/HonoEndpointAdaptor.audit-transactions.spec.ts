@@ -467,19 +467,25 @@ describe('HonoEndpoint Audit Transactions', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            TransactionalAuditStorage
+          >,
         ) => {
           receivedCtxKeys = Object.keys(ctx);
           mockDb.insert('users', { id: '123', email: 'test@example.com' });
 
-          // Manual audit via auditor in context
-          if (ctx.auditor) {
-            auditorWasAvailable = true;
-            ctx.auditor.audit('user.created', {
-              userId: '123',
-              email: 'test@example.com',
-            });
-          }
+          // Manual audit via auditor in context - auditor is guaranteed to exist
+          auditorWasAvailable = true;
+          ctx.auditor.audit('user.created', {
+            userId: '123',
+            email: 'test@example.com',
+          });
 
           return { id: '123', email: 'test@example.com' };
         },
@@ -550,17 +556,23 @@ describe('HonoEndpoint Audit Transactions', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            TransactionalAuditStorage
+          >,
         ) => {
           mockDb.insert('users', { id: '123', email: 'test@example.com' });
 
-          // Manual audit before failure
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: '123',
-              email: 'test@example.com',
-            });
-          }
+          // Manual audit before failure - auditor is guaranteed to exist
+          ctx.auditor.audit('user.created', {
+            userId: '123',
+            email: 'test@example.com',
+          });
 
           // Fail after audit was recorded (but not yet flushed)
           throw new Error('Handler failed after recording audit');
@@ -631,17 +643,23 @@ describe('HonoEndpoint Audit Transactions', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            TransactionalAuditStorage
+          >,
         ) => {
           mockDb.insert('users', { id: '123', email: 'test@example.com' });
 
-          // Also add a manual audit
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.updated', {
-              userId: '123',
-              changes: ['email_verified'],
-            });
-          }
+          // Also add a manual audit - auditor is guaranteed to exist
+          ctx.auditor.audit('user.updated', {
+            userId: '123',
+            changes: ['email_verified'],
+          });
 
           return { id: '123', email: 'test@example.com' };
         },

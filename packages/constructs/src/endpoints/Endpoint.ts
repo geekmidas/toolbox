@@ -71,6 +71,8 @@ export class Endpoint<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > extends Function<
   TInput,
   TServices,
@@ -108,13 +110,18 @@ export class Endpoint<
   public actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   /** Declarative audit definitions */
   public audits: MappedAudit<TAuditAction, OutSchema>[] = [];
+  /** Database service for this endpoint */
+  public databaseService?: Service<TDatabaseServiceName, TDatabase>;
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
     TServices,
     TLogger,
     OutSchema,
-    TSession
+    TSession,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
   >;
 
   /**
@@ -321,7 +328,15 @@ export class Endpoint<
   }
 
   handler = (
-    ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
+    ctx: EndpointContext<
+      TInput,
+      TServices,
+      TLogger,
+      TSession,
+      TAuditAction,
+      TDatabase,
+      TAuditStorage
+    >,
     response: ResponseBuilder,
   ): OutSchema extends StandardSchemaV1
     ?
@@ -339,18 +354,28 @@ export class Endpoint<
       response.header(key, value);
     }
 
-    return this.endpointFn(
-      {
-        ...this.refineInput(ctx),
-        services: ctx.services,
-        logger: ctx.logger,
-        header: ctx.header,
-        cookie: ctx.cookie,
-        session: ctx.session,
-        auditor: ctx.auditor,
-      } as EndpointContext<TInput, TServices, TLogger, TSession>,
-      response,
-    );
+    // Build context object, conditionally including auditor and db
+    const handlerCtx = {
+      ...this.refineInput(ctx),
+      services: ctx.services,
+      logger: ctx.logger,
+      header: ctx.header,
+      cookie: ctx.cookie,
+      session: ctx.session,
+      // These are conditionally present based on configuration
+      ...('auditor' in ctx && { auditor: ctx.auditor }),
+      ...('db' in ctx && { db: ctx.db }),
+    } as EndpointContext<
+      TInput,
+      TServices,
+      TLogger,
+      TSession,
+      TAuditAction,
+      TDatabase,
+      TAuditStorage
+    >;
+
+    return this.endpointFn(handlerCtx, response);
   };
 
   /**
@@ -556,6 +581,7 @@ export class Endpoint<
     auditorStorageService,
     actorExtractor,
     audits,
+    databaseService,
   }: EndpointOptions<
     TRoute,
     TMethod,
@@ -569,7 +595,9 @@ export class Endpoint<
     TEventPublisherServiceName,
     TAuditStorage,
     TAuditStorageServiceName,
-    TAuditAction
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   >) {
     super(
       fn as unknown as FunctionHandler<TInput, TServices, TLogger, OutSchema>,
@@ -614,6 +642,10 @@ export class Endpoint<
 
     if (audits) {
       this.audits = audits;
+    }
+
+    if (databaseService) {
+      this.databaseService = databaseService;
     }
   }
 }
@@ -672,13 +704,24 @@ export interface EndpointOptions<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   /** The route path with parameter placeholders */
   route: TRoute;
   /** The HTTP method for this endpoint */
   method: TMethod;
   /** The handler function that implements the endpoint logic */
-  fn: EndpointHandler<TInput, TServices, TLogger, TOutput, TSession>;
+  fn: EndpointHandler<
+    TInput,
+    TServices,
+    TLogger,
+    TOutput,
+    TSession,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
+  >;
   /** Optional authorization check function */
   authorize: AuthorizeFn<TServices, TLogger, TSession> | undefined;
   /** Optional description for documentation */
@@ -719,6 +762,8 @@ export interface EndpointOptions<
   actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   /** Declarative audit definitions */
   audits?: MappedAudit<TAuditAction, OutSchema>[];
+  /** Database service for this endpoint */
+  databaseService?: Service<TDatabaseServiceName, TDatabase>;
 }
 
 /**
@@ -969,23 +1014,12 @@ export class ResponseBuilder {
 }
 
 /**
- * The execution context provided to endpoint handlers.
- * Contains all parsed input data, services, logger, headers, cookies, and session.
- *
- * @template Input - The input schemas (body, query, params)
- * @template TServices - Available service dependencies
- * @template TLogger - Logger type
- * @template TSession - Session data type
+ * Base context properties that are always available
  */
-export type EndpointContext<
-  Input extends EndpointSchemas | undefined = undefined,
+type BaseEndpointContext<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
 > = {
   /** Injected service instances */
   services: ServiceRecord<TServices>;
@@ -997,14 +1031,71 @@ export type EndpointContext<
   cookie: CookieFn;
   /** Session data extracted by getSession */
   session: TSession;
-  /**
-   * Auditor instance for recording audit events.
-   * Only present when audit storage is configured on the endpoint.
-   * When a transactional database is used for audit storage,
-   * the auditor is pre-configured with the transaction context.
-   */
-  auditor?: Auditor<TAuditAction>;
-} & InferComposableStandardSchema<Input>;
+};
+
+/**
+ * Conditional auditor context - only present when audit storage is configured
+ */
+type AuditorContext<
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+  TAuditStorage = undefined,
+> = TAuditStorage extends undefined
+  ? {}
+  : {
+      /**
+       * Auditor instance for recording audit events.
+       * Only present when audit storage is configured on the endpoint.
+       * When a transactional database is used for audit storage,
+       * the auditor is pre-configured with the transaction context.
+       */
+      auditor: Auditor<TAuditAction>;
+    };
+
+/**
+ * Conditional database context - only present when database service is configured
+ */
+type DatabaseContext<TDatabase = undefined> = TDatabase extends undefined
+  ? {}
+  : {
+      /**
+       * Database instance for this request.
+       * When audit storage is configured and uses the same database,
+       * this will be the transaction for ACID compliance.
+       * Otherwise, it's the raw database connection.
+       */
+      db: TDatabase;
+    };
+
+/**
+ * The execution context provided to endpoint handlers.
+ * Contains all parsed input data, services, logger, headers, cookies, and session.
+ *
+ * @template Input - The input schemas (body, query, params)
+ * @template TServices - Available service dependencies
+ * @template TLogger - Logger type
+ * @template TSession - Session data type
+ * @template TAuditAction - Audit action types (when auditor is configured)
+ * @template TDatabase - Database type (when database service is configured)
+ * @template TAuditStorage - Audit storage type (determines if auditor is present)
+ */
+export type EndpointContext<
+  Input extends EndpointSchemas | undefined = undefined,
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
+  TSession = unknown,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+  TDatabase = undefined,
+  TAuditStorage = undefined,
+> = BaseEndpointContext<TServices, TLogger, TSession> &
+  InferComposableStandardSchema<Input> &
+  AuditorContext<TAuditAction, TAuditStorage> &
+  DatabaseContext<TDatabase>;
 
 /**
  * Handler function type for endpoint implementations.
@@ -1041,8 +1132,22 @@ export type EndpointHandler<
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TSession = unknown,
+  TDatabase = undefined,
+  TAuditStorage = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = (
-  ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
+  ctx: EndpointContext<
+    TInput,
+    TServices,
+    TLogger,
+    TSession,
+    TAuditAction,
+    TDatabase,
+    TAuditStorage
+  >,
   response: ResponseBuilder,
 ) => OutSchema extends StandardSchemaV1
   ?

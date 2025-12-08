@@ -1,4 +1,4 @@
-import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
@@ -31,11 +31,11 @@ import type {
 } from '@geekmidas/schema';
 import { publishConstructEvents } from '../publisher';
 import {
-  type AuditExecutionContext,
   createAuditContext,
   executeWithAuditTransaction,
 } from './processAudits';
 import type { MappedAudit } from './audit';
+import type { CookieFn, HeaderFn } from './Endpoint';
 
 // Helper function to publish events
 
@@ -264,10 +264,26 @@ export abstract class AmazonApiGatewayEndpoint<
       logger.warn('No auditor storage service available');
     }
 
+    // Resolve database service if configured
+    const rawDb = this.endpoint.databaseService
+      ? await serviceDiscovery.register([this.endpoint.databaseService]).then(
+          (s) => s[this.endpoint.databaseService!.serviceName as keyof typeof s],
+        )
+      : undefined;
+
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(
       auditContext,
       async (auditor) => {
+        // Use audit transaction as db only if the storage uses the same database service
+        const sameDatabase =
+          auditContext?.storage?.databaseServiceName &&
+          auditContext.storage.databaseServiceName ===
+            this.endpoint.databaseService?.serviceName;
+        const db = sameDatabase
+          ? (auditor?.getTransaction?.() ?? rawDb)
+          : rawDb;
+
         const responseBuilder = new ResponseBuilder();
         const response = await this.endpoint.handler(
           {
@@ -277,6 +293,7 @@ export abstract class AmazonApiGatewayEndpoint<
             services: event.services,
             session: event.session,
             auditor,
+            db,
             ...input,
           } as any,
           responseBuilder,
@@ -374,8 +391,8 @@ export type Event<
 > = {
   services: ServiceRecord<TServices>;
   logger: TLogger;
-  header(key: string): string | undefined;
-  cookie(name: string): string | undefined;
+  header: HeaderFn;
+  cookie: CookieFn;
   session: TSession;
 } & TEvent &
   InferComposableStandardSchema<TInput>;

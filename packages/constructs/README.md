@@ -12,6 +12,7 @@ A comprehensive framework for building type-safe HTTP endpoints, cloud functions
 - **Multiple Adapters**: AWS Lambda, API Gateway (v1/v2), and Hono support
 - **StandardSchema Validation**: Works with Zod, Valibot, and other validation libraries
 - **Event Publishing**: Integrated event publishing from any construct
+- **Audit Logging**: Transaction-aware audit system with automatic rollback support
 - **Rate Limiting**: Built-in rate limiting with configurable storage
 - **OpenAPI Integration**: Generate OpenAPI specifications from endpoints
 
@@ -318,6 +319,452 @@ export const createUser = e
   });
 ```
 
+### Database Context
+
+Inject a database instance directly into the handler context using `.database()`:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import type { Service } from '@geekmidas/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import { Kysely, PostgresDialect } from 'kysely';
+import { z } from 'zod';
+
+// Define a database service
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    return new Kysely<Database>({
+      dialect: new PostgresDialect({
+        connectionString: config.url
+      })
+    });
+  }
+} satisfies Service<'database', Kysely<Database>>;
+
+// Use .database() to inject db into context
+export const getUsers = e
+  .get('/users')
+  .output(z.array(userSchema))
+  .database(databaseService)
+  .handle(async ({ db }) => {
+    // db is always defined when .database() is called (not optional)
+    const users = await db
+      .selectFrom('users')
+      .selectAll()
+      .execute();
+
+    return users;
+  });
+```
+
+**Key features:**
+
+- **Type-safe**: `db` is only available in the context when `.database()` is called
+- **Non-optional**: Unlike `services.database`, `db` is always defined (not `undefined`)
+- **Automatic transaction**: When combined with `.auditor()` using `KyselyAuditStorage`, `db` is automatically the transaction
+
+#### Database with Audit Transactions
+
+When using both `.database()` and `.auditor()` with the same database, `db` is automatically the transaction - ensuring ACID compliance without any extra code:
+
+```typescript
+export const createUser = e
+  .post('/users')
+  .body(z.object({ name: z.string(), email: z.string().email() }))
+  .output(userSchema)
+  .database(databaseService)
+  .auditor(auditStorageService)
+  .handle(async ({ body, db }) => {
+    // db is automatically the transaction when auditor uses KyselyAuditStorage
+    // Both the user insert and audit records commit/rollback together
+    const user = await db
+      .insertInto('users')
+      .values({ id: crypto.randomUUID(), ...body })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    return user;
+  });
+```
+
+**How it works:**
+- Without `.auditor()`: `db` is the raw database connection
+- With `.auditor()` using `KyselyAuditStorage` **with matching `databaseServiceName`**: `db` is automatically the transaction
+- With `.auditor()` using a different storage or different database: `db` remains the raw database
+
+For automatic transaction sharing, the audit storage must declare the same database service name:
+
+```typescript
+const auditStorageService = {
+  serviceName: 'auditStorage' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const db = await databaseService.register(envParser);
+    return new KyselyAuditStorage({
+      db,
+      tableName: 'audit_logs',
+      databaseServiceName: 'database', // Must match databaseService.serviceName
+    });
+  }
+};
+```
+
+### Audit Logging
+
+Add transaction-aware audit logging to track data changes. Audits run **inside** the same database transaction as your mutations, ensuring they're atomically committed or rolled back together.
+
+#### Setting Up Audit Storage
+
+First, create an audit storage service using `@geekmidas/audit`:
+
+```typescript
+import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
+import type { Service } from '@geekmidas/services';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+
+const auditStorageService = {
+  serviceName: 'auditStorage' as const,
+  async register(envParser: EnvironmentParser<{}>) {
+    const db = await databaseService.register(envParser);
+    return new KyselyAuditStorage({
+      db,
+      tableName: 'audit_logs',
+      // Set this to enable automatic transaction sharing with .database()
+      databaseServiceName: databaseService.serviceName,
+    });
+  }
+} satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
+```
+
+#### Defining Audit Action Types
+
+Define type-safe audit actions for your application:
+
+```typescript
+import type { AuditableAction } from '@geekmidas/audit';
+
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'user.updated', { userId: string; changes: string[] }>
+  | AuditableAction<'user.deleted', { userId: string; reason?: string }>
+  | AuditableAction<'order.placed', { orderId: string; total: number }>;
+```
+
+#### Declarative Audits
+
+Define audits declaratively on the endpoint - they're automatically recorded after successful handler execution:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
+
+const userSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().email()
+});
+
+export const createUser = e
+  .post('/users')
+  .body(z.object({ name: z.string(), email: z.string().email() }))
+  .output(userSchema)
+  .database(databaseService)
+  .auditor(auditStorageService)
+  // Optional: extract actor from request context
+  .actor(({ session, header }) => ({
+    id: session?.userId ?? 'anonymous',
+    type: session ? 'user' : 'anonymous',
+    ip: header('x-forwarded-for'),
+  }))
+  // Declarative audits - type-safe with AppAuditAction
+  .audit<AppAuditAction>([
+    {
+      type: 'user.created',
+      payload: (response) => ({
+        userId: response.id,
+        email: response.email,
+      }),
+      // Optional: only audit when condition is true
+      when: (response) => response.email !== 'system@example.com',
+      // Optional: link audit to entity for querying
+      entityId: (response) => response.id,
+      table: 'users',
+    },
+  ])
+  .handle(async ({ body, db }) => {
+    // db is automatically the transaction when auditor uses KyselyAuditStorage
+    const user = await db
+      .insertInto('users')
+      .values({ id: crypto.randomUUID(), ...body })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    return user;
+  });
+```
+
+**Important**: When using `KyselyAuditStorage`, the adaptor wraps handler execution in a database transaction. The `db` in the context is automatically the transaction, so you can use it directly for ACID-compliant mutations.
+
+#### Manual Audits in Handlers
+
+For complex scenarios, use `ctx.auditor` to record audits manually within your handler:
+
+```typescript
+export const processOrder = e
+  .post('/orders')
+  .database(databaseService)
+  .services([paymentService])
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.userId, type: 'user' }))
+  .handle(async ({ body, db, services, auditor }) => {
+    // db is automatically the transaction when auditor uses KyselyAuditStorage
+    const order = await db
+      .insertInto('orders')
+      .values(body)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    // Manual audit for payment (external service call)
+    const payment = await services.payment.charge(order.total);
+    auditor.audit('payment.processed', {
+      orderId: order.id,
+      amount: order.total,
+      transactionId: payment.transactionId,
+    });
+
+    // Conditional audit for high-value orders
+    if (order.total > 10000) {
+      auditor.audit('order.high_value', {
+        orderId: order.id,
+        total: order.total,
+        requiresReview: true,
+      });
+    }
+
+    return order;
+  });
+```
+
+#### Combined Declarative and Manual Audits
+
+You can use both approaches together:
+
+```typescript
+export const updateUser = e
+  .put('/users/:id')
+  .params(z.object({ id: z.string() }))
+  .body(z.object({ name: z.string().optional(), email: z.string().email().optional() }))
+  .output(userSchema)
+  .database(databaseService)
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.userId, type: 'user' }))
+  // Declarative audit - always runs on success
+  .audit<AppAuditAction>([
+    {
+      type: 'user.updated',
+      payload: (response) => ({
+        userId: response.id,
+        changes: ['profile'],
+      }),
+    },
+  ])
+  .handle(async ({ params, body, db, auditor }) => {
+    // db is automatically the transaction when auditor uses KyselyAuditStorage
+
+    // Fetch old values for comparison
+    const oldUser = await db
+      .selectFrom('users')
+      .where('id', '=', params.id)
+      .selectAll()
+      .executeTakeFirstOrThrow();
+
+    // Update user
+    const user = await db
+      .updateTable('users')
+      .set(body)
+      .where('id', '=', params.id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    // Manual audit with old/new values for detailed change tracking
+    if (oldUser.email !== user.email) {
+      auditor.audit('user.email_changed', {
+        userId: user.id,
+        oldEmail: oldUser.email,
+        newEmail: user.email,
+      });
+    }
+
+    return user;
+  });
+```
+
+#### How Transaction Support Works
+
+When using `KyselyAuditStorage`, the adaptor automatically:
+
+1. **Creates an audit context** before handler execution
+2. **Wraps execution in a transaction** using `withAuditableTransaction`
+3. **Passes the auditor** to your handler via `ctx.auditor`
+4. **Processes declarative audits** after the handler succeeds
+5. **Flushes all audits** to storage inside the transaction
+6. **Commits or rolls back** - if the handler throws, both data and audits are rolled back
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Request Flow                              │
+├─────────────────────────────────────────────────────────────┤
+│  1. Create audit context (auditor + storage)                │
+│  2. BEGIN TRANSACTION                                        │
+│     ├── Execute handler (with ctx.auditor)                  │
+│     ├── Handler calls auditor.audit() for manual audits     │
+│     ├── Process declarative .audit() definitions            │
+│     ├── Flush all audit records to storage                  │
+│  3. COMMIT (or ROLLBACK if handler throws)                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+This ensures:
+- **Atomicity**: Audits are never written if the mutation fails
+- **Consistency**: No orphaned audit records for failed operations
+- **Rollback safety**: Manual audits recorded before a later error are also rolled back
+
+#### Audit Table Migration
+
+Create a Kysely migration for the audit table:
+
+```typescript
+// migrations/YYYYMMDDHHMMSS_create_audit_logs.ts
+import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
+
+export async function up(db: Kysely<unknown>): Promise<void> {
+  await db.schema
+    .createTable('audit_logs')
+    .addColumn('id', 'varchar(32)', (col) => col.primaryKey())
+    .addColumn('type', 'varchar', (col) => col.notNull())
+    .addColumn('operation', 'varchar', (col) => col.notNull())
+    .addColumn('table', 'varchar')
+    .addColumn('entity_id', 'varchar')
+    .addColumn('old_values', 'jsonb')
+    .addColumn('new_values', 'jsonb')
+    .addColumn('payload', 'jsonb')
+    .addColumn('timestamp', 'timestamp', (col) =>
+      col.defaultTo(sql`now()`).notNull(),
+    )
+    .addColumn('actor_id', 'varchar')
+    .addColumn('actor_type', 'varchar')
+    .addColumn('actor_data', 'jsonb')
+    .addColumn('metadata', 'jsonb')
+    .execute();
+
+  // Create indexes for common queries
+  await db.schema
+    .createIndex('idx_audit_logs_type')
+    .on('audit_logs')
+    .column('type')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_entity')
+    .on('audit_logs')
+    .column('entity_id')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_actor')
+    .on('audit_logs')
+    .column('actor_id')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_timestamp')
+    .on('audit_logs')
+    .column('timestamp')
+    .execute();
+}
+
+export async function down(db: Kysely<unknown>): Promise<void> {
+  await db.schema.dropTable('audit_logs').execute();
+}
+```
+
+If using camelCase column names with Kysely's `CamelCasePlugin`:
+
+```typescript
+// migrations/YYYYMMDDHHMMSS_create_audit_logs.ts
+import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
+
+export async function up(db: Kysely<unknown>): Promise<void> {
+  await db.schema
+    .createTable('auditLogs')
+    .addColumn('id', 'varchar(32)', (col) => col.primaryKey())
+    .addColumn('type', 'varchar', (col) => col.notNull())
+    .addColumn('operation', 'varchar', (col) => col.notNull())
+    .addColumn('table', 'varchar')
+    .addColumn('entityId', 'varchar')
+    .addColumn('oldValues', 'jsonb')
+    .addColumn('newValues', 'jsonb')
+    .addColumn('payload', 'jsonb')
+    .addColumn('timestamp', 'timestamp', (col) =>
+      col.defaultTo(sql`now()`).notNull(),
+    )
+    .addColumn('actorId', 'varchar')
+    .addColumn('actorType', 'varchar')
+    .addColumn('actorData', 'jsonb')
+    .addColumn('metadata', 'jsonb')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_type')
+    .on('auditLogs')
+    .column('type')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_entity')
+    .on('auditLogs')
+    .column('entityId')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_actor')
+    .on('auditLogs')
+    .column('actorId')
+    .execute();
+
+  await db.schema
+    .createIndex('idx_audit_logs_timestamp')
+    .on('auditLogs')
+    .column('timestamp')
+    .execute();
+}
+
+export async function down(db: Kysely<unknown>): Promise<void> {
+  await db.schema.dropTable('auditLogs').execute();
+}
+```
+
+#### Querying Audit Records
+
+The `KyselyAuditStorage` provides a `query` method:
+
+```typescript
+// In a handler or service
+const audits = await auditStorage.query({
+  entityId: userId,
+  table: 'users',
+  limit: 50,
+  orderBy: 'timestamp',
+  orderDirection: 'desc',
+});
+```
+
 ### Rate Limiting
 
 Add rate limiting to endpoints:
@@ -603,6 +1050,7 @@ const envVars = await endpoint.getEnvironment();
 
 - [@geekmidas/services](../services) - Service discovery and dependency injection
 - [@geekmidas/events](../events) - Event publishing and subscription
+- [@geekmidas/audit](../audit) - Transaction-aware audit logging
 - [@geekmidas/logger](../logger) - Structured logging
 - [@geekmidas/envkit](../envkit) - Environment configuration
 - [@geekmidas/errors](../errors) - HTTP error classes

@@ -292,15 +292,21 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit in handler
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: 42,
-              email: 'manual@example.com',
-            });
-          }
+          // Manual audit in handler - auditor is guaranteed to exist when TAuditStorage is configured
+          ctx.auditor.audit('user.created', {
+            userId: 42,
+            email: 'manual@example.com',
+          });
 
           return { id: 42, email: 'manual@example.com' };
         },
@@ -364,15 +370,21 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit before failure
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: 99,
-              email: 'shouldnotexist@example.com',
-            });
-          }
+          // Manual audit before failure - auditor is guaranteed to exist
+          ctx.auditor.audit('user.created', {
+            userId: 99,
+            email: 'shouldnotexist@example.com',
+          });
 
           // Fail after audit
           throw new Error('Handler failed after audit');
@@ -444,7 +456,9 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
             [typeof databaseService],
             Logger,
             unknown,
-            TestAuditAction
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
           >,
         ) => {
           const database = ctx.services.database;
@@ -456,13 +470,11 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
             .returningAll()
             .executeTakeFirstOrThrow();
 
-          // Record audit
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.created', {
-              userId: user.id,
-              email: user.email,
-            });
-          }
+          // Record audit - auditor is guaranteed to exist
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
 
           return { id: user.id, email: user.email };
         },
@@ -541,15 +553,21 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
         route: '/users',
         method: 'POST',
         fn: async (
-          ctx: EndpointContext<undefined, [], Logger, unknown, TestAuditAction>,
+          ctx: EndpointContext<
+            undefined,
+            [],
+            Logger,
+            unknown,
+            TestAuditAction,
+            undefined,
+            KyselyAuditStorage<TestDatabase>
+          >,
         ) => {
-          // Manual audit
-          if (ctx.auditor) {
-            ctx.auditor.audit('user.updated', {
-              userId: 100,
-              changes: ['verified'],
-            });
-          }
+          // Manual audit - auditor is guaranteed to exist
+          ctx.auditor.audit('user.updated', {
+            userId: 100,
+            changes: ['verified'],
+          });
 
           return { id: 100, email: 'combined@example.com' };
         },
@@ -673,6 +691,389 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].actorId).toBe('user-123');
       expect(auditsInDb[0].actorType).toBe('user');
+    });
+  });
+
+  describe('database service name matching', () => {
+    it('should use audit transaction as db when databaseServiceName matches', async () => {
+      const serviceDiscovery = createServiceDiscovery(mockLogger);
+
+      // Create audit storage WITH databaseServiceName
+      const auditStorageWithServiceName = new KyselyAuditStorage({
+        db,
+        tableName: 'auditLogs',
+        databaseServiceName: 'database', // Matches the database service
+      });
+
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      const auditStorageService: Service<
+        'auditStorage',
+        KyselyAuditStorage<TestDatabase>
+      > = {
+        serviceName: 'auditStorage' as const,
+        register: vi.fn().mockResolvedValue(auditStorageWithServiceName),
+      };
+
+      const outputSchema = z.object({ id: z.number(), email: z.string() });
+
+      let receivedDbIsTransaction = false;
+
+      const endpoint = new Endpoint({
+        route: '/users',
+        method: 'POST',
+        fn: async (
+          ctx: EndpointContext<
+            undefined,
+            [typeof databaseService],
+            Logger,
+            unknown,
+            TestAuditAction,
+            Kysely<TestDatabase>,
+            KyselyAuditStorage<TestDatabase>
+          >,
+        ) => {
+          // Check if db is a transaction (has isTransaction property from Kysely)
+          // When databaseServiceName matches, db should be the transaction
+          receivedDbIsTransaction = (ctx.db as any)?.isTransaction === true;
+
+          // Insert user using ctx.db (should be the transaction)
+          const user = await ctx.db
+            .insertInto('users')
+            .values({ name: 'Transaction User', email: 'trx@example.com' })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+
+          // Record audit
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
+
+          return { id: user.id, email: user.email };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 201,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+        events: [],
+        publisherService: undefined,
+        auditorStorageService: auditStorageService,
+        audits: [],
+        databaseService,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+      HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(response.status).toBe(201);
+      expect(receivedDbIsTransaction).toBe(true);
+
+      // Verify both user and audit were committed
+      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      expect(usersInDb).toHaveLength(1);
+      expect(usersInDb[0].email).toBe('trx@example.com');
+
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      expect(auditsInDb).toHaveLength(1);
+    });
+
+    it('should use raw db when databaseServiceName does not match', async () => {
+      const serviceDiscovery = createServiceDiscovery(mockLogger);
+
+      // Create audit storage with DIFFERENT databaseServiceName
+      const auditStorageWithDifferentServiceName = new KyselyAuditStorage({
+        db,
+        tableName: 'auditLogs',
+        databaseServiceName: 'auditDatabase', // Different from 'database'
+      });
+
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      const auditStorageService: Service<
+        'auditStorage',
+        KyselyAuditStorage<TestDatabase>
+      > = {
+        serviceName: 'auditStorage' as const,
+        register: vi.fn().mockResolvedValue(auditStorageWithDifferentServiceName),
+      };
+
+      const outputSchema = z.object({ id: z.number(), email: z.string() });
+
+      let receivedDbIsTransaction = false;
+
+      const endpoint = new Endpoint({
+        route: '/users',
+        method: 'POST',
+        fn: async (
+          ctx: EndpointContext<
+            undefined,
+            [typeof databaseService],
+            Logger,
+            unknown,
+            TestAuditAction,
+            Kysely<TestDatabase>,
+            KyselyAuditStorage<TestDatabase>
+          >,
+        ) => {
+          // When databaseServiceName doesn't match, db should be raw (not a transaction)
+          receivedDbIsTransaction = (ctx.db as any)?.isTransaction === true;
+
+          // Insert user using ctx.db (should be raw db, not transaction)
+          const user = await ctx.db
+            .insertInto('users')
+            .values({ name: 'Raw DB User', email: 'raw@example.com' })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+
+          // Record audit
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
+
+          return { id: user.id, email: user.email };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 201,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+        events: [],
+        publisherService: undefined,
+        auditorStorageService: auditStorageService,
+        audits: [],
+        databaseService,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+      HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(response.status).toBe(201);
+      // db should NOT be a transaction since service names don't match
+      expect(receivedDbIsTransaction).toBe(false);
+
+      // Both should still be committed (but not in the same transaction)
+      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      expect(usersInDb).toHaveLength(1);
+
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      expect(auditsInDb).toHaveLength(1);
+    });
+
+    it('should use raw db when databaseServiceName is not set on audit storage', async () => {
+      const serviceDiscovery = createServiceDiscovery(mockLogger);
+
+      // Create audit storage WITHOUT databaseServiceName (uses default auditStorage from beforeAll)
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      const auditStorageService: Service<
+        'auditStorage',
+        KyselyAuditStorage<TestDatabase>
+      > = {
+        serviceName: 'auditStorage' as const,
+        register: vi.fn().mockResolvedValue(auditStorage), // No databaseServiceName set
+      };
+
+      const outputSchema = z.object({ id: z.number(), email: z.string() });
+
+      let receivedDbIsTransaction = false;
+
+      const endpoint = new Endpoint({
+        route: '/users',
+        method: 'POST',
+        fn: async (
+          ctx: EndpointContext<
+            undefined,
+            [typeof databaseService],
+            Logger,
+            unknown,
+            TestAuditAction,
+            Kysely<TestDatabase>,
+            KyselyAuditStorage<TestDatabase>
+          >,
+        ) => {
+          // When databaseServiceName is not set, db should be raw
+          receivedDbIsTransaction = (ctx.db as any)?.isTransaction === true;
+
+          const user = await ctx.db
+            .insertInto('users')
+            .values({ name: 'No ServiceName User', email: 'noname@example.com' })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
+
+          return { id: user.id, email: user.email };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 201,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+        events: [],
+        publisherService: undefined,
+        auditorStorageService: auditStorageService,
+        audits: [],
+        databaseService,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+      HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(response.status).toBe(201);
+      expect(receivedDbIsTransaction).toBe(false);
+
+      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      expect(usersInDb).toHaveLength(1);
+
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      expect(auditsInDb).toHaveLength(1);
+    });
+
+    it('should rollback both user insert and audit when handler fails with matching databaseServiceName', async () => {
+      const serviceDiscovery = createServiceDiscovery(mockLogger);
+
+      // Create audit storage WITH databaseServiceName
+      const auditStorageWithServiceName = new KyselyAuditStorage({
+        db,
+        tableName: 'auditLogs',
+        databaseServiceName: 'database',
+      });
+
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      const auditStorageService: Service<
+        'auditStorage',
+        KyselyAuditStorage<TestDatabase>
+      > = {
+        serviceName: 'auditStorage' as const,
+        register: vi.fn().mockResolvedValue(auditStorageWithServiceName),
+      };
+
+      const outputSchema = z.object({ id: z.number(), email: z.string() });
+
+      const endpoint = new Endpoint({
+        route: '/users',
+        method: 'POST',
+        fn: async (
+          ctx: EndpointContext<
+            undefined,
+            [typeof databaseService],
+            Logger,
+            unknown,
+            TestAuditAction,
+            Kysely<TestDatabase>,
+            KyselyAuditStorage<TestDatabase>
+          >,
+        ) => {
+          // Insert user (should be rolled back)
+          const user = await ctx.db
+            .insertInto('users')
+            .values({ name: 'Rollback User', email: 'rollback@example.com' })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+
+          // Record audit (should also be rolled back)
+          ctx.auditor.audit('user.created', {
+            userId: user.id,
+            email: user.email,
+          });
+
+          // Fail after both operations
+          throw new Error('Simulated failure');
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 201,
+        getSession: undefined,
+        authorize: undefined,
+        description: undefined,
+        events: [],
+        publisherService: undefined,
+        auditorStorageService: auditStorageService,
+        audits: [],
+        databaseService,
+      });
+
+      const adaptor = new HonoEndpoint(endpoint);
+      const app = new Hono();
+      HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
+      adaptor.addRoute(serviceDiscovery, app);
+
+      const response = await app.request('/users', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(response.status).toBe(500);
+
+      // Both should be rolled back since they're in the same transaction
+      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      expect(usersInDb).toHaveLength(0);
+
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      expect(auditsInDb).toHaveLength(0);
     });
   });
 });

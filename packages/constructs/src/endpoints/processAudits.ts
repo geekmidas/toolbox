@@ -210,6 +210,8 @@ export async function createAuditContext<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 >(
   endpoint: Endpoint<
     any,
@@ -223,7 +225,9 @@ export async function createAuditContext<
     any,
     TAuditStorage,
     TAuditStorageServiceName,
-    TAuditAction
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   >,
   serviceDiscovery: ServiceDiscovery<any, any>,
   logger: TLogger,

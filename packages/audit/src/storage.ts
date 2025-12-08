@@ -98,4 +98,20 @@ export interface AuditStorage {
    * ```
    */
   getDatabase?(): unknown;
+
+  /**
+   * Optional: The service name of the database service used by this storage.
+   * When set, endpoint adaptors will automatically use the audit transaction as `db`
+   * in the handler context if the endpoint's database service has the same name.
+   *
+   * @example
+   * ```typescript
+   * const storage = new KyselyAuditStorage({
+   *   db,
+   *   tableName: 'audit_logs',
+   *   databaseServiceName: 'database', // Matches databaseService.serviceName
+   * });
+   * ```
+   */
+  databaseServiceName?: string;
 }

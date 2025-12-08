@@ -1,3 +1,4 @@
+import type { AuditStorage } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
@@ -67,8 +68,18 @@ export async function publishConstructEvents<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TServiceName extends string = string,
   TServices extends Service[] = [],
+  TAuditStorageServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
 >(
-  construct: Construct<Logger, TServiceName, T, OutSchema, TServices>,
+  construct: Construct<
+    Logger,
+    TServiceName,
+    T,
+    OutSchema,
+    TServices,
+    TAuditStorageServiceName,
+    TAuditStorage
+  >,
   response: InferStandardSchema<OutSchema>,
   serviceDiscovery: ServiceDiscovery<any, any>,
   logger: Logger = construct.logger,

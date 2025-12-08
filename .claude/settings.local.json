@@ -47,7 +47,8 @@
       "Bash(cat:*)",
       "Bash(pnpm --filter @geekmidas/constructs ts:*)",
       "Bash(pnpm --filter @geekmidas/constructs ts:check:*)",
-      "Bash(pnpm exec tsc:*)"
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm --filter @geekmidas/audit build:*)"
     ],
     "deny": []
   }

@@ -20,7 +20,6 @@ import { getEndpointsFromRoutes } from './helpers';
 import { parseHonoQuery } from './parseHonoQuery';
 
 import { wrapError } from '@geekmidas/errors';
-import type { InferStandardSchema } from '@geekmidas/schema';
 import {
   type Service,
   ServiceDiscovery,
@@ -67,6 +66,8 @@ export class HonoEndpoint<
     string,
     unknown
   >,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   constructor(
     private readonly endpoint: Endpoint<
@@ -81,7 +82,9 @@ export class HonoEndpoint<
       TEventPublisherServiceName,
       TAuditStorage,
       TAuditStorageServiceName,
-      TAuditAction
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >,
   ) {}
 
@@ -241,6 +244,8 @@ export class HonoEndpoint<
       string,
       unknown
     >,
+    TDatabase = undefined,
+    TDatabaseServiceName extends string = string,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -254,7 +259,9 @@ export class HonoEndpoint<
       TEventPublisherServiceName,
       TAuditStorage,
       TAuditStorageServiceName,
-      TAuditAction
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -356,10 +363,26 @@ export class HonoEndpoint<
             logger.warn('No auditor storage service available');
           }
 
+          // Resolve database service if configured
+          const rawDb = endpoint.databaseService
+            ? await serviceDiscovery.register([endpoint.databaseService]).then(
+                (s) => s[endpoint.databaseService!.serviceName as keyof typeof s],
+              )
+            : undefined;
+
           // Execute handler with automatic audit transaction support
           const result = await executeWithAuditTransaction(
             auditContext,
             async (auditor) => {
+              // Use audit transaction as db only if the storage uses the same database service
+              const sameDatabase =
+                auditContext?.storage?.databaseServiceName &&
+                auditContext.storage.databaseServiceName ===
+                  endpoint.databaseService?.serviceName;
+              const db = sameDatabase
+                ? (auditor?.getTransaction?.() ?? rawDb)
+                : rawDb;
+
               const responseBuilder = new ResponseBuilder();
               const response = await endpoint.handler(
                 {
@@ -372,11 +395,15 @@ export class HonoEndpoint<
                   header,
                   cookie,
                   auditor,
+                  db,
                 } as unknown as EndpointContext<
                   TInput,
                   TServices,
                   TLogger,
-                  TSession
+                  TSession,
+                  TAuditAction,
+                  TDatabase,
+                  TAuditStorage
                 >,
                 responseBuilder,
               );
