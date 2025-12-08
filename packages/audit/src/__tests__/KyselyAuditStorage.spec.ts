@@ -76,10 +76,10 @@ describe('KyselyAuditStorage', () => {
           operation: 'INSERT',
           table: 'users',
           entityId: 'user-123',
-          payload: JSON.stringify({ email: 'test@example.com' }),
+          payload: { email: 'test@example.com' },
           actorId: 'admin-1',
           actorType: 'admin',
-          metadata: JSON.stringify({ requestId: 'req-123' }),
+          metadata: { requestId: 'req-123' },
         }),
       ]);
     });
@@ -155,10 +155,10 @@ describe('KyselyAuditStorage', () => {
         expect.objectContaining({
           actorId: 'user-1',
           actorType: 'user',
-          actorData: JSON.stringify({
+          actorData: {
             email: 'user@example.com',
             role: 'admin',
-          }),
+          },
         }),
       ]);
     });

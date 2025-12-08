@@ -125,6 +125,8 @@ export async function withAuditableTransaction<DB, T>(
  * Database table interface for audit records.
  * Use this to define your audit_logs table in your Kysely database schema.
  *
+ * Column names use snake_case to match standard PostgreSQL conventions.
+ *
  * @example
  * ```typescript
  * interface Database {
@@ -139,14 +141,14 @@ export interface AuditLogTable {
   operation: string;
   table: string | null;
   entityId: string | null;
-  oldValues: string | null;
-  newValues: string | null;
-  payload: string | null;
+  oldValues: unknown | null;
+  newValues: unknown | null;
+  payload: unknown | null;
   timestamp: Date;
   actorId: string | null;
   actorType: string | null;
-  actorData: string | null;
-  metadata: string | null;
+  actorData: unknown | null;
+  metadata: unknown | null;
 }
 
 /**
@@ -308,25 +310,15 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
           : typeof record.entityId === 'string'
             ? record.entityId
             : JSON.stringify(record.entityId),
-      oldValues:
-        record.oldValues !== undefined
-          ? JSON.stringify(record.oldValues)
-          : null,
-      newValues:
-        record.newValues !== undefined
-          ? JSON.stringify(record.newValues)
-          : null,
-      payload:
-        record.payload !== undefined ? JSON.stringify(record.payload) : null,
+      oldValues: record.oldValues ?? null,
+      newValues: record.newValues ?? null,
+      payload: record.payload ?? null,
       timestamp: record.timestamp,
       actorId: record.actor?.id ?? null,
       actorType: record.actor?.type ?? null,
       actorData:
-        record.actor !== undefined
-          ? JSON.stringify(this.getActorData(record.actor))
-          : null,
-      metadata:
-        record.metadata !== undefined ? JSON.stringify(record.metadata) : null,
+        record.actor !== undefined ? this.getActorData(record.actor) : null,
+      metadata: record.metadata ?? null,
     };
   }
 
@@ -358,11 +350,14 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
   /**
    * Parse a JSON value that may already be parsed (e.g., from jsonb columns).
    */
-  private parseJson(value: string | object): Record<string, unknown> {
-    if (typeof value === 'object') {
+  private parseJson(value: unknown): Record<string, unknown> {
+    if (typeof value === 'object' && value !== null) {
       return value as Record<string, unknown>;
     }
-    return JSON.parse(value);
+    if (typeof value === 'string') {
+      return JSON.parse(value);
+    }
+    return {};
   }
 
   private getActorData(
