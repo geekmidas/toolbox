@@ -45,7 +45,9 @@ export class EndpointBuilder<
   TEventPublisher,
   TEventPublisherServiceName,
   TAuditStorage,
-  TAuditStorageServiceName
+  TAuditStorageServiceName,
+  TDatabase,
+  TDatabaseServiceName
 > {
   protected schemas: TInput = {} as TInput;
   protected _description?: string;
@@ -59,7 +61,6 @@ export class EndpointBuilder<
   _authorizerName?: TAuthorizers[number];
   _actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   _audits: MappedAudit<TAuditAction, OutSchema>[] = [];
-  _databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
   constructor(
     readonly route: TRoute,
@@ -73,6 +74,18 @@ export class EndpointBuilder<
     publisher: Service<TEventPublisherServiceName, TEventPublisher>,
   ) {
     this._publisher = publisher;
+  }
+
+  // Internal setter for EndpointFactory to set default auditor storage
+  _setAuditorStorage(
+    storage: Service<TAuditStorageServiceName, TAuditStorage>,
+  ) {
+    this._auditorStorage = storage;
+  }
+
+  // Internal setter for EndpointFactory to set default database service
+  _setDatabaseService(service: Service<TDatabaseServiceName, TDatabase>) {
+    this._databaseService = service;
   }
 
   description(description: string): this {
@@ -116,7 +129,10 @@ export class EndpointBuilder<
     TName,
     TAuthorizers,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
@@ -135,7 +151,10 @@ export class EndpointBuilder<
       TName,
       TAuthorizers,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 

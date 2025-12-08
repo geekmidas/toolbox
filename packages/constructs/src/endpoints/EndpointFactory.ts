@@ -1,13 +1,13 @@
+import type { AuditStorage } from '@geekmidas/audit';
+import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
+import type { HttpMethod } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
-
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
-import type { HttpMethod } from '../types';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -19,6 +19,10 @@ export class EndpointFactory<
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuthorizers extends readonly string[] = readonly string[],
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -31,6 +35,12 @@ export class EndpointFactory<
   private defaultLogger: TLogger = DEFAULT_LOGGER;
   private availableAuthorizers: Authorizer[] = [];
   private defaultAuthorizerName?: TAuthorizers[number];
+  private defaultAuditorStorage:
+    | Service<TAuditStorageServiceName, TAuditStorage>
+    | undefined;
+  private defaultDatabaseService:
+    | Service<TDatabaseServiceName, TDatabase>
+    | undefined;
 
   constructor({
     basePath,
@@ -42,6 +52,8 @@ export class EndpointFactory<
     defaultEventPublisher,
     availableAuthorizers = [],
     defaultAuthorizerName,
+    defaultAuditorStorage,
+    defaultDatabaseService,
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
@@ -49,7 +61,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -64,6 +80,8 @@ export class EndpointFactory<
     this.defaultEventPublisher = defaultEventPublisher;
     this.availableAuthorizers = availableAuthorizers;
     this.defaultAuthorizerName = defaultAuthorizerName;
+    this.defaultAuditorStorage = defaultAuditorStorage;
+    this.defaultDatabaseService = defaultDatabaseService;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -113,7 +131,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    T
+    T,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     const authorizerConfigs = authorizers.map((name) => ({
       name,
@@ -125,7 +147,11 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      T
+      T,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -135,6 +161,8 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: authorizerConfigs,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -148,7 +176,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
     return new EndpointFactory<
@@ -158,7 +190,11 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: newBasePath,
@@ -168,6 +204,8 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -181,7 +219,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return new EndpointFactory<
       TServices,
@@ -190,7 +232,11 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -200,6 +246,8 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -213,7 +261,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return new EndpointFactory<
       [...S, ...TServices],
@@ -222,7 +274,11 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
@@ -232,6 +288,8 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -244,7 +302,11 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return new EndpointFactory<
       TServices,
@@ -253,7 +315,11 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -272,6 +338,8 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -287,7 +355,11 @@ export class EndpointFactory<
     TSession,
     T,
     TServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return new EndpointFactory<
       TServices,
@@ -296,7 +368,11 @@ export class EndpointFactory<
       TSession,
       T,
       TServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -306,6 +382,8 @@ export class EndpointFactory<
       defaultEventPublisher: publisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -318,7 +396,11 @@ export class EndpointFactory<
     T,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     return new EndpointFactory<
       TServices,
@@ -327,7 +409,11 @@ export class EndpointFactory<
       T,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -341,6 +427,98 @@ export class EndpointFactory<
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
+    });
+  }
+
+  /**
+   * Set the database service for endpoints created from this factory.
+   * The database will be available in handler context as `db`.
+   */
+  database<T, TName extends string>(
+    service: Service<TName, T>,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    T,
+    TName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      T,
+      TName
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: service,
+    });
+  }
+
+  /**
+   * Set the auditor storage service for endpoints created from this factory.
+   * This enables audit functionality and makes `auditor` available in handler context.
+   */
+  auditor<T extends AuditStorage, TName extends string>(
+    storage: Service<TName, T>,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    T,
+    TName,
+    TDatabase,
+    TDatabaseServiceName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      T,
+      TName,
+      TDatabase,
+      TDatabaseServiceName
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: storage,
+      defaultDatabaseService: this.defaultDatabaseService,
     });
   }
 
@@ -357,7 +535,12 @@ export class EndpointFactory<
     TSession,
     TEventPublisher,
     TEventPublisherServiceName,
-    TAuthorizers
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    any,
+    TDatabase,
+    TDatabaseServiceName
   > {
     const fullPath = EndpointFactory.joinPaths(path, this.basePath);
     const builder = new EndpointBuilder<
@@ -370,7 +553,12 @@ export class EndpointFactory<
       TSession,
       TEventPublisher,
       TEventPublisherServiceName,
-      TAuthorizers
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      any,
+      TDatabase,
+      TDatabaseServiceName
     >(fullPath, method);
 
     if (this.defaultAuthorizeFn) {
@@ -402,6 +590,16 @@ export class EndpointFactory<
     builder._availableAuthorizers = this.availableAuthorizers;
     if (this.defaultAuthorizerName) {
       builder._authorizerName = this.defaultAuthorizerName;
+    }
+
+    // Set auditor storage if configured
+    if (this.defaultAuditorStorage) {
+      builder._setAuditorStorage(this.defaultAuditorStorage as any);
+    }
+
+    // Set database service if configured
+    if (this.defaultDatabaseService) {
+      builder._setDatabaseService(this.defaultDatabaseService as any);
     }
 
     return builder;
@@ -467,6 +665,10 @@ export interface EndpointFactoryOptions<
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuthorizers extends readonly string[] = readonly string[],
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;
@@ -477,6 +679,8 @@ export interface EndpointFactoryOptions<
   defaultEvents?: MappedEvent<TEventPublisher, undefined>[];
   availableAuthorizers?: Authorizer[];
   defaultAuthorizerName?: TAuthorizers[number];
+  defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
+  defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
 }
 
 export const e = new EndpointFactory();
