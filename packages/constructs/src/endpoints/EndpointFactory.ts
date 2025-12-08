@@ -264,7 +264,11 @@ export class EndpointFactory<
       >,
       defaultLogger: logger,
       defaultSessionExtractor: this
-        .defaultSessionExtractor as unknown as SessionFn<TServices, L, TSession>,
+        .defaultSessionExtractor as unknown as SessionFn<
+        TServices,
+        L,
+        TSession
+      >,
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,

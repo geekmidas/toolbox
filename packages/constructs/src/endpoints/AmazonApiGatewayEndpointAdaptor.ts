@@ -1,4 +1,4 @@
-import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
@@ -30,12 +30,12 @@ import type {
   InferStandardSchema,
 } from '@geekmidas/schema';
 import { publishConstructEvents } from '../publisher';
+import type { CookieFn, HeaderFn } from './Endpoint';
+import type { MappedAudit } from './audit';
 import {
   createAuditContext,
   executeWithAuditTransaction,
 } from './processAudits';
-import type { MappedAudit } from './audit';
-import type { CookieFn, HeaderFn } from './Endpoint';
 
 // Helper function to publish events
 
@@ -259,16 +259,22 @@ export abstract class AmazonApiGatewayEndpoint<
     );
 
     // Warn if declarative audits are configured but no audit storage
-    const audits = this.endpoint.audits as MappedAudit<TAuditAction, TOutSchema>[];
+    const audits = this.endpoint.audits as MappedAudit<
+      TAuditAction,
+      TOutSchema
+    >[];
     if (!auditContext && audits?.length) {
       logger.warn('No auditor storage service available');
     }
 
     // Resolve database service if configured
     const rawDb = this.endpoint.databaseService
-      ? await serviceDiscovery.register([this.endpoint.databaseService]).then(
-          (s) => s[this.endpoint.databaseService!.serviceName as keyof typeof s],
-        )
+      ? await serviceDiscovery
+          .register([this.endpoint.databaseService])
+          .then(
+            (s) =>
+              s[this.endpoint.databaseService!.serviceName as keyof typeof s],
+          )
       : undefined;
 
     // Execute handler with automatic audit transaction support

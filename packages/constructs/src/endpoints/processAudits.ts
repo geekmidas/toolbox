@@ -1,8 +1,8 @@
 import type {
-  AuditableAction,
   AuditActor,
-  Auditor,
   AuditStorage,
+  AuditableAction,
+  Auditor,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { withAuditableTransaction } from '@geekmidas/audit/kysely';
@@ -10,7 +10,7 @@ import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Endpoint, CookieFn, HeaderFn } from './Endpoint';
+import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
 import type { ActorExtractor, MappedAudit } from './audit';
 
 /**
@@ -68,7 +68,8 @@ export async function processEndpointAudits<
 
     // If we have an existing auditor (from handler context), we need to flush
     // any manual audits it collected, even if there are no declarative audits
-    const hasExistingRecords = existingAuditor && existingAuditor.getRecords().length > 0;
+    const hasExistingRecords =
+      existingAuditor && existingAuditor.getRecords().length > 0;
 
     // Skip if no declarative audits and no existing records to flush
     if (!audits?.length && !hasExistingRecords) {
@@ -105,7 +106,11 @@ export async function processEndpointAudits<
       if (endpoint.actorExtractor) {
         try {
           actor = await (
-            endpoint.actorExtractor as ActorExtractor<TServices, TSession, TLogger>
+            endpoint.actorExtractor as ActorExtractor<
+              TServices,
+              TSession,
+              TLogger
+            >
           )({
             services: ctx.services as any,
             session: ctx.session,
@@ -136,7 +141,10 @@ export async function processEndpointAudits<
 
         // Check when condition
         if (audit.when && !audit.when(response as any)) {
-          logger.debug({ audit: audit.type }, 'Audit skipped due to when condition');
+          logger.debug(
+            { audit: audit.type },
+            'Audit skipped due to when condition',
+          );
           continue;
         }
 
@@ -160,9 +168,10 @@ export async function processEndpointAudits<
     const recordCount = auditor.getRecords().length;
     if (recordCount > 0) {
       // Check if auditor has a stored transaction (for logging purposes)
-      const trx = 'getTransaction' in auditor
-        ? (auditor as { getTransaction(): unknown }).getTransaction()
-        : undefined;
+      const trx =
+        'getTransaction' in auditor
+          ? (auditor as { getTransaction(): unknown }).getTransaction()
+          : undefined;
       logger.debug(
         { auditCount: recordCount, hasTransaction: !!trx },
         'Flushing audits',
@@ -312,21 +321,17 @@ export async function executeWithAuditTransaction<
 
   if (db) {
     // Wrap in transaction - audits are atomic with handler operations
-    return withAuditableTransaction(
-      db as any,
-      auditor as any,
-      async () => {
-        const response = await handler(auditor);
+    return withAuditableTransaction(db as any, auditor as any, async () => {
+      const response = await handler(auditor);
 
-        // Process declarative audits within the transaction
-        if (onComplete) {
-          await onComplete(response, auditor);
-        }
+      // Process declarative audits within the transaction
+      if (onComplete) {
+        await onComplete(response, auditor);
+      }
 
-        // Audits are flushed by withAuditableTransaction before commit
-        return response;
-      },
-    );
+      // Audits are flushed by withAuditableTransaction before commit
+      return response;
+    });
   }
 
   // No database - run handler and flush audits after

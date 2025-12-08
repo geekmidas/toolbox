@@ -24,9 +24,7 @@ import {
  * const envVars = sniffer.getEnvironmentVariables(); // ['DATABASE_URL', 'API_KEY']
  * ```
  */
-export class SnifferEnvironmentParser<
-  T extends EmptyObject = EmptyObject,
-> {
+export class SnifferEnvironmentParser<T extends EmptyObject = EmptyObject> {
   private readonly accessedVars: Set<string> = new Set();
 
   /**
@@ -152,7 +150,9 @@ export class SnifferEnvironmentParser<
 /**
  * A ConfigParser that always succeeds with mock values.
  */
-class SnifferConfigParser<TResponse extends EmptyObject> extends ConfigParser<TResponse> {
+class SnifferConfigParser<
+  TResponse extends EmptyObject,
+> extends ConfigParser<TResponse> {
   parse(): any {
     return this.parseWithMocks(this.getConfig());
   }
@@ -175,7 +175,9 @@ class SnifferConfigParser<TResponse extends EmptyObject> extends ConfigParser<TR
       if (schema instanceof z.ZodType) {
         // Use safeParse which will return mock values from our wrapped schema
         const parsed = schema.safeParse(undefined);
-        result[key] = parsed.success ? parsed.data : this.getDefaultForSchema(schema);
+        result[key] = parsed.success
+          ? parsed.data
+          : this.getDefaultForSchema(schema);
       } else if (schema && typeof schema === 'object') {
         result[key] = this.parseWithMocks(schema as EmptyObject);
       }

@@ -250,12 +250,9 @@ describe('SubscriberGenerator', () => {
     });
 
     it('should generate subscribers.ts file for server provider even with no subscribers', async () => {
-      const subscriberInfos = await generator.build(
-        context,
-        [],
-        outputDir,
-        { provider: 'server' },
-      );
+      const subscriberInfos = await generator.build(context, [], outputDir, {
+        provider: 'server',
+      });
 
       expect(subscriberInfos).toEqual([]);
 
@@ -263,7 +260,9 @@ describe('SubscriberGenerator', () => {
       const subscribersPath = join(outputDir, 'subscribers.ts');
       const subscribersContent = await readFile(subscribersPath, 'utf-8');
 
-      expect(subscribersContent).toContain('export async function setupSubscribers');
+      expect(subscribersContent).toContain(
+        'export async function setupSubscribers',
+      );
       expect(subscribersContent).toContain('const subscribers = [');
       expect(subscribersContent).toContain('import type { EnvironmentParser }');
       expect(subscribersContent).toContain('import type { Logger }');
@@ -291,13 +290,17 @@ describe('SubscriberGenerator', () => {
       const subscribersPath = join(outputDir, 'subscribers.ts');
       const subscribersContent = await readFile(subscribersPath, 'utf-8');
 
-      expect(subscribersContent).toContain('export async function setupSubscribers');
+      expect(subscribersContent).toContain(
+        'export async function setupSubscribers',
+      );
       expect(subscribersContent).toContain('import { userEventSubscriber }');
       expect(subscribersContent).toContain('import { orderEventSubscriber }');
       expect(subscribersContent).toContain('const subscribers = [');
       expect(subscribersContent).toContain('userEventSubscriber');
       expect(subscribersContent).toContain('orderEventSubscriber');
-      expect(subscribersContent).toContain('Setting up subscribers in polling mode');
+      expect(subscribersContent).toContain(
+        'Setting up subscribers in polling mode',
+      );
     });
 
     it('should handle subscribers with custom environment parser patterns', async () => {

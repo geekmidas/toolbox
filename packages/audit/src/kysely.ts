@@ -207,16 +207,11 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
     const db = (trx as Transaction<DB>) ?? this.db;
     const rows = records.map((record) => this.toRow(record));
 
-    await (db as any)
-      .insertInto(this.tableName)
-      .values(rows)
-      .execute();
+    await (db as any).insertInto(this.tableName).values(rows).execute();
   }
 
   async query(options: AuditQueryOptions): Promise<AuditRecord[]> {
-    let query = (this.db as any)
-      .selectFrom(this.tableName)
-      .selectAll();
+    let query = (this.db as any).selectFrom(this.tableName).selectAll();
 
     query = this.applyFilters(query, options);
 
@@ -350,15 +345,9 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
       type: row.type,
       operation: row.operation as AuditRecord['operation'],
       table: row.table ?? undefined,
-      entityId: row.entityId
-        ? this.parseEntityId(row.entityId)
-        : undefined,
-      oldValues: row.oldValues
-        ? this.parseJson(row.oldValues)
-        : undefined,
-      newValues: row.newValues
-        ? this.parseJson(row.newValues)
-        : undefined,
+      entityId: row.entityId ? this.parseEntityId(row.entityId) : undefined,
+      oldValues: row.oldValues ? this.parseJson(row.oldValues) : undefined,
+      newValues: row.newValues ? this.parseJson(row.newValues) : undefined,
       payload: row.payload ? this.parseJson(row.payload) : undefined,
       timestamp: row.timestamp,
       actor,
@@ -383,9 +372,7 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
     return rest;
   }
 
-  private parseEntityId(
-    entityId: string,
-  ): string | Record<string, unknown> {
+  private parseEntityId(entityId: string): string | Record<string, unknown> {
     try {
       const parsed = JSON.parse(entityId);
       if (typeof parsed === 'object' && parsed !== null) {

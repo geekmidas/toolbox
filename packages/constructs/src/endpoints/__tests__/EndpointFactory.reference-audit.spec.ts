@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { EndpointFactory } from '../EndpointFactory';
 import type { Service } from '@geekmidas/services';
+import { describe, expect, it } from 'vitest';
+import { EndpointFactory } from '../EndpointFactory';
 
 const ServiceA = {
   serviceName: 'a' as const,
@@ -132,9 +132,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
       const builder2 = factory.post('/b');
 
       // Function should be the same reference
-      expect((builder1 as any)._authorize === (builder2 as any)._authorize).toBe(
-        true,
-      );
+      expect(
+        (builder1 as any)._authorize === (builder2 as any)._authorize,
+      ).toBe(true);
       expect((builder1 as any)._authorize).toBe(authFn);
     });
 
@@ -146,9 +146,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
       const builder2 = factory.post('/b');
 
       // Function should be the same reference
-      expect((builder1 as any)._getSession === (builder2 as any)._getSession).toBe(
-        true,
-      );
+      expect(
+        (builder1 as any)._getSession === (builder2 as any)._getSession,
+      ).toBe(true);
       expect((builder1 as any)._getSession).toBe(sessionFn);
     });
   });

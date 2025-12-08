@@ -337,11 +337,9 @@ describe('Kysely Transaction Helper', () => {
       for (const level of levels) {
         setIsolationLevelSpy.mockClear();
 
-        await withTransaction(
-          mockDb,
-          async () => 'result',
-          { isolationLevel: level },
-        );
+        await withTransaction(mockDb, async () => 'result', {
+          isolationLevel: level,
+        });
 
         expect(setIsolationLevelSpy).toHaveBeenCalledWith(level);
       }

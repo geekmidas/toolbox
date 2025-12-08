@@ -1,6 +1,6 @@
+import { e } from '@geekmidas/constructs/endpoints';
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
-import { e } from '@geekmidas/constructs/endpoints';
 import type { InferOpenApi, InferOpenApiFromEndpoint } from '../infer';
 
 describe('InferOpenApi', () => {

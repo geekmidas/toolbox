@@ -1,7 +1,7 @@
 import type {
-  AuditableAction,
   AuditRecord,
   AuditStorage,
+  AuditableAction,
 } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';

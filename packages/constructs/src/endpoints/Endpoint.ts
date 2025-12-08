@@ -1,4 +1,4 @@
-import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
 import type {
   EventPublisher,
   ExtractPublisherMessage,
@@ -27,8 +27,8 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
-import type { ActorExtractor, MappedAudit } from './audit';
 import type { Authorizer } from './Authorizer';
+import type { ActorExtractor, MappedAudit } from './audit';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,

@@ -17,7 +17,7 @@ import {
 } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import { DefaultAuditor } from '../DefaultAuditor';
-import { KyselyAuditStorage, type AuditLogTable } from '../kysely';
+import { type AuditLogTable, KyselyAuditStorage } from '../kysely';
 import type { AuditableAction } from '../types';
 
 interface TestDatabase {
@@ -112,10 +112,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       await auditor.flush();
 
       // Verify record was written
-      const records = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const records = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(records).toHaveLength(1);
       expect(records[0].type).toBe('user.created');

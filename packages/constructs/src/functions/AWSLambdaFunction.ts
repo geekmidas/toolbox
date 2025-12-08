@@ -1,8 +1,4 @@
-import type {
-  AuditableAction,
-  Auditor,
-  AuditStorage,
-} from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';

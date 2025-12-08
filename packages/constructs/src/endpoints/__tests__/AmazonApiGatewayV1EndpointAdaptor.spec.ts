@@ -469,7 +469,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
           services: [],
           logger: mockLogger,
           timeout: undefined,
-        memorySize: undefined,
+          memorySize: undefined,
           status: undefined,
           getSession: undefined,
           authorize: undefined,

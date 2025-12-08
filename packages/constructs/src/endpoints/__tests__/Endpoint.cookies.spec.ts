@@ -163,7 +163,9 @@ describe('Endpoint.createCookies', () => {
     });
 
     it('should preserve case in cookie names when getting all', () => {
-      const cookieFn = Endpoint.createCookies('Session=abc; session=xyz; TOKEN=123');
+      const cookieFn = Endpoint.createCookies(
+        'Session=abc; session=xyz; TOKEN=123',
+      );
 
       const allCookies = cookieFn();
 

@@ -2,11 +2,11 @@ import { nanoid } from 'nanoid';
 import type { Auditor } from './Auditor';
 import type { AuditStorage } from './storage';
 import type {
-  AuditableAction,
   AuditActor,
   AuditMetadata,
   AuditOptions,
   AuditRecord,
+  AuditableAction,
   ExtractAuditPayload,
   ExtractAuditType,
 } from './types';

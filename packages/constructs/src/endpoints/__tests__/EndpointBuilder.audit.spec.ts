@@ -1,7 +1,7 @@
 import type {
-  AuditableAction,
   AuditRecord,
   AuditStorage,
+  AuditableAction,
 } from '@geekmidas/audit';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
@@ -130,7 +130,10 @@ describe('EndpointBuilder audit methods', () => {
     });
 
     it('should allow chaining auditor and actor in any order', () => {
-      const actorExtractor: ActorExtractor = () => ({ id: '123', type: 'user' });
+      const actorExtractor: ActorExtractor = () => ({
+        id: '123',
+        type: 'user',
+      });
 
       // auditor then actor
       const endpoint1 = new EndpointBuilder('/users', 'POST')
@@ -207,7 +210,11 @@ describe('EndpointBuilder audit methods', () => {
         .output(outputSchema)
         .auditor(auditStorageService)
         .audit<TestAuditAction>(audits)
-        .handle(async () => ({ id: '123', email: 'test@test.com', active: true }));
+        .handle(async () => ({
+          id: '123',
+          email: 'test@test.com',
+          active: true,
+        }));
 
       expect(endpoint.audits).toBe(audits);
     });
@@ -273,7 +280,11 @@ describe('EndpointBuilder audit methods', () => {
       const endpoint = new EndpointBuilder('/users', 'POST')
         .output(outputSchema)
         .audit<TestAuditAction>(audits)
-        .handle(async () => ({ id: '123', email: 'test@test.com', active: true }));
+        .handle(async () => ({
+          id: '123',
+          email: 'test@test.com',
+          active: true,
+        }));
 
       // Verify the when function works
       const whenFn = endpoint.audits[0].when!;
@@ -321,20 +332,29 @@ describe('EndpointBuilder audit methods', () => {
             userId: response.id,
             email: response.email,
           }),
-          entityId: (response) => ({ userId: response.id, orgId: response.orgId }),
+          entityId: (response) => ({
+            userId: response.id,
+            orgId: response.orgId,
+          }),
         },
       ];
 
       const endpoint = new EndpointBuilder('/users', 'POST')
         .output(outputSchema)
         .audit<TestAuditAction>(audits)
-        .handle(async () => ({ id: '123', orgId: 'org-1', email: 'test@test.com' }));
+        .handle(async () => ({
+          id: '123',
+          orgId: 'org-1',
+          email: 'test@test.com',
+        }));
 
       const entityIdFn = endpoint.audits[0].entityId!;
-      expect(entityIdFn({ id: 'u-1', orgId: 'o-1', email: 'a@b.com' })).toEqual({
-        userId: 'u-1',
-        orgId: 'o-1',
-      });
+      expect(entityIdFn({ id: 'u-1', orgId: 'o-1', email: 'a@b.com' })).toEqual(
+        {
+          userId: 'u-1',
+          orgId: 'o-1',
+        },
+      );
     });
   });
 
@@ -370,7 +390,11 @@ describe('EndpointBuilder audit methods', () => {
         .auditor(auditStorageService)
         .actor(actorExtractor)
         .audit<TestAuditAction>(audits)
-        .handle(async () => ({ id: '123', email: 'test@test.com', active: true }));
+        .handle(async () => ({
+          id: '123',
+          email: 'test@test.com',
+          active: true,
+        }));
 
       expect(endpoint.auditorStorageService).toBe(auditStorageService);
       expect(endpoint.actorExtractor).toBe(actorExtractor);

@@ -1,4 +1,4 @@
-import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -365,9 +365,12 @@ export class HonoEndpoint<
 
           // Resolve database service if configured
           const rawDb = endpoint.databaseService
-            ? await serviceDiscovery.register([endpoint.databaseService]).then(
-                (s) => s[endpoint.databaseService!.serviceName as keyof typeof s],
-              )
+            ? await serviceDiscovery
+                .register([endpoint.databaseService])
+                .then(
+                  (s) =>
+                    s[endpoint.databaseService!.serviceName as keyof typeof s],
+                )
             : undefined;
 
           // Execute handler with automatic audit transaction support

@@ -1,8 +1,4 @@
-import type {
-  AuditableAction,
-  AuditStorage,
-  Auditor,
-} from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
 import { UnprocessableEntityError } from '@geekmidas/errors';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';

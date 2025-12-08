@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { CronBuilder } from '../CronBuilder';
 import type { Service } from '@geekmidas/services';
+import { describe, expect, it } from 'vitest';
+import { CronBuilder } from '../CronBuilder';
 
 const ServiceA = {
   serviceName: 'a' as const,

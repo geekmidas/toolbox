@@ -1,7 +1,10 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { InferStandardSchema } from '@geekmidas/schema';
-import type { Endpoint, EndpointSchemas } from '@geekmidas/constructs/endpoints';
+import type {
+  Endpoint,
+  EndpointSchemas,
+} from '@geekmidas/constructs/endpoints';
 import type { HttpMethod } from '@geekmidas/constructs/types';
+import type { InferStandardSchema } from '@geekmidas/schema';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 /**
  * Infers path parameters from a route string as an object
@@ -32,14 +35,15 @@ type InferRouteParameters<TRoute extends string> =
 /**
  * Infers operation-level parameters (query params)
  */
-type InferOperationParameters<TInput extends EndpointSchemas> =
-  TInput extends { query: infer Q }
-    ? {
-        parameters: {
-          query: InferStandardSchema<Q>;
-        };
-      }
-    : {};
+type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
+  query: infer Q;
+}
+  ? {
+      parameters: {
+        query: InferStandardSchema<Q>;
+      };
+    }
+  : {};
 
 /**
  * Infers the operation object compatible with TypedFetcher

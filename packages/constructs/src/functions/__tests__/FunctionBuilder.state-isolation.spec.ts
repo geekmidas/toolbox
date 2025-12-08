@@ -79,7 +79,10 @@ describe('FunctionBuilder - State Isolation', () => {
       const outputSchema: any = { '~standard': { validate: () => ({}) } };
 
       // First function with schemas
-      const fn1 = f.input(inputSchema).output(outputSchema).handle(async () => ({}));
+      const fn1 = f
+        .input(inputSchema)
+        .output(outputSchema)
+        .handle(async () => ({}));
 
       // Second function should not have schemas
       const fn2 = f.handle(async () => ({}));
@@ -145,7 +148,9 @@ describe('FunctionBuilder - State Isolation', () => {
     it('should create independent functions sequentially', () => {
       const f = new FunctionBuilder();
 
-      const fn1 = f.services([ServiceA, ServiceB]).handle(async () => ({ result: 1 }));
+      const fn1 = f
+        .services([ServiceA, ServiceB])
+        .handle(async () => ({ result: 1 }));
       const fn2 = f.services([ServiceA]).handle(async () => ({ result: 2 }));
       const fn3 = f.handle(async () => ({ result: 3 }));
 

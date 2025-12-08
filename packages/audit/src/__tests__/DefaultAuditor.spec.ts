@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DefaultAuditor } from '../DefaultAuditor';
 import type { AuditStorage } from '../storage';
-import type { AuditableAction, AuditRecord } from '../types';
+import type { AuditRecord, AuditableAction } from '../types';
 
 // Define test audit actions
 type TestAuditAction =
@@ -40,7 +40,10 @@ describe('DefaultAuditor', () => {
         generateId: () => `custom-${++counter}`,
       });
 
-      auditor.audit('user.created', { userId: '123', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '123',
+        email: 'test@example.com',
+      });
       auditor.audit('user.updated', { userId: '123', changes: ['name'] });
 
       const records = auditor.getRecords();
@@ -57,7 +60,10 @@ describe('DefaultAuditor', () => {
         generateId: () => 'test-id',
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records).toHaveLength(1);
@@ -109,7 +115,10 @@ describe('DefaultAuditor', () => {
         generateId: () => 'test-id',
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toEqual({
@@ -191,7 +200,10 @@ describe('DefaultAuditor', () => {
         storage,
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records1 = auditor.getRecords();
       const records2 = auditor.getRecords();
@@ -218,7 +230,10 @@ describe('DefaultAuditor', () => {
         generateId: () => 'test-id',
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
       auditor.audit('order.placed', { orderId: 'order-789', total: 99.99 });
 
       await auditor.flush();
@@ -235,7 +250,10 @@ describe('DefaultAuditor', () => {
         storage,
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const mockTrx = { isTrx: true };
       await auditor.flush(mockTrx);
@@ -249,7 +267,10 @@ describe('DefaultAuditor', () => {
         storage,
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
       await auditor.flush();
 
       expect(auditor.getRecords()).toEqual([]);
@@ -272,10 +293,16 @@ describe('DefaultAuditor', () => {
         storage,
       });
 
-      auditor.audit('user.created', { userId: '1', email: 'first@example.com' });
+      auditor.audit('user.created', {
+        userId: '1',
+        email: 'first@example.com',
+      });
       await auditor.flush();
 
-      auditor.audit('user.created', { userId: '2', email: 'second@example.com' });
+      auditor.audit('user.created', {
+        userId: '2',
+        email: 'second@example.com',
+      });
       await auditor.flush();
 
       expect(storage.write).toHaveBeenCalledTimes(2);
@@ -290,7 +317,10 @@ describe('DefaultAuditor', () => {
         storage,
       });
 
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
       auditor.audit('order.placed', { orderId: 'order-789', total: 99.99 });
 
       auditor.clear();
@@ -308,7 +338,10 @@ describe('DefaultAuditor', () => {
       });
 
       // These should compile without errors
-      auditor.audit('user.created', { userId: '123', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '123',
+        email: 'test@example.com',
+      });
       auditor.audit('user.updated', { userId: '123', changes: ['name'] });
       auditor.audit('order.placed', { orderId: 'order-1', total: 50.0 });
 
@@ -329,7 +362,10 @@ describe('DefaultAuditor', () => {
       });
 
       auditor.addMetadata({ requestId: 'req-123', endpoint: '/users' });
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toEqual({
@@ -347,7 +383,10 @@ describe('DefaultAuditor', () => {
       });
 
       auditor.addMetadata({ endpoint: '/users', method: 'POST' });
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toEqual({
@@ -366,7 +405,10 @@ describe('DefaultAuditor', () => {
       });
 
       auditor.addMetadata({ endpoint: '/new', ip: '192.168.1.1' });
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toEqual({
@@ -384,13 +426,19 @@ describe('DefaultAuditor', () => {
       });
 
       // Audit before adding metadata
-      auditor.audit('user.created', { userId: '1', email: 'first@example.com' });
+      auditor.audit('user.created', {
+        userId: '1',
+        email: 'first@example.com',
+      });
 
       // Add metadata
       auditor.addMetadata({ requestId: 'req-123' });
 
       // Audit after adding metadata
-      auditor.audit('user.created', { userId: '2', email: 'second@example.com' });
+      auditor.audit('user.created', {
+        userId: '2',
+        email: 'second@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toBeUndefined();
@@ -407,7 +455,10 @@ describe('DefaultAuditor', () => {
       auditor.addMetadata({ requestId: 'req-123' });
       auditor.addMetadata({ endpoint: '/users' });
       auditor.addMetadata({ method: 'POST' });
-      auditor.audit('user.created', { userId: '456', email: 'test@example.com' });
+      auditor.audit('user.created', {
+        userId: '456',
+        email: 'test@example.com',
+      });
 
       const records = auditor.getRecords();
       expect(records[0].metadata).toEqual({

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { KyselyAuditStorage, type AuditLogTable } from '../kysely';
+import { type AuditLogTable, KyselyAuditStorage } from '../kysely';
 import type { AuditRecord } from '../types';
 
 // Mock Kysely database
@@ -155,7 +155,10 @@ describe('KyselyAuditStorage', () => {
         expect.objectContaining({
           actorId: 'user-1',
           actorType: 'user',
-          actorData: JSON.stringify({ email: 'user@example.com', role: 'admin' }),
+          actorData: JSON.stringify({
+            email: 'user@example.com',
+            role: 'admin',
+          }),
         }),
       ]);
     });

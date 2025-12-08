@@ -1,11 +1,11 @@
 import type {
-  AuditableAction,
   AuditRecord,
   AuditStorage,
+  AuditableAction,
 } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { ServiceDiscovery, type Service } from '@geekmidas/services';
+import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';

@@ -1,8 +1,10 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import chokidar from 'chokidar';
+import { resolveProviders } from '../build/providerResolver';
+import type { BuildContext } from '../build/types';
 import { loadConfig } from '../config';
 import {
   CronGenerator,
@@ -11,8 +13,6 @@ import {
   SubscriberGenerator,
 } from '../generators';
 import type { LegacyProvider } from '../types';
-import type { BuildContext } from '../build/types';
-import { resolveProviders } from '../build/providerResolver';
 
 const logger = console;
 
@@ -326,14 +326,12 @@ class DevServer {
     const { writeFile } = await import('node:fs/promises');
     const { relative, dirname } = await import('node:path');
 
-    const serverPath = join(
-      process.cwd(),
-      '.gkm',
-      this.provider,
-      'server.ts',
-    );
+    const serverPath = join(process.cwd(), '.gkm', this.provider, 'server.ts');
 
-    const relativeAppPath = relative(dirname(serverPath), join(dirname(serverPath), 'app.js'));
+    const relativeAppPath = relative(
+      dirname(serverPath),
+      join(dirname(serverPath), 'app.js'),
+    );
 
     const content = `#!/usr/bin/env node
 /**

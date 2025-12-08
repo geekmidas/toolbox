@@ -1,8 +1,4 @@
-import type {
-  AuditableAction,
-  Auditor,
-  AuditStorage,
-} from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
@@ -174,7 +170,10 @@ export class TestFunctionAdaptor<
     if (auditor) {
       const records = auditor.getRecords();
       if (records.length > 0) {
-        logger.debug({ auditCount: records.length }, 'Flushing function audits');
+        logger.debug(
+          { auditCount: records.length },
+          'Flushing function audits',
+        );
         await auditor.flush();
       }
     }

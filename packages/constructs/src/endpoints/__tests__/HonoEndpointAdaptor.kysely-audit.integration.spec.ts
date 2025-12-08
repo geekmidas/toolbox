@@ -1,7 +1,7 @@
 import type { AuditableAction } from '@geekmidas/audit';
 import {
-  KyselyAuditStorage,
   type AuditLogTable,
+  KyselyAuditStorage,
 } from '@geekmidas/audit/kysely';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
@@ -193,10 +193,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify audit was written to the real database
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
@@ -265,10 +262,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(500);
 
       // Verify no audit was written
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(0);
     });
@@ -340,10 +334,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify manual audit was written
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
@@ -419,10 +410,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(500);
 
       // Verify no audit was written (transaction rolled back)
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(0);
     });
@@ -513,10 +501,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(usersInDb[0].email).toBe('success@example.com');
 
       // Verify audit was written
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
       expect(auditsInDb[0].payload).toEqual({
@@ -601,10 +586,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify both audits were written
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(2);
 
@@ -683,10 +665,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify actor was included in audit
-      const auditsInDb = await db
-        .selectFrom('auditLogs')
-        .selectAll()
-        .execute();
+      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].actorId).toBe('user-123');
@@ -815,7 +794,9 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
         KyselyAuditStorage<TestDatabase>
       > = {
         serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorageWithDifferentServiceName),
+        register: vi
+          .fn()
+          .mockResolvedValue(auditStorageWithDifferentServiceName),
       };
 
       const outputSchema = z.object({ id: z.number(), email: z.string() });
@@ -934,7 +915,10 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
           const user = await ctx.db
             .insertInto('users')
-            .values({ name: 'No ServiceName User', email: 'noname@example.com' })
+            .values({
+              name: 'No ServiceName User',
+              email: 'noname@example.com',
+            })
             .returningAll()
             .executeTakeFirstOrThrow();
 

@@ -1,7 +1,7 @@
 import type {
-  AuditableAction,
   AuditActor,
   AuditStorage,
+  AuditableAction,
   ExtractAuditPayload,
   ExtractAuditType,
 } from '@geekmidas/audit';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EndpointFactory } from '../EndpointFactory';
 import { z } from 'zod';
+import { EndpointFactory } from '../EndpointFactory';
 
 describe('EndpointFactory.authorizers', () => {
   it('should create factory with available authorizers', () => {
@@ -45,13 +45,17 @@ describe('EndpointFactory.authorizers', () => {
         // @ts-expect-error - testing invalid authorizer
         .authorizer('invalid')
         .handle(async () => ({ success: true }));
-    }).toThrow('Authorizer "invalid" not found in available authorizers: iam, jwt');
+    }).toThrow(
+      'Authorizer "invalid" not found in available authorizers: iam, jwt',
+    );
   });
 
   it('should allow endpoints without authorizers', () => {
     const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
 
-    const endpoint = factory.get('/public').handle(async () => ({ success: true }));
+    const endpoint = factory
+      .get('/public')
+      .handle(async () => ({ success: true }));
 
     expect(endpoint.authorizer).toBeUndefined();
   });
@@ -96,10 +100,16 @@ describe('EndpointFactory.authorizers', () => {
     const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
 
     // This should compile with valid authorizer
-    factory.get('/test1').authorizer('iam').handle(async () => ({}));
+    factory
+      .get('/test1')
+      .authorizer('iam')
+      .handle(async () => ({}));
 
     // This should compile with valid authorizer
-    factory.get('/test2').authorizer('jwt').handle(async () => ({}));
+    factory
+      .get('/test2')
+      .authorizer('jwt')
+      .handle(async () => ({}));
 
     // This should not compile with invalid authorizer (tested via TypeScript)
     // factory.get('/test3').authorizer('invalid').handle(async () => ({}));
@@ -142,12 +152,30 @@ describe('EndpointFactory.authorizers', () => {
   it('should work with all HTTP methods', () => {
     const factory = new EndpointFactory().authorizers(['jwt'] as const);
 
-    const getEndpoint = factory.get('/users').authorizer('jwt').handle(async () => ({ users: [] }));
-    const postEndpoint = factory.post('/users').authorizer('jwt').handle(async () => ({ id: '1' }));
-    const putEndpoint = factory.put('/users/:id').authorizer('jwt').handle(async () => ({ updated: true }));
-    const patchEndpoint = factory.patch('/users/:id').authorizer('jwt').handle(async () => ({ patched: true }));
-    const deleteEndpoint = factory.delete('/users/:id').authorizer('jwt').handle(async () => ({ deleted: true }));
-    const optionsEndpoint = factory.options('/users').authorizer('jwt').handle(async () => ({}));
+    const getEndpoint = factory
+      .get('/users')
+      .authorizer('jwt')
+      .handle(async () => ({ users: [] }));
+    const postEndpoint = factory
+      .post('/users')
+      .authorizer('jwt')
+      .handle(async () => ({ id: '1' }));
+    const putEndpoint = factory
+      .put('/users/:id')
+      .authorizer('jwt')
+      .handle(async () => ({ updated: true }));
+    const patchEndpoint = factory
+      .patch('/users/:id')
+      .authorizer('jwt')
+      .handle(async () => ({ patched: true }));
+    const deleteEndpoint = factory
+      .delete('/users/:id')
+      .authorizer('jwt')
+      .handle(async () => ({ deleted: true }));
+    const optionsEndpoint = factory
+      .options('/users')
+      .authorizer('jwt')
+      .handle(async () => ({}));
 
     expect(getEndpoint.authorizer).toEqual({ name: 'jwt' });
     expect(postEndpoint.authorizer).toEqual({ name: 'jwt' });
@@ -195,9 +223,18 @@ describe('EndpointFactory.authorizers', () => {
       'jwt',
     ] as const);
 
-    const endpoint1 = factory.get('/user').authorizer('jwt-user').handle(async () => ({}));
-    const endpoint2 = factory.get('/admin').authorizer('jwt-admin').handle(async () => ({}));
-    const endpoint3 = factory.get('/api').authorizer('jwt').handle(async () => ({}));
+    const endpoint1 = factory
+      .get('/user')
+      .authorizer('jwt-user')
+      .handle(async () => ({}));
+    const endpoint2 = factory
+      .get('/admin')
+      .authorizer('jwt-admin')
+      .handle(async () => ({}));
+    const endpoint3 = factory
+      .get('/api')
+      .authorizer('jwt')
+      .handle(async () => ({}));
 
     expect(endpoint1.authorizer).toEqual({ name: 'jwt-user' });
     expect(endpoint2.authorizer).toEqual({ name: 'jwt-admin' });

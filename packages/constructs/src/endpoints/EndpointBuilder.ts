@@ -1,4 +1,4 @@
-import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
@@ -8,7 +8,6 @@ import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { BaseFunctionBuilder } from '../functions';
 import type { HttpMethod } from '../types';
-import type { ActorExtractor, MappedAudit } from './audit';
 import type { Authorizer } from './Authorizer';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
@@ -17,6 +16,7 @@ import type {
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
+import type { ActorExtractor, MappedAudit } from './audit';
 
 export class EndpointBuilder<
   TRoute extends string,
@@ -256,7 +256,9 @@ export class EndpointBuilder<
       (a) => a.name === name,
     );
     if (!authorizerExists && this._availableAuthorizers.length > 0) {
-      const available = this._availableAuthorizers.map((a) => a.name).join(', ');
+      const available = this._availableAuthorizers
+        .map((a) => a.name)
+        .join(', ');
       throw new Error(
         `Authorizer "${name as string}" not found in available authorizers: ${available}`,
       );

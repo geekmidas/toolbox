@@ -1,6 +1,6 @@
+import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { EndpointFactory } from '../EndpointFactory';
-import type { Service } from '@geekmidas/services';
 
 const CacheService = {
   serviceName: 'cache' as const,
@@ -25,7 +25,10 @@ describe('EndpointFactory - State Isolation', () => {
       .post('/user')
       .handle(() => ({}));
 
-    const endpoint2 = factory.services([CacheService]).get('/user').handle(() => ({}));
+    const endpoint2 = factory
+      .services([CacheService])
+      .get('/user')
+      .handle(() => ({}));
 
     expect(endpoint1.services.map((s) => s.serviceName)).toEqual([
       'cache',
@@ -92,13 +95,13 @@ describe('EndpointFactory - State Isolation', () => {
 
   it('should support base router pattern with extended services', () => {
     // Create a base router with default services
-    const r = new EndpointFactory().services([
-      CacheService,
-      DatabaseService,
-    ]);
+    const r = new EndpointFactory().services([CacheService, DatabaseService]);
 
     // Create endpoint with additional service
-    const getUsers = r.services([CacheService]).get('/users').handle(() => ({}));
+    const getUsers = r
+      .services([CacheService])
+      .get('/users')
+      .handle(() => ({}));
 
     // Create endpoint with just base services
     const createUser = r.post('/users').handle(() => ({}));
@@ -125,10 +128,7 @@ describe('EndpointFactory - State Isolation', () => {
     } satisfies Service<'additional', any>;
 
     // Create a base router with default services
-    const r = new EndpointFactory().services([
-      CacheService,
-      DatabaseService,
-    ]);
+    const r = new EndpointFactory().services([CacheService, DatabaseService]);
 
     // Create endpoint with additional service
     const getUsers = r
