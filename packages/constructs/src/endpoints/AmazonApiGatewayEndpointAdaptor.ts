@@ -1,3 +1,4 @@
+import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
@@ -29,7 +30,12 @@ import type {
   InferStandardSchema,
 } from '@geekmidas/schema';
 import { publishConstructEvents } from '../publisher';
-import { processEndpointAudits } from './processAudits';
+import {
+  type AuditExecutionContext,
+  createAuditContext,
+  executeWithAuditTransaction,
+} from './processAudits';
+import type { MappedAudit } from './audit';
 
 // Helper function to publish events
 
@@ -47,6 +53,12 @@ export abstract class AmazonApiGatewayEndpoint<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > {
   constructor(
     protected envParser: EnvironmentParser<{}>,
@@ -59,7 +71,10 @@ export abstract class AmazonApiGatewayEndpoint<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction
     >,
   ) {}
 
@@ -199,7 +214,8 @@ export abstract class AmazonApiGatewayEndpoint<
           .__response as InferStandardSchema<TOutSchema>;
         const statusCode = req.response?.statusCode ?? this.endpoint.status;
 
-        // Only publish events and process audits on successful responses (2xx status codes)
+        // Only publish events on successful responses (2xx status codes)
+        // Note: Audits are processed inside the handler's transaction
         if (Endpoint.isSuccessStatus(statusCode)) {
           const logger = event.logger as TLogger;
           const serviceDiscovery = ServiceDiscovery.getInstance<
@@ -214,20 +230,6 @@ export abstract class AmazonApiGatewayEndpoint<
             serviceDiscovery,
             logger,
           );
-
-          // Process audits
-          await processEndpointAudits(
-            this.endpoint,
-            response,
-            serviceDiscovery,
-            logger,
-            {
-              session: event.session,
-              header: event.header,
-              cookie: event.cookie,
-              services: event.services as Record<string, unknown>,
-            },
-          );
         }
       },
     };
@@ -237,33 +239,83 @@ export abstract class AmazonApiGatewayEndpoint<
     event: Event<TEvent, TInput, TServices, TLogger, TSession>,
   ) {
     const input = this.endpoint.refineInput(event);
+    const logger = event.logger as TLogger;
+    const serviceDiscovery = ServiceDiscovery.getInstance<
+      ServiceRecord<TServices>,
+      TLogger
+    >(logger, this.envParser);
 
-    const responseBuilder = new ResponseBuilder();
-    const response = await this.endpoint.handler(
+    // Create audit context if audit storage is configured
+    const auditContext = await createAuditContext(
+      this.endpoint,
+      serviceDiscovery,
+      logger,
       {
+        session: event.session,
         header: event.header,
         cookie: event.cookie,
-        logger: event.logger,
-        services: event.services,
-        session: event.session,
-        ...input,
+        services: event.services as Record<string, unknown>,
       },
-      responseBuilder,
     );
 
-    // Check if response has metadata
-    let data = response;
-    let metadata = responseBuilder.getMetadata();
-
-    if (Endpoint.hasMetadata(response)) {
-      data = response.data;
-      metadata = response.metadata;
+    // Warn if declarative audits are configured but no audit storage
+    const audits = this.endpoint.audits as MappedAudit<TAuditAction, TOutSchema>[];
+    if (!auditContext && audits?.length) {
+      logger.warn('No auditor storage service available');
     }
 
-    const output = this.endpoint.outputSchema
-      ? await this.endpoint.parseOutput(data)
-      : undefined;
+    // Execute handler with automatic audit transaction support
+    const result = await executeWithAuditTransaction(
+      auditContext,
+      async (auditor) => {
+        const responseBuilder = new ResponseBuilder();
+        const response = await this.endpoint.handler(
+          {
+            header: event.header,
+            cookie: event.cookie,
+            logger: event.logger,
+            services: event.services,
+            session: event.session,
+            auditor,
+            ...input,
+          } as any,
+          responseBuilder,
+        );
 
+        // Check if response has metadata
+        let data = response;
+        let metadata = responseBuilder.getMetadata();
+
+        if (Endpoint.hasMetadata(response)) {
+          data = response.data;
+          metadata = response.metadata;
+        }
+
+        const output = this.endpoint.outputSchema
+          ? await this.endpoint.parseOutput(data)
+          : undefined;
+
+        return { output, metadata, responseBuilder };
+      },
+      // Process declarative audits after handler (inside transaction)
+      async (result, auditor) => {
+        if (!audits?.length) return;
+
+        for (const audit of audits) {
+          if (audit.when && !audit.when(result.output as any)) {
+            continue;
+          }
+          const payload = audit.payload(result.output as any);
+          const entityId = audit.entityId?.(result.output as any);
+          auditor.audit(audit.type as any, payload as any, {
+            table: audit.table,
+            entityId,
+          });
+        }
+      },
+    );
+
+    const { output, metadata } = result;
     const body = output !== undefined ? JSON.stringify(output) : undefined;
 
     // Store response for middleware access

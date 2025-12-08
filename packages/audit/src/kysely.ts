@@ -245,6 +245,14 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
     return Number(result?.count ?? 0);
   }
 
+  /**
+   * Get the Kysely database instance for transactional operations.
+   * Used by endpoint adaptors to automatically wrap handlers in transactions.
+   */
+  getDatabase(): Kysely<DB> {
+    return this.db;
+  }
+
   private applyFilters(query: any, options: AuditQueryOptions): any {
     // Type filter
     if (options.type !== undefined) {

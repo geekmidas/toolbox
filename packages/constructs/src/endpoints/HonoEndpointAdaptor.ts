@@ -20,6 +20,7 @@ import { getEndpointsFromRoutes } from './helpers';
 import { parseHonoQuery } from './parseHonoQuery';
 
 import { wrapError } from '@geekmidas/errors';
+import type { InferStandardSchema } from '@geekmidas/schema';
 import {
   type Service,
   ServiceDiscovery,
@@ -27,7 +28,11 @@ import {
 } from '@geekmidas/services';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { publishConstructEvents } from '../publisher';
-import { processEndpointAudits } from './processAudits';
+import type { MappedAudit } from './audit';
+import {
+  createAuditContext,
+  executeWithAuditTransaction,
+} from './processAudits';
 
 export interface HonoEndpointOptions {
   /**
@@ -124,37 +129,17 @@ export class HonoEndpoint<
         any
       >;
       // @ts-ignore
-      const response = c.get('__response') as InferStandardSchema<TOutSchema>;
+      const response = c.get('__response');
       // @ts-ignore
       const logger = c.get('__logger') as Logger;
-      // @ts-ignore
-      const session = c.get('__session');
-      // @ts-ignore
-      const services = c.get('__services') ?? {};
 
       if (Endpoint.isSuccessStatus(c.res.status) && endpoint) {
-        // Process events
+        // Process events (audits are handled in the handler with transaction support)
         await publishConstructEvents<any, any>(
           endpoint,
           response,
           serviceDiscovery,
           logger,
-        );
-
-        // Process audits
-        await processEndpointAudits(
-          endpoint,
-          response,
-          serviceDiscovery,
-          logger,
-          {
-            session,
-            header: Endpoint.createHeaders(
-              Object.fromEntries(c.req.raw.headers.entries()),
-            ),
-            cookie: Endpoint.createCookies(c.req.header('cookie')),
-            services,
-          },
         );
       }
     });
@@ -349,40 +334,90 @@ export class HonoEndpoint<
             }
           }
 
-          const responseBuilder = new ResponseBuilder();
-          const response = await endpoint.handler(
+          // Create audit context if audit storage is configured
+          const auditContext = await createAuditContext(
+            endpoint,
+            serviceDiscovery,
+            logger,
             {
-              services,
-              logger,
-              body: c.req.valid('json'),
-              query: c.req.valid('query'),
-              params: c.req.valid('param'),
               session,
-              header: Endpoint.createHeaders(headerValues),
-              cookie: Endpoint.createCookies(headerValues.cookie),
-            } as unknown as EndpointContext<
-              TInput,
-              TServices,
-              TLogger,
-              TSession
-            >,
-            responseBuilder,
+              header,
+              cookie,
+              services: services as Record<string, unknown>,
+            },
           );
 
-          // Publish events if configured
+          // Warn if declarative audits are configured but no audit storage
+          const audits = endpoint.audits as MappedAudit<
+            TAuditAction,
+            TOutSchema
+          >[];
+          if (!auditContext && audits?.length) {
+            logger.warn('No auditor storage service available');
+          }
 
-          // Validate output if schema is defined
+          // Execute handler with automatic audit transaction support
+          const result = await executeWithAuditTransaction(
+            auditContext,
+            async (auditor) => {
+              const responseBuilder = new ResponseBuilder();
+              const response = await endpoint.handler(
+                {
+                  services,
+                  logger,
+                  body: c.req.valid('json'),
+                  query: c.req.valid('query'),
+                  params: c.req.valid('param'),
+                  session,
+                  header,
+                  cookie,
+                  auditor,
+                } as unknown as EndpointContext<
+                  TInput,
+                  TServices,
+                  TLogger,
+                  TSession
+                >,
+                responseBuilder,
+              );
+
+              // Check if response has metadata
+              let data = response;
+              let metadata = responseBuilder.getMetadata();
+
+              if (Endpoint.hasMetadata(response)) {
+                data = response.data;
+                metadata = response.metadata;
+              }
+
+              const output = endpoint.outputSchema
+                ? await endpoint.parseOutput(data)
+                : undefined;
+
+              return { output, metadata, responseBuilder };
+            },
+            // Process declarative audits after handler (inside transaction)
+            async (result, auditor) => {
+              if (!audits?.length) return;
+
+              for (const audit of audits) {
+                if (audit.when && !audit.when(result.output as any)) {
+                  continue;
+                }
+                const payload = audit.payload(result.output as any);
+                const entityId = audit.entityId?.(result.output as any);
+                auditor.audit(audit.type as any, payload as any, {
+                  table: audit.table,
+                  entityId,
+                });
+              }
+            },
+          );
+
+          const { output, metadata } = result;
 
           try {
-            // Check if response has metadata
-            let data = response;
-            let metadata = responseBuilder.getMetadata();
             let status = endpoint.status as ContentfulStatusCode;
-
-            if (Endpoint.hasMetadata(response)) {
-              data = response.data;
-              metadata = response.metadata;
-            }
 
             // Apply response metadata
             if (metadata.status) {
@@ -401,9 +436,6 @@ export class HonoEndpoint<
               }
             }
 
-            const output = endpoint.outputSchema
-              ? await endpoint.parseOutput(data)
-              : ({} as any);
             // @ts-ignore
             c.set('__response', output);
             // @ts-ignore
@@ -419,7 +451,7 @@ export class HonoEndpoint<
               logger.info({ status, body: output }, 'Outgoing response');
             }
 
-            return c.json(output, status);
+            return c.json(output ?? {}, status);
           } catch (validationError: any) {
             logger.error(validationError, 'Output validation failed');
             const error = wrapError(

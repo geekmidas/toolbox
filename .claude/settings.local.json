@@ -46,7 +46,8 @@
       "Bash(NODE_OPTIONS=\"--import tsx\" node:*)",
       "Bash(cat:*)",
       "Bash(pnpm --filter @geekmidas/constructs ts:*)",
-      "Bash(pnpm --filter @geekmidas/constructs ts:check:*)"
+      "Bash(pnpm --filter @geekmidas/constructs ts:check:*)",
+      "Bash(pnpm exec tsc:*)"
     ],
     "deny": []
   }

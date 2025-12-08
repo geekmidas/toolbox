@@ -1,3 +1,4 @@
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -13,13 +14,17 @@ import {
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
+import type { MappedAudit } from './audit';
 import {
   type CookieOptions,
   Endpoint,
   type EndpointSchemas,
   ResponseBuilder,
 } from './Endpoint';
-import { processEndpointAudits } from './processAudits';
+import {
+  createAuditContext,
+  executeWithAuditTransaction,
+} from './processAudits';
 
 export type TestHttpResponse<TBody = any> = {
   body: TBody;
@@ -74,6 +79,12 @@ export class TestEndpointAdaptor<
   TSession = unknown,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > {
   static getDefaultServiceDiscover<
     TRoute extends string,
@@ -85,6 +96,12 @@ export class TestEndpointAdaptor<
     TSession = unknown,
     TEventPublisher extends EventPublisher<any> | undefined = undefined,
     TEventPublisherServiceName extends string = string,
+    TAuditStorage extends AuditStorage | undefined = undefined,
+    TAuditStorageServiceName extends string = string,
+    TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+      string,
+      unknown
+    >,
   >(
     endpoint: Endpoint<
       TRoute,
@@ -95,7 +112,10 @@ export class TestEndpointAdaptor<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction
     >,
   ) {
     return ServiceDiscovery.getInstance(
@@ -113,7 +133,10 @@ export class TestEndpointAdaptor<
       TLogger,
       TSession,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction
     >,
     private serviceDiscovery: ServiceDiscovery<
       any,
@@ -150,39 +173,9 @@ export class TestEndpointAdaptor<
       cookie,
     });
 
-    const responseBuilder = new ResponseBuilder();
-    const response = await this.endpoint.handler(
-      {
-        body,
-        query,
-        params,
-        session,
-        services: ctx.services,
-        logger,
-        header,
-        cookie,
-      } as any,
-      responseBuilder,
-    );
-
-    // Check if response has metadata
-    let data = response;
-    let metadata = responseBuilder.getMetadata();
-
-    if (Endpoint.hasMetadata(response)) {
-      data = response.data;
-      metadata = response.metadata;
-    }
-
-    const output = await this.endpoint.parseOutput(data);
-    ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
-
-    await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
-
-    // Process audits
-    await processEndpointAudits(
+    // Create audit context if audit storage is configured
+    const auditContext = await createAuditContext(
       this.endpoint,
-      output,
       this.serviceDiscovery,
       logger,
       {
@@ -193,6 +186,71 @@ export class TestEndpointAdaptor<
       },
     );
 
+    // Warn if declarative audits are configured but no audit storage
+    const audits = this.endpoint.audits as MappedAudit<
+      TAuditAction,
+      TOutSchema
+    >[];
+    if (!auditContext && audits?.length) {
+      logger.warn('No auditor storage service available');
+    }
+
+    // Execute handler with automatic audit transaction support
+    const result = await executeWithAuditTransaction(
+      auditContext,
+      async (auditor) => {
+        const responseBuilder = new ResponseBuilder();
+        const response = await this.endpoint.handler(
+          {
+            body,
+            query,
+            params,
+            session,
+            services: ctx.services,
+            logger,
+            header,
+            cookie,
+            auditor,
+          } as any,
+          responseBuilder,
+        );
+
+        // Check if response has metadata
+        let data = response;
+        let metadata = responseBuilder.getMetadata();
+
+        if (Endpoint.hasMetadata(response)) {
+          data = response.data;
+          metadata = response.metadata;
+        }
+
+        const output = await this.endpoint.parseOutput(data);
+
+        return { output, metadata, responseBuilder };
+      },
+      // Process declarative audits after handler (inside transaction)
+      async (result, auditor) => {
+        if (!audits?.length) return;
+
+        for (const audit of audits) {
+          if (audit.when && !audit.when(result.output as any)) {
+            continue;
+          }
+          const payload = audit.payload(result.output as any);
+          const entityId = audit.entityId?.(result.output as any);
+          auditor.audit(audit.type as any, payload as any, {
+            table: audit.table,
+            entityId,
+          });
+        }
+      },
+    );
+
+    const { output, metadata } = result;
+
+    ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
+    await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
+
     // Convert cookies to Set-Cookie headers
     const headers: Record<string, string | string[]> = {
       ...(metadata.headers || {}),
@@ -201,7 +259,9 @@ export class TestEndpointAdaptor<
     if (metadata.cookies && metadata.cookies.size > 0) {
       const setCookieValues: string[] = [];
       for (const [name, cookie] of metadata.cookies.entries()) {
-        setCookieValues.push(serializeCookie(name, cookie.value, cookie.options));
+        setCookieValues.push(
+          serializeCookie(name, cookie.value, cookie.options),
+        );
       }
       headers['set-cookie'] = setCookieValues;
     }

@@ -78,4 +78,24 @@ export interface AuditStorage {
    * @returns Count of matching records
    */
   count?(options: Omit<AuditQueryOptions, 'limit' | 'offset'>): Promise<number>;
+
+  /**
+   * Optional: Get the database connection for transactional audit writes.
+   * When implemented, the endpoint adaptor can automatically wrap handlers
+   * in a transaction, ensuring audits are atomic with other database operations.
+   *
+   * @returns Database connection (e.g., Kysely instance)
+   *
+   * @example
+   * ```typescript
+   * class KyselyAuditStorage implements AuditStorage {
+   *   constructor(private db: Kysely<DB>) {}
+   *
+   *   getDatabase() {
+   *     return this.db;
+   *   }
+   * }
+   * ```
+   */
+  getDatabase?(): unknown;
 }

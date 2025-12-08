@@ -446,9 +446,6 @@ describe('HonoEndpoint Audits', () => {
 
     // No audits should be written
     expect(auditStorage.records).toHaveLength(0);
-    expect(mockLogger.debug).toHaveBeenCalledWith(
-      'No audits to process',
-    );
   });
 
   it('should not process audits when endpoint throws an error', async () => {

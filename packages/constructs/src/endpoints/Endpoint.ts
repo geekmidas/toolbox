@@ -1,4 +1,4 @@
-import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import type {
   EventPublisher,
   ExtractPublisherMessage,
@@ -347,6 +347,7 @@ export class Endpoint<
         header: ctx.header,
         cookie: ctx.cookie,
         session: ctx.session,
+        auditor: ctx.auditor,
       } as EndpointContext<TInput, TServices, TLogger, TSession>,
       response,
     );
@@ -981,6 +982,10 @@ export type EndpointContext<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = {
   /** Injected service instances */
   services: ServiceRecord<TServices>;
@@ -992,6 +997,13 @@ export type EndpointContext<
   cookie: CookieFn;
   /** Session data extracted by getSession */
   session: TSession;
+  /**
+   * Auditor instance for recording audit events.
+   * Only present when audit storage is configured on the endpoint.
+   * When a transactional database is used for audit storage,
+   * the auditor is pre-configured with the transaction context.
+   */
+  auditor?: Auditor<TAuditAction>;
 } & InferComposableStandardSchema<Input>;
 
 /**

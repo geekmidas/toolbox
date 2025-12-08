@@ -5,6 +5,7 @@ import type {
   AuditStorage,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
+import { withAuditableTransaction } from '@geekmidas/audit/kysely';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
@@ -172,4 +173,167 @@ export async function processEndpointAudits<
     logger.error(error as Error, 'Failed to process audits');
     // Don't rethrow - audit failures shouldn't fail the request
   }
+}
+
+/**
+ * Context for audit-aware handler execution.
+ */
+export interface AuditExecutionContext<
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+> {
+  /** The auditor instance for recording audits */
+  auditor: Auditor<TAuditAction>;
+  /** The audit storage instance */
+  storage: AuditStorage;
+}
+
+/**
+ * Create audit context for handler execution.
+ * Returns the auditor and storage for use in the handler.
+ *
+ * @param endpoint - The endpoint with audit configuration
+ * @param serviceDiscovery - Service discovery for getting audit storage
+ * @param logger - Logger for debug/error messages
+ * @param ctx - Request context for actor extraction
+ * @returns Audit context with auditor and storage, or undefined if not configured
+ */
+export async function createAuditContext<
+  TServices extends Service[] = [],
+  TSession = unknown,
+  TLogger extends Logger = Logger,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+>(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    TServices,
+    TLogger,
+    TSession,
+    any,
+    any,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction
+  >,
+  serviceDiscovery: ServiceDiscovery<any, any>,
+  logger: TLogger,
+  ctx: {
+    session: TSession;
+    header: HeaderFn;
+    cookie: CookieFn;
+    services: Record<string, unknown>;
+  },
+): Promise<AuditExecutionContext<TAuditAction> | undefined> {
+  if (!endpoint.auditorStorageService) {
+    return undefined;
+  }
+
+  const services = await serviceDiscovery.register([
+    endpoint.auditorStorageService,
+  ]);
+  const storage = services[
+    endpoint.auditorStorageService.serviceName
+  ] as AuditStorage;
+
+  // Extract actor if configured
+  let actor: AuditActor = { id: 'system', type: 'system' };
+  if (endpoint.actorExtractor) {
+    try {
+      actor = await (
+        endpoint.actorExtractor as ActorExtractor<TServices, TSession, TLogger>
+      )({
+        services: ctx.services as any,
+        session: ctx.session,
+        header: ctx.header,
+        cookie: ctx.cookie,
+        logger,
+      });
+    } catch (error) {
+      logger.error(error as Error, 'Failed to extract actor for audits');
+    }
+  }
+
+  const auditor = new DefaultAuditor<TAuditAction>({
+    actor,
+    storage,
+    metadata: {
+      endpoint: endpoint.route,
+      method: endpoint.method,
+    },
+  });
+
+  return { auditor, storage };
+}
+
+/**
+ * Execute a handler with automatic audit transaction support.
+ * If the audit storage has a database (via getDatabase()), wraps execution
+ * in a transaction so audits are atomic with handler's database operations.
+ *
+ * @param auditContext - The audit context from createAuditContext
+ * @param handler - The handler function to execute (receives auditor)
+ * @param onComplete - Called after handler with response, to process declarative audits
+ * @returns The handler result
+ */
+export async function executeWithAuditTransaction<
+  T,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+>(
+  auditContext: AuditExecutionContext<TAuditAction> | undefined,
+  handler: (auditor?: Auditor<TAuditAction>) => Promise<T>,
+  onComplete?: (response: T, auditor: Auditor<TAuditAction>) => Promise<void>,
+): Promise<T> {
+  // No audit context - just run handler
+  if (!auditContext) {
+    return handler(undefined);
+  }
+
+  const { auditor, storage } = auditContext;
+
+  // Check if storage has a database for transactional execution
+  const db = storage.getDatabase?.();
+
+  if (db) {
+    // Wrap in transaction - audits are atomic with handler operations
+    return withAuditableTransaction(
+      db as any,
+      auditor as any,
+      async () => {
+        const response = await handler(auditor);
+
+        // Process declarative audits within the transaction
+        if (onComplete) {
+          await onComplete(response, auditor);
+        }
+
+        // Audits are flushed by withAuditableTransaction before commit
+        return response;
+      },
+    );
+  }
+
+  // No database - run handler and flush audits after
+  const response = await handler(auditor);
+
+  if (onComplete) {
+    await onComplete(response, auditor);
+  }
+
+  // Flush audits (no transaction)
+  await auditor.flush();
+
+  return response;
 }
