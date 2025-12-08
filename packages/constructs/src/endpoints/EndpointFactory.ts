@@ -5,6 +5,7 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import type { HttpMethod } from '../types';
+import type { ActorExtractor } from './audit';
 import type { Authorizer } from './Authorizer';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
@@ -41,6 +42,7 @@ export class EndpointFactory<
   private defaultDatabaseService:
     | Service<TDatabaseServiceName, TDatabase>
     | undefined;
+  private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 
   constructor({
     basePath,
@@ -54,6 +56,7 @@ export class EndpointFactory<
     defaultAuthorizerName,
     defaultAuditorStorage,
     defaultDatabaseService,
+    defaultActorExtractor,
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
@@ -82,6 +85,7 @@ export class EndpointFactory<
     this.defaultAuthorizerName = defaultAuthorizerName;
     this.defaultAuditorStorage = defaultAuditorStorage;
     this.defaultDatabaseService = defaultDatabaseService;
+    this.defaultActorExtractor = defaultActorExtractor;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -163,6 +167,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
     });
   }
 
@@ -206,6 +211,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
     });
   }
 
@@ -248,6 +254,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
     });
   }
 
@@ -290,6 +297,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
     });
   }
 
@@ -340,6 +348,8 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this
+        .defaultActorExtractor as unknown as ActorExtractor<TServices, TSession, L>,
     });
   }
 
@@ -384,6 +394,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
     });
   }
 
@@ -429,6 +440,8 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this
+        .defaultActorExtractor as unknown as ActorExtractor<TServices, T, TLogger>,
     });
   }
 
@@ -519,6 +532,53 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: storage,
       defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
+    });
+  }
+
+  /**
+   * Set the actor extractor function for endpoints created from this factory.
+   * The actor is extracted from the request context and attached to all audits.
+   */
+  actor(
+    extractor: ActorExtractor<TServices, TSession, TLogger>,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: extractor,
     });
   }
 
@@ -602,6 +662,11 @@ export class EndpointFactory<
       builder._setDatabaseService(this.defaultDatabaseService as any);
     }
 
+    // Set actor extractor if configured
+    if (this.defaultActorExtractor) {
+      builder._actorExtractor = this.defaultActorExtractor;
+    }
+
     return builder;
   }
 
@@ -681,6 +746,7 @@ export interface EndpointFactoryOptions<
   defaultAuthorizerName?: TAuthorizers[number];
   defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
   defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
+  defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 }
 
 export const e = new EndpointFactory();

@@ -49,7 +49,8 @@
       "Bash(pnpm --filter @geekmidas/constructs ts:check:*)",
       "Bash(pnpm exec tsc:*)",
       "Bash(pnpm --filter @geekmidas/audit build:*)",
-      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/constructs --reporter=dot)"
+      "Bash(NODE_OPTIONS=\"--import tsx\" pnpm exec vitest run packages/constructs --reporter=dot)",
+      "Bash(pnpm --filter @geekmidas/constructs build:*)"
     ],
     "deny": []
   }

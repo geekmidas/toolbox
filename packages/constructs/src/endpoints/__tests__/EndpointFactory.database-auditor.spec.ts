@@ -351,6 +351,102 @@ describe('EndpointFactory', () => {
     });
   });
 
+  describe('actor', () => {
+    it('should create a factory with actor extractor', () => {
+      const actorExtractor = () => ({ id: '123', type: 'user' as const });
+      const factory = new EndpointFactory();
+      const factoryWithActor = factory.actor(actorExtractor);
+
+      expect(factoryWithActor).toBeInstanceOf(EndpointFactory);
+      expect(factoryWithActor).not.toBe(factory);
+    });
+
+    it('should pass actor extractor to created endpoints', () => {
+      const actorExtractor = () => ({ id: '123', type: 'user' as const });
+      const factory = new EndpointFactory()
+        .logger(mockLogger)
+        .actor(actorExtractor);
+
+      const endpoint = factory
+        .get('/test')
+        .handle(async () => ({ success: true }));
+
+      expect(endpoint.actorExtractor).toBe(actorExtractor);
+    });
+
+    it('should preserve actor extractor through factory chains', () => {
+      const actorExtractor = () => ({ id: '123', type: 'user' as const });
+      const factory = new EndpointFactory()
+        .actor(actorExtractor)
+        .logger(mockLogger)
+        .route('/api');
+
+      const endpoint = factory
+        .get('/users')
+        .handle(async () => ({ users: [] }));
+
+      expect(endpoint.actorExtractor).toBe(actorExtractor);
+      expect(endpoint.route).toBe('/api/users');
+    });
+
+    it('should allow endpoints to override actor extractor', () => {
+      const factoryActor = () => ({ id: 'factory', type: 'system' as const });
+      const endpointActor = () => ({ id: 'endpoint', type: 'user' as const });
+
+      const factory = new EndpointFactory()
+        .logger(mockLogger)
+        .actor(factoryActor);
+
+      const endpoint = factory
+        .get('/test')
+        .actor(endpointActor)
+        .handle(async () => ({ success: true }));
+
+      expect(endpoint.actorExtractor).toBe(endpointActor);
+    });
+
+    it('should work with auditor and database', () => {
+      const actorExtractor = ({ session }: any) => ({
+        id: session.userId,
+        type: 'user' as const,
+      });
+
+      const mockAuditStorage: AuditStorage = {
+        write: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      };
+
+      const AuditStorageService = {
+        serviceName: 'auditStorage' as const,
+        async register() {
+          return mockAuditStorage;
+        },
+      };
+
+      const DatabaseService = {
+        serviceName: 'database' as const,
+        async register() {
+          return { query: vi.fn() };
+        },
+      };
+
+      const factory = new EndpointFactory()
+        .logger(mockLogger)
+        .database(DatabaseService)
+        .auditor(AuditStorageService)
+        .actor(actorExtractor);
+
+      const endpoint = factory
+        .get('/test')
+        .handle(async () => ({ success: true }));
+
+      expect(endpoint.actorExtractor).toBe(actorExtractor);
+      expect(endpoint.databaseService).toBe(DatabaseService);
+      expect(endpoint.auditorStorageService).toBe(AuditStorageService);
+    });
+  });
+
   describe('constructor options with database and auditor', () => {
     const DatabaseService = {
       serviceName: 'database' as const,
