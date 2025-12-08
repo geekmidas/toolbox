@@ -1,3 +1,9 @@
+import type {
+  AuditableAction,
+  Auditor,
+  AuditStorage,
+} from '@geekmidas/audit';
+import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -17,12 +23,20 @@ import type { Function } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
 
 export class TestFunctionAdaptor<
-  TInput extends StandardSchemaV1 | undefined = undefined,
+  TInput extends ComposableStandardSchema | undefined = undefined,
   TOutSchema extends StandardSchemaV1 | undefined = undefined,
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > {
   static getDefaultServiceDiscovery<
     TInput extends ComposableStandardSchema | undefined = undefined,
@@ -31,15 +45,28 @@ export class TestFunctionAdaptor<
     TLogger extends Logger = Logger,
     TEventPublisher extends EventPublisher<any> | undefined = undefined,
     TEventPublisherServiceName extends string = string,
+    TAuditStorage extends AuditStorage | undefined = undefined,
+    TAuditStorageServiceName extends string = string,
+    TDatabase = undefined,
+    TDatabaseServiceName extends string = string,
+    TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+      string,
+      unknown
+    >,
   >(
     fn: Function<
       TInput,
       TServices,
       TLogger,
       TOutSchema,
-      any,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction,
+      any
     >,
   ) {
     return ServiceDiscovery.getInstance(fn.logger, new EnvironmentParser({}));
@@ -51,9 +78,14 @@ export class TestFunctionAdaptor<
       TServices,
       TLogger,
       TOutSchema,
-      any,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction,
+      any
     >,
     private serviceDiscovery: ServiceDiscovery<
       any,
@@ -66,7 +98,9 @@ export class TestFunctionAdaptor<
       TInput,
       TServices,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TDatabase,
+      TAuditAction
     >,
   ): Promise<InferStandardSchema<TOutSchema>> {
     // Parse input if schema is provided
@@ -89,15 +123,61 @@ export class TestFunctionAdaptor<
       services = await this.serviceDiscovery.register(this.fn.services);
     }
 
+    // Resolve database (use provided db or register from function)
+    let db: TDatabase | undefined;
+    if ('db' in ctx && ctx.db !== undefined) {
+      db = ctx.db;
+    } else if (this.fn.databaseService) {
+      const dbServices = await this.serviceDiscovery.register([
+        this.fn.databaseService,
+      ]);
+      db = dbServices[
+        this.fn.databaseService.serviceName as keyof typeof dbServices
+      ] as TDatabase;
+    }
+
+    // Resolve auditor (use provided auditor or create from function)
+    let auditor: Auditor<TAuditAction> | undefined;
+    if ('auditor' in ctx && ctx.auditor !== undefined) {
+      auditor = ctx.auditor;
+    } else if (this.fn.auditorStorageService) {
+      const auditServices = await this.serviceDiscovery.register([
+        this.fn.auditorStorageService,
+      ]);
+      const storage = auditServices[
+        this.fn.auditorStorageService.serviceName as keyof typeof auditServices
+      ] as AuditStorage;
+
+      auditor = new DefaultAuditor<TAuditAction>({
+        actor: { id: 'system', type: 'system' },
+        storage,
+        metadata: {
+          function: this.fn.type,
+          test: true,
+        },
+      });
+    }
+
     // Execute the function
     const response = await this.fn['fn']({
       input: parsedInput,
       services,
       logger,
-    });
+      db,
+      auditor,
+    } as any);
 
     // Parse output if schema is provided
     const output = await this.fn.parseOutput(response);
+
+    // Flush audits if any were recorded
+    if (auditor) {
+      const records = auditor.getRecords();
+      if (records.length > 0) {
+        logger.debug({ auditCount: records.length }, 'Flushing function audits');
+        await auditor.flush();
+      }
+    }
 
     // Register publisher service if provided in context
 
@@ -114,12 +194,19 @@ export class TestFunctionAdaptor<
 }
 
 export type TestFunctionRequest<
-  TInput extends StandardSchemaV1 | undefined = undefined,
+  TInput extends ComposableStandardSchema | undefined = undefined,
   TServices extends Service[] = [],
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TDatabase = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = {
   input: InferComposableStandardSchema<TInput>;
   services: ServiceRecord<TServices>;
   publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
+  db?: TDatabase;
+  auditor?: Auditor<TAuditAction>;
 } & InferComposableStandardSchema<{ input: TInput }>;

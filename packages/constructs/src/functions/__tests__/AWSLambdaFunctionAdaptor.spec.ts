@@ -373,4 +373,86 @@ describe('AWSLambdaFunction', () => {
   });
 
   // Skipping timeout tests for now as middleware order needs to be adjusted
+
+  describe('database', () => {
+    // Mock database service
+    class MockDatabase {
+      async query(sql: string) {
+        return [{ id: '1', name: 'Test User' }];
+      }
+    }
+
+    class DatabaseService implements Service<'database', MockDatabase> {
+      serviceName = 'database' as const;
+      db = new MockDatabase();
+
+      async register() {
+        return this.db;
+      }
+    }
+
+    it('should inject database into function context', async () => {
+      const databaseService = new DatabaseService();
+      const handler = vi.fn(async ({ db }) => {
+        const result = await db.query('SELECT * FROM users');
+        return { users: result };
+      });
+
+      const outputSchema = z.object({
+        users: z.array(z.object({ id: z.string(), name: z.string() })),
+      });
+
+      const fn = new Function(
+        handler,
+        undefined,
+        undefined,
+        undefined,
+        outputSchema,
+        [],
+        logger,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        databaseService,
+      );
+
+      const adaptor = new AWSLambdaFunction(envParser, fn);
+      const lambdaHandler = adaptor.handler;
+
+      const result = await lambdaHandler({}, createMockContext(), vi.fn());
+
+      expect(result).toEqual({ users: [{ id: '1', name: 'Test User' }] });
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db: expect.any(MockDatabase),
+        }),
+      );
+    });
+
+    it('should have db as undefined when no database service is configured', async () => {
+      const handler = vi.fn(async ({ db }) => {
+        return { hasDb: db !== undefined };
+      });
+
+      const outputSchema = z.object({ hasDb: z.boolean() });
+
+      const fn = new Function(
+        handler,
+        undefined,
+        undefined,
+        undefined,
+        outputSchema,
+        [],
+        logger,
+      );
+
+      const adaptor = new AWSLambdaFunction(envParser, fn);
+      const lambdaHandler = adaptor.handler;
+
+      const result = await lambdaHandler({}, createMockContext(), vi.fn());
+
+      expect(result).toEqual({ hasDb: false });
+    });
+  });
 });

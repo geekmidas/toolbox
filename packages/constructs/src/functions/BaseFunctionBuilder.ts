@@ -22,6 +22,8 @@ export abstract class BaseFunctionBuilder<
   TEventPublisherServiceName extends string = string,
   TAuditStorage extends AuditStorage | undefined = undefined,
   TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > {
   protected inputSchema?: TInput;
   protected outputSchema?: OutSchema;
@@ -33,6 +35,7 @@ export abstract class BaseFunctionBuilder<
   protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
   protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
   protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
+  protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
   static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
     const schema = (s as StandardSchemaV1)['~standard'];
@@ -103,7 +106,9 @@ export abstract class BaseFunctionBuilder<
     T,
     TName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
@@ -118,7 +123,9 @@ export abstract class BaseFunctionBuilder<
       T,
       TName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -132,7 +139,9 @@ export abstract class BaseFunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     T,
-    TName
+    TName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._auditorStorage = storage as unknown as Service<
       TAuditStorageServiceName,
@@ -146,6 +155,45 @@ export abstract class BaseFunctionBuilder<
       TLogger,
       TEventPublisher,
       TEventPublisherServiceName,
+      T,
+      TName,
+      TDatabase,
+      TDatabaseServiceName
+    >;
+  }
+
+  /**
+   * Set the database service for this function.
+   * The database will be available in the handler context as `db`.
+   */
+  database<T, TName extends string>(
+    service: Service<TName, T>,
+  ): BaseFunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    T,
+    TName
+  > {
+    this._databaseService = service as unknown as Service<
+      TDatabaseServiceName,
+      TDatabase
+    >;
+
+    return this as unknown as BaseFunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
       T,
       TName
     >;

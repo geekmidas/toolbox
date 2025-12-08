@@ -43,7 +43,7 @@ describe('FunctionBuilder - State Isolation', () => {
       const fn2 = f.handle(async () => ({}));
 
       expect(fn1.services.map((s) => s.serviceName)).toEqual(['a', 'b']);
-      expect(fn2.services.map((s) => s.serviceName)).toEqual([]);
+      expect(fn2.services).toEqual([]);
     });
 
     it('should reset logger after handle() is called', () => {
@@ -67,7 +67,8 @@ describe('FunctionBuilder - State Isolation', () => {
       // Create first function (events array should be empty initially)
       const fn1 = f.handle(async () => ({}));
 
-      // Verify state was reset
+      // Verify function was created and state was reset
+      expect(fn1).toBeDefined();
       expect((f as any)._events).toEqual([]);
       expect((f as any)._services).toEqual([]);
     });
@@ -150,7 +151,7 @@ describe('FunctionBuilder - State Isolation', () => {
 
       expect(fn1.services.map((s) => s.serviceName)).toEqual(['a', 'b']);
       expect(fn2.services.map((s) => s.serviceName)).toEqual(['a']);
-      expect(fn3.services.map((s) => s.serviceName)).toEqual([]);
+      expect(fn3.services).toEqual([]);
     });
   });
 

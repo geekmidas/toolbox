@@ -15,14 +15,20 @@ export class Cron<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > extends Function<
   TInput,
   TServices,
   TLogger,
   OutSchema,
-  FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+  FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  undefined,
+  string,
+  TDatabase,
+  TDatabaseServiceName
 > {
   static isCron(obj: any): obj is Cron<any, any, any, any> {
     return Boolean(
@@ -33,7 +39,7 @@ export class Cron<
   }
 
   constructor(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>,
     timeout?: number,
     protected _schedule?: ScheduleExpression,
     input?: TInput,
@@ -43,6 +49,7 @@ export class Cron<
     publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
     events: any[] = [],
     memorySize?: number,
+    databaseService?: Service<TDatabaseServiceName, TDatabase>,
   ) {
     super(
       fn,
@@ -55,6 +62,8 @@ export class Cron<
       publisherService,
       events,
       memorySize,
+      undefined, // auditorStorageService
+      databaseService,
     );
   }
 

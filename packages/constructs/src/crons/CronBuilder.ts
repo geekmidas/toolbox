@@ -19,13 +19,19 @@ export class CronBuilder<
   OutSchema extends StandardSchemaV1 | undefined = undefined,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
 > extends FunctionBuilder<
   TInput,
   OutSchema,
   TServices,
   TLogger,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  undefined,
+  string,
+  TDatabase,
+  TDatabaseServiceName
 > {
   private _schedule?: ScheduleExpression;
 
@@ -46,7 +52,9 @@ export class CronBuilder<
     TLogger,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._schedule = _expression;
     return this;
@@ -60,7 +68,9 @@ export class CronBuilder<
     TLogger,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.inputSchema = schema as unknown as TInput;
 
@@ -70,7 +80,9 @@ export class CronBuilder<
       TLogger,
       OutSchema,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -82,7 +94,9 @@ export class CronBuilder<
     TLogger,
     T,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -92,7 +106,9 @@ export class CronBuilder<
       TLogger,
       T,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -104,7 +120,9 @@ export class CronBuilder<
     TLogger,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -117,7 +135,9 @@ export class CronBuilder<
       TLogger,
       OutSchema,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
@@ -129,7 +149,9 @@ export class CronBuilder<
     T,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -139,13 +161,24 @@ export class CronBuilder<
       T,
       OutSchema,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TDatabase,
+      TDatabaseServiceName
     >;
   }
 
   publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
-  ): CronBuilder<TInput, TServices, TLogger, OutSchema, T, TName> {
+  ): CronBuilder<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    T,
+    TName,
+    TDatabase,
+    TDatabaseServiceName
+  > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
       TEventPublisher
@@ -157,19 +190,56 @@ export class CronBuilder<
       TLogger,
       OutSchema,
       T,
+      TName,
+      TDatabase,
+      TDatabaseServiceName
+    >;
+  }
+
+  /**
+   * Set the database service for this cron job.
+   * The database will be available in the handler context as `db`.
+   */
+  database<T, TName extends string>(
+    service: Service<TName, T>,
+  ): CronBuilder<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    T,
+    TName
+  > {
+    this._databaseService = service as unknown as Service<
+      TDatabaseServiceName,
+      TDatabase
+    >;
+
+    return this as unknown as CronBuilder<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      T,
       TName
     >;
   }
 
   handle(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>,
   ): Cron<
     TInput,
     TServices,
     TLogger,
     OutSchema,
     TEventPublisher,
-    TEventPublisherServiceName
+    TEventPublisherServiceName,
+    TDatabase,
+    TDatabaseServiceName
   > {
     const cron = new Cron(
       fn,
@@ -182,6 +252,7 @@ export class CronBuilder<
       this._publisher,
       this._events,
       this._memorySize,
+      this._databaseService,
     );
 
     // Reset builder state after creating the cron to prevent pollution
@@ -189,6 +260,7 @@ export class CronBuilder<
     this._logger = DEFAULT_LOGGER;
     this._events = [];
     this._publisher = undefined;
+    this._databaseService = undefined;
     this._schedule = undefined;
     this.inputSchema = undefined;
     this.outputSchema = undefined;

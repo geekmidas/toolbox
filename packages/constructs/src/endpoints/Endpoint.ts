@@ -78,11 +78,22 @@ export class Endpoint<
   TServices,
   TLogger,
   OutSchema,
-  FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher,
   TEventPublisherServiceName,
   TAuditStorage,
-  TAuditStorageServiceName
+  TAuditStorageServiceName,
+  TDatabase,
+  TDatabaseServiceName,
+  TAuditAction,
+  FunctionHandler<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
+  >
 > {
   operationId?: string;
   /** The route path pattern with parameter placeholders */

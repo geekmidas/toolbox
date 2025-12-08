@@ -1,3 +1,8 @@
+import type {
+  AuditableAction,
+  Auditor,
+  AuditStorage,
+} from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -26,10 +31,17 @@ type FunctionEvent<
   TInput extends ComposableStandardSchema | undefined,
   TServices extends Service[],
   TLogger extends Logger,
+  TDatabase = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = TEvent & {
   parsedInput: InferComposableStandardSchema<TInput>;
   services: ServiceRecord<TServices>;
   logger: TLogger;
+  db: TDatabase | undefined;
+  auditor: Auditor<TAuditAction> | undefined;
 };
 
 type Middleware<
@@ -38,8 +50,13 @@ type Middleware<
   TServices extends Service[],
   TLogger extends Logger,
   TOutSchema extends StandardSchemaV1 | undefined,
+  TDatabase = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = MiddlewareObj<
-  FunctionEvent<TEvent, TInput, TServices, TLogger>,
+  FunctionEvent<TEvent, TInput, TServices, TLogger, TDatabase, TAuditAction>,
   InferComposableStandardSchema<TOutSchema>,
   Error,
   Context
@@ -52,13 +69,26 @@ export class AWSLambdaFunction<
   TLogger extends Logger = Logger,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > extends FunctionExecutionWrapper<
   TInput,
   TOutSchema,
   TServices,
   TLogger,
   TEventPublisher,
-  TEventPublisherServiceName
+  TEventPublisherServiceName,
+  TAuditStorage,
+  TAuditStorageServiceName,
+  TDatabase,
+  TDatabaseServiceName,
+  TAuditAction
 > {
   constructor(
     envParser: EnvironmentParser<{}>,
@@ -67,9 +97,22 @@ export class AWSLambdaFunction<
       TServices,
       TLogger,
       TOutSchema,
-      FunctionHandler<TInput, TServices, TLogger, TOutSchema>,
       TEventPublisher,
-      TEventPublisherServiceName
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction,
+      FunctionHandler<
+        TInput,
+        TServices,
+        TLogger,
+        TOutSchema,
+        TDatabase,
+        TAuditStorage,
+        TAuditAction
+      >
     >,
   ) {
     super(envParser, fn);
@@ -80,7 +123,9 @@ export class AWSLambdaFunction<
     TInput,
     TServices,
     TLogger,
-    TOutSchema
+    TOutSchema,
+    TDatabase,
+    TAuditAction
   > {
     return {
       onError: (req) => {
@@ -98,7 +143,9 @@ export class AWSLambdaFunction<
     TInput,
     TServices,
     TLogger,
-    TOutSchema
+    TOutSchema,
+    TDatabase,
+    TAuditAction
   > {
     return {
       before: (req) => {},
@@ -107,7 +154,15 @@ export class AWSLambdaFunction<
 
   private input<
     TEvent extends { input: InferComposableStandardSchema<TInput> },
-  >(): Middleware<TEvent, TInput, TServices, TLogger, TOutSchema> {
+  >(): Middleware<
+    TEvent,
+    TInput,
+    TServices,
+    TLogger,
+    TOutSchema,
+    TDatabase,
+    TAuditAction
+  > {
     return {
       before: async (req) => {
         try {
@@ -141,7 +196,9 @@ export class AWSLambdaFunction<
     TInput,
     TServices,
     TLogger,
-    TOutSchema
+    TOutSchema,
+    TDatabase,
+    TAuditAction
   > {
     return {
       before: (req) => {
@@ -166,11 +223,58 @@ export class AWSLambdaFunction<
     TInput,
     TServices,
     TLogger,
-    TOutSchema
+    TOutSchema,
+    TDatabase,
+    TAuditAction
   > {
     return {
       before: async (req) => {
         req.event.services = await this.getServices();
+      },
+    };
+  }
+
+  private database<TEvent>(): Middleware<
+    TEvent,
+    TInput,
+    TServices,
+    TLogger,
+    TOutSchema,
+    TDatabase,
+    TAuditAction
+  > {
+    return {
+      before: async (req) => {
+        req.event.db = await this.getDatabase();
+      },
+    };
+  }
+
+  private auditor<TEvent>(): Middleware<
+    TEvent,
+    TInput,
+    TServices,
+    TLogger,
+    TOutSchema,
+    TDatabase,
+    TAuditAction
+  > {
+    return {
+      before: async (req) => {
+        req.event.auditor = await this.createAuditor();
+      },
+      after: async (req) => {
+        // Flush any pending audits after successful execution
+        if (req.event.auditor) {
+          const records = req.event.auditor.getRecords();
+          if (records.length > 0) {
+            this.logger.debug(
+              { auditCount: records.length },
+              'Flushing function audits',
+            );
+            await req.event.auditor.flush();
+          }
+        }
       },
     };
   }
@@ -180,7 +284,9 @@ export class AWSLambdaFunction<
     TInput,
     TServices,
     TLogger,
-    TOutSchema
+    TOutSchema,
+    TDatabase,
+    TAuditAction
   > {
     return {
       after: async (req) => {
@@ -192,14 +298,23 @@ export class AWSLambdaFunction<
   }
 
   private async _handler<TEvent>(
-    event: FunctionEvent<TEvent, TInput, TServices, TLogger>,
+    event: FunctionEvent<
+      TEvent,
+      TInput,
+      TServices,
+      TLogger,
+      TDatabase,
+      TAuditAction
+    >,
   ) {
     // Execute the function with the parsed context
     const result = await this.fn['fn']({
       input: event.parsedInput,
       services: event.services,
       logger: event.logger,
-    });
+      db: event.db,
+      auditor: event.auditor,
+    } as any);
 
     // Parse output if schema is provided
     const output = await this.fn.parseOutput(result);
@@ -216,6 +331,8 @@ export class AWSLambdaFunction<
       .use(this.baseInput())
       .use(this.error())
       .use(this.services())
+      .use(this.database())
+      .use(this.auditor())
       .use(this.input())
       .use(this.events()) as unknown as AWSLambdaHandler;
   }

@@ -1,4 +1,4 @@
-import type { AuditStorage } from '@geekmidas/audit';
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
@@ -21,6 +21,12 @@ export class FunctionBuilder<
   TEventPublisherServiceName extends string = string,
   TAuditStorage extends AuditStorage | undefined = undefined,
   TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > extends BaseFunctionBuilder<
   TInput,
   OutSchema,
@@ -29,7 +35,9 @@ export class FunctionBuilder<
   TEventPublisher,
   TEventPublisherServiceName,
   TAuditStorage,
-  TAuditStorageServiceName
+  TAuditStorageServiceName,
+  TDatabase,
+  TDatabaseServiceName
 > {
   protected _memorySize?: number;
 
@@ -57,7 +65,10 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this.outputSchema = schema as unknown as OutSchema;
 
@@ -69,7 +80,10 @@ export class FunctionBuilder<
       TEventPublisher,
       TEventPublisherServiceName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
     >;
   }
 
@@ -83,7 +97,10 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this.inputSchema = schema as unknown as TInput;
 
@@ -95,7 +112,10 @@ export class FunctionBuilder<
       TEventPublisher,
       TEventPublisherServiceName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
     >;
   }
 
@@ -109,7 +129,10 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this._services = uniqBy(
       [...this._services, ...services],
@@ -124,7 +147,10 @@ export class FunctionBuilder<
       TEventPublisher,
       TEventPublisherServiceName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
     >;
   }
 
@@ -138,7 +164,10 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this._logger = logger as unknown as TLogger;
 
@@ -150,7 +179,10 @@ export class FunctionBuilder<
       TEventPublisher,
       TEventPublisherServiceName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
     >;
   }
 
@@ -164,7 +196,10 @@ export class FunctionBuilder<
     T,
     TName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this._publisher = publisher as unknown as Service<
       TEventPublisherServiceName,
@@ -179,7 +214,10 @@ export class FunctionBuilder<
       T,
       TName,
       TAuditStorage,
-      TAuditStorageServiceName
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
     >;
   }
 
@@ -193,7 +231,10 @@ export class FunctionBuilder<
     TEventPublisher,
     TEventPublisherServiceName,
     T,
-    TName
+    TName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction
   > {
     this._auditorStorage = storage as unknown as Service<
       TAuditStorageServiceName,
@@ -208,22 +249,115 @@ export class FunctionBuilder<
       TEventPublisher,
       TEventPublisherServiceName,
       T,
-      TName
+      TName,
+      TDatabase,
+      TDatabaseServiceName,
+      TAuditAction
+    >;
+  }
+
+  /**
+   * Set the audit action types for this function.
+   * This provides type-safety for the auditor in the handler context.
+   */
+  actions<T extends AuditableAction<string, unknown>>(): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    T
+  > {
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TDatabase,
+      TDatabaseServiceName,
+      T
+    >;
+  }
+
+  /**
+   * Set the database service for this function.
+   * The database will be available in the handler context as `db`.
+   */
+  database<T, TName extends string>(
+    service: Service<TName, T>,
+  ): FunctionBuilder<
+    TInput,
+    OutSchema,
+    TServices,
+    TLogger,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    T,
+    TName,
+    TAuditAction
+  > {
+    this._databaseService = service as unknown as Service<
+      TDatabaseServiceName,
+      TDatabase
+    >;
+
+    return this as unknown as FunctionBuilder<
+      TInput,
+      OutSchema,
+      TServices,
+      TLogger,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      T,
+      TName,
+      TAuditAction
     >;
   }
 
   handle(
-    fn: FunctionHandler<TInput, TServices, TLogger, OutSchema>,
+    fn: FunctionHandler<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TDatabase,
+      TAuditStorage,
+      TAuditAction
+    >,
   ): Function<
     TInput,
     TServices,
     TLogger,
     OutSchema,
-    FunctionHandler<TInput, TServices, TLogger, OutSchema>,
     TEventPublisher,
     TEventPublisherServiceName,
     TAuditStorage,
-    TAuditStorageServiceName
+    TAuditStorageServiceName,
+    TDatabase,
+    TDatabaseServiceName,
+    TAuditAction,
+    FunctionHandler<
+      TInput,
+      TServices,
+      TLogger,
+      OutSchema,
+      TDatabase,
+      TAuditStorage,
+      TAuditAction
+    >
   > {
     const func = new Function(
       fn,
@@ -237,6 +371,7 @@ export class FunctionBuilder<
       this._events,
       this._memorySize,
       this._auditorStorage,
+      this._databaseService,
     );
 
     // Reset builder state after creating the function to prevent pollution
@@ -245,6 +380,7 @@ export class FunctionBuilder<
     this._events = [];
     this._publisher = undefined;
     this._auditorStorage = undefined;
+    this._databaseService = undefined;
     this.inputSchema = undefined;
     this.outputSchema = undefined;
     this._timeout = undefined;

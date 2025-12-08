@@ -305,6 +305,82 @@ describe('Function', () => {
         // _timeout is protected, so we just verify the builder chain works
         expect(finalBuilder).toBeInstanceOf(FunctionBuilder);
       });
+
+      it('should set database service', () => {
+        const builder = new FunctionBuilder();
+
+        class MockDatabase {
+          async query(sql: string) {
+            return [];
+          }
+        }
+
+        const databaseService = {
+          serviceName: 'database' as const,
+          async register() {
+            return new MockDatabase();
+          },
+        };
+
+        const newBuilder = builder.database(databaseService);
+        expect(newBuilder['_databaseService']).toBe(databaseService);
+      });
+
+      it('should chain database with other methods', () => {
+        const builder = new FunctionBuilder();
+        const service = new TestService();
+        const logger = new ConsoleLogger();
+
+        class MockDatabase {
+          async query(sql: string) {
+            return [];
+          }
+        }
+
+        const databaseService = {
+          serviceName: 'database' as const,
+          async register() {
+            return new MockDatabase();
+          },
+        };
+
+        const finalBuilder = builder
+          .services([service])
+          .logger(logger)
+          .database(databaseService)
+          .output(z.object({ result: z.string() }));
+
+        expect(finalBuilder._services.length).toBe(1);
+        expect(finalBuilder['_databaseService']).toBe(databaseService);
+        expect(finalBuilder).toBeInstanceOf(FunctionBuilder);
+      });
+
+      it('should create function with database service', () => {
+        const builder = new FunctionBuilder();
+
+        class MockDatabase {
+          async query(sql: string) {
+            return [];
+          }
+        }
+
+        const databaseService = {
+          serviceName: 'database' as const,
+          async register() {
+            return new MockDatabase();
+          },
+        };
+
+        const fn = builder
+          .database(databaseService)
+          .output(z.object({ result: z.string() }))
+          .handle(async ({ db }) => {
+            // db should be available
+            return { result: 'success' };
+          });
+
+        expect(fn.databaseService).toBe(databaseService);
+      });
     });
   });
 

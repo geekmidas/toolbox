@@ -1,4 +1,8 @@
-import type { AuditStorage } from '@geekmidas/audit';
+import type {
+  AuditableAction,
+  AuditStorage,
+  Auditor,
+} from '@geekmidas/audit';
 import { UnprocessableEntityError } from '@geekmidas/errors';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -52,16 +56,33 @@ export class Function<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
-  Fn extends FunctionHandler<
-    TInput,
-    TServices,
-    TLogger,
-    OutSchema
-  > = FunctionHandler<TInput, TServices, TLogger, OutSchema>,
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuditStorage extends AuditStorage | undefined = undefined,
   TAuditStorageServiceName extends string = string,
+  TDatabase = undefined,
+  TDatabaseServiceName extends string = string,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+  Fn extends FunctionHandler<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
+  > = FunctionHandler<
+    TInput,
+    TServices,
+    TLogger,
+    OutSchema,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
+  >,
 > extends Construct<
   TLogger,
   TEventPublisherServiceName,
@@ -137,6 +158,7 @@ export class Function<
     events: MappedEvent<TEventPublisher, OutSchema>[] = [],
     memorySize?: number,
     auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>,
+    public databaseService?: Service<TDatabaseServiceName, TDatabase>,
   ) {
     super(
       type,
@@ -157,18 +179,64 @@ export type FunctionHandler<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   OutSchema extends StandardSchemaV1 | undefined = undefined,
+  TDatabase = undefined,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = (
-  ctx: FunctionContext<TInput, TServices, TLogger>,
+  ctx: FunctionContext<
+    TInput,
+    TServices,
+    TLogger,
+    TDatabase,
+    TAuditStorage,
+    TAuditAction
+  >,
 ) => OutSchema extends StandardSchemaV1
   ? InferStandardSchema<OutSchema> | Promise<InferStandardSchema<OutSchema>>
   : any | Promise<any>;
+
+/**
+ * Conditional type that adds `db` property only when TDatabase is configured.
+ */
+type DatabaseContext<TDatabase> = TDatabase extends undefined
+  ? {}
+  : { db: TDatabase };
+
+/**
+ * Conditional auditor context - only present when audit storage is configured.
+ */
+type AuditorContext<
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
+  TAuditStorage = undefined,
+> = TAuditStorage extends undefined
+  ? {}
+  : {
+      /**
+       * Auditor instance for recording audit events.
+       * Only present when audit storage is configured on the function.
+       */
+      auditor: Auditor<TAuditAction>;
+    };
 
 export type FunctionContext<
   Input extends ComposableStandardSchema | undefined = undefined,
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
+  TDatabase = undefined,
+  TAuditStorage extends AuditStorage | undefined = undefined,
+  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+    string,
+    unknown
+  >,
 > = {
   services: ServiceRecord<TServices>;
   logger: TLogger;
   input: InferComposableStandardSchema<Input>;
-};
+} & DatabaseContext<TDatabase> &
+  AuditorContext<TAuditAction, TAuditStorage>;
