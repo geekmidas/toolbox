@@ -6,7 +6,9 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
  */
 export interface AuthClient {
   verifyToken: (token: string) => Promise<{ userId: string } | null>;
-  getUserById: (userId: string) => Promise<{ id: string; email: string } | null>;
+  getUserById: (
+    userId: string,
+  ) => Promise<{ id: string; email: string } | null>;
 }
 
 let instance: AuthClient | null = null;
@@ -35,9 +37,6 @@ export const AuthService = {
         // In a real app, create TokenManager or auth client here
         instance = {
           verifyToken: async (token: string) => {
-            console.log(
-              `Verifying token with secret ${config.jwtSecret.slice(0, 3)}...`,
-            );
             // Mock implementation
             if (token === 'valid-token') {
               return { userId: 'user-123' };
@@ -45,7 +44,6 @@ export const AuthService = {
             return null;
           },
           getUserById: async (userId: string) => {
-            console.log(`Getting user ${userId}`);
             return { id: userId, email: 'user@example.com' };
           },
         };

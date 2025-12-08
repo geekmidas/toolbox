@@ -9,10 +9,10 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import type { HttpMethod } from '../types';
-import type { ActorExtractor } from './audit';
 import type { Authorizer } from './Authorizer';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
+import type { ActorExtractor } from './audit';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -26,9 +26,10 @@ export class EndpointFactory<
   TAuthorizers extends readonly string[] = readonly string[],
   TAuditStorage extends AuditStorage<any> | undefined = undefined,
   TAuditStorageServiceName extends string = string,
-  TAuditAction extends AuditableAction<string, unknown> = ExtractStorageAuditAction<
-    NonNullable<TAuditStorage>
-  >,
+  TAuditAction extends AuditableAction<
+    string,
+    unknown
+  > = ExtractStorageAuditAction<NonNullable<TAuditStorage>>,
   TDatabase = undefined,
   TDatabaseServiceName extends string = string,
 > {
@@ -366,7 +367,11 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this
-        .defaultActorExtractor as unknown as ActorExtractor<TServices, TSession, L>,
+        .defaultActorExtractor as unknown as ActorExtractor<
+        TServices,
+        TSession,
+        L
+      >,
     });
   }
 
@@ -462,7 +467,11 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this
-        .defaultActorExtractor as unknown as ActorExtractor<TServices, T, TLogger>,
+        .defaultActorExtractor as unknown as ActorExtractor<
+        TServices,
+        T,
+        TLogger
+      >,
     });
   }
 
@@ -558,7 +567,8 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: storage,
       defaultDatabaseService: this.defaultDatabaseService,
-      defaultActorExtractor: this.defaultActorExtractor as unknown as ActorExtractor<
+      defaultActorExtractor: this
+        .defaultActorExtractor as unknown as ActorExtractor<
         TServices,
         TSession,
         TLogger

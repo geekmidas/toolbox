@@ -1,7 +1,7 @@
 import { e } from '@geekmidas/constructs/endpoints';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { AuthService } from '../services/AuthService';
 import { AuditStorageService } from '../services/AuditStorageService';
+import { AuthService } from '../services/AuthService';
 import { DatabaseService } from '../services/DatabaseService';
 import { EventsService } from '../services/EventsService';
 

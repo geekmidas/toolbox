@@ -1,4 +1,4 @@
-import type { AuditableAction, AuditRecord } from './types';
+import type { AuditRecord, AuditableAction } from './types';
 
 /**
  * Options for querying audit records.
