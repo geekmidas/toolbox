@@ -1,4 +1,5 @@
-import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type { AuditActor, AuditStorage, AuditableAction } from '@geekmidas/audit';
+import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -22,7 +23,7 @@ import {
 } from './Endpoint';
 import type { MappedAudit } from './audit';
 import {
-  createAuditContext,
+  type AuditExecutionContext,
   executeWithAuditTransaction,
 } from './processAudits';
 
@@ -185,26 +186,39 @@ export class TestEndpointAdaptor<
       cookie,
     });
 
-    // Create audit context if audit storage is configured
-    // The auditorStorage is required when endpoint uses .auditor()
-    const auditorStorageService = (ctx as any).auditorStorage as
-      | Service<TAuditStorageServiceName, TAuditStorage>
-      | undefined;
-    const endpointWithAuditor = auditorStorageService
-      ? { ...this.endpoint, auditorStorageService }
-      : this.endpoint;
+    // Create audit context if audit storage is provided
+    // The auditorStorage instance is required when endpoint uses .auditor()
+    const auditorStorage = (ctx as any).auditorStorage as TAuditStorage;
+    let auditContext: AuditExecutionContext<TAuditAction> | undefined;
 
-    const auditContext = await createAuditContext(
-      endpointWithAuditor as typeof this.endpoint,
-      this.serviceDiscovery,
-      logger,
-      {
-        session,
-        header,
-        cookie,
-        services: ctx.services as Record<string, unknown>,
-      },
-    );
+    if (auditorStorage) {
+      // Extract actor if configured
+      let actor: AuditActor = { id: 'system', type: 'system' };
+      if (this.endpoint.actorExtractor) {
+        try {
+          actor = await this.endpoint.actorExtractor({
+            services: ctx.services as any,
+            session,
+            header,
+            cookie,
+            logger,
+          });
+        } catch (error) {
+          logger.error(error as Error, 'Failed to extract actor for audits');
+        }
+      }
+
+      const auditor = new DefaultAuditor<TAuditAction>({
+        actor,
+        storage: auditorStorage as AuditStorage,
+        metadata: {
+          endpoint: this.endpoint.route,
+          method: this.endpoint.method,
+        },
+      });
+
+      auditContext = { auditor, storage: auditorStorage as AuditStorage };
+    }
 
     // Warn if declarative audits are configured but no audit storage
     const audits = this.endpoint.audits as MappedAudit<
@@ -215,29 +229,18 @@ export class TestEndpointAdaptor<
       logger.warn('No auditor storage service available');
     }
 
-    // Resolve database service if configured
-    // The database is required when endpoint uses .database()
-    const databaseService = (ctx as any).database as
-      | Service<TDatabaseServiceName, TDatabase>
-      | undefined;
-    const rawDb = databaseService
-      ? await this.serviceDiscovery
-          .register([databaseService])
-          .then((s) => s[databaseService.serviceName as keyof typeof s])
-      : undefined;
+    // Use database instance directly from context
+    // The database instance is required when endpoint uses .database()
+    const rawDb = (ctx as any).database as TDatabase;
 
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(
       auditContext,
       async (auditor) => {
-        // Use audit transaction as db only if the storage uses the same database service
-        const sameDatabase =
-          auditContext?.storage?.databaseServiceName &&
-          auditContext.storage.databaseServiceName ===
-            databaseService?.serviceName;
-        const db = sameDatabase
-          ? (auditor?.getTransaction?.() ?? rawDb)
-          : rawDb;
+        // Use audit transaction as db if available (when storage has same database)
+        // For testing, the tester controls whether to use transactional auditing
+        const trx = auditor?.getTransaction?.();
+        const db = trx ?? rawDb;
 
         const responseBuilder = new ResponseBuilder();
         const response = await this.endpoint.handler(
@@ -337,25 +340,21 @@ export class TestEndpointAdaptor<
  */
 type AuditStorageRequirement<
   TAuditStorage extends AuditStorage | undefined = undefined,
-  TAuditStorageServiceName extends string = string,
 > = TAuditStorage extends undefined
   ? {}
   : {
-      /** Audit storage service - required when endpoint uses .auditor() */
-      auditorStorage: Service<TAuditStorageServiceName, TAuditStorage>;
+      /** Audit storage instance - required when endpoint uses .auditor() */
+      auditorStorage: TAuditStorage;
     };
 
 /**
  * Conditional database requirement - required when TDatabase is configured
  */
-type DatabaseRequirement<
-  TDatabase = undefined,
-  TDatabaseServiceName extends string = string,
-> = TDatabase extends undefined
+type DatabaseRequirement<TDatabase = undefined> = TDatabase extends undefined
   ? {}
   : {
-      /** Database service - required when endpoint uses .database() */
-      database: Service<TDatabaseServiceName, TDatabase>;
+      /** Database instance - required when endpoint uses .database() */
+      database: TDatabase;
     };
 
 export type TestRequestAdaptor<
@@ -364,13 +363,13 @@ export type TestRequestAdaptor<
   TEventPublisher extends EventPublisher<any> | undefined = undefined,
   TEventPublisherServiceName extends string = string,
   TAuditStorage extends AuditStorage | undefined = undefined,
-  TAuditStorageServiceName extends string = string,
+  _TAuditStorageServiceName extends string = string,
   TDatabase = undefined,
-  TDatabaseServiceName extends string = string,
+  _TDatabaseServiceName extends string = string,
 > = {
   services: ServiceRecord<TServices>;
   headers: Record<string, string>;
   publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 } & InferComposableStandardSchema<TInput> &
-  AuditStorageRequirement<TAuditStorage, TAuditStorageServiceName> &
-  DatabaseRequirement<TDatabase, TDatabaseServiceName>;
+  AuditStorageRequirement<TAuditStorage> &
+  DatabaseRequirement<TDatabase>;
