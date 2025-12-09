@@ -480,8 +480,8 @@ export class HonoEndpoint<
             if (HonoEndpoint.isDev) {
               logger.info({ status, body: output }, 'Outgoing response');
             }
-
-            return c.json(output ?? {}, status);
+            // @ts-ignore
+            return c.json(output, status);
           } catch (validationError: any) {
             logger.error(validationError, 'Output validation failed');
             const error = wrapError(

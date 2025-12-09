@@ -1073,7 +1073,7 @@ describe('HonoEndpointAdaptor', () => {
       expect(error).toHaveProperty('message', 'Validation failed');
     });
 
-    it('should return empty object when no output schema is defined', async () => {
+    it('should return empty response when no output schema is defined', async () => {
       const endpoint = new Endpoint({
         route: '/users/no-schema',
         method: 'GET',
@@ -1097,7 +1097,8 @@ describe('HonoEndpointAdaptor', () => {
 
       const response = await app.request('/users/no-schema');
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({});
+      // When no output schema is defined, response body is empty
+      expect(await response.text()).toBe('');
     });
   });
 });
