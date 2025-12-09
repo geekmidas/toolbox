@@ -221,7 +221,7 @@ describe('KyselyAuditStorage', () => {
       expect(calledValues[0].id).toBeUndefined();
     });
 
-    it('should use provided ID when autoId is true', async () => {
+    it('should omit ID even if provided when autoId is true', async () => {
       const storageAutoId = new KyselyAuditStorage({
         db: mockDb.db as any,
         tableName: 'audit_logs',
@@ -230,7 +230,7 @@ describe('KyselyAuditStorage', () => {
 
       const records: AuditRecord[] = [
         {
-          id: 'explicit-id',
+          id: 'explicit-id', // This should be ignored when autoId is true
           type: 'user.created',
           operation: 'CUSTOM',
           timestamp: new Date(),
@@ -239,11 +239,9 @@ describe('KyselyAuditStorage', () => {
 
       await storageAutoId.write(records);
 
-      expect(mockDb.insertBuilder.values).toHaveBeenCalledWith([
-        expect.objectContaining({
-          id: 'explicit-id',
-        }),
-      ]);
+      // When autoId is true, ID should always be omitted (let database generate)
+      const calledValues = mockDb.insertBuilder.values.mock.calls[0][0];
+      expect(calledValues[0].id).toBeUndefined();
     });
   });
 

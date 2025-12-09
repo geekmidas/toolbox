@@ -327,9 +327,9 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
   }
 
   private toRow(record: AuditRecord): AuditLogTable {
-    // If autoId is true, let database generate ID (omit if not provided)
-    // If autoId is false (default), generate with nanoid if not provided
-    const id = record.id || (this.autoId ? undefined : nanoid());
+    // If autoId is true, let database generate ID (ignore record.id)
+    // If autoId is false (default), use record.id or generate with nanoid
+    const id = this.autoId ? undefined : record.id || nanoid();
 
     return {
       ...(id && { id }),
