@@ -1,4 +1,8 @@
-import type { AuditActor, AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type {
+  AuditActor,
+  AuditStorage,
+  AuditableAction,
+} from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';

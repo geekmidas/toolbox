@@ -71,13 +71,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
     it('should process declarative audits when auditorStorage is provided', async () => {
       const auditStorage = new InMemoryAuditStorage();
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const outputSchema = z.object({ id: z.string(), email: z.string() });
 
@@ -123,13 +121,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
     it('should allow manual auditing via auditor in handler context', async () => {
       const auditStorage = new InMemoryAuditStorage();
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const endpoint = e
         .post('/users')
@@ -168,13 +164,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
     it('should extract actor from session when actorExtractor is configured', async () => {
       const auditStorage = new InMemoryAuditStorage();
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const outputSchema = z.object({ id: z.string(), email: z.string() });
 
@@ -349,13 +343,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
         { id: 'db-user-1', email: 'dbuser@example.com' },
       ]);
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const databaseService: Service<'database', MockDatabase> = {
         serviceName: 'database' as const,
@@ -438,13 +430,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
       const mockDb = createMockDatabase();
       (mockDb.query as any).mockResolvedValue([]);
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const databaseService: Service<'database', MockDatabase> = {
         serviceName: 'database' as const,
@@ -508,13 +498,11 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
     it('should require auditorStorage when endpoint uses .auditor()', async () => {
       const auditStorage = new InMemoryAuditStorage();
 
-      const auditStorageService: Service<
-        'auditStorage',
-        InMemoryAuditStorage
-      > = {
-        serviceName: 'auditStorage' as const,
-        register: vi.fn().mockResolvedValue(auditStorage),
-      };
+      const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> =
+        {
+          serviceName: 'auditStorage' as const,
+          register: vi.fn().mockResolvedValue(auditStorage),
+        };
 
       const endpoint = e
         .post('/users')

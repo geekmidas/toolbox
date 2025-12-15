@@ -10,7 +10,22 @@ import {
 } from './Generator';
 
 export class EndpointGenerator extends ConstructGenerator<
-  Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>,
+  Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
   RouteInfo[]
 > {
   isConstruct(
@@ -37,7 +52,22 @@ export class EndpointGenerator extends ConstructGenerator<
   async build(
     context: BuildContext,
     constructs: GeneratedConstruct<
-      Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>
+      Endpoint<
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any
+      >
     >[],
     outputDir: string,
     options?: GeneratorOptions,
@@ -202,7 +232,22 @@ export class EndpointGenerator extends ConstructGenerator<
   private async generateEndpointsFile(
     outputDir: string,
     endpoints: GeneratedConstruct<
-      Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>
+      Endpoint<
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any
+      >
     >[],
     context: BuildContext,
   ): Promise<string> {

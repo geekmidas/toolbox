@@ -15,7 +15,9 @@ export class CronGenerator extends ConstructGenerator<
 > {
   async build(
     context: BuildContext,
-    constructs: GeneratedConstruct<Cron<any, any, any, any, any, any, any, any>>[],
+    constructs: GeneratedConstruct<
+      Cron<any, any, any, any, any, any, any, any>
+    >[],
     outputDir: string,
     options?: GeneratorOptions,
   ): Promise<CronInfo[]> {
@@ -58,7 +60,9 @@ export class CronGenerator extends ConstructGenerator<
     return cronInfos;
   }
 
-  isConstruct(value: any): value is Cron<any, any, any, any, any, any, any, any> {
+  isConstruct(
+    value: any,
+  ): value is Cron<any, any, any, any, any, any, any, any> {
     return Cron.isCron(value);
   }
 

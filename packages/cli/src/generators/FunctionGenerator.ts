@@ -15,7 +15,20 @@ export class FunctionGenerator extends ConstructGenerator<
 > {
   isConstruct(
     value: any,
-  ): value is Function<any, any, any, any, any, any, any, any, any, any, any, any> {
+  ): value is Function<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  > {
     return Function.isFunction(value);
   }
 
