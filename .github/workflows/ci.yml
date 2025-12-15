@@ -35,6 +35,8 @@ jobs:
           node-version: 22
           cache: "pnpm"
           registry-url: https://registry.npmjs.org
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -55,5 +57,3 @@ jobs:
       - name: Publish packages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: pnpm publish -r --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
