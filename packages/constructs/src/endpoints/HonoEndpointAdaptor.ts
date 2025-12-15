@@ -298,12 +298,23 @@ export class HonoEndpoint<
 
           const services = await serviceDiscovery.register(endpoint.services);
 
+          // Resolve database service early so it's available for session extraction
+          const rawDb = endpoint.databaseService
+            ? await serviceDiscovery
+                .register([endpoint.databaseService])
+                .then(
+                  (s) =>
+                    s[endpoint.databaseService!.serviceName as keyof typeof s],
+                )
+            : undefined;
+
           const session = await endpoint.getSession({
             services,
             logger,
             header,
             cookie,
-          });
+            ...(rawDb !== undefined && { db: rawDb }),
+          } as any);
 
           const isAuthorized = await endpoint.authorize({
             header,
@@ -362,16 +373,6 @@ export class HonoEndpoint<
           if (!auditContext && audits?.length) {
             logger.warn('No auditor storage service available');
           }
-
-          // Resolve database service if configured
-          const rawDb = endpoint.databaseService
-            ? await serviceDiscovery
-                .register([endpoint.databaseService])
-                .then(
-                  (s) =>
-                    s[endpoint.databaseService!.serviceName as keyof typeof s],
-                )
-            : undefined;
 
           // Execute handler with automatic audit transaction support
           const result = await executeWithAuditTransaction(

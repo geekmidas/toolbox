@@ -58,7 +58,8 @@ export class EndpointBuilder<
   protected _status?: SuccessStatus;
   protected _tags?: string[];
   protected _memorySize?: number;
-  _getSession: SessionFn<TServices, TLogger, TSession> = () => ({}) as TSession;
+  _getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
+    ({}) as TSession;
   _authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
   _rateLimit?: RateLimitConfig;
   _availableAuthorizers: Authorizer[] = [];

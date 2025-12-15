@@ -183,12 +183,17 @@ export class TestEndpointAdaptor<
       host: ctx.headers.host,
       method: this.endpoint.method,
     }) as TLogger;
+
+    // Get database from context for session extraction
+    const rawDb = (ctx as any).database as TDatabase;
+
     const session = await this.endpoint.getSession({
       logger,
       services: ctx.services,
       header,
       cookie,
-    });
+      ...(rawDb !== undefined && { db: rawDb }),
+    } as any);
 
     // Create audit context if audit storage is provided
     // The auditorStorage instance is required when endpoint uses .auditor()
@@ -232,10 +237,6 @@ export class TestEndpointAdaptor<
     if (!auditContext && audits?.length) {
       logger.warn('No auditor storage service available');
     }
-
-    // Use database instance directly from context
-    // The database instance is required when endpoint uses .database()
-    const rawDb = (ctx as any).database as TDatabase;
 
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(

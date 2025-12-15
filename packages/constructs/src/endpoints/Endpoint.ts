@@ -109,7 +109,7 @@ export class Endpoint<
   /** Default headers to apply to all responses */
   public readonly defaultHeaders: Record<string, string> = {};
   /** Function to extract session data from the request context */
-  public getSession: SessionFn<TServices, TLogger, TSession> = () =>
+  public getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
     ({}) as TSession;
   /** Function to determine if the request is authorized */
   public authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
@@ -122,7 +122,7 @@ export class Endpoint<
   /** Declarative audit definitions */
   public audits: MappedAudit<TAuditAction, OutSchema>[] = [];
   /** Database service for this endpoint */
-  public databaseService?: Service<TDatabaseServiceName, TDatabase>;
+  declare public databaseService?: Service<TDatabaseServiceName, TDatabase>;
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
@@ -752,7 +752,7 @@ export interface EndpointOptions<
   /** Logger instance */
   logger: TLogger;
   /** Optional session extraction function */
-  getSession: SessionFn<TServices, TLogger, TSession> | undefined;
+  getSession: SessionFn<TServices, TLogger, TSession, TDatabase> | undefined;
   /** Optional rate limiting configuration */
   rateLimit?: RateLimitConfig;
   /** Success HTTP status code */
@@ -826,7 +826,10 @@ export type AuthorizeFn<
   ctx: AuthorizeContext<TServices, TLogger, TSession>,
 ) => Promise<boolean> | boolean;
 
-export type SessionContext<
+/**
+ * Base session context without database
+ */
+type BaseSessionContext<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
 > = {
@@ -835,21 +838,50 @@ export type SessionContext<
   header: HeaderFn;
   cookie: CookieFn;
 };
+
+/**
+ * Conditional database context for session - only present when database service is configured
+ */
+type SessionDatabaseContext<TDatabase = undefined> = TDatabase extends undefined
+  ? {}
+  : {
+      /**
+       * Database instance for session extraction.
+       * Available when a database service is configured via `.database()`.
+       * Useful for looking up user data from the database based on auth tokens.
+       */
+      db: TDatabase;
+    };
+
+export type SessionContext<
+  TServices extends Service[] = [],
+  TLogger extends Logger = Logger,
+  TDatabase = undefined,
+> = BaseSessionContext<TServices, TLogger> & SessionDatabaseContext<TDatabase>;
 /**
  * Function type for extracting session data from a request.
  *
  * @template TServices - Available service dependencies
  * @template TLogger - Logger type
  * @template TSession - Session data type to extract
+ * @template TDatabase - Database type (when database service is configured)
  *
- * @param ctx - Context containing services, logger, and headers
+ * @param ctx - Context containing services, logger, headers, and optionally database
  * @returns The extracted session data
  *
  * @example
  * ```typescript
+ * // Without database
  * const getSession: SessionFn<Services, Logger, UserSession> = async ({ header, services }) => {
  *   const token = header('authorization');
  *   return await services.auth.verifyToken(token);
+ * };
+ *
+ * // With database
+ * const getSession: SessionFn<Services, Logger, UserSession, Database> = async ({ header, db }) => {
+ *   const token = header('authorization');
+ *   const user = await db.selectFrom('users').where('token', '=', token).executeTakeFirst();
+ *   return { userId: user?.id };
  * };
  * ```
  */
@@ -857,7 +889,10 @@ export type SessionFn<
   TServices extends Service[] = [],
   TLogger extends Logger = Logger,
   TSession = unknown,
-> = (ctx: SessionContext<TServices, TLogger>) => Promise<TSession> | TSession;
+  TDatabase = undefined,
+> = (
+  ctx: SessionContext<TServices, TLogger, TDatabase>,
+) => Promise<TSession> | TSession;
 
 /**
  * Utility type that converts Express-style route parameters to OpenAPI format.

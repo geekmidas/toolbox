@@ -191,17 +191,44 @@ export abstract class AmazonApiGatewayEndpoint<
     };
   }
 
+  private database(): Middleware<TEvent, TInput, TServices, TLogger> {
+    return {
+      before: async (req) => {
+        if (!this.endpoint.databaseService) {
+          return;
+        }
+
+        const logger = req.event.logger as TLogger;
+        const serviceDiscovery = ServiceDiscovery.getInstance<
+          ServiceRecord<TServices>,
+          TLogger
+        >(logger, this.envParser);
+
+        const db = await serviceDiscovery
+          .register([this.endpoint.databaseService])
+          .then(
+            (s) =>
+              s[this.endpoint.databaseService!.serviceName as keyof typeof s],
+          );
+
+        (req.event as any).db = db;
+      },
+    };
+  }
+
   private session(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
       before: async (req) => {
         const logger = req.event.logger as TLogger;
         const services = req.event.services;
+        const db = (req.event as any).db;
         req.event.session = (await this.endpoint.getSession({
           logger,
           services,
           header: req.event.header,
           cookie: req.event.cookie,
-        })) as TSession;
+          ...(db !== undefined && { db }),
+        } as any)) as TSession;
       },
     };
   }
@@ -267,15 +294,8 @@ export abstract class AmazonApiGatewayEndpoint<
       logger.warn('No auditor storage service available');
     }
 
-    // Resolve database service if configured
-    const rawDb = this.endpoint.databaseService
-      ? await serviceDiscovery
-          .register([this.endpoint.databaseService])
-          .then(
-            (s) =>
-              s[this.endpoint.databaseService!.serviceName as keyof typeof s],
-          )
-      : undefined;
+    // Get pre-resolved database from middleware
+    const rawDb = (event as any).db;
 
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(
@@ -382,6 +402,7 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.error())
       .use(this.services())
       .use(this.input())
+      .use(this.database())
       .use(this.session())
       .use(this.authorize())
       .use(this.events()) as unknown as THandler;
