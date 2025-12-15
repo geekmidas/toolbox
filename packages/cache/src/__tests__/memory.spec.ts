@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryCache } from '../memory';
 
 describe('InMemoryCache', () => {
-  let cache: InMemoryCache<any>;
+  let cache: InMemoryCache;
 
   beforeEach(() => {
     cache = new InMemoryCache();

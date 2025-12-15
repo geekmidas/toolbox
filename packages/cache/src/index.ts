@@ -15,13 +15,14 @@ export const getExpirationInSeconds = (
   return Math.max(secondsLeft, 0);
 };
 
-export interface Cache<T> {
+export interface Cache {
   /**
    * Retrieves a value from the cache.
    *
    * @param key The key to retrieve the value for.
+   * @returns The cached value, or undefined if not found.
    */
-  get(key: string): Promise<T | undefined>;
+  get<T>(key: string): Promise<T | undefined>;
   /**
    * Sets a value in the cache.
    *
@@ -29,7 +30,7 @@ export interface Cache<T> {
    * @param value The value to cache.
    * @param ttl Optional time-to-live in seconds. If not provided, the value will not expire.
    */
-  set(key: string, value: T, ttl?: number): Promise<void>;
+  set<T>(key: string, value: T, ttl?: number): Promise<void>;
   /**
    * Deletes a value from the cache.
    *
@@ -41,7 +42,7 @@ export interface Cache<T> {
    * Retrieves the time-to-live (TTL) for a cached value.
    *
    * @param key The key to retrieve the TTL for.
-   * @returns The TTL in seconds, or undefined if the key does not exist.
+   * @returns The TTL in seconds, or 0 if the key does not exist.
    */
   ttl(key: string): Promise<number>;
 }

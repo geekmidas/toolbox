@@ -1,18 +1,18 @@
 import { addSeconds } from 'date-fns';
 import { type Cache, getExpirationInSeconds } from './';
 
-export class InMemoryCache<T> implements Cache<T> {
-  private store: Map<string, T> = new Map();
+export class InMemoryCache implements Cache {
+  private store: Map<string, unknown> = new Map();
   private expirations: Map<string, Date> = new Map();
 
-  async get(key: string): Promise<T | undefined> {
+  async get<T>(key: string): Promise<T | undefined> {
     const expiration = await this.ttl(key);
     if (!expiration) {
       await this.delete(key);
       return undefined;
     }
 
-    return this.store.get(key);
+    return this.store.get(key) as T | undefined;
   }
 
   async ttl(key: string): Promise<number> {
@@ -24,7 +24,7 @@ export class InMemoryCache<T> implements Cache<T> {
     return getExpirationInSeconds(expiration);
   }
 
-  async set(key: string, value: T, ttl: number = 600): Promise<void> {
+  async set<T>(key: string, value: T, ttl: number = 600): Promise<void> {
     this.store.set(key, value);
     const now = new Date();
     const expiresAt = addSeconds(now, ttl);

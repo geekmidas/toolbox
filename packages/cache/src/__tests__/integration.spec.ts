@@ -1,22 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Cache } from '../cache';
+import type { Cache } from '../';
 import { InMemoryCache } from '../memory';
 
 describe('Cache Integration Tests', () => {
-  let memoryCache: Cache<any>;
+  let memoryCache: Cache;
 
   beforeEach(() => {
     memoryCache = new InMemoryCache();
   });
 
   describe('cross-cache behavior consistency', () => {
-    const testCases = [
-      { name: 'InMemoryCache', cache: () => new InMemoryCache() },
-    ];
+    const testCases = [{ name: 'InMemoryCache', cache: () => new InMemoryCache() }];
 
     testCases.forEach(({ name, cache }) => {
       describe(name, () => {
-        let cacheInstance: Cache<any>;
+        let cacheInstance: Cache;
 
         beforeEach(() => {
           cacheInstance = cache();
@@ -106,8 +104,8 @@ describe('Cache Integration Tests', () => {
 
   describe('cache migration scenarios', () => {
     it('should support migrating data between cache implementations', async () => {
-      const sourceCache = new InMemoryCache<any>();
-      const targetCache = new InMemoryCache<any>();
+      const sourceCache = new InMemoryCache();
+      const targetCache = new InMemoryCache();
 
       // Populate source cache
       const testData = {
@@ -139,39 +137,44 @@ describe('Cache Integration Tests', () => {
 
   describe('cache abstraction patterns', () => {
     it('should support cache factory pattern', async () => {
-      const createCache = <T>(type: 'memory'): Cache<T> => {
+      const createCache = (type: 'memory'): Cache => {
         switch (type) {
           case 'memory':
-            return new InMemoryCache<T>();
+            return new InMemoryCache();
           default:
             throw new Error(`Unknown cache type: ${type}`);
         }
       };
 
-      const userCache = createCache<{ id: number; name: string }>('memory');
-      const sessionCache = createCache<string>('memory');
+      const userCache = createCache('memory');
+      const sessionCache = createCache('memory');
 
-      await userCache.set('user:1', { id: 1, name: 'John' });
-      await sessionCache.set('session:abc', 'active');
+      await userCache.set<{ id: number; name: string }>('user:1', {
+        id: 1,
+        name: 'John',
+      });
+      await sessionCache.set<string>('session:abc', 'active');
 
-      expect(await userCache.get('user:1')).toEqual({ id: 1, name: 'John' });
-      expect(await sessionCache.get('session:abc')).toBe('active');
+      expect(await userCache.get<{ id: number; name: string }>('user:1')).toEqual(
+        { id: 1, name: 'John' },
+      );
+      expect(await sessionCache.get<string>('session:abc')).toBe('active');
     });
 
     it('should support cache wrapper pattern', async () => {
-      class LoggingCache<T> implements Cache<T> {
+      class LoggingCache implements Cache {
         private logs: string[] = [];
 
-        constructor(private underlying: Cache<T>) {}
+        constructor(private underlying: Cache) {}
 
-        async get(key: string): Promise<T | undefined> {
+        async get<T>(key: string): Promise<T | undefined> {
           this.logs.push(`GET ${key}`);
-          return this.underlying.get(key);
+          return this.underlying.get<T>(key);
         }
 
-        async set(key: string, value: T): Promise<void> {
+        async set<T>(key: string, value: T, ttl?: number): Promise<void> {
           this.logs.push(`SET ${key}`);
-          return this.underlying.set(key, value);
+          return this.underlying.set<T>(key, value, ttl);
         }
 
         async delete(key: string): Promise<void> {
@@ -179,12 +182,16 @@ describe('Cache Integration Tests', () => {
           return this.underlying.delete(key);
         }
 
+        async ttl(key: string): Promise<number> {
+          return this.underlying.ttl(key);
+        }
+
         getLogs(): string[] {
           return [...this.logs];
         }
       }
 
-      const baseCache = new InMemoryCache<string>();
+      const baseCache = new InMemoryCache();
       const loggingCache = new LoggingCache(baseCache);
 
       await loggingCache.set('test', 'value');
@@ -198,7 +205,7 @@ describe('Cache Integration Tests', () => {
 
   describe('performance and stress tests', () => {
     it('should handle large number of operations', async () => {
-      const cache = new InMemoryCache<number>();
+      const cache = new InMemoryCache();
       const operationCount = 1000;
 
       // Bulk insert
@@ -230,7 +237,7 @@ describe('Cache Integration Tests', () => {
     });
 
     it('should handle large objects efficiently', async () => {
-      const cache = new InMemoryCache<any>();
+      const cache = new InMemoryCache();
 
       const largeObject = {
         id: 1,
@@ -256,7 +263,7 @@ describe('Cache Integration Tests', () => {
 
   describe('error scenarios', () => {
     it('should handle operations after errors gracefully', async () => {
-      const cache = new InMemoryCache<string>();
+      const cache = new InMemoryCache();
 
       // Successful operations
       await cache.set('valid-key', 'valid-value');

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UpstashCache } from '../upstash';
 
 describe('UpstashCache', () => {
-  let cache: UpstashCache<any>;
+  let cache: UpstashCache;
   const testKeyPrefix = `test:${Date.now()}:`;
   let testKeys: string[] = [];
 

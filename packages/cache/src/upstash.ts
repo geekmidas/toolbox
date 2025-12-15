@@ -1,7 +1,7 @@
 import { Redis } from '@upstash/redis';
 import type { Cache } from './';
 
-export class UpstashCache<T> implements Cache<T> {
+export class UpstashCache implements Cache {
   private client: Redis;
 
   constructor(url: string, token: string) {
@@ -21,17 +21,17 @@ export class UpstashCache<T> implements Cache<T> {
     return ttl; // Returns TTL in seconds
   }
 
-  async get(key: string): Promise<T | undefined> {
+  async get<T>(key: string): Promise<T | undefined> {
     const v = await this.client.get(key);
 
     if (v === null) {
       return undefined;
     }
 
-    return v as T; // Assuming the value is stored as a string, you may need to parse it if it's JSON
+    return v as T;
   }
 
-  async set(key: string, value: T, ttl = 3600): Promise<void> {
+  async set<T>(key: string, value: T, ttl = 3600): Promise<void> {
     await this.client.set(key, value, { ex: ttl });
   }
 

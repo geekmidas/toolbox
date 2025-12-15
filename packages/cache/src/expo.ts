@@ -2,7 +2,7 @@ import { addSeconds } from 'date-fns';
 import * as SecureStore from 'expo-secure-store';
 import { type Cache, getExpirationInSeconds } from './index';
 
-export class ExpoSecureCache<T> implements Cache<T> {
+export class ExpoSecureCache implements Cache {
   static getExpiryKey(key: string): string {
     return `${key}:expiresAt`;
   }
@@ -20,8 +20,7 @@ export class ExpoSecureCache<T> implements Cache<T> {
     return Math.max(secondsLeft, 0);
   }
 
-  // Implementation details
-  async get(key: string): Promise<T | undefined> {
+  async get<T>(key: string): Promise<T | undefined> {
     const result = await SecureStore.getItemAsync(key);
     if (!result) {
       return undefined;
@@ -35,7 +34,7 @@ export class ExpoSecureCache<T> implements Cache<T> {
     return JSON.parse(result) as T;
   }
 
-  async set(key: string, value: T, ttl: number = 600): Promise<void> {
+  async set<T>(key: string, value: T, ttl: number = 600): Promise<void> {
     const expiresAt = addSeconds(new Date(), ttl).toISOString();
     await SecureStore.setItemAsync(key, JSON.stringify(value));
     await SecureStore.setItemAsync(
