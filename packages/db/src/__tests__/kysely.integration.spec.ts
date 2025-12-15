@@ -11,13 +11,13 @@ import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import { withTransaction } from '../kysely';
 
 interface TestDatabase {
-  users: {
+  kyselyTrxUsers: {
     id: Generated<number>;
     name: string;
     email: string;
     createdAt: Generated<Date>;
   };
-  accounts: {
+  kyselyTrxAccounts: {
     id: Generated<number>;
     userId: number;
     balance: number;
@@ -41,7 +41,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
     // Create users table
     await db.schema
-      .createTable('users')
+      .createTable('kysely_trx_users')
       .ifNotExists()
       .addColumn('id', 'serial', (col) => col.primaryKey())
       .addColumn('name', 'varchar', (col) => col.notNull())
@@ -53,11 +53,11 @@ describe('Kysely Transaction Integration Tests', () => {
 
     // Create accounts table
     await db.schema
-      .createTable('accounts')
+      .createTable('kysely_trx_accounts')
       .ifNotExists()
       .addColumn('id', 'serial', (col) => col.primaryKey())
       .addColumn('user_id', 'integer', (col) =>
-        col.notNull().references('users.id').onDelete('cascade'),
+        col.notNull().references('kysely_trx_users.id').onDelete('cascade'),
       )
       .addColumn('balance', 'numeric(10, 2)', (col) =>
         col.notNull().defaultTo(0),
@@ -68,14 +68,14 @@ describe('Kysely Transaction Integration Tests', () => {
 
   afterEach(async () => {
     // Clean up data after each test
-    await db.deleteFrom('accounts').execute();
-    await db.deleteFrom('users').execute();
+    await db.deleteFrom('kyselyTrxAccounts').execute();
+    await db.deleteFrom('kyselyTrxUsers').execute();
   });
 
   afterAll(async () => {
     // Drop tables and close connection
-    await db.schema.dropTable('accounts').ifExists().execute();
-    await db.schema.dropTable('users').ifExists().execute();
+    await db.schema.dropTable('kysely_trx_accounts').ifExists().execute();
+    await db.schema.dropTable('kysely_trx_users').ifExists().execute();
     await db.destroy();
   });
 
@@ -84,7 +84,7 @@ describe('Kysely Transaction Integration Tests', () => {
       const result = await withTransaction(db, async (trx) => {
         // Insert a user
         const user = await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({
             name: 'John Doe',
             email: 'john@example.com',
@@ -94,7 +94,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Verify we can select it within the same transaction
         const foundUser = await trx
-          .selectFrom('users')
+          .selectFrom('kyselyTrxUsers')
           .selectAll()
           .where('id', '=', user.id)
           .executeTakeFirstOrThrow();
@@ -114,7 +114,7 @@ describe('Kysely Transaction Integration Tests', () => {
       const insertPromise = withTransaction(db, async (trx) => {
         // Insert a user
         await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({
             name: 'Will Be Rolled Back',
             email: 'rollback@example.com',
@@ -131,7 +131,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // Verify user was not created
       const users = await db
-        .selectFrom('users')
+        .selectFrom('kyselyTrxUsers')
         .selectAll()
         .where('email', '=', 'rollback@example.com')
         .execute();
@@ -143,7 +143,7 @@ describe('Kysely Transaction Integration Tests', () => {
       await withTransaction(db, async (trx1) => {
         // Insert user in outer transaction
         const user = await trx1
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({
             name: 'Outer Transaction',
             email: 'outer@example.com',
@@ -155,7 +155,7 @@ describe('Kysely Transaction Integration Tests', () => {
         await withTransaction(trx1, async (trx2) => {
           // Should see the user from outer transaction
           const foundUser = await trx2
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .selectAll()
             .where('id', '=', user.id)
             .executeTakeFirstOrThrow();
@@ -164,7 +164,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
           // Insert an account
           await trx2
-            .insertInto('accounts')
+            .insertInto('kyselyTrxAccounts')
             .values({
               userId: user.id,
               balance: 1000,
@@ -175,7 +175,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Verify account was created in the same transaction
         const accounts = await trx1
-          .selectFrom('accounts')
+          .selectFrom('kyselyTrxAccounts')
           .selectAll()
           .where('userId', '=', user.id)
           .execute();
@@ -189,7 +189,7 @@ describe('Kysely Transaction Integration Tests', () => {
     it('should lock row with SELECT FOR UPDATE', async () => {
       // Create a user and account
       const user = await db
-        .insertInto('users')
+        .insertInto('kyselyTrxUsers')
         .values({
           name: 'Test User',
           email: 'test@example.com',
@@ -198,7 +198,7 @@ describe('Kysely Transaction Integration Tests', () => {
         .executeTakeFirstOrThrow();
 
       const account = await db
-        .insertInto('accounts')
+        .insertInto('kyselyTrxAccounts')
         .values({
           userId: user.id,
           balance: 1000,
@@ -211,7 +211,7 @@ describe('Kysely Transaction Integration Tests', () => {
       const transaction1Promise = withTransaction(db, async (trx1) => {
         // Lock the account row
         const lockedAccount = await trx1
-          .selectFrom('accounts')
+          .selectFrom('kyselyTrxAccounts')
           .selectAll()
           .where('id', '=', account.id)
           .forUpdate()
@@ -224,7 +224,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Update the balance
         await trx1
-          .updateTable('accounts')
+          .updateTable('kyselyTrxAccounts')
           .set({
             balance: sql`balance - 100`,
             version: sql`version + 1`,
@@ -242,7 +242,7 @@ describe('Kysely Transaction Integration Tests', () => {
       const transaction2Promise = withTransaction(db, async (trx2) => {
         // This will wait for transaction1 to release the lock
         const lockedAccount = await trx2
-          .selectFrom('accounts')
+          .selectFrom('kyselyTrxAccounts')
           .selectAll()
           .where('id', '=', account.id)
           .forUpdate()
@@ -253,7 +253,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Update the balance again
         await trx2
-          .updateTable('accounts')
+          .updateTable('kyselyTrxAccounts')
           .set({
             balance: sql`balance - 50`,
             version: sql`version + 1`,
@@ -277,7 +277,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // Verify final balance
       const finalAccount = await db
-        .selectFrom('accounts')
+        .selectFrom('kyselyTrxAccounts')
         .selectAll()
         .where('id', '=', account.id)
         .executeTakeFirstOrThrow();
@@ -289,7 +289,7 @@ describe('Kysely Transaction Integration Tests', () => {
     it('should prevent concurrent updates with SELECT FOR UPDATE', async () => {
       // Create user and account
       const user = await db
-        .insertInto('users')
+        .insertInto('kyselyTrxUsers')
         .values({
           name: 'Concurrent User',
           email: 'concurrent@example.com',
@@ -298,7 +298,7 @@ describe('Kysely Transaction Integration Tests', () => {
         .executeTakeFirstOrThrow();
 
       const account = await db
-        .insertInto('accounts')
+        .insertInto('kyselyTrxAccounts')
         .values({
           userId: user.id,
           balance: 500,
@@ -314,7 +314,7 @@ describe('Kysely Transaction Integration Tests', () => {
           withTransaction(db, async (trx) => {
             // Lock the row
             const currentAccount = await trx
-              .selectFrom('accounts')
+              .selectFrom('kyselyTrxAccounts')
               .selectAll()
               .where('id', '=', account.id)
               .forUpdate()
@@ -323,7 +323,7 @@ describe('Kysely Transaction Integration Tests', () => {
             // Check if there's enough balance
             if (Number(currentAccount.balance) >= amount) {
               await trx
-                .updateTable('accounts')
+                .updateTable('kyselyTrxAccounts')
                 .set({
                   balance: sql`balance - ${amount}`,
                   version: sql`version + 1`,
@@ -341,7 +341,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // Verify that withdrawals were serialized correctly
       const finalAccount = await db
-        .selectFrom('accounts')
+        .selectFrom('kyselyTrxAccounts')
         .selectAll()
         .where('id', '=', account.id)
         .executeTakeFirstOrThrow();
@@ -364,7 +364,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // Insert a user
           const user = await trx
-            .insertInto('users')
+            .insertInto('kyselyTrxUsers')
             .values({
               name: 'Read Committed User',
               email: 'readcommitted@example.com',
@@ -387,7 +387,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // Insert a user
           const user = await trx
-            .insertInto('users')
+            .insertInto('kyselyTrxUsers')
             .values({
               name: 'Repeatable Read User',
               email: 'repeatableread@example.com',
@@ -410,7 +410,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // Insert a user
           const user = await trx
-            .insertInto('users')
+            .insertInto('kyselyTrxUsers')
             .values({
               name: 'Serializable User',
               email: 'serializable@example.com',
@@ -430,7 +430,7 @@ describe('Kysely Transaction Integration Tests', () => {
     it('should demonstrate READ COMMITTED allows non-repeatable reads', async () => {
       // Create a user first
       const user = await db
-        .insertInto('users')
+        .insertInto('kyselyTrxUsers')
         .values({
           name: 'Original Name',
           email: 'nonrepeatable@example.com',
@@ -444,7 +444,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // First read
           const firstUser = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .selectAll()
             .where('id', '=', user.id)
             .executeTakeFirstOrThrow();
@@ -454,7 +454,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
           // Second read (should see the update in READ COMMITTED)
           const secondUser = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .selectAll()
             .where('id', '=', user.id)
             .executeTakeFirstOrThrow();
@@ -466,7 +466,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // After first read, update the user in a separate transaction
       setTimeout(() => {
-        db.updateTable('users')
+        db.updateTable('kyselyTrxUsers')
           .set({ name: 'Updated Name' })
           .where('id', '=', user.id)
           .execute();
@@ -482,7 +482,7 @@ describe('Kysely Transaction Integration Tests', () => {
     it('should demonstrate REPEATABLE READ prevents non-repeatable reads', async () => {
       // Create a user first
       const user = await db
-        .insertInto('users')
+        .insertInto('kyselyTrxUsers')
         .values({
           name: 'Repeatable Original',
           email: 'repeatable@example.com',
@@ -496,7 +496,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // First read
           const firstUser = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .selectAll()
             .where('id', '=', user.id)
             .executeTakeFirstOrThrow();
@@ -506,7 +506,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
           // Second read (should still see the same value in REPEATABLE READ)
           const secondUser = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .selectAll()
             .where('id', '=', user.id)
             .executeTakeFirstOrThrow();
@@ -518,7 +518,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // After first read, update the user in a separate transaction
       setTimeout(() => {
-        db.updateTable('users')
+        db.updateTable('kyselyTrxUsers')
           .set({ name: 'Repeatable Updated' })
           .where('id', '=', user.id)
           .execute();
@@ -534,7 +534,7 @@ describe('Kysely Transaction Integration Tests', () => {
     it('should demonstrate SERIALIZABLE prevents phantom reads', async () => {
       // Create initial users
       await db
-        .insertInto('users')
+        .insertInto('kyselyTrxUsers')
         .values([
           { name: 'User 1', email: 'user1@example.com' },
           { name: 'User 2', email: 'user2@example.com' },
@@ -547,7 +547,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx) => {
           // First count
           const firstCount = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .select(sql<number>`count(*)`.as('count'))
             .executeTakeFirstOrThrow();
 
@@ -556,7 +556,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
           // Second count (should be the same in SERIALIZABLE)
           const secondCount = await trx
-            .selectFrom('users')
+            .selectFrom('kyselyTrxUsers')
             .select(sql<number>`count(*)`.as('count'))
             .executeTakeFirstOrThrow();
 
@@ -570,7 +570,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
       // After first count, insert a new user in a separate transaction
       setTimeout(() => {
-        db.insertInto('users')
+        db.insertInto('kyselyTrxUsers')
           .values({ name: 'User 3', email: 'user3@example.com' })
           .execute();
       }, 25);
@@ -588,7 +588,7 @@ describe('Kysely Transaction Integration Tests', () => {
         async (trx1) => {
           // Insert user in outer transaction
           const user = await trx1
-            .insertInto('users')
+            .insertInto('kyselyTrxUsers')
             .values({
               name: 'Nested Transaction Test',
               email: 'nested@example.com',
@@ -602,7 +602,7 @@ describe('Kysely Transaction Integration Tests', () => {
             trx1,
             async (trx2) => {
               const foundUser = await trx2
-                .selectFrom('users')
+                .selectFrom('kyselyTrxUsers')
                 .selectAll()
                 .where('id', '=', user.id)
                 .executeTakeFirstOrThrow();
@@ -622,7 +622,7 @@ describe('Kysely Transaction Integration Tests', () => {
       await withTransaction(db, async (trx) => {
         // Create user and account
         const user = await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({
             name: 'Delete Test User',
             email: 'delete@example.com',
@@ -631,7 +631,7 @@ describe('Kysely Transaction Integration Tests', () => {
           .executeTakeFirstOrThrow();
 
         await trx
-          .insertInto('accounts')
+          .insertInto('kyselyTrxAccounts')
           .values({
             userId: user.id,
             balance: 1000,
@@ -640,11 +640,11 @@ describe('Kysely Transaction Integration Tests', () => {
           .execute();
 
         // Delete user (should cascade to accounts)
-        await trx.deleteFrom('users').where('id', '=', user.id).execute();
+        await trx.deleteFrom('kyselyTrxUsers').where('id', '=', user.id).execute();
 
         // Verify cascading delete worked
         const accounts = await trx
-          .selectFrom('accounts')
+          .selectFrom('kyselyTrxAccounts')
           .selectAll()
           .where('userId', '=', user.id)
           .execute();
@@ -657,7 +657,7 @@ describe('Kysely Transaction Integration Tests', () => {
       const userCount = await withTransaction(db, async (trx) => {
         // Batch insert users
         const users = await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values([
             { name: 'Batch User 1', email: 'batch1@example.com' },
             { name: 'Batch User 2', email: 'batch2@example.com' },
@@ -672,7 +672,7 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Count users
         const count = await trx
-          .selectFrom('users')
+          .selectFrom('kyselyTrxUsers')
           .select(sql<number>`count(*)`.as('count'))
           .where('email', 'like', 'batch%')
           .executeTakeFirstOrThrow();
@@ -687,19 +687,19 @@ describe('Kysely Transaction Integration Tests', () => {
       await withTransaction(db, async (trx) => {
         // Create test data
         const user1 = await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({ name: 'Author 1', email: 'author1@example.com' })
           .returningAll()
           .executeTakeFirstOrThrow();
 
         const user2 = await trx
-          .insertInto('users')
+          .insertInto('kyselyTrxUsers')
           .values({ name: 'Author 2', email: 'author2@example.com' })
           .returningAll()
           .executeTakeFirstOrThrow();
 
         await trx
-          .insertInto('accounts')
+          .insertInto('kyselyTrxAccounts')
           .values([
             { userId: user1.id, balance: 1000, version: 0 },
             { userId: user1.id, balance: 2000, version: 0 },
@@ -709,16 +709,22 @@ describe('Kysely Transaction Integration Tests', () => {
 
         // Complex query with joins
         const results = await trx
-          .selectFrom('users')
-          .leftJoin('accounts', 'users.id', 'accounts.userId')
+          .selectFrom('kyselyTrxUsers')
+          .leftJoin(
+            'kyselyTrxAccounts',
+            'kyselyTrxUsers.id',
+            'kyselyTrxAccounts.userId',
+          )
           .select([
-            'users.id as userId',
-            'users.name',
-            sql<number>`count(accounts.id)`.as('accountCount'),
-            sql<number>`coalesce(sum(accounts.balance), 0)`.as('totalBalance'),
+            'kyselyTrxUsers.id as userId',
+            'kyselyTrxUsers.name',
+            sql<number>`count(kysely_trx_accounts.id)`.as('accountCount'),
+            sql<number>`coalesce(sum(kysely_trx_accounts.balance), 0)`.as(
+              'totalBalance',
+            ),
           ])
-          .groupBy(['users.id', 'users.name'])
-          .orderBy('users.id')
+          .groupBy(['kyselyTrxUsers.id', 'kyselyTrxUsers.name'])
+          .orderBy('kyselyTrxUsers.id')
           .execute();
 
         expect(results).toHaveLength(2);
