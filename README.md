@@ -473,17 +473,44 @@ await email.send({
 
 [Learn more →](./packages/emailkit/README.md)
 
-### [@geekmidas/cloud](./packages/cloud) _(Coming Soon)_
+### [@geekmidas/audit](./packages/audit)
 
-Cloud service abstractions for common cloud providers.
+Type-safe audit logging with database integration.
 
-- Unified interface for AWS, Azure, and Google Cloud services
-- Service discovery and configuration
-- Health checks and monitoring
-- Serverless function deployments
-- Queue and messaging abstractions
+- Type-safe audit actions with compile-time validation
+- Transactional support for atomic database writes
+- Pluggable storage backends (Kysely implementation included)
+- Actor and metadata tracking
+- Query and filtering capabilities
 
-_This package is currently in development and will be available in a future release._
+```typescript
+import { DefaultAuditor, KyselyAuditStorage } from '@geekmidas/audit';
+import type { AuditableAction } from '@geekmidas/audit';
+
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'order.placed', { orderId: string; total: number }>;
+
+const storage = new KyselyAuditStorage({ db, tableName: 'audit_logs' });
+const auditor = new DefaultAuditor<AppAuditAction>({
+  actor: { id: 'user-123', type: 'user' },
+  storage,
+});
+
+// Type-safe audit recording
+auditor.audit('user.created', { userId: '789', email: 'test@example.com' });
+await auditor.flush();
+```
+
+[Learn more →](./packages/audit/README.md)
+
+### [@geekmidas/cloud](./packages/cloud)
+
+Cloud infrastructure utilities with SST integration.
+
+- SST resource utilities and helpers
+- Cloud service abstractions
+- Infrastructure configuration helpers
 
 ## 🛠️ Getting Started
 
@@ -531,11 +558,12 @@ pnpm test:watch
 ```
 toolbox/
 ├── packages/
+│   ├── audit/        # Type-safe audit logging with database integration
 │   ├── auth/         # JWT token management
 │   ├── cache/        # Unified cache interface
 │   ├── cli/          # Command-line tools
 │   ├── client/       # Type-safe API client with React Query
-│   ├── cloud/        # Cloud services (in development)
+│   ├── cloud/        # Cloud services (SST integration)
 │   ├── constructs/   # Endpoints, functions, cron jobs, subscribers
 │   ├── db/           # Database utilities for Kysely
 │   ├── emailkit/     # Email sending utilities
@@ -549,7 +577,8 @@ toolbox/
 │   ├── storage/      # Cloud storage abstraction
 │   └── testkit/      # Testing utilities and database factories
 ├── apps/
-│   └── docs/         # Documentation site
+│   ├── docs/         # Documentation site
+│   └── example/      # Example API application
 ├── turbo.json        # Turbo configuration
 ├── pnpm-workspace.yaml
 ├── tsdown.config.ts  # Build configuration
@@ -588,10 +617,12 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [x] Event messaging (@geekmidas/events)
 - [x] Rate limiting (@geekmidas/rate-limit)
 - [x] Testing utilities (@geekmidas/testkit)
+- [x] Audit logging (@geekmidas/audit)
 - [x] OpenAPI components support
 - [x] Infinite query support for React Query
 - [x] Nested query parameter handling
 - [x] Expo Secure Cache implementation
+- [x] Declarative audit logging in constructs
 
 ### In Progress 🚧
 - [ ] Cloud services abstractions (@geekmidas/cloud)
@@ -623,6 +654,7 @@ Special thanks to all contributors and the open-source community for the amazing
   <a href="https://github.com/geekmidas/toolbox">GitHub</a> •
   <a href="./packages/constructs">Constructs</a> •
   <a href="./packages/client">Client</a> •
+  <a href="./packages/audit">Audit</a> •
   <a href="./packages/auth">Auth</a> •
   <a href="./packages/cache">Cache</a> •
   <a href="./packages/cli">CLI</a> •

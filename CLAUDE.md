@@ -19,22 +19,27 @@ This is a TypeScript monorepo containing utilities and frameworks for building m
 ```
 toolbox/
 ├── packages/
-│   ├── api/          # REST API framework with AWS Lambda support
+│   ├── audit/        # Type-safe audit logging with database integration
 │   ├── auth/         # JWT authentication and token management
 │   ├── cache/        # Unified caching interface with multiple backends
 │   ├── cli/          # CLI tools for building and deployment
-│   ├── cloud/        # Cloud infrastructure utilities (private)
+│   ├── client/       # Type-safe API client with React Query integration
+│   ├── cloud/        # Cloud infrastructure utilities (SST integration)
+│   ├── constructs/   # HTTP endpoints, functions, crons, and subscribers
 │   ├── db/           # Database utilities for Kysely
 │   ├── emailkit/     # Type-safe email client with React templates
 │   ├── envkit/       # Environment configuration parser
+│   ├── errors/       # HTTP error classes and utilities
 │   ├── events/       # Unified event messaging library
 │   ├── logger/       # Structured logging library
+│   ├── rate-limit/   # Rate limiting with configurable storage
 │   ├── schema/       # StandardSchema type utilities
+│   ├── services/     # Service discovery and dependency injection
 │   ├── storage/      # Cloud storage abstraction (S3)
 │   └── testkit/      # Testing utilities and database factories
 ├── apps/
-│   └── docs/         # VitePress documentation site
-├── test-cli/         # Test CLI application
+│   ├── docs/         # VitePress documentation site
+│   └── example/      # Example API application
 ├── turbo.json        # Turbo configuration
 ├── pnpm-workspace.yaml
 ├── tsdown.config.ts  # Build configuration
@@ -45,7 +50,7 @@ toolbox/
 
 ### Package Descriptions
 
-#### @geekmidas/api
+#### @geekmidas/constructs
 A comprehensive framework for building type-safe HTTP endpoints, cloud functions, scheduled tasks, and event subscribers.
 
 **Key Features:**
@@ -63,10 +68,11 @@ A comprehensive framework for building type-safe HTTP endpoints, cloud functions
 - Rate limiting with configurable windows and storage
 - Hono framework adapter support
 - OpenAPI components extraction
+- Declarative audit logging support
 
 **Usage Pattern:**
 ```typescript
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 const endpoint = e
@@ -76,15 +82,181 @@ const endpoint = e
   .handle(async ({ body }) => ({ id: '123' }));
 
 // With rate limiting
+import { rateLimit } from '@geekmidas/rate-limit';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+
 const rateLimited = e
   .post('/api/messages')
-  .rateLimit({
+  .rateLimit(rateLimit({
     limit: 10,
     windowMs: 60000, // 1 minute
-    cache: new InMemoryCache<RateLimitData>(),
-  })
+    cache: new InMemoryCache(),
+  }))
   .body(z.object({ content: z.string() }))
   .handle(async ({ body }) => ({ success: true }));
+```
+
+#### @geekmidas/audit
+Type-safe audit logging with database integration for tracking application events.
+
+**Key Features:**
+- Type-safe audit actions with compile-time validation
+- Transactional support for atomic database writes
+- Pluggable storage backends (Kysely implementation included)
+- Actor tracking (users, services, systems)
+- Rich metadata support (request context, entity references)
+- Query and filtering capabilities
+
+**Usage Pattern:**
+```typescript
+import { DefaultAuditor, KyselyAuditStorage } from '@geekmidas/audit';
+import type { AuditableAction } from '@geekmidas/audit';
+
+// Define type-safe audit actions
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'order.placed', { orderId: string; total: number }>;
+
+// Create storage and auditor
+const storage = new KyselyAuditStorage({ db, tableName: 'audit_logs' });
+const auditor = new DefaultAuditor<AppAuditAction>({
+  actor: { id: 'user-123', type: 'user' },
+  storage,
+});
+
+// Type-safe audit calls
+auditor.audit('user.created', { userId: '789', email: 'test@example.com' });
+await auditor.flush();
+```
+
+#### @geekmidas/client
+Type-safe API client utilities with React Query integration.
+
+**Key Features:**
+- Type-safe API client with automatic type inference
+- React Query hooks generation from OpenAPI specs
+- Typed fetcher with error handling
+- Automatic retries and request/response interceptors
+- Query invalidation utilities
+
+**Usage Pattern:**
+```typescript
+import { createTypedQueryClient } from '@geekmidas/client';
+import type { paths } from './openapi-types';
+
+const api = createTypedQueryClient<paths>({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+});
+
+// Type-safe queries
+const { data, isLoading } = api.useQuery('GET /users/{id}', {
+  params: { id: '123' }
+});
+
+// Type-safe mutations
+const mutation = api.useMutation('POST /users');
+await mutation.mutateAsync({ body: { name: 'John' } });
+```
+
+#### @geekmidas/errors
+HTTP error classes and error handling utilities.
+
+**Key Features:**
+- Comprehensive HTTP error classes (4xx and 5xx)
+- Type-safe error factories with status codes
+- Error serialization for API responses
+- Integration with validation errors
+- Stack trace support for debugging
+
+**Usage Pattern:**
+```typescript
+import { createError, HttpError } from '@geekmidas/errors';
+
+// Throw specific HTTP errors
+throw createError.notFound('User not found');
+throw createError.unauthorized('Invalid credentials');
+throw createError.badRequest('Invalid input', { field: 'email' });
+
+// Custom error with details
+throw new HttpError(422, 'Validation failed', {
+  errors: [{ field: 'email', message: 'Invalid format' }]
+});
+```
+
+#### @geekmidas/services
+Service discovery and dependency injection system.
+
+**Key Features:**
+- Singleton service registry with lazy initialization
+- Type-safe service registration and retrieval
+- Service caching and lifecycle management
+- Integration with EnvironmentParser for configuration
+- Support for async service initialization
+
+**Usage Pattern:**
+```typescript
+import type { Service } from '@geekmidas/services';
+import { ServiceDiscovery } from '@geekmidas/services';
+
+const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string()
+    })).parse();
+
+    const db = new Database(config.url);
+    await db.connect();
+    return db;
+  }
+} satisfies Service<'database', Database>;
+
+const discovery = ServiceDiscovery.getInstance(logger, envParser);
+const services = await discovery.register([databaseService]);
+```
+
+#### @geekmidas/rate-limit
+Rate limiting utilities with configurable windows and storage backends.
+
+**Key Features:**
+- Configurable rate limiting with time windows
+- Multiple storage backends (memory, cache)
+- IP-based and custom identifier support
+- Sliding window algorithm
+- Integration with @geekmidas/constructs endpoints
+
+**Usage Pattern:**
+```typescript
+import { rateLimit } from '@geekmidas/rate-limit';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+
+const limiter = rateLimit({
+  limit: 100,
+  windowMs: 60000, // 1 minute
+  cache: new InMemoryCache(),
+});
+
+// Use with endpoints
+const endpoint = e
+  .post('/api/messages')
+  .rateLimit(limiter)
+  .handle(async () => ({ success: true }));
+```
+
+#### @geekmidas/cloud
+Cloud infrastructure utilities with SST integration.
+
+**Key Features:**
+- SST resource utilities and helpers
+- Cloud service abstractions
+- Infrastructure configuration helpers
+
+**Usage Pattern:**
+```typescript
+import { getResourceFromSst } from '@geekmidas/cloud/utils';
+
+// Get SST resources in your application
+const bucketName = getResourceFromSst('MyBucket');
 ```
 
 #### @geekmidas/testkit
@@ -481,7 +653,7 @@ async function createUser(
 ## Development Patterns
 
 ### Error Handling
-- Use specific HTTP error classes from @geekmidas/api/errors
+- Use specific HTTP error classes from @geekmidas/errors
 - Throw errors early with descriptive messages
 - Use error factories like `createError.forbidden()`
 
@@ -494,7 +666,7 @@ async function createUser(
 
 Example:
 ```typescript
-import type { Service } from '@geekmidas/api/services';
+import type { Service } from '@geekmidas/services';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 
 const databaseService = {
@@ -511,6 +683,8 @@ const databaseService = {
 } satisfies Service<'database', Database>;
 
 // Use in endpoints/functions
+import { e } from '@geekmidas/constructs/endpoints';
+
 const endpoint = e
   .services([databaseService])
   .handle(async ({ services }) => {
@@ -613,7 +787,7 @@ describe('UserRepository', () => {
 
 #### API Endpoint Tests
 ```typescript
-import { createTestApp } from '@geekmidas/api/testing';
+import { createTestApp } from '@geekmidas/constructs/testing';
 import { endpoint } from './endpoint';
 
 describe('POST /users', () => {
@@ -861,19 +1035,9 @@ pnpm fmt   # Format code with Biome
 
 Each package uses subpath exports for better tree-shaking:
 
-### @geekmidas/api
-- `/server` - Server-side utilities and endpoint builder (`e` export)
-- `/client` - Client-side typed fetcher
-- `/errors` - HTTP error classes
-- `/services` - Service base classes
-- `/function` - Cloud function builder (`f` export)
-- `/cron` - Scheduled function builder (`cron` export)
-- `/subscriber` - Event subscriber builder (`s` export, uses @geekmidas/events)
-- `/constructs` - All constructs (Function, Cron, Subscriber)
-- `/aws-apigateway` - AWS API Gateway adapters (v1 and v2)
-- `/aws-lambda` - AWS Lambda function adaptors
-- `/hono` - Hono framework adapter
-- `/testing` - Testing utilities
+### @geekmidas/audit
+- `/` - Core types, Auditor interface, and DefaultAuditor
+- `/kysely` - KyselyAuditStorage and withAuditableTransaction
 
 ### @geekmidas/auth
 - `/` - Core interfaces and types
@@ -887,16 +1051,47 @@ Each package uses subpath exports for better tree-shaking:
 - `/expo` - Expo Secure Store cache
 
 ### @geekmidas/cli
+- `/` - CLI utilities
+- `/openapi` - OpenAPI generation utilities
+- `/openapi-react-query` - React Query hooks generation
 - Binary `gkm` - Command line interface for builds and code generation
 
+### @geekmidas/client
+- `/` - Core client types
+- `/fetcher` - Typed fetcher implementation
+- `/infer` - Type inference utilities
+- `/react-query` - React Query integration
+- `/openapi` - OpenAPI client utilities
+- `/types` - Type definitions
+
+### @geekmidas/cloud
+- `/` - Core cloud utilities
+- `/utils` - SST resource helpers
+
+### @geekmidas/constructs
+- `/` - Core types and utilities
+- `/endpoints` - Endpoint builder (`e` export)
+- `/functions` - Cloud function builder (`f` export)
+- `/crons` - Scheduled task builder (`cron` export)
+- `/subscribers` - Event subscriber builder (`s` export)
+- `/types` - Type definitions
+- `/hono` - Hono framework adapter
+- `/aws` - AWS Lambda and API Gateway adapters
+- `/testing` - Testing utilities
+
 ### @geekmidas/db
-- `/kysely` - Kysely transaction utilities
+- `/kysely` - Kysely transaction utilities and DatabaseConnection type
 
 ### @geekmidas/emailkit
-- Main export only - Email client factory
+- `./*` - Wildcard exports for email client components
 
 ### @geekmidas/envkit
-- Main export only - Environment parser
+- `/` - EnvironmentParser and core types
+- `/sst` - SST environment integration
+- `/sniffer` - Environment variable detection utilities
+
+### @geekmidas/errors
+- `/` - HTTP error classes and createError factory
 
 ### @geekmidas/events
 - `/` - Core interfaces and factory functions
@@ -906,10 +1101,21 @@ Each package uses subpath exports for better tree-shaking:
 - `/sns` - AWS SNS implementation with managed queues
 
 ### @geekmidas/logger
-- Main export only - Logger interface and ConsoleLogger
+- `/` - Logger interface
+- `/pino` - Pino logger implementation
+- `/console` - Console logger implementation
+
+### @geekmidas/rate-limit
+- `/` - Rate limiting utilities and types
 
 ### @geekmidas/schema
-- Main export only - StandardSchema type utilities
+- `/` - Core StandardSchema type utilities
+- `/conversion` - Schema conversion utilities
+- `/openapi` - OpenAPI schema generation
+- `/parser` - Schema parsing utilities
+
+### @geekmidas/services
+- `/` - Service interface and ServiceDiscovery
 
 ### @geekmidas/storage
 - `/` - Core storage interface
@@ -921,11 +1127,14 @@ Each package uses subpath exports for better tree-shaking:
 - `/faker` - Enhanced faker with custom utilities (timestamps, sequences, etc.)
 - `/timer` - Async wait utilities
 - `/os` - OS test utilities (directory operations)
+- `/aws` - AWS testing utilities
+- `/logger` - Logger testing utilities
+- `/better-auth` - Better Auth testing utilities
 
 ## Important Notes
 
 - Always check existing patterns in the codebase before implementing new features
-- Use the builder pattern for fluent APIs (see api package)
+- Use the builder pattern for fluent APIs (see constructs package)
 - Prefer composition over inheritance
 - Keep external dependencies minimal
 - Document complex logic with inline comments

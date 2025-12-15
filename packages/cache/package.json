@@ -1,7 +1,7 @@
 {
   "name": "@geekmidas/cache",
   "version": "0.0.7",
-  "description": "Type-safe email client with SMTP support and React templates",
+  "description": "Unified cache interface with multiple storage implementations",
   "private": false,
   "type": "module",
   "exports": {

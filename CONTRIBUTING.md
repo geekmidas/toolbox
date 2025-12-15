@@ -41,7 +41,7 @@ By participating in this project, you agree to abide by our Code of Conduct:
 ### Prerequisites
 
 - Node.js ≥ 22.0.0
-- pnpm 10.11.0
+- pnpm 10.13.1
 - Git
 
 ### Initial Setup
@@ -95,7 +95,7 @@ Branch naming conventions:
 pnpm dev
 
 # Run specific package in dev mode
-pnpm --filter @geekmidas/api dev
+pnpm --filter @geekmidas/constructs dev
 ```
 
 ### 3. Test Your Changes
@@ -105,7 +105,7 @@ pnpm --filter @geekmidas/api dev
 pnpm test
 
 # Run tests for specific package
-pnpm --filter @geekmidas/api test
+pnpm --filter @geekmidas/constructs test
 
 # Run tests in watch mode
 pnpm test:watch
