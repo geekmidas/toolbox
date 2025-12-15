@@ -29,6 +29,10 @@
     "test:once": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geekmidas/toolbox"
+  },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
     "chokidar": "~4.0.3",
