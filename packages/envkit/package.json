@@ -30,7 +30,7 @@
     "lodash.snakecase": "~4.1.1"
   },
   "peerDependencies": {
-    "zod": "~3.25.67"
+    "zod": "~4.1.13"
   },
   "devDependencies": {
     "@types/lodash.set": "~4.3.9",

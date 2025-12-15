@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": false,
   "type": "module",
   "exports": {
@@ -43,7 +43,7 @@
     "@types/node": "~24.9.1",
     "typescript": "^5.8.2",
     "vitest": "^3.2.4",
-    "zod": "^3.23.8"
+    "zod": "~4.1.13"
   },
   "peerDependencies": {
     "@geekmidas/constructs": "workspace:~",

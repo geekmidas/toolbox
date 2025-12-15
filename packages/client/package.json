@@ -64,7 +64,8 @@
     "@geekmidas/constructs": "workspace:*",
     "@tanstack/react-query": ">=5.0.0",
     "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "react-dom": ">=18.0.0",
+    "zod": "~4.1.13"
   },
   "peerDependenciesMeta": {
     "@geekmidas/constructs": {

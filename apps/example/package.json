@@ -21,7 +21,7 @@
     "@hono/node-server": "~1.19.5",
     "kysely": "~0.28.2",
     "hono": "^4.7.15",
-    "zod": "~4.1.12"
+    "zod": "~4.1.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
