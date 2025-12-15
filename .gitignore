@@ -47,3 +47,5 @@ src/playground/**
 bad-migrations
 
 *.p8
+
+.claude/settings.local.json 
