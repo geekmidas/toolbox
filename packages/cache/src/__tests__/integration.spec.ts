@@ -10,7 +10,9 @@ describe('Cache Integration Tests', () => {
   });
 
   describe('cross-cache behavior consistency', () => {
-    const testCases = [{ name: 'InMemoryCache', cache: () => new InMemoryCache() }];
+    const testCases = [
+      { name: 'InMemoryCache', cache: () => new InMemoryCache() },
+    ];
 
     testCases.forEach(({ name, cache }) => {
       describe(name, () => {
@@ -155,9 +157,9 @@ describe('Cache Integration Tests', () => {
       });
       await sessionCache.set<string>('session:abc', 'active');
 
-      expect(await userCache.get<{ id: number; name: string }>('user:1')).toEqual(
-        { id: 1, name: 'John' },
-      );
+      expect(
+        await userCache.get<{ id: number; name: string }>('user:1'),
+      ).toEqual({ id: 1, name: 'John' });
       expect(await sessionCache.get<string>('session:abc')).toBe('active');
     });
 

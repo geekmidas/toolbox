@@ -122,7 +122,7 @@ export class Endpoint<
   /** Declarative audit definitions */
   public audits: MappedAudit<TAuditAction, OutSchema>[] = [];
   /** Database service for this endpoint */
-  declare public databaseService?: Service<TDatabaseServiceName, TDatabase>;
+  public declare databaseService?: Service<TDatabaseServiceName, TDatabase>;
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
