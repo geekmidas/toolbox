@@ -640,7 +640,10 @@ describe('Kysely Transaction Integration Tests', () => {
           .execute();
 
         // Delete user (should cascade to accounts)
-        await trx.deleteFrom('kyselyTrxUsers').where('id', '=', user.id).execute();
+        await trx
+          .deleteFrom('kyselyTrxUsers')
+          .where('id', '=', user.id)
+          .execute();
 
         // Verify cascading delete worked
         const accounts = await trx
