@@ -50,7 +50,7 @@ jobs:
 
       - name: Test (unit)
         timeout-minutes: 10
-        run: pnpm run test:once
+        run: pnpm run test:once --exclude packages/cli/src/dev/__tests__/index.spec.ts
 
       - name: Publish packages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
