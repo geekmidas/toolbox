@@ -55,3 +55,5 @@ jobs:
       - name: Publish packages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: pnpm publish -r --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
