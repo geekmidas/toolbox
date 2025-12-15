@@ -1,12 +1,12 @@
+import type { AuditableAction } from '@geekmidas/audit';
+import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
+import type { ComposableStandardSchema } from '@geekmidas/schema';
+import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
-
-import type { EventPublisher } from '@geekmidas/events';
-import type { ComposableStandardSchema } from '@geekmidas/schema';
-import type { Service } from '@geekmidas/services';
 
 export class Cron<
   TInput extends ComposableStandardSchema | undefined = undefined,
@@ -22,13 +22,14 @@ export class Cron<
   TServices,
   TLogger,
   OutSchema,
-  FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>,
   TEventPublisher,
   TEventPublisherServiceName,
   undefined,
   string,
   TDatabase,
-  TDatabaseServiceName
+  TDatabaseServiceName,
+  AuditableAction<string, unknown>,
+  FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>
 > {
   static isCron(obj: any): obj is Cron<any, any, any, any> {
     return Boolean(

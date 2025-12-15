@@ -10,16 +10,35 @@ import {
 } from './Generator';
 
 export class EndpointGenerator extends ConstructGenerator<
-  Endpoint<any, any, any, any, any, any>,
+  Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>,
   RouteInfo[]
 > {
-  isConstruct(value: any): value is Endpoint<any, any, any, any, any, any> {
+  isConstruct(
+    value: any,
+  ): value is Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  > {
     return Endpoint.isEndpoint(value);
   }
 
   async build(
     context: BuildContext,
-    constructs: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
+    constructs: GeneratedConstruct<
+      Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>
+    >[],
     outputDir: string,
     options?: GeneratorOptions,
   ): Promise<RouteInfo[]> {
@@ -121,7 +140,22 @@ export class EndpointGenerator extends ConstructGenerator<
     sourceFile: string,
     exportName: string,
     provider: LegacyProvider,
-    _endpoint: Endpoint<any, any, any, any, any, any>,
+    _endpoint: Endpoint<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     context: BuildContext,
   ): Promise<string> {
     const handlerFileName = `${exportName}.ts`;
@@ -167,7 +201,9 @@ export class EndpointGenerator extends ConstructGenerator<
 
   private async generateEndpointsFile(
     outputDir: string,
-    endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
+    endpoints: GeneratedConstruct<
+      Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>
+    >[],
     context: BuildContext,
   ): Promise<string> {
     const endpointsFileName = 'endpoints.ts';
@@ -204,7 +240,7 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import type { Hono } from 'hono';
 ${imports}
 
-const endpoints: Endpoint<any, any, any, any, any, any, any, any>[] = [
+const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>[] = [
   ${allExportNames.join(',\n  ')}
 ];
 
