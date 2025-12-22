@@ -1,9 +1,12 @@
 import type {
-  APIGatewayAuthorizerResult,
   APIGatewayRequestAuthorizerEvent,
   APIGatewayTokenAuthorizerEvent,
   Context as LambdaContext,
+  Statement,
 } from 'aws-lambda';
+
+// Helper to access Resource property from Statement union type
+type StatementWithResource = Statement & { Resource: string | string[] };
 import * as jose from 'jose';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -212,7 +215,9 @@ describe('OidcAuthorizer', () => {
       const handler = authorizer.tokenHandler();
       const result = await handler(event, mockContext);
 
-      expect(result.policyDocument.Statement[0].Resource).toBe(
+      const statement = result.policyDocument
+        .Statement[0] as StatementWithResource;
+      expect(statement.Resource).toBe(
         'arn:aws:execute-api:us-east-1:123456789:api-id/stage/*',
       );
     });
@@ -237,7 +242,9 @@ describe('OidcAuthorizer', () => {
       const handler = authorizer.tokenHandler();
       const result = await handler(event, mockContext);
 
-      expect(result.policyDocument.Statement[0].Resource).toBe(
+      const statement = result.policyDocument
+        .Statement[0] as StatementWithResource;
+      expect(statement.Resource).toBe(
         'arn:aws:execute-api:us-east-1:123456789:api-id/stage/GET/resource',
       );
     });
@@ -530,7 +537,9 @@ describe('OidcAuthorizer', () => {
       const handler = authorizer.requestHandler();
       const result = await handler(event, mockContext);
 
-      expect(result.policyDocument.Statement[0].Resource).toBe(
+      const statement = result.policyDocument
+        .Statement[0] as StatementWithResource;
+      expect(statement.Resource).toBe(
         'arn:aws:execute-api:us-east-1:123456789:api-id/stage/*',
       );
     });
