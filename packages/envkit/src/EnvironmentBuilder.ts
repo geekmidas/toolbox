@@ -36,9 +36,9 @@ export type EnvValue = string | number | boolean | EnvRecord;
 /**
  * A resolver function that converts a typed value into environment variables.
  *
- * @template T - The type of value this resolver handles
+ * @template T - The type of value this resolver handles (without the `type` key)
  * @param key - The key name from the input record
- * @param value - The value to resolve
+ * @param value - The value to resolve (without the `type` key)
  * @returns A record of environment variable names to their values
  */
 export type EnvironmentResolver<T = any> = (key: string, value: T) => EnvRecord;
