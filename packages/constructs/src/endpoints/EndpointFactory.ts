@@ -186,6 +186,70 @@ export class EndpointFactory<
     });
   }
 
+  /**
+   * Set the default authorizer for all endpoints created from this factory.
+   * Individual endpoints can override this by calling `.authorizer()` on the builder.
+   * Use `'none'` to explicitly disable authorization for all endpoints.
+   */
+  authorizer(
+    name: TAuthorizers[number] | 'none',
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName
+  > {
+    // Validate that the authorizer exists in available authorizers
+    if (name !== 'none' && this.availableAuthorizers.length > 0) {
+      const authorizerExists = this.availableAuthorizers.some(
+        (a) => a.name === name,
+      );
+      if (!authorizerExists) {
+        const available = this.availableAuthorizers
+          .map((a) => a.name)
+          .join(', ');
+        throw new Error(
+          `Authorizer "${name as string}" not found in available authorizers: ${available}`,
+        );
+      }
+    }
+
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: name === 'none' ? undefined : name,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
+    });
+  }
+
   // Create a sub-router with a path prefix
   route<TPath extends string>(
     path: TPath,
