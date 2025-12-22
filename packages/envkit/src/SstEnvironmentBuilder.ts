@@ -2,6 +2,7 @@ import {
   EnvironmentBuilder,
   type EnvRecord,
   type EnvironmentBuilderOptions,
+  type EnvironmentResolver,
   type InputValue,
   type Resolvers,
 } from './EnvironmentBuilder';
