@@ -622,6 +622,97 @@ export const envParser = new EnvironmentParser(process.env)
   .parse();
 ```
 
+### Authentication Integration
+
+Integrate `@geekmidas/auth` for JWT/OIDC authentication in your endpoints:
+
+```typescript
+// src/env.ts
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+export const envParser = new EnvironmentParser(process.env)
+  .create((get) => ({
+    auth: {
+      jwtSecret: get('JWT_SECRET').string(),
+      jwtIssuer: get('JWT_ISSUER').string().optional(),
+      jwtAudience: get('JWT_AUDIENCE').string().optional(),
+    },
+  }))
+  .parse();
+```
+
+#### With Hono Middleware (Server Provider)
+
+```typescript
+// src/routes/protected.ts
+import { e } from '@geekmidas/constructs/endpoints';
+import { JwtMiddleware } from '@geekmidas/auth/hono/jwt';
+import { envParser } from '../env.js';
+
+const jwt = new JwtMiddleware({
+  config: {
+    secret: envParser.auth.jwtSecret,
+    issuer: envParser.auth.jwtIssuer,
+    audience: envParser.auth.jwtAudience,
+  },
+});
+
+// Apply middleware to Hono app
+app.use('/api/*', jwt.handler());
+app.use('/public/*', jwt.optional());
+```
+
+#### With Lambda Authorizers (AWS Provider)
+
+```typescript
+// src/authorizers/jwt.ts
+import { JwtAuthorizer } from '@geekmidas/auth/lambda/jwt';
+import { envParser } from '../env.js';
+
+const authorizer = new JwtAuthorizer({
+  config: {
+    secret: envParser.auth.jwtSecret,
+    issuer: envParser.auth.jwtIssuer,
+  },
+  getContext: (claims) => ({
+    userId: claims.sub!,
+  }),
+});
+
+export const handler = authorizer.requestHandler();
+```
+
+#### With OIDC (Auth0, Cognito, etc.)
+
+```typescript
+// src/env.ts
+export const envParser = new EnvironmentParser(process.env)
+  .create((get) => ({
+    oidc: {
+      issuer: get('OIDC_ISSUER').string().url(),
+      audience: get('OIDC_AUDIENCE').string(),
+    },
+  }))
+  .parse();
+
+// src/authorizers/oidc.ts
+import { OidcAuthorizer } from '@geekmidas/auth/lambda/oidc';
+import { envParser } from '../env.js';
+
+const authorizer = new OidcAuthorizer({
+  config: {
+    issuer: envParser.oidc.issuer,
+    audience: envParser.oidc.audience,
+  },
+  getContext: (claims) => ({
+    userId: claims.sub!,
+    email: claims.email,
+  }),
+});
+
+export const handler = authorizer.requestHandler();
+```
+
 ### Custom Logger Configuration
 
 Set up structured logging with different levels:
