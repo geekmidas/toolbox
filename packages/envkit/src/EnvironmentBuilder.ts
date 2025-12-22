@@ -65,10 +65,58 @@ export interface EnvironmentBuilderOptions {
 export type InputValue = string | { type: string; [key: string]: unknown };
 
 /**
+ * Base type for typed input values with a specific type discriminator.
+ */
+export type TypedInputValue<TType extends string = string> = {
+  type: TType;
+  [key: string]: unknown;
+};
+
+/**
+ * Extracts the `type` string value from an input value.
+ */
+type ExtractType<T> = T extends { type: infer U extends string } ? U : never;
+
+/**
+ * Removes the `type` key from an object type.
+ */
+type OmitType<T> = T extends { type: string } ? Omit<T, 'type'> : never;
+
+/**
+ * Extracts all unique `type` values from a record (excluding plain strings).
+ */
+type AllTypeValues<TRecord extends Record<string, InputValue>> = {
+  [K in keyof TRecord]: ExtractType<TRecord[K]>;
+}[keyof TRecord];
+
+/**
+ * For a given type value, finds the corresponding value type (without `type` key).
+ */
+type ValueForType<
+  TRecord extends Record<string, InputValue>,
+  TType extends string,
+> = {
+  [K in keyof TRecord]: TRecord[K] extends { type: TType }
+    ? OmitType<TRecord[K]>
+    : never;
+}[keyof TRecord];
+
+/**
+ * Generates typed resolvers based on the input record.
+ * Keys are the `type` values, values are resolver functions receiving the value without `type`.
+ */
+export type TypedResolvers<TRecord extends Record<string, InputValue>> = {
+  [TType in AllTypeValues<TRecord>]: EnvironmentResolver<
+    ValueForType<TRecord, TType>
+  >;
+};
+
+/**
  * A generic, extensible class for building environment variables from
  * objects with type-discriminated values.
  *
- * @template TResolvers - The resolvers map type for type inference
+ * @template TRecord - The input record type for type inference
+ * @template TResolvers - The resolvers type (defaults to TypedResolvers<TRecord>)
  *
  * @example
  * ```typescript
