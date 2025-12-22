@@ -618,8 +618,9 @@ export class EndpointBuilder<
     // Find authorizer metadata if name is set
     // If the authorizer name is set but not in availableAuthorizers, create a simple authorizer object
     const authorizer = this._authorizerName
-      ? this._availableAuthorizers.find((a) => a.name === this._authorizerName) ??
-        { name: this._authorizerName }
+      ? (this._availableAuthorizers.find(
+          (a) => a.name === this._authorizerName,
+        ) ?? { name: this._authorizerName })
       : undefined;
 
     return new Endpoint({
