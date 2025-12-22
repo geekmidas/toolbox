@@ -33,7 +33,7 @@ const mockUserInfo = {
   email_verified: true,
 };
 
-// Generate test keys and tokens - stored in object for mock access
+// Test keys - stored in object so the mock can access after initialization
 const testKeys: {
   privateKey: jose.KeyLike | null;
   publicKey: jose.KeyLike | null;
@@ -87,7 +87,7 @@ async function createTestToken(
     .sign(testKeys.privateKey);
 }
 
-// MSW server setup
+// MSW server for discovery, userinfo, and other HTTP endpoints
 const server = setupServer(
   http.get('https://auth.example.com/.well-known/openid-configuration', () => {
     return HttpResponse.json(mockDiscovery);
@@ -98,7 +98,6 @@ const server = setupServer(
   http.get('https://auth.example.com/userinfo', () => {
     return HttpResponse.json(mockUserInfo);
   }),
-  // Handler for wrong issuer test
   http.get(
     'https://other-auth.example.com/.well-known/openid-configuration',
     () => {
