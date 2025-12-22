@@ -103,26 +103,29 @@ export type SstResource =
   | Secret
   | SnsTopic;
 
+// Value types without the `type` key (for resolver parameters)
+type SecretValue = Omit<Secret, 'type'>;
+type PostgresValue = Omit<Postgres, 'type'>;
+type BucketValue = Omit<Bucket, 'type'>;
+type SnsTopicValue = Omit<SnsTopic, 'type'>;
+
 /**
  * Function type for processing a specific resource type into environment variables.
  *
- * @template K - The specific resource type
+ * @template K - The specific resource type (without `type` key)
  * @param name - The resource name
- * @param value - The resource value
+ * @param value - The resource value (without `type` key)
  * @returns Object mapping environment variable names to values
  */
-export type ResourceProcessor<K extends SstResource> = (
-  name: string,
-  value: K,
-) => EnvRecord;
+export type ResourceProcessor<K> = (name: string, value: K) => EnvRecord;
 
-// SST Resource Resolvers
+// SST Resource Resolvers (receive values without `type` key)
 
-const secretResolver = (name: string, value: Secret) => ({
+const secretResolver = (name: string, value: SecretValue) => ({
   [name]: value.value,
 });
 
-const postgresResolver = (key: string, value: Postgres) => ({
+const postgresResolver = (key: string, value: PostgresValue) => ({
   [`${key}Name`]: value.database,
   [`${key}Host`]: value.host,
   [`${key}Password`]: value.password,
@@ -130,11 +133,11 @@ const postgresResolver = (key: string, value: Postgres) => ({
   [`${key}Username`]: value.username,
 });
 
-const bucketResolver = (name: string, value: Bucket) => ({
+const bucketResolver = (name: string, value: BucketValue) => ({
   [`${name}Name`]: value.name,
 });
 
-const topicResolver = (name: string, value: SnsTopic) => ({
+const topicResolver = (name: string, value: SnsTopicValue) => ({
   [`${name}Arn`]: value.arn,
 });
 
