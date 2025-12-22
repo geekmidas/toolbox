@@ -333,30 +333,65 @@ const config = new EnvironmentParser(process.env)
 ```
 
 #### @geekmidas/auth
-JWT-based authentication with token management and automatic refresh.
+JWT and OIDC authentication with token verification, Hono middleware, and Lambda authorizers.
 
 **Key Features:**
+- JWT verification with secret or JWKS support
+- OIDC auto-discovery from `.well-known/openid-configuration`
+- Hono middleware for protected routes
+- AWS Lambda authorizers (TOKEN and REQUEST types)
+- Type-safe token claims with generics
+- Token extraction from headers and cookies
+- Optional authentication middleware
 - Access/refresh token pattern with automatic refresh
 - Multiple storage backends (localStorage, memory, cache)
-- Type-safe token payloads with generics
-- Built on @openauthjs/openauth
-- Configurable expiration and refresh behavior
 
 **Usage Pattern:**
 ```typescript
-// Server-side token generation
-import { TokenManager } from '@geekmidas/auth/server';
+// JWT verification
+import { JwtVerifier } from '@geekmidas/auth/jwt';
 
-const tokenManager = new TokenManager({
-  accessTokenSecret: process.env.ACCESS_TOKEN_SECRET,
-  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET,
-  accessTokenExpiresIn: '15m',
-  refreshTokenExpiresIn: '7d'
+const verifier = new JwtVerifier({
+  secret: process.env.JWT_SECRET,
+  issuer: 'my-app',
+  audience: 'my-api',
 });
 
-const tokens = await tokenManager.createTokens({ userId: '123' });
+const claims = await verifier.verify(token);
 
-// Client-side token management
+// OIDC verification with auto-discovery
+import { OidcVerifier } from '@geekmidas/auth/oidc';
+
+const oidc = new OidcVerifier({
+  issuer: 'https://auth.example.com',
+  audience: 'my-client-id',
+});
+
+const claims = await oidc.verify(token);
+const userInfo = await oidc.fetchUserInfo(token);
+
+// Hono middleware
+import { JwtMiddleware } from '@geekmidas/auth/hono/jwt';
+
+const jwt = new JwtMiddleware({
+  config: { secret: process.env.JWT_SECRET },
+});
+
+app.use('/api/*', jwt.handler());
+app.use('/public/*', jwt.optional()); // Optional auth
+
+// Lambda authorizer
+import { JwtAuthorizer } from '@geekmidas/auth/lambda/jwt';
+
+const authorizer = new JwtAuthorizer({
+  config: { secret: process.env.JWT_SECRET },
+  getContext: (claims) => ({ userId: claims.sub! }),
+});
+
+export const tokenHandler = authorizer.tokenHandler();
+export const requestHandler = authorizer.requestHandler();
+
+// Token management (client-side)
 import { TokenClient, LocalStorageTokenStorage } from '@geekmidas/auth/client';
 
 const client = new TokenClient({
@@ -1058,6 +1093,12 @@ Each package uses subpath exports for better tree-shaking:
 
 ### @geekmidas/auth
 - `/` - Core interfaces and types
+- `/jwt` - JwtVerifier class for JWT verification
+- `/oidc` - OidcVerifier class with auto-discovery
+- `/hono/jwt` - JwtMiddleware for Hono
+- `/hono/oidc` - OidcMiddleware for Hono
+- `/lambda/jwt` - JwtAuthorizer for AWS Lambda
+- `/lambda/oidc` - OidcAuthorizer for AWS Lambda
 - `/server` - Server-side token management
 - `/client` - Client-side token management
 

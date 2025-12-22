@@ -1,15 +1,16 @@
 # @geekmidas/auth
 
-A comprehensive authentication library providing JWT token management, secure storage, and client-side token handling for TypeScript applications.
+A comprehensive authentication library providing JWT and OIDC token verification, Hono middleware, AWS Lambda authorizers, and client-side token management for TypeScript applications.
 
 ## Features
 
-- **JWT Token Management**: Generate, verify, and refresh JWT access and refresh tokens
+- **JWT Verification**: Verify tokens using secrets or JWKS endpoints
+- **OIDC Support**: Auto-discovery from `.well-known/openid-configuration`
+- **Hono Middleware**: Ready-to-use middleware for Hono applications
+- **Lambda Authorizers**: TOKEN and REQUEST authorizers for AWS API Gateway
+- **Token Management**: Client-side token storage and automatic refresh
+- **Type-Safe**: Full TypeScript support with generic claims types
 - **Multiple Storage Options**: LocalStorage, Memory, and Cache-based token storage
-- **Automatic Token Refresh**: Seamless token refresh with expiration handling
-- **Type-Safe**: Full TypeScript support with complete type inference
-- **Framework Agnostic**: Works with any JavaScript framework or vanilla JS
-- **OpenAuth Integration**: Built on top of @openauthjs/openauth for standards compliance
 
 ## Installation
 
@@ -21,26 +22,274 @@ pnpm add @geekmidas/auth
 
 The package provides multiple entry points for different use cases:
 
-- `@geekmidas/auth` - Main client-side exports
+- `@geekmidas/auth/jwt` - JWT verification
+- `@geekmidas/auth/oidc` - OIDC verification with auto-discovery
+- `@geekmidas/auth/hono/jwt` - Hono JWT middleware
+- `@geekmidas/auth/hono/oidc` - Hono OIDC middleware
+- `@geekmidas/auth/lambda/jwt` - Lambda JWT authorizer
+- `@geekmidas/auth/lambda/oidc` - Lambda OIDC authorizer
 - `@geekmidas/auth/client` - Client-side token management
 - `@geekmidas/auth/server` - Server-side token management
 
-## Client-Side Usage
+## JWT Verification
+
+### Basic Usage
+
+```typescript
+import { JwtVerifier } from '@geekmidas/auth/jwt';
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+// Parse environment configuration
+const env = new EnvironmentParser(process.env)
+  .create((get) => ({
+    jwt: {
+      secret: get('JWT_SECRET').string(),
+      issuer: get('JWT_ISSUER').string().optional(),
+      audience: get('JWT_AUDIENCE').string().optional(),
+    },
+  }))
+  .parse();
+
+// With secret (HS256)
+const verifier = new JwtVerifier({
+  secret: env.jwt.secret,
+  issuer: env.jwt.issuer,
+  audience: env.jwt.audience,
+});
+
+const claims = await verifier.verify(token);
+console.log('User:', claims.sub);
+
+// Returns null instead of throwing for invalid tokens
+const claimsOrNull = await verifier.verifyOrNull(token);
+```
+
+### With JWKS (RS256, ES256, etc.)
+
+```typescript
+import { JwtVerifier } from '@geekmidas/auth/jwt';
+
+const verifier = new JwtVerifier({
+  jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+  issuer: 'https://auth.example.com',
+  audience: 'my-api',
+});
+
+const claims = await verifier.verify(token);
+```
+
+### Custom Claims Type
+
+```typescript
+interface MyClaims {
+  sub: string;
+  role: string;
+  permissions: string[];
+}
+
+const verifier = new JwtVerifier<MyClaims>({
+  secret: env.jwt.secret, // From envkit parser
+});
+
+const claims = await verifier.verify(token);
+console.log('Role:', claims.role); // Typed!
+```
+
+### Decode Without Verification
+
+```typescript
+import { decodeJwt } from '@geekmidas/auth/jwt';
+
+// Decode token without verification (useful for debugging)
+const claims = decodeJwt(token);
+```
+
+## OIDC Verification
+
+OIDC verifier automatically discovers JWKS URI and other configuration from the issuer's `.well-known/openid-configuration` endpoint.
+
+```typescript
+import { OidcVerifier } from '@geekmidas/auth/oidc';
+
+const verifier = new OidcVerifier({
+  issuer: 'https://auth.example.com',
+  audience: 'my-client-id',
+});
+
+// Verify token (auto-discovers JWKS)
+const claims = await verifier.verify(token);
+
+// Fetch user info from userinfo endpoint
+const userInfo = await verifier.fetchUserInfo(token);
+console.log('Email:', userInfo?.email);
+
+// Get discovery document
+const discovery = await verifier.getDiscovery();
+console.log('Token endpoint:', discovery.token_endpoint);
+```
+
+## Hono Middleware
+
+### JWT Middleware
+
+```typescript
+import { Hono } from 'hono';
+import { JwtMiddleware } from '@geekmidas/auth/hono/jwt';
+
+const app = new Hono();
+
+const jwt = new JwtMiddleware({
+  config: {
+    secret: env.jwt.secret,
+    issuer: env.jwt.issuer,
+  },
+  contextKey: 'jwtClaims', // Where to store claims in context
+});
+
+// Protected routes
+app.use('/api/*', jwt.handler());
+
+app.get('/api/profile', (c) => {
+  const claims = c.get('jwtClaims');
+  return c.json({ userId: claims.sub });
+});
+
+// Optional authentication (doesn't fail if no token)
+app.use('/public/*', jwt.optional());
+
+app.get('/public/posts', (c) => {
+  const claims = c.get('jwtClaims'); // May be undefined
+  return c.json({ authenticated: !!claims });
+});
+```
+
+### OIDC Middleware
+
+```typescript
+import { OidcMiddleware } from '@geekmidas/auth/hono/oidc';
+
+const oidc = new OidcMiddleware({
+  config: {
+    issuer: 'https://auth.example.com',
+    audience: 'my-client-id',
+  },
+  fetchUserInfo: true, // Also fetch user info
+});
+
+app.use('/api/*', oidc.handler());
+
+app.get('/api/profile', (c) => {
+  const claims = c.get('oidcClaims');
+  const userInfo = c.get('oidcUserInfo');
+  return c.json({ sub: claims.sub, email: userInfo?.email });
+});
+```
+
+### Custom Error Handling
+
+```typescript
+const jwt = new JwtMiddleware({
+  config: { secret: env.jwt.secret },
+  onError: (c, error) => {
+    console.error('Auth error:', error.message);
+    return c.json({ error: 'Authentication failed' }, 401);
+  },
+});
+```
+
+### Token Extraction Options
+
+```typescript
+const jwt = new JwtMiddleware({
+  config: { secret: env.jwt.secret },
+  extraction: {
+    headerName: 'x-auth-token', // Custom header (default: 'authorization')
+    tokenPrefix: 'Token ',      // Custom prefix (default: 'Bearer ')
+    cookieName: 'auth_token',   // Also check cookies
+  },
+});
+```
+
+## Lambda Authorizers
+
+### JWT Authorizer
+
+```typescript
+import { JwtAuthorizer } from '@geekmidas/auth/lambda/jwt';
+
+const authorizer = new JwtAuthorizer({
+  config: {
+    secret: env.jwt.secret,
+    issuer: env.jwt.issuer,
+  },
+  // Extract principal ID from claims
+  getPrincipalId: (claims) => claims.sub ?? 'unknown',
+  // Add claims to request context
+  getContext: (claims) => ({
+    userId: claims.sub!,
+    role: claims.role,
+  }),
+  // Custom authorization logic
+  authorize: async (claims) => {
+    return claims.role === 'admin';
+  },
+});
+
+// For TOKEN authorizers (API Gateway v1)
+export const tokenHandler = authorizer.tokenHandler();
+
+// For REQUEST authorizers (API Gateway v1/v2)
+export const requestHandler = authorizer.requestHandler();
+```
+
+### OIDC Authorizer
+
+```typescript
+import { OidcAuthorizer } from '@geekmidas/auth/lambda/oidc';
+
+const authorizer = new OidcAuthorizer({
+  config: {
+    issuer: 'https://auth.example.com',
+    audience: 'my-api',
+  },
+  getContext: (claims) => ({
+    userId: claims.sub!,
+    email: claims.email,
+  }),
+});
+
+export const handler = authorizer.requestHandler();
+```
+
+### Token Extraction for REQUEST Authorizers
+
+```typescript
+const authorizer = new JwtAuthorizer({
+  config: { secret: env.jwt.secret },
+  extraction: {
+    headerName: 'authorization',
+    tokenPrefix: 'Bearer ',
+    cookieName: 'auth_token', // Also check cookies
+  },
+  // Use specific resource ARN vs wildcard
+  wildcardResource: true, // Default: true (enables caching)
+});
+```
+
+## Client-Side Token Management
 
 ### Basic Token Client
 
 ```typescript
 import { TokenClient, LocalStorageTokenStorage } from '@geekmidas/auth/client';
 
-// Create a token client with localStorage
 const client = new TokenClient({
   storage: new LocalStorageTokenStorage(),
   refreshEndpoint: '/api/auth/refresh',
   onTokenRefresh: (tokens) => {
-    console.log('Tokens refreshed:', tokens);
+    console.log('Tokens refreshed');
   },
   onTokenExpired: () => {
-    console.log('Tokens expired, redirect to login');
     window.location.href = '/login';
   },
 });
@@ -85,65 +334,32 @@ import { CacheTokenStorage } from '@geekmidas/auth/client';
 import { InMemoryCache } from '@geekmidas/cache/memory';
 
 const cache = new InMemoryCache<string>();
-const storage = new CacheTokenStorage(
-  cache,
-  'access_token',  // Access token key
-  'refresh_token'  // Refresh token key
-);
+const storage = new CacheTokenStorage(cache);
 
 // Supports TTL for automatic expiration
 await storage.setAccessToken('token', 3600); // 1 hour TTL
 ```
 
-### Token Validation
-
-```typescript
-// Check if a token is expired
-const isExpired = client.isTokenExpired(token);
-
-// Get token expiration date
-const expiration = client.getTokenExpiration(token);
-console.log('Token expires at:', expiration);
-
-// Get a valid token (refreshes automatically if needed)
-const validToken = await client.getValidAccessToken();
-```
-
-### HTTP Client Integration
-
-```typescript
-import { TokenClient } from '@geekmidas/auth/client';
-
-class ApiClient {
-  constructor(private tokenClient: TokenClient) {}
-
-  async makeRequest(url: string, options: RequestInit = {}) {
-    const headers = await this.tokenClient.createValidAuthHeaders();
-    
-    return fetch(url, {
-      ...options,
-      headers: {
-        ...options.headers,
-        ...headers,
-      },
-    });
-  }
-}
-
-const apiClient = new ApiClient(tokenClient);
-const response = await apiClient.makeRequest('/api/users');
-```
-
-## Server-Side Usage
+## Server-Side Token Management
 
 ### Token Manager
 
 ```typescript
 import { TokenManager } from '@geekmidas/auth/server';
+import { EnvironmentParser } from '@geekmidas/envkit';
+
+const env = new EnvironmentParser(process.env)
+  .create((get) => ({
+    auth: {
+      accessTokenSecret: get('ACCESS_TOKEN_SECRET').string(),
+      refreshTokenSecret: get('REFRESH_TOKEN_SECRET').string(),
+    },
+  }))
+  .parse();
 
 const tokenManager = new TokenManager({
-  accessTokenSecret: process.env.ACCESS_TOKEN_SECRET!,
-  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET!,
+  accessTokenSecret: env.auth.accessTokenSecret,
+  refreshTokenSecret: env.auth.refreshTokenSecret,
   accessTokenExpiresIn: '15m',
   refreshTokenExpiresIn: '7d',
 });
@@ -156,206 +372,119 @@ const tokens = tokenManager.generateTokenPair({
 });
 
 // Verify tokens
-try {
-  const payload = tokenManager.verifyAccessToken(accessToken);
-  console.log('User ID:', payload.userId);
-} catch (error) {
-  console.error('Invalid token:', error.message);
-}
+const payload = tokenManager.verifyAccessToken(accessToken);
 
 // Refresh access token
-try {
-  const newAccessToken = tokenManager.refreshAccessToken(refreshToken);
-} catch (error) {
-  console.error('Refresh failed:', error.message);
-}
-```
-
-### Token Validation Middleware
-
-```typescript
-import { TokenManager } from '@geekmidas/auth/server';
-
-const tokenManager = new TokenManager({
-  accessTokenSecret: process.env.ACCESS_TOKEN_SECRET!,
-  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET!,
-});
-
-function authenticateToken(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  try {
-    const payload = tokenManager.verifyAccessToken(token);
-    req.user = payload;
-    next();
-  } catch (error) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
-  }
-}
+const newAccessToken = tokenManager.refreshAccessToken(refreshToken);
 ```
 
 ## API Reference
 
-### TokenClient
-
-The main client for managing tokens on the client-side.
-
-#### Constructor Options
+### JwtVerifier
 
 ```typescript
-interface TokenClientOptions {
-  storage?: TokenStorage;           // Token storage implementation
-  refreshEndpoint?: string;         // API endpoint for token refresh
-  onTokenRefresh?: (tokens: {       // Callback on successful refresh
-    accessToken: string;
-    refreshToken?: string;
-  }) => void;
-  onTokenExpired?: () => void;      // Callback when tokens expire
+class JwtVerifier<TClaims extends JwtClaims = JwtClaims> {
+  constructor(config: JwtConfig);
+  verify(token: string): Promise<TClaims>;
+  verifyOrNull(token: string): Promise<TClaims | null>;
+  clearCache(): void;
+}
+
+interface JwtConfig {
+  secret?: string;           // For HS256
+  jwksUri?: string;          // For RS256, ES256, etc.
+  issuer?: string;           // Expected issuer
+  audience?: string;         // Expected audience
+  algorithms?: string[];     // Allowed algorithms
 }
 ```
 
-#### Methods
-
-- `getAccessToken(): Promise<string | null>` - Get stored access token
-- `getRefreshToken(): Promise<string | null>` - Get stored refresh token
-- `setTokens(accessToken, refreshToken?, accessTtl?, refreshTtl?): Promise<void>` - Store tokens
-- `clearTokens(): Promise<void>` - Clear all stored tokens
-- `isTokenExpired(token: string): boolean` - Check if token is expired
-- `getTokenExpiration(token: string): Date | null` - Get token expiration date
-- `refreshTokens(): Promise<boolean>` - Refresh tokens via API
-- `getValidAccessToken(): Promise<string | null>` - Get valid token (auto-refresh)
-- `createAuthHeaders(): Promise<Record<string, string>>` - Create auth headers
-- `createValidAuthHeaders(): Promise<Record<string, string>>` - Create auth headers with valid token
-
-### TokenStorage Interface
+### OidcVerifier
 
 ```typescript
-interface TokenStorage {
-  getAccessToken(): Promise<string | null> | string | null;
-  setAccessToken(token: string, ttl?: number): Promise<void> | void;
-  getRefreshToken(): Promise<string | null> | string | null;
-  setRefreshToken(token: string, ttl?: number): Promise<void> | void;
-  clearTokens(): Promise<void> | void;
+class OidcVerifier<TClaims, TUserInfo> {
+  constructor(config: OidcConfig);
+  verify(token: string): Promise<TClaims>;
+  verifyOrNull(token: string): Promise<TClaims | null>;
+  fetchUserInfo(token: string): Promise<TUserInfo | null>;
+  getDiscovery(): Promise<OidcDiscovery>;
+  clearCache(): void;
+}
+
+interface OidcConfig {
+  issuer: string;            // OIDC issuer URL
+  audience?: string;         // Expected audience
+  algorithms?: string[];     // Allowed algorithms
 }
 ```
 
-### TokenManager
-
-Server-side JWT token management.
-
-#### Constructor Options
+### JwtMiddleware / OidcMiddleware
 
 ```typescript
-interface TokenManagerOptions {
-  accessTokenSecret: string;        // Secret for signing access tokens
-  refreshTokenSecret: string;       // Secret for signing refresh tokens
-  accessTokenExpiresIn?: string;    // Access token expiration (default: '15m')
-  refreshTokenExpiresIn?: string;   // Refresh token expiration (default: '7d')
+class JwtMiddleware<TClaims> {
+  constructor(options: JwtMiddlewareOptions<TClaims>);
+  handler(): MiddlewareHandler;   // Required auth
+  optional(): MiddlewareHandler;  // Optional auth
+}
+
+interface JwtMiddlewareOptions<TClaims> {
+  config: JwtConfig;
+  extraction?: TokenExtractionOptions;
+  contextKey?: string;
+  onError?: (c: Context, error: Error) => Response;
+  transformClaims?: (claims: JwtClaims) => TClaims;
 }
 ```
 
-#### Methods
-
-- `generateTokenPair(payload: TokenPayload): TokenPair` - Generate access and refresh tokens
-- `verifyAccessToken(token: string): DecodedToken` - Verify and decode access token
-- `verifyRefreshToken(token: string): DecodedToken` - Verify and decode refresh token
-- `refreshAccessToken(refreshToken: string): string` - Generate new access token from refresh token
-- `decodeToken(token: string): DecodedToken | null` - Decode token without verification
-- `isTokenExpired(token: string): boolean` - Check if token is expired
-- `getTokenExpiration(token: string): Date | null` - Get token expiration date
-
-### Types
+### JwtAuthorizer / OidcAuthorizer
 
 ```typescript
-interface TokenPayload {
-  userId: string;
-  email?: string;
-  [key: string]: any;
+class JwtAuthorizer<TClaims> {
+  constructor(options: JwtAuthorizerOptions<TClaims>);
+  tokenHandler(): Handler;    // TOKEN authorizer
+  requestHandler(): Handler;  // REQUEST authorizer
 }
 
-interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-}
-
-interface DecodedToken extends TokenPayload {
-  iat: number;  // Issued at
-  exp: number;  // Expiration time
+interface JwtAuthorizerOptions<TClaims> {
+  config: JwtConfig;
+  extraction?: TokenExtractionOptions;
+  wildcardResource?: boolean;
+  getPrincipalId?: (claims: TClaims) => string;
+  getContext?: (claims: TClaims) => Record<string, string | number | boolean>;
+  authorize?: (claims: TClaims) => boolean | Promise<boolean>;
 }
 ```
 
-## Error Handling
-
-The library provides descriptive error messages for common scenarios:
+### TokenExtractionOptions
 
 ```typescript
-try {
-  const payload = tokenManager.verifyAccessToken(token);
-} catch (error) {
-  if (error.message.includes('Invalid access token')) {
-    // Handle invalid token
-  } else if (error.message.includes('expired')) {
-    // Handle expired token
-  }
+interface TokenExtractionOptions {
+  headerName?: string;   // Default: 'authorization'
+  tokenPrefix?: string;  // Default: 'Bearer '
+  cookieName?: string;   // Optional cookie fallback
 }
 ```
 
 ## Security Best Practices
 
-1. **Use Strong Secrets**: Ensure your JWT secrets are cryptographically secure and different for access and refresh tokens.
+1. **Use Strong Secrets**: Ensure your JWT secrets are cryptographically secure.
 
 2. **Short Access Token Expiration**: Keep access tokens short-lived (15 minutes recommended).
 
-3. **Secure Token Storage**: Use appropriate storage based on your environment:
-   - Browser: LocalStorage or secure cookies
-   - Server: Memory or secure cache
-   - Mobile: Secure keychain/keystore
+3. **Use JWKS for Production**: Prefer JWKS over shared secrets for better key rotation.
 
-4. **HTTPS Only**: Always use HTTPS in production to prevent token interception.
+4. **Validate Claims**: Always validate issuer and audience claims.
 
-5. **Token Rotation**: Implement refresh token rotation for enhanced security.
+5. **HTTPS Only**: Always use HTTPS in production to prevent token interception.
 
-## Testing
-
-The package includes comprehensive test utilities:
-
-```typescript
-import { MemoryTokenStorage, TokenClient } from '@geekmidas/auth/client';
-
-// Use memory storage for tests
-const storage = new MemoryTokenStorage();
-const client = new TokenClient({ storage });
-
-// Mock refresh endpoint with MSW
-import { http, HttpResponse } from 'msw';
-
-const server = setupServer(
-  http.post('/auth/refresh', () => {
-    return HttpResponse.json({
-      accessToken: 'new-access-token',
-      refreshToken: 'new-refresh-token',
-    });
-  }),
-);
-```
-
-## Migration Guide
-
-### From v0.0.x
-
-The auth package is currently in initial development. Breaking changes may occur between minor versions until v1.0.0.
+6. **Token Rotation**: Implement refresh token rotation for enhanced security.
 
 ## Dependencies
 
-- `@openauthjs/openauth` - OpenAuth integration
-- `@geekmidas/cache` - Cache storage support  
-- `jsonwebtoken` - JWT token operations
-- `@types/ms` - Time duration types
+- `jose` - JWT/JWS/JWE operations
+- `@geekmidas/cache` - Cache storage support (optional)
+- `hono` - Hono framework (peer dependency for middleware)
+- `@types/aws-lambda` - AWS Lambda types (peer dependency for authorizers)
 
 ## License
 
