@@ -8,4 +8,6 @@ export {
   type Resolvers,
   type EnvironmentBuilderOptions,
   type InputValue,
+  type TypedInputValue,
+  type TypedResolvers,
 } from './EnvironmentBuilder';
