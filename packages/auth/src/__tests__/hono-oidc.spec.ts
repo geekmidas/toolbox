@@ -11,7 +11,16 @@ import {
   it,
   vi,
 } from 'vitest';
+import type { OidcClaims, OidcUserInfo } from '../hono/oidc';
 import { OidcMiddleware } from '../hono/oidc';
+
+// Define context variable types for Hono
+type AppVariables = {
+  oidcClaims: OidcClaims;
+  oidcToken: string;
+  oidcUserInfo: OidcUserInfo;
+  user: OidcClaims;
+};
 
 // Mock discovery document
 const mockDiscovery = {
