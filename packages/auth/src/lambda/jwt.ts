@@ -6,9 +6,9 @@ import type {
   PolicyDocument,
 } from 'aws-lambda';
 import {
-  JwtVerifier,
   type JwtClaims,
   type JwtConfig,
+  JwtVerifier,
   type TokenExtractionOptions,
 } from '../jwt';
 

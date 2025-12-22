@@ -1,8 +1,8 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import {
-  JwtVerifier,
   type JwtClaims,
   type JwtConfig,
+  JwtVerifier,
   type TokenExtractionOptions,
 } from '../jwt';
 

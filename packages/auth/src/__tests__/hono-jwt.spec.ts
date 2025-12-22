@@ -1,6 +1,6 @@
+import { Hono } from 'hono';
 import * as jose from 'jose';
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
 import { JwtMiddleware } from '../hono/jwt';
 
 const TEST_SECRET = 'super-secret-key-for-testing-only-32chars';

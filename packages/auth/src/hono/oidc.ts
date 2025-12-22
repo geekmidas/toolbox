@@ -1,9 +1,9 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import {
-  OidcVerifier,
   type OidcClaims,
   type OidcConfig,
   type OidcUserInfo,
+  OidcVerifier,
   type TokenExtractionOptions,
 } from '../oidc';
 

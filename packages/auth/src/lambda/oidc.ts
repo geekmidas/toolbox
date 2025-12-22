@@ -6,9 +6,9 @@ import type {
   PolicyDocument,
 } from 'aws-lambda';
 import {
-  OidcVerifier,
   type OidcClaims,
   type OidcConfig,
+  OidcVerifier,
   type TokenExtractionOptions,
 } from '../oidc';
 
