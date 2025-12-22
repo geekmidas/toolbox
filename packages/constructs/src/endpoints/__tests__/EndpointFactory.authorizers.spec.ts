@@ -294,3 +294,148 @@ describe('EndpointFactory.authorizers', () => {
     expect(endpoint.tags).toEqual(['public', 'contact']);
   });
 });
+
+describe('EndpointFactory.authorizer (default)', () => {
+  it('should set default authorizer for all endpoints', () => {
+    const factory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt');
+
+    const endpoint1 = factory.get('/users').handle(async () => ({ users: [] }));
+    const endpoint2 = factory
+      .post('/users')
+      .body(z.object({ name: z.string() }))
+      .handle(async () => ({ id: '1' }));
+
+    expect(endpoint1.authorizer).toEqual({ name: 'jwt' });
+    expect(endpoint2.authorizer).toEqual({ name: 'jwt' });
+  });
+
+  it('should allow endpoint to override factory default authorizer', () => {
+    const factory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt');
+
+    const endpoint = factory
+      .get('/admin')
+      .authorizer('iam')
+      .handle(async () => ({ admin: true }));
+
+    expect(endpoint.authorizer).toEqual({ name: 'iam' });
+  });
+
+  it('should allow endpoint to disable authorizer with none', () => {
+    const factory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt');
+
+    const endpoint = factory
+      .get('/public')
+      .authorizer('none')
+      .handle(async () => ({ public: true }));
+
+    expect(endpoint.authorizer).toBeUndefined();
+  });
+
+  it('should throw error when setting non-existent default authorizer', () => {
+    const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+
+    expect(() => {
+      // @ts-expect-error - testing invalid authorizer
+      factory.authorizer('invalid');
+    }).toThrow(
+      'Authorizer "invalid" not found in available authorizers: iam, jwt',
+    );
+  });
+
+  it('should preserve default authorizer when chaining factory methods', () => {
+    const factory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt')
+      .route('/api/v1');
+
+    const endpoint = factory
+      .get('/users')
+      .handle(async () => ({ users: [] }));
+
+    expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+    expect(endpoint.route).toBe('/api/v1/users');
+  });
+
+  it('should preserve default authorizer with services', () => {
+    const dbService = {
+      serviceName: 'database' as const,
+      register: async () => ({ query: async () => [] }),
+    };
+
+    const factory = new EndpointFactory()
+      .authorizers(['jwt'] as const)
+      .authorizer('jwt')
+      .services([dbService]);
+
+    const endpoint = factory
+      .get('/users')
+      .handle(async ({ services }) => {
+        await services.database.query();
+        return { users: [] };
+      });
+
+    expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+  });
+
+  it('should allow factory.authorizer("none") to clear default', () => {
+    const factory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt')
+      .authorizer('none');
+
+    const endpoint = factory.get('/test').handle(async () => ({ test: true }));
+
+    expect(endpoint.authorizer).toBeUndefined();
+  });
+
+  it('should allow setting default authorizer without calling authorizers() first', () => {
+    // When no authorizers are defined, validation is skipped
+    const factory = new EndpointFactory().authorizer('custom');
+
+    const endpoint = factory.get('/test').handle(async () => ({ test: true }));
+
+    expect(endpoint.authorizer).toEqual({ name: 'custom' });
+  });
+
+  it('should work with nested route factories', () => {
+    const rootFactory = new EndpointFactory()
+      .authorizers(['iam', 'jwt', 'api-key'] as const)
+      .authorizer('jwt');
+
+    const apiFactory = rootFactory.route('/api');
+    const adminFactory = apiFactory.route('/admin');
+
+    const endpoint = adminFactory
+      .delete('/users/:id')
+      .params(z.object({ id: z.string() }))
+      .handle(async () => ({ deleted: true }));
+
+    expect(endpoint.route).toBe('/api/admin/users/:id');
+    expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+  });
+
+  it('should allow sub-factory to override parent default authorizer', () => {
+    const rootFactory = new EndpointFactory()
+      .authorizers(['iam', 'jwt'] as const)
+      .authorizer('jwt');
+
+    const adminFactory = rootFactory.route('/admin').authorizer('iam');
+
+    const publicEndpoint = rootFactory
+      .get('/public')
+      .handle(async () => ({ public: true }));
+
+    const adminEndpoint = adminFactory
+      .get('/dashboard')
+      .handle(async () => ({ admin: true }));
+
+    expect(publicEndpoint.authorizer).toEqual({ name: 'jwt' });
+    expect(adminEndpoint.authorizer).toEqual({ name: 'iam' });
+  });
+});
