@@ -6,7 +6,12 @@ const TEST_SECRET = 'super-secret-key-for-testing-only-32chars';
 
 async function createTestToken(
   claims: Record<string, unknown> = {},
-  options: { secret?: string; expiresIn?: string; issuer?: string; audience?: string } = {},
+  options: {
+    secret?: string;
+    expiresIn?: string;
+    issuer?: string;
+    audience?: string;
+  } = {},
 ) {
   const secret = new TextEncoder().encode(options.secret ?? TEST_SECRET);
   const jwt = new jose.SignJWT({ sub: 'user-123', ...claims })
@@ -49,7 +54,10 @@ describe('JwtVerifier', () => {
 
     it('should throw for wrong secret', async () => {
       const verifier = new JwtVerifier({ secret: TEST_SECRET });
-      const token = await createTestToken({}, { secret: 'wrong-secret-key-32-chars-long!!' });
+      const token = await createTestToken(
+        {},
+        { secret: 'wrong-secret-key-32-chars-long!!' },
+      );
 
       await expect(verifier.verify(token)).rejects.toThrow();
     });
@@ -150,7 +158,10 @@ describe('decodeJwt', () => {
   });
 
   it('should decode token even with wrong secret', async () => {
-    const token = await createTestToken({}, { secret: 'any-secret-32-characters-long!!' });
+    const token = await createTestToken(
+      {},
+      { secret: 'any-secret-32-characters-long!!' },
+    );
 
     const claims = decodeJwt(token);
 

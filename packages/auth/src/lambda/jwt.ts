@@ -12,7 +12,12 @@ import {
   type TokenExtractionOptions,
 } from '../jwt';
 
-export { JwtVerifier, type JwtClaims, type JwtConfig, type TokenExtractionOptions };
+export {
+  JwtVerifier,
+  type JwtClaims,
+  type JwtConfig,
+  type TokenExtractionOptions,
+};
 
 function generatePolicy(
   principalId: string,

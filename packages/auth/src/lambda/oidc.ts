@@ -12,7 +12,12 @@ import {
   type TokenExtractionOptions,
 } from '../oidc';
 
-export { OidcVerifier, type OidcClaims, type OidcConfig, type TokenExtractionOptions };
+export {
+  OidcVerifier,
+  type OidcClaims,
+  type OidcConfig,
+  type TokenExtractionOptions,
+};
 
 function generatePolicy(
   principalId: string,
@@ -43,7 +48,9 @@ function getWildcardResource(methodArn: string): string {
   return `${parts[0]}/${parts[1]}/*`;
 }
 
-export interface OidcAuthorizerOptions<TClaims extends OidcClaims = OidcClaims> {
+export interface OidcAuthorizerOptions<
+  TClaims extends OidcClaims = OidcClaims,
+> {
   config: OidcConfig;
   extraction?: TokenExtractionOptions;
   wildcardResource?: boolean;
