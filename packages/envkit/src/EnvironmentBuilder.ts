@@ -162,6 +162,7 @@ export class EnvironmentBuilder<
    *
    * - Plain string values are passed through with key transformation
    * - Object values with a `type` property are matched against resolvers
+   * - Resolvers receive values without the `type` key
    * - Only root-level keys are transformed to UPPER_SNAKE_CASE
    *
    * @returns A record of environment variables
@@ -177,9 +178,10 @@ export class EnvironmentBuilder<
       }
 
       // Handle objects with type discriminator
-      const resolver = this.resolvers[value.type];
+      const { type, ...rest } = value;
+      const resolver = this.resolvers[type];
       if (resolver) {
-        const resolved = resolver(key, value);
+        const resolved = resolver(key, rest);
         // Transform only root-level keys from resolver output
         for (const [resolvedKey, resolvedValue] of Object.entries(resolved)) {
           env[environmentCase(resolvedKey)] = resolvedValue;
