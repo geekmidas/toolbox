@@ -126,19 +126,23 @@ export type TypedResolvers<TRecord extends Record<string, InputValue>> = {
  *     appName: 'my-app'
  *   },
  *   {
+ *     // `value` is typed as { value: string } (without `type`)
  *     secret: (key, value) => ({ [key]: value.value }),
  *   }
  * ).build();
  * // { API_KEY: 'xyz', APP_NAME: 'my-app' }
  * ```
  */
-export class EnvironmentBuilder<TResolvers extends Resolvers = Resolvers> {
-  private readonly record: Record<string, InputValue>;
+export class EnvironmentBuilder<
+  TRecord extends Record<string, InputValue> = Record<string, InputValue>,
+  TResolvers extends Resolvers = TypedResolvers<TRecord>,
+> {
+  private readonly record: TRecord;
   private readonly resolvers: TResolvers;
   private readonly options: Required<EnvironmentBuilderOptions>;
 
   constructor(
-    record: Record<string, InputValue>,
+    record: TRecord,
     resolvers: TResolvers,
     options: EnvironmentBuilderOptions = {},
   ) {
