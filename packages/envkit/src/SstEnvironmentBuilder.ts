@@ -165,10 +165,66 @@ export const sstResolvers: Resolvers = {
 };
 
 /**
+ * All known SST resource type strings.
+ */
+type SstResourceTypeString = `${ResourceType}`;
+
+/**
+ * Extracts the `type` string value from an input value.
+ */
+type ExtractType<T> = T extends { type: infer U extends string } ? U : never;
+
+/**
+ * Removes the `type` key from an object type.
+ */
+type OmitType<T> = T extends { type: string } ? Omit<T, 'type'> : never;
+
+/**
+ * Extracts all unique `type` values from a record (excluding plain strings).
+ */
+type AllTypeValues<TRecord extends Record<string, InputValue>> = {
+  [K in keyof TRecord]: ExtractType<TRecord[K]>;
+}[keyof TRecord];
+
+/**
+ * Extracts only the custom (non-SST) type values from a record.
+ */
+type CustomTypeValues<TRecord extends Record<string, InputValue>> = Exclude<
+  AllTypeValues<TRecord>,
+  SstResourceTypeString
+>;
+
+/**
+ * For a given type value, finds the corresponding value type (without `type` key).
+ */
+type ValueForType<
+  TRecord extends Record<string, InputValue>,
+  TType extends string,
+> = {
+  [K in keyof TRecord]: TRecord[K] extends { type: TType }
+    ? OmitType<TRecord[K]>
+    : never;
+}[keyof TRecord];
+
+/**
+ * Generates typed resolvers for custom (non-SST) types in the input record.
+ */
+type CustomResolvers<TRecord extends Record<string, InputValue>> =
+  CustomTypeValues<TRecord> extends never
+    ? Resolvers | undefined
+    : {
+        [TType in CustomTypeValues<TRecord>]: EnvironmentResolver<
+          ValueForType<TRecord, TType>
+        >;
+      };
+
+/**
  * SST-specific environment builder with built-in resolvers for all known
  * SST resource types.
  *
- * Extends the generic EnvironmentBuilder with SST-specific functionality.
+ * Wraps the generic EnvironmentBuilder with pre-configured SST resolvers.
+ *
+ * @template TRecord - The input record type for type inference
  *
  * @example
  * ```typescript
@@ -177,21 +233,38 @@ export const sstResolvers: Resolvers = {
  *   apiKey: { type: 'sst:sst:Secret', value: 'secret' },
  *   appName: 'my-app',
  * }).build();
+ *
+ * // With custom resolvers (typed based on input)
+ * const env = new SstEnvironmentBuilder(
+ *   {
+ *     database: postgresResource,
+ *     custom: { type: 'my-custom' as const, data: 'foo' },
+ *   },
+ *   {
+ *     // TypeScript requires 'my-custom' resolver with typed value
+ *     'my-custom': (key, value) => ({ [`${key}Data`]: value.data }),
+ *   }
+ * ).build();
  * ```
  */
-export class SstEnvironmentBuilder {
-  private readonly builder: EnvironmentBuilder<Resolvers>;
+export class SstEnvironmentBuilder<
+  TRecord extends Record<string, SstResource | InputValue | string>,
+> {
+  private readonly builder: EnvironmentBuilder<
+    Record<string, InputValue>,
+    Resolvers
+  >;
 
   /**
    * Create a new SST environment builder.
    *
    * @param record - Object containing SST resources, custom resources, and/or string values
-   * @param additionalResolvers - Optional custom resolvers that merge with SST resolvers (custom takes precedence)
+   * @param additionalResolvers - Optional custom resolvers (typed based on custom types in record)
    * @param options - Optional configuration options
    */
   constructor(
-    record: Record<string, SstResource | InputValue | string>,
-    additionalResolvers?: Resolvers,
+    record: TRecord,
+    additionalResolvers?: CustomResolvers<TRecord>,
     options?: EnvironmentBuilderOptions,
   ) {
     // Merge resolvers with custom ones taking precedence
