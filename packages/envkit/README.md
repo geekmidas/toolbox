@@ -1,83 +1,50 @@
 # @geekmidas/envkit
 
-A type-safe environment configuration parser that uses Zod schemas to validate and parse environment variables or configuration objects.
+Type-safe environment configuration utilities for parsing environment variables and building environment records from typed resources.
 
 ## Features
 
-- 🔒 **Type-safe**: Full TypeScript support with automatic type inference
-- ✅ **Schema validation**: Uses Zod schemas for robust validation
-- 🏗️ **Nested configuration**: Support for complex, nested configuration structures
-- 🚨 **Error aggregation**: Collects and reports all validation errors at once
-- 🔍 **Path-based access**: Uses lodash's `get` and `set` for deep object access
-- 🎯 **Zero dependencies**: Only depends on Zod and minimal lodash utilities
+- **EnvironmentParser**: Parse and validate environment variables with Zod schemas
+- **EnvironmentBuilder**: Build environment records from type-discriminated objects
+- **SstEnvironmentBuilder**: SST-specific builder with built-in resolvers for AWS resources
+- Full TypeScript support with automatic type inference
+- Nested configuration support
+- Error aggregation and reporting
 
 ## Installation
 
 ```bash
-npm install @geekmidas/envkit zod
-# or
-yarn add @geekmidas/envkit zod
-# or
 pnpm add @geekmidas/envkit zod
 ```
 
-## Quick Start
+## EnvironmentParser
+
+Parse and validate environment variables using Zod schemas.
+
+### Basic Usage
 
 ```typescript
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { z } from 'zod';
 
-// Create parser with your config object (e.g., process.env)
 const parser = new EnvironmentParser(process.env);
 
-// Define your configuration schema
 const config = parser.create((get) => ({
   port: get('PORT').string().transform(Number).default(3000),
   database: {
     host: get('DATABASE_HOST').string(),
     port: get('DATABASE_PORT').string().transform(Number),
     name: get('DATABASE_NAME').string(),
-    user: get('DATABASE_USER').string(),
-    password: get('DATABASE_PASSWORD').string()
   },
   api: {
     key: get('API_KEY').string().min(32),
     url: get('API_URL').url(),
-    timeout: get('API_TIMEOUT').string().transform(Number).default(5000)
   }
 }));
 
-// Parse and validate
-try {
-  const parsedConfig = config.parse();
-  console.log('Configuration loaded successfully:', parsedConfig);
-} catch (error) {
-  console.error('Configuration validation failed:', error);
-  process.exit(1);
-}
-```
-
-## Usage
-
-### Basic Configuration
-
-The simplest use case is parsing flat environment variables:
-
-```typescript
-const parser = new EnvironmentParser(process.env);
-
-const config = parser.create((get) => ({
-  appName: get('APP_NAME').string(),
-  port: get('PORT').string().transform(Number),
-  isProduction: get('NODE_ENV').string().transform(env => env === 'production')
-}));
-
-const { appName, port, isProduction } = config.parse();
+const parsedConfig = config.parse();
 ```
 
 ### Nested Configuration
-
-Create deeply nested configuration structures:
 
 ```typescript
 const config = parser.create((get) => ({
