@@ -1,5 +1,5 @@
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
@@ -12,15 +12,12 @@ import {
   type GeneratedConstruct,
   SubscriberGenerator,
 } from '../generators';
-import type {
-  BuildOptions,
-  CronInfo,
-  FunctionInfo,
-  LegacyProvider,
-  RouteInfo,
-  SubscriberInfo,
-} from '../types';
-import { generateManifests } from './manifests';
+import type { BuildOptions, LegacyProvider, RouteInfo } from '../types';
+import {
+  generateAwsManifest,
+  generateServerManifest,
+  type ServerAppInfo,
+} from './manifests';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';
 
@@ -104,55 +101,29 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const rootOutputDir = join(process.cwd(), '.gkm');
   await mkdir(rootOutputDir, { recursive: true });
 
-  // Collect all build results from each provider
-  const allBuildResults = await Promise.all(
-    resolved.providers.map((provider) =>
-      buildForProvider(
-        provider,
-        buildContext,
-        endpointGenerator,
-        functionGenerator,
-        cronGenerator,
-        subscriberGenerator,
-        allEndpoints,
-        allFunctions,
-        allCrons,
-        allSubscribers,
-        resolved.enableOpenApi,
-      ),
-    ),
-  );
-
-  // Aggregate all routes, functions, crons, and subscribers from all providers
-  const aggregatedRoutes = allBuildResults.flatMap((result) => result.routes);
-  const aggregatedFunctions = allBuildResults.flatMap(
-    (result) => result.functions,
-  );
-  const aggregatedCrons = allBuildResults.flatMap((result) => result.crons);
-  const aggregatedSubscribers = allBuildResults.flatMap(
-    (result) => result.subscribers,
-  );
-
-  // Generate single manifest at root .gkm directory
-  await generateManifests(
-    rootOutputDir,
-    aggregatedRoutes,
-    aggregatedFunctions,
-    aggregatedCrons,
-    aggregatedSubscribers,
-  );
-}
-
-interface BuildResult {
-  routes: RouteInfo[];
-  functions: FunctionInfo[];
-  crons: CronInfo[];
-  subscribers: SubscriberInfo[];
+  // Build for each provider and generate per-provider manifests
+  for (const provider of resolved.providers) {
+    await buildForProvider(
+      provider,
+      buildContext,
+      rootOutputDir,
+      endpointGenerator,
+      functionGenerator,
+      cronGenerator,
+      subscriberGenerator,
+      allEndpoints,
+      allFunctions,
+      allCrons,
+      allSubscribers,
+      resolved.enableOpenApi,
+    );
+  }
 }
 
 async function buildForProvider(
   provider: LegacyProvider,
   context: BuildContext,
+  rootOutputDir: string,
   endpointGenerator: EndpointGenerator,
   functionGenerator: FunctionGenerator,
   cronGenerator: CronGenerator,
@@ -162,7 +133,7 @@ async function buildForProvider(
   crons: GeneratedConstruct<Cron<any, any, any, any>>[],
   subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
   enableOpenApi: boolean,
-): Promise<BuildResult> {
+): Promise<void> {
   const outputDir = join(process.cwd(), '.gkm', provider);
 
   // Ensure output directory exists
@@ -187,11 +158,37 @@ async function buildForProvider(
     `Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers for ${provider}`,
   );
 
-  // Return build results instead of generating manifest here
-  return {
-    routes,
-    functions: functionInfos,
-    crons: cronInfos,
-    subscribers: subscriberInfos,
-  };
+  // Generate provider-specific manifest
+  if (provider === 'server') {
+    // For server, collect actual route metadata from endpoint constructs
+    const routeMetadata: RouteInfo[] = await Promise.all(
+      endpoints.map(async ({ construct }) => ({
+        path: construct._path,
+        method: construct.method,
+        handler: '', // Not needed for server manifest
+        authorizer: construct.authorizer?.name ?? 'none',
+      })),
+    );
+
+    const appInfo: ServerAppInfo = {
+      handler: relative(process.cwd(), join(outputDir, 'app.ts')),
+      endpoints: relative(process.cwd(), join(outputDir, 'endpoints.ts')),
+    };
+
+    await generateServerManifest(
+      rootOutputDir,
+      appInfo,
+      routeMetadata,
+      subscriberInfos,
+    );
+  } else {
+    // For AWS providers, generate AWS manifest
+    await generateAwsManifest(
+      rootOutputDir,
+      routes,
+      functionInfos,
+      cronInfos,
+      subscriberInfos,
+    );
+  }
 }
