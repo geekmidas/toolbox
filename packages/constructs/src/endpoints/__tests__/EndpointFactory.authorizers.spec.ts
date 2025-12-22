@@ -354,9 +354,7 @@ describe('EndpointFactory.authorizer (default)', () => {
       .authorizer('jwt')
       .route('/api/v1');
 
-    const endpoint = factory
-      .get('/users')
-      .handle(async () => ({ users: [] }));
+    const endpoint = factory.get('/users').handle(async () => ({ users: [] }));
 
     expect(endpoint.authorizer).toEqual({ name: 'jwt' });
     expect(endpoint.route).toBe('/api/v1/users');
@@ -373,12 +371,10 @@ describe('EndpointFactory.authorizer (default)', () => {
       .authorizer('jwt')
       .services([dbService]);
 
-    const endpoint = factory
-      .get('/users')
-      .handle(async ({ services }) => {
-        await services.database.query();
-        return { users: [] };
-      });
+    const endpoint = factory.get('/users').handle(async ({ services }) => {
+      await services.database.query();
+      return { users: [] };
+    });
 
     expect(endpoint.authorizer).toEqual({ name: 'jwt' });
   });
