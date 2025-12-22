@@ -54,79 +54,25 @@ const config = parser.create((get) => ({
     ssl: {
       enabled: get('SSL_ENABLED').string().transform(v => v === 'true'),
       certPath: get('SSL_CERT_PATH').string().optional(),
-      keyPath: get('SSL_KEY_PATH').string().optional()
-    }
-  },
-  features: {
-    authentication: get('FEATURE_AUTH').string().transform(v => v === 'true'),
-    rateLimit: get('FEATURE_RATE_LIMIT').string().transform(v => v === 'true'),
-    cache: {
-      enabled: get('CACHE_ENABLED').string().transform(v => v === 'true'),
-      ttl: get('CACHE_TTL').string().transform(Number).default(3600)
     }
   }
 }));
 ```
 
-### Using Different Config Sources
-
-While `process.env` is the most common source, you can use any object:
-
-```typescript
-// From a JSON file
-import configJson from './config.json';
-const parser = new EnvironmentParser(configJson);
-
-// From a custom object
-const customConfig = {
-  API_URL: 'https://api.example.com',
-  API_KEY: 'secret-key-123'
-};
-const parser = new EnvironmentParser(customConfig);
-
-// Combining multiple sources
-const mergedConfig = {
-  ...defaultConfig,
-  ...process.env
-};
-const parser = new EnvironmentParser(mergedConfig);
-```
-
-### Advanced Validation
-
-Leverage Zod's full validation capabilities:
-
-```typescript
-const config = parser.create((get) => ({
-  email: get('ADMIN_EMAIL').string().email(),
-  webhook: get('WEBHOOK_URL').url(),
-  retries: get('MAX_RETRIES').string().transform(Number).int().min(0).max(10),
-  allowedOrigins: get('ALLOWED_ORIGINS')
-    .string()
-    .transform(origins => origins.split(','))
-    .refine(origins => origins.every(o => o.startsWith('http')), {
-      message: 'All origins must be valid URLs'
-    }),
-  logLevel: get('LOG_LEVEL')
-    .enum(['debug', 'info', 'warn', 'error'])
-    .default('info')
-}));
-```
-
 ### Error Handling
 
-The parser aggregates all validation errors and throws a single `ZodError`:
+The parser aggregates all validation errors:
 
 ```typescript
+import { z } from 'zod';
+
 try {
   const config = parser.create((get) => ({
     required1: get('MISSING_VAR_1').string(),
     required2: get('MISSING_VAR_2').string(),
-    invalid: get('INVALID_NUMBER').string().transform(Number)
   })).parse();
 } catch (error) {
   if (error instanceof z.ZodError) {
-    console.error('Configuration errors:');
     error.errors.forEach(err => {
       console.error(`- ${err.path.join('.')}: ${err.message}`);
     });
