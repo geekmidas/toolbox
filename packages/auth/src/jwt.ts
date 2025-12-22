@@ -78,11 +78,7 @@ export class JwtVerifier<TClaims extends JwtClaims = JwtClaims> {
     }
 
     const secret = new TextEncoder().encode(this.config.secret);
-    const { payload } = await jose.jwtVerify(
-      token,
-      secret,
-      this.verifyOptions,
-    );
+    const { payload } = await jose.jwtVerify(token, secret, this.verifyOptions);
     return payload as unknown as TClaims;
   }
 
