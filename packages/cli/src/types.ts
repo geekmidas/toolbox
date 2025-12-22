@@ -107,10 +107,3 @@ export interface CronsManifest {
 export interface SubscribersManifest {
   subscribers: SubscriberInfo[];
 }
-
-export interface BuildManifest {
-  routes: RouteInfo[];
-  functions: FunctionInfo[];
-  crons: CronInfo[];
-  subscribers: SubscriberInfo[];
-}
