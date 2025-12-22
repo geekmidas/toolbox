@@ -69,30 +69,27 @@ describe('generateAwsManifest', () => {
     },
   );
 
-  itWithDir(
-    'should generate AWS manifest with functions',
-    async ({ dir }) => {
-      const functions: FunctionInfo[] = [
-        {
-          name: 'processData',
-          handler: '.gkm/aws/processData.handler',
-          timeout: 300,
-          memorySize: 512,
-          environment: ['DATABASE_URL'],
-        },
-      ];
+  itWithDir('should generate AWS manifest with functions', async ({ dir }) => {
+    const functions: FunctionInfo[] = [
+      {
+        name: 'processData',
+        handler: '.gkm/aws/processData.handler',
+        timeout: 300,
+        memorySize: 512,
+        environment: ['DATABASE_URL'],
+      },
+    ];
 
-      await generateAwsManifest(dir, [], functions, [], []);
+    await generateAwsManifest(dir, [], functions, [], []);
 
-      const manifestPath = join(dir, 'manifest', 'aws.ts');
-      const content = await readFile(manifestPath, 'utf-8');
+    const manifestPath = join(dir, 'manifest', 'aws.ts');
+    const content = await readFile(manifestPath, 'utf-8');
 
-      expect(content).toContain('processData');
-      expect(content).toContain('300');
-      expect(content).toContain('512');
-      expect(content).toContain('DATABASE_URL');
-    },
-  );
+    expect(content).toContain('processData');
+    expect(content).toContain('300');
+    expect(content).toContain('512');
+    expect(content).toContain('DATABASE_URL');
+  });
 
   itWithDir('should generate AWS manifest with crons', async ({ dir }) => {
     const crons: CronInfo[] = [
