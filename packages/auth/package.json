@@ -17,6 +17,36 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.mjs",
       "require": "./dist/client.cjs"
+    },
+    "./jwt": {
+      "types": "./dist/jwt.d.ts",
+      "import": "./dist/jwt.mjs",
+      "require": "./dist/jwt.cjs"
+    },
+    "./hono/jwt": {
+      "types": "./dist/hono/jwt.d.ts",
+      "import": "./dist/hono/jwt.mjs",
+      "require": "./dist/hono/jwt.cjs"
+    },
+    "./lambda/jwt": {
+      "types": "./dist/lambda/jwt.d.ts",
+      "import": "./dist/lambda/jwt.mjs",
+      "require": "./dist/lambda/jwt.cjs"
+    },
+    "./oidc": {
+      "types": "./dist/oidc.d.ts",
+      "import": "./dist/oidc.mjs",
+      "require": "./dist/oidc.cjs"
+    },
+    "./hono/oidc": {
+      "types": "./dist/hono/oidc.d.ts",
+      "import": "./dist/hono/oidc.mjs",
+      "require": "./dist/hono/oidc.cjs"
+    },
+    "./lambda/oidc": {
+      "types": "./dist/lambda/oidc.d.ts",
+      "import": "./dist/lambda/oidc.mjs",
+      "require": "./dist/lambda/oidc.cjs"
     }
   },
   "scripts": {
@@ -33,10 +63,23 @@
   "dependencies": {
     "@openauthjs/openauth": "~0.4.3",
     "@geekmidas/cache": "workspace:*",
+    "jose": "~5.10.0",
     "jsonwebtoken": "^9.0.2",
     "@types/ms": "~2.1.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.5"
+  },
+  "peerDependencies": {
+    "@types/aws-lambda": ">=8.10.92",
+    "hono": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/aws-lambda": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
   }
 }

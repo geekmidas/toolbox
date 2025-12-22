@@ -140,9 +140,18 @@ importers:
       '@openauthjs/openauth':
         specifier: ~0.4.3
         version: 0.4.3(arctic@2.3.4)(hono@4.8.2)
+      '@types/aws-lambda':
+        specifier: '>=8.10.92'
+        version: 8.10.150
       '@types/ms':
         specifier: ~2.1.0
         version: 2.1.0
+      hono:
+        specifier: '>=4.0.0'
+        version: 4.8.2
+      jose:
+        specifier: ~5.10.0
+        version: 5.10.0
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.2
