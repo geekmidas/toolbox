@@ -52,13 +52,14 @@ async function setupKeys() {
   };
 }
 
-// Mock createRemoteJWKSet to use our local keys
+// Mock createRemoteJWKSet to return test keys directly.
+// MSW intercepts jose's fetch in standalone scripts but fails in vitest for unknown reasons.
+// TODO: Investigate vitest/MSW/jose interaction and remove this mock if possible.
 vi.mock('jose', async (importOriginal) => {
   const actual = await importOriginal<typeof jose>();
   return {
     ...actual,
     createRemoteJWKSet: () => {
-      // Return a function that returns our test public key
       return async (protectedHeader: jose.JWSHeaderParameters) => {
         if (protectedHeader.kid === 'test-key-id' && testKeys.publicKey) {
           return testKeys.publicKey;
