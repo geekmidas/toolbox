@@ -64,6 +64,7 @@ A comprehensive framework for building type-safe HTTP endpoints, cloud functions
 - Service dependency injection system
 - Built-in error handling with HTTP-specific error classes
 - Session and authorization management
+- Default authorizer inheritance on EndpointFactory
 - Structured logging with context propagation
 - Rate limiting with configurable windows and storage
 - Hono framework adapter support
@@ -94,6 +95,22 @@ const rateLimited = e
   }))
   .body(z.object({ content: z.string() }))
   .handle(async ({ body }) => ({ success: true }));
+
+// With default authorizer on factory
+import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+
+const api = new EndpointFactory()
+  .authorizer('jwt') // All endpoints inherit this authorizer
+  .services([dbService]);
+
+const protectedEndpoint = api
+  .get('/profile')
+  .handle(async ({ session }) => ({ user: session.claims }));
+
+const publicEndpoint = api
+  .get('/health')
+  .authorizer('none') // Override to remove auth
+  .handle(async () => ({ status: 'ok' }));
 ```
 
 #### @geekmidas/audit
