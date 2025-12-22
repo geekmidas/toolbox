@@ -321,7 +321,7 @@ describe('sst', () => {
 
         expect(result).toEqual({});
         expect(consoleWarnSpy).toHaveBeenCalledWith(
-          'No processor found for resource type: ',
+          'No resolver found for key "unknown":',
           { value: unknownResource },
         );
 
