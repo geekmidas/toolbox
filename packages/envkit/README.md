@@ -80,127 +80,268 @@ try {
 }
 ```
 
-### Type Safety
+## EnvironmentBuilder
 
-The parsed configuration is fully typed:
+A generic builder for creating environment variables from objects with type-discriminated values.
+
+### Basic Usage
 
 ```typescript
-const config = parser.create((get) => ({
-  port: get('PORT').string().transform(Number),
-  features: {
-    auth: get('FEATURE_AUTH').string().transform(v => v === 'true')
+import { EnvironmentBuilder } from '@geekmidas/envkit';
+
+const env = new EnvironmentBuilder(
+  {
+    apiKey: { type: 'secret', value: 'xyz' },
+    appName: 'my-app',
+  },
+  {
+    // Resolver receives value without 'type' key
+    secret: (key, value) => ({ [key]: value.value }),
   }
-}));
+).build();
 
-const parsed = config.parse();
-// TypeScript knows: parsed.port is number, parsed.features.auth is boolean
+// Result: { API_KEY: 'xyz', APP_NAME: 'my-app' }
 ```
 
-## API Reference
+### How It Works
 
-### `EnvironmentParser`
+1. **Plain string values** are passed through with key transformation to `UPPER_SNAKE_CASE`
+2. **Object values** with a `type` property are matched against resolvers
+3. **Resolvers** receive values without the `type` key
+4. **Root-level keys** from resolver output are transformed to `UPPER_SNAKE_CASE`
 
-The main class for creating configuration parsers.
-
-#### Constructor
+### Multiple Resolvers
 
 ```typescript
-new EnvironmentParser(config: Record<string, unknown>)
+const env = new EnvironmentBuilder(
+  {
+    secret: { type: 'secret', value: 'my-secret' },
+    database: { type: 'postgres', host: 'localhost', port: 5432 },
+    bucket: { type: 'bucket', name: 'my-bucket' },
+  },
+  {
+    secret: (key, value) => ({ [key]: value.value }),
+    postgres: (key, value) => ({
+      [`${key}Host`]: value.host,
+      [`${key}Port`]: value.port,
+    }),
+    bucket: (key, value) => ({ [`${key}Name`]: value.name }),
+  }
+).build();
+
+// Result:
+// {
+//   SECRET: 'my-secret',
+//   DATABASE_HOST: 'localhost',
+//   DATABASE_PORT: 5432,
+//   BUCKET_NAME: 'my-bucket',
+// }
 ```
 
-- `config`: The configuration object to parse (typically `process.env`)
+### Typed Resolvers
 
-#### Methods
-
-##### `create<T>(schemaBuilder: (get: GetFunction) => T): ConfigParser<T>`
-
-Creates a configuration parser with the specified schema.
-
-- `schemaBuilder`: A function that receives a `get` function and returns the schema definition
-- Returns: A `ConfigParser` instance
-
-### `ConfigParser`
-
-The configuration parser returned by `EnvironmentParser.create()`.
-
-#### Methods
-
-##### `parse(): T`
-
-Parses and validates the configuration.
-
-- Returns: The parsed configuration object
-- Throws: `ZodError` if validation fails
-
-### `GetFunction`
-
-The function passed to the schema builder for accessing configuration values.
+Resolver keys and values are type-checked based on the input record:
 
 ```typescript
-type GetFunction = (path: string) => ZodTypeAny
+const env = new EnvironmentBuilder(
+  {
+    auth: { type: 'auth0' as const, domain: 'example.auth0.com', clientId: 'abc' },
+  },
+  {
+    // TypeScript enforces 'auth0' resolver exists and value has correct shape
+    auth0: (key, value) => ({
+      [`${key}Domain`]: value.domain,
+      [`${key}ClientId`]: value.clientId,
+    }),
+  }
+).build();
+
+// Result: { AUTH_DOMAIN: 'example.auth0.com', AUTH_CLIENT_ID: 'abc' }
 ```
 
-- `path`: The path to the configuration value (supports nested paths with dots)
-- Returns: A Zod schema that will be used to validate the value at the specified path
+### Handling Unmatched Values
 
-## Best Practices
+```typescript
+const env = new EnvironmentBuilder(
+  { unknown: { type: 'unknown-type', data: 'test' } },
+  {},
+  {
+    onUnmatchedValue: (key, value) => {
+      console.warn(`No resolver for "${key}":`, value);
+    },
+  }
+).build();
+```
 
-1. **Define configuration at startup**: Parse your configuration once at application startup and export the result:
+## SstEnvironmentBuilder
+
+SST-specific builder with built-in resolvers for AWS resources.
+
+### Basic Usage
+
+```typescript
+import { SstEnvironmentBuilder, ResourceType } from '@geekmidas/envkit/sst';
+
+const env = new SstEnvironmentBuilder({
+  database: {
+    type: ResourceType.Postgres,
+    host: 'db.example.com',
+    port: 5432,
+    database: 'myapp',
+    username: 'admin',
+    password: 'secret',
+  },
+  apiKey: {
+    type: ResourceType.Secret,
+    value: 'super-secret',
+  },
+  appName: 'my-app',
+}).build();
+
+// Result:
+// {
+//   DATABASE_HOST: 'db.example.com',
+//   DATABASE_PORT: 5432,
+//   DATABASE_NAME: 'myapp',
+//   DATABASE_USERNAME: 'admin',
+//   DATABASE_PASSWORD: 'secret',
+//   API_KEY: 'super-secret',
+//   APP_NAME: 'my-app',
+// }
+```
+
+### Supported Resource Types
+
+| Resource Type | Properties | Output |
+|--------------|------------|--------|
+| `Secret` / `SSTSecret` | `value` | `{key}: value` |
+| `Postgres` / `SSTPostgres` | `host`, `port`, `database`, `username`, `password` | `{key}Host`, `{key}Port`, `{key}Name`, `{key}Username`, `{key}Password` |
+| `Bucket` / `SSTBucket` | `name` | `{key}Name` |
+| `SnsTopic` | `arn` | `{key}Arn` |
+| `ApiGatewayV2` | - | No output (noop) |
+| `Function` | - | No output (noop) |
+| `Vpc` | - | No output (noop) |
+
+### Custom Resolvers
+
+Add custom resolvers alongside built-in SST resolvers:
+
+```typescript
+const env = new SstEnvironmentBuilder(
+  {
+    database: { type: ResourceType.Postgres, /* ... */ },
+    custom: { type: 'my-custom' as const, data: 'custom-data' },
+  },
+  {
+    // Custom resolver merged with SST resolvers
+    'my-custom': (key, value) => ({ [`${key}Data`]: value.data }),
+  }
+).build();
+
+// Result includes both SST resources and custom type
+```
+
+### Resource Type Enum
+
+```typescript
+import { ResourceType } from '@geekmidas/envkit/sst';
+
+// Legacy format (dot notation)
+ResourceType.Postgres    // 'sst.aws.Postgres'
+ResourceType.Secret      // 'sst.sst.Secret'
+ResourceType.Bucket      // 'sst.aws.Bucket'
+
+// Modern format (colon notation)
+ResourceType.SSTPostgres // 'sst:aws:Postgres'
+ResourceType.SSTSecret   // 'sst:sst:Secret'
+ResourceType.SSTBucket   // 'sst:aws:Bucket'
+ResourceType.SnsTopic    // 'sst:aws:SnsTopic'
+```
+
+### Using with SST Resource
+
+Combine `SstEnvironmentBuilder` with `EnvironmentParser` to create a type-safe configuration from SST resources:
 
 ```typescript
 // config.ts
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { z } from 'zod';
+import { SstEnvironmentBuilder } from '@geekmidas/envkit/sst';
+import { Resource } from 'sst';
 
-const parser = new EnvironmentParser(process.env);
+// Build environment variables from SST resources
+const env = new SstEnvironmentBuilder(Resource as {}).build();
 
-export const config = parser.create((get) => ({
-  // ... your schema
+// Create parser with the normalized environment
+export const envParser = new EnvironmentParser(env);
+
+// Define your configuration schema
+export const config = envParser.create((get) => ({
+  database: {
+    host: get('DATABASE_HOST').string(),
+    port: get('DATABASE_PORT').number(),
+    name: get('DATABASE_NAME').string(),
+    username: get('DATABASE_USERNAME').string(),
+    password: get('DATABASE_PASSWORD').string(),
+  },
+  apiKey: get('API_KEY').string(),
 })).parse();
-
-// Other files can import the typed config
-import { config } from './config';
 ```
 
-2. **Use meaningful defaults**: Provide sensible defaults for optional configuration:
+This pattern allows you to:
+1. Normalize SST resources (Postgres, Secrets, Buckets, etc.) into flat environment variables
+2. Parse and validate them with Zod schemas
+3. Get full TypeScript type inference for your configuration
+
+## API Reference
+
+### EnvironmentParser
 
 ```typescript
-const config = parser.create((get) => ({
-  port: get('PORT').string().transform(Number).default(3000),
-  logLevel: get('LOG_LEVEL').enum(['debug', 'info', 'warn', 'error']).default('info')
-}));
+class EnvironmentParser {
+  constructor(config: Record<string, unknown>);
+  create<T>(schemaBuilder: (get: GetFunction) => T): ConfigParser<T>;
+}
 ```
 
-3. **Group related configuration**: Organize your configuration into logical groups:
+### EnvironmentBuilder
 
 ```typescript
-const config = parser.create((get) => ({
-  server: { /* server config */ },
-  database: { /* database config */ },
-  features: { /* feature flags */ },
-  thirdParty: { /* external service config */ }
-}));
+class EnvironmentBuilder<TRecord, TResolvers> {
+  constructor(
+    record: TRecord,
+    resolvers: TResolvers,
+    options?: EnvironmentBuilderOptions
+  );
+  build(): EnvRecord;
+}
+
+interface EnvironmentBuilderOptions {
+  onUnmatchedValue?: (key: string, value: unknown) => void;
+}
 ```
 
-4. **Document your configuration**: Add comments to explain complex validations:
+### SstEnvironmentBuilder
 
 ```typescript
-const config = parser.create((get) => ({
-  // Maximum number of concurrent connections
-  maxConnections: get('MAX_CONNECTIONS')
-    .string()
-    .transform(Number)
-    .int()
-    .min(1)
-    .max(1000)
-    .default(100),
-  
-  // Comma-separated list of allowed origins
-  allowedOrigins: get('ALLOWED_ORIGINS')
-    .string()
-    .transform(origins => origins.split(',').map(o => o.trim()))
-    .default(['http://localhost:3000'])
-}));
+class SstEnvironmentBuilder<TRecord> {
+  constructor(
+    record: TRecord,
+    additionalResolvers?: CustomResolvers<TRecord>,
+    options?: EnvironmentBuilderOptions
+  );
+  build(): EnvRecord;
+}
+```
+
+### environmentCase
+
+```typescript
+function environmentCase(name: string): string;
+
+// Examples:
+environmentCase('myVariable')  // 'MY_VARIABLE'
+environmentCase('apiUrl')      // 'API_URL'
+environmentCase('databaseName') // 'DATABASE_NAME'
 ```
 
 ## License
