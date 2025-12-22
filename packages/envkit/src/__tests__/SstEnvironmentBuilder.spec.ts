@@ -250,14 +250,11 @@ describe('SstEnvironmentBuilder', () => {
     it('should allow custom resolvers', () => {
       const env = new SstEnvironmentBuilder(
         {
-          custom: { type: 'my-custom-type', data: 'custom-data' },
+          custom: { type: 'my-custom-type' as const, data: 'custom-data' },
           secret: { type: ResourceType.Secret, value: 'secret-value' },
         },
         {
-          'my-custom-type': (
-            key: string,
-            value: { type: string; data: string },
-          ) => ({
+          'my-custom-type': (key: string, value: { data: string }) => ({
             [`${key}Data`]: value.data,
           }),
         },
