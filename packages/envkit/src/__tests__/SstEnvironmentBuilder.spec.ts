@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  ResourceType,
-  SstEnvironmentBuilder,
-  sstResolvers,
   type Bucket,
   type Postgres,
+  ResourceType,
   type Secret,
   type SnsTopic,
+  SstEnvironmentBuilder,
+  sstResolvers,
 } from '../SstEnvironmentBuilder';
 
 describe('SstEnvironmentBuilder', () => {
