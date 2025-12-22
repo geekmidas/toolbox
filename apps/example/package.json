@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "gkm dev",
     "dev:manual": "tsx watch src/index.ts",
-    "build": "gkm build --provider aws",
+    "build": "gkm build --providers server,aws-apigatewayv2",
     "start": "node .gkm/server/app.js"
   },
   "dependencies": {
