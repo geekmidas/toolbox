@@ -130,7 +130,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const claims = c.get('oidcClaims');
@@ -157,7 +157,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => c.json({ success: true }));
 
@@ -176,7 +176,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => c.json({ success: true }));
 
@@ -199,7 +199,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const token = c.get('oidcToken');
@@ -227,7 +227,7 @@ describe('OidcMiddleware', () => {
         contextKey: 'user',
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const user = c.get('user');
@@ -257,7 +257,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const claims = c.get('oidcClaims');
@@ -288,7 +288,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const claims = c.get('oidcClaims');
@@ -318,7 +318,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => c.json({ success: true }));
 
@@ -340,7 +340,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => c.json({ success: true }));
 
@@ -364,7 +364,7 @@ describe('OidcMiddleware', () => {
         fetchUserInfo: true,
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const userInfo = c.get('oidcUserInfo');
@@ -404,7 +404,7 @@ describe('OidcMiddleware', () => {
         }),
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.handler());
       app.get('/protected', (c) => {
         const claims = c.get('oidcClaims') as CustomClaims;
@@ -437,7 +437,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const claims = c.get('oidcClaims');
@@ -459,7 +459,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const claims = c.get('oidcClaims');
@@ -490,7 +490,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const claims = c.get('oidcClaims');
@@ -517,7 +517,7 @@ describe('OidcMiddleware', () => {
         fetchUserInfo: true,
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const userInfo = c.get('oidcUserInfo');
@@ -552,7 +552,7 @@ describe('OidcMiddleware', () => {
         }),
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const claims = c.get('oidcClaims');
@@ -581,7 +581,7 @@ describe('OidcMiddleware', () => {
         },
       });
 
-      const app = new Hono();
+      const app = new Hono<{ Variables: AppVariables }>();
       app.use('/*', middleware.optional());
       app.get('/public', (c) => {
         const token = c.get('oidcToken');
