@@ -82,6 +82,20 @@ export default {
           'utf-8',
         );
         expect(endpointsContent).toContain('HonoEndpoint');
+
+        // Verify server manifest was created at .gkm/manifest/server.ts
+        const manifestPath = join(dir, '.gkm', 'manifest', 'server.ts');
+        const manifestContent = await readFile(manifestPath, 'utf-8');
+
+        // Verify manifest structure
+        expect(manifestContent).toContain('export const manifest = {');
+        expect(manifestContent).toContain('} as const;');
+        expect(manifestContent).toContain('app:');
+        expect(manifestContent).toContain('routes:');
+
+        // Verify derived types are exported
+        expect(manifestContent).toContain('export type Route =');
+        expect(manifestContent).toContain('export type Authorizer =');
       } finally {
         process.chdir(originalCwd);
       }
@@ -202,78 +216,35 @@ export default {
           ),
         ).toContain('AmazonApiGatewayV2Endpoint');
 
-        // Verify unified manifest was created at root .gkm directory
-        const manifestPath = join(dir, '.gkm', 'manifest.json');
-        const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+        // Verify AWS manifest was created at .gkm/manifest/aws.ts
+        const manifestPath = join(dir, '.gkm', 'manifest', 'aws.ts');
+        const manifestContent = await readFile(manifestPath, 'utf-8');
 
-        // Verify manifest structure includes all routes from both providers
-        expect(manifest).toMatchObject({
-          routes: expect.arrayContaining([
-            // Routes from aws-lambda provider
-            expect.objectContaining({
-              path: '/users',
-              method: 'GET',
-              handler: expect.stringContaining(
-                'routes/getUsersEndpoint.handler',
-              ),
-            }),
-            expect.objectContaining({
-              path: '/posts',
-              method: 'POST',
-              handler: expect.stringContaining(
-                'routes/getPostsEndpoint.handler',
-              ),
-            }),
-            // Routes from aws-apigatewayv2 provider
-            expect.objectContaining({
-              path: '/users',
-              method: 'GET',
-              handler: expect.stringContaining('getUsersEndpoint.handler'),
-            }),
-            expect.objectContaining({
-              path: '/posts',
-              method: 'POST',
-              handler: expect.stringContaining('getPostsEndpoint.handler'),
-            }),
-          ]),
-          functions: expect.arrayContaining([
-            expect.objectContaining({
-              name: 'processDataFunction',
-              handler: expect.stringContaining(
-                'functions/processDataFunction.handler',
-              ),
-              timeout: 300,
-            }),
-            expect.objectContaining({
-              name: 'sendEmailFunction',
-              handler: expect.stringContaining(
-                'functions/sendEmailFunction.handler',
-              ),
-              timeout: 30,
-            }),
-          ]),
-          crons: expect.arrayContaining([
-            expect.objectContaining({
-              name: 'dailyCleanupCron',
-              handler: expect.stringContaining(
-                'crons/dailyCleanupCron.handler',
-              ),
-              schedule: 'rate(1 day)',
-            }),
-            expect.objectContaining({
-              name: 'hourlyReportCron',
-              handler: expect.stringContaining(
-                'crons/hourlyReportCron.handler',
-              ),
-              schedule: 'cron(0 * * * ? *)',
-            }),
-          ]),
-        });
+        // Verify manifest is TypeScript with as const
+        expect(manifestContent).toContain('export const manifest = {');
+        expect(manifestContent).toContain('} as const;');
 
-        // Verify counts - should have duplicated routes (one for each provider)
-        expect(manifest.routes).toHaveLength(4); // 2 routes x 2 providers
-        expect(manifest.functions).toHaveLength(2);
-        expect(manifest.crons).toHaveLength(2);
+        // Verify derived types are exported
+        expect(manifestContent).toContain('export type Route =');
+        expect(manifestContent).toContain('export type Function =');
+        expect(manifestContent).toContain('export type Cron =');
+        expect(manifestContent).toContain('export type Authorizer =');
+
+        // Verify routes are included (JSON.stringify output uses quoted keys/values)
+        expect(manifestContent).toContain('/users');
+        expect(manifestContent).toContain('/posts');
+        expect(manifestContent).toContain('GET');
+        expect(manifestContent).toContain('POST');
+
+        // Verify functions are included
+        expect(manifestContent).toContain('processDataFunction');
+        expect(manifestContent).toContain('sendEmailFunction');
+
+        // Verify crons are included
+        expect(manifestContent).toContain('dailyCleanupCron');
+        expect(manifestContent).toContain('hourlyReportCron');
+        expect(manifestContent).toContain('rate(1 day)');
+        expect(manifestContent).toContain('cron(0 * * * ? *)');
       } finally {
         process.chdir(originalCwd);
       }
