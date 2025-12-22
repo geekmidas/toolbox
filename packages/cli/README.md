@@ -366,49 +366,115 @@ The CLI generates files in the `.gkm/<provider>` directory:
 ├── aws-apigatewayv1/
 │   ├── getUsers.ts          # Individual Lambda handler
 │   ├── createUser.ts        # Individual Lambda handler
-│   └── manifest.json        # Build manifest
 ├── server/
 │   ├── app.ts               # Server application
-│   └── manifest.json        # Build manifest
+│   ├── endpoints.ts         # Endpoint exports
+├── manifest/
+│   ├── aws.ts               # AWS manifest with types
+│   └── server.ts            # Server manifest with types
 └── openapi.json             # OpenAPI specification
 ```
 
 ### Build Manifest
 
-Each provider generates a `manifest.json` file with build information:
+The CLI generates TypeScript manifests with full type information in the `.gkm/manifest/` directory. These manifests export both the data and derived types for type-safe usage.
 
-```json
-{
-  "routes": [
+#### AWS Manifest (`.gkm/manifest/aws.ts`)
+
+```typescript
+export const manifest = {
+  routes: [
     {
-      "path": "/users",
-      "method": "GET",
-      "handler": ".gkm/aws-apigatewayv1/getUsers.handler"
+      path: '/users',
+      method: 'GET',
+      handler: '.gkm/aws-apigatewayv1/getUsers.handler',
+      authorizer: 'jwt',
     },
     {
-      "path": "/users",
-      "method": "POST",
-      "handler": ".gkm/aws-apigatewayv1/createUser.handler"
-    }
+      path: '/users',
+      method: 'POST',
+      handler: '.gkm/aws-apigatewayv1/createUser.handler',
+      authorizer: 'jwt',
+    },
   ],
-  "functions": [
+  functions: [
     {
-      "name": "processData",
-      "handler": ".gkm/aws-lambda/functions/processData.handler",
-      "timeout": 60,
-      "memorySize": 256
-    }
+      name: 'processData',
+      handler: '.gkm/aws-lambda/functions/processData.handler',
+      timeout: 60,
+      memorySize: 256,
+    },
   ],
-  "crons": [
+  crons: [
     {
-      "name": "dailyCleanup",
-      "handler": ".gkm/aws-lambda/crons/dailyCleanup.handler",
-      "schedule": "rate(1 day)",
-      "timeout": 300,
-      "memorySize": 512
-    }
-  ]
+      name: 'dailyCleanup',
+      handler: '.gkm/aws-lambda/crons/dailyCleanup.handler',
+      schedule: 'rate(1 day)',
+      timeout: 300,
+      memorySize: 512,
+    },
+  ],
+  subscribers: [],
+} as const;
+
+// Derived types
+export type Route = (typeof manifest.routes)[number];
+export type Function = (typeof manifest.functions)[number];
+export type Cron = (typeof manifest.crons)[number];
+export type Subscriber = (typeof manifest.subscribers)[number];
+
+// Useful union types
+export type Authorizer = Route['authorizer'];
+export type HttpMethod = Route['method'];
+export type RoutePath = Route['path'];
+```
+
+#### Server Manifest (`.gkm/manifest/server.ts`)
+
+```typescript
+export const manifest = {
+  app: {
+    handler: '.gkm/server/app.ts',
+    endpoints: '.gkm/server/endpoints.ts',
+  },
+  routes: [
+    { path: '/users', method: 'GET', authorizer: 'jwt' },
+    { path: '/users', method: 'POST', authorizer: 'jwt' },
+  ],
+  subscribers: [
+    { name: 'orderHandler', subscribedEvents: ['order.created'] },
+  ],
+} as const;
+
+// Derived types
+export type Route = (typeof manifest.routes)[number];
+export type Subscriber = (typeof manifest.subscribers)[number];
+
+// Useful union types
+export type Authorizer = Route['authorizer'];
+export type HttpMethod = Route['method'];
+export type RoutePath = Route['path'];
+```
+
+#### Using Manifest Types
+
+Import the manifest types for type-safe infrastructure configuration:
+
+```typescript
+import { manifest, type Route, type Authorizer } from './.gkm/manifest/aws';
+
+// Type-safe route iteration
+for (const route of manifest.routes) {
+  console.log(`${route.method} ${route.path} -> ${route.handler}`);
 }
+
+// Use union types for validation
+function isValidMethod(method: string): method is HttpMethod {
+  return manifest.routes.some((r) => r.method === method);
+}
+
+// Access authorizer names
+const authorizers = new Set(manifest.routes.map((r) => r.authorizer));
 ```
 
 ## OpenAPI Generation
