@@ -33,6 +33,11 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.mjs",
       "require": "./dist/types.cjs"
+    },
+    "./auth-fetcher": {
+      "types": "./dist/auth-fetcher.d.ts",
+      "import": "./dist/auth-fetcher.mjs",
+      "require": "./dist/auth-fetcher.cjs"
     }
   },
   "scripts": {
