@@ -137,7 +137,11 @@ export function createAuthAwareFetcher<
     string,
     SecuritySchemeObject
   >,
->(options: AuthFetcherOptions<EndpointAuth, SecuritySchemes> & { baseURL?: string }) {
+>(
+  options: AuthFetcherOptions<EndpointAuth, SecuritySchemes> & {
+    baseURL?: string;
+  },
+) {
   const {
     endpointAuth,
     securitySchemes,

@@ -2,7 +2,9 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { GkmConfig } from './types.ts';
 
-export async function loadConfig(cwd: string = process.cwd()): Promise<GkmConfig> {
+export async function loadConfig(
+  cwd: string = process.cwd(),
+): Promise<GkmConfig> {
   const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
   let configPath = '';
 
