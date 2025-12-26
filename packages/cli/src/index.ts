@@ -143,7 +143,9 @@ program
 
 program
   .command('openapi')
-  .description('Generate OpenAPI specification from endpoints (TypeScript by default)')
+  .description(
+    'Generate OpenAPI specification from endpoints (TypeScript by default)',
+  )
   .option(
     '--output <path>',
     'Output file path for the OpenAPI spec',
