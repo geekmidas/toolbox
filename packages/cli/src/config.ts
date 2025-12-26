@@ -2,12 +2,12 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { GkmConfig } from './types.ts';
 
-export async function loadConfig(): Promise<GkmConfig> {
+export async function loadConfig(cwd: string = process.cwd()): Promise<GkmConfig> {
   const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
   let configPath = '';
 
   for (const file of files) {
-    const path = join(process.cwd(), file);
+    const path = join(cwd, file);
     if (existsSync(path)) {
       configPath = path;
       break;
