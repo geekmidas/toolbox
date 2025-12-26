@@ -208,8 +208,7 @@ async function resolveAuthHeaders(
 
     case 'apiKey': {
       const apiKey = await strategy.apiKeyProvider.getApiKey();
-      const headerName =
-        strategy.headerName || scheme.name || 'X-API-Key';
+      const headerName = strategy.headerName || scheme.name || 'X-API-Key';
 
       if (scheme.in === 'header' || !scheme.in) {
         return { [headerName]: apiKey };
