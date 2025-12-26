@@ -1,0 +1,558 @@
+import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import { convertStandardSchemaToJsonSchema } from '@geekmidas/schema/conversion';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
+interface OpenApiTsOptions {
+  title?: string;
+  version?: string;
+  description?: string;
+}
+
+// JSON Schema type definition
+interface JsonSchema {
+  type?: string;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  required?: string[];
+  enum?: string[];
+  $ref?: string;
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  allOf?: JsonSchema[];
+  additionalProperties?: boolean | JsonSchema;
+  [key: string]: unknown;
+}
+
+// Security scheme type (subset of OpenAPI 3.1)
+interface SecuritySchemeObject {
+  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  description?: string;
+  name?: string;
+  in?: 'query' | 'header' | 'cookie';
+  scheme?: string;
+  bearerFormat?: string;
+  flows?: Record<string, unknown>;
+  openIdConnectUrl?: string;
+  [key: string]: unknown;
+}
+
+interface EndpointInfo {
+  endpoint: string;
+  route: string;
+  method: string;
+  authorizerName: string | null;
+  authorizerType: string | null;
+  input?: {
+    body?: StandardSchemaV1;
+    query?: StandardSchemaV1;
+    params?: StandardSchemaV1;
+  };
+  output?: StandardSchemaV1;
+  description?: string;
+  tags?: string[];
+  operationId?: string;
+}
+
+interface SecuritySchemeInfo {
+  name: string;
+  type: string;
+  scheme: SecuritySchemeObject;
+}
+
+/**
+ * Generates TypeScript OpenAPI module from endpoints.
+ * Outputs:
+ * - securitySchemes: typed security scheme definitions
+ * - endpointAuth: runtime map of endpoints to auth requirements
+ * - paths: TypeScript interface for type-safe fetcher
+ * - schema interfaces: reusable TypeScript types from Zod/Valibot schemas
+ */
+export class OpenApiTsGenerator {
+
+  async generate(
+    endpoints: Endpoint<any, any, any, any, any, any>[],
+    options: OpenApiTsOptions = {},
+  ): Promise<string> {
+    const { title = 'API', version = '1.0.0', description } = options;
+
+    // Extract endpoint info
+    const endpointInfos = await this.extractEndpointInfos(endpoints);
+
+    // Collect unique security schemes
+    const securitySchemes = this.collectSecuritySchemes(endpointInfos);
+
+    // Build endpoint auth map
+    const endpointAuth = this.buildEndpointAuthMap(endpointInfos);
+
+    // Generate schema interfaces
+    const schemaInterfaces = await this.generateSchemaInterfaces(endpointInfos);
+
+    // Generate paths interface
+    const pathsInterface = await this.generatePathsInterface(endpointInfos);
+
+    // Build the final TypeScript module
+    return this.buildModule({
+      title,
+      version,
+      description,
+      securitySchemes,
+      endpointAuth,
+      schemaInterfaces,
+      pathsInterface,
+    });
+  }
+
+  private async extractEndpointInfos(
+    endpoints: Endpoint<any, any, any, any, any, any>[],
+  ): Promise<EndpointInfo[]> {
+    return endpoints.map((ep) => {
+      const route = ep.route.replace(/:(\w+)/g, '{$1}');
+      const method = ep.method.toUpperCase();
+
+      return {
+        endpoint: `${method} ${route}`,
+        route,
+        method,
+        authorizerName: ep.authorizer?.name ?? null,
+        authorizerType: ep.authorizer?.type ?? null,
+        input: ep.input,
+        output: ep.outputSchema,
+        description: ep.description,
+        tags: ep.tags,
+        operationId: ep.operationId,
+      };
+    });
+  }
+
+  private collectSecuritySchemes(
+    endpointInfos: EndpointInfo[],
+  ): SecuritySchemeInfo[] {
+    const schemes = new Map<string, SecuritySchemeInfo>();
+
+    for (const info of endpointInfos) {
+      if (info.authorizerName && info.authorizerType) {
+        if (!schemes.has(info.authorizerName)) {
+          schemes.set(info.authorizerName, {
+            name: info.authorizerName,
+            type: info.authorizerType,
+            scheme: this.mapAuthorizerToSecurityScheme(
+              info.authorizerType,
+              info.authorizerName,
+            ),
+          });
+        }
+      }
+    }
+
+    return Array.from(schemes.values());
+  }
+
+  private mapAuthorizerToSecurityScheme(
+    type: string,
+    _name: string,
+  ): SecuritySchemeObject {
+    switch (type.toLowerCase()) {
+      case 'jwt':
+      case 'bearer':
+        return {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        };
+      case 'iam':
+      case 'aws-sigv4':
+      case 'sigv4':
+        return {
+          type: 'apiKey',
+          in: 'header',
+          name: 'Authorization',
+          'x-amazon-apigateway-authtype': 'awsSigv4',
+        };
+      case 'apikey':
+      case 'api-key':
+        return {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-API-Key',
+        };
+      case 'oauth2':
+        return {
+          type: 'oauth2',
+          flows: {},
+        };
+      case 'oidc':
+      case 'openidconnect':
+        return {
+          type: 'openIdConnect',
+          openIdConnectUrl: '',
+        };
+      default:
+        return {
+          type: 'http',
+          scheme: 'bearer',
+        };
+    }
+  }
+
+  private buildEndpointAuthMap(
+    endpointInfos: EndpointInfo[],
+  ): Record<string, string | null> {
+    const authMap: Record<string, string | null> = {};
+
+    for (const info of endpointInfos) {
+      authMap[info.endpoint] = info.authorizerName;
+    }
+
+    return authMap;
+  }
+
+  private async generateSchemaInterfaces(
+    endpointInfos: EndpointInfo[],
+  ): Promise<string> {
+    const interfaces: string[] = [];
+
+    for (const info of endpointInfos) {
+      const baseName = this.getSchemaBaseName(info);
+
+      // Input body schema
+      if (info.input?.body) {
+        const schema = await this.schemaToInterface(
+          info.input.body,
+          `${baseName}Input`,
+        );
+        if (schema) interfaces.push(schema);
+      }
+
+      // Input params schema
+      if (info.input?.params) {
+        const schema = await this.schemaToInterface(
+          info.input.params,
+          `${baseName}Params`,
+        );
+        if (schema) interfaces.push(schema);
+      }
+
+      // Input query schema
+      if (info.input?.query) {
+        const schema = await this.schemaToInterface(
+          info.input.query,
+          `${baseName}Query`,
+        );
+        if (schema) interfaces.push(schema);
+      }
+
+      // Output schema
+      if (info.output) {
+        const schema = await this.schemaToInterface(
+          info.output,
+          `${baseName}Output`,
+        );
+        if (schema) interfaces.push(schema);
+      }
+    }
+
+    return interfaces.join('\n\n');
+  }
+
+  private getSchemaBaseName(info: EndpointInfo): string {
+    if (info.operationId) {
+      return this.pascalCase(info.operationId);
+    }
+
+    // Generate name from method + route
+    const routeParts = info.route
+      .replace(/[{}]/g, '')
+      .split('/')
+      .filter(Boolean)
+      .map((part) => this.pascalCase(part));
+
+    return `${this.pascalCase(info.method.toLowerCase())}${routeParts.join('')}`;
+  }
+
+  private pascalCase(str: string): string {
+    return str
+      .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+      .replace(/^./, (c) => c.toUpperCase());
+  }
+
+  private async schemaToInterface(
+    schema: StandardSchemaV1,
+    name: string,
+  ): Promise<string | null> {
+    try {
+      const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
+      if (!jsonSchema) return null;
+
+      return this.jsonSchemaToInterface(jsonSchema, name);
+    } catch {
+      return null;
+    }
+  }
+
+  private jsonSchemaToInterface(schema: JsonSchema, name: string): string {
+    if (schema.type !== 'object' || !schema.properties) {
+      // For non-object types, create a type alias
+      const typeStr = this.jsonSchemaTypeToTs(schema);
+      return `export type ${name} = ${typeStr};`;
+    }
+
+    const props: string[] = [];
+    const required = new Set(schema.required || []);
+
+    for (const [propName, propSchema] of Object.entries(schema.properties)) {
+      const isRequired = required.has(propName);
+      const typeStr = this.jsonSchemaTypeToTs(propSchema as JsonSchema);
+      const optionalMark = isRequired ? '' : '?';
+      props.push(`  ${propName}${optionalMark}: ${typeStr};`);
+    }
+
+    return `export interface ${name} {\n${props.join('\n')}\n}`;
+  }
+
+  private jsonSchemaTypeToTs(schema: JsonSchema): string {
+    if (!schema) return 'unknown';
+
+    if (schema.$ref) {
+      // Extract name from $ref
+      const refName = schema.$ref.split('/').pop() || 'unknown';
+      return refName;
+    }
+
+    if (schema.anyOf) {
+      return schema.anyOf
+        .map((s: JsonSchema) => this.jsonSchemaTypeToTs(s))
+        .join(' | ');
+    }
+
+    if (schema.oneOf) {
+      return schema.oneOf
+        .map((s: JsonSchema) => this.jsonSchemaTypeToTs(s))
+        .join(' | ');
+    }
+
+    if (schema.allOf) {
+      return schema.allOf
+        .map((s: JsonSchema) => this.jsonSchemaTypeToTs(s))
+        .join(' & ');
+    }
+
+    switch (schema.type) {
+      case 'string':
+        if (schema.enum) {
+          return schema.enum.map((e: string) => `'${e}'`).join(' | ');
+        }
+        return 'string';
+      case 'number':
+      case 'integer':
+        return 'number';
+      case 'boolean':
+        return 'boolean';
+      case 'null':
+        return 'null';
+      case 'array':
+        if (schema.items) {
+          return `Array<${this.jsonSchemaTypeToTs(schema.items as JsonSchema)}>`;
+        }
+        return 'Array<unknown>';
+      case 'object':
+        if (schema.properties) {
+          const props: string[] = [];
+          const required = new Set(schema.required || []);
+          for (const [propName, propSchema] of Object.entries(
+            schema.properties,
+          )) {
+            const isRequired = required.has(propName);
+            const typeStr = this.jsonSchemaTypeToTs(propSchema as JsonSchema);
+            const optionalMark = isRequired ? '' : '?';
+            props.push(`${propName}${optionalMark}: ${typeStr}`);
+          }
+          return `{ ${props.join('; ')} }`;
+        }
+        if (schema.additionalProperties) {
+          const valueType = this.jsonSchemaTypeToTs(
+            schema.additionalProperties as JsonSchema,
+          );
+          return `Record<string, ${valueType}>`;
+        }
+        return 'Record<string, unknown>';
+      default:
+        return 'unknown';
+    }
+  }
+
+  private async generatePathsInterface(
+    endpointInfos: EndpointInfo[],
+  ): Promise<string> {
+    const pathGroups = new Map<string, EndpointInfo[]>();
+
+    // Group endpoints by route
+    for (const info of endpointInfos) {
+      const existing = pathGroups.get(info.route) || [];
+      existing.push(info);
+      pathGroups.set(info.route, existing);
+    }
+
+    const pathEntries: string[] = [];
+
+    for (const [route, infos] of pathGroups) {
+      const methodEntries: string[] = [];
+
+      for (const info of infos) {
+        const methodDef = await this.generateMethodDefinition(info);
+        methodEntries.push(`    ${info.method.toLowerCase()}: ${methodDef};`);
+      }
+
+      // Add path parameters if present
+      const firstWithParams = infos.find((i) => i.input?.params);
+      let paramsEntry = '';
+      if (firstWithParams?.input?.params) {
+        const baseName = this.getSchemaBaseName(firstWithParams);
+        paramsEntry = `\n    parameters: {\n      path: ${baseName}Params;\n    };`;
+      }
+
+      pathEntries.push(
+        `  '${route}': {${paramsEntry}\n${methodEntries.join('\n')}\n  };`,
+      );
+    }
+
+    return `export interface paths {\n${pathEntries.join('\n')}\n}`;
+  }
+
+  private async generateMethodDefinition(info: EndpointInfo): Promise<string> {
+    const parts: string[] = [];
+
+    // Request body
+    if (info.input?.body) {
+      const baseName = this.getSchemaBaseName(info);
+      parts.push(`requestBody: {
+      content: {
+        'application/json': ${baseName}Input;
+      };
+    }`);
+    }
+
+    // Query parameters
+    if (info.input?.query) {
+      const baseName = this.getSchemaBaseName(info);
+      parts.push(`parameters: {
+      query: ${baseName}Query;
+    }`);
+    }
+
+    // Responses
+    const baseName = this.getSchemaBaseName(info);
+    const outputType = info.output ? `${baseName}Output` : 'unknown';
+    parts.push(`responses: {
+      200: {
+        content: {
+          'application/json': ${outputType};
+        };
+      };
+    }`);
+
+    return `{\n      ${parts.join(';\n      ')};\n    }`;
+  }
+
+  private buildModule(params: {
+    title: string;
+    version: string;
+    description?: string;
+    securitySchemes: SecuritySchemeInfo[];
+    endpointAuth: Record<string, string | null>;
+    schemaInterfaces: string;
+    pathsInterface: string;
+  }): string {
+    const {
+      title,
+      version,
+      description,
+      securitySchemes,
+      endpointAuth,
+      schemaInterfaces,
+      pathsInterface,
+    } = params;
+
+    const securitySchemesObj = securitySchemes.reduce(
+      (acc, s) => {
+        acc[s.name] = s.scheme;
+        return acc;
+      },
+      {} as Record<string, SecuritySchemeObject>,
+    );
+
+    const schemeNames = securitySchemes.map((s) => `'${s.name}'`).join(' | ');
+
+    return `// Auto-generated by @geekmidas/cli - DO NOT EDIT
+// Generated: ${new Date().toISOString()}
+
+// ============================================================
+// Security Scheme Type
+// ============================================================
+
+interface SecuritySchemeObject {
+  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  description?: string;
+  name?: string;
+  in?: 'query' | 'header' | 'cookie';
+  scheme?: string;
+  bearerFormat?: string;
+  flows?: Record<string, unknown>;
+  openIdConnectUrl?: string;
+  [key: string]: unknown;
+}
+
+// ============================================================
+// API Info
+// ============================================================
+
+export const apiInfo = {
+  title: '${title}',
+  version: '${version}',${description ? `\n  description: '${description.replace(/'/g, "\\'")}',` : ''}
+} as const;
+
+// ============================================================
+// Security Schemes
+// ============================================================
+
+/**
+ * Available security schemes for this API.
+ * Maps authorizer names to OpenAPI security scheme definitions.
+ */
+export const securitySchemes = ${JSON.stringify(securitySchemesObj, null, 2).replace(/"([^"]+)":/g, '$1:')} as const satisfies Record<string, SecuritySchemeObject>;
+
+export type SecuritySchemeId = ${schemeNames || 'never'};
+
+// ============================================================
+// Endpoint Authentication Map
+// ============================================================
+
+/**
+ * Runtime map of endpoints to their required authentication scheme.
+ * \`null\` indicates a public endpoint (no auth required).
+ */
+export const endpointAuth = ${JSON.stringify(endpointAuth, null, 2).replace(/"([^"]+)":/g, "'$1':")} as const satisfies Record<string, SecuritySchemeId | null>;
+
+export type EndpointString = keyof typeof endpointAuth;
+
+export type AuthenticatedEndpoint = {
+  [K in EndpointString]: typeof endpointAuth[K] extends null ? never : K;
+}[EndpointString];
+
+export type PublicEndpoint = {
+  [K in EndpointString]: typeof endpointAuth[K] extends null ? K : never;
+}[EndpointString];
+
+// ============================================================
+// Schema Definitions
+// ============================================================
+
+${schemaInterfaces}
+
+// ============================================================
+// OpenAPI Paths
+// ============================================================
+
+${pathsInterface}
+`;
+  }
+}
