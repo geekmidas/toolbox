@@ -143,13 +143,14 @@ program
 
 program
   .command('openapi')
-  .description('Generate OpenAPI 3.0 specification from endpoints')
+  .description('Generate OpenAPI specification from endpoints (TypeScript by default)')
   .option(
     '--output <path>',
     'Output file path for the OpenAPI spec',
-    'openapi.json',
+    'openapi.ts',
   )
-  .action(async (options: { output?: string }) => {
+  .option('--json', 'Generate JSON instead of TypeScript (legacy)', false)
+  .action(async (options: { output?: string; json?: boolean }) => {
     try {
       const globalOptions = program.opts();
       if (globalOptions.cwd) {
