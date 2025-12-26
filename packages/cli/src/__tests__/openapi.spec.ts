@@ -137,9 +137,27 @@ describe('OpenAPI Generation', () => {
     });
 
     it('should generate spec with multiple endpoints', async () => {
-      await createMockEndpointFile(tempDir, 'getUsers.ts', 'getUsers', '/users', 'GET');
-      await createMockEndpointFile(tempDir, 'createUser.ts', 'createUser', '/users', 'POST');
-      await createMockEndpointFile(tempDir, 'deleteUser.ts', 'deleteUser', '/users/:id', 'DELETE');
+      await createMockEndpointFile(
+        tempDir,
+        'getUsers.ts',
+        'getUsers',
+        '/users',
+        'GET',
+      );
+      await createMockEndpointFile(
+        tempDir,
+        'createUser.ts',
+        'createUser',
+        '/users',
+        'POST',
+      );
+      await createMockEndpointFile(
+        tempDir,
+        'deleteUser.ts',
+        'deleteUser',
+        '/users/:id',
+        'DELETE',
+      );
 
       await createTestFile(
         tempDir,
@@ -160,7 +178,13 @@ describe('OpenAPI Generation', () => {
     });
 
     it('should create output directory if it does not exist', async () => {
-      await createMockEndpointFile(tempDir, 'endpoint.ts', 'testEndpoint', '/test', 'GET');
+      await createMockEndpointFile(
+        tempDir,
+        'endpoint.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
 
       await createTestFile(
         tempDir,
@@ -178,7 +202,13 @@ describe('OpenAPI Generation', () => {
     });
 
     it('should include API metadata in spec', async () => {
-      await createMockEndpointFile(tempDir, 'endpoint.ts', 'testEndpoint', '/test', 'GET');
+      await createMockEndpointFile(
+        tempDir,
+        'endpoint.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
 
       await createTestFile(
         tempDir,
