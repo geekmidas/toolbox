@@ -267,9 +267,9 @@ describe('OpenAPI Generation', () => {
 
     it('should throw error when config loading fails', async () => {
       // No config file created
-      await expect(openapiCommand({ json: true, cwd: tempDir })).rejects.toThrow(
-        /OpenAPI generation failed/,
-      );
+      await expect(
+        openapiCommand({ json: true, cwd: tempDir }),
+      ).rejects.toThrow(/OpenAPI generation failed/);
     });
 
     it('should throw error for invalid TypeScript files', async () => {
@@ -291,7 +291,11 @@ describe('OpenAPI Generation', () => {
 
       // Should throw error for syntax errors
       await expect(
-        openapiCommand({ output: join(tempDir, 'openapi.json'), json: true, cwd: tempDir }),
+        openapiCommand({
+          output: join(tempDir, 'openapi.json'),
+          json: true,
+          cwd: tempDir,
+        }),
       ).rejects.toThrow(/OpenAPI generation failed/);
     });
 
