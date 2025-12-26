@@ -68,7 +68,6 @@ interface SecuritySchemeInfo {
  * - schema interfaces: reusable TypeScript types from Zod/Valibot schemas
  */
 export class OpenApiTsGenerator {
-
   async generate(
     endpoints: Endpoint<any, any, any, any, any, any>[],
     options: OpenApiTsOptions = {},
