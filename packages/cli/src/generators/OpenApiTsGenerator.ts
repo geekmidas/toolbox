@@ -240,7 +240,10 @@ export class OpenApiTsGenerator {
 
       // Input body schema
       if (info.input?.body) {
-        const name = await this.getSchemaName(info.input.body, `${baseName}Input`);
+        const name = await this.getSchemaName(
+          info.input.body,
+          `${baseName}Input`,
+        );
         if (!generatedNames.has(name)) {
           const schema = await this.schemaToInterfaceWithDefs(
             info.input.body,
@@ -256,7 +259,10 @@ export class OpenApiTsGenerator {
 
       // Input params schema
       if (info.input?.params) {
-        const name = await this.getSchemaName(info.input.params, `${baseName}Params`);
+        const name = await this.getSchemaName(
+          info.input.params,
+          `${baseName}Params`,
+        );
         if (!generatedNames.has(name)) {
           const schema = await this.schemaToInterfaceWithDefs(
             info.input.params,
@@ -272,7 +278,10 @@ export class OpenApiTsGenerator {
 
       // Input query schema
       if (info.input?.query) {
-        const name = await this.getSchemaName(info.input.query, `${baseName}Query`);
+        const name = await this.getSchemaName(
+          info.input.query,
+          `${baseName}Query`,
+        );
         if (!generatedNames.has(name)) {
           const schema = await this.schemaToInterfaceWithDefs(
             info.input.query,
