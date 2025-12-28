@@ -117,7 +117,9 @@ export class OpenApiTsGenerator {
 
       // Get security scheme from authorizer (if available)
       // This is the preferred way - the scheme is stored directly on the authorizer
-      const securityScheme = ep.authorizer?.securityScheme as SecuritySchemeObject | undefined;
+      const securityScheme = ep.authorizer?.securityScheme as
+        | SecuritySchemeObject
+        | undefined;
 
       return {
         endpoint: `${method} ${route}`,
@@ -144,9 +146,13 @@ export class OpenApiTsGenerator {
       if (info.authorizerName && !schemes.has(info.authorizerName)) {
         // Prefer the stored security scheme (from .securitySchemes() or built-ins)
         // Fall back to inference from authorizerType for backward compatibility
-        const scheme = info.securityScheme
-          ?? (info.authorizerType
-            ? this.mapAuthorizerToSecurityScheme(info.authorizerType, info.authorizerName)
+        const scheme =
+          info.securityScheme ??
+          (info.authorizerType
+            ? this.mapAuthorizerToSecurityScheme(
+                info.authorizerType,
+                info.authorizerName,
+              )
             : null);
 
         if (scheme) {
