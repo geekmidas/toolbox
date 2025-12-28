@@ -278,7 +278,11 @@ export class EndpointFactory<
    * - 'none' to disable authorization
    */
   authorizer(
-    name: BuiltInSecuritySchemeId | keyof TSecuritySchemes | TAuthorizers[number] | 'none',
+    name:
+      | BuiltInSecuritySchemeId
+      | keyof TSecuritySchemes
+      | TAuthorizers[number]
+      | 'none',
   ): EndpointFactory<
     TServices,
     TBasePath,
