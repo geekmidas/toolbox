@@ -41,4 +41,5 @@ export const router = e
   .services([DatabaseService, AuthService])
   .database(DatabaseService)
   .auditor(AuditStorageService)
-  .publisher(EventsService);
+  .publisher(EventsService)
+  .authorizer('iam');
