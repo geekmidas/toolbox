@@ -1,5 +1,9 @@
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
-import { convertStandardSchemaToJsonSchema } from '@geekmidas/schema/conversion';
+import {
+  convertStandardSchemaToJsonSchema,
+  getSchemaMetadata,
+  StandardSchemaJsonSchema,
+} from '@geekmidas/schema/conversion';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 interface OpenApiTsOptions {
@@ -209,48 +213,107 @@ export class OpenApiTsGenerator {
     endpointInfos: EndpointInfo[],
   ): Promise<string> {
     const interfaces: string[] = [];
+    const generatedNames = new Set<string>();
+    // Collect nested schemas with $defs (from .meta({ id: 'X' }))
+    const collectedDefs = new Map<string, JsonSchema>();
 
     for (const info of endpointInfos) {
       const baseName = this.getSchemaBaseName(info);
 
       // Input body schema
       if (info.input?.body) {
-        const schema = await this.schemaToInterface(
-          info.input.body,
-          `${baseName}Input`,
-        );
-        if (schema) interfaces.push(schema);
+        const name = await this.getSchemaName(info.input.body, `${baseName}Input`);
+        if (!generatedNames.has(name)) {
+          const schema = await this.schemaToInterfaceWithDefs(
+            info.input.body,
+            name,
+            collectedDefs,
+          );
+          if (schema) {
+            interfaces.push(schema);
+            generatedNames.add(name);
+          }
+        }
       }
 
       // Input params schema
       if (info.input?.params) {
-        const schema = await this.schemaToInterface(
-          info.input.params,
-          `${baseName}Params`,
-        );
-        if (schema) interfaces.push(schema);
+        const name = await this.getSchemaName(info.input.params, `${baseName}Params`);
+        if (!generatedNames.has(name)) {
+          const schema = await this.schemaToInterfaceWithDefs(
+            info.input.params,
+            name,
+            collectedDefs,
+          );
+          if (schema) {
+            interfaces.push(schema);
+            generatedNames.add(name);
+          }
+        }
       }
 
       // Input query schema
       if (info.input?.query) {
-        const schema = await this.schemaToInterface(
-          info.input.query,
-          `${baseName}Query`,
-        );
-        if (schema) interfaces.push(schema);
+        const name = await this.getSchemaName(info.input.query, `${baseName}Query`);
+        if (!generatedNames.has(name)) {
+          const schema = await this.schemaToInterfaceWithDefs(
+            info.input.query,
+            name,
+            collectedDefs,
+          );
+          if (schema) {
+            interfaces.push(schema);
+            generatedNames.add(name);
+          }
+        }
       }
 
       // Output schema
       if (info.output) {
-        const schema = await this.schemaToInterface(
-          info.output,
-          `${baseName}Output`,
-        );
-        if (schema) interfaces.push(schema);
+        const name = await this.getSchemaName(info.output, `${baseName}Output`);
+        if (!generatedNames.has(name)) {
+          const schema = await this.schemaToInterfaceWithDefs(
+            info.output,
+            name,
+            collectedDefs,
+          );
+          if (schema) {
+            interfaces.push(schema);
+            generatedNames.add(name);
+          }
+        }
+      }
+    }
+
+    // Generate interfaces for collected $defs (nested schemas with .meta({ id: 'X' }))
+    for (const [defName, defSchema] of collectedDefs) {
+      if (!generatedNames.has(defName)) {
+        const interfaceStr = this.jsonSchemaToInterface(defSchema, defName);
+        interfaces.push(interfaceStr);
+        generatedNames.add(defName);
       }
     }
 
     return interfaces.join('\n\n');
+  }
+
+  /**
+   * Get the name for a schema, using metadata `id` if available,
+   * otherwise falling back to the provided default name.
+   */
+  private async getSchemaName(
+    schema: StandardSchemaV1,
+    defaultName: string,
+  ): Promise<string> {
+    try {
+      const metadata = await getSchemaMetadata(schema);
+      if (metadata?.id) {
+        return this.pascalCase(metadata.id);
+      }
+    } catch {
+      // Ignore metadata extraction errors
+    }
+    return defaultName;
   }
 
   private getSchemaBaseName(info: EndpointInfo): string {
@@ -283,6 +346,47 @@ export class OpenApiTsGenerator {
       if (!jsonSchema) return null;
 
       return this.jsonSchemaToInterface(jsonSchema, name);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Convert schema to interface while collecting $defs for nested schemas
+   * with .meta({ id: 'X' }).
+   */
+  private async schemaToInterfaceWithDefs(
+    schema: StandardSchemaV1,
+    name: string,
+    collectedDefs: Map<string, JsonSchema>,
+  ): Promise<string | null> {
+    try {
+      // Get raw JSON schema with $defs intact (don't use convertStandardSchemaToJsonSchema
+      // which strips $defs)
+      const vendor = schema['~standard']?.vendor;
+      if (!vendor || !(vendor in StandardSchemaJsonSchema)) {
+        return null;
+      }
+
+      const toJsonSchema =
+        StandardSchemaJsonSchema[vendor as keyof typeof StandardSchemaJsonSchema];
+      const jsonSchema = await toJsonSchema(schema);
+      if (!jsonSchema) return null;
+
+      // Extract $defs from the JSON schema (these come from .meta({ id: 'X' }))
+      if (jsonSchema.$defs && typeof jsonSchema.$defs === 'object') {
+        for (const [defName, defSchema] of Object.entries(jsonSchema.$defs)) {
+          if (!collectedDefs.has(defName)) {
+            // Remove the 'id' field from the schema as it's just metadata
+            const { id, ...schemaWithoutId } = defSchema as JsonSchema & { id?: string };
+            collectedDefs.set(defName, schemaWithoutId as JsonSchema);
+          }
+        }
+      }
+
+      // Remove $defs from the schema before converting to interface
+      const { $defs, ...schemaWithoutDefs } = jsonSchema;
+      return this.jsonSchemaToInterface(schemaWithoutDefs, name);
     } catch {
       return null;
     }
@@ -405,8 +509,11 @@ export class OpenApiTsGenerator {
       const firstWithParams = infos.find((i) => i.input?.params);
       let paramsEntry = '';
       if (firstWithParams?.input?.params) {
-        const baseName = this.getSchemaBaseName(firstWithParams);
-        paramsEntry = `\n    parameters: {\n      path: ${baseName}Params;\n    };`;
+        const paramsName = await this.getSchemaName(
+          firstWithParams.input.params,
+          `${this.getSchemaBaseName(firstWithParams)}Params`,
+        );
+        paramsEntry = `\n    parameters: {\n      path: ${paramsName};\n    };`;
       }
 
       pathEntries.push(
@@ -419,32 +526,34 @@ export class OpenApiTsGenerator {
 
   private async generateMethodDefinition(info: EndpointInfo): Promise<string> {
     const parts: string[] = [];
+    const baseName = this.getSchemaBaseName(info);
 
     // Request body
     if (info.input?.body) {
-      const baseName = this.getSchemaBaseName(info);
+      const bodyName = await this.getSchemaName(info.input.body, `${baseName}Input`);
       parts.push(`requestBody: {
       content: {
-        'application/json': ${baseName}Input;
+        'application/json': ${bodyName};
       };
     }`);
     }
 
     // Query parameters
     if (info.input?.query) {
-      const baseName = this.getSchemaBaseName(info);
+      const queryName = await this.getSchemaName(info.input.query, `${baseName}Query`);
       parts.push(`parameters: {
-      query: ${baseName}Query;
+      query: ${queryName};
     }`);
     }
 
     // Responses
-    const baseName = this.getSchemaBaseName(info);
-    const outputType = info.output ? `${baseName}Output` : 'unknown';
+    const outputName = info.output
+      ? await this.getSchemaName(info.output, `${baseName}Output`)
+      : 'unknown';
     parts.push(`responses: {
       200: {
         content: {
-          'application/json': ${outputType};
+          'application/json': ${outputName};
         };
       };
     }`);
