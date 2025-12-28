@@ -10,7 +10,7 @@ import { TypedFetcher } from './fetcher';
  * Security scheme object matching OpenAPI 3.1 specification.
  */
 export interface SecuritySchemeObject {
-  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  type: 'apiKey' | 'http' | 'mutualTLS' | 'oauth2' | 'openIdConnect';
   description?: string;
   name?: string;
   in?: 'query' | 'header' | 'cookie';

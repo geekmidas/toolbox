@@ -27,9 +27,9 @@ interface JsonSchema {
   [key: string]: unknown;
 }
 
-// Security scheme type (subset of OpenAPI 3.1)
+// Security scheme type (OpenAPI 3.1)
 interface SecuritySchemeObject {
-  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  type: 'apiKey' | 'http' | 'mutualTLS' | 'oauth2' | 'openIdConnect';
   description?: string;
   name?: string;
   in?: 'query' | 'header' | 'cookie';
