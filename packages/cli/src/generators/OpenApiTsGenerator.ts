@@ -115,12 +115,17 @@ export class OpenApiTsGenerator {
       const route = ep.route.replace(/:(\w+)/g, '{$1}');
       const method = ep.method.toUpperCase();
 
+      // Get security scheme from authorizer (if available)
+      // This is the preferred way - the scheme is stored directly on the authorizer
+      const securityScheme = ep.authorizer?.securityScheme as SecuritySchemeObject | undefined;
+
       return {
         endpoint: `${method} ${route}`,
         route,
         method,
         authorizerName: ep.authorizer?.name ?? null,
         authorizerType: ep.authorizer?.type ?? null,
+        securityScheme: securityScheme ?? null,
         input: ep.input,
         output: ep.outputSchema,
         description: ep.description,
