@@ -12,7 +12,8 @@ import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { BaseFunctionBuilder } from '../functions';
 import type { HttpMethod } from '../types';
-import type { Authorizer } from './Authorizer';
+import type { Authorizer, SecurityScheme } from './Authorizer';
+import { getSecurityScheme } from './Authorizer';
 import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type {
   AuthorizeFn,
@@ -66,6 +67,7 @@ export class EndpointBuilder<
   _authorizerName?: TAuthorizers[number];
   _actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   _audits: MappedAudit<TAuditAction, OutSchema>[] = [];
+  _customSecuritySchemes: Record<string, SecurityScheme> = {};
 
   constructor(
     readonly route: TRoute,
@@ -617,11 +619,26 @@ export class EndpointBuilder<
   > {
     // Find authorizer metadata if name is set
     // If the authorizer name is set but not in availableAuthorizers, create a simple authorizer object
-    const authorizer = this._authorizerName
-      ? (this._availableAuthorizers.find(
-          (a) => a.name === this._authorizerName,
-        ) ?? { name: this._authorizerName })
-      : undefined;
+    let authorizer: Authorizer | undefined;
+    if (this._authorizerName) {
+      const existingAuthorizer = this._availableAuthorizers.find(
+        (a) => a.name === this._authorizerName,
+      );
+
+      if (existingAuthorizer) {
+        authorizer = existingAuthorizer;
+      } else {
+        // Create authorizer with security scheme if available (built-in or custom)
+        const securityScheme = getSecurityScheme(
+          this._authorizerName as string,
+          this._customSecuritySchemes,
+        );
+        authorizer = {
+          name: this._authorizerName as string,
+          securityScheme,
+        };
+      }
+    }
 
     return new Endpoint({
       fn,

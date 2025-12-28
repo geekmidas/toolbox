@@ -9,7 +9,11 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import type { HttpMethod } from '../types';
-import type { Authorizer } from './Authorizer';
+import type {
+  Authorizer,
+  BuiltInSecuritySchemeId,
+  SecurityScheme,
+} from './Authorizer';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { ActorExtractor } from './audit';
@@ -32,6 +36,10 @@ export class EndpointFactory<
   > = ExtractStorageAuditAction<NonNullable<TAuditStorage>>,
   TDatabase = undefined,
   TDatabaseServiceName extends string = string,
+  TSecuritySchemes extends Record<string, SecurityScheme> = Record<
+    string,
+    SecurityScheme
+  >,
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -56,6 +64,7 @@ export class EndpointFactory<
     | Service<TDatabaseServiceName, TDatabase>
     | undefined;
   private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
+  private customSecuritySchemes: TSecuritySchemes = {} as TSecuritySchemes;
 
   constructor({
     basePath,
@@ -70,6 +79,7 @@ export class EndpointFactory<
     defaultAuditorStorage,
     defaultDatabaseService,
     defaultActorExtractor,
+    customSecuritySchemes = {} as TSecuritySchemes,
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
@@ -81,7 +91,8 @@ export class EndpointFactory<
     TAuditStorage,
     TAuditStorageServiceName,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -99,6 +110,7 @@ export class EndpointFactory<
     this.defaultAuditorStorage = defaultAuditorStorage;
     this.defaultDatabaseService = defaultDatabaseService;
     this.defaultActorExtractor = defaultActorExtractor;
+    this.customSecuritySchemes = customSecuritySchemes;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -153,7 +165,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     const authorizerConfigs = authorizers.map((name) => ({
       name,
@@ -170,7 +183,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -183,16 +197,28 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
   /**
-   * Set the default authorizer for all endpoints created from this factory.
-   * Individual endpoints can override this by calling `.authorizer()` on the builder.
-   * Use `'none'` to explicitly disable authorization for all endpoints.
+   * Define custom security schemes for this factory.
+   * These extend the built-in schemes (jwt, bearer, apiKey, oauth2, oidc).
+   *
+   * @example
+   * ```typescript
+   * const router = e.securitySchemes({
+   *   awsIamSigV4: {
+   *     type: 'apiKey',
+   *     in: 'header',
+   *     name: 'Authorization',
+   *     'x-amazon-apigateway-authtype': 'awsSigv4',
+   *   },
+   * });
+   * ```
    */
-  authorizer(
-    name: TAuthorizers[number] | 'none',
+  securitySchemes<T extends Record<string, SecurityScheme>>(
+    schemes: T,
   ): EndpointFactory<
     TServices,
     TBasePath,
@@ -205,9 +231,70 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes & T
   > {
-    // Validate that the authorizer exists in available authorizers
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName,
+      TSecuritySchemes & T
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: {
+        ...this.customSecuritySchemes,
+        ...schemes,
+      } as TSecuritySchemes & T,
+    });
+  }
+
+  /**
+   * Set the default authorizer for all endpoints created from this factory.
+   * Individual endpoints can override this by calling `.authorizer()` on the builder.
+   * Use `'none'` to explicitly disable authorization for all endpoints.
+   *
+   * Accepts:
+   * - Built-in security scheme names: 'jwt', 'bearer', 'apiKey', 'oauth2', 'oidc'
+   * - Custom security scheme names defined via `.securitySchemes()`
+   * - 'none' to disable authorization
+   */
+  authorizer(
+    name: BuiltInSecuritySchemeId | keyof TSecuritySchemes | TAuthorizers[number] | 'none',
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName,
+    TSecuritySchemes
+  > {
+    // Validate that the authorizer exists in available authorizers (if authorizers() was called)
     if (name !== 'none' && this.availableAuthorizers.length > 0) {
       const authorizerExists = this.availableAuthorizers.some(
         (a) => a.name === name,
@@ -234,7 +321,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -243,10 +331,11 @@ export class EndpointFactory<
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
-      defaultAuthorizerName: name === 'none' ? undefined : name,
+      defaultAuthorizerName: name === 'none' ? undefined : (name as TAuthorizers[number]),
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -265,7 +354,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
     return new EndpointFactory<
@@ -280,7 +370,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: newBasePath,
@@ -293,6 +384,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -311,7 +403,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -325,7 +418,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -338,6 +432,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -356,7 +451,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       [...S, ...TServices],
@@ -370,7 +466,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
@@ -383,6 +480,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -400,7 +498,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -414,7 +513,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -441,6 +541,7 @@ export class EndpointFactory<
         TSession,
         L
       >,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -461,7 +562,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -475,7 +577,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -488,6 +591,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -505,7 +609,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -519,7 +624,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -541,6 +647,7 @@ export class EndpointFactory<
         T,
         TLogger
       >,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -562,7 +669,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     T,
-    TName
+    TName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -576,7 +684,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       T,
-      TName
+      TName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -592,6 +701,7 @@ export class EndpointFactory<
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: service,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -614,7 +724,8 @@ export class EndpointFactory<
     TName,
     ExtractStorageAuditAction<T>,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -628,7 +739,8 @@ export class EndpointFactory<
       TName,
       ExtractStorageAuditAction<T>,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -646,6 +758,7 @@ export class EndpointFactory<
         TSession,
         TLogger
       >,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -667,7 +780,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TAuditAction,
     TDatabase,
-    TDatabaseServiceName
+    TDatabaseServiceName,
+    TSecuritySchemes
   > {
     return new EndpointFactory<
       TServices,
@@ -681,7 +795,8 @@ export class EndpointFactory<
       TAuditStorageServiceName,
       TAuditAction,
       TDatabase,
-      TDatabaseServiceName
+      TDatabaseServiceName,
+      TSecuritySchemes
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -694,6 +809,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: extractor,
+      customSecuritySchemes: this.customSecuritySchemes,
     });
   }
 
@@ -782,6 +898,9 @@ export class EndpointFactory<
       builder._actorExtractor = this.defaultActorExtractor;
     }
 
+    // Set custom security schemes
+    builder._customSecuritySchemes = this.customSecuritySchemes;
+
     return builder;
   }
 
@@ -849,6 +968,10 @@ export interface EndpointFactoryOptions<
   TAuditStorageServiceName extends string = string,
   TDatabase = undefined,
   TDatabaseServiceName extends string = string,
+  TSecuritySchemes extends Record<string, SecurityScheme> = Record<
+    string,
+    SecurityScheme
+  >,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;
@@ -862,6 +985,7 @@ export interface EndpointFactoryOptions<
   defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
   defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
   defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
+  customSecuritySchemes?: TSecuritySchemes;
 }
 
 export const e = new EndpointFactory();
