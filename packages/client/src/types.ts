@@ -136,35 +136,34 @@ export type ExtractEndpointConfig<
  * - `body` is required if the endpoint has a request body
  * - `query` and `headers` are always optional
  */
-export type FilteredRequestConfig<Paths, T extends EndpointString> =
-  T extends `${infer Method} ${infer Route}`
-    ? Route extends OpenAPIRoutes<Paths>
-      ? Lowercase<Method> extends ExtractMethod<Paths, Route>
-        ? BuildRequestConfig<
-            ExtractPathParams<Paths, Route>,
-            ExtractQueryParams<Paths, Route, Lowercase<Method>>,
-            ExtractRequestBody<Paths, Route, Lowercase<Method>>
-          >
-        : never
+export type FilteredRequestConfig<
+  Paths,
+  T extends EndpointString,
+> = T extends `${infer Method} ${infer Route}`
+  ? Route extends OpenAPIRoutes<Paths>
+    ? Lowercase<Method> extends ExtractMethod<Paths, Route>
+      ? BuildRequestConfig<
+          ExtractPathParams<Paths, Route>,
+          ExtractQueryParams<Paths, Route, Lowercase<Method>>,
+          ExtractRequestBody<Paths, Route, Lowercase<Method>>
+        >
       : never
-    : never;
+    : never
+  : never;
 
 /**
  * Helper to build request config with correct required/optional fields
  */
-type BuildRequestConfig<
-  TParams,
-  TQuery,
-  TBody,
-> = SimplifyIntersection<
+type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
   // params: required if not never
   (TParams extends never ? {} : { params: TParams }) &
-  // body: required if not never
-  (TBody extends never ? {} : { body: TBody }) &
-  // query: optional if not never
-  (TQuery extends never ? {} : { query?: TQuery }) &
-  // headers: always optional
-  { headers?: Record<string, string> }
+    // body: required if not never
+    (TBody extends never ? {} : { body: TBody }) &
+    // query: optional if not never
+    (TQuery extends never
+      ? {}
+      : { query?: TQuery }) & // headers: always optional
+    { headers?: Record<string, string> }
 >;
 
 /**
