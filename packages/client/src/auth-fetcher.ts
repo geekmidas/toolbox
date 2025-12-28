@@ -101,9 +101,20 @@ export interface AuthFetcherOptions<
   securitySchemes: SecuritySchemes;
 
   /**
-   * Auth strategies for each security scheme.
+   * Auth strategies for security schemes that are actually used.
+   * Only schemes referenced in endpointAuth are required.
+   *
+   * @example
+   * ```typescript
+   * // If endpointAuth has: { 'GET /users': 'jwt', 'POST /data': 'iam', 'GET /public': null }
+   * // Then authStrategies must include strategies for 'jwt' and 'iam'
+   * authStrategies: {
+   *   jwt: { type: 'bearer', tokenProvider },
+   *   iam: { type: 'iam', signer: awsSigner },
+   * }
+   * ```
    */
-  authStrategies: Partial<Record<keyof SecuritySchemes, AuthStrategy>>;
+  authStrategies: Record<UsedSecuritySchemes<EndpointAuth>, AuthStrategy>;
 
   /**
    * Optional request interceptor (runs after auth headers are added).
