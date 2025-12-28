@@ -719,7 +719,7 @@ export function createApi(options: CreateApiOptions) {
 // ============================================================
 
 interface SecuritySchemeObject {
-  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  type: 'apiKey' | 'http' | 'mutualTLS' | 'oauth2' | 'openIdConnect';
   description?: string;
   name?: string;
   in?: 'query' | 'header' | 'cookie';
