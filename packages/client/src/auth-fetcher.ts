@@ -2,6 +2,7 @@ import type {
   ExtractEndpointResponse,
   FetcherOptions,
   FilteredRequestConfig,
+  TypedApiFunction,
   TypedEndpoint,
 } from './types';
 import { TypedFetcher } from './fetcher';
@@ -20,6 +21,14 @@ export interface SecuritySchemeObject {
   openIdConnectUrl?: string;
   [key: string]: unknown;
 }
+
+/**
+ * Extract all non-null security scheme IDs that are actually used in the API.
+ * This gives us the union of scheme names that endpoints require.
+ */
+export type UsedSecuritySchemes<
+  EndpointAuth extends Record<string, string | null>,
+> = NonNullable<EndpointAuth[keyof EndpointAuth]>;
 
 /**
  * Interface for token storage and retrieval.
@@ -71,6 +80,9 @@ export type AuthStrategy =
 
 /**
  * Options for creating an auth-aware fetcher.
+ *
+ * @template EndpointAuth - Map of endpoint strings to their auth scheme (or null for public)
+ * @template SecuritySchemes - Available security scheme definitions
  */
 export interface AuthFetcherOptions<
   EndpointAuth extends Record<string, string | null>,
@@ -139,9 +151,9 @@ export function createAuthAwareFetcher<
   >,
 >(
   options: AuthFetcherOptions<EndpointAuth, SecuritySchemes> & {
-    baseURL?: string;
+    baseURL: string;
   },
-) {
+): TypedApiFunction<Paths> {
   const {
     endpointAuth,
     securitySchemes,
@@ -156,7 +168,7 @@ export function createAuthAwareFetcher<
     onRequest: userOnRequest,
   });
 
-  return async <T extends TypedEndpoint<Paths>>(
+  const fetcher = async <T extends TypedEndpoint<Paths>>(
     endpoint: T,
     config?: FilteredRequestConfig<Paths, T>,
   ): Promise<ExtractEndpointResponse<Paths, T>> => {
@@ -169,7 +181,10 @@ export function createAuthAwareFetcher<
 
     if (schemeName) {
       const scheme = securitySchemes[schemeName as keyof SecuritySchemes];
-      const strategy = authStrategies[schemeName as keyof SecuritySchemes];
+      // Since authStrategies is now required to have all used schemes,
+      // we can safely access it - TypeScript ensures the strategy exists
+      const strategy =
+        authStrategies[schemeName as UsedSecuritySchemes<EndpointAuth>];
 
       if (strategy) {
         authHeaders = await resolveAuthHeaders(strategy, scheme);
@@ -192,6 +207,8 @@ export function createAuthAwareFetcher<
 
     return baseFetcher.request(endpoint, mergedConfig);
   };
+
+  return fetcher as TypedApiFunction<Paths>;
 }
 
 /**
