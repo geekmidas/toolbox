@@ -45,7 +45,10 @@ interface EndpointInfo {
   route: string;
   method: string;
   authorizerName: string | null;
+  /** @deprecated Use securityScheme instead */
   authorizerType: string | null;
+  /** The OpenAPI security scheme definition for this endpoint's authorizer */
+  securityScheme: SecuritySchemeObject | null;
   input?: {
     body?: StandardSchemaV1;
     query?: StandardSchemaV1;
