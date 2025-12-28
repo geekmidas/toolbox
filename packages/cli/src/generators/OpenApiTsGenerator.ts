@@ -396,7 +396,9 @@ export class OpenApiTsGenerator {
       }
 
       const toJsonSchema =
-        StandardSchemaJsonSchema[vendor as keyof typeof StandardSchemaJsonSchema];
+        StandardSchemaJsonSchema[
+          vendor as keyof typeof StandardSchemaJsonSchema
+        ];
       const jsonSchema = await toJsonSchema(schema);
       if (!jsonSchema) return null;
 
@@ -405,7 +407,9 @@ export class OpenApiTsGenerator {
         for (const [defName, defSchema] of Object.entries(jsonSchema.$defs)) {
           if (!collectedDefs.has(defName)) {
             // Remove the 'id' field from the schema as it's just metadata
-            const { id, ...schemaWithoutId } = defSchema as JsonSchema & { id?: string };
+            const { id, ...schemaWithoutId } = defSchema as JsonSchema & {
+              id?: string;
+            };
             collectedDefs.set(defName, schemaWithoutId as JsonSchema);
           }
         }
