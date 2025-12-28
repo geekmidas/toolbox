@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { router } from './router';
 
+export const UserSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+  })
+  .meta({ id: 'User' });
 /**
  * Get all users
  */
@@ -8,13 +15,7 @@ export const getUsers = router
   .get('/users')
   .output(
     z.object({
-      users: z.array(
-        z.object({
-          id: z.string(),
-          name: z.string(),
-          email: z.string().email(),
-        }),
-      ),
+      users: UserSchema.array(),
     }),
   )
   .handle(async () => {
@@ -39,14 +40,7 @@ export const createUser = router
       email: z.string().email(),
     }),
   )
-  .output(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      email: z.string().email(),
-      createdAt: z.string(),
-    }),
-  )
+  .output(UserSchema)
   .event({
     type: 'user.created',
     payload: (r) => ({
@@ -72,13 +66,7 @@ export const createUser = router
 export const getUser = router
   .get('/users/:id')
   .params(z.object({ id: z.string().min(1) }))
-  .output(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      email: z.string().email(),
-    }),
-  )
+  .output(UserSchema)
   .handle(async ({ params }) => {
     // Mock data for example
     return {
