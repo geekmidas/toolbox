@@ -561,7 +561,10 @@ export class OpenApiTsGenerator {
 
     // Request body
     if (info.input?.body) {
-      const bodyName = await this.getSchemaName(info.input.body, `${baseName}Input`);
+      const bodyName = await this.getSchemaName(
+        info.input.body,
+        `${baseName}Input`,
+      );
       parts.push(`requestBody: {
       content: {
         'application/json': ${bodyName};
@@ -571,7 +574,10 @@ export class OpenApiTsGenerator {
 
     // Query parameters
     if (info.input?.query) {
-      const queryName = await this.getSchemaName(info.input.query, `${baseName}Query`);
+      const queryName = await this.getSchemaName(
+        info.input.query,
+        `${baseName}Query`,
+      );
       parts.push(`parameters: {
       query: ${queryName};
     }`);
