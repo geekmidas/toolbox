@@ -335,7 +335,8 @@ export class EndpointFactory<
       defaultSessionExtractor: this.defaultSessionExtractor,
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
-      defaultAuthorizerName: name === 'none' ? undefined : (name as TAuthorizers[number]),
+      defaultAuthorizerName:
+        name === 'none' ? undefined : (name as TAuthorizers[number]),
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
