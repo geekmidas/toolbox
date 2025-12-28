@@ -174,18 +174,20 @@ type SimplifyIntersection<T> = { [K in keyof T]: T[K] };
 /**
  * Check if the config object is required (has any required fields)
  */
-export type IsConfigRequired<Paths, T extends EndpointString> =
-  T extends `${infer Method} ${infer Route}`
-    ? Route extends OpenAPIRoutes<Paths>
-      ? Lowercase<Method> extends ExtractMethod<Paths, Route>
-        ? ExtractPathParams<Paths, Route> extends never
-          ? ExtractRequestBody<Paths, Route, Lowercase<Method>> extends never
-            ? false
-            : true
+export type IsConfigRequired<
+  Paths,
+  T extends EndpointString,
+> = T extends `${infer Method} ${infer Route}`
+  ? Route extends OpenAPIRoutes<Paths>
+    ? Lowercase<Method> extends ExtractMethod<Paths, Route>
+      ? ExtractPathParams<Paths, Route> extends never
+        ? ExtractRequestBody<Paths, Route, Lowercase<Method>> extends never
+          ? false
           : true
-        : false
+        : true
       : false
-    : false;
+    : false
+  : false;
 
 /**
  * Typed function signature for the API client.
