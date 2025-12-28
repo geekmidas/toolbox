@@ -141,15 +141,19 @@ export class OpenApiTsGenerator {
     const schemes = new Map<string, SecuritySchemeInfo>();
 
     for (const info of endpointInfos) {
-      if (info.authorizerName && info.authorizerType) {
-        if (!schemes.has(info.authorizerName)) {
+      if (info.authorizerName && !schemes.has(info.authorizerName)) {
+        // Prefer the stored security scheme (from .securitySchemes() or built-ins)
+        // Fall back to inference from authorizerType for backward compatibility
+        const scheme = info.securityScheme
+          ?? (info.authorizerType
+            ? this.mapAuthorizerToSecurityScheme(info.authorizerType, info.authorizerName)
+            : null);
+
+        if (scheme) {
           schemes.set(info.authorizerName, {
             name: info.authorizerName,
-            type: info.authorizerType,
-            scheme: this.mapAuthorizerToSecurityScheme(
-              info.authorizerType,
-              info.authorizerName,
-            ),
+            type: scheme.type,
+            scheme,
           });
         }
       }
