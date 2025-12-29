@@ -5,6 +5,8 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 ## Features
 
 - **Multi-Provider Support**: Generate handlers for AWS Lambda (API Gateway v1/v2) and server applications
+- **Development Server**: Hot-reload development server with file watching
+- **Telescope Integration**: Laravel-style debugging dashboard for inspecting requests, logs, and exceptions
 - **OpenAPI Generation**: Auto-generate OpenAPI 3.0 specifications from your endpoints
 - **Type-Safe Configuration**: Configuration with TypeScript support and validation
 - **Endpoint Auto-Discovery**: Automatically find and load endpoints from your codebase
@@ -51,6 +53,12 @@ const config: GkmConfig = {
 
   // Logger configuration
   logger: './src/logger.ts#logger',
+
+  // Optional: Telescope debugging dashboard (enabled by default in dev)
+  telescope: {
+    enabled: true,
+    path: '/__telescope',
+  },
 };
 
 export default config;
