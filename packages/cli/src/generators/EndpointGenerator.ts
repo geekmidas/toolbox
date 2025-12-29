@@ -249,7 +249,7 @@ export class EndpointGenerator extends ConstructGenerator<
         any
       >
     >[],
-    context: BuildContext,
+    _context: BuildContext,
   ): Promise<string> {
     const endpointsFileName = 'endpoints.ts';
     const endpointsPath = join(outputDir, endpointsFileName);
@@ -335,9 +335,44 @@ export function setupEndpoints(
 
     // Generate telescope imports and setup if enabled
     const telescopeEnabled = context.telescope?.enabled;
+    const telescopeWebSocketEnabled = context.telescope?.websocket;
     const telescopeImports = telescopeEnabled
       ? `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI, setupWebSocket } from '@geekmidas/telescope/hono';`
+import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`
+      : '';
+
+    const telescopeWebSocketSetupCode = telescopeWebSocketEnabled
+      ? `
+  // Setup WebSocket for real-time telescope updates
+  try {
+    const { createNodeWebSocket } = await import('@hono/node-ws');
+    const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: honoApp });
+    // Add WebSocket route directly to main app (sub-app routes don't support WS upgrade)
+    honoApp.get('${context.telescope!.path}/ws', upgradeWebSocket(() => ({
+      onOpen: (_event: Event, ws: any) => {
+        telescope.addWsClient(ws);
+      },
+      onClose: (_event: Event, ws: any) => {
+        telescope.removeWsClient(ws);
+      },
+      onMessage: (event: MessageEvent, ws: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
+          }
+        } catch {
+          // Ignore invalid messages
+        }
+      },
+    })));
+    // Store injectWebSocket for server entry to call after serve()
+    (honoApp as any).__injectWebSocket = injectWebSocket;
+    logger.info('Telescope WebSocket enabled');
+  } catch (e) {
+    logger.warn({ error: e }, 'WebSocket support not available - install @hono/node-ws for real-time updates');
+  }
+`
       : '';
 
     const telescopeSetup = telescopeEnabled
@@ -347,31 +382,17 @@ import { createMiddleware, createUI, setupWebSocket } from '@geekmidas/telescope
   const telescope = new Telescope({
     enabled: true,
     path: '${context.telescope!.path}',
-    ignore: ${JSON.stringify(context.telescope!.ignore)},
+    ignorePatterns: ${JSON.stringify(context.telescope!.ignore)},
     recordBody: ${context.telescope!.recordBody},
     storage: telescopeStorage,
   });
-
+${telescopeWebSocketSetupCode}
   // Add telescope middleware (before endpoints to capture all requests)
   honoApp.use('*', createMiddleware(telescope));
 
   // Mount telescope UI
   const telescopeUI = createUI(telescope);
   honoApp.route('${context.telescope!.path}', telescopeUI);
-`
-      : '';
-
-    const telescopeWebSocketSetup = telescopeEnabled
-      ? `
-      // Setup WebSocket for real-time telescope updates
-      try {
-        const { createNodeWebSocket } = await import('@hono/node-ws');
-        const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: honoApp });
-        setupWebSocket(honoApp.basePath('${context.telescope!.path}'), telescope, upgradeWebSocket);
-        logger.info('Telescope WebSocket enabled');
-      } catch {
-        logger.warn('WebSocket support not available - real-time updates disabled');
-      }
 `
       : '';
 
@@ -409,7 +430,7 @@ export interface ServerApp {
  * // With Bun
  * import { createApp } from './.gkm/server/app.js';
  *
- * const { app, start } = createApp();
+ * const { app, start } = await createApp();
  *
  * await start({
  *   port: 3000,
@@ -423,7 +444,7 @@ export interface ServerApp {
  * import { serve } from '@hono/node-server';
  * import { createApp } from './.gkm/server/app.js';
  *
- * const { app, start } = createApp();
+ * const { app, start } = await createApp();
  *
  * await start({
  *   port: 3000,
@@ -432,7 +453,7 @@ export interface ServerApp {
  *   }
  * });
  */
-export function createApp(app?: HonoType, enableOpenApi: boolean = true): ServerApp {
+export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
 ${telescopeSetup}
   // Setup HTTP endpoints
@@ -455,7 +476,7 @@ ${telescopeSetup}
       await setupSubscribers(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
       });
-${telescopeWebSocketSetup}
+
       logger.info({ port }, 'Starting server');
 
       // Start HTTP server using provided serve function

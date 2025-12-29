@@ -382,6 +382,22 @@ class DevServer {
       join(dirname(serverPath), 'app.js'),
     );
 
+    const serveCode = this.runtime === 'bun'
+      ? `Bun.serve({
+      port,
+      fetch: app.fetch,
+    });`
+      : `const { serve } = await import('@hono/node-server');
+    const server = serve({
+      fetch: app.fetch,
+      port,
+    });
+    // Inject WebSocket support if available
+    const injectWs = (app as any).__injectWebSocket;
+    if (injectWs) {
+      injectWs(server);
+    }`;
+
     const content = `#!/usr/bin/env node
 /**
  * Development server entry point
@@ -393,27 +409,14 @@ const port = process.argv.includes('--port')
   ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
   : 3000;
 
-const { app, start } = createApp(undefined, ${this.enableOpenApi});
+// createApp is async to support optional WebSocket setup
+const { app, start } = await createApp(undefined, ${this.enableOpenApi});
 
 // Start the server
 start({
   port,
   serve: async (app, port) => {
-    // Detect runtime and use appropriate server
-    if (typeof Bun !== 'undefined') {
-      // Bun runtime
-      Bun.serve({
-        port,
-        fetch: app.fetch,
-      });
-    } else {
-      // Node.js runtime with @hono/node-server
-      const { serve } = await import('@hono/node-server');
-      serve({
-        fetch: app.fetch,
-        port,
-      });
-    }
+    ${serveCode}
   },
 }).catch((error) => {
   console.error('Failed to start server:', error);
