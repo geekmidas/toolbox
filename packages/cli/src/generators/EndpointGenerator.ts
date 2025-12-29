@@ -333,6 +333,48 @@ export function setupEndpoints(
       context.envParserPath,
     );
 
+    // Generate telescope imports and setup if enabled
+    const telescopeEnabled = context.telescope?.enabled;
+    const telescopeImports = telescopeEnabled
+      ? `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createMiddleware, createUI, setupWebSocket } from '@geekmidas/telescope/hono';`
+      : '';
+
+    const telescopeSetup = telescopeEnabled
+      ? `
+  // Setup Telescope for debugging/monitoring
+  const telescopeStorage = new InMemoryStorage({ maxEntries: ${context.telescope!.maxEntries} });
+  const telescope = new Telescope({
+    enabled: true,
+    path: '${context.telescope!.path}',
+    ignore: ${JSON.stringify(context.telescope!.ignore)},
+    recordBody: ${context.telescope!.recordBody},
+    storage: telescopeStorage,
+  });
+
+  // Add telescope middleware (before endpoints to capture all requests)
+  honoApp.use('*', createMiddleware(telescope));
+
+  // Mount telescope UI
+  const telescopeUI = createUI(telescope);
+  honoApp.route('${context.telescope!.path}', telescopeUI);
+`
+      : '';
+
+    const telescopeWebSocketSetup = telescopeEnabled
+      ? `
+      // Setup WebSocket for real-time telescope updates
+      try {
+        const { createNodeWebSocket } = await import('@hono/node-ws');
+        const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: honoApp });
+        setupWebSocket(honoApp.basePath('${context.telescope!.path}'), telescope, upgradeWebSocket);
+        logger.info('Telescope WebSocket enabled');
+      } catch {
+        logger.warn('WebSocket support not available - real-time updates disabled');
+      }
+`
+      : '';
+
     const content = `/**
  * Generated server application
  *
