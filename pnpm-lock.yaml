@@ -93,6 +93,9 @@ importers:
       '@hono/node-server':
         specifier: ~1.19.5
         version: 1.19.5(hono@4.8.2)
+      '@hono/node-ws':
+        specifier: ^1.0.0
+        version: 1.2.0(@hono/node-server@1.19.5(hono@4.8.2))(hono@4.8.2)
       '@hono/swagger-ui':
         specifier: ~0.5.2
         version: 0.5.2(hono@4.8.2)
@@ -2125,6 +2128,13 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
+
+  '@hono/node-ws@1.2.0':
+    resolution: {integrity: sha512-OBPQ8OSHBw29mj00wT/xGYtB6HY54j0fNSdVZ7gZM3TUeq0So11GXaWtFf1xWxQNfumKIsj0wRuLKWfVsO5GgQ==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      '@hono/node-server': ^1.11.1
+      hono: ^4.6.0
 
   '@hono/swagger-ui@0.5.2':
     resolution: {integrity: sha512-7wxLKdb8h7JTdZ+K8DJNE3KXQMIpJejkBTQjrYlUWF28Z1PGOKw6kUykARe5NTfueIN37jbyG/sBYsbzXzG53A==}
@@ -10148,6 +10158,15 @@ snapshots:
     dependencies:
       hono: 4.8.2
 
+  '@hono/node-ws@1.2.0(@hono/node-server@1.19.5(hono@4.8.2))(hono@4.8.2)':
+    dependencies:
+      '@hono/node-server': 1.19.5(hono@4.8.2)
+      hono: 4.8.2
+      ws: 8.18.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@hono/swagger-ui@0.5.2(hono@4.8.2)':
     dependencies:
       hono: 4.8.2
@@ -10817,7 +10836,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
