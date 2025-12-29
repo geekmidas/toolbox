@@ -84,7 +84,6 @@ export function getIndexHtml(): string {
 `;
 
   writeFileSync(outputPath, output);
-  console.log(`Embedded ${assets.length} UI assets into ${outputPath}`);
 } catch (error) {
   console.error('Error embedding UI assets:', error);
   process.exit(1);
