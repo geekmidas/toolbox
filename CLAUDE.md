@@ -497,6 +497,60 @@ const uploadUrl = await storage.getUploadURL({
 });
 ```
 
+#### @geekmidas/telescope
+Laravel Telescope-style debugging and monitoring dashboard for development.
+
+**Key Features:**
+- Request recording with headers, body, and response
+- Exception tracking with stack traces and source context
+- Log aggregation with context
+- Real-time WebSocket updates
+- In-memory storage for development
+- Framework-agnostic core with Hono adapter
+- Pino transport and ConsoleLogger integration
+
+**Usage Pattern:**
+```typescript
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createMiddleware, createUI } from '@geekmidas/telescope/server/hono';
+import { Hono } from 'hono';
+
+const telescope = new Telescope({
+  storage: new InMemoryStorage(),
+  enabled: process.env.NODE_ENV === 'development',
+});
+
+const app = new Hono();
+
+// Add middleware to capture requests
+app.use('*', createMiddleware(telescope));
+
+// Mount the dashboard
+app.route('/__telescope', createUI(telescope));
+
+// Your routes
+app.get('/users', (c) => c.json({ users: [] }));
+
+// Access dashboard at http://localhost:3000/__telescope
+```
+
+**With `gkm dev`:**
+```typescript
+// gkm.config.ts
+export default {
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+  telescope: {
+    enabled: true,
+    path: '/__telescope',
+  },
+};
+
+// Run: gkm dev
+// Telescope available at http://localhost:3000/__telescope
+```
+
 #### @geekmidas/emailkit
 Type-safe email client with React template support.
 
@@ -1179,6 +1233,13 @@ Each package uses subpath exports for better tree-shaking:
 ### @geekmidas/storage
 - `/` - Core storage interface
 - `/aws` - AWS S3 implementation
+
+### @geekmidas/telescope
+- `/` - Core Telescope class and InMemoryStorage
+- `/server/hono` - Hono middleware, UI routes, and WebSocket setup
+- `/storage/memory` - InMemoryStorage implementation
+- `/logger/pino` - Pino transport for log capture
+- `/logger/console` - TelescopeLogger wrapper for ConsoleLogger
 
 ### @geekmidas/testkit
 - `/kysely` - Kysely database factories
