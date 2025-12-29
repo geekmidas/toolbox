@@ -361,6 +361,20 @@ interface GkmConfig {
   routes: string | string[];     // Glob patterns for endpoint files
   envParser: string;             // Path to environment parser
   logger: string;                // Path to logger configuration
+  functions?: string | string[]; // Glob patterns for function files
+  crons?: string | string[];     // Glob patterns for cron files
+  subscribers?: string | string[];// Glob patterns for subscriber files
+  runtime?: 'node' | 'bun';      // Runtime environment (default: 'node')
+  telescope?: boolean | TelescopeConfig; // Telescope debugging config
+}
+
+interface TelescopeConfig {
+  enabled?: boolean;       // Enable/disable (default: true in dev)
+  path?: string;           // Dashboard path (default: '/__telescope')
+  ignore?: string[];       // URL patterns to ignore
+  recordBody?: boolean;    // Record request/response bodies (default: true)
+  maxEntries?: number;     // Max entries to keep (default: 1000)
+  websocket?: boolean;     // Enable real-time updates (default: true)
 }
 ```
 
