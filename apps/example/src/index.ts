@@ -18,6 +18,9 @@ import logger from './config/logger.js';
 
 const { app, start } = createApp();
 
+// Telescope is automatically configured via gkm.config.ts telescope option
+// Dashboard available at /__telescope
+
 app.get('/ui', swaggerUI({ url: '/docs' }));
 
 // Start the server with Bun runtime
@@ -30,9 +33,10 @@ await start({
         fetch: app.fetch,
       },
       ({ port }) => {
-        logger.info(`🚀 Server started on http://localhost:${port}`);
+        logger.info(`Server started on http://localhost:${port}`);
+        logger.info(`OpenAPI docs available at http://localhost:${port}/docs`);
         logger.info(
-          `📚 OpenAPI docs available at http://localhost:${port}/docs`,
+          `Telescope dashboard available at http://localhost:${port}/__telescope`,
         );
       },
     );
