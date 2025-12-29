@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from './api';
-import { RequestDetail } from './components/RequestDetail';
 import { ExceptionDetail } from './components/ExceptionDetail';
 import { LogDetail } from './components/LogDetail';
+import { RequestDetail } from './components/RequestDetail';
 import type {
   ExceptionEntry,
   LogEntry,

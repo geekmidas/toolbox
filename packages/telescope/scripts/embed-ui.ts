@@ -3,8 +3,8 @@
  * Script to embed the built UI assets into a TypeScript file.
  * This allows the telescope package to serve the UI without external files.
  */
-import { readFileSync, writeFileSync, readdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

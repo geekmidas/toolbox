@@ -1,6 +1,6 @@
-import type { Plugin } from 'vite';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import type { Plugin } from 'vite';
 
 interface GkmConfig {
   server?: boolean | { port?: number };
