@@ -330,6 +330,11 @@ class DevServer {
           `📚 API Docs available at http://localhost:${this.actualPort}/docs`,
         );
       }
+      if (this.telescope) {
+        logger.log(
+          `🔭 Telescope available at http://localhost:${this.actualPort}${this.telescope.path}`,
+        );
+      }
     }
   }
 
