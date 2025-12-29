@@ -26,6 +26,11 @@ export interface ProcessedCron {
 
 export interface NormalizedTelescopeConfig {
   enabled: boolean;
+  /** Path to user's telescope module (if provided) */
+  telescopePath?: string;
+  /** Import pattern for telescope (e.g., '{ telescope }' or 'telescope') */
+  telescopeImportPattern?: string;
+  /** UI path for telescope dashboard */
   path: string;
   ignore: string[];
   recordBody: boolean;

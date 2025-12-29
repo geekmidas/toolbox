@@ -66,8 +66,14 @@ export interface GkmConfig {
   envParser: string;
   logger: string;
   providers?: ProvidersConfig;
-  /** Telescope configuration for debugging/monitoring */
-  telescope?: boolean | TelescopeConfig;
+  /**
+   * Telescope configuration for debugging/monitoring.
+   * Can be:
+   * - A string path to a module that exports a Telescope instance (recommended)
+   * - A boolean to enable/disable with defaults
+   * - A TelescopeConfig object for inline configuration
+   */
+  telescope?: string | boolean | TelescopeConfig;
   /** Runtime to use for dev server (default: 'node') */
   runtime?: Runtime;
 }

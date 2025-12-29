@@ -79,6 +79,27 @@ export function normalizeTelescopeConfig(
     return undefined;
   }
 
+  // Handle string path (e.g., './src/config/telescope')
+  if (typeof config === 'string') {
+    const [telescopePath, telescopeName] = config.split('#');
+    const telescopeImportPattern = !telescopeName
+      ? 'telescope'
+      : telescopeName === 'telescope'
+        ? '{ telescope }'
+        : `{ ${telescopeName} as telescope }`;
+
+    return {
+      enabled: true,
+      telescopePath,
+      telescopeImportPattern,
+      path: '/__telescope',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+      websocket: true,
+    };
+  }
+
   // Default to enabled in development mode
   const isEnabled =
     config === true || config === undefined || config.enabled !== false;
