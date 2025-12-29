@@ -54,41 +54,43 @@ import { Kysely } from 'kysely';
 // Define your database schema
 interface Database {
   users: {
-    id: number;
+    id: string;
     name: string;
     email: string;
     createdAt: Date;
   };
   posts: {
-    id: number;
+    id: string;
     title: string;
     content: string;
-    userId: number;
-    publishedAt: Date | null;
+    userId: string;
   };
 }
 
 // Create builders for your tables
-const userBuilder = KyselyFactory.createBuilder<Database, 'users'>({
-  table: 'users',
-  defaults: async () => ({
-    name: 'John Doe',
-    email: `user${Date.now()}@example.com`,
-    createdAt: new Date(),
-  }),
-});
-
-const postBuilder = KyselyFactory.createBuilder<Database, 'posts'>({
-  table: 'posts',
-  defaults: async () => ({
-    title: 'Test Post',
-    content: 'Lorem ipsum dolor sit amet',
-    publishedAt: null,
-  }),
-});
+const builders = {
+  user: KyselyFactory.createBuilder<Database, 'users'>(
+    'users',
+    (attrs, factory, db, faker) => ({
+      id: faker.string.uuid(),
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      createdAt: new Date(),
+      ...attrs,
+    })
+  ),
+  post: KyselyFactory.createBuilder<Database, 'posts'>(
+    'posts',
+    (attrs, factory, db, faker) => ({
+      id: faker.string.uuid(),
+      title: 'Test Post',
+      content: faker.lorem.paragraph(),
+      ...attrs,
+    })
+  ),
+};
 
 // Initialize factory
-const builders = { user: userBuilder, post: postBuilder };
 const factory = new KyselyFactory(builders, {}, db);
 
 // Use in tests
