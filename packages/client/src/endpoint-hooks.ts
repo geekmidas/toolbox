@@ -44,22 +44,24 @@ export interface CreateEndpointHooksOptions {
 /**
  * Hook options type that conditionally requires config
  */
-type UseQueryArgs<Paths, T extends QueryEndpoint<Paths>> =
-  IsConfigRequired<Paths, T> extends true
-    ? [
-        config: FilteredRequestConfig<Paths, T>,
-        options?: Omit<
-          UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-          'queryKey' | 'queryFn'
-        >,
-      ]
-    : [
-        config?: FilteredRequestConfig<Paths, T>,
-        options?: Omit<
-          UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-          'queryKey' | 'queryFn'
-        >,
-      ];
+type UseQueryArgs<Paths, T extends QueryEndpoint<Paths>> = IsConfigRequired<
+  Paths,
+  T
+> extends true
+  ? [
+      config: FilteredRequestConfig<Paths, T>,
+      options?: Omit<
+        UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+        'queryKey' | 'queryFn'
+      >,
+    ]
+  : [
+      config?: FilteredRequestConfig<Paths, T>,
+      options?: Omit<
+        UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+        'queryKey' | 'queryFn'
+      >,
+    ];
 
 /**
  * Endpoint-based React Query hooks
@@ -72,9 +74,7 @@ export interface EndpointHooks<Paths> {
   useQuery: <T extends QueryEndpoint<Paths>>(
     endpoint: T,
     ...args: UseQueryArgs<Paths, T>
-  ) => ReturnType<
-    typeof useQuery<ExtractEndpointResponse<Paths, T>, Error>
-  >;
+  ) => ReturnType<typeof useQuery<ExtractEndpointResponse<Paths, T>, Error>>;
 
   /**
    * Use mutation hook for POST, PUT, PATCH, DELETE endpoints.
@@ -134,10 +134,13 @@ export function createEndpointHooks<Paths>(
       // Parse args - config is first, options is second
       const [config, queryOptions] = args as [
         FilteredRequestConfig<Paths, T> | undefined,
-        Omit<
-          UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-          'queryKey' | 'queryFn'
-        > | undefined,
+        (
+          | Omit<
+              UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+              'queryKey' | 'queryFn'
+            >
+          | undefined
+        ),
       ];
 
       const queryKey = buildQueryKey(endpoint, config);
@@ -160,7 +163,9 @@ export function createEndpointHooks<Paths>(
         ],
       );
 
-      return useQuery<ExtractEndpointResponse<Paths, T>, Error>(memoizedOptions);
+      return useQuery<ExtractEndpointResponse<Paths, T>, Error>(
+        memoizedOptions,
+      );
     },
 
     useMutation: <T extends MutationEndpoint<Paths>>(

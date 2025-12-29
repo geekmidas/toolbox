@@ -193,7 +193,10 @@ describe('createEndpointHooks', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       // Uses mock from setup.ts which returns { id, name: 'John Doe', email: ... }
-      expect(result.current.data).toMatchObject({ id: '123', name: 'John Doe' });
+      expect(result.current.data).toMatchObject({
+        id: '123',
+        name: 'John Doe',
+      });
     });
 
     it('should pass query options to useQuery', async () => {
@@ -306,10 +309,13 @@ describe('createEndpointHooks', () => {
       const hooks = createEndpointHooks<TestPaths>(fetcher);
 
       // Using a hypothetical endpoint that has both
-      const key = hooks.buildQueryKey('GET /users/{id}' as any, {
-        params: { id: '123' },
-        query: { include: 'posts' },
-      } as any);
+      const key = hooks.buildQueryKey(
+        'GET /users/{id}' as any,
+        {
+          params: { id: '123' },
+          query: { include: 'posts' },
+        } as any,
+      );
 
       expect(key).toEqual([
         'GET /users/{id}',
