@@ -179,7 +179,6 @@ describe('Telescope', () => {
       const exceptions = await telescope.getExceptions();
       expect(exceptions[0].requestId).toBe(requestId);
     });
-
   });
 
   describe('shouldIgnore', () => {
