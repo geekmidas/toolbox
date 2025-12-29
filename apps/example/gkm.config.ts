@@ -3,6 +3,7 @@ export default {
   subscribers: './src/subscribers/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',
+  telescope: './src/config/telescope#telescope',
   aws: {
     apiGateway: {
       v2: true,
