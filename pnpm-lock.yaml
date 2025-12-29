@@ -192,6 +192,9 @@ importers:
       '@geekmidas/schema':
         specifier: workspace:~
         version: link:../schema
+      '@geekmidas/telescope':
+        specifier: workspace:~
+        version: link:../telescope
       chokidar:
         specifier: ~4.0.3
         version: 4.0.3
