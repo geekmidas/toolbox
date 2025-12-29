@@ -433,9 +433,11 @@ await cache.delete('user:123');
 ```
 
 #### @geekmidas/cli
-Command-line tools for building and deployment.
+Command-line tools for building, development, and deployment.
 
 **Key Features:**
+- Development server with hot-reload (`gkm dev`)
+- Telescope debugging dashboard integration
 - Build command for generating Lambda handlers or server applications
 - OpenAPI specification generation from endpoints
 - React Query hooks generation from OpenAPI
