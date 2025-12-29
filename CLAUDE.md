@@ -553,6 +553,47 @@ export default {
 // Telescope available at http://localhost:3000/__telescope
 ```
 
+**Logger Integrations:**
+
+Telescope captures logs from your application without changing existing code.
+
+```typescript
+// Pino Transport - send logs to both stdout and Telescope
+import pino from 'pino';
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createPinoDestination } from '@geekmidas/telescope/logger/pino';
+
+const telescope = new Telescope({ storage: new InMemoryStorage() });
+
+const logger = pino(
+  { level: 'debug' },
+  pino.multistream([
+    { stream: process.stdout },
+    { stream: createPinoDestination({ telescope }) }
+  ])
+);
+
+// Logs appear in both console and Telescope dashboard
+logger.info({ userId: '123' }, 'User logged in');
+```
+
+```typescript
+// TelescopeLogger - wrap ConsoleLogger
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createTelescopeLogger } from '@geekmidas/telescope/logger/console';
+import { ConsoleLogger } from '@geekmidas/logger/console';
+
+const telescope = new Telescope({ storage: new InMemoryStorage() });
+const logger = createTelescopeLogger(telescope, new ConsoleLogger());
+
+// Logs appear in both console and Telescope
+logger.info({ action: 'startup' }, 'Application started');
+
+// Bind to request ID for correlation
+const requestLogger = logger.withRequestId('req-abc123');
+requestLogger.info('Processing request');
+```
+
 #### @geekmidas/emailkit
 Type-safe email client with React template support.
 
