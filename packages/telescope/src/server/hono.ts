@@ -169,9 +169,10 @@ export function createUI(telescope: Telescope): Hono {
   });
 
   // Static assets
-  app.get('/assets/*', (c) => {
-    const path = c.req.path.replace(/^\//, '');
-    const asset = getAsset(path);
+  app.get('/assets/:filename', (c) => {
+    const filename = c.req.param('filename');
+    const assetPath = `assets/${filename}`;
+    const asset = getAsset(assetPath);
     if (asset) {
       return c.body(asset.content, 200, {
         'Content-Type': asset.contentType,
