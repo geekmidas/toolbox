@@ -170,21 +170,51 @@ export async function devCommand(options: DevOptions): Promise<void> {
   await devServer.start();
 
   // Watch for file changes
+  const envParserFile = config.envParser.split('#')[0];
+  const loggerFile = config.logger.split('#')[0];
+
   const watchPatterns = [
     config.routes,
     ...(config.functions ? [config.functions] : []),
     ...(config.crons ? [config.crons] : []),
     ...(config.subscribers ? [config.subscribers] : []),
-    config.envParser.split('#')[0],
-    config.logger.split('#')[0],
+    // Add .ts extension if not present for config files
+    envParserFile.endsWith('.ts') ? envParserFile : `${envParserFile}.ts`,
+    loggerFile.endsWith('.ts') ? loggerFile : `${loggerFile}.ts`,
   ].flat();
 
-  logger.log(`👀 Watching for changes in: ${watchPatterns.join(', ')}`);
+  // Normalize patterns - remove leading ./ when using cwd option
+  const normalizedPatterns = watchPatterns.map((p) =>
+    p.startsWith('./') ? p.slice(2) : p,
+  );
 
-  const watcher = chokidar.watch(watchPatterns, {
+  logger.log(`👀 Watching for changes in: ${normalizedPatterns.join(', ')}`);
+
+  // Resolve glob patterns to actual files (chokidar 4.x doesn't support globs)
+  const resolvedFiles = await fg(normalizedPatterns, {
+    cwd: process.cwd(),
+    absolute: false,
+    onlyFiles: true,
+  });
+
+  // Also watch the directories for new files
+  const dirsToWatch = [...new Set(resolvedFiles.map((f) => f.split('/').slice(0, -1).join('/')))];
+
+  logger.log(`📁 Found ${resolvedFiles.length} files in ${dirsToWatch.length} directories`);
+
+  const watcher = chokidar.watch([...resolvedFiles, ...dirsToWatch], {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
     persistent: true,
     ignoreInitial: true,
+    cwd: process.cwd(),
+  });
+
+  watcher.on('ready', () => {
+    logger.log('🔍 File watcher ready');
+  });
+
+  watcher.on('error', (error) => {
+    logger.error('❌ Watcher error:', error);
   });
 
   let rebuildTimeout: NodeJS.Timeout | null = null;
