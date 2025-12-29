@@ -18,7 +18,8 @@ export const getUsers = router
       users: UserSchema.array(),
     }),
   )
-  .handle(async () => {
+  .handle(async ({ logger }) => {
+    logger.info('testing');
     // Mock data for example
     return {
       users: [

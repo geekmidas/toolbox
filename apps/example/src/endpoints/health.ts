@@ -15,7 +15,7 @@ export const health = router
       version: z.string(),
     }),
   )
-  .handle(async () => {
+  .handle(async ({ logger }) => {
     return {
       status: 'ok' as const,
       timestamp: new Date().toISOString(),
