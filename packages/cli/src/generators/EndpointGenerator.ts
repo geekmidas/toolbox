@@ -388,6 +388,7 @@ import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+${telescopeImports}
 
 export interface ServerApp {
   app: HonoType;
