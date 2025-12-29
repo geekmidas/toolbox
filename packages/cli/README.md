@@ -1001,11 +1001,12 @@ Error: OpenAPI generation failed: Invalid endpoint schema
 ```json
 {
   "scripts": {
+    "dev": "gkm dev",
+    "dev:port": "gkm dev --port 8080",
     "build": "gkm build",
     "build:lambda": "gkm build --provider aws-apigatewayv1",
     "build:server": "gkm build --provider server",
-    "docs": "gkm openapi --output docs/api.json",
-    "dev": "npm run build:server && node server.js"
+    "docs": "gkm openapi --output src/api.ts"
   }
 }
 ```
@@ -1100,16 +1101,40 @@ DEBUG=gkm:* npx gkm build
 // Provider options
 type Provider = 'server' | 'aws-apigatewayv1' | 'aws-apigatewayv2';
 
+// Runtime options
+type Runtime = 'node' | 'bun';
+
 // Configuration interface
 interface GkmConfig {
   routes: string | string[];
   envParser: string;
   logger: string;
+  functions?: string | string[];
+  crons?: string | string[];
+  subscribers?: string | string[];
+  runtime?: Runtime;
+  telescope?: boolean | TelescopeConfig;
+}
+
+// Telescope configuration
+interface TelescopeConfig {
+  enabled?: boolean;
+  path?: string;
+  ignore?: string[];
+  recordBody?: boolean;
+  maxEntries?: number;
+  websocket?: boolean;
 }
 
 // Build options
 interface BuildOptions {
   provider: Provider;
+}
+
+// Dev options
+interface DevOptions {
+  port?: number;
+  enableOpenApi?: boolean;
 }
 
 // Route information
