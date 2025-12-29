@@ -117,124 +117,200 @@ describe('User Service', () => {
 import { ObjectionFactory } from '@geekmidas/testkit/objection';
 import { Model } from 'objection';
 
-// Define your models
 class User extends Model {
   static tableName = 'users';
-  id!: number;
+  id!: string;
   name!: string;
   email!: string;
 }
 
-class Post extends Model {
-  static tableName = 'posts';
-  id!: number;
-  title!: string;
-  userId!: number;
-}
-
-// Create builders
-const userBuilder = {
-  table: 'users',
-  model: User,
-  defaults: async () => ({
-    name: 'John Doe',
-    email: `user${Date.now()}@example.com`,
-  }),
+const builders = {
+  user: ObjectionFactory.createBuilder(
+    User,
+    (attrs, factory, db, faker) => ({
+      id: faker.string.uuid(),
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      ...attrs,
+    })
+  ),
 };
 
-// Use in tests
-const factory = new ObjectionFactory({ user: userBuilder }, {});
+const factory = new ObjectionFactory(builders, {}, knex);
 const user = await factory.insert('user', { name: 'Jane Doe' });
 ```
 
-## 🏗️ Core Concepts
+## Enhanced Faker
 
-### Builders
-
-Builders define how to create test data for each table. They specify:
-
-- **Table name**: The database table to insert into
-- **Default values**: Function returning default attributes
-- **Transformations**: Optional data transformations before insertion
-- **Relations**: Optional related data to create after insertion
+The testkit provides an enhanced faker instance with additional utilities for common test data patterns.
 
 ```typescript
-const userBuilder = KyselyFactory.createBuilder<Database, 'users'>({
-  table: 'users',
-  defaults: async () => ({
-    id: generateId(),
-    name: faker.person.fullName(),
-    email: faker.internet.email(),
-    createdAt: new Date(),
-  }),
-  transform: async (data) => ({
-    ...data,
-    email: data.email.toLowerCase(),
-  }),
-  relations: async (user, factory) => {
-    // Create related data after user insertion
-    await factory.insert('profile', { userId: user.id });
-  },
+import { faker } from '@geekmidas/testkit/faker';
+
+// Standard faker methods
+const name = faker.person.fullName();
+const email = faker.internet.email();
+
+// Generate timestamps for database records
+const { createdAt, updatedAt } = faker.timestamps();
+// createdAt: Date in the past
+// updatedAt: Date between createdAt and now
+
+// Sequential numbers (useful for unique IDs)
+faker.sequence();           // 1
+faker.sequence();           // 2
+faker.sequence('user');     // 1 (separate sequence)
+faker.sequence('user');     // 2
+
+// Reset sequences between tests
+faker.resetSequence('user');
+faker.resetAllSequences();
+
+// Generate prices as numbers
+const price = faker.price(); // 29.99
+
+// Generate reverse domain identifiers
+faker.identifier();         // "com.example.widget1"
+faker.identifier('user');   // "org.acme.user"
+
+// Generate coordinates within/outside a radius
+const center = { lat: 40.7128, lng: -74.0060 };
+faker.coordinates.within(center, 1000);   // Within 1km
+faker.coordinates.outside(center, 1000, 5000); // Between 1km and 5km
+```
+
+## Timer Utilities
+
+Simple async wait utility for tests.
+
+```typescript
+import { waitFor } from '@geekmidas/testkit/timer';
+
+it('should process after delay', async () => {
+  startBackgroundProcess();
+  await waitFor(100); // Wait 100ms
+  expect(processComplete).toBe(true);
 });
 ```
 
-### Seeds
+## OS Utilities
 
-Seeds are functions that create complex test scenarios with multiple related entities:
+Vitest fixture for temporary directory creation with automatic cleanup.
 
 ```typescript
-const blogSeed = async (factory: Factory) => {
-  const author = await factory.insert('user', {
-    name: 'Blog Author',
-    role: 'author',
-  });
+import { itWithDir } from '@geekmidas/testkit/os';
 
-  const categories = await factory.insertMany(3, 'category');
+// Creates a temp directory before test, removes it after
+itWithDir('should write files to temp dir', async ({ dir }) => {
+  const filePath = path.join(dir, 'test.txt');
+  await fs.writeFile(filePath, 'hello');
 
-  const posts = await factory.insertMany(5, 'post', (index) => ({
-    title: `Post ${index + 1}`,
-    authorId: author.id,
-    categoryId: categories[index % categories.length].id,
-  }));
-
-  return { author, categories, posts };
-};
-
-// Use in tests
-const data = await factory.seed('blog');
+  const content = await fs.readFile(filePath, 'utf-8');
+  expect(content).toBe('hello');
+  // Directory is automatically cleaned up after test
+});
 ```
 
-### Transaction Support
+## AWS Testing Utilities
 
-TestKit supports transaction-based test isolation:
+Mock AWS Lambda contexts and API Gateway events for testing Lambda handlers.
 
 ```typescript
-describe('User Service', () => {
-  let trx: Transaction<Database>;
-  let factory: KyselyFactory;
+import {
+  createMockContext,
+  createMockV1Event,
+  createMockV2Event
+} from '@geekmidas/testkit/aws';
 
-  beforeEach(async () => {
-    trx = await db.transaction();
-    factory = new KyselyFactory(builders, seeds, trx);
+describe('Lambda Handler', () => {
+  it('should handle API Gateway v1 event', async () => {
+    const event = createMockV1Event({
+      httpMethod: 'POST',
+      path: '/users',
+      body: JSON.stringify({ name: 'John' }),
+    });
+    const context = createMockContext();
+
+    const result = await handler(event, context);
+    expect(result.statusCode).toBe(201);
   });
 
-  afterEach(async () => {
-    await trx.rollback();
-  });
+  it('should handle API Gateway v2 event', async () => {
+    const event = createMockV2Event({
+      routeKey: 'POST /users',
+      rawPath: '/users',
+      body: JSON.stringify({ name: 'John' }),
+    });
+    const context = createMockContext();
 
-  it('should perform operations in isolation', async () => {
-    const user = await factory.insert('user');
-    // Test operations...
-    // All changes will be rolled back after the test
+    const result = await handler(event, context);
+    expect(result.statusCode).toBe(201);
   });
 });
 ```
 
-## 📚 Advanced Usage
+## Logger Testing Utilities
 
-### Database Migration
+Create mock loggers for testing code that uses `@geekmidas/logger`.
 
-TestKit includes utilities for managing test database migrations:
+```typescript
+import { createMockLogger } from '@geekmidas/testkit/logger';
+
+describe('Service', () => {
+  it('should log errors', async () => {
+    const logger = createMockLogger();
+    const service = new MyService(logger);
+
+    await service.doSomethingRisky();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.any(Error) }),
+      'Operation failed'
+    );
+  });
+});
+```
+
+## Better Auth Testing
+
+In-memory adapter for testing Better Auth without a real database.
+
+```typescript
+import { memoryAdapter } from '@geekmidas/testkit/better-auth';
+import { betterAuth } from 'better-auth';
+
+describe('Authentication', () => {
+  const adapter = memoryAdapter({
+    debugLogs: false,
+    initialData: {
+      user: [{ id: '1', email: 'test@example.com', name: 'Test User' }],
+    },
+  });
+
+  const auth = betterAuth({
+    database: adapter,
+    // ... other config
+  });
+
+  afterEach(() => {
+    adapter.clear(); // Reset data between tests
+  });
+
+  it('should create user', async () => {
+    await auth.api.signUp({
+      email: 'new@example.com',
+      password: 'password123',
+    });
+
+    const data = adapter.getAllData();
+    expect(data.user).toHaveLength(2);
+  });
+});
+```
+
+## Database Migration
+
+TestKit includes utilities for managing test database migrations.
 
 ```typescript
 import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
