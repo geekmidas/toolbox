@@ -455,7 +455,7 @@ ${telescopeSetup}
       await setupSubscribers(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
       });
-
+${telescopeWebSocketSetup}
       logger.info({ port }, 'Starting server');
 
       // Start HTTP server using provided serve function
