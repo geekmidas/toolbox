@@ -30,9 +30,22 @@ pnpm add -D @geekmidas/testkit
 yarn add -D @geekmidas/testkit
 ```
 
-## 🛠️ Quick Start
+## Subpath Exports
 
-### With Kysely
+```typescript
+import { KyselyFactory } from '@geekmidas/testkit/kysely';
+import { ObjectionFactory } from '@geekmidas/testkit/objection';
+import { faker } from '@geekmidas/testkit/faker';
+import { waitFor } from '@geekmidas/testkit/timer';
+import { itWithDir } from '@geekmidas/testkit/os';
+import { createMockContext, createMockV1Event, createMockV2Event } from '@geekmidas/testkit/aws';
+import { createMockLogger } from '@geekmidas/testkit/logger';
+import { memoryAdapter } from '@geekmidas/testkit/better-auth';
+```
+
+## Quick Start
+
+### Database Factories with Kysely
 
 ```typescript
 import { KyselyFactory } from '@geekmidas/testkit/kysely';
