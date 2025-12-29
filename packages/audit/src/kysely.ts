@@ -286,6 +286,39 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
     return this.db;
   }
 
+  /**
+   * Execute a callback within a Kysely transaction with automatic audit handling.
+   * The auditor is registered with the transaction and audits are flushed
+   * before the transaction commits.
+   *
+   * If the provided db connection is already a transaction, it will be reused
+   * instead of creating a nested transaction.
+   */
+  async withTransaction<T>(
+    auditor: TransactionAwareAuditor<Transaction<DB>>,
+    callback: () => Promise<T>,
+    db?: DatabaseConnection<DB>,
+  ): Promise<T> {
+    const connection = db ?? this.db;
+
+    // If already in a transaction, reuse it
+    if (connection.isTransaction) {
+      const trx = connection as Transaction<DB>;
+      auditor.setTransaction(trx);
+      const result = await callback();
+      await auditor.flush(trx);
+      return result;
+    }
+
+    // Create new transaction
+    return connection.transaction().execute(async (trx) => {
+      auditor.setTransaction(trx);
+      const result = await callback();
+      await auditor.flush(trx);
+      return result;
+    });
+  }
+
   private applyFilters(query: any, options: AuditQueryOptions): any {
     // Type filter
     if (options.type !== undefined) {
