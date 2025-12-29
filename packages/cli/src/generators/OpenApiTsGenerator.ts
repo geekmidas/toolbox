@@ -1,6 +1,5 @@
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
-  convertStandardSchemaToJsonSchema,
   getSchemaMetadata,
   StandardSchemaJsonSchema,
 } from '@geekmidas/schema/conversion';
@@ -364,20 +363,6 @@ export class OpenApiTsGenerator {
       .replace(/^./, (c) => c.toUpperCase());
   }
 
-  private async schemaToInterface(
-    schema: StandardSchemaV1,
-    name: string,
-  ): Promise<string | null> {
-    try {
-      const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
-      if (!jsonSchema) return null;
-
-      return this.jsonSchemaToInterface(jsonSchema, name);
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Convert schema to interface while collecting $defs for nested schemas
    * with .meta({ id: 'X' }).
@@ -640,7 +625,7 @@ import {
   createAuthAwareFetcher,
   type AuthStrategy,
 } from '@geekmidas/client/auth-fetcher';
-import { createOpenAPIHooks } from '@geekmidas/client/react-query';
+import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
@@ -686,7 +671,7 @@ export function createApi(options: CreateApiOptions) {
     onRequest: options.onRequest,
   });
 
-  const hooks = createOpenAPIHooks<paths>(fetcher, options.queryClient);
+  const hooks = createEndpointHooks<paths>(fetcher, { queryClient: options.queryClient });
 
   return Object.assign(fetcher, hooks);
 }
@@ -697,7 +682,7 @@ export function createApi(options: CreateApiOptions) {
 // ============================================================
 
 import { TypedFetcher, type FetcherOptions } from '@geekmidas/client/fetcher';
-import { createOpenAPIHooks } from '@geekmidas/client/react-query';
+import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
@@ -730,7 +715,7 @@ export function createApi(options: CreateApiOptions) {
   const { queryClient, ...fetcherOptions } = options;
   const fetcher = new TypedFetcher<paths>(fetcherOptions);
 
-  const hooks = createOpenAPIHooks<paths>(fetcher.request.bind(fetcher), queryClient);
+  const hooks = createEndpointHooks<paths>(fetcher.request.bind(fetcher), { queryClient });
 
   return Object.assign(fetcher.request.bind(fetcher), hooks);
 }
