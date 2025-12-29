@@ -131,11 +131,18 @@ export async function devCommand(options: DevOptions): Promise<void> {
       ? '{ logger }'
       : `{ ${loggerName} as logger }`;
 
+  // Normalize telescope configuration
+  const telescope = normalizeTelescopeConfig(config.telescope);
+  if (telescope) {
+    logger.log(`🔭 Telescope enabled at ${telescope.path}`);
+  }
+
   const buildContext: BuildContext = {
     envParserPath,
     envParserImportPattern,
     loggerPath,
     loggerImportPattern,
+    telescope,
   };
 
   // Build initial version
