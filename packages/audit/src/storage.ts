@@ -125,4 +125,51 @@ export interface AuditStorage<
    * ```
    */
   databaseServiceName?: string;
+
+  /**
+   * Optional: Execute a callback within a database transaction.
+   * The auditor is registered with the transaction and audits are flushed
+   * before the transaction commits.
+   *
+   * This is database-agnostic - each storage implementation provides its own
+   * transaction handling based on the underlying database.
+   *
+   * If a database connection is provided, it should be used instead of the
+   * storage's internal connection. If the connection is already a transaction,
+   * it should be reused instead of creating a nested transaction.
+   *
+   * @param auditor - The auditor to register with the transaction
+   * @param callback - The callback to execute within the transaction
+   * @param db - Optional database connection (may already be a transaction)
+   * @returns The result of the callback
+   *
+   * @example
+   * ```typescript
+   * // KyselyAuditStorage implementation
+   * async withTransaction<T>(auditor, callback, db) {
+   *   const connection = db ?? this.db;
+   *   if (connection.isTransaction) {
+   *     // Reuse existing transaction
+   *     auditor.setTransaction(connection);
+   *     const result = await callback();
+   *     await auditor.flush(connection);
+   *     return result;
+   *   }
+   *   return connection.transaction().execute(async (trx) => {
+   *     auditor.setTransaction(trx);
+   *     const result = await callback();
+   *     await auditor.flush(trx);
+   *     return result;
+   *   });
+   * }
+   * ```
+   */
+  withTransaction?<T>(
+    auditor: {
+      setTransaction(trx: unknown): void;
+      flush(trx?: unknown): Promise<void>;
+    },
+    callback: () => Promise<T>,
+    db?: unknown,
+  ): Promise<T>;
 }
