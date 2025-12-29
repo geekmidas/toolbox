@@ -1,6 +1,6 @@
 import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { findAvailablePort, isPortAvailable } from '../index';
+import { findAvailablePort, isPortAvailable, normalizeTelescopeConfig } from '../index';
 
 /**
  * Helper to occupy a port for testing
