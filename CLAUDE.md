@@ -36,6 +36,7 @@ toolbox/
 │   ├── schema/       # StandardSchema type utilities
 │   ├── services/     # Service discovery and dependency injection
 │   ├── storage/      # Cloud storage abstraction (S3)
+│   ├── telescope/    # Laravel-style debugging dashboard
 │   └── testkit/      # Testing utilities and database factories
 ├── apps/
 │   ├── docs/         # VitePress documentation site
