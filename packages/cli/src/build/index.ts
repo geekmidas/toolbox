@@ -5,6 +5,7 @@ import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import { loadConfig } from '../config';
+import { normalizeTelescopeConfig } from '../dev';
 import {
   CronGenerator,
   EndpointGenerator,
