@@ -335,12 +335,14 @@ class DevServer {
     logger.log(`\n✨ Starting server on port ${this.actualPort}...`);
 
     // Start the server using tsx (TypeScript execution)
+    // Use detached: true so we can kill the entire process tree
     this.serverProcess = spawn(
       'npx',
       ['tsx', serverEntryPath, '--port', this.actualPort.toString()],
       {
         stdio: 'inherit',
         env: { ...process.env, NODE_ENV: 'development' },
+        detached: true,
       },
     );
 
