@@ -27,6 +27,11 @@
       "import": "./dist/server/hono.mjs",
       "require": "./dist/server/hono.cjs"
     },
+    "./hono": {
+      "types": "./dist/server/hono.d.ts",
+      "import": "./dist/server/hono.mjs",
+      "require": "./dist/server/hono.cjs"
+    },
     "./logger/pino": {
       "types": "./dist/logger/pino.d.ts",
       "import": "./dist/logger/pino.mjs",
