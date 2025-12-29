@@ -197,19 +197,91 @@ gkm build --provider server
 
 ### `gkm openapi`
 
-Generate OpenAPI 3.0 specification from your endpoints.
+Generate OpenAPI TypeScript module from your endpoints. This is the recommended approach as it provides full type safety and a ready-to-use API client.
 
 ```bash
 gkm openapi [options]
 ```
 
 **Options:**
-- `--output <path>`: Output file path (default: `openapi.json`)
+- `--output <path>`: Output file path (default: `openapi.ts`)
+- `--json`: Generate legacy JSON format instead of TypeScript module
 
 **Example:**
 ```bash
-# Generate OpenAPI spec
-gkm openapi --output docs/api.json
+# Generate TypeScript module (recommended)
+gkm openapi --output src/api.ts
+
+# Generate legacy JSON format
+gkm openapi --output docs/api.json --json
+```
+
+#### Generated TypeScript Module
+
+The generated TypeScript module includes:
+
+```typescript
+// src/api.ts (auto-generated)
+
+// Security schemes defined in your endpoints
+export const securitySchemes = {
+  jwt: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+  apiKey: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+} as const;
+
+export type SecuritySchemeId = 'jwt' | 'apiKey';
+
+// Endpoint-to-auth mapping
+export const endpointAuth = {
+  'GET /users': 'jwt',
+  'POST /users': 'jwt',
+  'GET /health': null,
+} as const;
+
+// TypeScript interfaces for request/response types
+export interface GetUsersOutput {
+  id: string;
+  name: string;
+}
+
+// OpenAPI paths interface
+export interface paths {
+  '/users': {
+    get: {
+      responses: {
+        200: { content: { 'application/json': GetUsersOutput[] } };
+      };
+    };
+  };
+}
+
+// Ready-to-use API client factory
+export function createApi(options: CreateApiOptions) {
+  // ... implementation
+}
+```
+
+#### Using the Generated Client
+
+```typescript
+import { createApi } from './api';
+
+const api = createApi({
+  baseURL: 'https://api.example.com',
+  authStrategies: {
+    jwt: {
+      type: 'bearer',
+      tokenProvider: async () => localStorage.getItem('token'),
+    },
+  },
+});
+
+// Imperative fetching
+const users = await api('GET /users');
+
+// React Query hooks
+const { data } = api.useQuery('GET /users');
+const mutation = api.useMutation('POST /users');
 ```
 
 ### Future Commands
@@ -479,48 +551,80 @@ const authorizers = new Set(manifest.routes.map((r) => r.authorizer));
 
 ## OpenAPI Generation
 
-The CLI automatically generates OpenAPI 3.0 specifications from your endpoints:
+The CLI generates a TypeScript module with full type safety and a ready-to-use API client:
 
 ```bash
-gkm openapi --output api-docs.json
+gkm openapi --output src/api.ts
 ```
 
-**Generated OpenAPI:**
-```json
-{
-  "openapi": "3.0.0",
-  "info": {
-    "title": "API Documentation",
-    "version": "1.0.0",
-    "description": "Auto-generated API documentation from endpoints"
+**Generated TypeScript Module:**
+
+The generated module exports:
+
+| Export | Description |
+|--------|-------------|
+| `securitySchemes` | OpenAPI security scheme definitions |
+| `SecuritySchemeId` | Union type of security scheme names |
+| `endpointAuth` | Map of endpoints to their auth requirements |
+| `paths` | TypeScript interface for OpenAPI paths |
+| `createApi()` | Factory function to create typed API client |
+
+**Example Generated Output:**
+
+```typescript
+// Security schemes from your endpoint authorizers
+export const securitySchemes = {
+  jwt: {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
   },
-  "paths": {
-    "/users": {
-      "get": {
-        "summary": "Get Users",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string" },
-                      "name": { "type": "string" }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+} as const;
+
+export type SecuritySchemeId = 'jwt';
+
+// Which endpoints require which auth
+export const endpointAuth = {
+  'GET /users': 'jwt',
+  'POST /users': 'jwt',
+  'GET /health': null,  // Public endpoint
+} as const;
+
+// Type-safe paths interface
+export interface paths {
+  '/users': {
+    get: {
+      responses: {
+        200: { content: { 'application/json': GetUsersOutput[] } };
+      };
+    };
+    post: {
+      requestBody: { content: { 'application/json': CreateUserInput } };
+      responses: {
+        201: { content: { 'application/json': GetUsersOutput } };
+      };
+    };
+  };
 }
+
+// Factory to create API client
+export interface CreateApiOptions {
+  baseURL: string;
+  authStrategies: Record<SecuritySchemeId, AuthStrategy>;
+  queryClient?: QueryClient;
+}
+
+export function createApi(options: CreateApiOptions) {
+  // Returns callable fetcher with React Query hooks
+}
+```
+
+### Legacy JSON Output
+
+For compatibility with other tools, you can still generate JSON:
+
+```bash
+gkm openapi --output api-docs.json --json
 ```
 
 ## Deployment Examples
