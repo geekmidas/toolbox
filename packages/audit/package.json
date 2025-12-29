@@ -12,6 +12,16 @@
       "types": "./dist/kysely.d.ts",
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "import": "./dist/memory.mjs",
+      "require": "./dist/memory.cjs"
+    },
+    "./cache": {
+      "types": "./dist/cache.d.ts",
+      "import": "./dist/cache.mjs",
+      "require": "./dist/cache.cjs"
     }
   },
   "repository": {
@@ -28,9 +38,19 @@
     "nanoid": "~5.1.5"
   },
   "peerDependencies": {
+    "@geekmidas/cache": "workspace:*",
     "kysely": "^0.28.0"
   },
+  "peerDependenciesMeta": {
+    "@geekmidas/cache": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@geekmidas/cache": "workspace:*",
     "kysely": "~0.28.2",
     "pg": "~8.16.0",
     "@types/pg": "~8.15.6"
