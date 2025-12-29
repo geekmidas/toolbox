@@ -105,6 +105,12 @@ importers:
       kysely:
         specifier: ~0.28.2
         version: 0.28.8
+      pino:
+        specifier: ^9.6.0
+        version: 9.14.0
+      pino-abstract-transport:
+        specifier: ~3.0.0
+        version: 3.0.0
       zod:
         specifier: ~4.1.13
         version: 4.1.13
@@ -128,6 +134,9 @@ importers:
         specifier: ~5.1.5
         version: 5.1.6
     devDependencies:
+      '@geekmidas/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@types/pg':
         specifier: ~8.15.6
         version: 8.15.6
@@ -10836,9 +10845,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
