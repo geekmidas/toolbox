@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import chokidar from 'chokidar';
+import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
 import type { BuildContext, NormalizedTelescopeConfig } from '../build/types';
 import { loadConfig } from '../config';
