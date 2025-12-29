@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { Telescope } from '../Telescope';
 import type { QueryOptions } from '../types';
+import { getAsset, getIndexHtml } from '../ui-assets';
 
 const CONTEXT_KEY = 'telescope-request-id';
 
