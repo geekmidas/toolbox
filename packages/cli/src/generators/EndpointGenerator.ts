@@ -434,7 +434,7 @@ export interface ServerApp {
  */
 export function createApp(app?: HonoType, enableOpenApi: boolean = true): ServerApp {
   const honoApp = app || new Hono();
-
+${telescopeSetup}
   // Setup HTTP endpoints
   setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 
