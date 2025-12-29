@@ -1,7 +1,8 @@
-import type { Cron, Function } from '@geekmidas/constructs';
-import type { Endpoint } from '@geekmidas/constructs';
+import type { Cron } from '@geekmidas/constructs/crons';
+import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import type { Function } from '@geekmidas/constructs/functions';
 
-import type { CronInfo, FunctionInfo, RouteInfo, TelescopeConfig } from '../types';
+import type { CronInfo, FunctionInfo, RouteInfo } from '../types';
 
 export interface ProcessedEndpoint {
   file: string;
