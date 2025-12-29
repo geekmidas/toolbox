@@ -12,7 +12,7 @@ import {
   FunctionGenerator,
   SubscriberGenerator,
 } from '../generators';
-import type { LegacyProvider } from '../types';
+import type { GkmConfig, LegacyProvider, TelescopeConfig } from '../types';
 
 const logger = console;
 
