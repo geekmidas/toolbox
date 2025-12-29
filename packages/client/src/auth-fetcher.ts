@@ -1,3 +1,4 @@
+import { TypedFetcher } from './fetcher';
 import type {
   ExtractEndpointResponse,
   FetcherOptions,
@@ -5,7 +6,6 @@ import type {
   TypedApiFunction,
   TypedEndpoint,
 } from './types';
-import { TypedFetcher } from './fetcher';
 
 /**
  * Security scheme object matching OpenAPI 3.1 specification.
