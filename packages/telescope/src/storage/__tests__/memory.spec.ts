@@ -82,13 +82,25 @@ describe('InMemoryStorage', () => {
 
     it('should filter by search term in path', async () => {
       await storage.saveRequest(
-        createRequest({ id: 'req-1', path: '/api/users', url: 'http://localhost/api/users' }),
+        createRequest({
+          id: 'req-1',
+          path: '/api/users',
+          url: 'http://localhost/api/users',
+        }),
       );
       await storage.saveRequest(
-        createRequest({ id: 'req-2', path: '/api/posts', url: 'http://localhost/api/posts' }),
+        createRequest({
+          id: 'req-2',
+          path: '/api/posts',
+          url: 'http://localhost/api/posts',
+        }),
       );
       await storage.saveRequest(
-        createRequest({ id: 'req-3', path: '/api/orders', url: 'http://localhost/api/orders' }),
+        createRequest({
+          id: 'req-3',
+          path: '/api/orders',
+          url: 'http://localhost/api/orders',
+        }),
       );
 
       const results = await storage.getRequests({ search: 'posts' });
@@ -120,9 +132,7 @@ describe('InMemoryStorage', () => {
       await storage.saveRequest(
         createRequest({ id: 'req-1', tags: ['auth', 'api'] }),
       );
-      await storage.saveRequest(
-        createRequest({ id: 'req-2', tags: ['api'] }),
-      );
+      await storage.saveRequest(createRequest({ id: 'req-2', tags: ['api'] }));
       await storage.saveRequest(
         createRequest({ id: 'req-3', tags: ['admin'] }),
       );
