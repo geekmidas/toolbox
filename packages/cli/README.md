@@ -459,6 +459,32 @@ telescope: {
 | `maxEntries` | `number` | `1000` | Maximum entries per type to keep |
 | `websocket` | `boolean` | `true` | Enable real-time WebSocket updates |
 
+**Logger Integration:**
+
+Telescope automatically captures logs when using `gkm dev`. To manually integrate with your logger:
+
+```typescript
+// Pino Transport
+import pino from 'pino';
+import { createPinoDestination } from '@geekmidas/telescope/logger/pino';
+
+const logger = pino(
+  { level: 'debug' },
+  pino.multistream([
+    { stream: process.stdout },
+    { stream: createPinoDestination({ telescope }) }
+  ])
+);
+
+// ConsoleLogger wrapper
+import { createTelescopeLogger } from '@geekmidas/telescope/logger/console';
+import { ConsoleLogger } from '@geekmidas/logger/console';
+
+const logger = createTelescopeLogger(telescope, new ConsoleLogger());
+```
+
+See the [@geekmidas/telescope documentation](../telescope/README.md) for more details.
+
 ## Providers
 
 ### AWS API Gateway v1
