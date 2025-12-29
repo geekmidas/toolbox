@@ -647,7 +647,7 @@ importers:
         version: 8.16.3
       vitest:
         specifier: ~3.2.4
-        version: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.4.2)(jsdom@26.1.0)(lightningcss@1.27.0)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)
+        version: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)
     devDependencies:
       '@types/pg':
         specifier: ~8.15.4
