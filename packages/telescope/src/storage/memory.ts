@@ -1,0 +1,168 @@
+import type {
+  ExceptionEntry,
+  LogEntry,
+  QueryOptions,
+  RequestEntry,
+  TelescopeStats,
+  TelescopeStorage,
+} from '../types';
+
+export interface InMemoryStorageOptions {
+  /** Maximum number of entries to keep per type (default: 1000) */
+  maxEntries?: number;
+}
+
+/**
+ * In-memory storage for Telescope data.
+ * Ideal for development and testing.
+ * Data is lost when the process restarts.
+ */
+export class InMemoryStorage implements TelescopeStorage {
+  private requests: RequestEntry[] = [];
+  private exceptions: ExceptionEntry[] = [];
+  private logs: LogEntry[] = [];
+  private maxEntries: number;
+
+  constructor(options?: InMemoryStorageOptions) {
+    this.maxEntries = options?.maxEntries ?? 1000;
+  }
+
+  // Requests
+
+  async saveRequest(entry: RequestEntry): Promise<void> {
+    this.requests.unshift(entry);
+    this.enforceLimit('requests');
+  }
+
+  async saveRequests(entries: RequestEntry[]): Promise<void> {
+    this.requests.unshift(...entries);
+    this.enforceLimit('requests');
+  }
+
+  async getRequests(options?: QueryOptions): Promise<RequestEntry[]> {
+    return this.filterEntries(this.requests, options);
+  }
+
+  async getRequest(id: string): Promise<RequestEntry | null> {
+    return this.requests.find((r) => r.id === id) ?? null;
+  }
+
+  // Exceptions
+
+  async saveException(entry: ExceptionEntry): Promise<void> {
+    this.exceptions.unshift(entry);
+    this.enforceLimit('exceptions');
+  }
+
+  async saveExceptions(entries: ExceptionEntry[]): Promise<void> {
+    this.exceptions.unshift(...entries);
+    this.enforceLimit('exceptions');
+  }
+
+  async getExceptions(options?: QueryOptions): Promise<ExceptionEntry[]> {
+    return this.filterEntries(this.exceptions, options);
+  }
+
+  async getException(id: string): Promise<ExceptionEntry | null> {
+    return this.exceptions.find((e) => e.id === id) ?? null;
+  }
+
+  // Logs
+
+  async saveLog(entry: LogEntry): Promise<void> {
+    this.logs.unshift(entry);
+    this.enforceLimit('logs');
+  }
+
+  async saveLogs(entries: LogEntry[]): Promise<void> {
+    this.logs.unshift(...entries);
+    this.enforceLimit('logs');
+  }
+
+  async getLogs(options?: QueryOptions): Promise<LogEntry[]> {
+    return this.filterEntries(this.logs, options);
+  }
+
+  // Cleanup
+
+  async prune(olderThan: Date): Promise<number> {
+    const beforeCount =
+      this.requests.length + this.exceptions.length + this.logs.length;
+
+    this.requests = this.requests.filter((r) => r.timestamp >= olderThan);
+    this.exceptions = this.exceptions.filter((e) => e.timestamp >= olderThan);
+    this.logs = this.logs.filter((l) => l.timestamp >= olderThan);
+
+    const afterCount =
+      this.requests.length + this.exceptions.length + this.logs.length;
+    return beforeCount - afterCount;
+  }
+
+  // Stats
+
+  async getStats(): Promise<TelescopeStats> {
+    const allTimestamps = [
+      ...this.requests.map((r) => r.timestamp),
+      ...this.exceptions.map((e) => e.timestamp),
+      ...this.logs.map((l) => l.timestamp),
+    ].sort((a, b) => a.getTime() - b.getTime());
+
+    return {
+      requests: this.requests.length,
+      exceptions: this.exceptions.length,
+      logs: this.logs.length,
+      oldestEntry: allTimestamps[0],
+      newestEntry: allTimestamps[allTimestamps.length - 1],
+    };
+  }
+
+  // Clear all data (useful for testing)
+
+  clear(): void {
+    this.requests = [];
+    this.exceptions = [];
+    this.logs = [];
+  }
+
+  // Private helpers
+
+  private enforceLimit(type: 'requests' | 'exceptions' | 'logs'): void {
+    if (this[type].length > this.maxEntries) {
+      this[type] = this[type].slice(0, this.maxEntries);
+    }
+  }
+
+  private filterEntries<T extends { timestamp: Date; tags?: string[] }>(
+    entries: T[],
+    options?: QueryOptions,
+  ): T[] {
+    let result = entries;
+
+    if (options?.after) {
+      result = result.filter((e) => e.timestamp >= options.after!);
+    }
+
+    if (options?.before) {
+      result = result.filter((e) => e.timestamp <= options.before!);
+    }
+
+    if (options?.tags && options.tags.length > 0) {
+      result = result.filter(
+        (e) => e.tags && options.tags!.some((t) => e.tags!.includes(t)),
+      );
+    }
+
+    if (options?.search) {
+      const searchLower = options.search.toLowerCase();
+      result = result.filter((e) => {
+        const str = JSON.stringify(e).toLowerCase();
+        return str.includes(searchLower);
+      });
+    }
+
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? 50;
+
+    return result.slice(offset, offset + limit);
+  }
+}
