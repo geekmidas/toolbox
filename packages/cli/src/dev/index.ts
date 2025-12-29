@@ -158,6 +158,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     resolved.providers[0] as LegacyProvider,
     options.port || 3000,
     resolved.enableOpenApi,
+    telescope,
   );
 
   await devServer.start();
