@@ -25,6 +25,21 @@ export interface ServerConfig extends ProviderConfig {
   port?: number;
 }
 
+export interface TelescopeConfig {
+  /** Enable/disable telescope (default: true in development) */
+  enabled?: boolean;
+  /** Port for telescope to use (defaults to server port) */
+  port?: number;
+  /** Path prefix for telescope UI (default: /__telescope) */
+  path?: string;
+  /** Ignore patterns for telescope (e.g., ['/health', '/metrics']) */
+  ignore?: string[];
+  /** Record request/response bodies (default: true) */
+  recordBody?: boolean;
+  /** Maximum entries to keep in memory (default: 1000) */
+  maxEntries?: number;
+}
+
 export interface ProvidersConfig {
   aws?: {
     apiGateway?: {
