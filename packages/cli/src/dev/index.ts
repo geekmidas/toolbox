@@ -415,7 +415,21 @@ class DevServer {
   }
 
   async restart(): Promise<void> {
+    const portToReuse = this.actualPort;
     await this.stop();
+
+    // Wait for port to be released (up to 3 seconds)
+    let attempts = 0;
+    while (attempts < 30) {
+      if (await isPortAvailable(portToReuse)) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      attempts++;
+    }
+
+    // Force reuse the same port
+    this.requestedPort = portToReuse;
     await this.start();
   }
 
