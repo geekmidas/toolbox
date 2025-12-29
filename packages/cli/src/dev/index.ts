@@ -266,6 +266,7 @@ class DevServer {
     private provider: LegacyProvider,
     private requestedPort: number,
     private enableOpenApi: boolean,
+    private telescope?: NormalizedTelescopeConfig,
   ) {
     this.actualPort = requestedPort;
   }
