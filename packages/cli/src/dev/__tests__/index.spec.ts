@@ -206,3 +206,77 @@ describe('devCommand edge cases', () => {
     });
   });
 });
+
+describe('normalizeTelescopeConfig', () => {
+  it('should return undefined when config is false', () => {
+    const result = normalizeTelescopeConfig(false);
+    expect(result).toBeUndefined();
+  });
+
+  it('should return default config when config is true', () => {
+    const result = normalizeTelescopeConfig(true);
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__telescope',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+    });
+  });
+
+  it('should return default config when config is undefined', () => {
+    const result = normalizeTelescopeConfig(undefined);
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__telescope',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+    });
+  });
+
+  it('should return undefined when config.enabled is false', () => {
+    const result = normalizeTelescopeConfig({ enabled: false });
+    expect(result).toBeUndefined();
+  });
+
+  it('should merge custom config with defaults', () => {
+    const result = normalizeTelescopeConfig({
+      path: '/__debug',
+      ignore: ['/health', '/metrics'],
+      recordBody: false,
+      maxEntries: 500,
+    });
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__debug',
+      ignore: ['/health', '/metrics'],
+      recordBody: false,
+      maxEntries: 500,
+    });
+  });
+
+  it('should use defaults for missing config values', () => {
+    const result = normalizeTelescopeConfig({
+      path: '/__custom',
+    });
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__custom',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+    });
+  });
+
+  it('should handle empty object config', () => {
+    const result = normalizeTelescopeConfig({});
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__telescope',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+    });
+  });
+});
