@@ -356,6 +356,8 @@ export abstract class AmazonApiGatewayEndpoint<
           });
         }
       },
+      // Pass rawDb so storage can reuse existing transactions
+      { db: rawDb },
     );
 
     const { output, metadata } = result;

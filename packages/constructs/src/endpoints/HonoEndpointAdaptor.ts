@@ -443,6 +443,8 @@ export class HonoEndpoint<
                 });
               }
             },
+            // Pass rawDb so storage can reuse existing transactions
+            { db: rawDb },
           );
 
           const { output, metadata } = result;

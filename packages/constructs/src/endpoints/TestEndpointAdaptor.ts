@@ -293,6 +293,8 @@ export class TestEndpointAdaptor<
           });
         }
       },
+      // Pass rawDb so storage can reuse existing transactions
+      { db: rawDb },
     );
 
     const { output, metadata } = result;
