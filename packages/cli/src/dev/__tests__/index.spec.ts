@@ -221,6 +221,7 @@ describe('normalizeTelescopeConfig', () => {
       ignore: [],
       recordBody: true,
       maxEntries: 1000,
+      websocket: true,
     });
   });
 
@@ -232,6 +233,7 @@ describe('normalizeTelescopeConfig', () => {
       ignore: [],
       recordBody: true,
       maxEntries: 1000,
+      websocket: true,
     });
   });
 
@@ -253,6 +255,7 @@ describe('normalizeTelescopeConfig', () => {
       ignore: ['/health', '/metrics'],
       recordBody: false,
       maxEntries: 500,
+      websocket: true,
     });
   });
 
@@ -266,6 +269,7 @@ describe('normalizeTelescopeConfig', () => {
       ignore: [],
       recordBody: true,
       maxEntries: 1000,
+      websocket: true,
     });
   });
 
@@ -277,6 +281,21 @@ describe('normalizeTelescopeConfig', () => {
       ignore: [],
       recordBody: true,
       maxEntries: 1000,
+      websocket: true,
+    });
+  });
+
+  it('should allow disabling websocket', () => {
+    const result = normalizeTelescopeConfig({
+      websocket: false,
+    });
+    expect(result).toEqual({
+      enabled: true,
+      path: '/__telescope',
+      ignore: [],
+      recordBody: true,
+      maxEntries: 1000,
+      websocket: false,
     });
   });
 });

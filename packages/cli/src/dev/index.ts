@@ -88,6 +88,7 @@ export function normalizeTelescopeConfig(
     ignore: telescopeConfig.ignore ?? [],
     recordBody: telescopeConfig.recordBody ?? true,
     maxEntries: telescopeConfig.maxEntries ?? 1000,
+    websocket: telescopeConfig.websocket ?? true,
   };
 }
 

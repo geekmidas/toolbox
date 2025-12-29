@@ -38,6 +38,8 @@ export interface TelescopeConfig {
   recordBody?: boolean;
   /** Maximum entries to keep in memory (default: 1000) */
   maxEntries?: number;
+  /** Enable WebSocket for real-time updates (default: true, requires @hono/node-ws for Node.js) */
+  websocket?: boolean;
 }
 
 export interface ProvidersConfig {

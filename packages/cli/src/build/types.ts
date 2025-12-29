@@ -29,6 +29,7 @@ export interface NormalizedTelescopeConfig {
   ignore: string[];
   recordBody: boolean;
   maxEntries: number;
+  websocket: boolean;
 }
 
 export interface BuildContext {
