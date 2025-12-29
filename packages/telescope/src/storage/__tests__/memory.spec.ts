@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { ExceptionEntry, LogEntry, RequestEntry } from '../../types';
 import { InMemoryStorage } from '../memory';
-import type { RequestEntry, ExceptionEntry, LogEntry } from '../../types';
 
 describe('InMemoryStorage', () => {
   let storage: InMemoryStorage;

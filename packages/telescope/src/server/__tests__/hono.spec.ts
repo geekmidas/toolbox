@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Telescope } from '../../Telescope';
 import { InMemoryStorage } from '../../storage/memory';
 import { createMiddleware, createUI, getRequestId } from '../hono';
