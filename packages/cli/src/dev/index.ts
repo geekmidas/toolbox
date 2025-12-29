@@ -62,6 +62,35 @@ export async function findAvailablePort(
   );
 }
 
+/**
+ * Normalize telescope configuration
+ * @internal Exported for testing
+ */
+export function normalizeTelescopeConfig(
+  config: GkmConfig['telescope'],
+): NormalizedTelescopeConfig | undefined {
+  if (config === false) {
+    return undefined;
+  }
+
+  // Default to enabled in development mode
+  const isEnabled = config === true || config === undefined || config.enabled !== false;
+
+  if (!isEnabled) {
+    return undefined;
+  }
+
+  const telescopeConfig: TelescopeConfig = typeof config === 'object' ? config : {};
+
+  return {
+    enabled: true,
+    path: telescopeConfig.path ?? '/__telescope',
+    ignore: telescopeConfig.ignore ?? [],
+    recordBody: telescopeConfig.recordBody ?? true,
+    maxEntries: telescopeConfig.maxEntries ?? 1000,
+  };
+}
+
 export interface DevOptions {
   port?: number;
   enableOpenApi?: boolean;
