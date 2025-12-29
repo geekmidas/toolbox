@@ -329,147 +329,158 @@ const migrator = new PostgresKyselyMigrator({
 // In test setup
 beforeAll(async () => {
   const cleanup = await migrator.start();
-  // Database is created and migrations are run
-  
-  // Store cleanup function for later
   globalThis.cleanupDb = cleanup;
 });
 
 afterAll(async () => {
   await globalThis.cleanupDb?.();
-  // Database is dropped
 });
 ```
 
-### Custom Factories
+## Transaction Isolation
 
-You can extend the base Factory class for custom implementations:
-
-```typescript
-import { Factory } from '@geekmidas/testkit/factory';
-
-class MongoFactory extends Factory {
-  async performInsert(table: string, data: any) {
-    const collection = this.db.collection(table);
-    const result = await collection.insertOne(data);
-    return { ...data, _id: result.insertedId };
-  }
-
-  async performInsertMany(table: string, data: any[]) {
-    const collection = this.db.collection(table);
-    const result = await collection.insertMany(data);
-    return data.map((item, index) => ({
-      ...item,
-      _id: result.insertedIds[index],
-    }));
-  }
-}
-```
-
-### Dynamic Attributes
-
-Create dynamic attributes for each record in batch operations:
+TestKit supports transaction-based test isolation:
 
 ```typescript
-const users = await factory.insertMany(10, 'user', (index) => ({
-  name: `User ${index + 1}`,
-  email: `user${index + 1}@example.com`,
-  isAdmin: index === 0, // First user is admin
-}));
-```
+describe('User Service', () => {
+  let trx: Transaction<Database>;
+  let factory: KyselyFactory;
 
-### Conditional Auto-insertion
+  beforeEach(async () => {
+    trx = await db.transaction();
+    factory = new KyselyFactory(builders, seeds, trx);
+  });
 
-Control whether builders automatically insert data:
+  afterEach(async () => {
+    await trx.rollback();
+  });
 
-```typescript
-const draftBuilder = KyselyFactory.createBuilder<Database, 'posts'>({
-  table: 'posts',
-  defaults: async () => ({
-    title: 'Draft Post',
-    status: 'draft',
-  }),
-  autoInsert: false, // Don't insert automatically
+  it('should perform operations in isolation', async () => {
+    const user = await factory.insert('user');
+    // All changes will be rolled back after the test
+  });
 });
-
-// Manually handle the data
-const draftData = await draftBuilder.build();
-// Perform validation or modifications...
-const post = await db.insertInto('posts').values(draftData).execute();
 ```
 
-## 🔧 API Reference
+## Seeds
+
+Seeds are functions that create complex test scenarios:
+
+```typescript
+const blogSeed = async (factory: Factory) => {
+  const author = await factory.insert('user', {
+    name: 'Blog Author',
+    role: 'author',
+  });
+
+  const categories = await factory.insertMany(3, 'category');
+
+  const posts = await factory.insertMany(5, 'post', (index) => ({
+    title: `Post ${index + 1}`,
+    authorId: author.id,
+    categoryId: categories[index % categories.length].id,
+  }));
+
+  return { author, categories, posts };
+};
+
+// Use in tests
+const data = await factory.seed('blog');
+```
+
+## API Reference
 
 ### KyselyFactory
 
 ```typescript
-class KyselyFactory<TBuilders, TSeeds> extends Factory {
+class KyselyFactory<DB, Builders, Seeds> {
   constructor(
-    builders: TBuilders,
-    seeds: TSeeds,
-    db: Kysely<any> | Transaction<any>
+    builders: Builders,
+    seeds: Seeds,
+    db: Kysely<DB> | ControlledTransaction<DB>
   );
 
-  static createBuilder<TDatabase, TTable>(
-    config: BuilderConfig<TDatabase, TTable>
-  ): Builder;
+  static createBuilder<DB, TableName extends keyof DB & string>(
+    table: TableName,
+    item?: (
+      attrs: Partial<Insertable<DB[TableName]>>,
+      factory: KyselyFactory,
+      db: Kysely<DB>,
+      faker: FakerFactory
+    ) => Partial<Insertable<DB[TableName]>> | Promise<...>,
+    autoInsert?: boolean
+  ): BuilderFunction;
 
-  insert<K extends keyof TBuilders>(
-    name: K,
-    overrides?: Partial<BuilderOutput>
-  ): Promise<BuilderOutput>;
+  insert<K extends keyof Builders>(
+    builderName: K,
+    attrs?: Partial<BuilderAttrs>
+  ): Promise<BuilderResult>;
 
-  insertMany<K extends keyof TBuilders>(
+  insertMany<K extends keyof Builders>(
     count: number,
-    name: K,
-    overrides?: Partial<BuilderOutput> | ((index: number) => Partial<BuilderOutput>)
-  ): Promise<BuilderOutput[]>;
+    builderName: K,
+    attrs?: Partial<BuilderAttrs> | ((idx: number, faker: FakerFactory) => Partial<BuilderAttrs>)
+  ): Promise<BuilderResult[]>;
 
-  seed<K extends keyof TSeeds>(
-    name: K,
-    ...args: Parameters<TSeeds[K]>
-  ): Promise<ReturnType<TSeeds[K]>>;
+  seed<K extends keyof Seeds>(
+    seedName: K,
+    attrs?: SeedAttrs
+  ): Promise<SeedResult>;
 }
 ```
 
-### ObjectionFactory
+### Enhanced Faker
 
 ```typescript
-class ObjectionFactory<TBuilders, TSeeds> extends Factory {
-  constructor(
-    builders: TBuilders,
-    seeds: TSeeds,
-    knex?: Knex
-  );
-
-  // Same methods as KyselyFactory
+interface EnhancedFaker extends Faker {
+  timestamps(): { createdAt: Date; updatedAt: Date };
+  sequence(name?: string): number;
+  resetSequence(name?: string, value?: number): void;
+  resetAllSequences(): void;
+  identifier(suffix?: string): string;
+  price(): number;
+  coordinates: {
+    within(center: Coordinate, radiusMeters: number): Coordinate;
+    outside(center: Coordinate, minRadius: number, maxRadius: number): Coordinate;
+  };
 }
 ```
 
-### Builder Configuration
+### AWS Mocks
 
 ```typescript
-interface BuilderConfig<TDatabase, TTable> {
-  table: TTable;
-  defaults: () => Promise<Insertable<TDatabase[TTable]>>;
-  transform?: (data: any) => Promise<any>;
-  relations?: (inserted: any, factory: Factory) => Promise<void>;
-  autoInsert?: boolean;
-}
+function createMockContext(): Context;
+function createMockV1Event(overrides?: Partial<APIGatewayProxyEvent>): APIGatewayProxyEvent;
+function createMockV2Event(overrides?: Partial<APIGatewayProxyEventV2>): APIGatewayProxyEventV2;
 ```
 
-## 🧪 Testing Best Practices
+### Memory Adapter (Better Auth)
+
+```typescript
+function memoryAdapter(config?: {
+  debugLogs?: boolean;
+  usePlural?: boolean;
+  initialData?: Record<string, any[]>;
+}): DatabaseAdapter & {
+  clear(): void;
+  getAllData(): Record<string, any[]>;
+  getStore(): Map<string, any>;
+};
+```
+
+## Testing Best Practices
 
 1. **Use Transactions**: Always wrap tests in transactions for isolation
 2. **Create Minimal Data**: Only create the data necessary for each test
 3. **Use Seeds for Complex Scenarios**: Encapsulate complex setups in seeds
 4. **Leverage Type Safety**: Let TypeScript catch schema mismatches
 5. **Clean Up Resources**: Always clean up database connections and transactions
+6. **Reset Sequences**: Call `faker.resetAllSequences()` in `beforeEach` for predictable IDs
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](../../CONTRIBUTING.md) for details.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
