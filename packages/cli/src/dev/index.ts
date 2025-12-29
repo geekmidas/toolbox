@@ -379,14 +379,29 @@ class DevServer {
 
   async stop(): Promise<void> {
     if (this.serverProcess && this.isRunning) {
-      this.serverProcess.kill('SIGTERM');
+      const pid = this.serverProcess.pid;
+
+      // Kill the entire process group (negative PID kills the group)
+      if (pid) {
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch {
+          // Process might already be dead
+        }
+      }
 
       // Wait for process to exit
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
-          this.serverProcess?.kill('SIGKILL');
+          if (pid) {
+            try {
+              process.kill(-pid, 'SIGKILL');
+            } catch {
+              // Process might already be dead
+            }
+          }
           resolve();
-        }, 5000);
+        }, 3000);
 
         this.serverProcess?.on('exit', () => {
           clearTimeout(timeout);
