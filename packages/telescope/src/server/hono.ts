@@ -168,13 +168,35 @@ export function createUI(telescope: Telescope): Hono {
     return c.json(stats);
   });
 
-  // Dashboard UI
+  // Static assets
+  app.get('/assets/*', (c) => {
+    const path = c.req.path.replace(/^\//, '');
+    const asset = getAsset(path);
+    if (asset) {
+      return c.body(asset.content, 200, {
+        'Content-Type': asset.contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+    }
+    return c.notFound();
+  });
+
+  // Dashboard UI - serve React app
   app.get('/', (c) => {
+    const html = getIndexHtml();
+    if (html) {
+      return c.html(html);
+    }
+    // Fallback to inline HTML if UI assets not available
     return c.html(telescope.getDashboardHtml());
   });
 
   app.get('/*', (c) => {
-    // SPA fallback
+    // SPA fallback - serve index.html for client-side routing
+    const html = getIndexHtml();
+    if (html) {
+      return c.html(html);
+    }
     return c.html(telescope.getDashboardHtml());
   });
 
