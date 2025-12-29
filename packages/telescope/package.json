@@ -1,0 +1,75 @@
+{
+  "name": "@geekmidas/telescope",
+  "version": "0.0.1",
+  "description": "Laravel Telescope-style debugging and monitoring for web applications",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./storage/memory": {
+      "types": "./dist/storage/memory.d.ts",
+      "import": "./dist/storage/memory.mjs",
+      "require": "./dist/storage/memory.cjs"
+    },
+    "./storage/kysely": {
+      "types": "./dist/storage/kysely.d.ts",
+      "import": "./dist/storage/kysely.mjs",
+      "require": "./dist/storage/kysely.cjs"
+    },
+    "./server/hono": {
+      "types": "./dist/server/hono.d.ts",
+      "import": "./dist/server/hono.mjs",
+      "require": "./dist/server/hono.cjs"
+    },
+    "./logger/pino": {
+      "types": "./dist/logger/pino.d.ts",
+      "import": "./dist/logger/pino.mjs",
+      "require": "./dist/logger/pino.cjs"
+    },
+    "./logger/console": {
+      "types": "./dist/logger/console.d.ts",
+      "import": "./dist/logger/console.mjs",
+      "require": "./dist/logger/console.cjs"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geekmidas/toolbox"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "nanoid": "~5.1.5"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0",
+    "kysely": "^0.28.0",
+    "pino": "^9.0.0",
+    "pino-abstract-transport": "^2.0.0 || ^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    },
+    "pino": {
+      "optional": true
+    },
+    "pino-abstract-transport": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "hono": "^4.7.0",
+    "kysely": "~0.28.2",
+    "pino": "^9.6.0",
+    "pino-abstract-transport": "~3.0.0"
+  }
+}
