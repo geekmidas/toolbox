@@ -38,6 +38,11 @@
       "types": "./dist/auth-fetcher.d.ts",
       "import": "./dist/auth-fetcher.mjs",
       "require": "./dist/auth-fetcher.cjs"
+    },
+    "./endpoint-hooks": {
+      "types": "./dist/endpoint-hooks.d.ts",
+      "import": "./dist/endpoint-hooks.mjs",
+      "require": "./dist/endpoint-hooks.cjs"
     }
   },
   "scripts": {
