@@ -24,6 +24,8 @@
     "@hono/node-ws": "^1.0.0",
     "kysely": "~0.28.2",
     "hono": "^4.7.15",
+    "pino": "^9.6.0",
+    "pino-abstract-transport": "~3.0.0",
     "zod": "~4.1.13"
   },
   "devDependencies": {
