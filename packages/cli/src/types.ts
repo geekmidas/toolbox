@@ -62,6 +62,8 @@ export interface GkmConfig {
   envParser: string;
   logger: string;
   providers?: ProvidersConfig;
+  /** Telescope configuration for debugging/monitoring */
+  telescope?: boolean | TelescopeConfig;
 }
 
 export interface BuildOptions {
