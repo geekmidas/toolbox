@@ -20,8 +20,11 @@ export function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RequestEntry | null>(null);
-  const [selectedException, setSelectedException] = useState<ExceptionEntry | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<RequestEntry | null>(
+    null,
+  );
+  const [selectedException, setSelectedException] =
+    useState<ExceptionEntry | null>(null);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
 
   const loadData = useCallback(async () => {
@@ -76,19 +79,25 @@ export function App() {
 
             switch (message.type) {
               case 'request':
-                setRequests((prev) => [message.payload as RequestEntry, ...prev].slice(0, 100));
+                setRequests((prev) =>
+                  [message.payload as RequestEntry, ...prev].slice(0, 100),
+                );
                 setStats((prev) =>
                   prev ? { ...prev, requests: prev.requests + 1 } : prev,
                 );
                 break;
               case 'exception':
-                setExceptions((prev) => [message.payload as ExceptionEntry, ...prev].slice(0, 100));
+                setExceptions((prev) =>
+                  [message.payload as ExceptionEntry, ...prev].slice(0, 100),
+                );
                 setStats((prev) =>
                   prev ? { ...prev, exceptions: prev.exceptions + 1 } : prev,
                 );
                 break;
               case 'log':
-                setLogs((prev) => [message.payload as LogEntry, ...prev].slice(0, 100));
+                setLogs((prev) =>
+                  [message.payload as LogEntry, ...prev].slice(0, 100),
+                );
                 setStats((prev) =>
                   prev ? { ...prev, logs: prev.logs + 1 } : prev,
                 );
@@ -166,18 +175,29 @@ export function App() {
           {stats && (
             <>
               <div className="text-sm text-slate-400">
-                <span className="font-semibold text-slate-100">{stats.requests}</span> requests
+                <span className="font-semibold text-slate-100">
+                  {stats.requests}
+                </span>{' '}
+                requests
               </div>
               <div className="text-sm text-slate-400">
-                <span className="font-semibold text-slate-100">{stats.exceptions}</span> exceptions
+                <span className="font-semibold text-slate-100">
+                  {stats.exceptions}
+                </span>{' '}
+                exceptions
               </div>
               <div className="text-sm text-slate-400">
-                <span className="font-semibold text-slate-100">{stats.logs}</span> logs
+                <span className="font-semibold text-slate-100">
+                  {stats.logs}
+                </span>{' '}
+                logs
               </div>
             </>
           )}
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span
+              className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+            />
             {connected ? 'Live' : 'Disconnected'}
           </div>
         </div>
@@ -212,7 +232,9 @@ export function App() {
             requests.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
                 <h3 className="text-lg mb-2">No requests yet</h3>
-                <p className="text-sm">Requests will appear here as they are captured.</p>
+                <p className="text-sm">
+                  Requests will appear here as they are captured.
+                </p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -222,11 +244,15 @@ export function App() {
                     className="bg-bg-secondary border border-border rounded-lg p-4 cursor-pointer transition-colors hover:border-blue-500 hover:bg-bg-tertiary flex items-center gap-4"
                     onClick={() => setSelectedRequest(request)}
                   >
-                    <span className={`font-semibold px-2 py-1 rounded text-xs min-w-16 text-center ${getMethodColor(request.method)}`}>
+                    <span
+                      className={`font-semibold px-2 py-1 rounded text-xs min-w-16 text-center ${getMethodColor(request.method)}`}
+                    >
                       {request.method}
                     </span>
                     <span className="flex-1 truncate">{request.path}</span>
-                    <span className={`text-sm px-2 py-1 rounded ${getStatusColor(request.status)}`}>
+                    <span
+                      className={`text-sm px-2 py-1 rounded ${getStatusColor(request.status)}`}
+                    >
                       {request.status}
                     </span>
                     <span className="text-xs text-slate-500 min-w-16 text-right">
@@ -243,7 +269,9 @@ export function App() {
             exceptions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
                 <h3 className="text-lg mb-2">No exceptions</h3>
-                <p className="text-sm">Exceptions will appear here when they occur.</p>
+                <p className="text-sm">
+                  Exceptions will appear here when they occur.
+                </p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -254,39 +282,47 @@ export function App() {
                     onClick={() => setSelectedException(exception)}
                   >
                     <div className="flex justify-between items-center mb-1">
-                      <span className="font-semibold text-red-400">{exception.name}</span>
-                      <span className="text-xs text-slate-500">{formatTime(exception.timestamp)}</span>
+                      <span className="font-semibold text-red-400">
+                        {exception.name}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {formatTime(exception.timestamp)}
+                      </span>
                     </div>
-                    <span className="text-sm text-slate-400 truncate block">{exception.message}</span>
+                    <span className="text-sm text-slate-400 truncate block">
+                      {exception.message}
+                    </span>
                   </div>
                 ))}
               </div>
             )
+          ) : logs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
+              <h3 className="text-lg mb-2">No logs yet</h3>
+              <p className="text-sm">
+                Log entries will appear here as they are recorded.
+              </p>
+            </div>
           ) : (
-            logs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
-                <h3 className="text-lg mb-2">No logs yet</h3>
-                <p className="text-sm">Log entries will appear here as they are recorded.</p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="bg-bg-secondary border border-border rounded-lg p-4 cursor-pointer transition-colors hover:border-blue-500 hover:bg-bg-tertiary flex items-start gap-4"
-                    onClick={() => setSelectedLog(log)}
+            <div className="flex flex-col gap-2">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-bg-secondary border border-border rounded-lg p-4 cursor-pointer transition-colors hover:border-blue-500 hover:bg-bg-tertiary flex items-start gap-4"
+                  onClick={() => setSelectedLog(log)}
+                >
+                  <span
+                    className={`font-semibold px-2 py-1 rounded text-xs min-w-14 text-center ${getLogLevelColor(log.level)}`}
                   >
-                    <span className={`font-semibold px-2 py-1 rounded text-xs min-w-14 text-center ${getLogLevelColor(log.level)}`}>
-                      {log.level}
-                    </span>
-                    <span className="flex-1 wrap-break-word">{log.message}</span>
-                    <span className="text-xs text-slate-500 min-w-20 text-right">
-                      {formatTime(log.timestamp)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )
+                    {log.level}
+                  </span>
+                  <span className="flex-1 wrap-break-word">{log.message}</span>
+                  <span className="text-xs text-slate-500 min-w-20 text-right">
+                    {formatTime(log.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </main>
@@ -300,9 +336,7 @@ export function App() {
         <ExceptionDetail exception={selectedException} onClose={closeDetail} />
       )}
 
-      {selectedLog && (
-        <LogDetail log={selectedLog} onClose={closeDetail} />
-      )}
+      {selectedLog && <LogDetail log={selectedLog} onClose={closeDetail} />}
     </div>
   );
 }

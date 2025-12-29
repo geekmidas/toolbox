@@ -13,7 +13,12 @@ import {
   FunctionGenerator,
   SubscriberGenerator,
 } from '../generators';
-import type { GkmConfig, LegacyProvider, Runtime, TelescopeConfig } from '../types';
+import type {
+  GkmConfig,
+  LegacyProvider,
+  Runtime,
+  TelescopeConfig,
+} from '../types';
 
 const logger = console;
 
@@ -75,13 +80,15 @@ export function normalizeTelescopeConfig(
   }
 
   // Default to enabled in development mode
-  const isEnabled = config === true || config === undefined || config.enabled !== false;
+  const isEnabled =
+    config === true || config === undefined || config.enabled !== false;
 
   if (!isEnabled) {
     return undefined;
   }
 
-  const telescopeConfig: TelescopeConfig = typeof config === 'object' ? config : {};
+  const telescopeConfig: TelescopeConfig =
+    typeof config === 'object' ? config : {};
 
   return {
     enabled: true,
@@ -198,9 +205,13 @@ export async function devCommand(options: DevOptions): Promise<void> {
   });
 
   // Also watch the directories for new files
-  const dirsToWatch = [...new Set(resolvedFiles.map((f) => f.split('/').slice(0, -1).join('/')))];
+  const dirsToWatch = [
+    ...new Set(resolvedFiles.map((f) => f.split('/').slice(0, -1).join('/'))),
+  ];
 
-  logger.log(`📁 Found ${resolvedFiles.length} files in ${dirsToWatch.length} directories`);
+  logger.log(
+    `📁 Found ${resolvedFiles.length} files in ${dirsToWatch.length} directories`,
+  );
 
   const watcher = chokidar.watch([...resolvedFiles, ...dirsToWatch], {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
@@ -444,12 +455,13 @@ class DevServer {
       join(dirname(serverPath), 'app.js'),
     );
 
-    const serveCode = this.runtime === 'bun'
-      ? `Bun.serve({
+    const serveCode =
+      this.runtime === 'bun'
+        ? `Bun.serve({
       port,
       fetch: app.fetch,
     });`
-      : `const { serve } = await import('@hono/node-server');
+        : `const { serve } = await import('@hono/node-server');
     const server = serve({
       fetch: app.fetch,
       port,

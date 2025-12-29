@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-  ExceptionEntry,
-  LogEntry,
-  RequestEntry,
-} from '../../types';
+import type { ExceptionEntry, LogEntry, RequestEntry } from '../../types';
 import {
   getTelescopeMigration,
   KyselyStorage,
@@ -558,7 +554,11 @@ describe('KyselyStorage', () => {
       mockDb.executeTakeFirst
         .mockResolvedValueOnce({ count: BigInt(0), oldest: null, newest: null })
         .mockResolvedValueOnce({ count: BigInt(0), oldest: null, newest: null })
-        .mockResolvedValueOnce({ count: BigInt(0), oldest: null, newest: null });
+        .mockResolvedValueOnce({
+          count: BigInt(0),
+          oldest: null,
+          newest: null,
+        });
 
       const stats = await storage.getStats();
 
@@ -664,12 +664,18 @@ describe('getTelescopeMigration', () => {
   it('should return up and down migration SQL', () => {
     const migration = getTelescopeMigration();
 
-    expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS telescope_requests');
-    expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS telescope_exceptions');
+    expect(migration.up).toContain(
+      'CREATE TABLE IF NOT EXISTS telescope_requests',
+    );
+    expect(migration.up).toContain(
+      'CREATE TABLE IF NOT EXISTS telescope_exceptions',
+    );
     expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS telescope_logs');
     expect(migration.up).toContain('CREATE INDEX IF NOT EXISTS');
     expect(migration.down).toContain('DROP TABLE IF EXISTS telescope_logs');
-    expect(migration.down).toContain('DROP TABLE IF EXISTS telescope_exceptions');
+    expect(migration.down).toContain(
+      'DROP TABLE IF EXISTS telescope_exceptions',
+    );
     expect(migration.down).toContain('DROP TABLE IF EXISTS telescope_requests');
   });
 
@@ -677,7 +683,9 @@ describe('getTelescopeMigration', () => {
     const migration = getTelescopeMigration('debug');
 
     expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug_requests');
-    expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug_exceptions');
+    expect(migration.up).toContain(
+      'CREATE TABLE IF NOT EXISTS debug_exceptions',
+    );
     expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug_logs');
     expect(migration.up).toContain('idx_debug_requests_timestamp');
     expect(migration.down).toContain('DROP TABLE IF EXISTS debug_logs');

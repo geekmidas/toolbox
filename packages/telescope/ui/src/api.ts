@@ -15,9 +15,10 @@ async function fetchJson<T>(path: string): Promise<T> {
   return response.json();
 }
 
-export async function getRequests(
-  options?: { limit?: number; offset?: number },
-): Promise<RequestEntry[]> {
+export async function getRequests(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<RequestEntry[]> {
   const params = new URLSearchParams();
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
@@ -33,9 +34,10 @@ export async function getRequest(id: string): Promise<RequestEntry | null> {
   }
 }
 
-export async function getExceptions(
-  options?: { limit?: number; offset?: number },
-): Promise<ExceptionEntry[]> {
+export async function getExceptions(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<ExceptionEntry[]> {
   const params = new URLSearchParams();
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
@@ -51,9 +53,10 @@ export async function getException(id: string): Promise<ExceptionEntry | null> {
   }
 }
 
-export async function getLogs(
-  options?: { limit?: number; offset?: number },
-): Promise<LogEntry[]> {
+export async function getLogs(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<LogEntry[]> {
   const params = new URLSearchParams();
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));

@@ -9,7 +9,9 @@ export function ExceptionDetail({ exception, onClose }: ExceptionDetailProps) {
   return (
     <div className="fixed top-0 right-0 bottom-0 w-1/2 max-w-3xl bg-bg-secondary border-l border-border flex flex-col z-50 shadow-2xl">
       <div className="flex items-center justify-between p-4 border-b border-border">
-        <h2 className="text-base font-semibold text-red-400">{exception.name}</h2>
+        <h2 className="text-base font-semibold text-red-400">
+          {exception.name}
+        </h2>
         <button
           className="text-slate-400 hover:text-slate-100 p-2 text-xl leading-none"
           onClick={onClose}
@@ -20,7 +22,9 @@ export function ExceptionDetail({ exception, onClose }: ExceptionDetailProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         <section className="mb-6">
-          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Overview</h3>
+          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+            Overview
+          </h3>
           <div className="space-y-2 text-sm">
             <div className="flex py-2 border-b border-border">
               <span className="text-slate-500 min-w-32">Message</span>
@@ -51,7 +55,9 @@ export function ExceptionDetail({ exception, onClose }: ExceptionDetailProps) {
 
         {exception.source && (
           <section className="mb-6">
-            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Source</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+              Source
+            </h3>
             <div className="text-sm mb-2">
               <span className="text-slate-500">File: </span>
               <span>
@@ -68,11 +74,15 @@ export function ExceptionDetail({ exception, onClose }: ExceptionDetailProps) {
         )}
 
         <section className="mb-6">
-          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Stack Trace</h3>
+          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+            Stack Trace
+          </h3>
           <div className="text-xs leading-relaxed space-y-1">
             {exception.stack.map((frame, index) => (
               <div key={index} className="text-slate-400">
-                <span className="text-blue-400">{frame.function || '<anonymous>'}</span>
+                <span className="text-blue-400">
+                  {frame.function || '<anonymous>'}
+                </span>
                 {frame.file && (
                   <span className="text-slate-500 ml-2">
                     at {frame.file}

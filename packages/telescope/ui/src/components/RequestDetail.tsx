@@ -29,7 +29,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
     <div className="fixed top-0 right-0 bottom-0 w-1/2 max-w-3xl bg-bg-secondary border-l border-border flex flex-col z-50 shadow-2xl">
       <div className="flex items-center justify-between p-4 border-b border-border">
         <h2 className="text-base font-semibold flex items-center gap-2">
-          <span className={`px-2 py-1 rounded text-xs ${getMethodColor(request.method)}`}>
+          <span
+            className={`px-2 py-1 rounded text-xs ${getMethodColor(request.method)}`}
+          >
             {request.method}
           </span>
           <span className="truncate">{request.path}</span>
@@ -44,7 +46,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         <section className="mb-6">
-          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Overview</h3>
+          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+            Overview
+          </h3>
           <div className="space-y-2 text-sm">
             <div className="flex py-2 border-b border-border">
               <span className="text-slate-500 min-w-32">Status</span>
@@ -84,7 +88,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
         </section>
 
         <section className="mb-6">
-          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Request Headers</h3>
+          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+            Request Headers
+          </h3>
           <pre className="bg-bg-primary border border-border rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
             {formatJson(request.headers)}
           </pre>
@@ -92,7 +98,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
 
         {request.query && Object.keys(request.query).length > 0 && (
           <section className="mb-6">
-            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Query Parameters</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+              Query Parameters
+            </h3>
             <pre className="bg-bg-primary border border-border rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
               {formatJson(request.query)}
             </pre>
@@ -101,7 +109,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
 
         {request.body !== undefined && (
           <section className="mb-6">
-            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Request Body</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+              Request Body
+            </h3>
             <pre className="bg-bg-primary border border-border rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
               {formatJson(request.body)}
             </pre>
@@ -109,7 +119,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
         )}
 
         <section className="mb-6">
-          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Response Headers</h3>
+          <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+            Response Headers
+          </h3>
           <pre className="bg-bg-primary border border-border rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
             {formatJson(request.responseHeaders)}
           </pre>
@@ -117,7 +129,9 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
 
         {request.responseBody !== undefined && (
           <section className="mb-6">
-            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">Response Body</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-500 mb-2">
+              Response Body
+            </h3>
             <pre className="bg-bg-primary border border-border rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
               {formatJson(request.responseBody)}
             </pre>

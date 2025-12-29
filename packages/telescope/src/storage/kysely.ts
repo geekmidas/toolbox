@@ -131,10 +131,7 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 
   async saveRequest(entry: RequestEntry): Promise<void> {
     const row = this.requestToRow(entry);
-    await (this.db as any)
-      .insertInto(this.requestsTable)
-      .values(row)
-      .execute();
+    await (this.db as any).insertInto(this.requestsTable).values(row).execute();
   }
 
   async saveRequests(entries: RequestEntry[]): Promise<void> {
@@ -315,9 +312,10 @@ export class KyselyStorage<DB> implements TelescopeStorage {
       exceptions: Number(exceptionsResult?.count ?? 0),
       logs: Number(logsResult?.count ?? 0),
       oldestEntry: allDates[0] ? new Date(allDates[0]) : undefined,
-      newestEntry: allDates.length > 0
-        ? new Date(allDates[allDates.length - 1])
-        : undefined,
+      newestEntry:
+        allDates.length > 0
+          ? new Date(allDates[allDates.length - 1])
+          : undefined,
     };
   }
 
