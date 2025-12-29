@@ -5,7 +5,6 @@ import type {
   Auditor,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
-import { withAuditableTransaction } from '@geekmidas/audit/kysely';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
@@ -289,13 +288,33 @@ export async function createAuditContext<
 }
 
 /**
+ * Options for executeWithAuditTransaction.
+ */
+export interface ExecuteWithAuditTransactionOptions {
+  /**
+   * Database connection to use for the transaction.
+   * If this is already a transaction, it will be reused instead of creating a nested one.
+   * If not provided, the storage's internal database is used.
+   */
+  db?: unknown;
+}
+
+/**
  * Execute a handler with automatic audit transaction support.
- * If the audit storage has a database (via getDatabase()), wraps execution
+ * If the audit storage provides a withTransaction method, wraps execution
  * in a transaction so audits are atomic with handler's database operations.
+ *
+ * This is database-agnostic - each storage implementation provides its own
+ * transaction handling based on the underlying database (Kysely, Drizzle, etc.).
+ *
+ * If the db parameter is provided and is already a transaction, the storage
+ * will reuse it instead of creating a nested transaction (similar to
+ * packages/db/src/kysely.ts#withTransaction).
  *
  * @param auditContext - The audit context from createAuditContext
  * @param handler - The handler function to execute (receives auditor)
  * @param onComplete - Called after handler with response, to process declarative audits
+ * @param options - Optional configuration including database connection
  * @returns The handler result
  */
 export async function executeWithAuditTransaction<
@@ -308,6 +327,7 @@ export async function executeWithAuditTransaction<
   auditContext: AuditExecutionContext<TAuditAction> | undefined,
   handler: (auditor?: Auditor<TAuditAction>) => Promise<T>,
   onComplete?: (response: T, auditor: Auditor<TAuditAction>) => Promise<void>,
+  options?: ExecuteWithAuditTransactionOptions,
 ): Promise<T> {
   // No audit context - just run handler
   if (!auditContext) {
@@ -316,25 +336,28 @@ export async function executeWithAuditTransaction<
 
   const { auditor, storage } = auditContext;
 
-  // Check if storage has a database for transactional execution
-  const db = storage.getDatabase?.();
-
-  if (db) {
+  // Check if storage provides a transaction wrapper
+  if (storage.withTransaction) {
     // Wrap in transaction - audits are atomic with handler operations
-    return withAuditableTransaction(db as any, auditor as any, async () => {
-      const response = await handler(auditor);
+    // The storage's withTransaction handles setTransaction and flush
+    // Pass db so existing transactions are reused
+    return storage.withTransaction(
+      auditor,
+      async () => {
+        const response = await handler(auditor);
 
-      // Process declarative audits within the transaction
-      if (onComplete) {
-        await onComplete(response, auditor);
-      }
+        // Process declarative audits within the transaction
+        if (onComplete) {
+          await onComplete(response, auditor);
+        }
 
-      // Audits are flushed by withAuditableTransaction before commit
-      return response;
-    });
+        return response;
+      },
+      options?.db,
+    );
   }
 
-  // No database - run handler and flush audits after
+  // No transaction support - run handler and flush audits after
   const response = await handler(auditor);
 
   if (onComplete) {
