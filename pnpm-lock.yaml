@@ -87,6 +87,9 @@ importers:
       '@geekmidas/services':
         specifier: workspace:*
         version: link:../../packages/services
+      '@geekmidas/telescope':
+        specifier: workspace:*
+        version: link:../../packages/telescope
       '@hono/node-server':
         specifier: ~1.19.5
         version: 1.19.5(hono@4.8.2)

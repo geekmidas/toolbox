@@ -11,6 +11,7 @@
     "start": "node .gkm/server/app.js"
   },
   "dependencies": {
+    "@geekmidas/telescope": "workspace:*",
     "@geekmidas/constructs": "workspace:*",
     "@geekmidas/audit": "workspace:*",
     "@geekmidas/services": "workspace:*",
