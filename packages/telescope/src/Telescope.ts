@@ -41,7 +41,9 @@ export class Telescope {
   /**
    * Record a request entry
    */
-  async recordRequest(entry: Omit<RequestEntry, 'id' | 'timestamp'>): Promise<string> {
+  async recordRequest(
+    entry: Omit<RequestEntry, 'id' | 'timestamp'>,
+  ): Promise<string> {
     if (!this.options.enabled) return '';
 
     const id = nanoid();
@@ -52,7 +54,11 @@ export class Telescope {
     };
 
     await this.storage.saveRequest(fullEntry);
-    this.broadcast({ type: 'request', payload: fullEntry, timestamp: Date.now() });
+    this.broadcast({
+      type: 'request',
+      payload: fullEntry,
+      timestamp: Date.now(),
+    });
     return id;
   }
 
