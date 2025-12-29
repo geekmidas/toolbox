@@ -12,7 +12,7 @@ import {
   FunctionGenerator,
   SubscriberGenerator,
 } from '../generators';
-import type { GkmConfig, LegacyProvider, TelescopeConfig } from '../types';
+import type { GkmConfig, LegacyProvider, Runtime, TelescopeConfig } from '../types';
 
 const logger = console;
 
@@ -154,12 +154,16 @@ export async function devCommand(options: DevOptions): Promise<void> {
     resolved.enableOpenApi,
   );
 
+  // Determine runtime (default to node)
+  const runtime: Runtime = config.runtime ?? 'node';
+
   // Start the dev server
   const devServer = new DevServer(
     resolved.providers[0] as LegacyProvider,
     options.port || 3000,
     resolved.enableOpenApi,
     telescope,
+    runtime,
   );
 
   await devServer.start();
@@ -268,6 +272,7 @@ class DevServer {
     private requestedPort: number,
     private enableOpenApi: boolean,
     private telescope?: NormalizedTelescopeConfig,
+    private runtime: Runtime = 'node',
   ) {
     this.actualPort = requestedPort;
   }

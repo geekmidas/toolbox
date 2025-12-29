@@ -25,6 +25,8 @@ export interface ServerConfig extends ProviderConfig {
   port?: number;
 }
 
+export type Runtime = 'node' | 'bun';
+
 export interface TelescopeConfig {
   /** Enable/disable telescope (default: true in development) */
   enabled?: boolean;
@@ -66,6 +68,8 @@ export interface GkmConfig {
   providers?: ProvidersConfig;
   /** Telescope configuration for debugging/monitoring */
   telescope?: boolean | TelescopeConfig;
+  /** Runtime to use for dev server (default: 'node') */
+  runtime?: Runtime;
 }
 
 export interface BuildOptions {
