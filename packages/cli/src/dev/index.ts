@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import chokidar from 'chokidar';
 import { resolveProviders } from '../build/providerResolver';
-import type { BuildContext } from '../build/types';
+import type { BuildContext, NormalizedTelescopeConfig } from '../build/types';
 import { loadConfig } from '../config';
 import {
   CronGenerator,
