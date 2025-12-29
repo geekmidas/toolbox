@@ -226,6 +226,96 @@ export const userEventsSubscriber = new SubscriberBuilder()
 
 ## Advanced Features
 
+### Security Schemes
+
+Define OpenAPI security schemes for your API. These are used by `@geekmidas/cli` to generate type-safe authentication in the client.
+
+#### Built-in Security Schemes
+
+The following authorizer names automatically map to OpenAPI security schemes:
+
+| Authorizer | Security Scheme |
+|------------|-----------------|
+| `jwt` | `{ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }` |
+| `bearer` | `{ type: 'http', scheme: 'bearer' }` |
+| `apiKey` | `{ type: 'apiKey', in: 'header', name: 'X-API-Key' }` |
+| `oauth2` | `{ type: 'oauth2', flows: {} }` |
+| `oidc` | `{ type: 'openIdConnect', openIdConnectUrl: '' }` |
+| `iam` | `{ type: 'apiKey', in: 'header', name: 'Authorization' }` (AWS SigV4) |
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+
+// Using built-in 'jwt' scheme
+export const getUsers = e
+  .get('/users')
+  .authorizer('jwt')  // Automatically uses JWT security scheme
+  .handle(async ({ session }) => {
+    // session contains JWT claims
+    return [];
+  });
+```
+
+#### Custom Security Schemes
+
+For custom authentication methods, use `.securitySchemes()` on the EndpointFactory:
+
+```typescript
+import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+
+const api = new EndpointFactory()
+  .securitySchemes({
+    // Custom OAuth2 with specific flows
+    oauth2: {
+      type: 'oauth2',
+      flows: {
+        authorizationCode: {
+          authorizationUrl: 'https://auth.example.com/authorize',
+          tokenUrl: 'https://auth.example.com/token',
+          scopes: {
+            'read:users': 'Read user data',
+            'write:users': 'Modify user data',
+          },
+        },
+      },
+    },
+    // Custom API key in query parameter
+    queryApiKey: {
+      type: 'apiKey',
+      in: 'query',
+      name: 'api_key',
+    },
+  });
+
+// Use custom security scheme
+export const getUsers = api
+  .get('/users')
+  .authorizer('oauth2')
+  .handle(async () => []);
+```
+
+#### Default Authorizer
+
+Set a default authorizer for all endpoints from a factory:
+
+```typescript
+const api = new EndpointFactory()
+  .authorizer('jwt');  // All endpoints inherit this authorizer
+
+// Protected by default
+export const getProfile = api
+  .get('/profile')
+  .handle(async ({ session }) => {
+    return { userId: session.claims.sub };
+  });
+
+// Override to make public
+export const getHealth = api
+  .get('/health')
+  .authorizer('none')  // Explicitly public
+  .handle(async () => ({ status: 'ok' }));
+```
+
 ### Service Discovery
 
 Inject services into your constructs:
