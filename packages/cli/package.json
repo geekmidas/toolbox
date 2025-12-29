@@ -54,6 +54,12 @@
     "@geekmidas/constructs": "workspace:~",
     "@geekmidas/envkit": "workspace:~",
     "@geekmidas/logger": "workspace:~",
-    "@geekmidas/schema": "workspace:~"
+    "@geekmidas/schema": "workspace:~",
+    "@geekmidas/telescope": "workspace:~"
+  },
+  "peerDependenciesMeta": {
+    "@geekmidas/telescope": {
+      "optional": true
+    }
   }
 }
