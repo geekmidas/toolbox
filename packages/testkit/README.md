@@ -6,20 +6,21 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## 🚀 Overview
+## Overview
 
 **@geekmidas/testkit** provides a comprehensive set of testing utilities designed to simplify database testing in TypeScript applications. It offers factory patterns for creating test data, supports multiple database libraries, and ensures type safety throughout your tests.
 
 ### Key Features
 
-- 🏭 **Factory Pattern**: Create test data with minimal boilerplate
-- 🔒 **Type Safety**: Full TypeScript support with automatic schema inference
-- 🗄️ **Multi-Database Support**: Works with Kysely and Objection.js
-- 🔄 **Transaction Isolation**: Built-in support for test isolation
-- 🚀 **Performance**: Efficient batch operations and data seeding
-- 🧩 **Flexible**: Extensible architecture for custom implementations
+- **Factory Pattern**: Create test data with minimal boilerplate
+- **Type Safety**: Full TypeScript support with automatic schema inference
+- **Multi-Database Support**: Works with Kysely and Objection.js
+- **Transaction Isolation**: Built-in support for test isolation
+- **Enhanced Faker**: Extended faker with timestamps, sequences, and coordinates
+- **AWS Mocks**: Mock Lambda contexts and API Gateway events
+- **Better Auth**: In-memory adapter for authentication testing
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install --save-dev @geekmidas/testkit
