@@ -292,6 +292,56 @@ const { data } = api.useQuery('GET /users');
 const mutation = api.useMutation('POST /users');
 ```
 
+### `gkm dev`
+
+Start a development server with hot-reload and optional Telescope debugging dashboard.
+
+```bash
+gkm dev [options]
+```
+
+**Options:**
+- `--port <port>`: Server port (default: `3000`)
+
+**Features:**
+- Hot-reload on file changes (endpoints, functions, crons, subscribers)
+- Automatic port switching if requested port is in use
+- Telescope debugging dashboard (enabled by default)
+- Real-time WebSocket updates in Telescope
+
+**Example:**
+```bash
+# Start development server on port 3000
+gkm dev
+
+# Start on custom port
+gkm dev --port 8080
+```
+
+**Output:**
+```
+🚀 Starting development server...
+Loading routes from: ./src/endpoints/**/*.ts
+Loading subscribers from: ./src/subscribers/**/*.ts
+Using envParser: ./src/config/env
+🔭 Telescope enabled at /__telescope
+Generated server with 5 endpoints
+
+✨ Starting server on port 3000...
+🔌 Telescope real-time updates enabled
+
+🎉 Server running at http://localhost:3000
+🔭 Telescope available at http://localhost:3000/__telescope
+👀 Watching for changes in: src/endpoints/**/*.ts, src/subscribers/**/*.ts
+```
+
+When files change, the server automatically rebuilds and restarts:
+```
+📝 File changed: src/endpoints/users.ts
+🔄 Rebuilding...
+✅ Rebuild complete, restarting server...
+```
+
 ### Future Commands
 
 The following commands are planned for future releases:
