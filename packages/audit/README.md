@@ -10,7 +10,7 @@
 
 - **Type-safe Audit Actions**: Define audit types with TypeScript for compile-time safety
 - **Transactional Support**: Flush audits atomically within database transactions
-- **Flexible Storage**: Pluggable storage interface with Kysely implementation included
+- **Flexible Storage**: Pluggable storage interface (Kysely, in-memory, cache)
 - **Actor Tracking**: Record who performed each action (users, services, systems)
 - **Rich Metadata**: Attach request context, entity references, and custom data
 - **Query Support**: Query audit logs with filters, pagination, and sorting
@@ -38,6 +38,22 @@ type AppAuditAction =
 ```
 
 ### 2. Set Up Storage
+
+**For Development/Testing (InMemoryAuditStorage):**
+
+```typescript
+import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
+
+const storage = new InMemoryAuditStorage<AppAuditAction>();
+
+// Query stored records
+const records = await storage.query({ type: 'user.created' });
+
+// Clear all records (useful in tests)
+storage.clear();
+```
+
+**For Production (KyselyAuditStorage):**
 
 ```typescript
 import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
@@ -257,6 +273,61 @@ const count = await storage.count({
   type: ['user.created', 'user.updated'],
   actorId: 'user-123',
 });
+```
+
+### `InMemoryAuditStorage`
+
+Convenience wrapper around `CacheAuditStorage` with `InMemoryCache`. Useful for testing and development:
+
+```typescript
+import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
+
+const storage = new InMemoryAuditStorage<AppAuditAction>();
+
+// Query audits (same API as other storages)
+const audits = await storage.query({
+  type: 'user.created',
+  limit: 10,
+});
+
+// Get all records (for assertions in tests)
+const allRecords = await storage.getRecords();
+
+// Clear all records (reset for next test)
+await storage.clear();
+```
+
+### `CacheAuditStorage`
+
+Cache-based storage using any `@geekmidas/cache` implementation:
+
+```typescript
+import { CacheAuditStorage } from '@geekmidas/audit/cache';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+import { UpstashCache } from '@geekmidas/cache/upstash';
+
+// With in-memory cache (development/testing)
+const storage = new CacheAuditStorage({
+  cache: new InMemoryCache(),
+  ttl: 86400, // 24 hours
+});
+
+// With Upstash Redis (production - distributed systems)
+const storage = new CacheAuditStorage({
+  cache: new UpstashCache({
+    url: process.env.UPSTASH_REDIS_URL,
+    token: process.env.UPSTASH_REDIS_TOKEN,
+  }),
+  prefix: 'audit', // Optional key prefix
+  ttl: 604800, // 7 days
+});
+
+// Query and count work the same as other storages
+const audits = await storage.query({ type: 'user.created' });
+const count = await storage.count({ actorId: 'user-123' });
+
+// Clear all records
+await storage.clear();
 ```
 
 ## Database Schema

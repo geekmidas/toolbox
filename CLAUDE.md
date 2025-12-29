@@ -120,23 +120,26 @@ Type-safe audit logging with database integration for tracking application event
 **Key Features:**
 - Type-safe audit actions with compile-time validation
 - Transactional support for atomic database writes
-- Pluggable storage backends (Kysely implementation included)
+- Pluggable storage backends (Kysely, in-memory, cache)
 - Actor tracking (users, services, systems)
 - Rich metadata support (request context, entity references)
 - Query and filtering capabilities
 
 **Usage Pattern:**
 ```typescript
-import { DefaultAuditor, KyselyAuditStorage } from '@geekmidas/audit';
+import { DefaultAuditor } from '@geekmidas/audit';
 import type { AuditableAction } from '@geekmidas/audit';
+import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
+// Or for production: import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
 
 // Define type-safe audit actions
 type AppAuditAction =
   | AuditableAction<'user.created', { userId: string; email: string }>
   | AuditableAction<'order.placed', { orderId: string; total: number }>;
 
-// Create storage and auditor
-const storage = new KyselyAuditStorage({ db, tableName: 'audit_logs' });
+// Create storage and auditor (use InMemoryAuditStorage for dev/testing)
+const storage = new InMemoryAuditStorage<AppAuditAction>();
+// Or for production: new KyselyAuditStorage({ db, tableName: 'audit_logs' });
 const auditor = new DefaultAuditor<AppAuditAction>({
   actor: { id: 'user-123', type: 'user' },
   storage,
@@ -1188,6 +1191,8 @@ Each package uses subpath exports for better tree-shaking:
 ### @geekmidas/audit
 - `/` - Core types, Auditor interface, and DefaultAuditor
 - `/kysely` - KyselyAuditStorage and withAuditableTransaction
+- `/memory` - InMemoryAuditStorage for development and testing
+- `/cache` - CacheAuditStorage using @geekmidas/cache backends
 
 ### @geekmidas/auth
 - `/` - Core interfaces and types
