@@ -426,6 +426,39 @@ logger: './src/logger.ts#logger'
 logger: './src/utils.ts#appLogger'
 ```
 
+#### `telescope`
+
+Configuration for the Telescope debugging dashboard. Telescope is enabled by default when using `gkm dev`.
+
+```typescript
+// Disable telescope
+telescope: false
+
+// Enable with defaults
+telescope: true
+
+// Custom configuration
+telescope: {
+  enabled: true,
+  path: '/__telescope',
+  ignore: ['/health', '/metrics'],
+  recordBody: true,
+  maxEntries: 1000,
+  websocket: true,
+}
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Enable/disable Telescope |
+| `path` | `string` | `/__telescope` | Dashboard URL path |
+| `ignore` | `string[]` | `[]` | URL patterns to exclude from recording |
+| `recordBody` | `boolean` | `true` | Record request/response bodies |
+| `maxEntries` | `number` | `1000` | Maximum entries per type to keep |
+| `websocket` | `boolean` | `true` | Enable real-time WebSocket updates |
+
 ## Providers
 
 ### AWS API Gateway v1
