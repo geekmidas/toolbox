@@ -23,11 +23,20 @@ export interface ProcessedCron {
   schedule?: string;
 }
 
+export interface NormalizedTelescopeConfig {
+  enabled: boolean;
+  path: string;
+  ignore: string[];
+  recordBody: boolean;
+  maxEntries: number;
+}
+
 export interface BuildContext {
   envParserPath: string;
   envParserImportPattern: string;
   loggerPath: string;
   loggerImportPattern: string;
+  telescope?: NormalizedTelescopeConfig;
 }
 
 export interface ProviderBuildResult {
