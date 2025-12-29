@@ -174,8 +174,8 @@ npx gkm build --provider aws-apigatewayv1
 # Generate server application
 npx gkm build --provider server
 
-# Generate OpenAPI specification
-npx gkm openapi --output api-docs.json
+# Generate OpenAPI TypeScript module
+npx gkm openapi --output src/api.ts
 ```
 
 ## CLI Commands
