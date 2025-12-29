@@ -458,6 +458,7 @@ class DevServer {
     const injectWs = (app as any).__injectWebSocket;
     if (injectWs) {
       injectWs(server);
+      console.log('🔌 Telescope real-time updates enabled');
     }`;
 
     const content = `#!/usr/bin/env node
