@@ -336,10 +336,23 @@ export function setupEndpoints(
     // Generate telescope imports and setup if enabled
     const telescopeEnabled = context.telescope?.enabled;
     const telescopeWebSocketEnabled = context.telescope?.websocket;
-    const telescopeImports = telescopeEnabled
-      ? `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`
-      : '';
+    const usesExternalTelescope = !!context.telescope?.telescopePath;
+
+    // Generate imports based on whether telescope is external or inline
+    let telescopeImports = '';
+    if (telescopeEnabled) {
+      if (usesExternalTelescope) {
+        const relativeTelescopePath = relative(
+          dirname(appPath),
+          context.telescope!.telescopePath!,
+        );
+        telescopeImports = `import ${context.telescope!.telescopeImportPattern} from '${relativeTelescopePath}';
+import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+      } else {
+        telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+      }
+    }
 
     const telescopeWebSocketSetupCode = telescopeWebSocketEnabled
       ? `
@@ -375,8 +388,23 @@ import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`
 `
       : '';
 
-    const telescopeSetup = telescopeEnabled
-      ? `
+    // Generate telescope setup - either use external instance or create inline
+    let telescopeSetup = '';
+    if (telescopeEnabled) {
+      if (usesExternalTelescope) {
+        // Use external telescope instance - no need to create one
+        telescopeSetup = `
+${telescopeWebSocketSetupCode}
+  // Add telescope middleware (before endpoints to capture all requests)
+  honoApp.use('*', createMiddleware(telescope));
+
+  // Mount telescope UI
+  const telescopeUI = createUI(telescope);
+  honoApp.route('${context.telescope!.path}', telescopeUI);
+`;
+      } else {
+        // Create inline telescope instance
+        telescopeSetup = `
   // Setup Telescope for debugging/monitoring
   const telescopeStorage = new InMemoryStorage({ maxEntries: ${context.telescope!.maxEntries} });
   const telescope = new Telescope({
@@ -393,8 +421,9 @@ ${telescopeWebSocketSetupCode}
   // Mount telescope UI
   const telescopeUI = createUI(telescope);
   honoApp.route('${context.telescope!.path}', telescopeUI);
-`
-      : '';
+`;
+      }
+    }
 
     const content = `/**
  * Generated server application
