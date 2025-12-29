@@ -449,17 +449,17 @@ Command-line tools for building, development, and deployment.
 # Install globally or use via npx
 npm install -g @geekmidas/cli
 
+# Start development server with Telescope
+gkm dev --port 3000
+
 # Generate AWS Lambda handlers
-gkm build --provider aws-apigatewayv1 --source "./src/endpoints/**/*.ts"
+gkm build --provider aws-apigatewayv1
 
 # Generate server application
-gkm build --provider server --port 3000
+gkm build --provider server
 
 # Generate OpenAPI specification
-gkm openapi --source "./src/endpoints/**/*.ts" --output api-docs.json
-
-# Generate React Query hooks
-gkm generate:react-query --input api-docs.json --output ./src/hooks
+gkm openapi --output src/api.ts
 ```
 
 #### @geekmidas/storage
