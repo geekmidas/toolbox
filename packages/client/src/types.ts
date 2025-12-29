@@ -160,10 +160,9 @@ type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
     // body: required if not never
     (TBody extends never ? {} : { body: TBody }) &
     // query: optional if not never
-    (TQuery extends never
-      ? {}
-      : { query?: TQuery }) & // headers: always optional
-    { headers?: Record<string, string> }
+    (TQuery extends never ? {} : { query?: TQuery }) & { // headers: always optional
+      headers?: Record<string, string>;
+    }
 >;
 
 /**
