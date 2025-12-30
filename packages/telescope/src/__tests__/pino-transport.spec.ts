@@ -70,17 +70,14 @@ describe('createPinoTransport', () => {
 
     // Check immediately - should NOT be flushed yet
     const logsImmediate = await telescope.getLogs();
-    console.log('Logs immediately after logging:', logsImmediate.length);
 
     // Check at 500ms - should NOT be flushed yet
     await new Promise((resolve) => setTimeout(resolve, 500));
     const logs500ms = await telescope.getLogs();
-    console.log('Logs after 500ms:', logs500ms.length);
 
     // Check at 1200ms - SHOULD be flushed
     await new Promise((resolve) => setTimeout(resolve, 700));
     const logs1200ms = await telescope.getLogs();
-    console.log('Logs after 1200ms:', logs1200ms.length);
 
     expect(logs1200ms.length).toBeGreaterThanOrEqual(1);
   });
@@ -109,7 +106,6 @@ describe('createPinoTransport', () => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const logs = await telescope.getLogs();
-    console.log('All logs:', JSON.stringify(logs, null, 2));
 
     const matchingLog = logs.find((l) => l.message === 'Specific test message');
     expect(matchingLog).toBeDefined();
