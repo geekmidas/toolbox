@@ -5,7 +5,7 @@ import type { Telescope } from '../Telescope';
  * Pino log object structure after parsing
  */
 export interface PinoLogObject {
-  level: number;
+  level: number | string;
   time: number;
   pid?: number;
   hostname?: string;
@@ -43,10 +43,20 @@ interface LogBatch {
 }
 
 /**
- * Map Pino numeric levels to Telescope log levels
+ * Map Pino levels to Telescope log levels.
+ * Handles both numeric levels (default pino) and string levels (custom formatters).
  */
-function mapPinoLevel(level: number): TelescopeLogLevel {
-  // Pino levels: trace=10, debug=20, info=30, warn=40, error=50, fatal=60
+function mapPinoLevel(level: number | string): TelescopeLogLevel {
+  // Handle string levels (from custom formatters like `level: label => ({ level: label.toUpperCase() })`)
+  if (typeof level === 'string') {
+    const normalized = level.toLowerCase();
+    if (normalized === 'trace' || normalized === 'debug') return 'debug';
+    if (normalized === 'info') return 'info';
+    if (normalized === 'warn' || normalized === 'warning') return 'warn';
+    return 'error'; // error, fatal, or unknown
+  }
+
+  // Pino numeric levels: trace=10, debug=20, info=30, warn=40, error=50, fatal=60
   if (level <= 20) return 'debug'; // trace, debug
   if (level <= 30) return 'info';
   if (level <= 40) return 'warn';
