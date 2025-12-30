@@ -64,6 +64,7 @@
   "dependencies": {
     "@geekmidas/audit": "workspace:*",
     "@geekmidas/cache": "workspace:*",
+    "@geekmidas/db": "workspace:*",
     "@geekmidas/errors": "workspace:*",
     "@geekmidas/events": "workspace:*",
     "@geekmidas/logger": "workspace:*",

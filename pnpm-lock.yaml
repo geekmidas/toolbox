@@ -321,6 +321,9 @@ importers:
       '@geekmidas/cache':
         specifier: workspace:*
         version: link:../cache
+      '@geekmidas/db':
+        specifier: workspace:*
+        version: link:../db
       '@geekmidas/envkit':
         specifier: workspace:~
         version: link:../envkit
