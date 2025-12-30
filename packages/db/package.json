@@ -8,6 +8,11 @@
       "types": "./dist/kysely.d.ts",
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
+    },
+    "./rls": {
+      "types": "./dist/rls.d.ts",
+      "import": "./dist/rls.mjs",
+      "require": "./dist/rls.cjs"
     }
   },
   "dependencies": {
