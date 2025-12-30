@@ -17,6 +17,7 @@ import type {
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { ActorExtractor } from './audit';
+import type { RlsConfig } from './rls';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -40,6 +41,8 @@ export class EndpointFactory<
     string,
     SecurityScheme
   >,
+  TRlsConfig extends RlsConfig<TServices, TSession, TLogger> | undefined =
+    undefined,
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -65,6 +68,7 @@ export class EndpointFactory<
     | undefined;
   private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   private customSecuritySchemes: TSecuritySchemes = {} as TSecuritySchemes;
+  private defaultRlsConfig?: TRlsConfig;
 
   constructor({
     basePath,
@@ -80,6 +84,7 @@ export class EndpointFactory<
     defaultDatabaseService,
     defaultActorExtractor,
     customSecuritySchemes = {} as TSecuritySchemes,
+    defaultRlsConfig,
   }: EndpointFactoryOptions<
     TServices,
     TBasePath,
@@ -92,7 +97,8 @@ export class EndpointFactory<
     TAuditStorageServiceName,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > = {}) {
     // Initialize default services
     this.defaultServices = uniqBy(
@@ -111,6 +117,7 @@ export class EndpointFactory<
     this.defaultDatabaseService = defaultDatabaseService;
     this.defaultActorExtractor = defaultActorExtractor;
     this.customSecuritySchemes = customSecuritySchemes;
+    this.defaultRlsConfig = defaultRlsConfig;
   }
 
   static joinPaths<TBasePath extends string, P extends string>(
@@ -184,7 +191,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -198,6 +206,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -326,7 +335,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -341,6 +351,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -376,7 +387,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: newBasePath,
@@ -390,6 +402,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -424,7 +437,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -438,6 +452,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -472,7 +487,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
@@ -486,6 +502,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -519,7 +536,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -547,6 +565,7 @@ export class EndpointFactory<
         L
       >,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -583,7 +602,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -597,6 +617,7 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: this.defaultActorExtractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -630,7 +651,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -653,6 +675,7 @@ export class EndpointFactory<
         TLogger
       >,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -690,7 +713,8 @@ export class EndpointFactory<
       TAuditAction,
       T,
       TName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -707,6 +731,7 @@ export class EndpointFactory<
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: service,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -745,7 +770,8 @@ export class EndpointFactory<
       ExtractStorageAuditAction<T>,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -764,6 +790,7 @@ export class EndpointFactory<
         TLogger
       >,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -801,7 +828,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes
+      TSecuritySchemes,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -815,6 +843,75 @@ export class EndpointFactory<
       defaultDatabaseService: this.defaultDatabaseService,
       defaultActorExtractor: extractor,
       customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: this.defaultRlsConfig,
+    });
+  }
+
+  /**
+   * Set the RLS (Row-Level Security) configuration for endpoints created from this factory.
+   * This enables automatic PostgreSQL session variable setting for RLS policies.
+   *
+   * @example
+   * ```typescript
+   * const api = new EndpointFactory()
+   *   .database(databaseService)
+   *   .session(extractSession)
+   *   .rls({
+   *     extractor: ({ session }) => ({
+   *       user_id: session.userId,
+   *       tenant_id: session.tenantId,
+   *     }),
+   *     prefix: 'app',
+   *   });
+   * ```
+   */
+  rls<TConfig extends RlsConfig<TServices, TSession, TLogger>>(
+    config: TConfig,
+  ): EndpointFactory<
+    TServices,
+    TBasePath,
+    TLogger,
+    TSession,
+    TEventPublisher,
+    TEventPublisherServiceName,
+    TAuthorizers,
+    TAuditStorage,
+    TAuditStorageServiceName,
+    TAuditAction,
+    TDatabase,
+    TDatabaseServiceName,
+    TSecuritySchemes,
+    TConfig
+  > {
+    return new EndpointFactory<
+      TServices,
+      TBasePath,
+      TLogger,
+      TSession,
+      TEventPublisher,
+      TEventPublisherServiceName,
+      TAuthorizers,
+      TAuditStorage,
+      TAuditStorageServiceName,
+      TAuditAction,
+      TDatabase,
+      TDatabaseServiceName,
+      TSecuritySchemes,
+      TConfig
+    >({
+      defaultServices: this.defaultServices,
+      basePath: this.basePath,
+      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultLogger: this.defaultLogger,
+      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultEventPublisher: this.defaultEventPublisher,
+      availableAuthorizers: this.availableAuthorizers,
+      defaultAuthorizerName: this.defaultAuthorizerName,
+      defaultAuditorStorage: this.defaultAuditorStorage,
+      defaultDatabaseService: this.defaultDatabaseService,
+      defaultActorExtractor: this.defaultActorExtractor,
+      customSecuritySchemes: this.customSecuritySchemes,
+      defaultRlsConfig: config,
     });
   }
 
@@ -906,6 +1003,11 @@ export class EndpointFactory<
     // Set custom security schemes
     builder._customSecuritySchemes = this.customSecuritySchemes;
 
+    // Set RLS config if configured
+    if (this.defaultRlsConfig) {
+      builder._rlsConfig = this.defaultRlsConfig as any;
+    }
+
     return builder;
   }
 
@@ -977,6 +1079,8 @@ export interface EndpointFactoryOptions<
     string,
     SecurityScheme
   >,
+  TRlsConfig extends RlsConfig<TServices, TSession, TLogger> | undefined =
+    undefined,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;
@@ -991,6 +1095,7 @@ export interface EndpointFactoryOptions<
   defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
   defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   customSecuritySchemes?: TSecuritySchemes;
+  defaultRlsConfig?: TRlsConfig;
 }
 
 export const e = new EndpointFactory();
