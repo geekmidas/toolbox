@@ -4,7 +4,7 @@ import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
-import { loadConfig } from '../config';
+import { loadConfig, parseModuleConfig } from '../config';
 import { normalizeTelescopeConfig } from '../dev';
 import {
   CronGenerator,
@@ -43,27 +43,24 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
   logger.log(`Using envParser: ${config.envParser}`);
 
-  // Parse envParser configuration
-  const [envParserPath, envParserName] = config.envParser.split('#');
-  const envParserImportPattern = !envParserName
-    ? 'envParser'
-    : envParserName === 'envParser'
-      ? '{ envParser }'
-      : `{ ${envParserName} as envParser }`;
+  // Parse envParser and logger configuration
+  const { path: envParserPath, importPattern: envParserImportPattern } =
+    parseModuleConfig(config.envParser, 'envParser');
+  const { path: loggerPath, importPattern: loggerImportPattern } =
+    parseModuleConfig(config.logger, 'logger');
 
-  // Parse logger configuration
-  const [loggerPath, loggerName] = config.logger.split('#');
-  const loggerImportPattern = !loggerName
-    ? 'logger'
-    : loggerName === 'logger'
-      ? '{ logger }'
-      : `{ ${loggerName} as logger }`;
+  // Normalize telescope configuration
+  const telescope = normalizeTelescopeConfig(config.telescope);
+  if (telescope) {
+    logger.log(`🔭 Telescope enabled at ${telescope.path}`);
+  }
 
   const buildContext: BuildContext = {
     envParserPath,
     envParserImportPattern,
     loggerPath,
     loggerImportPattern,
+    telescope,
   };
 
   // Initialize generators

@@ -6,7 +6,7 @@ import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
 import type { BuildContext, NormalizedTelescopeConfig } from '../build/types';
-import { loadConfig } from '../config';
+import { loadConfig, parseModuleConfig } from '../config';
 import {
   CronGenerator,
   EndpointGenerator,
@@ -81,12 +81,8 @@ export function normalizeTelescopeConfig(
 
   // Handle string path (e.g., './src/config/telescope')
   if (typeof config === 'string') {
-    const [telescopePath, telescopeName] = config.split('#');
-    const telescopeImportPattern = !telescopeName
-      ? 'telescope'
-      : telescopeName === 'telescope'
-        ? '{ telescope }'
-        : `{ ${telescopeName} as telescope }`;
+    const { path: telescopePath, importPattern: telescopeImportPattern } =
+      parseModuleConfig(config, 'telescope');
 
     return {
       enabled: true,
@@ -145,21 +141,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
   }
   logger.log(`Using envParser: ${config.envParser}`);
 
-  // Parse envParser configuration
-  const [envParserPath, envParserName] = config.envParser.split('#');
-  const envParserImportPattern = !envParserName
-    ? 'envParser'
-    : envParserName === 'envParser'
-      ? '{ envParser }'
-      : `{ ${envParserName} as envParser }`;
-
-  // Parse logger configuration
-  const [loggerPath, loggerName] = config.logger.split('#');
-  const loggerImportPattern = !loggerName
-    ? 'logger'
-    : loggerName === 'logger'
-      ? '{ logger }'
-      : `{ ${loggerName} as logger }`;
+  // Parse envParser and logger configuration
+  const { path: envParserPath, importPattern: envParserImportPattern } =
+    parseModuleConfig(config.envParser, 'envParser');
+  const { path: loggerPath, importPattern: loggerImportPattern } =
+    parseModuleConfig(config.logger, 'logger');
 
   // Normalize telescope configuration
   const telescope = normalizeTelescopeConfig(config.telescope);
