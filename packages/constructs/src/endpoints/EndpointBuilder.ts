@@ -22,6 +22,8 @@ import type {
   SuccessStatus,
 } from './Endpoint';
 import type { ActorExtractor, MappedAudit } from './audit';
+import type { RlsConfig, RlsBypass } from './rls';
+import { RLS_BYPASS } from './rls';
 
 export class EndpointBuilder<
   TRoute extends string,
@@ -68,6 +70,8 @@ export class EndpointBuilder<
   _actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
   _audits: MappedAudit<TAuditAction, OutSchema>[] = [];
   _customSecuritySchemes: Record<string, SecurityScheme> = {};
+  _rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
+  _rlsBypass?: boolean;
 
   constructor(
     readonly route: TRoute,
@@ -583,6 +587,57 @@ export class EndpointBuilder<
     >;
   }
 
+  /**
+   * Configure RLS (Row-Level Security) context for this endpoint.
+   * Pass `false` or `RLS_BYPASS` to explicitly bypass RLS for this endpoint.
+   *
+   * @example
+   * ```typescript
+   * // Custom RLS config for this endpoint
+   * .rls({
+   *   extractor: ({ session }) => ({
+   *     user_id: session.userId,
+   *     tenant_id: session.tenantId,
+   *   }),
+   *   prefix: 'app',
+   * })
+   *
+   * // Bypass RLS (for admin endpoints)
+   * .rls(false)
+   * ```
+   */
+  rls(
+    config: RlsConfig<TServices, TSession, TLogger> | false | RlsBypass,
+  ): this {
+    if (config === false || config === RLS_BYPASS) {
+      this._rlsBypass = true;
+      this._rlsConfig = undefined;
+    } else {
+      this._rlsConfig = config;
+      this._rlsBypass = false;
+    }
+    return this;
+  }
+
+  /**
+   * Explicitly bypass RLS for this endpoint.
+   * Useful for admin operations that need unrestricted database access.
+   *
+   * @example
+   * ```typescript
+   * .rlsBypass()
+   * .handle(async ({ db }) => {
+   *   // Full access, no RLS filtering
+   *   return db.selectFrom('orders').selectAll().execute();
+   * })
+   * ```
+   */
+  rlsBypass(): this {
+    this._rlsBypass = true;
+    this._rlsConfig = undefined;
+    return this;
+  }
+
   // EndpointBuilder doesn't have a generic input method - it uses body, query, params instead
   input(_schema: any): any {
     throw new Error(
@@ -663,6 +718,8 @@ export class EndpointBuilder<
       actorExtractor: this._actorExtractor,
       audits: this._audits,
       databaseService: this._databaseService,
+      rlsConfig: this._rlsConfig,
+      rlsBypass: this._rlsBypass,
     });
   }
 }
