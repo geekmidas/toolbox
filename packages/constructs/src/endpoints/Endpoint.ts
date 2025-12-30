@@ -29,6 +29,7 @@ import { Function, type FunctionHandler } from '../functions';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
+import type { RlsConfig } from './rls';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -123,6 +124,10 @@ export class Endpoint<
   public audits: MappedAudit<TAuditAction, OutSchema>[] = [];
   /** Database service for this endpoint */
   public declare databaseService?: Service<TDatabaseServiceName, TDatabase>;
+  /** RLS configuration for this endpoint */
+  public rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
+  /** Whether to bypass RLS for this endpoint */
+  public rlsBypass?: boolean;
   /** The endpoint handler function */
   private endpointFn!: EndpointHandler<
     TInput,
@@ -593,6 +598,8 @@ export class Endpoint<
     actorExtractor,
     audits,
     databaseService,
+    rlsConfig,
+    rlsBypass,
   }: EndpointOptions<
     TRoute,
     TMethod,
@@ -657,6 +664,14 @@ export class Endpoint<
 
     if (databaseService) {
       this.databaseService = databaseService;
+    }
+
+    if (rlsConfig) {
+      this.rlsConfig = rlsConfig;
+    }
+
+    if (rlsBypass) {
+      this.rlsBypass = rlsBypass;
     }
   }
 }
@@ -775,6 +790,10 @@ export interface EndpointOptions<
   audits?: MappedAudit<TAuditAction, OutSchema>[];
   /** Database service for this endpoint */
   databaseService?: Service<TDatabaseServiceName, TDatabase>;
+  /** RLS configuration for this endpoint */
+  rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
+  /** Whether to bypass RLS for this endpoint */
+  rlsBypass?: boolean;
 }
 
 /**
