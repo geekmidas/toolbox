@@ -1,4 +1,5 @@
 import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import { withRlsContext } from '@geekmidas/db/rls';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
@@ -297,6 +298,21 @@ export abstract class AmazonApiGatewayEndpoint<
     // Get pre-resolved database from middleware
     const rawDb = (event as any).db;
 
+    // Extract RLS context if configured and not bypassed
+    const rlsActive =
+      this.endpoint.rlsConfig &&
+      !this.endpoint.rlsBypass &&
+      rawDb !== undefined;
+    const rlsContext = rlsActive
+      ? await this.endpoint.rlsConfig!.extractor({
+          services: event.services as ServiceRecord<TServices>,
+          session: event.session,
+          header: event.header,
+          cookie: event.cookie,
+          logger,
+        })
+      : undefined;
+
     // Execute handler with automatic audit transaction support
     const result = await executeWithAuditTransaction(
       auditContext,
@@ -306,39 +322,54 @@ export abstract class AmazonApiGatewayEndpoint<
           auditContext?.storage?.databaseServiceName &&
           auditContext.storage.databaseServiceName ===
             this.endpoint.databaseService?.serviceName;
-        const db = sameDatabase
+        const baseDb = sameDatabase
           ? (auditor?.getTransaction?.() ?? rawDb)
           : rawDb;
 
-        const responseBuilder = new ResponseBuilder();
-        const response = await this.endpoint.handler(
-          {
-            header: event.header,
-            cookie: event.cookie,
-            logger: event.logger,
-            services: event.services,
-            session: event.session,
-            auditor,
-            db,
-            ...input,
-          } as any,
-          responseBuilder,
-        );
+        // Helper to execute handler with given db
+        const executeHandler = async (db: any) => {
+          const responseBuilder = new ResponseBuilder();
+          const response = await this.endpoint.handler(
+            {
+              header: event.header,
+              cookie: event.cookie,
+              logger: event.logger,
+              services: event.services,
+              session: event.session,
+              auditor,
+              db,
+              ...input,
+            } as any,
+            responseBuilder,
+          );
 
-        // Check if response has metadata
-        let data = response;
-        let metadata = responseBuilder.getMetadata();
+          // Check if response has metadata
+          let data = response;
+          let metadata = responseBuilder.getMetadata();
 
-        if (Endpoint.hasMetadata(response)) {
-          data = response.data;
-          metadata = response.metadata;
+          if (Endpoint.hasMetadata(response)) {
+            data = response.data;
+            metadata = response.metadata;
+          }
+
+          const output = this.endpoint.outputSchema
+            ? await this.endpoint.parseOutput(data)
+            : undefined;
+
+          return { output, metadata, responseBuilder };
+        };
+
+        // If RLS is active, wrap handler with RLS context
+        if (rlsActive && rlsContext && baseDb) {
+          return withRlsContext(
+            baseDb,
+            rlsContext,
+            async (trx: any) => executeHandler(trx),
+            { prefix: this.endpoint.rlsConfig!.prefix },
+          );
         }
 
-        const output = this.endpoint.outputSchema
-          ? await this.endpoint.parseOutput(data)
-          : undefined;
-
-        return { output, metadata, responseBuilder };
+        return executeHandler(baseDb);
       },
       // Process declarative audits after handler (inside transaction)
       async (result, auditor) => {
