@@ -76,6 +76,20 @@ export interface GkmConfig {
   telescope?: string | boolean | TelescopeConfig;
   /** Runtime to use for dev server (default: 'node') */
   runtime?: Runtime;
+  /**
+   * Environment file(s) to load for development.
+   * Can be:
+   * - A string path to a single env file (e.g., '.env.local')
+   * - An array of paths to load in order (later files override earlier)
+   * - Defaults to '.env' if not specified
+   *
+   * @example
+   * env: '.env.local'
+   *
+   * @example
+   * env: ['.env', '.env.local']
+   */
+  env?: string | string[];
 }
 
 export interface BuildOptions {

@@ -1,8 +1,10 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import chokidar from 'chokidar';
+import { config as dotenvConfig } from 'dotenv';
 import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
 import type { BuildContext, NormalizedTelescopeConfig } from '../build/types';
@@ -21,6 +23,39 @@ import type {
 } from '../types';
 
 const logger = console;
+
+/**
+ * Load environment files
+ * @internal Exported for testing
+ */
+export function loadEnvFiles(
+  envConfig: string | string[] | undefined,
+  cwd: string = process.cwd(),
+): { loaded: string[]; missing: string[] } {
+  const loaded: string[] = [];
+  const missing: string[] = [];
+
+  // Normalize to array
+  const envFiles = envConfig
+    ? Array.isArray(envConfig)
+      ? envConfig
+      : [envConfig]
+    : ['.env'];
+
+  // Load each env file in order (later files override earlier)
+  for (const envFile of envFiles) {
+    const envPath = resolve(cwd, envFile);
+    if (existsSync(envPath)) {
+      dotenvConfig({ path: envPath, override: true, quiet: true });
+      loaded.push(envFile);
+    } else if (envConfig) {
+      // Only report as missing if explicitly configured
+      missing.push(envFile);
+    }
+  }
+
+  return { loaded, missing };
+}
 
 /**
  * Check if a port is available
@@ -123,7 +158,25 @@ export interface DevOptions {
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
+  // Load default .env file BEFORE loading config
+  // This ensures env vars are available when config and its dependencies are loaded
+  const defaultEnv = loadEnvFiles('.env');
+  if (defaultEnv.loaded.length > 0) {
+    logger.log(`📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
+  }
+
   const config = await loadConfig();
+
+  // Load any additional env files specified in config
+  if (config.env) {
+    const { loaded, missing } = loadEnvFiles(config.env);
+    if (loaded.length > 0) {
+      logger.log(`📦 Loaded env: ${loaded.join(', ')}`);
+    }
+    if (missing.length > 0) {
+      logger.warn(`⚠️  Missing env files: ${missing.join(', ')}`);
+    }
+  }
 
   // Force server provider for dev mode
   const resolved = resolveProviders(config, { provider: 'server' });
