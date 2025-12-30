@@ -2,6 +2,27 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { GkmConfig } from './types.ts';
 
+/**
+ * Define GKM configuration with full TypeScript support.
+ * This is an identity function that provides type safety and autocomplete.
+ *
+ * @example
+ * ```ts
+ * // gkm.config.ts
+ * import { defineConfig } from '@geekmidas/cli/config';
+ *
+ * export default defineConfig({
+ *   routes: './src/endpoints/**\/*.ts',
+ *   envParser: './src/config/env',
+ *   logger: './src/config/logger',
+ *   telescope: true,
+ * });
+ * ```
+ */
+export function defineConfig(config: GkmConfig): GkmConfig {
+  return config;
+}
+
 export interface ParsedModuleConfig {
   path: string;
   importPattern: string;
