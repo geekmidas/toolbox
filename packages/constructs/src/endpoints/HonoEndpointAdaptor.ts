@@ -19,6 +19,7 @@ import {
 import { getEndpointsFromRoutes } from './helpers';
 import { parseHonoQuery } from './parseHonoQuery';
 
+import { withRlsContext } from '@geekmidas/db/rls';
 import { wrapError } from '@geekmidas/errors';
 import {
   type Service,
@@ -374,6 +375,19 @@ export class HonoEndpoint<
             logger.warn('No auditor storage service available');
           }
 
+          // Extract RLS context if configured and not bypassed
+          const rlsActive =
+            endpoint.rlsConfig && !endpoint.rlsBypass && rawDb !== undefined;
+          const rlsContext = rlsActive
+            ? await endpoint.rlsConfig!.extractor({
+                services,
+                session,
+                header,
+                cookie,
+                logger,
+              })
+            : undefined;
+
           // Execute handler with automatic audit transaction support
           const result = await executeWithAuditTransaction(
             auditContext,
@@ -383,49 +397,64 @@ export class HonoEndpoint<
                 auditContext?.storage?.databaseServiceName &&
                 auditContext.storage.databaseServiceName ===
                   endpoint.databaseService?.serviceName;
-              const db = sameDatabase
+              const baseDb = sameDatabase
                 ? (auditor?.getTransaction?.() ?? rawDb)
                 : rawDb;
 
-              const responseBuilder = new ResponseBuilder();
-              const response = await endpoint.handler(
-                {
-                  services,
-                  logger,
-                  body: c.req.valid('json'),
-                  query: c.req.valid('query'),
-                  params: c.req.valid('param'),
-                  session,
-                  header,
-                  cookie,
-                  auditor,
-                  db,
-                } as unknown as EndpointContext<
-                  TInput,
-                  TServices,
-                  TLogger,
-                  TSession,
-                  TAuditAction,
-                  TDatabase,
-                  TAuditStorage
-                >,
-                responseBuilder,
-              );
+              // Helper to execute handler with given db
+              const executeHandler = async (db: TDatabase | undefined) => {
+                const responseBuilder = new ResponseBuilder();
+                const response = await endpoint.handler(
+                  {
+                    services,
+                    logger,
+                    body: c.req.valid('json'),
+                    query: c.req.valid('query'),
+                    params: c.req.valid('param'),
+                    session,
+                    header,
+                    cookie,
+                    auditor,
+                    db,
+                  } as unknown as EndpointContext<
+                    TInput,
+                    TServices,
+                    TLogger,
+                    TSession,
+                    TAuditAction,
+                    TDatabase,
+                    TAuditStorage
+                  >,
+                  responseBuilder,
+                );
 
-              // Check if response has metadata
-              let data = response;
-              let metadata = responseBuilder.getMetadata();
+                // Check if response has metadata
+                let data = response;
+                let metadata = responseBuilder.getMetadata();
 
-              if (Endpoint.hasMetadata(response)) {
-                data = response.data;
-                metadata = response.metadata;
+                if (Endpoint.hasMetadata(response)) {
+                  data = response.data;
+                  metadata = response.metadata;
+                }
+
+                const output = endpoint.outputSchema
+                  ? await endpoint.parseOutput(data)
+                  : undefined;
+
+                return { output, metadata, responseBuilder };
+              };
+
+              // If RLS is active, wrap handler with RLS context
+              if (rlsActive && rlsContext && baseDb) {
+                return withRlsContext(
+                  baseDb as any,
+                  rlsContext,
+                  async (trx) => executeHandler(trx as TDatabase),
+                  { prefix: endpoint.rlsConfig!.prefix },
+                );
               }
 
-              const output = endpoint.outputSchema
-                ? await endpoint.parseOutput(data)
-                : undefined;
-
-              return { output, metadata, responseBuilder };
+              return executeHandler(baseDb as TDatabase | undefined);
             },
             // Process declarative audits after handler (inside transaction)
             async (result, auditor) => {
