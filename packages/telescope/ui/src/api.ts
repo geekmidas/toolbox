@@ -7,6 +7,18 @@ import type {
 
 const BASE_URL = '/__telescope/api';
 
+export interface FilterOptions {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  before?: string;
+  after?: string;
+  tags?: string[];
+  method?: string;
+  status?: string;
+  level?: string;
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`);
   if (!response.ok) {
@@ -15,15 +27,28 @@ async function fetchJson<T>(path: string): Promise<T> {
   return response.json();
 }
 
-export async function getRequests(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<RequestEntry[]> {
+function buildQueryString(options?: FilterOptions): string {
+  if (!options) return '';
+
   const params = new URLSearchParams();
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.offset) params.set('offset', String(options.offset));
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.offset) params.set('offset', String(options.offset));
+  if (options.search) params.set('search', options.search);
+  if (options.before) params.set('before', options.before);
+  if (options.after) params.set('after', options.after);
+  if (options.tags?.length) params.set('tags', options.tags.join(','));
+  if (options.method) params.set('method', options.method);
+  if (options.status) params.set('status', options.status);
+  if (options.level) params.set('level', options.level);
+
   const query = params.toString();
-  return fetchJson(`/requests${query ? `?${query}` : ''}`);
+  return query ? `?${query}` : '';
+}
+
+export async function getRequests(
+  options?: FilterOptions,
+): Promise<RequestEntry[]> {
+  return fetchJson(`/requests${buildQueryString(options)}`);
 }
 
 export async function getRequest(id: string): Promise<RequestEntry | null> {
@@ -34,15 +59,10 @@ export async function getRequest(id: string): Promise<RequestEntry | null> {
   }
 }
 
-export async function getExceptions(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<ExceptionEntry[]> {
-  const params = new URLSearchParams();
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.offset) params.set('offset', String(options.offset));
-  const query = params.toString();
-  return fetchJson(`/exceptions${query ? `?${query}` : ''}`);
+export async function getExceptions(
+  options?: FilterOptions,
+): Promise<ExceptionEntry[]> {
+  return fetchJson(`/exceptions${buildQueryString(options)}`);
 }
 
 export async function getException(id: string): Promise<ExceptionEntry | null> {
@@ -53,15 +73,8 @@ export async function getException(id: string): Promise<ExceptionEntry | null> {
   }
 }
 
-export async function getLogs(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<LogEntry[]> {
-  const params = new URLSearchParams();
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.offset) params.set('offset', String(options.offset));
-  const query = params.toString();
-  return fetchJson(`/logs${query ? `?${query}` : ''}`);
+export async function getLogs(options?: FilterOptions): Promise<LogEntry[]> {
+  return fetchJson(`/logs${buildQueryString(options)}`);
 }
 
 export async function getStats(): Promise<TelescopeStats> {

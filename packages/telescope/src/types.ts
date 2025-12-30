@@ -78,6 +78,12 @@ export interface QueryOptions {
   after?: Date;
   search?: string;
   tags?: string[];
+  /** Filter requests by HTTP method */
+  method?: string;
+  /** Filter requests by status code (e.g., "2xx", "4xx", "500") */
+  status?: string;
+  /** Filter logs by level */
+  level?: 'debug' | 'info' | 'warn' | 'error';
 }
 
 /**

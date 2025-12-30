@@ -40,7 +40,27 @@ export class InMemoryStorage implements TelescopeStorage {
   }
 
   async getRequests(options?: QueryOptions): Promise<RequestEntry[]> {
-    return this.filterEntries(this.requests, options);
+    let result = this.requests;
+
+    // Apply request-specific filters before generic filtering
+    if (options?.method) {
+      result = result.filter((r) => r.method === options.method);
+    }
+
+    if (options?.status) {
+      const statusFilter = options.status;
+      result = result.filter((r) => {
+        // Handle status ranges like "2xx", "4xx", "5xx"
+        if (statusFilter.endsWith('xx')) {
+          const category = parseInt(statusFilter[0], 10);
+          return Math.floor(r.status / 100) === category;
+        }
+        // Handle exact status codes
+        return r.status === parseInt(statusFilter, 10);
+      });
+    }
+
+    return this.filterEntries(result, options);
   }
 
   async getRequest(id: string): Promise<RequestEntry | null> {
@@ -80,7 +100,14 @@ export class InMemoryStorage implements TelescopeStorage {
   }
 
   async getLogs(options?: QueryOptions): Promise<LogEntry[]> {
-    return this.filterEntries(this.logs, options);
+    let result = this.logs;
+
+    // Apply log-specific filters before generic filtering
+    if (options?.level) {
+      result = result.filter((l) => l.level === options.level);
+    }
+
+    return this.filterEntries(result, options);
   }
 
   // Cleanup

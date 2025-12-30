@@ -150,6 +150,27 @@ export class KyselyStorage<DB> implements TelescopeStorage {
       .selectAll()
       .orderBy('timestamp', 'desc');
 
+    // Apply request-specific filters
+    if (options?.method) {
+      query = query.where('method', '=', options.method);
+    }
+
+    if (options?.status) {
+      const statusFilter = options.status;
+      if (statusFilter.endsWith('xx')) {
+        // Handle status ranges like "2xx", "4xx", "5xx"
+        const category = parseInt(statusFilter[0], 10);
+        const minStatus = category * 100;
+        const maxStatus = minStatus + 99;
+        query = query
+          .where('status', '>=', minStatus)
+          .where('status', '<=', maxStatus);
+      } else {
+        // Handle exact status codes
+        query = query.where('status', '=', parseInt(statusFilter, 10));
+      }
+    }
+
     query = this.applyQueryOptions(query, options);
 
     const rows = await query.execute();
@@ -231,6 +252,11 @@ export class KyselyStorage<DB> implements TelescopeStorage {
       .selectFrom(this.logsTable)
       .selectAll()
       .orderBy('timestamp', 'desc');
+
+    // Apply log-specific filters
+    if (options?.level) {
+      query = query.where('level', '=', options.level);
+    }
 
     query = this.applyQueryOptions(query, options);
 

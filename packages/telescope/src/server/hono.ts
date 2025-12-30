@@ -111,6 +111,14 @@ function parseQueryOptions(c: Context): QueryOptions {
   const before = c.req.query('before');
   const after = c.req.query('after');
   const tags = c.req.query('tags')?.split(',').filter(Boolean);
+  const method = c.req.query('method');
+  const status = c.req.query('status');
+  const level = c.req.query('level') as
+    | 'debug'
+    | 'info'
+    | 'warn'
+    | 'error'
+    | undefined;
 
   return {
     limit: Math.min(limit, 100),
@@ -119,6 +127,9 @@ function parseQueryOptions(c: Context): QueryOptions {
     before: before ? new Date(before) : undefined,
     after: after ? new Date(after) : undefined,
     tags,
+    method: method || undefined,
+    status: status || undefined,
+    level: level || undefined,
   };
 }
 

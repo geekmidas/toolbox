@@ -1,14 +1,1 @@
-{
-  "root": [
-    "./src/app.tsx",
-    "./src/api.ts",
-    "./src/main.tsx",
-    "./src/types.ts",
-    "./src/vite-env.d.ts",
-    "./src/vite-plugin-gkm-config.ts",
-    "./src/components/exceptiondetail.tsx",
-    "./src/components/logdetail.tsx",
-    "./src/components/requestdetail.tsx"
-  ],
-  "version": "5.8.2"
-}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/vite-plugin-gkm-config.ts","./src/components/exceptiondetail.tsx","./src/components/filterbar.tsx","./src/components/logdetail.tsx","./src/components/requestdetail.tsx"],"version":"5.8.2"}
