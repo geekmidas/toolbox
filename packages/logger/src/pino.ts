@@ -1,10 +1,46 @@
+/**
+ * Pino logger with built-in redaction support for sensitive data.
+ *
+ * @example
+ * ```typescript
+ * import { createLogger, DEFAULT_REDACT_PATHS } from '@geekmidas/logger/pino';
+ *
+ * // Enable redaction with sensible defaults
+ * const logger = createLogger({ redact: true });
+ *
+ * // Sensitive data is automatically masked
+ * logger.info({ password: 'secret123', user: 'john' }, 'Login');
+ * // Output: { password: '[Redacted]', user: 'john' } Login
+ *
+ * // Add custom paths (merged with defaults)
+ * const logger2 = createLogger({ redact: ['user.ssn'] });
+ *
+ * // Override defaults for full control
+ * const logger3 = createLogger({
+ *   redact: {
+ *     paths: ['onlyThis'],
+ *     resolution: 'override',
+ *   }
+ * });
+ * ```
+ *
+ * @module
+ */
 import { pino } from 'pino';
 import type { CreateLoggerOptions, RedactOptions } from './types';
 
 /**
  * Default sensitive field paths for redaction.
- * These cover common patterns for passwords, tokens, API keys, and other secrets.
- * Includes wildcards to catch nested sensitive data.
+ *
+ * These paths are automatically used when `redact: true` is set,
+ * and merged with custom paths unless `resolution: 'override'` is specified.
+ *
+ * Includes:
+ * - Authentication: password, token, apiKey, authorization, credentials
+ * - Headers: authorization, cookie, x-api-key, x-auth-token
+ * - Personal data: ssn, creditCard, cvv, pin
+ * - Secrets: secret, connectionString, databaseUrl
+ * - Wildcards: *.password, *.secret, *.token (catches nested fields)
  */
 export const DEFAULT_REDACT_PATHS: string[] = [
   // Authentication & authorization
