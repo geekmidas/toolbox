@@ -2,6 +2,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { GkmConfig } from './types.ts';
 
+export { GkmConfig } from './types.ts';
 /**
  * Define GKM configuration with full TypeScript support.
  * This is an identity function that provides type safety and autocomplete.
