@@ -54,6 +54,13 @@ export default defineConfig({
   },`;
   }
 
+  // Always add openapi config
+  gkmConfig += `
+  openapi: {
+    enabled: true,
+    output: './src/api/openapi.ts',
+  },`;
+
   gkmConfig += `
 });
 `;
