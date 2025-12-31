@@ -32,10 +32,14 @@ import { Endpoint, type EndpointContext } from '../Endpoint';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 import type { MappedAudit } from '../audit';
 
+// Use unique table names to avoid conflicts with parallel tests
+const AUDIT_TABLE = 'hono_audit_logs' as const;
+const USERS_TABLE = 'hono_audit_users' as const;
+
 // Database schema
 interface TestDatabase {
-  auditLogs: AuditLogTable;
-  users: {
+  [AUDIT_TABLE]: AuditLogTable;
+  [USERS_TABLE]: {
     id: Generated<number>;
     name: string;
     email: string;
@@ -84,7 +88,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
     // Create audit_logs table
     await db.schema
-      .createTable('auditLogs')
+      .createTable(AUDIT_TABLE)
       .ifNotExists()
       .addColumn('id', 'varchar(32)', (col) => col.primaryKey())
       .addColumn('type', 'varchar', (col) => col.notNull())
@@ -105,7 +109,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
     // Create users table
     await db.schema
-      .createTable('users')
+      .createTable(USERS_TABLE)
       .ifNotExists()
       .addColumn('id', 'serial', (col) => col.primaryKey())
       .addColumn('name', 'varchar', (col) => col.notNull())
@@ -114,7 +118,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
     auditStorage = new KyselyAuditStorage({
       db,
-      tableName: 'auditLogs',
+      tableName: AUDIT_TABLE,
     });
   });
 
@@ -123,13 +127,13 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
   });
 
   afterEach(async () => {
-    await db.deleteFrom('auditLogs').execute();
-    await db.deleteFrom('users').execute();
+    await db.deleteFrom(AUDIT_TABLE).execute();
+    await db.deleteFrom(USERS_TABLE).execute();
   });
 
   afterAll(async () => {
-    await db.schema.dropTable('auditLogs').ifExists().execute();
-    await db.schema.dropTable('users').ifExists().execute();
+    await db.schema.dropTable(AUDIT_TABLE).ifExists().execute();
+    await db.schema.dropTable(USERS_TABLE).ifExists().execute();
     await db.destroy();
   });
 
@@ -193,7 +197,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify audit was written to the real database
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
@@ -262,7 +266,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(500);
 
       // Verify no audit was written
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(0);
     });
@@ -334,7 +338,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify manual audit was written
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
@@ -410,7 +414,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(500);
 
       // Verify no audit was written (transaction rolled back)
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(0);
     });
@@ -453,7 +457,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
           // Insert user
           const user = await database
-            .insertInto('users')
+            .insertInto(USERS_TABLE)
             .values({ name: 'Success User', email: 'success@example.com' })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -496,12 +500,12 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify user was created
-      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      const usersInDb = await db.selectFrom(USERS_TABLE).selectAll().execute();
       expect(usersInDb).toHaveLength(1);
       expect(usersInDb[0].email).toBe('success@example.com');
 
       // Verify audit was written
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].type).toBe('user.created');
       expect(auditsInDb[0].payload).toEqual({
@@ -586,7 +590,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify both audits were written
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(2);
 
@@ -665,7 +669,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
 
       // Verify actor was included in audit
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(auditsInDb).toHaveLength(1);
       expect(auditsInDb[0].actorId).toBe('user-123');
@@ -680,7 +684,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       // Create audit storage WITH databaseServiceName
       const auditStorageWithServiceName = new KyselyAuditStorage({
         db,
-        tableName: 'auditLogs',
+        tableName: AUDIT_TABLE,
         databaseServiceName: 'database', // Matches the database service
       });
 
@@ -721,7 +725,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
           // Insert user using ctx.db (should be the transaction)
           const user = await ctx.db
-            .insertInto('users')
+            .insertInto(USERS_TABLE)
             .values({ name: 'Transaction User', email: 'trx@example.com' })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -766,11 +770,11 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(receivedDbIsTransaction).toBe(true);
 
       // Verify both user and audit were committed
-      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      const usersInDb = await db.selectFrom(USERS_TABLE).selectAll().execute();
       expect(usersInDb).toHaveLength(1);
       expect(usersInDb[0].email).toBe('trx@example.com');
 
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
       expect(auditsInDb).toHaveLength(1);
     });
 
@@ -780,7 +784,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       // Create audit storage with DIFFERENT databaseServiceName
       const auditStorageWithDifferentServiceName = new KyselyAuditStorage({
         db,
-        tableName: 'auditLogs',
+        tableName: AUDIT_TABLE,
         databaseServiceName: 'auditDatabase', // Different from 'database'
       });
 
@@ -822,7 +826,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
           // Insert user using ctx.db (should be raw db, not transaction)
           const user = await ctx.db
-            .insertInto('users')
+            .insertInto(USERS_TABLE)
             .values({ name: 'Raw DB User', email: 'raw@example.com' })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -868,10 +872,10 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(receivedDbIsTransaction).toBe(false);
 
       // Both should still be committed (but not in the same transaction)
-      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      const usersInDb = await db.selectFrom(USERS_TABLE).selectAll().execute();
       expect(usersInDb).toHaveLength(1);
 
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
       expect(auditsInDb).toHaveLength(1);
     });
 
@@ -914,7 +918,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
           receivedDbIsTransaction = (ctx.db as any)?.isTransaction === true;
 
           const user = await ctx.db
-            .insertInto('users')
+            .insertInto(USERS_TABLE)
             .values({
               name: 'No ServiceName User',
               email: 'noname@example.com',
@@ -960,10 +964,10 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(201);
       expect(receivedDbIsTransaction).toBe(false);
 
-      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      const usersInDb = await db.selectFrom(USERS_TABLE).selectAll().execute();
       expect(usersInDb).toHaveLength(1);
 
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
       expect(auditsInDb).toHaveLength(1);
     });
 
@@ -973,7 +977,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       // Create audit storage WITH databaseServiceName
       const auditStorageWithServiceName = new KyselyAuditStorage({
         db,
-        tableName: 'auditLogs',
+        tableName: AUDIT_TABLE,
         databaseServiceName: 'database',
       });
 
@@ -1008,7 +1012,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
         ) => {
           // Insert user (should be rolled back)
           const user = await ctx.db
-            .insertInto('users')
+            .insertInto(USERS_TABLE)
             .values({ name: 'Rollback User', email: 'rollback@example.com' })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -1053,10 +1057,10 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
       expect(response.status).toBe(500);
 
       // Both should be rolled back since they're in the same transaction
-      const usersInDb = await db.selectFrom('users').selectAll().execute();
+      const usersInDb = await db.selectFrom(USERS_TABLE).selectAll().execute();
       expect(usersInDb).toHaveLength(0);
 
-      const auditsInDb = await db.selectFrom('auditLogs').selectAll().execute();
+      const auditsInDb = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
       expect(auditsInDb).toHaveLength(0);
     });
   });
