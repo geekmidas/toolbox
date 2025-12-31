@@ -4,6 +4,7 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 
 ## Features
 
+- **Project Scaffolding**: Interactive `init` command to bootstrap new projects with templates
 - **Multi-Provider Support**: Generate handlers for AWS Lambda (API Gateway v1/v2) and server applications
 - **Development Server**: Hot-reload development server with file watching
 - **Telescope Integration**: Laravel-style debugging dashboard for inspecting requests, logs, and exceptions
@@ -13,6 +14,7 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 - **Flexible Routing**: Support for glob patterns to discover route files
 - **Environment Integration**: Seamless integration with @geekmidas/envkit for configuration
 - **Logger Integration**: Built-in logging configuration and integration
+- **Monorepo Support**: Optional pnpm workspace monorepo setup with shared packages
 
 ## Installation
 
