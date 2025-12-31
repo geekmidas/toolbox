@@ -3,7 +3,7 @@ import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
 import { type TestDatabase, createTestTables } from '../../test/helpers';
 import { KyselyFactory } from '../KyselyFactory';
 import { createKyselyDb } from '../helpers';
-import { wrapVitestKyselyTransaction, extendWithFixtures } from '../kysely';
+import { extendWithFixtures, wrapVitestKyselyTransaction } from '../kysely';
 
 const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
 const it = wrapVitestKyselyTransaction<TestDatabase>(

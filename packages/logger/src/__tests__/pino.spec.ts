@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LogLevel } from '../types';
 import { DEFAULT_REDACT_PATHS } from '../pino';
+import { LogLevel } from '../types';
 
 // Mock pino module
 vi.mock('pino', () => ({
