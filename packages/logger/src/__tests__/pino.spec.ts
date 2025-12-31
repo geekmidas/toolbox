@@ -191,7 +191,10 @@ describe('Pino Logger', () => {
 
       const callArgs = pinoMock.mock.calls[pinoMock.mock.calls.length - 1][0];
       // Should include both defaults and custom paths
-      expect(callArgs.redact).toEqual([...DEFAULT_REDACT_PATHS, ...customPaths]);
+      expect(callArgs.redact).toEqual([
+        ...DEFAULT_REDACT_PATHS,
+        ...customPaths,
+      ]);
     });
 
     it('should merge object config paths with defaults by default', async () => {
