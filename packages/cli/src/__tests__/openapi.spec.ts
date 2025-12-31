@@ -133,7 +133,9 @@ describe('OpenAPI Generation', () => {
         cwd: tempDir,
       });
 
-      expect(consoleSpy).toHaveBeenCalledWith('No valid endpoints found');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'No valid endpoints found for OpenAPI generation',
+      );
     });
 
     it('should generate spec with multiple endpoints', async () => {
@@ -257,11 +259,10 @@ describe('OpenAPI Generation', () => {
       await openapiCommand({ output: outputPath, json: true, cwd: tempDir });
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('OpenAPI JSON spec generated'),
+        expect.stringContaining('OpenAPI JSON generated'),
       );
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Found'));
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('endpoints'),
+        expect.stringContaining('Found 1 endpoints'),
       );
     });
 
