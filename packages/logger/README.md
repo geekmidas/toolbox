@@ -37,6 +37,114 @@ logger.info('Application started');
 logger.error({ error, operation: 'fetchUser' }, 'Failed to fetch user');
 ```
 
+## Pino Logger
+
+For production use, the package provides a Pino-based logger with high performance and built-in redaction support.
+
+```typescript
+import { createLogger } from '@geekmidas/logger/pino';
+
+const logger = createLogger({
+  level: 'info',
+  pretty: true,  // Pretty printing in development
+  redact: true,  // Enable sensitive data redaction
+});
+
+logger.info({ userId: 123 }, 'User logged in');
+```
+
+## Sensitive Data Redaction
+
+The Pino logger includes built-in redaction to automatically mask sensitive data like passwords, tokens, and API keys.
+
+### Enable with Defaults
+
+```typescript
+import { createLogger } from '@geekmidas/logger/pino';
+
+const logger = createLogger({ redact: true });
+
+// Sensitive data is automatically masked
+logger.info({ password: 'secret123', user: 'john' }, 'Login attempt');
+// Output: { password: '[Redacted]', user: 'john' } Login attempt
+
+logger.info({ headers: { authorization: 'Bearer xyz' } }, 'Request');
+// Output: { headers: { authorization: '[Redacted]' } } Request
+```
+
+### Default Redacted Fields
+
+When `redact: true`, the following fields are automatically masked:
+
+- **Authentication**: `password`, `pass`, `passwd`, `secret`, `token`, `accessToken`, `refreshToken`, `apiKey`, `api_key`, `authorization`, `credentials`
+- **Headers**: `headers.authorization`, `headers.cookie`, `headers["x-api-key"]`
+- **Personal Data**: `ssn`, `creditCard`, `cardNumber`, `cvv`, `pin`
+- **Secrets**: `connectionString`, `databaseUrl`
+- **Wildcards**: `*.password`, `*.secret`, `*.token` (catches nested fields)
+
+### Add Custom Paths (Merged with Defaults)
+
+```typescript
+const logger = createLogger({
+  redact: ['user.ssn', 'payment.cardNumber'],
+});
+
+// Both custom paths AND defaults are redacted
+logger.info({ password: 'secret', user: { ssn: '123-45-6789' } }, 'Data');
+// Output: { password: '[Redacted]', user: { ssn: '[Redacted]' } } Data
+```
+
+### Override Defaults
+
+Use `resolution: 'override'` to disable default paths and use only your custom paths:
+
+```typescript
+const logger = createLogger({
+  redact: {
+    paths: ['myCustomSecret'],
+    resolution: 'override',
+  },
+});
+
+// Only 'myCustomSecret' is redacted, defaults are ignored
+logger.info({ password: 'visible', myCustomSecret: 'hidden' }, 'Data');
+// Output: { password: 'visible', myCustomSecret: '[Redacted]' } Data
+```
+
+### Custom Censor and Remove
+
+```typescript
+// Custom censor string
+const logger = createLogger({
+  redact: {
+    paths: ['secret'],
+    censor: '***HIDDEN***',
+  },
+});
+
+// Remove fields entirely instead of masking
+const logger2 = createLogger({
+  redact: {
+    paths: ['temporaryData'],
+    remove: true,
+  },
+});
+```
+
+### Path Syntax
+
+Redaction paths support dot notation and wildcards:
+
+```typescript
+redact: [
+  'password',           // Top-level field
+  'user.password',      // Nested field
+  'users[*].password',  // Array wildcard
+  '*.secret',           // Any object's 'secret' field
+  'headers["x-api-key"]', // Bracket notation for special chars
+]
+```
+
 ## API Reference
 
 ### Logger Interface
