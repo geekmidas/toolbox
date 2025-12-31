@@ -277,7 +277,9 @@ describe('ConsoleLogger', () => {
         app: 'myApp',
         version: '1.0.0',
       });
-      const childLogger = parentLogger.child({ module: 'auth' });
+      const childLogger = parentLogger.child({
+        module: 'auth',
+      }) as ConsoleLogger;
 
       expect(childLogger.data).toEqual({
         app: 'myApp',
@@ -308,7 +310,7 @@ describe('ConsoleLogger', () => {
       const childLogger = parentLogger.child({
         status: 'child',
         module: 'api',
-      });
+      }) as ConsoleLogger;
 
       expect(childLogger.data).toEqual({
         env: 'dev',
@@ -338,7 +340,9 @@ describe('ConsoleLogger', () => {
 
     it('should not affect parent logger', () => {
       const parentLogger = new ConsoleLogger({ app: 'myApp' });
-      const childLogger = parentLogger.child({ module: 'auth' });
+      const childLogger = parentLogger.child({
+        module: 'auth',
+      }) as ConsoleLogger;
 
       // Child logger has additional context
       expect(childLogger.data).toEqual({ app: 'myApp', module: 'auth' });
