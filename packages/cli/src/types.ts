@@ -44,6 +44,21 @@ export interface TelescopeConfig {
   websocket?: boolean;
 }
 
+export interface OpenApiConfig {
+  /** Enable OpenAPI generation (default: true) */
+  enabled?: boolean;
+  /** Output path for the generated OpenAPI file (default: ./src/api/openapi.ts) */
+  output?: string;
+  /** Generate JSON instead of TypeScript (default: false) */
+  json?: boolean;
+  /** API title */
+  title?: string;
+  /** API version */
+  version?: string;
+  /** API description */
+  description?: string;
+}
+
 export interface ProvidersConfig {
   aws?: {
     apiGateway?: {
@@ -74,6 +89,25 @@ export interface GkmConfig {
    * - A TelescopeConfig object for inline configuration
    */
   telescope?: string | boolean | TelescopeConfig;
+  /**
+   * OpenAPI generation configuration.
+   * Can be:
+   * - A boolean to enable/disable with defaults (output: ./src/api/openapi.ts)
+   * - An OpenApiConfig object for customization
+   *
+   * When enabled, OpenAPI spec is generated on startup and regenerated on route changes.
+   *
+   * @example
+   * openapi: true
+   *
+   * @example
+   * openapi: {
+   *   output: './src/api/openapi.ts',
+   *   title: 'My API',
+   *   version: '1.0.0',
+   * }
+   */
+  openapi?: boolean | OpenApiConfig;
   /** Runtime to use for dev server (default: 'node') */
   runtime?: Runtime;
   /**
