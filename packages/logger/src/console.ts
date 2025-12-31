@@ -16,11 +16,22 @@ export class ConsoleLogger implements Logger {
    * @private
    */
   private createLogFn(logMethod: (...args: any[]) => void): LogFn {
-    return <T extends object>(obj: T, msg?: string, ...args: any[]): void => {
-      // Merge the logger's context data with the provided object
+    return <T extends object>(
+      objOrMsg: T | string,
+      msg?: string,
+      ...args: any[]
+    ): void => {
       const ts = Date.now();
-      const mergedData = { ...this.data, ...obj, ts };
 
+      // Handle simple string logging: logger.info('message')
+      if (typeof objOrMsg === 'string') {
+        const mergedData = { ...this.data, ts };
+        logMethod(mergedData, objOrMsg, ...args);
+        return;
+      }
+
+      // Handle structured logging: logger.info({ data }, 'message')
+      const mergedData = { ...this.data, ...objOrMsg, ts };
       if (msg) {
         logMethod(mergedData, msg, ...args);
       } else {
