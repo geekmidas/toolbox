@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index.ts';
 import { devCommand } from './dev/index.ts';
+import { initCommand, type InitOptions } from './init/index.ts';
 import { generateReactQueryCommand } from './openapi-react-query.ts';
 import { openapiCommand } from './openapi.ts';
 import type { LegacyProvider, MainProvider } from './types.ts';
@@ -15,6 +16,31 @@ program
   .description('GeekMidas backend framework CLI')
   .version(pkg.version)
   .option('--cwd <path>', 'Change working directory');
+
+program
+  .command('init')
+  .description('Scaffold a new project')
+  .argument('[name]', 'Project name')
+  .option(
+    '--template <template>',
+    'Project template (minimal, api, serverless, worker)',
+  )
+  .option('--skip-install', 'Skip dependency installation', false)
+  .option('-y, --yes', 'Skip prompts, use defaults', false)
+  .option('--monorepo', 'Setup as monorepo with packages/models', false)
+  .option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
+  .action(async (name: string | undefined, options: InitOptions) => {
+    try {
+      const globalOptions = program.opts();
+      if (globalOptions.cwd) {
+        process.chdir(globalOptions.cwd);
+      }
+      await initCommand(name, options);
+    } catch (error) {
+      console.error('Init failed:', (error as Error).message);
+      process.exit(1);
+    }
+  });
 
 program
   .command('build')
