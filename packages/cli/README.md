@@ -192,6 +192,111 @@ npx gkm openapi --output src/api.ts
 
 ## CLI Commands
 
+### `gkm init`
+
+Scaffold a new project with interactive prompts.
+
+```bash
+gkm init [name] [options]
+```
+
+**Arguments:**
+- `[name]`: Project name (optional, will prompt if not provided)
+
+**Options:**
+- `--template <template>`: Project template (`minimal`, `api`, `serverless`, `worker`)
+- `--skip-install`: Skip dependency installation
+- `-y, --yes`: Skip prompts, use defaults
+- `--monorepo`: Setup as monorepo structure
+- `--api-path <path>`: API app path in monorepo (default: `apps/api`)
+
+**Interactive Prompts:**
+
+When run without `--yes`, the command will ask:
+
+1. **Project name** - Name for your project directory
+2. **Template** - Choose from available templates:
+   - `minimal` - Basic health endpoint
+   - `api` - Full API with auth, database, services
+   - `serverless` - AWS Lambda handlers
+   - `worker` - Background job processing
+3. **Telescope** - Include debugging dashboard (default: yes)
+4. **Database** - Include Kysely database support (default: yes)
+5. **Logger** - Choose logger implementation:
+   - `pino` - Fast JSON logger for production (recommended)
+   - `console` - Simple console logger for development
+6. **Routes structure** - Choose file organization:
+   - `centralized-endpoints` - `src/endpoints/**/*.ts`
+   - `centralized-routes` - `src/routes/**/*.ts`
+   - `domain-based` - `src/**/routes/*.ts`
+7. **Monorepo** - Setup as pnpm workspace monorepo (default: no)
+8. **API path** - If monorepo, where to place the API app
+
+**Examples:**
+
+```bash
+# Interactive mode
+npx @geekmidas/cli init
+
+# With project name
+npx @geekmidas/cli init my-api
+
+# Skip prompts with defaults
+npx @geekmidas/cli init my-api --yes
+
+# Specific template
+npx @geekmidas/cli init my-api --template api
+
+# Monorepo setup
+npx @geekmidas/cli init my-project --monorepo --api-path apps/backend
+
+# Skip dependency installation
+npx @geekmidas/cli init my-api --skip-install
+```
+
+**Generated Structure (Minimal Template):**
+
+```
+my-api/
+├── src/
+│   ├── config/
+│   │   ├── env.ts           # Environment configuration
+│   │   └── logger.ts        # Logger setup
+│   └── endpoints/
+│       └── health.ts        # Health check endpoint
+├── .env                     # Environment variables
+├── .env.example             # Example env file
+├── .gitignore
+├── gkm.config.ts            # CLI configuration
+├── package.json
+├── tsconfig.json
+└── Dockerfile               # Docker configuration
+```
+
+**Generated Structure (Monorepo):**
+
+```
+my-project/
+├── apps/
+│   └── api/
+│       ├── src/
+│       │   ├── config/
+│       │   └── endpoints/
+│       ├── gkm.config.ts
+│       ├── package.json
+│       └── tsconfig.json
+├── packages/
+│   └── models/              # Shared types/models
+│       ├── src/
+│       │   └── index.ts
+│       ├── package.json
+│       └── tsconfig.json
+├── package.json             # Root workspace config
+├── pnpm-workspace.yaml
+├── tsconfig.json            # Base TypeScript config
+└── turbo.json               # Turborepo config
+```
+
 ### `gkm build`
 
 Generate handlers from your endpoints.
