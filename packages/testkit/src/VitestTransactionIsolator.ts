@@ -199,8 +199,13 @@ export type DatabaseConnection<Conn> = DatabaseConnectionFn<Conn>;
  * Type for fixture creator functions that depend on the transaction.
  * Each function receives the transaction and returns the fixture value.
  */
-export type FixtureCreators<Transaction, Extended extends Record<string, unknown>> = {
-  [K in keyof Extended]: (trx: Transaction) => Extended[K] | Promise<Extended[K]>;
+export type FixtureCreators<
+  Transaction,
+  Extended extends Record<string, unknown>,
+> = {
+  [K in keyof Extended]: (
+    trx: Transaction,
+  ) => Extended[K] | Promise<Extended[K]>;
 };
 
 /**
