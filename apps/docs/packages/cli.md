@@ -51,9 +51,13 @@ gkm init my-project --monorepo --api-path apps/api
 
 ? Include Telescope (debugging dashboard)? › Yes
 ? Include database support (Kysely)? › Yes
-? Route organization: ›
-  ❯ File-based - Folder structure matches URL paths
-    Flat - All endpoints in one folder
+? Logger: ›
+  ❯ Pino - Fast JSON logger for production (recommended)
+    Console - Simple console logger for development
+? Routes structure: ›
+  ❯ Centralized (endpoints) - src/endpoints/**/*.ts
+    Centralized (routes) - src/routes/**/*.ts
+    Domain-based - src/**/routes/*.ts
 ? Setup as monorepo? › No
 ```
 
@@ -76,6 +80,14 @@ gkm init my-project --monorepo --api-path apps/api
 | `serverless` | AWS Lambda handlers | + cloud, Lambda adapters |
 | `worker` | Background job processing | + events, subscribers, crons |
 
+**Routes Structures:**
+
+| Structure | Glob Pattern | Example |
+|-----------|--------------|---------|
+| Centralized (endpoints) | `src/endpoints/**/*.ts` | `src/endpoints/users/list.ts` |
+| Centralized (routes) | `src/routes/**/*.ts` | `src/routes/users/list.ts` |
+| Domain-based | `src/**/routes/*.ts` | `src/users/routes/list.ts` |
+
 **Generated Files (Standalone):**
 
 ```
@@ -85,8 +97,9 @@ my-api/
 │   │   ├── env.ts
 │   │   ├── logger.ts
 │   │   └── telescope.ts (if enabled)
-│   └── endpoints/
-│       └── health.ts
+│   └── endpoints/          # or routes/, or domain-based
+│       └── health/
+│           └── index.ts
 ├── .env
 ├── .env.example
 ├── .env.development
@@ -108,7 +121,9 @@ my-project/
 │   └── api/
 │       ├── src/
 │       │   ├── config/
-│       │   └── endpoints/
+│       │   └── endpoints/    # or routes/, or domain-based
+│       │       └── health/
+│       │           └── index.ts
 │       ├── .env
 │       ├── gkm.config.ts
 │       ├── package.json
