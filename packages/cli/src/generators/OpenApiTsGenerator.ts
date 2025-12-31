@@ -757,7 +757,7 @@ export const apiInfo = {
  * Available security schemes for this API.
  * Maps authorizer names to OpenAPI security scheme definitions.
  */
-export const securitySchemes = ${JSON.stringify(securitySchemesObj, null, 2).replace(/"([^"]+)":/g, '$1:')} as const satisfies Record<string, SecuritySchemeObject>;
+export const securitySchemes = ${JSON.stringify(securitySchemesObj, null, 2).replace(/"([a-zA-Z_$][a-zA-Z0-9_$]*)":/g, '$1:')} as const satisfies Record<string, SecuritySchemeObject>;
 
 export type SecuritySchemeId = ${schemeNames || 'never'};
 
