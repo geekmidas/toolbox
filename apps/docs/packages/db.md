@@ -246,13 +246,14 @@ const allOrders = await db.selectFrom('orders').selectAll().execute();
 
 ## RLS with Endpoints
 
-When using `@geekmidas/constructs`, RLS integrates seamlessly with endpoints:
+When using `@geekmidas/constructs`, RLS integrates seamlessly with endpoints. The key is to use the `db` parameter from the handler context, which is a transaction with RLS variables set—**not** `services.database` which is the raw connection.
 
 ```typescript
 import { EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 const api = new EndpointFactory()
   .services([databaseService])
+  .database(databaseService)  // Required: specify which service provides db
   .authorizer('jwt')
   .rls({
     extractor: ({ session }) => ({
@@ -265,9 +266,10 @@ const api = new EndpointFactory()
 // All endpoints inherit RLS configuration
 const listOrders = api
   .get('/orders')
-  .handle(async ({ services }) => {
-    // RLS context is automatically applied
-    return services.database
+  .handle(async ({ db }) => {
+    // db is a transaction with RLS context applied
+    // PostgreSQL policies using current_setting('app.user_id') work here
+    return db
       .selectFrom('orders')
       .selectAll()
       .execute();
@@ -277,13 +279,30 @@ const listOrders = api
 const adminListOrders = api
   .get('/admin/orders')
   .rls(false)  // Disable RLS for this endpoint
-  .handle(async ({ services }) => {
-    return services.database
+  .handle(async ({ db }) => {
+    // db is now the raw connection without RLS context
+    return db
       .selectFrom('orders')
       .selectAll()
       .execute();
   });
 ```
+
+::: warning Important
+Always use `db` from the handler context when RLS is configured. Using `services.database` directly bypasses the RLS transaction and PostgreSQL session variables won't be set.
+
+```typescript
+// ❌ Wrong - bypasses RLS
+.handle(async ({ services }) => {
+  return services.database.selectFrom('orders').execute();
+});
+
+// ✅ Correct - uses RLS transaction
+.handle(async ({ db }) => {
+  return db.selectFrom('orders').execute();
+});
+```
+:::
 
 ### Per-Endpoint RLS
 
@@ -293,16 +312,39 @@ import { e } from '@geekmidas/constructs/endpoints';
 const endpoint = e
   .get('/orders')
   .services([databaseService])
+  .database(databaseService)
   .rls({
     extractor: ({ session, header }) => ({
       user_id: session.userId,
       ip_address: header('x-forwarded-for'),
     }),
   })
-  .handle(async ({ services }) => {
-    return services.database
+  .handle(async ({ db }) => {
+    // db has RLS context with user_id and ip_address set
+    return db
       .selectFrom('orders')
       .selectAll()
       .execute();
+  });
+```
+
+### Combining RLS with Services
+
+When you need both the RLS-protected `db` and other services:
+
+```typescript
+const endpoint = api
+  .get('/orders')
+  .handle(async ({ db, services, logger }) => {
+    // Use db for RLS-protected queries
+    const orders = await db
+      .selectFrom('orders')
+      .selectAll()
+      .execute();
+
+    // Use other services as needed
+    logger.info({ count: orders.length }, 'Fetched orders');
+
+    return orders;
   });
 ```
