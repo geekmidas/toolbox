@@ -18,8 +18,10 @@ export interface DatabaseFixtures<Transaction, Extended = object> {
 /**
  * Combined fixtures type that merges the base transaction fixture with extended context.
  */
-export type ExtendedDatabaseFixtures<Transaction, Extended = object> =
-  DatabaseFixtures<Transaction> & Extended;
+export type ExtendedDatabaseFixtures<
+  Transaction,
+  Extended = object,
+> = DatabaseFixtures<Transaction> & Extended;
 
 /**
  * Function type for extending test context with additional properties.
