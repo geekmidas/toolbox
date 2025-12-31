@@ -149,6 +149,24 @@ function resolveRedactConfig(
   return config;
 }
 
+/**
+ * Creates a pino logger instance with optional redaction support.
+ *
+ * @param options - Logger configuration options
+ * @returns A configured pino logger instance
+ *
+ * @example
+ * ```typescript
+ * // Basic logger
+ * const logger = createLogger({ level: 'debug' });
+ *
+ * // With redaction enabled
+ * const secureLogger = createLogger({ redact: true });
+ *
+ * // Pretty printing in development
+ * const devLogger = createLogger({ pretty: true, redact: true });
+ * ```
+ */
 export function createLogger(options: CreateLoggerOptions = {}) {
   // @ts-ignore
   const pretty = options?.pretty && process.NODE_ENV !== 'production';
