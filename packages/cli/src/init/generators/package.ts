@@ -1,7 +1,8 @@
-import type {
-  GeneratedFile,
-  TemplateConfig,
-  TemplateOptions,
+import {
+  OPENAPI_OUTPUT_PATH,
+  type GeneratedFile,
+  type TemplateConfig,
+  type TemplateOptions,
 } from '../templates/index.js';
 
 /**
@@ -67,6 +68,12 @@ export function generatePackageJson(
     version: '0.0.1',
     private: true,
     type: 'module',
+    exports: {
+      './client': {
+        types: OPENAPI_OUTPUT_PATH,
+        import: OPENAPI_OUTPUT_PATH,
+      },
+    },
     scripts,
     dependencies: sortObject(dependencies),
     devDependencies: sortObject(devDependencies),
