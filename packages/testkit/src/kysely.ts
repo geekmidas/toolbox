@@ -142,10 +142,7 @@ export function extendWithFixtures<
   Database,
   Extended extends Record<string, unknown>,
   T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
->(
-  wrappedTest: T,
-  fixtures: FixtureCreators<Transaction<Database>, Extended>,
-) {
+>(wrappedTest: T, fixtures: FixtureCreators<Transaction<Database>, Extended>) {
   return baseExtendWithFixtures<Transaction<Database>, Extended, T>(
     wrappedTest,
     fixtures,
