@@ -4,13 +4,12 @@ A simple and flexible structured logging library for Node.js and browsers with c
 
 ## Features
 
-- ✅ **Standard Interface**: Common logger interface with multiple log levels (debug, info, warn, error, fatal, trace)
-- ✅ **Structured Logging**: Support for both structured (object + message) and simple (message only) logging
-- ✅ **Child Loggers**: Create child loggers with inherited context
-- ✅ **Automatic Timestamps**: Automatic timestamp injection on all log entries
-- ✅ **Console-Based**: Built-in ConsoleLogger implementation using standard console methods
-- ✅ **TypeScript**: Full TypeScript support with type-safe logging
-- ✅ **Zero Dependencies**: No external dependencies
+- **Standard Interface**: Common logger interface with multiple log levels (debug, info, warn, error, fatal, trace)
+- **Structured Logging**: Support for both structured (object + message) and simple (message only) logging
+- **Child Loggers**: Create child loggers with inherited context
+- **Multiple Implementations**: ConsoleLogger for simple use, PinoLogger for production
+- **Sensitive Data Redaction**: Built-in redaction for passwords, tokens, API keys, and more
+- **TypeScript**: Full TypeScript support with type-safe logging
 
 ## Installation
 
