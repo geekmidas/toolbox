@@ -20,9 +20,13 @@ import { DefaultAuditor } from '../DefaultAuditor';
 import { type AuditLogTable, KyselyAuditStorage } from '../kysely';
 import type { AuditableAction } from '../types';
 
+// Use unique table names to avoid conflicts with parallel tests
+const AUDIT_TABLE = 'audit_int_logs' as const;
+const USERS_TABLE = 'audit_int_users' as const;
+
 interface TestDatabase {
-  auditLogs: AuditLogTable;
-  users: {
+  [AUDIT_TABLE]: AuditLogTable;
+  [USERS_TABLE]: {
     id: Generated<number>;
     name: string;
     email: string;
@@ -52,7 +56,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
 
     // Create audit_logs table
     await db.schema
-      .createTable('auditLogs')
+      .createTable(AUDIT_TABLE)
       .ifNotExists()
       .addColumn('id', 'varchar(32)', (col) => col.primaryKey())
       .addColumn('type', 'varchar', (col) => col.notNull())
@@ -73,7 +77,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
 
     // Create users table for testing audit integration
     await db.schema
-      .createTable('users')
+      .createTable(USERS_TABLE)
       .ifNotExists()
       .addColumn('id', 'serial', (col) => col.primaryKey())
       .addColumn('name', 'varchar', (col) => col.notNull())
@@ -82,20 +86,20 @@ describe('KyselyAuditStorage Integration Tests', () => {
 
     storage = new KyselyAuditStorage({
       db,
-      tableName: 'auditLogs',
+      tableName: AUDIT_TABLE,
     });
   });
 
   afterEach(async () => {
     // Clean up data after each test
-    await db.deleteFrom('auditLogs').execute();
-    await db.deleteFrom('users').execute();
+    await db.deleteFrom(AUDIT_TABLE).execute();
+    await db.deleteFrom(USERS_TABLE).execute();
   });
 
   afterAll(async () => {
     // Drop tables and close connection
-    await db.schema.dropTable('auditLogs').ifExists().execute();
-    await db.schema.dropTable('users').ifExists().execute();
+    await db.schema.dropTable(AUDIT_TABLE).ifExists().execute();
+    await db.schema.dropTable(USERS_TABLE).ifExists().execute();
     await db.destroy();
   });
 
@@ -112,7 +116,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       await auditor.flush();
 
       // Verify record was written
-      const records = await db.selectFrom('auditLogs').selectAll().execute();
+      const records = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(records).toHaveLength(1);
       expect(records[0].type).toBe('user.created');
@@ -140,7 +144,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       await auditor.flush();
 
       const records = await db
-        .selectFrom('auditLogs')
+        .selectFrom(AUDIT_TABLE)
         .selectAll()
         .orderBy('timestamp', 'asc')
         .execute();
@@ -162,7 +166,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       await db.transaction().execute(async (trx) => {
         // Insert user
         const user = await trx
-          .insertInto('users')
+          .insertInto(USERS_TABLE)
           .values({ name: 'Test User', email: 'test@example.com' })
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -179,8 +183,8 @@ describe('KyselyAuditStorage Integration Tests', () => {
       });
 
       // Verify both user and audit record exist
-      const users = await db.selectFrom('users').selectAll().execute();
-      const audits = await db.selectFrom('auditLogs').selectAll().execute();
+      const users = await db.selectFrom(USERS_TABLE).selectAll().execute();
+      const audits = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(users).toHaveLength(1);
       expect(audits).toHaveLength(1);
@@ -198,7 +202,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       const transactionPromise = db.transaction().execute(async (trx) => {
         // Insert user
         const user = await trx
-          .insertInto('users')
+          .insertInto(USERS_TABLE)
           .values({ name: 'Rollback User', email: 'rollback@example.com' })
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -218,8 +222,8 @@ describe('KyselyAuditStorage Integration Tests', () => {
       );
 
       // Verify both user and audit record were rolled back
-      const users = await db.selectFrom('users').selectAll().execute();
-      const audits = await db.selectFrom('auditLogs').selectAll().execute();
+      const users = await db.selectFrom(USERS_TABLE).selectAll().execute();
+      const audits = await db.selectFrom(AUDIT_TABLE).selectAll().execute();
 
       expect(users).toHaveLength(0);
       expect(audits).toHaveLength(0);
@@ -374,7 +378,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       });
 
       const user = await db
-        .insertInto('users')
+        .insertInto(USERS_TABLE)
         .values({ name: 'John Doe', email: 'john@example.com' })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -399,7 +403,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
       });
 
       await db
-        .updateTable('users')
+        .updateTable(USERS_TABLE)
         .set({ name: 'John Smith' })
         .where('id', '=', user.id)
         .execute();
@@ -424,7 +428,7 @@ describe('KyselyAuditStorage Integration Tests', () => {
         metadata: { endpoint: '/users/1', method: 'DELETE' },
       });
 
-      await db.deleteFrom('users').where('id', '=', user.id).execute();
+      await db.deleteFrom(USERS_TABLE).where('id', '=', user.id).execute();
 
       deleteAuditor.audit(
         'user.deleted',
