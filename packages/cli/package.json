@@ -1,6 +1,6 @@
 {
   "name": "@geekmidas/cli",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
   "private": false,
   "type": "module",
