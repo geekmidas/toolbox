@@ -47,10 +47,6 @@ export interface TelescopeConfig {
 export interface OpenApiConfig {
   /** Enable OpenAPI generation (default: true) */
   enabled?: boolean;
-  /** Output path for the generated OpenAPI file (default: ./src/api/openapi.ts) */
-  output?: string;
-  /** Generate JSON instead of TypeScript (default: false) */
-  json?: boolean;
   /** API title */
   title?: string;
   /** API version */

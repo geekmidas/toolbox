@@ -4,6 +4,11 @@ import { serverlessTemplate } from './serverless.js';
 import { workerTemplate } from './worker.js';
 
 /**
+ * OpenAPI output path (fixed, not configurable)
+ */
+export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
+
+/**
  * Logger implementation type
  */
 export type LoggerType = 'pino' | 'console';

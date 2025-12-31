@@ -1,20 +1,20 @@
 #!/usr/bin/env -S npx tsx
 
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
-import { Endpoint } from '@geekmidas/constructs/endpoints';
+import { dirname, join } from 'node:path';
 import { loadConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig } from './types.js';
 
 interface OpenAPIOptions {
-  output?: string;
-  json?: boolean;
   cwd?: string;
 }
 
-const DEFAULT_OUTPUT = './src/api/openapi.ts';
+/**
+ * Fixed output path for generated OpenAPI client (not configurable)
+ */
+export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
 
 /**
  * Resolve OpenAPI config from GkmConfig
@@ -29,8 +29,6 @@ export function resolveOpenApiConfig(
   if (config.openapi === true || config.openapi === undefined) {
     return {
       enabled: config.openapi === true,
-      output: DEFAULT_OUTPUT,
-      json: false,
       title: 'API Documentation',
       version: '1.0.0',
       description: 'Auto-generated API documentation from endpoints',
@@ -39,8 +37,6 @@ export function resolveOpenApiConfig(
 
   return {
     enabled: config.openapi.enabled !== false,
-    output: config.openapi.output || DEFAULT_OUTPUT,
-    json: config.openapi.json || false,
     title: config.openapi.title || 'API Documentation',
     version: config.openapi.version || '1.0.0',
     description:
@@ -73,32 +69,19 @@ export async function generateOpenApi(
   }
 
   const endpoints = loadedEndpoints.map(({ construct }) => construct);
-  const outputPath = isAbsolute(openApiConfig.output!)
-    ? openApiConfig.output!
-    : join(process.cwd(), openApiConfig.output!);
+  const outputPath = join(process.cwd(), OPENAPI_OUTPUT_PATH);
 
   await mkdir(dirname(outputPath), { recursive: true });
 
-  if (openApiConfig.json) {
-    const spec = await Endpoint.buildOpenApiSchema(endpoints, {
-      title: openApiConfig.title!,
-      version: openApiConfig.version!,
-      description: openApiConfig.description!,
-    });
+  const tsGenerator = new OpenApiTsGenerator();
+  const tsContent = await tsGenerator.generate(endpoints, {
+    title: openApiConfig.title!,
+    version: openApiConfig.version!,
+    description: openApiConfig.description!,
+  });
 
-    await writeFile(outputPath, JSON.stringify(spec, null, 2));
-    logger.log(`📄 OpenAPI JSON generated: ${openApiConfig.output}`);
-  } else {
-    const tsGenerator = new OpenApiTsGenerator();
-    const tsContent = await tsGenerator.generate(endpoints, {
-      title: openApiConfig.title!,
-      version: openApiConfig.version!,
-      description: openApiConfig.description!,
-    });
-
-    await writeFile(outputPath, tsContent);
-    logger.log(`📄 OpenAPI TypeScript generated: ${openApiConfig.output}`);
-  }
+  await writeFile(outputPath, tsContent);
+  logger.log(`📄 OpenAPI client generated: ${OPENAPI_OUTPUT_PATH}`);
 
   return { outputPath, endpointCount: loadedEndpoints.length };
 }
@@ -111,17 +94,8 @@ export async function openapiCommand(
   try {
     const config = await loadConfig(options.cwd);
 
-    // CLI options override config
-    if (options.output || options.json !== undefined) {
-      const openApiConfig = resolveOpenApiConfig(config);
-      config.openapi = {
-        ...openApiConfig,
-        enabled: true,
-        output: options.output || openApiConfig.output,
-        json: options.json ?? openApiConfig.json,
-      };
-    } else if (!config.openapi) {
-      // Enable with defaults if not configured
+    // Enable openapi if not configured
+    if (!config.openapi) {
       config.openapi = { enabled: true };
     }
 
