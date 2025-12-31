@@ -2,13 +2,174 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openapiCommand } from '../openapi';
+import {
+  generateOpenApi,
+  openapiCommand,
+  resolveOpenApiConfig,
+} from '../openapi';
+import type { GkmConfig } from '../types';
 import {
   cleanupDir,
   createMockEndpointFile,
   createTempDir,
   createTestFile,
 } from './test-helpers';
+
+describe('resolveOpenApiConfig', () => {
+  const baseConfig: GkmConfig = {
+    routes: './src/endpoints/**/*.ts',
+    envParser: './src/config/env#envParser',
+    logger: './src/config/logger#logger',
+  };
+
+  it('should return disabled when openapi is false', () => {
+    const result = resolveOpenApiConfig({ ...baseConfig, openapi: false });
+    expect(result).toEqual({ enabled: false });
+  });
+
+  it('should return enabled with defaults when openapi is true', () => {
+    const result = resolveOpenApiConfig({ ...baseConfig, openapi: true });
+    expect(result).toEqual({
+      enabled: true,
+      output: './src/api/openapi.ts',
+      json: false,
+      title: 'API Documentation',
+      version: '1.0.0',
+      description: 'Auto-generated API documentation from endpoints',
+    });
+  });
+
+  it('should return disabled when openapi is undefined', () => {
+    const result = resolveOpenApiConfig({ ...baseConfig });
+    expect(result.enabled).toBe(false);
+  });
+
+  it('should use custom config values when provided', () => {
+    const result = resolveOpenApiConfig({
+      ...baseConfig,
+      openapi: {
+        enabled: true,
+        output: './custom/path.ts',
+        json: true,
+        title: 'My API',
+        version: '2.0.0',
+        description: 'Custom description',
+      },
+    });
+    expect(result).toEqual({
+      enabled: true,
+      output: './custom/path.ts',
+      json: true,
+      title: 'My API',
+      version: '2.0.0',
+      description: 'Custom description',
+    });
+  });
+
+  it('should use defaults for missing optional config values', () => {
+    const result = resolveOpenApiConfig({
+      ...baseConfig,
+      openapi: { enabled: true },
+    });
+    expect(result).toEqual({
+      enabled: true,
+      output: './src/api/openapi.ts',
+      json: false,
+      title: 'API Documentation',
+      version: '1.0.0',
+      description: 'Auto-generated API documentation from endpoints',
+    });
+  });
+
+  it('should be enabled by default when object provided without enabled field', () => {
+    const result = resolveOpenApiConfig({
+      ...baseConfig,
+      openapi: { output: './custom.ts' },
+    });
+    expect(result.enabled).toBe(true);
+  });
+});
+
+describe('generateOpenApi', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await createTempDir('openapi-gen-');
+  });
+
+  afterEach(async () => {
+    await cleanupDir(tempDir);
+    vi.restoreAllMocks();
+  });
+
+  it('should return null when openapi is disabled', async () => {
+    const config: GkmConfig = {
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+      openapi: false,
+    };
+
+    const result = await generateOpenApi(config);
+    expect(result).toBeNull();
+  });
+
+  it('should return null when openapi is undefined', async () => {
+    const config: GkmConfig = {
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+    };
+
+    const result = await generateOpenApi(config);
+    expect(result).toBeNull();
+  });
+
+  it('should generate and return endpoint count', async () => {
+    await createMockEndpointFile(tempDir, 'test.ts', 'test', '/test', 'GET');
+
+    const outputPath = join(tempDir, 'openapi.json');
+    const config: GkmConfig = {
+      routes: `${tempDir}/**/*.ts`,
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+      openapi: {
+        enabled: true,
+        output: outputPath,
+        json: true,
+      },
+    };
+
+    const result = await generateOpenApi(config, { silent: true });
+
+    expect(result).not.toBeNull();
+    expect(result?.endpointCount).toBe(1);
+    expect(result?.outputPath).toBe(outputPath);
+    expect(existsSync(outputPath)).toBe(true);
+  });
+
+  it('should generate with absolute output path', async () => {
+    await createMockEndpointFile(tempDir, 'test.ts', 'test', '/test', 'GET');
+
+    const absolutePath = join(tempDir, 'absolute-openapi.json');
+    const config: GkmConfig = {
+      routes: `${tempDir}/**/*.ts`,
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+      openapi: {
+        enabled: true,
+        output: absolutePath,
+        json: true,
+      },
+    };
+
+    const result = await generateOpenApi(config, { silent: true });
+
+    expect(result).not.toBeNull();
+    expect(result?.outputPath).toBe(absolutePath);
+    expect(existsSync(absolutePath)).toBe(true);
+  });
+});
 
 describe('OpenAPI Generation', () => {
   let tempDir: string;
