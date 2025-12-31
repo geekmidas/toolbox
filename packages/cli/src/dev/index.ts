@@ -15,6 +15,7 @@ import {
   FunctionGenerator,
   SubscriberGenerator,
 } from '../generators';
+import { generateOpenApi, resolveOpenApiConfig } from '../openapi';
 import type {
   GkmConfig,
   LegacyProvider,
@@ -206,6 +207,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
     logger.log(`🔭 Telescope enabled at ${telescope.path}`);
   }
 
+  // Resolve OpenAPI configuration
+  const openApiConfig = resolveOpenApiConfig(config);
+  if (openApiConfig.enabled) {
+    logger.log(`📄 OpenAPI output: ${openApiConfig.output}`);
+  }
+
   const buildContext: BuildContext = {
     envParserPath,
     envParserImportPattern,
@@ -221,6 +228,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
     resolved.providers[0] as LegacyProvider,
     resolved.enableOpenApi,
   );
+
+  // Generate OpenAPI spec on startup
+  if (openApiConfig.enabled) {
+    await generateOpenApi(config);
+  }
 
   // Determine runtime (default to node)
   const runtime: Runtime = config.runtime ?? 'node';
@@ -307,6 +319,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
           resolved.providers[0] as LegacyProvider,
           resolved.enableOpenApi,
         );
+
+        // Regenerate OpenAPI if enabled
+        if (openApiConfig.enabled) {
+          await generateOpenApi(config, { silent: true });
+        }
+
         logger.log('✅ Rebuild complete, restarting server...');
         await devServer.restart();
       } catch (error) {
