@@ -30,6 +30,18 @@ npm install -g @geekmidas/cli
 
 ## Quick Start
 
+### Option 1: Use `gkm init` (Recommended)
+
+The fastest way to get started is with the interactive `init` command:
+
+```bash
+npx @geekmidas/cli init my-api
+```
+
+This will guide you through setting up a new project with your preferred options.
+
+### Option 2: Manual Setup
+
 ### 1. Create Configuration
 
 Create a `gkm.config.ts` file in your project root:
