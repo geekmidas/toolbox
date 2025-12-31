@@ -153,10 +153,7 @@ export function wrapVitestObjectionTransaction(
 export function extendWithFixtures<
   Extended extends Record<string, unknown>,
   T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
->(
-  wrappedTest: T,
-  fixtures: FixtureCreators<Knex.Transaction, Extended>,
-) {
+>(wrappedTest: T, fixtures: FixtureCreators<Knex.Transaction, Extended>) {
   return baseExtendWithFixtures<Knex.Transaction, Extended, T>(
     wrappedTest,
     fixtures,
