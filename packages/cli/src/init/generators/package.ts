@@ -1,6 +1,6 @@
 import {
-  OPENAPI_OUTPUT_PATH,
   type GeneratedFile,
+  OPENAPI_OUTPUT_PATH,
   type TemplateConfig,
   type TemplateOptions,
 } from '../templates/index.js';
