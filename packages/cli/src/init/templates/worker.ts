@@ -39,6 +39,25 @@ export const workerTemplate: TemplateConfig = {
   },
 
   files: (options: TemplateOptions): GeneratedFile[] => {
+    const { loggerType, routesStructure } = options;
+
+    const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
+
+export const logger = createLogger();
+`;
+
+    // Get route path based on structure
+    const getRoutePath = (domain: string, file: string) => {
+      switch (routesStructure) {
+        case 'centralized-endpoints':
+          return `src/endpoints/${domain}/${file}`;
+        case 'centralized-routes':
+          return `src/routes/${domain}/${file}`;
+        case 'domain-based':
+          return `src/${domain}/routes/${file}`;
+      }
+    };
+
     const files: GeneratedFile[] = [
       // src/config/env.ts
       {
@@ -66,21 +85,15 @@ export const config = envParser
 `,
       },
 
-      // src/config/logger.ts - using pino
+      // src/config/logger.ts
       {
         path: 'src/config/logger.ts',
-        content: `import { PinoLogger } from '@geekmidas/logger/pino';
-
-export const logger = new PinoLogger({
-  app: '${options.name}',
-  level: process.env.LOG_LEVEL || 'info',
-});
-`,
+        content: loggerContent,
       },
 
-      // src/endpoints/health.ts
+      // health endpoint
       {
-        path: 'src/endpoints/health.ts',
+        path: getRoutePath('health', 'index.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e

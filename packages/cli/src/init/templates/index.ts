@@ -4,9 +4,17 @@ import { serverlessTemplate } from './serverless.js';
 import { workerTemplate } from './worker.js';
 
 /**
- * Route organization style
+ * Logger implementation type
  */
-export type RouteStyle = 'file-based' | 'flat';
+export type LoggerType = 'pino' | 'console';
+
+/**
+ * Routes structure pattern
+ */
+export type RoutesStructure =
+  | 'centralized-endpoints'
+  | 'centralized-routes'
+  | 'domain-based';
 
 /**
  * Options collected from user prompts
@@ -16,7 +24,8 @@ export interface TemplateOptions {
   template: TemplateName;
   telescope: boolean;
   database: boolean;
-  routeStyle: RouteStyle;
+  loggerType: LoggerType;
+  routesStructure: RoutesStructure;
   monorepo: boolean;
   /** Path for the API app in monorepo (e.g., 'apps/api') */
   apiPath: string;
@@ -81,18 +90,39 @@ export const templateChoices = [
 ];
 
 /**
- * Route style choices for prompts
+ * Logger type choices for prompts
  */
-export const routeStyleChoices = [
+export const loggerTypeChoices = [
   {
-    title: 'File-based',
-    value: 'file-based' as RouteStyle,
-    description: 'Folder structure matches URL paths (users/list.ts → /users)',
+    title: 'Pino',
+    value: 'pino' as LoggerType,
+    description: 'Fast JSON logger for production (recommended)',
   },
   {
-    title: 'Flat',
-    value: 'flat' as RouteStyle,
-    description: 'All endpoints in one folder (users-list.ts → /users)',
+    title: 'Console',
+    value: 'console' as LoggerType,
+    description: 'Simple console logger for development',
+  },
+];
+
+/**
+ * Routes structure choices for prompts
+ */
+export const routesStructureChoices = [
+  {
+    title: 'Centralized (endpoints)',
+    value: 'centralized-endpoints' as RoutesStructure,
+    description: 'src/endpoints/**/*.ts',
+  },
+  {
+    title: 'Centralized (routes)',
+    value: 'centralized-routes' as RoutesStructure,
+    description: 'src/routes/**/*.ts',
+  },
+  {
+    title: 'Domain-based',
+    value: 'domain-based' as RoutesStructure,
+    description: 'src/**/routes/*.ts (e.g., src/users/routes/list.ts)',
   },
 ];
 

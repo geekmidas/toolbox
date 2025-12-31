@@ -41,6 +41,25 @@ export const apiTemplate: TemplateConfig = {
   },
 
   files: (options: TemplateOptions): GeneratedFile[] => {
+    const { loggerType, routesStructure } = options;
+
+    const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
+
+export const logger = createLogger();
+`;
+
+    // Get route path based on structure
+    const getRoutePath = (domain: string, file: string) => {
+      switch (routesStructure) {
+        case 'centralized-endpoints':
+          return `src/endpoints/${domain}/${file}`;
+        case 'centralized-routes':
+          return `src/routes/${domain}/${file}`;
+        case 'domain-based':
+          return `src/${domain}/routes/${file}`;
+      }
+    };
+
     const files: GeneratedFile[] = [
       // src/config/env.ts
       {
@@ -66,21 +85,15 @@ export const config = envParser
 `,
       },
 
-      // src/config/logger.ts - using pino
+      // src/config/logger.ts
       {
         path: 'src/config/logger.ts',
-        content: `import { PinoLogger } from '@geekmidas/logger/pino';
-
-export const logger = new PinoLogger({
-  app: '${options.name}',
-  level: process.env.LOG_LEVEL || 'info',
-});
-`,
+        content: loggerContent,
       },
 
-      // src/endpoints/health.ts
+      // health endpoint
       {
-        path: 'src/endpoints/health.ts',
+        path: getRoutePath('health', 'index.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e
@@ -91,74 +104,38 @@ export default e
   }));
 `,
       },
+
+      // users endpoints
+      {
+        path: getRoutePath('users', 'list.ts'),
+        content: `import { e } from '@geekmidas/constructs/endpoints';
+
+export default e
+  .get('/users')
+  .handle(async () => ({
+    users: [
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ],
+  }));
+`,
+      },
+      {
+        path: getRoutePath('users', 'get.ts'),
+        content: `import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
+
+export default e
+  .get('/users/:id')
+  .params(z.object({ id: z.string() }))
+  .handle(async ({ params }) => ({
+    id: params.id,
+    name: 'Alice',
+    email: 'alice@example.com',
+  }));
+`,
+      },
     ];
-
-    // Add user endpoints based on route style
-    if (options.routeStyle === 'flat') {
-      files.push(
-        {
-          path: 'src/endpoints/users-list.ts',
-          content: `import { e } from '@geekmidas/constructs/endpoints';
-
-export default e
-  .get('/users')
-  .handle(async () => ({
-    users: [
-      { id: '1', name: 'Alice' },
-      { id: '2', name: 'Bob' },
-    ],
-  }));
-`,
-        },
-        {
-          path: 'src/endpoints/users-get.ts',
-          content: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
-
-export default e
-  .get('/users/:id')
-  .params(z.object({ id: z.string() }))
-  .handle(async ({ params }) => ({
-    id: params.id,
-    name: 'Alice',
-    email: 'alice@example.com',
-  }));
-`,
-        },
-      );
-    } else {
-      files.push(
-        {
-          path: 'src/endpoints/users/list.ts',
-          content: `import { e } from '@geekmidas/constructs/endpoints';
-
-export default e
-  .get('/users')
-  .handle(async () => ({
-    users: [
-      { id: '1', name: 'Alice' },
-      { id: '2', name: 'Bob' },
-    ],
-  }));
-`,
-        },
-        {
-          path: 'src/endpoints/users/get.ts',
-          content: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
-
-export default e
-  .get('/users/:id')
-  .params(z.object({ id: z.string() }))
-  .handle(async ({ params }) => ({
-    id: params.id,
-    name: 'Alice',
-    email: 'alice@example.com',
-  }));
-`,
-        },
-      );
-    }
 
     // Add database service if enabled
     if (options.database) {

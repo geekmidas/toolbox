@@ -1,4 +1,4 @@
-import type { LogFn, Logger } from './types';
+import type { CreateLoggerOptions, LogFn, Logger } from './types';
 
 export class ConsoleLogger implements Logger {
   /**
@@ -91,3 +91,21 @@ export class ConsoleLogger implements Logger {
  */
 
 export const DEFAULT_LOGGER = new ConsoleLogger() as any;
+
+/**
+ * Creates a console logger with the same API as pino's createLogger.
+ *
+ * @param options - Logger configuration options
+ * @returns A ConsoleLogger instance
+ *
+ * @example
+ * ```typescript
+ * import { createLogger } from '@geekmidas/logger/console';
+ *
+ * const logger = createLogger({ level: LogLevel.Debug });
+ * logger.info({ action: 'start' }, 'Application starting');
+ * ```
+ */
+export function createLogger(options: CreateLoggerOptions = {}): Logger {
+  return new ConsoleLogger();
+}

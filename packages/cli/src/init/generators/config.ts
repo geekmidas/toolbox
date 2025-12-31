@@ -11,15 +11,27 @@ export function generateConfigFiles(
   options: TemplateOptions,
   template: TemplateConfig,
 ): GeneratedFile[] {
-  const { telescope } = options;
+  const { telescope, routesStructure } = options;
   const isServerless = template.name === 'serverless';
   const hasWorker = template.name === 'worker';
+
+  // Get routes glob pattern based on structure
+  const getRoutesGlob = () => {
+    switch (routesStructure) {
+      case 'centralized-endpoints':
+        return './src/endpoints/**/*.ts';
+      case 'centralized-routes':
+        return './src/routes/**/*.ts';
+      case 'domain-based':
+        return './src/**/routes/*.ts';
+    }
+  };
 
   // Build gkm.config.ts
   let gkmConfig = `import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
-  routes: './src/endpoints/**/*.ts',
+  routes: '${getRoutesGlob()}',
   envParser: './src/config/env#envParser',
   logger: './src/config/logger#logger',`;
 

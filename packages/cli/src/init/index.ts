@@ -13,7 +13,8 @@ import {
   type TemplateName,
   type TemplateOptions,
   getTemplate,
-  routeStyleChoices,
+  loggerTypeChoices,
+  routesStructureChoices,
   templateChoices,
 } from './templates/index.js';
 import {
@@ -85,9 +86,16 @@ export async function initCommand(
       },
       {
         type: options.yes ? null : 'select',
-        name: 'routeStyle',
-        message: 'Route organization:',
-        choices: routeStyleChoices,
+        name: 'loggerType',
+        message: 'Logger:',
+        choices: loggerTypeChoices,
+        initial: 0,
+      },
+      {
+        type: options.yes ? null : 'select',
+        name: 'routesStructure',
+        message: 'Routes structure:',
+        choices: routesStructureChoices,
         initial: 0,
       },
       {
@@ -137,9 +145,10 @@ export async function initCommand(
     template: options.template || answers.template || 'minimal',
     telescope: options.yes ? true : (answers.telescope ?? true),
     database: options.yes ? true : (answers.database ?? true),
-    routeStyle: options.yes
-      ? 'file-based'
-      : (answers.routeStyle ?? 'file-based'),
+    loggerType: options.yes ? 'pino' : (answers.loggerType ?? 'pino'),
+    routesStructure: options.yes
+      ? 'centralized-endpoints'
+      : (answers.routesStructure ?? 'centralized-endpoints'),
     monorepo,
     apiPath: monorepo ? (options.apiPath ?? answers.apiPath ?? 'apps/api') : '',
   };
