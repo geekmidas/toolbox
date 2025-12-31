@@ -353,6 +353,29 @@ describe('ConsoleLogger', () => {
   });
 
   describe('Edge cases', () => {
+    it('should handle string-only logging without context object', () => {
+      const logger = new ConsoleLogger({ app: 'test' });
+
+      logger.info('Simple message without context object');
+
+      expect(console.info).toHaveBeenCalledWith(
+        { app: 'test', ts: 1234567890 },
+        'Simple message without context object',
+      );
+    });
+
+    it('should handle string-only logging with child logger', () => {
+      const logger = new ConsoleLogger({ app: 'test' });
+      const child = logger.child({ module: 'auth' });
+
+      child.warn('Warning message');
+
+      expect(console.warn).toHaveBeenCalledWith(
+        { app: 'test', module: 'auth', ts: 1234567890 },
+        'Warning message',
+      );
+    });
+
     it('should handle empty context object', () => {
       const logger = new ConsoleLogger();
 
