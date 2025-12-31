@@ -1,5 +1,5 @@
-import { minimalTemplate } from './minimal.js';
 import { apiTemplate } from './api.js';
+import { minimalTemplate } from './minimal.js';
 import { serverlessTemplate } from './serverless.js';
 import { workerTemplate } from './worker.js';
 

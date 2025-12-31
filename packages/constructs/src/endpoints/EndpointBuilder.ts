@@ -22,7 +22,7 @@ import type {
   SuccessStatus,
 } from './Endpoint';
 import type { ActorExtractor, MappedAudit } from './audit';
-import type { RlsConfig, RlsBypass } from './rls';
+import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 
 export class EndpointBuilder<

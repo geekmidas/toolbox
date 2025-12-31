@@ -5,11 +5,10 @@ import { generateEnvFiles } from '../generators/env.js';
 import { generateModelsPackage } from '../generators/models.js';
 import { generateMonorepoFiles } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
+import type { TemplateOptions } from '../templates/index.js';
 import { minimalTemplate } from '../templates/minimal.js';
-import { apiTemplate } from '../templates/api.js';
 import { serverlessTemplate } from '../templates/serverless.js';
 import { workerTemplate } from '../templates/worker.js';
-import type { TemplateOptions } from '../templates/index.js';
 
 const baseOptions: TemplateOptions = {
   name: 'test-project',

@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index.ts';
 import { devCommand } from './dev/index.ts';
-import { initCommand, type InitOptions } from './init/index.ts';
+import { type InitOptions, initCommand } from './init/index.ts';
 import { generateReactQueryCommand } from './openapi-react-query.ts';
 import { openapiCommand } from './openapi.ts';
 import type { LegacyProvider, MainProvider } from './types.ts';

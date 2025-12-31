@@ -1,5 +1,5 @@
-import pino from 'pino';
 import { createPinoTransport } from '@geekmidas/telescope/logger/pino';
+import pino from 'pino';
 import { telescope } from './telescope.js';
 
 /**

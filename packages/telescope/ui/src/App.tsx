@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from './api';
 import { ExceptionDetail } from './components/ExceptionDetail';
 import {
-  FilterBar,
   type ExceptionFilters,
+  FilterBar,
   type LogFilters,
   type RequestFilters,
 } from './components/FilterBar';

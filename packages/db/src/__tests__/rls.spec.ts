@@ -8,7 +8,7 @@ import {
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
-import { type RlsContext, RLS_BYPASS, withRlsContext } from '../rls';
+import { RLS_BYPASS, type RlsContext, withRlsContext } from '../rls';
 
 interface TestDatabase {
   rlsTestOrders: {

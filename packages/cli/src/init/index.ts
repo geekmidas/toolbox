@@ -1,29 +1,28 @@
-import prompts from 'prompts';
+import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { execSync } from 'node:child_process';
+import prompts from 'prompts';
+import { generateConfigFiles } from './generators/config.js';
+import { generateDockerFiles } from './generators/docker.js';
+import { generateEnvFiles } from './generators/env.js';
+import { generateModelsPackage } from './generators/models.js';
+import { generateMonorepoFiles } from './generators/monorepo.js';
+import { generatePackageJson } from './generators/package.js';
+import { generateSourceFiles } from './generators/source.js';
 import {
-  detectPackageManager,
-  validateProjectName,
-  checkDirectoryExists,
-  getInstallCommand,
-  getRunCommand,
-} from './utils.js';
-import {
-  getTemplate,
-  templateChoices,
-  routeStyleChoices,
   type TemplateName,
   type TemplateOptions,
-  type RouteStyle,
+  getTemplate,
+  routeStyleChoices,
+  templateChoices,
 } from './templates/index.js';
-import { generatePackageJson } from './generators/package.js';
-import { generateConfigFiles } from './generators/config.js';
-import { generateEnvFiles } from './generators/env.js';
-import { generateSourceFiles } from './generators/source.js';
-import { generateDockerFiles } from './generators/docker.js';
-import { generateMonorepoFiles } from './generators/monorepo.js';
-import { generateModelsPackage } from './generators/models.js';
+import {
+  checkDirectoryExists,
+  detectPackageManager,
+  getInstallCommand,
+  getRunCommand,
+  validateProjectName,
+} from './utils.js';
 
 export interface InitOptions {
   template?: TemplateName;
@@ -40,15 +39,12 @@ export async function initCommand(
   projectName?: string,
   options: InitOptions = {},
 ): Promise<void> {
-  console.log('\n  Welcome to gkm!\n');
-
   const cwd = process.cwd();
   const pkgManager = detectPackageManager(cwd);
 
   // Handle Ctrl+C gracefully
   prompts.override({});
   const onCancel = () => {
-    console.log('\n  Cancelled.\n');
     process.exit(0);
   };
 
@@ -153,9 +149,6 @@ export async function initCommand(
 
   const isMonorepo = templateOptions.monorepo;
   const apiPath = templateOptions.apiPath;
-  console.log(
-    `\n  Creating ${name} with ${template.name} template${isMonorepo ? ' (monorepo)' : ''}...\n`,
-  );
 
   // Create project directory
   await mkdir(targetDir, { recursive: true });
@@ -186,7 +179,6 @@ export async function initCommand(
     const fullPath = join(targetDir, path);
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, content);
-    console.log(`  ✓ ${path}`);
   }
 
   // Write app files
@@ -195,12 +187,10 @@ export async function initCommand(
     const displayPath = isMonorepo ? `${apiPath}/${path}` : path;
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, content);
-    console.log(`  ✓ ${displayPath}`);
   }
 
   // Install dependencies
   if (!options.skipInstall) {
-    console.log(`\n  Installing dependencies with ${pkgManager}...\n`);
     try {
       execSync(getInstallCommand(pkgManager), {
         cwd: targetDir,
@@ -208,18 +198,9 @@ export async function initCommand(
       });
     } catch {
       console.error('\n  Warning: Failed to install dependencies.');
-      console.log(`  Run "${getInstallCommand(pkgManager)}" manually.\n`);
     }
   }
 
   // Print next steps
   const devCommand = getRunCommand(pkgManager, 'dev');
-  console.log(`
-  Done! Next steps:
-
-    cd ${name}
-    ${devCommand}
-
-  Happy coding!
-`);
 }
