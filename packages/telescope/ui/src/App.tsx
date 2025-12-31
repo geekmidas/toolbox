@@ -476,7 +476,9 @@ export function App() {
             requests.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
                 <h3 className="text-lg mb-2">
-                  {hasRequestFilters ? 'No matching requests' : 'No requests yet'}
+                  {hasRequestFilters
+                    ? 'No matching requests'
+                    : 'No requests yet'}
                 </h3>
                 <p className="text-sm">
                   {hasRequestFilters
@@ -517,7 +519,9 @@ export function App() {
             exceptions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
                 <h3 className="text-lg mb-2">
-                  {hasExceptionFilters ? 'No matching exceptions' : 'No exceptions'}
+                  {hasExceptionFilters
+                    ? 'No matching exceptions'
+                    : 'No exceptions'}
                 </h3>
                 <p className="text-sm">
                   {hasExceptionFilters

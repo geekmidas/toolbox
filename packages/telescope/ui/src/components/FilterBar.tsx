@@ -48,7 +48,9 @@ export function FilterBar({
 }: FilterBarProps) {
   const hasActiveFilters =
     (tab === 'requests' &&
-      (requestFilters.search || requestFilters.method || requestFilters.status)) ||
+      (requestFilters.search ||
+        requestFilters.method ||
+        requestFilters.status)) ||
     (tab === 'logs' && (logFilters.search || logFilters.level)) ||
     (tab === 'exceptions' && exceptionFilters.search);
 
@@ -61,14 +63,20 @@ export function FilterBar({
             placeholder="Search path..."
             value={requestFilters.search}
             onChange={(e) =>
-              onRequestFiltersChange({ ...requestFilters, search: e.target.value })
+              onRequestFiltersChange({
+                ...requestFilters,
+                search: e.target.value,
+              })
             }
             className="bg-bg-tertiary border border-border rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
           />
           <select
             value={requestFilters.method}
             onChange={(e) =>
-              onRequestFiltersChange({ ...requestFilters, method: e.target.value })
+              onRequestFiltersChange({
+                ...requestFilters,
+                method: e.target.value,
+              })
             }
             className="bg-bg-tertiary border border-border rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
           >
@@ -82,7 +90,10 @@ export function FilterBar({
           <select
             value={requestFilters.status}
             onChange={(e) =>
-              onRequestFiltersChange({ ...requestFilters, status: e.target.value })
+              onRequestFiltersChange({
+                ...requestFilters,
+                status: e.target.value,
+              })
             }
             className="bg-bg-tertiary border border-border rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
           >
@@ -129,7 +140,10 @@ export function FilterBar({
           placeholder="Search exception..."
           value={exceptionFilters.search}
           onChange={(e) =>
-            onExceptionFiltersChange({ ...exceptionFilters, search: e.target.value })
+            onExceptionFiltersChange({
+              ...exceptionFilters,
+              search: e.target.value,
+            })
           }
           className="bg-bg-tertiary border border-border rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
         />
