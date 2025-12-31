@@ -208,6 +208,16 @@ export async function initCommand(
     } catch {
       console.error('\n  Warning: Failed to install dependencies.');
     }
+
+    // Format generated files with biome
+    try {
+      execSync('npx @biomejs/biome format --write --unsafe .', {
+        cwd: targetDir,
+        stdio: 'inherit',
+      });
+    } catch {
+      // Silently ignore format errors
+    }
   }
 
   // Print next steps
