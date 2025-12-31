@@ -183,6 +183,71 @@ describe('OpenAPI Generation', () => {
     vi.restoreAllMocks();
   });
 
+  describe('openapiCommand - config defaults', () => {
+    it('should use config openapi settings when no CLI options provided', async () => {
+      await createMockEndpointFile(
+        tempDir,
+        'test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
+
+      const outputPath = join(tempDir, 'api', 'openapi.json');
+
+      await createTestFile(
+        tempDir,
+        'gkm.config.json',
+        JSON.stringify({
+          routes: [`${tempDir}/**/*.ts`],
+          openapi: {
+            enabled: true,
+            output: outputPath,
+            json: true,
+          },
+        }),
+      );
+
+      await openapiCommand({ cwd: tempDir });
+
+      expect(existsSync(outputPath)).toBe(true);
+    });
+
+    it('should enable openapi with defaults when not configured', async () => {
+      await createMockEndpointFile(
+        tempDir,
+        'test.ts',
+        'testEndpoint',
+        '/test',
+        'GET',
+      );
+
+      // Config without openapi setting - use explicit output to avoid leaving files behind
+      const outputPath = join(tempDir, 'src', 'api', 'openapi.ts');
+      await createTestFile(
+        tempDir,
+        'gkm.config.json',
+        JSON.stringify({
+          routes: [`${tempDir}/**/*.ts`],
+          openapi: {
+            enabled: true,
+            output: outputPath,
+          },
+        }),
+      );
+
+      const consoleSpy = vi.spyOn(console, 'log');
+
+      // Call without output option - should use config path
+      await openapiCommand({ cwd: tempDir });
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Found 1 endpoints'),
+      );
+      expect(existsSync(outputPath)).toBe(true);
+    });
+  });
+
   describe('openapiCommand - TypeScript output (default)', () => {
     it('should generate TypeScript module by default', async () => {
       await createMockEndpointFile(
