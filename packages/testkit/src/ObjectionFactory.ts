@@ -123,7 +123,9 @@ export class ObjectionFactory<
       factory: Factory;
       db: Knex;
       faker: FakerFactory;
-    }) => Partial<InstanceType<TModel>> | Promise<Partial<InstanceType<TModel>>>,
+    }) =>
+      | Partial<InstanceType<TModel>>
+      | Promise<Partial<InstanceType<TModel>>>,
     autoInsert?: boolean,
   ): (
     attrs: Attrs,
