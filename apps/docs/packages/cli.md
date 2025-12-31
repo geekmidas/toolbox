@@ -212,6 +212,11 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 | `--source` | Glob pattern for endpoint files |
 | `--port` | Server port (default: 3000) |
 
+**Features:**
+- Hot reload on file changes
+- Telescope debugging dashboard integration
+- **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
+
 ## Configuration File
 
 Create a `gkm.config.ts` file in your project root:
@@ -220,14 +225,58 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
-  source: './src/endpoints/**/*.ts',
-  output: './dist',
-  provider: 'aws-apigatewayv2',
+  // Route files (glob pattern)
+  routes: './src/endpoints/**/*.ts',
+
+  // Environment parser module (named export)
+  envParser: './src/config/env#envParser',
+
+  // Logger module (named export)
+  logger: './src/config/logger#logger',
+
+  // Telescope debugging dashboard (optional)
+  telescope: {
+    enabled: true,
+    path: '/__telescope',
+  },
+
+  // OpenAPI generation (optional)
   openapi: {
+    enabled: true,
+    output: './src/api/openapi.ts',
     title: 'My API',
     version: '1.0.0',
     description: 'API for my application',
   },
+});
+```
+
+### OpenAPI Configuration
+
+The `openapi` configuration controls automatic OpenAPI specification generation:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable/disable OpenAPI generation |
+| `output` | `string` | `./src/api/openapi.ts` | Output file path |
+| `json` | `boolean` | `false` | Generate JSON instead of TypeScript |
+| `title` | `string` | `API Documentation` | API title |
+| `version` | `string` | `1.0.0` | API version |
+| `description` | `string` | Auto-generated | API description |
+
+When enabled:
+- OpenAPI spec is generated on `gkm dev` startup
+- Spec is regenerated automatically when route files change
+- TypeScript output includes typed paths and security schemes
+
+**Simple boolean config:**
+
+```typescript
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',
+  openapi: true, // Uses defaults: output to ./src/api/openapi.ts
 });
 ```
 
