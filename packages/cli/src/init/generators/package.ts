@@ -50,7 +50,9 @@ export function generatePackageJson(
 
   // Sort dependencies alphabetically
   const sortObject = (obj: Record<string, string>) =>
-    Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
+    Object.fromEntries(
+      Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)),
+    );
 
   // For monorepo, derive package name from apiPath (e.g., apps/api -> @name/api)
   let packageName = name;

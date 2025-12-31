@@ -6,7 +6,9 @@ export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 /**
  * Detect the package manager being used based on lockfiles or npm_config_user_agent
  */
-export function detectPackageManager(cwd: string = process.cwd()): PackageManager {
+export function detectPackageManager(
+  cwd: string = process.cwd(),
+): PackageManager {
   // Check for lockfiles in cwd
   if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm';
   if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn';

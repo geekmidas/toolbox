@@ -315,7 +315,9 @@ describe('generateModelsPackage', () => {
       apiPath: 'apps/api',
     };
     const files = generateModelsPackage(options);
-    const pkgJson = files.find((f) => f.path === 'packages/models/package.json');
+    const pkgJson = files.find(
+      (f) => f.path === 'packages/models/package.json',
+    );
     const pkg = JSON.parse(pkgJson!.content);
     expect(pkg.name).toBe('@test-project/models');
   });
@@ -327,7 +329,9 @@ describe('generateModelsPackage', () => {
       apiPath: 'apps/api',
     };
     const files = generateModelsPackage(options);
-    const pkgJson = files.find((f) => f.path === 'packages/models/package.json');
+    const pkgJson = files.find(
+      (f) => f.path === 'packages/models/package.json',
+    );
     const pkg = JSON.parse(pkgJson!.content);
     expect(pkg.dependencies.zod).toBeDefined();
   });
@@ -339,7 +343,9 @@ describe('generateModelsPackage', () => {
       apiPath: 'apps/api',
     };
     const files = generateModelsPackage(options);
-    const indexTs = files.find((f) => f.path === 'packages/models/src/index.ts');
+    const indexTs = files.find(
+      (f) => f.path === 'packages/models/src/index.ts',
+    );
     expect(indexTs?.content).toContain('userSchema');
     expect(indexTs?.content).toContain('paginationSchema');
     expect(indexTs?.content).toContain("import { z } from 'zod'");
@@ -352,7 +358,9 @@ describe('generateModelsPackage', () => {
       apiPath: 'apps/api',
     };
     const files = generateModelsPackage(options);
-    const tsConfig = files.find((f) => f.path === 'packages/models/tsconfig.json');
+    const tsConfig = files.find(
+      (f) => f.path === 'packages/models/tsconfig.json',
+    );
     const config = JSON.parse(tsConfig!.content);
     expect(config.extends).toBe('../../tsconfig.json');
   });

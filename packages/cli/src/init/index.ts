@@ -102,7 +102,9 @@ export async function initCommand(
       },
       {
         type: (prev) =>
-          (prev === true || options.monorepo) && !options.apiPath ? 'text' : null,
+          (prev === true || options.monorepo) && !options.apiPath
+            ? 'text'
+            : null,
         name: 'apiPath',
         message: 'API app path:',
         initial: 'apps/api',
@@ -132,13 +134,16 @@ export async function initCommand(
     }
   }
 
-  const monorepo = options.monorepo ?? (options.yes ? false : (answers.monorepo ?? false));
+  const monorepo =
+    options.monorepo ?? (options.yes ? false : (answers.monorepo ?? false));
   const templateOptions: TemplateOptions = {
     name,
     template: options.template || answers.template || 'minimal',
     telescope: options.yes ? true : (answers.telescope ?? true),
     database: options.yes ? true : (answers.database ?? true),
-    routeStyle: options.yes ? 'file-based' : (answers.routeStyle ?? 'file-based'),
+    routeStyle: options.yes
+      ? 'file-based'
+      : (answers.routeStyle ?? 'file-based'),
     monorepo,
     apiPath: monorepo ? (options.apiPath ?? answers.apiPath ?? 'apps/api') : '',
   };

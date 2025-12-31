@@ -43,7 +43,9 @@ describe('initCommand', () => {
       expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
       expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
       expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/endpoints/health.ts'))).toBe(true);
+      expect(existsSync(join(projectDir, 'src/endpoints/health.ts'))).toBe(
+        true,
+      );
     });
 
     it('should create package.json with correct content', async () => {
@@ -91,9 +93,15 @@ describe('initCommand', () => {
       });
 
       const projectDir = join(tempDir, 'my-api');
-      expect(existsSync(join(projectDir, 'src/endpoints/users/list.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/endpoints/users/get.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(true);
+      expect(existsSync(join(projectDir, 'src/endpoints/users/list.ts'))).toBe(
+        true,
+      );
+      expect(existsSync(join(projectDir, 'src/endpoints/users/get.ts'))).toBe(
+        true,
+      );
+      expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(
+        true,
+      );
     });
 
     it('should create serverless template with functions', async () => {
@@ -120,7 +128,9 @@ describe('initCommand', () => {
 
       const projectDir = join(tempDir, 'my-api');
       expect(existsSync(join(projectDir, 'src/crons/cleanup.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/subscribers/user-events.ts'))).toBe(true);
+      expect(
+        existsSync(join(projectDir, 'src/subscribers/user-events.ts')),
+      ).toBe(true);
       expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
 
       const configPath = join(projectDir, 'gkm.config.ts');
@@ -154,12 +164,20 @@ describe('initCommand', () => {
       expect(existsSync(join(projectDir, 'apps/api/package.json'))).toBe(true);
       expect(existsSync(join(projectDir, 'apps/api/gkm.config.ts'))).toBe(true);
       expect(existsSync(join(projectDir, 'apps/api/tsconfig.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts'))).toBe(true);
+      expect(
+        existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts')),
+      ).toBe(true);
 
       // Models package
-      expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'packages/models/tsconfig.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'packages/models/src/index.ts'))).toBe(true);
+      expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
+        true,
+      );
+      expect(
+        existsSync(join(projectDir, 'packages/models/tsconfig.json')),
+      ).toBe(true);
+      expect(existsSync(join(projectDir, 'packages/models/src/index.ts'))).toBe(
+        true,
+      );
     });
 
     it('should create root package.json with turbo scripts', async () => {
@@ -212,7 +230,11 @@ describe('initCommand', () => {
         apiPath: 'apps/api',
       });
 
-      const tsConfigPath = join(tempDir, 'my-monorepo', 'apps/api/tsconfig.json');
+      const tsConfigPath = join(
+        tempDir,
+        'my-monorepo',
+        'apps/api/tsconfig.json',
+      );
       const content = await readFile(tsConfigPath, 'utf-8');
       const config = JSON.parse(content);
 
@@ -231,14 +253,22 @@ describe('initCommand', () => {
         apiPath: 'apps/api',
       });
 
-      const pkgPath = join(tempDir, 'my-monorepo', 'packages/models/package.json');
+      const pkgPath = join(
+        tempDir,
+        'my-monorepo',
+        'packages/models/package.json',
+      );
       const content = await readFile(pkgPath, 'utf-8');
       const pkg = JSON.parse(content);
 
       expect(pkg.name).toBe('@my-monorepo/models');
       expect(pkg.dependencies.zod).toBeDefined();
 
-      const indexPath = join(tempDir, 'my-monorepo', 'packages/models/src/index.ts');
+      const indexPath = join(
+        tempDir,
+        'my-monorepo',
+        'packages/models/src/index.ts',
+      );
       const indexContent = await readFile(indexPath, 'utf-8');
       expect(indexContent).toContain('userSchema');
       expect(indexContent).toContain('paginationSchema');
@@ -254,8 +284,12 @@ describe('initCommand', () => {
       });
 
       const projectDir = join(tempDir, 'my-monorepo');
-      expect(existsSync(join(projectDir, 'services/backend/package.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'services/backend/gkm.config.ts'))).toBe(true);
+      expect(
+        existsSync(join(projectDir, 'services/backend/package.json')),
+      ).toBe(true);
+      expect(
+        existsSync(join(projectDir, 'services/backend/gkm.config.ts')),
+      ).toBe(true);
 
       const pkgPath = join(projectDir, 'services/backend/package.json');
       const content = await readFile(pkgPath, 'utf-8');

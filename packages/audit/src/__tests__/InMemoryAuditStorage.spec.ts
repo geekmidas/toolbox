@@ -314,5 +314,4 @@ describe('InMemoryAuditStorage', () => {
       expect(records).toHaveLength(1);
     });
   });
-
 });

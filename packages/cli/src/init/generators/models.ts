@@ -1,7 +1,4 @@
-import type {
-  GeneratedFile,
-  TemplateOptions,
-} from '../templates/index.js';
+import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 
 /**
  * Generate packages/models for shared Zod schemas (monorepo only)

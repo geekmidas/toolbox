@@ -1,6 +1,10 @@
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
-import { type DatabaseConnection, type TransactionSettings, withTransaction } from './kysely';
+import {
+  type DatabaseConnection,
+  type TransactionSettings,
+  withTransaction,
+} from './kysely';
 
 /**
  * RLS context - key-value pairs to set as PostgreSQL session variables.

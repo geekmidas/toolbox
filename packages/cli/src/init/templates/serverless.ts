@@ -1,4 +1,8 @@
-import type { GeneratedFile, TemplateConfig, TemplateOptions } from './index.js';
+import type {
+  GeneratedFile,
+  TemplateConfig,
+  TemplateOptions,
+} from './index.js';
 
 export const serverlessTemplate: TemplateConfig = {
   name: 'serverless',

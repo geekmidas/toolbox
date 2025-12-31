@@ -41,8 +41,9 @@ export class EndpointFactory<
     string,
     SecurityScheme
   >,
-  TRlsConfig extends RlsConfig<TServices, TSession, TLogger> | undefined =
-    undefined,
+  TRlsConfig extends
+    | RlsConfig<TServices, TSession, TLogger>
+    | undefined = undefined,
 > {
   // @ts-ignore
   private defaultServices: TServices;
@@ -1079,8 +1080,9 @@ export interface EndpointFactoryOptions<
     string,
     SecurityScheme
   >,
-  TRlsConfig extends RlsConfig<TServices, TSession, TLogger> | undefined =
-    undefined,
+  TRlsConfig extends
+    | RlsConfig<TServices, TSession, TLogger>
+    | undefined = undefined,
 > {
   defaultServices?: TServices;
   basePath?: TBasePath;

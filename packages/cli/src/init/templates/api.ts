@@ -1,4 +1,8 @@
-import type { GeneratedFile, TemplateConfig, TemplateOptions } from './index.js';
+import type {
+  GeneratedFile,
+  TemplateConfig,
+  TemplateOptions,
+} from './index.js';
 
 export const apiTemplate: TemplateConfig = {
   name: 'api',
@@ -87,7 +91,6 @@ export default e
   }));
 `,
       },
-
     ];
 
     // Add user endpoints based on route style
