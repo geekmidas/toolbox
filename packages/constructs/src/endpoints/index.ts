@@ -17,5 +17,16 @@ export {
   RLS_BYPASS,
   type RlsBypass,
 } from './rls';
+export {
+  type SecurityScheme,
+  type OAuthFlows,
+  type OAuthFlow,
+  type Authorizer,
+  type BuiltInSecuritySchemeId,
+  BUILT_IN_SECURITY_SCHEMES,
+  createAuthorizer,
+  isBuiltInSecurityScheme,
+  getSecurityScheme,
+} from './Authorizer';
 
 export const e = new EndpointFactory();

@@ -19,6 +19,9 @@ import { EndpointBuilder } from './EndpointBuilder';
 import type { ActorExtractor } from './audit';
 import type { RlsConfig } from './rls';
 
+// Re-export SecurityScheme to make the type portable in declaration files
+export type { SecurityScheme } from './Authorizer';
+
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class EndpointFactory<
@@ -174,7 +177,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     const authorizerConfigs = authorizers.map((name) => ({
       name,
@@ -242,7 +246,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes & T
+    TSecuritySchemes & T,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
@@ -257,7 +262,8 @@ export class EndpointFactory<
       TAuditAction,
       TDatabase,
       TDatabaseServiceName,
-      TSecuritySchemes & T
+      TSecuritySchemes & T,
+      TRlsConfig
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -274,6 +280,7 @@ export class EndpointFactory<
         ...this.customSecuritySchemes,
         ...schemes,
       } as TSecuritySchemes & T,
+      defaultRlsConfig: this.defaultRlsConfig,
     });
   }
 
@@ -306,7 +313,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     // Validate that the authorizer exists in available authorizers (if authorizers() was called)
     if (name !== 'none' && this.availableAuthorizers.length > 0) {
@@ -372,7 +380,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     const newBasePath = EndpointFactory.joinPaths(path, this.basePath);
     return new EndpointFactory<
@@ -423,7 +432,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
@@ -473,7 +483,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    undefined // Reset RLS config when services change - user should call .rls() after .services()
   > {
     return new EndpointFactory<
       [...S, ...TServices],
@@ -489,21 +500,30 @@ export class EndpointFactory<
       TDatabase,
       TDatabaseServiceName,
       TSecuritySchemes,
-      TRlsConfig
+      undefined
     >({
       defaultServices: [...services, ...this.defaultServices],
       basePath: this.basePath,
-      defaultAuthorizeFn: this.defaultAuthorizeFn,
+      defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
+        [...S, ...TServices],
+        TLogger,
+        TSession
+      >,
       defaultLogger: this.defaultLogger,
-      defaultSessionExtractor: this.defaultSessionExtractor,
+      defaultSessionExtractor: this.defaultSessionExtractor as unknown as
+        | SessionFn<[...S, ...TServices], TLogger, TSession, TDatabase>
+        | undefined,
       defaultEventPublisher: this.defaultEventPublisher,
       availableAuthorizers: this.availableAuthorizers,
       defaultAuthorizerName: this.defaultAuthorizerName,
       defaultAuditorStorage: this.defaultAuditorStorage,
       defaultDatabaseService: this.defaultDatabaseService,
-      defaultActorExtractor: this.defaultActorExtractor,
+      defaultActorExtractor: this.defaultActorExtractor as unknown as
+        | ActorExtractor<[...S, ...TServices], TSession, TLogger>
+        | undefined,
       customSecuritySchemes: this.customSecuritySchemes,
-      defaultRlsConfig: this.defaultRlsConfig,
+      // Reset RLS config when services change since it depends on TServices
+      defaultRlsConfig: undefined,
     });
   }
 
@@ -522,7 +542,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    undefined // Reset RLS config when logger type changes - user should call .rls() after .logger()
   > {
     return new EndpointFactory<
       TServices,
@@ -538,7 +559,7 @@ export class EndpointFactory<
       TDatabase,
       TDatabaseServiceName,
       TSecuritySchemes,
-      TRlsConfig
+      undefined
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -566,7 +587,8 @@ export class EndpointFactory<
         L
       >,
       customSecuritySchemes: this.customSecuritySchemes,
-      defaultRlsConfig: this.defaultRlsConfig,
+      // Reset RLS config when logger type changes since it depends on TLogger
+      defaultRlsConfig: undefined,
     });
   }
 
@@ -588,7 +610,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
@@ -637,7 +660,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    undefined // Reset RLS config when session type changes - user should call .rls() after .session()
   > {
     return new EndpointFactory<
       TServices,
@@ -653,7 +677,7 @@ export class EndpointFactory<
       TDatabase,
       TDatabaseServiceName,
       TSecuritySchemes,
-      TRlsConfig
+      undefined
     >({
       defaultServices: this.defaultServices,
       basePath: this.basePath,
@@ -676,7 +700,8 @@ export class EndpointFactory<
         TLogger
       >,
       customSecuritySchemes: this.customSecuritySchemes,
-      defaultRlsConfig: this.defaultRlsConfig,
+      // Reset RLS config when session type changes since it depends on TSession
+      defaultRlsConfig: undefined,
     });
   }
 
@@ -699,7 +724,8 @@ export class EndpointFactory<
     TAuditAction,
     T,
     TName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
@@ -756,7 +782,8 @@ export class EndpointFactory<
     ExtractStorageAuditAction<T>,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
@@ -814,7 +841,8 @@ export class EndpointFactory<
     TAuditAction,
     TDatabase,
     TDatabaseServiceName,
-    TSecuritySchemes
+    TSecuritySchemes,
+    TRlsConfig
   > {
     return new EndpointFactory<
       TServices,
