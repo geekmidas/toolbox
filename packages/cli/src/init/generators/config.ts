@@ -16,12 +16,12 @@ export function generateConfigFiles(
   const hasWorker = template.name === 'worker';
 
   // Build gkm.config.ts
-  let gkmConfig = `import { defineConfig } from '@geekmidas/cli';
+  let gkmConfig = `import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
   routes: './src/endpoints/**/*.ts',
-  envParser: './src/config/env',
-  logger: './src/config/logger',`;
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',`;
 
   if (isServerless || hasWorker) {
     gkmConfig += `
