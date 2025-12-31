@@ -433,13 +433,10 @@ describe('ObjectionFactory', () => {
   });
 
   it('should allow overriding default values', async ({ trx }) => {
-    const userBuilder = ObjectionFactory.createBuilder(
-      User,
-      ({ attrs }) => ({
-        name: 'Default Name',
-        ...attrs,
-      }),
-    );
+    const userBuilder = ObjectionFactory.createBuilder(User, ({ attrs }) => ({
+      name: 'Default Name',
+      ...attrs,
+    }));
 
     const builders = { user: userBuilder };
     const factory = new ObjectionFactory(builders, {}, trx);
