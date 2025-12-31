@@ -5,14 +5,38 @@ import type { TestAPI } from 'vitest';
  * Used with Vitest's test.extend() API to inject transactions into tests.
  *
  * @template Transaction - The transaction type specific to the database driver
+ * @template Extended - Additional context properties provided by the extend function
  */
-export interface DatabaseFixtures<Transaction> {
+export interface DatabaseFixtures<Transaction, Extended = object> {
   /**
    * The database transaction available to the test.
    * All database operations should use this transaction to ensure proper rollback.
    */
   trx: Transaction;
 }
+
+/**
+ * Combined fixtures type that merges the base transaction fixture with extended context.
+ */
+export type ExtendedDatabaseFixtures<Transaction, Extended = object> =
+  DatabaseFixtures<Transaction> & Extended;
+
+/**
+ * Function type for extending test context with additional properties.
+ * Receives the transaction and returns additional context to be merged with { trx }.
+ *
+ * @template Transaction - The transaction type
+ * @template Extended - The type of additional context to provide
+ *
+ * @example
+ * ```typescript
+ * const extendContext: ExtendContextFn<Transaction<DB>, { factory: KyselyFactory }> =
+ *   (trx) => ({ factory: new KyselyFactory(builders, seeds, trx) });
+ * ```
+ */
+export type ExtendContextFn<Transaction, Extended> = (
+  trx: Transaction,
+) => Extended | Promise<Extended>;
 
 /**
  * PostgreSQL transaction isolation levels.
@@ -123,7 +147,7 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
   ) {
     return this.api.extend<DatabaseFixtures<Transaction>>({
       // This fixture automatically provides a transaction to each test
-      trx: async ({}, use) => {
+      trx: async ({}, use: (value: Transaction) => Promise<void>) => {
         // Create a custom error class for rollback
         class TestRollback extends Error {
           constructor() {
@@ -164,7 +188,81 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
       },
     });
   }
+
 }
 
 export type DatabaseConnectionFn<Conn> = () => Conn | Promise<Conn>;
 export type DatabaseConnection<Conn> = DatabaseConnectionFn<Conn>;
+
+/**
+ * Type for fixture creator functions that depend on the transaction.
+ * Each function receives the transaction and returns the fixture value.
+ */
+export type FixtureCreators<Transaction, Extended extends Record<string, unknown>> = {
+  [K in keyof Extended]: (trx: Transaction) => Extended[K] | Promise<Extended[K]>;
+};
+
+/**
+ * Extends a wrapped test API with additional fixtures that depend on the transaction.
+ * This allows composing test context with factories, repositories, or other helpers.
+ *
+ * @template Transaction - The transaction type
+ * @template Extended - The type of additional context to provide
+ * @param wrappedTest - The base wrapped test from wrapVitestWithTransaction
+ * @param fixtures - Object mapping fixture names to creator functions
+ * @returns An extended test API with both trx and the additional fixtures
+ *
+ * @example
+ * ```typescript
+ * import { wrapVitestKyselyTransaction, extendWithFixtures } from '@geekmidas/testkit/kysely';
+ *
+ * // Create base wrapped test
+ * const baseTest = wrapVitestKyselyTransaction(test, db, createTestTables);
+ *
+ * // Extend with fixtures
+ * const it = extendWithFixtures(baseTest, {
+ *   factory: (trx) => new KyselyFactory(builders, seeds, trx),
+ *   userRepo: (trx) => new UserRepository(trx),
+ * });
+ *
+ * // Use in tests - trx and all fixtures are available
+ * it('should create user with factory', async ({ trx, factory, userRepo }) => {
+ *   const user = await factory.insert('user', { name: 'Test' });
+ *   expect(user).toBeDefined();
+ * });
+ * ```
+ */
+export function extendWithFixtures<
+  Transaction,
+  Extended extends Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends ReturnType<TestAPI['extend']> = any,
+>(
+  wrappedTest: T,
+  fixtures: FixtureCreators<Transaction, Extended>,
+): T & {
+  <C extends object>(
+    name: string,
+    fn: (context: DatabaseFixtures<Transaction> & Extended & C) => Promise<void>,
+  ): void;
+  <C extends object>(
+    name: string,
+    options: object,
+    fn: (context: DatabaseFixtures<Transaction> & Extended & C) => Promise<void>,
+  ): void;
+} {
+  // Build fixture definitions for Vitest's extend API
+  const fixtureDefinitions: Record<string, any> = {};
+
+  for (const [key, creator] of Object.entries(fixtures)) {
+    fixtureDefinitions[key] = async (
+      { trx }: { trx: Transaction },
+      use: (value: unknown) => Promise<void>,
+    ) => {
+      const value = await (creator as (trx: Transaction) => unknown)(trx);
+      await use(value);
+    };
+  }
+
+  return (wrappedTest as any).extend(fixtureDefinitions);
+}

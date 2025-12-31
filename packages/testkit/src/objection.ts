@@ -3,7 +3,9 @@ import type { TestAPI } from 'vitest';
 import { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 import {
   type DatabaseConnection,
+  type FixtureCreators,
   IsolationLevel,
+  extendWithFixtures as baseExtendWithFixtures,
 } from './VitestTransactionIsolator';
 
 /**
@@ -16,6 +18,7 @@ export { ObjectionFactory } from './ObjectionFactory';
 export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
+export type { FixtureCreators } from './VitestTransactionIsolator';
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
@@ -100,4 +103,62 @@ export function wrapVitestObjectionTransaction(
   const wrapper = new VitestObjectionTransactionIsolator(api);
 
   return wrapper.wrapVitestWithTransaction(conn, setup, level);
+}
+
+/**
+ * Extends an Objection.js transaction-wrapped test with additional fixtures.
+ * Each fixture receives the transaction and can create dependencies like factories or repositories.
+ *
+ * @template Extended - The type of additional fixtures to provide
+ * @param wrappedTest - The base wrapped test from wrapVitestObjectionTransaction
+ * @param fixtures - Object mapping fixture names to creator functions
+ * @returns An extended test API with both trx and the additional fixtures
+ *
+ * @example
+ * ```typescript
+ * import { test } from 'vitest';
+ * import { wrapVitestObjectionTransaction, extendWithFixtures, ObjectionFactory } from '@geekmidas/testkit/objection';
+ * import { User } from './models';
+ *
+ * // Define your builders
+ * const builders = {
+ *   user: ObjectionFactory.createBuilder(User, ({ faker }) => ({
+ *     name: faker.person.fullName(),
+ *     email: faker.internet.email(),
+ *   })),
+ * };
+ *
+ * // Create base wrapped test
+ * const baseTest = wrapVitestObjectionTransaction(test, knex, createTestTables);
+ *
+ * // Extend with fixtures - each fixture receives the transaction
+ * const it = extendWithFixtures<{ factory: ObjectionFactory<typeof builders, {}> }>(
+ *   baseTest,
+ *   {
+ *     factory: (trx) => new ObjectionFactory(builders, {}, trx),
+ *   }
+ * );
+ *
+ * // Use in tests - both trx and factory are available
+ * it('should create user with factory', async ({ trx, factory }) => {
+ *   const user = await factory.insert('user', { name: 'Test User' });
+ *   expect(user.id).toBeDefined();
+ *
+ *   // Verify in database
+ *   const found = await User.query(trx).findById(user.id);
+ *   expect(found?.name).toBe('Test User');
+ * });
+ * ```
+ */
+export function extendWithFixtures<
+  Extended extends Record<string, unknown>,
+  T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+>(
+  wrappedTest: T,
+  fixtures: FixtureCreators<Knex.Transaction, Extended>,
+) {
+  return baseExtendWithFixtures<Knex.Transaction, Extended, T>(
+    wrappedTest,
+    fixtures,
+  );
 }

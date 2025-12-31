@@ -3,7 +3,7 @@ import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
 import { type TestDatabase, createTestTables } from '../../test/helpers';
 import { KyselyFactory } from '../KyselyFactory';
 import { createKyselyDb } from '../helpers';
-import { wrapVitestKyselyTransaction } from '../kysely';
+import { wrapVitestKyselyTransaction, extendWithFixtures } from '../kysely';
 
 const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
 const it = wrapVitestKyselyTransaction<TestDatabase>(
@@ -193,7 +193,10 @@ describe('Testkit Integration Tests', () => {
       // Create complex seeds
       const seeds = {
         blogWithAdminAndPosts: KyselyFactory.createSeed(
-          async (attrs: { postCount?: number }, factory: any, db: any) => {
+          async (
+            attrs: { postCount?: number },
+            factory: KyselyFactory<TestDatabase, typeof builders, {}>,
+          ) => {
             // Create admin user
             const admin = await factory.insert('user', {
               name: 'Blog Admin',
@@ -203,16 +206,12 @@ describe('Testkit Integration Tests', () => {
 
             // Create multiple posts
             const postCount = attrs.postCount || 3;
-            const posts = await factory.insertMany(
-              postCount,
-              'post',
-              (idx) => ({
-                title: `Admin Post ${idx + 1}`,
-                content: `Content for admin post ${idx + 1}`,
-                userId: admin.id,
-                published: true,
-              }),
-            );
+            const posts = await factory.insertMany(postCount, 'post', (idx) => ({
+              title: `Admin Post ${idx + 1}`,
+              content: `Content for admin post ${idx + 1}`,
+              userId: admin.id,
+              published: true,
+            }));
 
             return {
               admin,
@@ -229,13 +228,15 @@ describe('Testkit Integration Tests', () => {
         usersWithPosts: KyselyFactory.createSeed(
           async (
             attrs: { userCount?: number; postsPerUser?: number },
-            factory: any,
-            db: any,
+            factory: KyselyFactory<TestDatabase, typeof builders, {}>,
           ) => {
             const userCount = attrs.userCount || 2;
             const postsPerUser = attrs.postsPerUser || 2;
 
-            const results: Array<{ user: any; posts: any[] }> = [];
+            const results: Array<{
+              user: Awaited<ReturnType<typeof builders.user>>;
+              posts: Awaited<ReturnType<typeof builders.post>>[];
+            }> = [];
 
             for (let i = 0; i < userCount; i++) {
               const user = await factory.insert('user', {
@@ -444,4 +445,156 @@ describe('Testkit Integration Tests', () => {
       expect(unpublishedPosts).toHaveLength(5);
     });
   });
+});
+
+describe('extendWithFixtures', () => {
+  // Create builders for use in extended fixtures
+  const builders = {
+    user: KyselyFactory.createBuilder<TestDatabase, 'users'>(
+      'users',
+      ({ faker }) => ({
+        name: faker.person.fullName(),
+        email: faker.internet.email().toLowerCase(),
+        role: 'user' as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    ),
+    post: KyselyFactory.createBuilder<TestDatabase, 'posts'>(
+      'posts',
+      async ({ attrs, factory, faker }) => {
+        const userId = attrs.userId ?? (await factory.insert('user')).id;
+        return {
+          title: faker.lorem.sentence(),
+          content: faker.lorem.paragraphs(),
+          userId,
+          published: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      },
+    ),
+  };
+
+  // Create base test with transaction
+  const baseTest = wrapVitestKyselyTransaction<TestDatabase>(
+    base,
+    db,
+    createTestTables,
+  );
+
+  // Extend with factory fixture
+  const itWithFactory = extendWithFixtures<
+    TestDatabase,
+    { factory: KyselyFactory<TestDatabase, typeof builders, {}> }
+  >(baseTest, {
+    factory: (trx) => new KyselyFactory(builders, {}, trx),
+  });
+
+  itWithFactory(
+    'should provide factory fixture alongside trx',
+    async ({ trx, factory }) => {
+      // Both trx and factory should be available
+      expect(trx).toBeDefined();
+      expect(factory).toBeDefined();
+      expect(factory).toBeInstanceOf(KyselyFactory);
+
+      // Factory should work with the transaction
+      const user = await factory.insert('user', { name: 'Test User' });
+      expect(user.id).toBeDefined();
+      expect(user.name).toBe('Test User');
+
+      // Verify user exists in transaction
+      const found = await trx
+        .selectFrom('users')
+        .where('id', '=', user.id)
+        .selectAll()
+        .executeTakeFirst();
+
+      expect(found).toBeDefined();
+      expect(found?.name).toBe('Test User');
+    },
+  );
+
+  itWithFactory(
+    'should allow factory to create related records',
+    async ({ factory }) => {
+      // Create user first
+      const user = await factory.insert('user', {
+        name: 'Author',
+        email: 'author@example.com',
+      });
+
+      // Create posts for the user
+      const posts = await factory.insertMany(3, 'post', (idx: number) => ({
+        title: `Post ${idx + 1}`,
+        userId: user.id,
+        published: idx === 0,
+      }));
+
+      expect(posts).toHaveLength(3);
+      expect(posts[0].userId).toBe(user.id);
+      expect(posts[0].published).toBe(true);
+      expect(posts[1].published).toBe(false);
+    },
+  );
+
+  // Test with multiple fixtures
+  const itWithMultipleFixtures = extendWithFixtures<
+    TestDatabase,
+    {
+      factory: KyselyFactory<TestDatabase, typeof builders, {}>;
+      userCount: number;
+    }
+  >(baseTest, {
+    factory: (trx) => new KyselyFactory(builders, {}, trx),
+    userCount: () => 42, // Simple fixture that doesn't use trx
+  });
+
+  itWithMultipleFixtures(
+    'should support multiple fixtures',
+    async ({ trx, factory, userCount }) => {
+      expect(trx).toBeDefined();
+      expect(factory).toBeInstanceOf(KyselyFactory);
+      expect(userCount).toBe(42);
+
+      // Use the factory
+      const user = await factory.insert('user');
+      expect(user.id).toBeDefined();
+    },
+  );
+
+  // Test async fixture creators
+  const itWithAsyncFixture = extendWithFixtures<
+    TestDatabase,
+    { initialUser: Awaited<ReturnType<typeof builders.user>> }
+  >(baseTest, {
+    initialUser: async (trx) => {
+      // Create a user directly in the fixture
+      const factory = new KyselyFactory(builders, {}, trx);
+      return factory.insert('user', {
+        name: 'Initial User',
+        email: 'initial@example.com',
+      });
+    },
+  });
+
+  itWithAsyncFixture(
+    'should support async fixture creators',
+    async ({ trx, initialUser }) => {
+      expect(initialUser).toBeDefined();
+      expect(initialUser.name).toBe('Initial User');
+      expect(initialUser.email).toBe('initial@example.com');
+
+      // Verify user exists in database
+      const found = await trx
+        .selectFrom('users')
+        .where('id', '=', initialUser.id)
+        .selectAll()
+        .executeTakeFirst();
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(initialUser.id);
+    },
+  );
 });

@@ -3,7 +3,9 @@ import type { TestAPI } from 'vitest';
 import { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 import {
   type DatabaseConnection,
+  type FixtureCreators,
   IsolationLevel,
+  extendWithFixtures as baseExtendWithFixtures,
 } from './VitestTransactionIsolator';
 
 /**
@@ -15,6 +17,7 @@ export { KyselyFactory } from './KyselyFactory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
+export type { FixtureCreators } from './VitestTransactionIsolator';
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
@@ -84,4 +87,67 @@ export function wrapVitestKyselyTransaction<Database>(
   const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
 
   return wrapper.wrapVitestWithTransaction(connection, setup, level);
+}
+
+/**
+ * Extends a Kysely transaction-wrapped test with additional fixtures.
+ * Each fixture receives the transaction and can create dependencies like factories or repositories.
+ *
+ * @template Database - The database schema type
+ * @template Extended - The type of additional fixtures to provide
+ * @param wrappedTest - The base wrapped test from wrapVitestKyselyTransaction
+ * @param fixtures - Object mapping fixture names to creator functions
+ * @returns An extended test API with both trx and the additional fixtures
+ *
+ * @example
+ * ```typescript
+ * import { test } from 'vitest';
+ * import { wrapVitestKyselyTransaction, extendWithFixtures, KyselyFactory } from '@geekmidas/testkit/kysely';
+ *
+ * // Define your builders
+ * const builders = {
+ *   user: KyselyFactory.createBuilder<DB, 'users'>('users', ({ faker }) => ({
+ *     name: faker.person.fullName(),
+ *     email: faker.internet.email(),
+ *   })),
+ * };
+ *
+ * // Create base wrapped test
+ * const baseTest = wrapVitestKyselyTransaction<DB>(test, db, createTestTables);
+ *
+ * // Extend with fixtures - each fixture receives the transaction
+ * const it = extendWithFixtures<DB, { factory: KyselyFactory<DB, typeof builders, {}> }>(
+ *   baseTest,
+ *   {
+ *     factory: (trx) => new KyselyFactory(builders, {}, trx),
+ *   }
+ * );
+ *
+ * // Use in tests - both trx and factory are available
+ * it('should create user with factory', async ({ trx, factory }) => {
+ *   const user = await factory.insert('user', { name: 'Test User' });
+ *   expect(user.id).toBeDefined();
+ *
+ *   // Verify in database
+ *   const found = await trx
+ *     .selectFrom('users')
+ *     .where('id', '=', user.id)
+ *     .selectAll()
+ *     .executeTakeFirst();
+ *   expect(found?.name).toBe('Test User');
+ * });
+ * ```
+ */
+export function extendWithFixtures<
+  Database,
+  Extended extends Record<string, unknown>,
+  T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+>(
+  wrappedTest: T,
+  fixtures: FixtureCreators<Transaction<Database>, Extended>,
+) {
+  return baseExtendWithFixtures<Transaction<Database>, Extended, T>(
+    wrappedTest,
+    fixtures,
+  );
 }
