@@ -7,6 +7,8 @@ import type {
   TypedEndpoint,
 } from './types';
 
+export type { FetcherOptions } from './types';
+
 export class TypedFetcher<Paths> {
   private baseURL: string;
   private defaultHeaders: Record<string, string>;

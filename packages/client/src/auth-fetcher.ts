@@ -7,6 +7,8 @@ import type {
   TypedEndpoint,
 } from './types';
 
+export type { FetcherOptions } from './types';
+
 /**
  * Security scheme object matching OpenAPI 3.1 specification.
  */
