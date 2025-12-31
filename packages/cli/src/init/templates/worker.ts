@@ -47,14 +47,14 @@ export const logger = createLogger();
 `;
 
     // Get route path based on structure
-    const getRoutePath = (domain: string, file: string) => {
+    const getRoutePath = (file: string) => {
       switch (routesStructure) {
         case 'centralized-endpoints':
-          return `src/endpoints/${domain}/${file}`;
+          return `src/endpoints/${file}`;
         case 'centralized-routes':
-          return `src/routes/${domain}/${file}`;
+          return `src/routes/${file}`;
         case 'domain-based':
-          return `src/${domain}/routes/${file}`;
+          return `src/${file.replace('.ts', '')}/routes/index.ts`;
       }
     };
 
@@ -93,7 +93,7 @@ export const config = envParser
 
       // health endpoint
       {
-        path: getRoutePath('health', 'index.ts'),
+        path: getRoutePath('health.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e

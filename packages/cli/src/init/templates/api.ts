@@ -49,14 +49,19 @@ export const logger = createLogger();
 `;
 
     // Get route path based on structure
-    const getRoutePath = (domain: string, file: string) => {
+    const getRoutePath = (file: string) => {
       switch (routesStructure) {
         case 'centralized-endpoints':
-          return `src/endpoints/${domain}/${file}`;
+          return `src/endpoints/${file}`;
         case 'centralized-routes':
-          return `src/routes/${domain}/${file}`;
-        case 'domain-based':
-          return `src/${domain}/routes/${file}`;
+          return `src/routes/${file}`;
+        case 'domain-based': {
+          const parts = file.split('/');
+          if (parts.length === 1) {
+            return `src/${file.replace('.ts', '')}/routes/index.ts`;
+          }
+          return `src/${parts[0]}/routes/${parts.slice(1).join('/')}`;
+        }
       }
     };
 
@@ -93,7 +98,7 @@ export const config = envParser
 
       // health endpoint
       {
-        path: getRoutePath('health', 'index.ts'),
+        path: getRoutePath('health.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e
@@ -107,7 +112,7 @@ export default e
 
       // users endpoints
       {
-        path: getRoutePath('users', 'list.ts'),
+        path: getRoutePath('users/list.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e
@@ -121,7 +126,7 @@ export default e
 `,
       },
       {
-        path: getRoutePath('users', 'get.ts'),
+        path: getRoutePath('users/get.ts'),
         content: `import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 

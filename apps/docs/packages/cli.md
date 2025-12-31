@@ -98,8 +98,7 @@ my-api/
 │   │   ├── logger.ts
 │   │   └── telescope.ts (if enabled)
 │   └── endpoints/          # or routes/, or domain-based
-│       └── health/
-│           └── index.ts
+│       └── health.ts
 ├── .env
 ├── .env.example
 ├── .env.development
@@ -122,8 +121,7 @@ my-project/
 │       ├── src/
 │       │   ├── config/
 │       │   └── endpoints/    # or routes/, or domain-based
-│       │       └── health/
-│       │           └── index.ts
+│       │       └── health.ts
 │       ├── .env
 │       ├── gkm.config.ts
 │       ├── package.json

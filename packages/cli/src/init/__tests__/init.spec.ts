@@ -43,9 +43,9 @@ describe('initCommand', () => {
       expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
       expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
       expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
-      expect(
-        existsSync(join(projectDir, 'src/endpoints/health/index.ts')),
-      ).toBe(true);
+      expect(existsSync(join(projectDir, 'src/endpoints/health.ts'))).toBe(
+        true,
+      );
     });
 
     it('should create package.json with correct content', async () => {
@@ -165,7 +165,7 @@ describe('initCommand', () => {
       expect(existsSync(join(projectDir, 'apps/api/gkm.config.ts'))).toBe(true);
       expect(existsSync(join(projectDir, 'apps/api/tsconfig.json'))).toBe(true);
       expect(
-        existsSync(join(projectDir, 'apps/api/src/endpoints/health/index.ts')),
+        existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts')),
       ).toBe(true);
 
       // Models package
