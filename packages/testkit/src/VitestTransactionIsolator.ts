@@ -190,7 +190,6 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
       },
     });
   }
-
 }
 
 export type DatabaseConnectionFn<Conn> = () => Conn | Promise<Conn>;
