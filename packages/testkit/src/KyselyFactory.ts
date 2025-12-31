@@ -25,13 +25,13 @@ import { type FakerFactory, faker } from './faker.ts';
  *
  * // Create builders
  * const builders = {
- *   user: KyselyFactory.createBuilder<Database, 'users'>('users', (attrs, factory, db, faker) => ({
+ *   user: KyselyFactory.createBuilder<Database, 'users'>('users', ({ attrs, faker }) => ({
  *     id: faker.string.uuid(),
  *     name: faker.person.fullName(),
  *     email: faker.internet.email(),
  *     ...attrs
  *   })),
- *   post: KyselyFactory.createBuilder<Database, 'posts'>('posts', (attrs) => ({
+ *   post: KyselyFactory.createBuilder<Database, 'posts'>('posts', ({ attrs }) => ({
  *     title: 'Test Post',
  *     content: 'Test content',
  *     ...attrs
@@ -88,15 +88,15 @@ export class KyselyFactory<
    * @template Result - The result type (defaults to Selectable of the table)
    *
    * @param table - The name of the database table
-   * @param item - Optional function to provide default values and transformations
+   * @param defaults - Optional function to provide default values (receives destructured context)
    * @param autoInsert - Whether to automatically insert the record (default: true)
    * @returns A builder function that creates and optionally inserts records
    *
    * @example
    * ```typescript
-   * // Create a simple builder with defaults
+   * // Create a simple builder with defaults - destructure only what you need
    * const userBuilder = KyselyFactory.createBuilder<DB, 'users'>('users',
-   *   (attrs, factory, db, faker) => ({
+   *   ({ attrs, faker }) => ({
    *     id: faker.string.uuid(),
    *     name: faker.person.fullName(),
    *     email: faker.internet.email(),
@@ -105,9 +105,17 @@ export class KyselyFactory<
    *   })
    * );
    *
+   * // Only need faker? Just destructure that
+   * const leaveTypeBuilder = KyselyFactory.createBuilder<DB, 'leaveTypes'>('leaveTypes',
+   *   ({ faker }) => ({
+   *     name: faker.helpers.arrayElement(['Annual', 'Sick', 'Maternity']),
+   *     code: faker.string.alpha({ length: 3, casing: 'upper' }),
+   *   })
+   * );
+   *
    * // Create a builder that doesn't auto-insert (useful for nested inserts)
    * const addressBuilder = KyselyFactory.createBuilder<DB, 'addresses'>('addresses',
-   *   (attrs) => ({
+   *   ({ attrs }) => ({
    *     street: '123 Main St',
    *     city: 'Anytown',
    *     ...attrs
@@ -126,12 +134,12 @@ export class KyselyFactory<
     Result = Selectable<DB[TableName]>,
   >(
     table: TableName,
-    item?: (
-      attrs: Attrs,
-      factory: Factory,
-      db: Kysely<DB>,
-      faker: FakerFactory,
-    ) =>
+    defaults?: (context: {
+      attrs: Attrs;
+      factory: Factory;
+      db: Kysely<DB>;
+      faker: FakerFactory;
+    }) =>
       | Partial<Insertable<DB[TableName]>>
       | Promise<Partial<Insertable<DB[TableName]>>>,
     autoInsert?: boolean,
@@ -145,15 +153,20 @@ export class KyselyFactory<
       attrs: Attrs,
       factory: Factory,
       db: Kysely<DB>,
-      faker: FakerFactory,
+      fakerInstance: FakerFactory,
     ) => {
       // Start with attributes
       let data: Partial<Insertable<DB[TableName]>> = { ...attrs };
 
       // Apply defaults
-      if (item) {
-        const defaults = await item(attrs, factory, db, faker);
-        data = { ...defaults, ...data };
+      if (defaults) {
+        const defaultValues = await defaults({
+          attrs,
+          factory,
+          db,
+          faker: fakerInstance,
+        });
+        data = { ...defaultValues, ...data };
       }
 
       // Handle insertion based on autoInsert flag

@@ -24,7 +24,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async ({ attrs }) => ({
             name: 'John Doe',
             email: `user${Date.now()}@example.com`,
             createdAt: new Date(),
@@ -57,7 +57,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async ({ attrs }) => ({
             name: 'John Doe',
             email: `user${Date.now()}@example.com`,
             createdAt: new Date(),
@@ -98,7 +98,7 @@ describe('KyselyFactory', () => {
 
       const postBuilder = KyselyFactory.createBuilder<TestDatabase, 'posts'>(
         'posts',
-        async (attrs, factory) => {
+        async ({ attrs, factory }) => {
           // Create a user if userId not provided
           if (!attrs.userId) {
             const user = await factory.insert('user');
@@ -156,7 +156,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async () => ({
             name: 'John Doe',
             email: `user${Date.now()}-${Math.random()}@example.com`,
             createdAt: new Date(),
@@ -189,7 +189,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async () => ({
             email: `user${Date.now()}-${Math.random()}@example.com`,
             createdAt: new Date(),
           }),
@@ -233,7 +233,7 @@ describe('KyselyFactory', () => {
       let counter = 0;
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs) => {
+        async () => {
           // Simulate async operation
           await new Promise((resolve) => setTimeout(resolve, 10));
           counter++;
@@ -307,7 +307,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async ({ attrs }) => ({
             name: 'John Doe',
             email: `user${Date.now()}@example.com`,
             createdAt: new Date(),
@@ -364,7 +364,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async ({ attrs }) => ({
             name: 'John Doe',
             email: `user${Date.now()}@example.com`,
             createdAt: new Date(),
@@ -400,7 +400,7 @@ describe('KyselyFactory', () => {
       async ({ trx }) => {
         const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
           'users',
-          async (attrs) => ({
+          async ({ attrs }) => ({
             name: 'John Doe',
             email: `user${Date.now()}@example.com`,
             createdAt: new Date(),
@@ -409,7 +409,7 @@ describe('KyselyFactory', () => {
 
         const postBuilder = KyselyFactory.createBuilder<TestDatabase, 'posts'>(
           'posts',
-          async (attrs, factory) => {
+          async ({ factory }) => {
             const user = await factory.insert('user');
             return {
               title: 'Default Post',

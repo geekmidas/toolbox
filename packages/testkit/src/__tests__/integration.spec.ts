@@ -18,7 +18,7 @@ describe('Testkit Integration Tests', () => {
       // Create builders for all entities
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs) => ({
+        async () => ({
           name: 'John Doe',
           email: `user${Date.now()}-${Math.random()}@example.com`,
           role: 'user' as const,
@@ -29,7 +29,7 @@ describe('Testkit Integration Tests', () => {
 
       const postBuilder = KyselyFactory.createBuilder<TestDatabase, 'posts'>(
         'posts',
-        async (attrs, factory) => {
+        async ({ attrs, factory }) => {
           // Create a user if no userId provided
           if (!attrs.userId) {
             const user = await factory.insert('user');
@@ -55,7 +55,7 @@ describe('Testkit Integration Tests', () => {
       const commentBuilder = KyselyFactory.createBuilder<
         TestDatabase,
         'comments'
-      >('comments', async (attrs, factory) => {
+      >('comments', async ({ attrs, factory }) => {
         let postId = attrs.postId;
         let userId = attrs.userId;
 
@@ -152,7 +152,7 @@ describe('Testkit Integration Tests', () => {
 
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs) => ({
+        async () => ({
           name: 'Default User',
           email: `user${Date.now()}-${Math.random()}@example.com`,
           role: 'user' as const,
@@ -163,7 +163,7 @@ describe('Testkit Integration Tests', () => {
 
       const postBuilder = KyselyFactory.createBuilder<TestDatabase, 'posts'>(
         'posts',
-        async (attrs, factory) => {
+        async ({ attrs, factory }) => {
           if (!attrs.userId) {
             const user = await factory.insert('user');
             return {
@@ -306,7 +306,7 @@ describe('Testkit Integration Tests', () => {
     it('should handle transaction isolation properly', async ({ trx }) => {
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs, factory, db, faker) => ({
+        async ({ faker }) => ({
           name: 'Test User',
           email: faker.internet.email(),
           role: 'user' as const,
@@ -345,7 +345,7 @@ describe('Testkit Integration Tests', () => {
     it('should handle creating many records efficiently', async ({ trx }) => {
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs, factory, db, faker) => ({
+        async ({ faker }) => ({
           name: `User ${Math.random()}`,
           email: faker.internet.email().toLowerCase(),
           role: 'user' as const,
@@ -381,7 +381,7 @@ describe('Testkit Integration Tests', () => {
     it('should handle complex attribute generation', async ({ trx }) => {
       const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
         'users',
-        async (attrs, factory, db, faker) => {
+        async ({ attrs, faker }) => {
           return {
             name: `Generated User ${attrs.id}`,
             email: faker.internet.email().toLowerCase(),
@@ -392,7 +392,7 @@ describe('Testkit Integration Tests', () => {
 
       const postBuilder = KyselyFactory.createBuilder<TestDatabase, 'posts'>(
         'posts',
-        async (attrs, factory) => {
+        async ({ attrs, factory }) => {
           let userId = attrs.userId;
           if (!userId) {
             const user = await factory.insert('user');

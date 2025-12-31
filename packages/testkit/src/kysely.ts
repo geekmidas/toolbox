@@ -16,6 +16,9 @@ export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 
+// Re-export faker and FakerFactory for type portability in declaration files
+export { faker, type FakerFactory } from './faker';
+
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Kysely.
  * Each test runs in an isolated database transaction that is rolled back after completion.

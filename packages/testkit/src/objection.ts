@@ -17,6 +17,9 @@ export { VitestObjectionTransactionIsolator } from './VitestObjectionTransaction
 export { IsolationLevel } from './VitestTransactionIsolator';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
 
+// Re-export faker and FakerFactory for type portability in declaration files
+export { faker, type FakerFactory } from './faker';
+
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Objection.js.
  * Each test runs in an isolated database transaction that is rolled back after completion.

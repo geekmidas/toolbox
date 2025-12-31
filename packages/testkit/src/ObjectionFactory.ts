@@ -19,17 +19,17 @@ import { type FakerFactory, faker } from './faker.ts';
  *
  * // Create builders
  * const builders = {
- *   user: (attrs) => User.fromJson({
+ *   user: ObjectionFactory.createBuilder(User, ({ attrs, faker }) => ({
  *     id: faker.string.uuid(),
  *     name: faker.person.fullName(),
  *     email: faker.internet.email(),
  *     ...attrs
- *   }),
- *   post: (attrs) => Post.fromJson({
+ *   })),
+ *   post: ObjectionFactory.createBuilder(Post, ({ attrs }) => ({
  *     title: 'Test Post',
  *     content: 'Test content',
  *     ...attrs
- *   })
+ *   })),
  * };
  *
  * // Create factory instance
@@ -65,15 +65,15 @@ export class ObjectionFactory<
    * @template Result - The result type (defaults to the model instance)
    *
    * @param ModelClass - The Objection.js Model class
-   * @param item - Optional function to provide default values and transformations
+   * @param defaults - Optional function to provide default values (receives destructured context)
    * @param autoInsert - Whether to automatically insert the record (default: true)
    * @returns A builder function that creates and optionally inserts records
    *
    * @example
    * ```typescript
-   * // Create a simple builder with defaults
+   * // Create a simple builder with defaults - destructure only what you need
    * const userBuilder = ObjectionFactory.createBuilder(User,
-   *   (attrs, factory, db, faker) => ({
+   *   ({ attrs, faker }) => ({
    *     id: faker.string.uuid(),
    *     name: faker.person.fullName(),
    *     email: faker.internet.email(),
@@ -82,9 +82,17 @@ export class ObjectionFactory<
    *   })
    * );
    *
+   * // Only need faker? Just destructure that
+   * const leaveTypeBuilder = ObjectionFactory.createBuilder(LeaveType,
+   *   ({ faker }) => ({
+   *     name: faker.helpers.arrayElement(['Annual', 'Sick', 'Maternity']),
+   *     code: faker.string.alpha({ length: 3, casing: 'upper' }),
+   *   })
+   * );
+   *
    * // Create a builder that doesn't auto-insert (useful for nested inserts)
    * const addressBuilder = ObjectionFactory.createBuilder(Address,
-   *   (attrs) => ({
+   *   ({ attrs }) => ({
    *     street: '123 Main St',
    *     city: 'Anytown',
    *     ...attrs
@@ -94,7 +102,7 @@ export class ObjectionFactory<
    *
    * // Use with relations
    * const postBuilder = ObjectionFactory.createBuilder(Post,
-   *   async (attrs, factory) => ({
+   *   async ({ attrs, factory, faker }) => ({
    *     title: faker.lorem.sentence(),
    *     content: faker.lorem.paragraphs(),
    *     authorId: attrs.authorId || (await factory.insert('user')).id,
@@ -110,12 +118,12 @@ export class ObjectionFactory<
     Result = InstanceType<TModel>,
   >(
     ModelClass: TModel,
-    item?: (
-      attrs: Attrs,
-      factory: Factory,
-      db: Knex,
-      faker: FakerFactory,
-    ) => Partial<InstanceType<TModel>> | Promise<Partial<InstanceType<TModel>>>,
+    defaults?: (context: {
+      attrs: Attrs;
+      factory: Factory;
+      db: Knex;
+      faker: FakerFactory;
+    }) => Partial<InstanceType<TModel>> | Promise<Partial<InstanceType<TModel>>>,
     autoInsert?: boolean,
   ): (
     attrs: Attrs,
@@ -127,15 +135,20 @@ export class ObjectionFactory<
       attrs: Attrs,
       factory: Factory,
       db: Knex,
-      faker: FakerFactory,
+      fakerInstance: FakerFactory,
     ) => {
       // Start with attributes
       let data: Partial<InstanceType<TModel>> = { ...attrs };
 
       // Apply defaults
-      if (item) {
-        const defaults = await item(attrs, factory, db, faker);
-        data = { ...defaults, ...data };
+      if (defaults) {
+        const defaultValues = await defaults({
+          attrs,
+          factory,
+          db,
+          faker: fakerInstance,
+        });
+        data = { ...defaultValues, ...data };
       }
 
       // Create model instance

@@ -323,7 +323,7 @@ describe('ObjectionFactory', () => {
   it('should create a builder function with auto-insert', async ({ trx }) => {
     const userBuilder = ObjectionFactory.createBuilder(
       User,
-      (attrs, factory, db, faker) => ({
+      ({ attrs, faker }) => ({
         name: faker.person.fullName(),
         ...attrs,
       }),
@@ -344,7 +344,7 @@ describe('ObjectionFactory', () => {
   }) => {
     const userBuilder = ObjectionFactory.createBuilder(
       User,
-      (attrs) => ({
+      ({ attrs }) => ({
         name: 'No Insert User',
         ...attrs,
       }),
@@ -369,8 +369,8 @@ describe('ObjectionFactory', () => {
 
     const userBuilder = ObjectionFactory.createBuilder(
       User,
-      (attrs, factory, db, fakerInstance) => {
-        capturedFactory = factory;
+      ({ attrs, factory: passedFactory, db, faker: fakerInstance }) => {
+        capturedFactory = passedFactory;
         capturedDb = db;
         capturedFaker = fakerInstance;
 
@@ -394,7 +394,7 @@ describe('ObjectionFactory', () => {
   it('should handle async item functions', async ({ trx }) => {
     const userBuilder = ObjectionFactory.createBuilder(
       User,
-      async (attrs, factory, db, faker) => {
+      async ({ attrs }) => {
         // Simulate async operation
         await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -435,7 +435,7 @@ describe('ObjectionFactory', () => {
   it('should allow overriding default values', async ({ trx }) => {
     const userBuilder = ObjectionFactory.createBuilder(
       User,
-      (attrs, factory, db, faker) => ({
+      ({ attrs }) => ({
         name: 'Default Name',
         ...attrs,
       }),
