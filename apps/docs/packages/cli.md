@@ -204,7 +204,7 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 Create a `gkm.config.ts` file in your project root:
 
 ```typescript
-import { defineConfig } from '@geekmidas/cli';
+import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
   source: './src/endpoints/**/*.ts',

@@ -196,7 +196,7 @@ const healthCheck = e
 Add to your `gkm.config.ts`:
 
 ```typescript
-import { defineConfig } from '@geekmidas/cli';
+import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
   routes: './src/endpoints/**/*.ts',

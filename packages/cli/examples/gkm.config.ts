@@ -1,6 +1,6 @@
-import type { GkmConfig } from '@geekmidas/cli';
+import { defineConfig } from '@geekmidas/cli/config';
 
-const config: GkmConfig = {
+export default defineConfig({
   // Glob pattern to find endpoint files
   routes: 'src/routes/**/*.ts',
 
@@ -11,6 +11,4 @@ const config: GkmConfig = {
   // Logger configuration
   // Format: path#exportName (if no #exportName, treats as default import)
   logger: './src/logger.ts#logger',
-};
-
-export default config;
+});

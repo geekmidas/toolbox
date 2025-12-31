@@ -33,9 +33,9 @@ npm install -g @geekmidas/cli
 Create a `gkm.config.ts` file in your project root:
 
 ```typescript
-import type { GkmConfig } from '@geekmidas/cli';
+import { defineConfig } from '@geekmidas/cli/config';
 
-const config: GkmConfig = {
+export default defineConfig({
   // Glob pattern to find endpoint files
   routes: 'src/routes/**/*.ts',
 
@@ -59,9 +59,7 @@ const config: GkmConfig = {
     enabled: true,
     path: '/__telescope',
   },
-};
-
-export default config;
+});
 ```
 
 ### 2. Set Up Environment Parser
@@ -977,7 +975,9 @@ Configure multiple patterns for complex project structures:
 
 ```typescript
 // gkm.config.ts
-const config: GkmConfig = {
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
   routes: [
     'src/routes/**/*.ts',
     'src/api/v1/**/*.ts',
@@ -986,7 +986,7 @@ const config: GkmConfig = {
   ],
   envParser: './src/env.ts#envParser',
   logger: './src/logger.ts#logger',
-};
+});
 ```
 
 ## Error Handling
