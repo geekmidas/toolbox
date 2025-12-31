@@ -74,7 +74,94 @@ export enum LogLevel {
   Silent = 'silent',
 }
 
+/**
+ * Redaction configuration for masking sensitive data in logs.
+ * Uses pino's fast-redact library under the hood.
+ *
+ * By default, custom paths are merged with the default sensitive paths.
+ * Use `resolution: 'override'` to use only your custom paths.
+ *
+ * @example
+ * ```typescript
+ * // Simple path array (merges with defaults)
+ * redact: ['user.ssn', 'custom.field']
+ *
+ * // Override defaults completely
+ * redact: {
+ *   paths: ['only.these.paths'],
+ *   resolution: 'override',
+ * }
+ *
+ * // With custom censor
+ * redact: {
+ *   paths: ['extra.secret'],
+ *   censor: '***',
+ * }
+ *
+ * // Remove fields entirely
+ * redact: {
+ *   paths: ['temporary.data'],
+ *   remove: true,
+ * }
+ * ```
+ */
+export type RedactOptions =
+  | string[]
+  | {
+      /** Paths to redact using dot notation or bracket notation for special chars */
+      paths: string[];
+      /** Custom replacement text (default: '[REDACTED]') */
+      censor?: string | ((value: unknown, path: string[]) => unknown);
+      /** Remove the field entirely instead of replacing (default: false) */
+      remove?: boolean;
+      /**
+       * How to combine custom paths with default sensitive paths.
+       * - 'merge': Custom paths are added to default paths (default)
+       * - 'override': Only custom paths are used, defaults are ignored
+       */
+      resolution?: 'merge' | 'override';
+    };
+
 export type CreateLoggerOptions = {
+  /** Enable pretty printing with colors (disabled in production) */
   pretty?: boolean;
+  /** Minimum log level to output */
   level?: LogLevel;
+  /**
+   * Redaction configuration for masking sensitive data.
+   *
+   * - `true`: Uses default sensitive paths (password, token, secret, etc.)
+   * - `false` or `undefined`: No redaction applied
+   * - `string[]`: Custom paths merged with defaults
+   * - `object`: Advanced config with paths, censor, remove, and resolution options
+   *
+   * By default, custom paths are **merged** with the default sensitive paths.
+   * Use `resolution: 'override'` to disable defaults and use only your paths.
+   *
+   * @example
+   * ```typescript
+   * // Use defaults only
+   * createLogger({ redact: true });
+   *
+   * // Add custom paths (merged with defaults)
+   * createLogger({ redact: ['user.ssn', 'custom.field'] });
+   *
+   * // Override defaults completely
+   * createLogger({
+   *   redact: {
+   *     paths: ['only.these.paths'],
+   *     resolution: 'override',
+   *   }
+   * });
+   *
+   * // Merge with custom censor
+   * createLogger({
+   *   redact: {
+   *     paths: ['extra.secret'],
+   *     censor: '***',
+   *   }
+   * });
+   * ```
+   */
+  redact?: boolean | RedactOptions;
 };
