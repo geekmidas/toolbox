@@ -1,11 +1,18 @@
 export type OpenAPIRoutes<Paths> = keyof Paths;
 
-type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options';
+type HttpMethod =
+  | 'get'
+  | 'post'
+  | 'put'
+  | 'patch'
+  | 'delete'
+  | 'head'
+  | 'options';
 
-export type ExtractMethod<
-  Paths,
-  Route extends OpenAPIRoutes<Paths>,
-> = Extract<keyof Paths[Route], HttpMethod>;
+export type ExtractMethod<Paths, Route extends OpenAPIRoutes<Paths>> = Extract<
+  keyof Paths[Route],
+  HttpMethod
+>;
 
 export type ExtractPathParams<
   Paths,
