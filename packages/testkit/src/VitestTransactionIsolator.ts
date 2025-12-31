@@ -249,12 +249,16 @@ export function extendWithFixtures<
 ): T & {
   <C extends object>(
     name: string,
-    fn: (context: DatabaseFixtures<Transaction> & Extended & C) => Promise<void>,
+    fn: (
+      context: DatabaseFixtures<Transaction> & Extended & C,
+    ) => Promise<void>,
   ): void;
   <C extends object>(
     name: string,
     options: object,
-    fn: (context: DatabaseFixtures<Transaction> & Extended & C) => Promise<void>,
+    fn: (
+      context: DatabaseFixtures<Transaction> & Extended & C,
+    ) => Promise<void>,
   ): void;
 } {
   // Build fixture definitions for Vitest's extend API
