@@ -1,9 +1,11 @@
 export type OpenAPIRoutes<Paths> = keyof Paths;
 
+type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options';
+
 export type ExtractMethod<
   Paths,
   Route extends OpenAPIRoutes<Paths>,
-> = keyof Paths[Route];
+> = Extract<keyof Paths[Route], HttpMethod>;
 
 export type ExtractPathParams<
   Paths,
@@ -59,21 +61,14 @@ export type RequestConfig<
 
 export type EndpointString = `${Uppercase<string>} ${string}`;
 
-// Filter out methods that are never to avoid showing them in autocomplete
-// This handles both explicit never and optional never (?: never)
-type FilterNeverMethods<T> = {
-  [K in keyof T as T[K] extends never | undefined
-    ? never
-    : K]: T[K] extends undefined ? never : T[K];
-};
-
 // Generate all valid endpoint strings from OpenAPI paths
+// Uses Extract with HttpMethod to filter out non-HTTP keys like 'parameters'
 export type ValidEndpoint<Paths> = {
   [Route in keyof Paths]: {
-    [Method in keyof FilterNeverMethods<Paths[Route]>]: `${Uppercase<
+    [Method in Extract<keyof Paths[Route], HttpMethod>]: `${Uppercase<
       string & Method
     >} ${string & Route}`;
-  }[keyof FilterNeverMethods<Paths[Route]>];
+  }[Extract<keyof Paths[Route], HttpMethod>];
 }[keyof Paths];
 
 // Helper type to get autocomplete for endpoint strings
