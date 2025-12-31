@@ -206,12 +206,16 @@ describe('Testkit Integration Tests', () => {
 
             // Create multiple posts
             const postCount = attrs.postCount || 3;
-            const posts = await factory.insertMany(postCount, 'post', (idx) => ({
-              title: `Admin Post ${idx + 1}`,
-              content: `Content for admin post ${idx + 1}`,
-              userId: admin.id,
-              published: true,
-            }));
+            const posts = await factory.insertMany(
+              postCount,
+              'post',
+              (idx) => ({
+                title: `Admin Post ${idx + 1}`,
+                content: `Content for admin post ${idx + 1}`,
+                userId: admin.id,
+                published: true,
+              }),
+            );
 
             return {
               admin,
