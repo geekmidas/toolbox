@@ -75,45 +75,29 @@ export { faker, type FakerFactory } from './faker';
  *     .executeTakeFirst();
  *
  *   expect(user).toBeDefined();
- *   // User is automatically rolled back after test
  * });
  *
- * // With setup function for common test data
- * const testWithSetup = wrapVitestKyselyTransaction(
- *   test,
- *   db,
- *   async (trx) => {
- *     // Create common test data
- *     await trx.insertInto('settings')
- *       .values({ key: 'test_mode', value: 'true' })
- *       .execute();
- *   }
- * );
+ * // With fixtures for factories
+ * const it = wrapVitestKyselyTransaction<DB, { factory: Factory }>(test, {
+ *   connection: db,
+ *   fixtures: {
+ *     factory: (trx) => new Factory(trx),
+ *   },
+ * });
  *
- * testWithSetup('should have test settings', async ({ trx }) => {
- *   const setting = await trx
- *     .selectFrom('settings')
- *     .where('key', '=', 'test_mode')
- *     .selectAll()
- *     .executeTakeFirst();
- *
- *   expect(setting?.value).toBe('true');
+ * it('should create user with factory', async ({ trx, factory }) => {
+ *   const user = await factory.insert('user', { name: 'Test' });
+ *   expect(user.id).toBeDefined();
  * });
  * ```
  */
 export function wrapVitestKyselyTransaction<
   Database,
   Extended extends Record<string, unknown> = {},
->(
-  api: TestAPI,
-  connection: DatabaseConnection<Kysely<Database>>,
-  setup?: (trx: Transaction<Database>) => Promise<void>,
-  level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
-  fixtures?: FixtureCreators<Transaction<Database>, Extended>,
-) {
+>(api: TestAPI, options: KyselyTransactionOptions<Database, Extended>) {
   const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
 
-  return wrapper.wrapVitestWithTransaction(connection, setup, level, fixtures);
+  return wrapper.wrapVitestWithTransaction(options);
 }
 
 /**
