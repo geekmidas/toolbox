@@ -6,6 +6,14 @@
   "bin": {
     "embed-ui": "./scripts/embed-ui.ts"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geekmidas/toolbox"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "devDependencies": {
     "tsx": "~4.19.4"
   }
