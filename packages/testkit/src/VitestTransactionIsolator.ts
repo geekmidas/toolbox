@@ -301,7 +301,10 @@ export type TestWithExtendedFixtures<
  * import { wrapVitestKyselyTransaction, extendWithFixtures } from '@geekmidas/testkit/kysely';
  *
  * // Create base wrapped test
- * const baseTest = wrapVitestKyselyTransaction(test, db, createTestTables);
+ * const baseTest = wrapVitestKyselyTransaction(test, {
+ *   connection: db,
+ *   setup: createTestTables,
+ * });
  *
  * // Extend with fixtures
  * const it = extendWithFixtures(baseTest, {
