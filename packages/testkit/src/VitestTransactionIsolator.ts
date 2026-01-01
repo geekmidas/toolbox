@@ -169,7 +169,14 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
       }
     }
 
-    return this.api.extend<DatabaseFixtures<Transaction> & Extended>({
+    type CombinedFixtures = DatabaseFixtures<Transaction> & Extended;
+
+    // Cast to bypass Vitest's strict fixture typing which can't infer
+    // dynamically built fixture objects
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extendFn = this.api.extend as <T>(fixtures: any) => TestAPI<T>;
+
+    return extendFn<CombinedFixtures>({
       // This fixture automatically provides a transaction to each test
       trx: async ({}, use: (value: Transaction) => Promise<void>) => {
         // Create a custom error class for rollback
