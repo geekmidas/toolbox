@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Telescope } from '../Telescope';
-import { createRedactor, DEFAULT_REDACT_PATHS } from '../redact';
+import { DEFAULT_REDACT_PATHS, createRedactor } from '../redact';
 import { InMemoryStorage } from '../storage/memory';
 
 describe('createRedactor', () => {

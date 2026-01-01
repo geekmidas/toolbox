@@ -197,7 +197,10 @@ export function createUI(telescope: Telescope): Hono {
   app.get('/', (c) => {
     const html = getIndexHtml();
     if (!html) {
-      return c.text('Telescope UI not available. Run "pnpm build:ui" first.', 500);
+      return c.text(
+        'Telescope UI not available. Run "pnpm build:ui" first.',
+        500,
+      );
     }
     return c.html(html);
   });
@@ -206,7 +209,10 @@ export function createUI(telescope: Telescope): Hono {
     // SPA fallback - serve index.html for client-side routing
     const html = getIndexHtml();
     if (!html) {
-      return c.text('Telescope UI not available. Run "pnpm build:ui" first.', 500);
+      return c.text(
+        'Telescope UI not available. Run "pnpm build:ui" first.',
+        500,
+      );
     }
     return c.html(html);
   });

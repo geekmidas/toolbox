@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { createRedactor, type Redactor } from './redact';
+import { type Redactor, createRedactor } from './redact';
 import type {
   ExceptionEntry,
   LogEntry,
