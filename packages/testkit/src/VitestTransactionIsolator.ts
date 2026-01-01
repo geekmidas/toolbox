@@ -274,21 +274,7 @@ export function extendWithFixtures<
 >(
   wrappedTest: T,
   fixtures: FixtureCreators<Transaction, Extended>,
-): T & {
-  <C extends object>(
-    name: string,
-    fn: (
-      context: DatabaseFixtures<Transaction> & Extended & C,
-    ) => Promise<void>,
-  ): void;
-  <C extends object>(
-    name: string,
-    options: object,
-    fn: (
-      context: DatabaseFixtures<Transaction> & Extended & C,
-    ) => Promise<void>,
-  ): void;
-} {
+): TestWithExtendedFixtures<Transaction, Extended, T> {
   // Build fixture definitions for Vitest's extend API
   const fixtureDefinitions: Record<string, any> = {};
 
