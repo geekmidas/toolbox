@@ -108,9 +108,12 @@ class Comment extends Model {
 // Create database connection
 
 // Create wrapped test with transaction isolation
-const it = wrapVitestObjectionTransaction(base, createKnexDb, async (trx) => {
-  // Create tables in the transaction
-  await createTestTablesKnex(trx);
+const it = wrapVitestObjectionTransaction(base, {
+  connection: createKnexDb,
+  setup: async (trx) => {
+    // Create tables in the transaction
+    await createTestTablesKnex(trx);
+  },
 });
 
 describe('VitestObjectionTransactionIsolator', () => {

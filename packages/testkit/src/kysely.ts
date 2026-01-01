@@ -125,7 +125,10 @@ export function wrapVitestKyselyTransaction<
  * };
  *
  * // Create base wrapped test
- * const baseTest = wrapVitestKyselyTransaction<DB>(test, db, createTestTables);
+ * const baseTest = wrapVitestKyselyTransaction<DB>(test, {
+ *   connection: db,
+ *   setup: createTestTables,
+ * });
  *
  * // Extend with fixtures - each fixture receives the transaction
  * const it = extendWithFixtures<DB, { factory: KyselyFactory<DB, typeof builders, {}> }>(

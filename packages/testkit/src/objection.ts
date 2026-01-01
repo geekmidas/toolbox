@@ -121,7 +121,10 @@ export function wrapVitestObjectionTransaction<
  * };
  *
  * // Create base wrapped test
- * const baseTest = wrapVitestObjectionTransaction(test, knex, createTestTables);
+ * const baseTest = wrapVitestObjectionTransaction(test, {
+ *   connection: knex,
+ *   setup: createTestTables,
+ * });
  *
  * // Extend with fixtures - each fixture receives the transaction
  * const it = extendWithFixtures<{ factory: ObjectionFactory<typeof builders, {}> }>(

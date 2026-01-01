@@ -7,11 +7,10 @@ import { createKyselyDb } from '../helpers';
 import { wrapVitestKyselyTransaction } from '../kysely';
 
 const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
-const itWithTransaction = wrapVitestKyselyTransaction<TestDatabase>(
-  it,
-  db,
-  createTestTables,
-);
+const itWithTransaction = wrapVitestKyselyTransaction<TestDatabase>(it, {
+  connection: db,
+  setup: createTestTables,
+});
 
 const int8TypeId = 20;
 pg.types.setTypeParser(int8TypeId, (val) => {

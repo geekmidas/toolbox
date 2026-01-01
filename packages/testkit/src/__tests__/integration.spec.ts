@@ -6,11 +6,10 @@ import { createKyselyDb } from '../helpers';
 import { extendWithFixtures, wrapVitestKyselyTransaction } from '../kysely';
 
 const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);
-const it = wrapVitestKyselyTransaction<TestDatabase>(
-  base,
-  db,
-  createTestTables,
-);
+const it = wrapVitestKyselyTransaction<TestDatabase>(base, {
+  connection: db,
+  setup: createTestTables,
+});
 describe('Testkit Integration Tests', () => {
   beforeAll(async () => {});
   describe('Complex Factory Scenarios', () => {
@@ -481,11 +480,10 @@ describe('extendWithFixtures', () => {
   };
 
   // Create base test with transaction
-  const baseTest = wrapVitestKyselyTransaction<TestDatabase>(
-    base,
-    db,
-    createTestTables,
-  );
+  const baseTest = wrapVitestKyselyTransaction<TestDatabase>(base, {
+    connection: db,
+    setup: createTestTables,
+  });
 
   // Extend with factory fixture
   const itWithFactory = extendWithFixtures<

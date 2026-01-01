@@ -37,11 +37,10 @@ class Comment extends Model {
   user_id!: string;
 }
 
-const it = wrapVitestObjectionTransaction(
-  test,
-  createKnexDb,
-  createTestTablesKnex,
-);
+const it = wrapVitestObjectionTransaction(test, {
+  connection: createKnexDb,
+  setup: createTestTablesKnex,
+});
 describe('ObjectionFactory', () => {
   it('should create an ObjectionFactory instance', ({ trx }) => {
     const builders = {};
