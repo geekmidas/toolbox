@@ -33,8 +33,21 @@ yarn add -D @geekmidas/testkit
 ## Subpath Exports
 
 ```typescript
-import { KyselyFactory } from '@geekmidas/testkit/kysely';
-import { ObjectionFactory } from '@geekmidas/testkit/objection';
+// Kysely utilities
+import {
+  KyselyFactory,
+  wrapVitestKyselyTransaction,
+  extendWithFixtures,
+} from '@geekmidas/testkit/kysely';
+
+// Objection.js utilities
+import {
+  ObjectionFactory,
+  wrapVitestObjectionTransaction,
+  extendWithFixtures,
+} from '@geekmidas/testkit/objection';
+
+// Other utilities
 import { faker } from '@geekmidas/testkit/faker';
 import { waitFor } from '@geekmidas/testkit/timer';
 import { itWithDir } from '@geekmidas/testkit/os';
