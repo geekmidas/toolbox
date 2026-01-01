@@ -219,7 +219,9 @@ export type FixtureCreators<
 export type TestWithExtendedFixtures<
   Transaction,
   Extended extends Record<string, unknown>,
-  BaseTest extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+  BaseTest extends ReturnType<TestAPI['extend']> = ReturnType<
+    TestAPI['extend']
+  >,
 > = BaseTest & {
   <C extends object>(
     name: string,
