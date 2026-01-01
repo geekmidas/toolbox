@@ -23,7 +23,24 @@ export type {
   ExtendedDatabaseFixtures,
   FixtureCreators,
   TestWithExtendedFixtures,
+  TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
+
+/**
+ * Objection.js-specific options for transaction wrapping.
+ */
+export interface ObjectionTransactionOptions<
+  Extended extends Record<string, unknown> = {},
+> {
+  /** Function that creates or returns a Knex database connection */
+  connection: DatabaseConnection<Knex>;
+  /** Optional setup function to run within the transaction before each test */
+  setup?: (trx: Knex.Transaction) => Promise<void>;
+  /** Transaction isolation level (defaults to REPEATABLE_READ) */
+  isolationLevel?: IsolationLevel;
+  /** Additional fixtures that depend on the transaction */
+  fixtures?: FixtureCreators<Knex.Transaction, Extended>;
+}
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
