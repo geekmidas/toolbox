@@ -297,9 +297,16 @@ export class Studio<DB = unknown> {
         cursor: options.data.cursor,
         tableCursors: options.data.tableCursors ?? {},
         excludeTables: options.data.excludeTables ?? [
-          '_migrations',
+          // Kysely
+          'kysely_migration',
+          'kysely_migration_lock',
+          // Prisma
           '_prisma_migrations',
+          // Rails/Knex
           'schema_migrations',
+          // Generic
+          '_migrations',
+          'migrations',
         ],
         defaultPageSize: Math.min(options.data.defaultPageSize ?? 50, 100),
         showBinaryColumns: options.data.showBinaryColumns ?? false,
