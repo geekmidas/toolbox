@@ -19,6 +19,11 @@
       "types": "./dist/console.d.ts",
       "import": "./dist/console.mjs",
       "require": "./dist/console.cjs"
+    },
+    "./redact": {
+      "types": "./dist/redact-paths.d.ts",
+      "import": "./dist/redact-paths.mjs",
+      "require": "./dist/redact-paths.cjs"
     }
   },
   "repository": {
