@@ -6,6 +6,7 @@ export default defineConfig({
   envParser: './src/config/env#envParser',
   logger: './src/config/logger',
   telescope: './src/config/telescope#telescope',
+  studio: './src/config/studio#studio',
   runtime: 'node',
   env: ['.env', '.env.example'],
   openapi: true,

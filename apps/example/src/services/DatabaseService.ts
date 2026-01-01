@@ -1,26 +1,34 @@
+import type { Service } from '@geekmidas/services';
+import { type Generated, Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
+
 /**
- * Example database service demonstrating the Service pattern.
- * In a real application, this would be a Kysely database instance.
+ * Database schema definition.
+ * Add your tables here.
  */
 export interface Database {
-  query: <T>(sql: string) => Promise<T[]>;
+  users: {
+    id: Generated<string>;
+    name: string;
+    email: string;
+    created_at: Generated<Date>;
+    updated_at: Generated<Date>;
+  };
 }
-
-let instance: Database | null = null;
 
 export const DatabaseService = {
   serviceName: 'database' as const,
-  async register() {
-    if (!instance) {
-      // In a real app, create Kysely instance here:
-      // instance = new Kysely<DB>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: process.env.DATABASE_URL }) }) });
-      instance = {
-        query: async <T>(_sql: string): Promise<T[]> => {
-          // Mock implementation for example
-          return [] as T[];
-        },
-      };
-    }
-    return instance;
+  async register(envParser) {
+    const config = envParser
+      .create((get) => ({
+        url: get('DATABASE_URL').string(),
+      }))
+      .parse();
+
+    return new Kysely<Database>({
+      dialect: new PostgresDialect({
+        pool: new pg.Pool({ connectionString: config.url }),
+      }),
+    });
   },
-};
+} satisfies Service<'database', Kysely<Database>>;

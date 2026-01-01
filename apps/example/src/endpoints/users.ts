@@ -1,13 +1,16 @@
 import { z } from 'zod';
-import { router } from './router';
+import { DatabaseService } from '../services/DatabaseService.js';
+import { router } from './router.js';
 
 export const UserSchema = z
   .object({
     id: z.string(),
     name: z.string(),
     email: z.string().email(),
+    created_at: z.string(),
   })
   .meta({ id: 'User' });
+
 /**
  * Get all users
  */
@@ -18,15 +21,20 @@ export const getUsers = router
       users: UserSchema.array(),
     }),
   )
-  .handle(async ({ logger }) => {
-    logger.info('testing');
-    // Mock data for example
+  .services([DatabaseService])
+  .handle(async ({ services }) => {
+    const users = await services.database
+      .selectFrom('users')
+      .selectAll()
+      .execute();
+
     return {
-      users: [
-        { id: '1', name: 'Alice', email: 'alice@example.com' },
-        { id: '2', name: 'Bob', email: 'bob@example.com' },
-        { id: '3', name: 'Bobby', email: 'bobby@example.com' },
-      ],
+      users: users.map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        created_at: user.created_at.toISOString(),
+      })),
     };
   });
 
@@ -35,7 +43,6 @@ export const getUsers = router
  */
 export const createUser = router
   .post('/users')
-
   .body(
     z.object({
       name: z.string().min(1),
@@ -43,6 +50,7 @@ export const createUser = router
     }),
   )
   .output(UserSchema)
+  .services([DatabaseService])
   .event({
     type: 'user.created',
     payload: (r) => ({
@@ -50,15 +58,23 @@ export const createUser = router
       email: r.email,
     }),
   })
-  .handle(async ({ body, logger }) => {
+  .handle(async ({ body, services, logger }) => {
     logger.info({ body }, 'Creating user');
 
-    // Mock implementation
+    const user = await services.database
+      .insertInto('users')
+      .values({
+        name: body.name,
+        email: body.email,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
     return {
-      id: Math.random().toString(36).substring(7),
-      name: body.name,
-      email: body.email,
-      createdAt: new Date().toISOString(),
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      created_at: user.created_at.toISOString(),
     };
   });
 
@@ -67,13 +83,20 @@ export const createUser = router
  */
 export const getUser = router
   .get('/users/:id')
-  .params(z.object({ id: z.string().min(1) }))
+  .params(z.object({ id: z.string().uuid() }))
   .output(UserSchema)
-  .handle(async ({ params }) => {
-    // Mock data for example
+  .services([DatabaseService])
+  .handle(async ({ params, services }) => {
+    const user = await services.database
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', params.id)
+      .executeTakeFirstOrThrow();
+
     return {
-      id: params.id,
-      name: 'Sample User',
-      email: 'user@example.com',
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      created_at: user.created_at.toISOString(),
     };
   });
