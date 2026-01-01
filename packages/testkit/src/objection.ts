@@ -50,10 +50,9 @@ export { faker, type FakerFactory } from './faker';
  * Each test runs in an isolated database transaction that is rolled back after completion.
  * This ensures tests don't affect each other's data and run faster than truncating tables.
  *
+ * @template Extended - Additional fixtures to provide
  * @param api - The Vitest test API (usually `test` from vitest)
- * @param conn - The Knex database connection instance
- * @param setup - Optional setup function to run before each test in the transaction
- * @param level - Transaction isolation level (defaults to REPEATABLE_READ)
+ * @param options - Configuration options for transaction wrapping
  * @returns A wrapped test API that provides transaction isolation
  *
  * @example
@@ -61,10 +60,12 @@ export { faker, type FakerFactory } from './faker';
  * import { test } from 'vitest';
  * import { wrapVitestObjectionTransaction } from '@geekmidas/testkit/objection';
  * import { knex } from './database';
- * import { User, Post } from './models';
+ * import { User } from './models';
  *
  * // Create isolated test with automatic rollback
- * const isolatedTest = wrapVitestObjectionTransaction(test, knex);
+ * const isolatedTest = wrapVitestObjectionTransaction(test, {
+ *   connection: knex,
+ * });
  *
  * // Use in tests - each test gets its own transaction
  * isolatedTest('should create user', async ({ trx }) => {
