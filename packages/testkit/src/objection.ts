@@ -18,7 +18,12 @@ export { ObjectionFactory } from './ObjectionFactory';
 export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
-export type { FixtureCreators } from './VitestTransactionIsolator';
+export type {
+  DatabaseFixtures,
+  ExtendedDatabaseFixtures,
+  FixtureCreators,
+  TestWithExtendedFixtures,
+} from './VitestTransactionIsolator';
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
