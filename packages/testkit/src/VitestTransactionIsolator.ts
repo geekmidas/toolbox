@@ -219,6 +219,24 @@ export type DatabaseConnectionFn<Conn> = () => Conn | Promise<Conn>;
 export type DatabaseConnection<Conn> = DatabaseConnectionFn<Conn>;
 
 /**
+ * Options for wrapping Vitest tests with database transaction isolation.
+ */
+export interface TransactionWrapperOptions<
+  TConn,
+  Transaction,
+  Extended extends Record<string, unknown> = {},
+> {
+  /** Function that creates or returns a database connection */
+  connection: DatabaseConnection<TConn>;
+  /** Optional setup function to run within the transaction before each test */
+  setup?: (trx: Transaction) => Promise<void>;
+  /** Transaction isolation level (defaults to REPEATABLE_READ) */
+  isolationLevel?: IsolationLevel;
+  /** Additional fixtures that depend on the transaction */
+  fixtures?: FixtureCreators<Transaction, Extended>;
+}
+
+/**
  * Type for fixture creator functions that depend on the transaction.
  * Each function receives the transaction and returns the fixture value.
  */
