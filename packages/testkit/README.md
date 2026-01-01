@@ -551,12 +551,12 @@ class KyselyFactory<DB, Builders, Seeds> {
 
   static createBuilder<DB, TableName extends keyof DB & string>(
     table: TableName,
-    item?: (
-      attrs: Partial<Insertable<DB[TableName]>>,
-      factory: KyselyFactory,
-      db: Kysely<DB>,
-      faker: FakerFactory
-    ) => Partial<Insertable<DB[TableName]>> | Promise<...>,
+    defaults?: (context: {
+      attrs: Partial<Insertable<DB[TableName]>>;
+      factory: KyselyFactory;
+      db: Kysely<DB>;
+      faker: FakerFactory;
+    }) => Partial<Insertable<DB[TableName]>> | Promise<...>,
     autoInsert?: boolean
   ): BuilderFunction;
 
