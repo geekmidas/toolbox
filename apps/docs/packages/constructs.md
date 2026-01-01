@@ -434,7 +434,7 @@ await HonoEndpoint.fromRoutes(
   logger,
   process.cwd(),
   {
-    docsPath: '/docs',
+    docsPath: '/__docs',
     openApiOptions: {
       title: 'My API',
       version: '1.0.0',

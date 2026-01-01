@@ -111,7 +111,7 @@ describe('EndpointGenerator', () => {
     // Function signature always defaults to true
     expect(endpointsContent).toContain('enableOpenApi: boolean = true');
     // OpenAPI options are configured based on the parameter
-    expect(endpointsContent).toContain("docsPath: '/docs'");
+    expect(endpointsContent).toContain("docsPath: '/__docs'");
   });
 
   itWithDir(
