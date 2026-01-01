@@ -262,7 +262,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   // Resolve OpenAPI configuration
   const openApiConfig = resolveOpenApiConfig(config);
-  if (openApiConfig.enabled) {
+  // Enable OpenAPI docs endpoint if either root config or provider config enables it
+  const enableOpenApi = openApiConfig.enabled || resolved.enableOpenApi;
+  if (enableOpenApi) {
     logger.log(`📄 OpenAPI output: ${openApiConfig.output}`);
   }
 
@@ -280,11 +282,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
     config,
     buildContext,
     resolved.providers[0] as LegacyProvider,
-    resolved.enableOpenApi,
+    enableOpenApi,
   );
 
   // Generate OpenAPI spec on startup
-  if (openApiConfig.enabled) {
+  if (enableOpenApi) {
     await generateOpenApi(config);
   }
 
@@ -295,7 +297,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const devServer = new DevServer(
     resolved.providers[0] as LegacyProvider,
     options.port || 3000,
-    resolved.enableOpenApi,
+    enableOpenApi,
     telescope,
     studio,
     runtime,
@@ -372,11 +374,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
           config,
           buildContext,
           resolved.providers[0] as LegacyProvider,
-          resolved.enableOpenApi,
+          enableOpenApi,
         );
 
         // Regenerate OpenAPI if enabled
-        if (openApiConfig.enabled) {
+        if (enableOpenApi) {
           await generateOpenApi(config, { silent: true });
         }
 
@@ -511,7 +513,7 @@ class DevServer {
       logger.log(`\n🎉 Server running at http://localhost:${this.actualPort}`);
       if (this.enableOpenApi) {
         logger.log(
-          `📚 API Docs available at http://localhost:${this.actualPort}/docs`,
+          `📚 API Docs available at http://localhost:${this.actualPort}/__docs`,
         );
       }
       if (this.telescope) {

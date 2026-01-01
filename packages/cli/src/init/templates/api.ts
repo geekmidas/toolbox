@@ -199,20 +199,28 @@ export const telescope = new Telescope({
     if (options.studio && options.database) {
       files.push({
         path: 'src/config/studio.ts',
-        content: `import { Studio } from '@geekmidas/studio';
-import { InMemoryMonitoringStorage } from '@geekmidas/studio';
-import { databaseService, type Database } from '../services/database';
+        content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
+import { Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
+import type { Database } from '../services/database';
+import { config } from './env';
 
-// Note: Studio requires a Kysely database instance
-// This config creates Studio with inline monitoring storage
-// In production, you may want to use a persistent storage
+// Create a Kysely instance for Studio
+const db = new Kysely<Database>({
+  dialect: new PostgresDialect({
+    pool: new pg.Pool({ connectionString: config.database.url }),
+  }),
+});
 
 export const studio = new Studio<Database>({
-  database: databaseService,
   monitoring: {
     storage: new InMemoryMonitoringStorage({ maxEntries: 100 }),
-    enabled: process.env.NODE_ENV === 'development',
   },
+  data: {
+    db,
+    cursor: { field: 'id', direction: Direction.Desc },
+  },
+  enabled: process.env.NODE_ENV === 'development',
 });
 `,
       });

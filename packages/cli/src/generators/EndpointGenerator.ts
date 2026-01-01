@@ -289,12 +289,12 @@ const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any,
   ${allExportNames.join(',\n  ')}
 ];
 
-export function setupEndpoints(
+export async function setupEndpoints(
   app: Hono,
   envParser: EnvironmentParser<any>,
   logger: Logger,
   enableOpenApi: boolean = true,
-): void {
+): Promise<void> {
   const serviceDiscovery = ServiceDiscovery.getInstance(
     logger,
     envParser
@@ -302,7 +302,7 @@ export function setupEndpoints(
 
   // Configure OpenAPI options based on enableOpenApi flag
   const openApiOptions: any = enableOpenApi ? {
-    docsPath: '/docs',
+    docsPath: '/__docs',
     openApiOptions: {
       title: 'API Documentation',
       version: '1.0.0',
@@ -311,6 +311,16 @@ export function setupEndpoints(
   } : { docsPath: false };
 
   HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, openApiOptions);
+
+  // Add Swagger UI if OpenAPI is enabled
+  if (enableOpenApi) {
+    try {
+      const { swaggerUI } = await import('@hono/swagger-ui');
+      app.get('/__docs/ui', swaggerUI({ url: '/__docs' }));
+    } catch {
+      // @hono/swagger-ui not installed, skip Swagger UI
+    }
+  }
 }
 `;
 
@@ -517,7 +527,7 @@ export async function createApp(app?: HonoType, enableOpenApi: boolean = true): 
   const honoApp = app || new Hono();
 ${telescopeSetup}${studioSetup}
   // Setup HTTP endpoints
-  setupEndpoints(honoApp, envParser, logger, enableOpenApi);
+  await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 
   return {
     app: honoApp,
