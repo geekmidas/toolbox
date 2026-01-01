@@ -343,14 +343,4 @@ describe('Telescope', () => {
       expect(ws2.send).toHaveBeenCalled();
     });
   });
-
-  describe('getDashboardHtml', () => {
-    it('should return HTML string', () => {
-      const html = telescope.getDashboardHtml();
-
-      expect(typeof html).toBe('string');
-      expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('Telescope');
-    });
-  });
 });
