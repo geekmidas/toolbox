@@ -99,15 +99,18 @@ export { faker, type FakerFactory } from './faker';
  * });
  * ```
  */
-export function wrapVitestObjectionTransaction(
+export function wrapVitestObjectionTransaction<
+  Extended extends Record<string, unknown> = {},
+>(
   api: TestAPI,
   conn: DatabaseConnection<Knex>,
   setup?: (trx: Knex.Transaction) => Promise<void>,
   level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
+  fixtures?: FixtureCreators<Knex.Transaction, Extended>,
 ) {
   const wrapper = new VitestObjectionTransactionIsolator(api);
 
-  return wrapper.wrapVitestWithTransaction(conn, setup, level);
+  return wrapper.wrapVitestWithTransaction(conn, setup, level, fixtures);
 }
 
 /**

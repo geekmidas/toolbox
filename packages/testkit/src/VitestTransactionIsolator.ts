@@ -142,12 +142,27 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
    * });
    * ```
    */
-  wrapVitestWithTransaction(
+  wrapVitestWithTransaction<Extended extends Record<string, unknown> = {}>(
     createConnection: DatabaseConnection<TConn>,
     setup?: (trx: Transaction) => Promise<void>,
     level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
+    fixtures?: FixtureCreators<Transaction, Extended>,
   ) {
-    return this.api.extend<DatabaseFixtures<Transaction>>({
+    // Build fixture definitions for additional fixtures that depend on trx
+    const additionalFixtures: Record<string, unknown> = {};
+    if (fixtures) {
+      for (const [key, creator] of Object.entries(fixtures)) {
+        additionalFixtures[key] = async (
+          { trx }: { trx: Transaction },
+          use: (value: unknown) => Promise<void>,
+        ) => {
+          const value = await (creator as (trx: Transaction) => unknown)(trx);
+          await use(value);
+        };
+      }
+    }
+
+    return this.api.extend<DatabaseFixtures<Transaction> & Extended>({
       // This fixture automatically provides a transaction to each test
       trx: async ({}, use: (value: Transaction) => Promise<void>) => {
         // Create a custom error class for rollback
@@ -188,6 +203,7 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
           await this.destroy(conn);
         }
       },
+      ...additionalFixtures,
     });
   }
 }

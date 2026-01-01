@@ -83,15 +83,19 @@ export { faker, type FakerFactory } from './faker';
  * });
  * ```
  */
-export function wrapVitestKyselyTransaction<Database>(
+export function wrapVitestKyselyTransaction<
+  Database,
+  Extended extends Record<string, unknown> = {},
+>(
   api: TestAPI,
   connection: DatabaseConnection<Kysely<Database>>,
   setup?: (trx: Transaction<Database>) => Promise<void>,
   level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
+  fixtures?: FixtureCreators<Transaction<Database>, Extended>,
 ) {
   const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
 
-  return wrapper.wrapVitestWithTransaction(connection, setup, level);
+  return wrapper.wrapVitestWithTransaction(connection, setup, level, fixtures);
 }
 
 /**
