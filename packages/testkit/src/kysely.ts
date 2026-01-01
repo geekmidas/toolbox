@@ -4,7 +4,7 @@ import { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolat
 import {
   type DatabaseConnection,
   type FixtureCreators,
-  IsolationLevel,
+  type IsolationLevel,
   extendWithFixtures as baseExtendWithFixtures,
 } from './VitestTransactionIsolator';
 
