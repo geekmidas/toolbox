@@ -108,7 +108,98 @@ const telescope = new Telescope({
 
   // Optional: Auto-prune entries older than X hours
   pruneAfterHours: 24,
+
+  // Optional: Redact sensitive data (see Redaction section)
+  redact: true,
 });
+```
+
+## Sensitive Data Redaction
+
+Telescope can automatically redact sensitive data from recorded requests, responses, and logs using `@pinojs/redact`.
+
+### Enable Redaction
+
+```typescript
+const telescope = new Telescope({
+  storage: new InMemoryStorage(),
+
+  // Enable with default paths
+  redact: true,
+});
+```
+
+### Default Redacted Paths
+
+When `redact: true`, these paths are automatically redacted:
+
+**Headers:**
+- `headers.authorization`, `headers.cookie`, `headers.x-api-key`
+- `responseHeaders.set-cookie`
+
+**Request/Response Body:**
+- `body.password`, `body.token`, `body.accessToken`, `body.refreshToken`
+- `body.apiKey`, `body.secret`, `body.creditCard`, `body.cardNumber`, `body.cvv`, `body.ssn`
+- `body.*.password`, `body.*.token`, `body.*.secret` (nested fields)
+- Same patterns for `responseBody.*`
+
+**Query Parameters:**
+- `query.token`, `query.api_key`, `query.apiKey`, `query.access_token`, `query.secret`
+
+**Log Context:**
+- `context.password`, `context.token`, `context.secret`, `context.apiKey`
+
+### Add Custom Paths
+
+Provide an array to add paths (merged with defaults):
+
+```typescript
+const telescope = new Telescope({
+  storage: new InMemoryStorage(),
+
+  // Add custom paths to defaults
+  redact: ['user.ssn', 'payment.cardNumber', 'data.*.privateKey'],
+});
+```
+
+### Full Control
+
+Use an object for complete control over redaction:
+
+```typescript
+const telescope = new Telescope({
+  storage: new InMemoryStorage(),
+
+  redact: {
+    paths: ['headers.authorization', 'body.password'],
+    censor: '***HIDDEN***', // Custom replacement (default: '[REDACTED]')
+  },
+});
+```
+
+### Path Syntax
+
+Paths use dot notation with wildcard support:
+
+| Pattern | Matches |
+|---------|---------|
+| `headers.authorization` | Exact path |
+| `body.password` | Exact nested path |
+| `body.*.password` | Any object with password field in body |
+| `*.secret` | Secret field at any level |
+
+### Programmatic Access
+
+```typescript
+import { createRedactor, DEFAULT_REDACT_PATHS } from '@geekmidas/telescope';
+
+// Create a standalone redactor
+const redactor = createRedactor(true);
+const safeData = redactor({ headers: { authorization: 'Bearer secret' } });
+// safeData.headers.authorization === '[REDACTED]'
+
+// Access default paths
+console.log(DEFAULT_REDACT_PATHS);
 ```
 
 ## Storage Backends
