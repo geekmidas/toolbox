@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -19,7 +19,11 @@ import {
   FunctionGenerator,
   SubscriberGenerator,
 } from '../generators';
-import { generateOpenApi, resolveOpenApiConfig } from '../openapi';
+import {
+  OPENAPI_OUTPUT_PATH,
+  generateOpenApi,
+  resolveOpenApiConfig,
+} from '../openapi';
 import type {
   GkmConfig,
   LegacyProvider,
@@ -265,7 +269,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   // Enable OpenAPI docs endpoint if either root config or provider config enables it
   const enableOpenApi = openApiConfig.enabled || resolved.enableOpenApi;
   if (enableOpenApi) {
-    logger.log(`📄 OpenAPI output: ${openApiConfig.output}`);
+    logger.log(`📄 OpenAPI output: ${OPENAPI_OUTPUT_PATH}`);
   }
 
   const buildContext: BuildContext = {
@@ -391,11 +395,21 @@ export async function devCommand(options: DevOptions): Promise<void> {
   });
 
   // Handle graceful shutdown
-  const shutdown = async () => {
+  let isShuttingDown = false;
+  const shutdown = () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     logger.log('\n🛑 Shutting down...');
-    await watcher.close();
-    await devServer.stop();
-    process.exit(0);
+
+    // Use sync-style shutdown to ensure it completes before exit
+    Promise.all([watcher.close(), devServer.stop()])
+      .catch((err) => {
+        logger.error('Error during shutdown:', err);
+      })
+      .finally(() => {
+        process.exit(0);
+      });
   };
 
   process.on('SIGINT', shutdown);
@@ -530,39 +544,40 @@ class DevServer {
   }
 
   async stop(): Promise<void> {
+    const port = this.actualPort;
+
     if (this.serverProcess && this.isRunning) {
       const pid = this.serverProcess.pid;
 
-      // Kill the entire process group (negative PID kills the group)
+      // Use SIGKILL directly since the server ignores SIGTERM
       if (pid) {
         try {
-          process.kill(-pid, 'SIGTERM');
+          process.kill(-pid, 'SIGKILL');
         } catch {
-          // Process might already be dead
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // Process might already be dead
+          }
         }
       }
 
-      // Wait for process to exit
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          if (pid) {
-            try {
-              process.kill(-pid, 'SIGKILL');
-            } catch {
-              // Process might already be dead
-            }
-          }
-          resolve();
-        }, 3000);
-
-        this.serverProcess?.on('exit', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-      });
-
       this.serverProcess = null;
       this.isRunning = false;
+    }
+
+    // Also kill any processes still holding the port
+    this.killProcessesOnPort(port);
+  }
+
+  private killProcessesOnPort(port: number): void {
+    try {
+      // Use lsof to find PIDs on the port and kill them with -9
+      execSync(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null || true`, {
+        stdio: 'ignore',
+      });
+    } catch {
+      // Ignore errors - port may already be free
     }
   }
 

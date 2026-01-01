@@ -1,19 +1,35 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: #0f172a;
-  --color-bg-secondary: #1e293b;
-  --color-bg-tertiary: #334155;
-  --color-border: #334155;
+  /* Supabase-inspired dark theme */
+  --color-studio-bg: #171717;
+  --color-studio-surface: #1c1c1c;
+  --color-studio-border: #2e2e2e;
+  --color-studio-hover: #262626;
+  --color-studio-active: #333333;
+  --color-studio-accent: #3ecf8e;
+  --color-studio-accent-hover: #4ade94;
+
+  /* Legacy colors for compatibility */
+  --color-bg-primary: #171717;
+  --color-bg-secondary: #1c1c1c;
+  --color-bg-tertiary: #262626;
+  --color-border: #2e2e2e;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--color-studio-bg);
 }
 
 /* Custom scrollbar */
@@ -23,14 +39,157 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-bg-tertiary);
+  background: #404040;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #525252;
+}
+
+/* Table styles */
+.data-grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.data-grid th {
+  position: sticky;
+  top: 0;
+  background: var(--color-studio-surface);
+  z-index: 10;
+}
+
+.data-grid th,
+.data-grid td {
+  border-bottom: 1px solid var(--color-studio-border);
+  text-align: left;
+}
+
+.data-grid tbody tr:hover {
+  background: var(--color-studio-hover);
+}
+
+/* Row number column */
+.row-number {
+  color: #525252;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* NULL value styling */
+.cell-null {
+  color: #525252;
+  font-style: italic;
+}
+
+/* Filter panel animation */
+.filter-panel {
+  animation: slideDown 0.15s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Button styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.btn-default {
+  background: var(--color-studio-hover);
+  color: #a3a3a3;
+}
+
+.btn-default:hover {
+  background: var(--color-studio-active);
+  color: #e5e5e5;
+}
+
+.btn-primary {
+  background: var(--color-studio-accent);
+  color: #000;
+}
+
+.btn-primary:hover {
+  background: var(--color-studio-accent-hover);
+}
+
+/* Input styles */
+.input {
+  background: var(--color-studio-bg);
+  border: 1px solid var(--color-studio-border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e5e5e5;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--color-studio-accent);
+}
+
+.input::placeholder {
+  color: #525252;
+}
+
+/* Select styles */
+.select {
+  background: var(--color-studio-bg);
+  border: 1px solid var(--color-studio-border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e5e5e5;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23525252'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem;
+  padding-right: 2rem;
+}
+
+.select:focus {
+  border-color: var(--color-studio-accent);
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  background: var(--color-studio-accent);
+  color: #000;
 }

@@ -2,50 +2,57 @@ import type { TableSummary } from '../types';
 
 interface TableListProps {
   tables: TableSummary[];
+  selectedTable: string | null;
   onSelect: (tableName: string) => void;
 }
 
-export function TableList({ tables, onSelect }: TableListProps) {
+export function TableList({ tables, selectedTable, onSelect }: TableListProps) {
   if (tables.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-        <h3 className="text-lg mb-2">No tables found</h3>
-        <p className="text-sm">
-          Make sure your database has tables in the public schema.
-        </p>
+      <div className="p-4 text-center text-slate-500 text-sm">
+        <p>No tables found</p>
+        <p className="mt-1 text-xs">Check your database schema.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 p-4 overflow-y-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {tables.map((table) => (
-          <div
-            key={table.name}
-            onClick={() => onSelect(table.name)}
-            className="bg-bg-secondary border border-border rounded-lg p-4 cursor-pointer transition-colors hover:border-purple-500 hover:bg-bg-tertiary"
+    <div className="py-1">
+      {tables.map((table) => (
+        <button
+          key={table.name}
+          onClick={() => onSelect(table.name)}
+          className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
+            selectedTable === table.name
+              ? 'bg-studio-hover text-white'
+              : 'text-slate-400 hover:bg-studio-hover hover:text-slate-200'
+          }`}
+        >
+          {/* Table icon */}
+          <svg
+            className={`w-4 h-4 shrink-0 ${selectedTable === table.name ? 'text-emerald-400' : 'text-slate-500'}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-slate-100 truncate">
-                {table.name}
-              </h3>
-              <span className="text-xs text-slate-500">{table.schema}</span>
-            </div>
-            <div className="flex items-center gap-4 text-sm text-slate-400">
-              <span>{table.columnCount} columns</span>
-              {table.estimatedRowCount !== undefined && (
-                <span>~{table.estimatedRowCount.toLocaleString()} rows</span>
-              )}
-            </div>
-            {table.primaryKey.length > 0 && (
-              <div className="mt-2 text-xs text-slate-500">
-                PK: {table.primaryKey.join(', ')}
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
+          </svg>
+
+          <div className="flex-1 min-w-0">
+            <div className="truncate text-sm">{table.name}</div>
+            {table.estimatedRowCount !== undefined && (
+              <div className="text-xs text-slate-500">
+                {table.estimatedRowCount.toLocaleString()} rows
               </div>
             )}
           </div>
-        ))}
-      </div>
+        </button>
+      ))}
     </div>
   );
 }
