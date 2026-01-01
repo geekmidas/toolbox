@@ -17,7 +17,12 @@ export { KyselyFactory } from './KyselyFactory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
-export type { FixtureCreators } from './VitestTransactionIsolator';
+export type {
+  DatabaseFixtures,
+  ExtendedDatabaseFixtures,
+  FixtureCreators,
+  TestWithExtendedFixtures,
+} from './VitestTransactionIsolator';
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
