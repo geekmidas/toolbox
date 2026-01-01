@@ -84,7 +84,7 @@ interface Database {
 const builders = {
   user: KyselyFactory.createBuilder<Database, 'users'>(
     'users',
-    (attrs, factory, db, faker) => ({
+    ({ attrs, faker }) => ({
       id: faker.string.uuid(),
       name: faker.person.fullName(),
       email: faker.internet.email(),
@@ -94,7 +94,7 @@ const builders = {
   ),
   post: KyselyFactory.createBuilder<Database, 'posts'>(
     'posts',
-    (attrs, factory, db, faker) => ({
+    ({ attrs, faker }) => ({
       id: faker.string.uuid(),
       title: 'Test Post',
       content: faker.lorem.paragraph(),
@@ -140,7 +140,7 @@ class User extends Model {
 const builders = {
   user: ObjectionFactory.createBuilder(
     User,
-    (attrs, factory, db, faker) => ({
+    ({ attrs, faker }) => ({
       id: faker.string.uuid(),
       name: faker.person.fullName(),
       email: faker.internet.email(),
