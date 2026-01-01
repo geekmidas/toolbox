@@ -72,62 +72,28 @@ export { faker, type FakerFactory } from './faker';
  *     .insert({ name: 'Test User', email: 'test@example.com' });
  *
  *   expect(user).toBeDefined();
- *   // User is automatically rolled back after test
  * });
  *
- * // With setup function for common test data
- * const testWithSetup = wrapVitestObjectionTransaction(
- *   test,
- *   knex,
- *   async (trx) => {
- *     // Create common test data
- *     await knex('settings')
- *       .transacting(trx)
- *       .insert({ key: 'test_mode', value: 'true' });
- *   }
- * );
- *
- * testWithSetup('should have test settings', async ({ trx }) => {
- *   const setting = await knex('settings')
- *     .transacting(trx)
- *     .where('key', 'test_mode')
- *     .first();
- *
- *   expect(setting?.value).toBe('true');
+ * // With fixtures for factories
+ * const it = wrapVitestObjectionTransaction<{ factory: Factory }>(test, {
+ *   connection: knex,
+ *   fixtures: {
+ *     factory: (trx) => new Factory(trx),
+ *   },
  * });
  *
- * // Example with factory and transaction
- * const isolatedTest = wrapVitestObjectionTransaction(test, knex);
- * const factory = new ObjectionFactory(builders, seeds, knex);
- *
- * isolatedTest('creates related data', async ({ trx }) => {
- *   // Factory can use the transaction
- *   const user = await User.query(trx).insert({ name: 'Author' });
- *   const posts = await Post.query(trx).insert([
- *     { title: 'Post 1', userId: user.id },
- *     { title: 'Post 2', userId: user.id }
- *   ]);
- *
- *   const userWithPosts = await User.query(trx)
- *     .findById(user.id)
- *     .withGraphFetched('posts');
- *
- *   expect(userWithPosts.posts).toHaveLength(2);
+ * it('should create user with factory', async ({ trx, factory }) => {
+ *   const user = await factory.insert('user', { name: 'Test' });
+ *   expect(user.id).toBeDefined();
  * });
  * ```
  */
 export function wrapVitestObjectionTransaction<
   Extended extends Record<string, unknown> = {},
->(
-  api: TestAPI,
-  conn: DatabaseConnection<Knex>,
-  setup?: (trx: Knex.Transaction) => Promise<void>,
-  level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
-  fixtures?: FixtureCreators<Knex.Transaction, Extended>,
-) {
+>(api: TestAPI, options: ObjectionTransactionOptions<Extended>) {
   const wrapper = new VitestObjectionTransactionIsolator(api);
 
-  return wrapper.wrapVitestWithTransaction(conn, setup, level, fixtures);
+  return wrapper.wrapVitestWithTransaction(options);
 }
 
 /**
