@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from './api';
+import { RowDetail } from './components/RowDetail';
 import { TableList } from './components/TableList';
 import { TableView } from './components/TableView';
-import { RowDetail } from './components/RowDetail';
 import type { TableInfo, TableSummary } from './types';
 
 export function App() {
