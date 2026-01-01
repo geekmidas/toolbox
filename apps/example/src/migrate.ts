@@ -35,7 +35,9 @@ async function migrate() {
 
   for (const result of results ?? []) {
     if (result.status === 'Success') {
-      console.info(`✅ Migration "${result.migrationName}" executed successfully`);
+      console.info(
+        `✅ Migration "${result.migrationName}" executed successfully`,
+      );
     } else if (result.status === 'Error') {
       console.error(`❌ Migration "${result.migrationName}" failed`);
     }
