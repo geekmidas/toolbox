@@ -350,9 +350,145 @@ afterAll(async () => {
 });
 ```
 
-## Transaction Isolation
+## Vitest Transaction Isolation
 
-TestKit supports transaction-based test isolation:
+TestKit provides Vitest-specific helpers for automatic transaction isolation. Each test runs in a transaction that is automatically rolled back after the test completes.
+
+### Basic Usage
+
+```typescript
+import { test } from 'vitest';
+import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
+import { db } from './database';
+
+// Wrap Vitest's test function with transaction support
+const it = wrapVitestKyselyTransaction<Database>(
+  test,
+  () => db,
+  async (trx) => {
+    // Optional: Set up test tables or seed data
+    await trx.schema.createTable('users').execute();
+  }
+);
+
+// Each test gets its own transaction
+it('should create user', async ({ trx }) => {
+  const user = await trx
+    .insertInto('users')
+    .values({ name: 'John' })
+    .returningAll()
+    .executeTakeFirst();
+
+  expect(user.name).toBe('John');
+  // Transaction is automatically rolled back after test
+});
+```
+
+### Extending with Fixtures
+
+Use `extendWithFixtures` to add factory and other fixtures to your tests:
+
+```typescript
+import { test } from 'vitest';
+import {
+  wrapVitestKyselyTransaction,
+  extendWithFixtures,
+  KyselyFactory,
+} from '@geekmidas/testkit/kysely';
+
+// Define builders
+const builders = {
+  user: KyselyFactory.createBuilder<Database, 'users'>('users', ({ faker }) => ({
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+  })),
+  post: KyselyFactory.createBuilder<Database, 'posts'>('posts', ({ faker }) => ({
+    title: faker.lorem.sentence(),
+    content: faker.lorem.paragraphs(),
+  })),
+};
+
+// Create base test with transaction
+const baseTest = wrapVitestKyselyTransaction<Database>(test, () => db);
+
+// Extend with factory fixture
+const it = extendWithFixtures<
+  Database,
+  { factory: KyselyFactory<Database, typeof builders, {}> }
+>(baseTest, {
+  factory: (trx) => new KyselyFactory(builders, {}, trx),
+});
+
+// Both trx and factory are available in tests
+it('should create user with factory', async ({ trx, factory }) => {
+  const user = await factory.insert('user', { name: 'Jane' });
+
+  expect(user.id).toBeDefined();
+  expect(user.name).toBe('Jane');
+
+  // Verify in database
+  const found = await trx
+    .selectFrom('users')
+    .where('id', '=', user.id)
+    .selectAll()
+    .executeTakeFirst();
+
+  expect(found?.name).toBe('Jane');
+});
+
+it('should create related records', async ({ factory }) => {
+  const user = await factory.insert('user');
+  const posts = await factory.insertMany(3, 'post', { userId: user.id });
+
+  expect(posts).toHaveLength(3);
+  expect(posts[0].userId).toBe(user.id);
+});
+```
+
+### Multiple Fixtures
+
+You can add multiple fixtures that all receive the transaction:
+
+```typescript
+const it = extendWithFixtures<
+  Database,
+  {
+    factory: KyselyFactory<Database, typeof builders, {}>;
+    userRepo: UserRepository;
+    config: { maxUsers: number };
+  }
+>(baseTest, {
+  factory: (trx) => new KyselyFactory(builders, {}, trx),
+  userRepo: (trx) => new UserRepository(trx),
+  config: () => ({ maxUsers: 100 }), // Fixtures can ignore trx if not needed
+});
+
+it('should use multiple fixtures', async ({ factory, userRepo, config }) => {
+  const user = await factory.insert('user');
+  const found = await userRepo.findById(user.id);
+  expect(found).toBeDefined();
+  expect(config.maxUsers).toBe(100);
+});
+```
+
+### With Objection.js
+
+```typescript
+import { wrapVitestObjectionTransaction, extendWithFixtures } from '@geekmidas/testkit/objection';
+
+const baseTest = wrapVitestObjectionTransaction(test, () => knex);
+
+const it = extendWithFixtures<{ factory: ObjectionFactory<typeof builders, {}> }>(
+  baseTest,
+  {
+    factory: (trx) => new ObjectionFactory(builders, {}, trx),
+  }
+);
+```
+
+## Manual Transaction Isolation
+
+For more control, you can manage transactions manually:
 
 ```typescript
 describe('User Service', () => {
