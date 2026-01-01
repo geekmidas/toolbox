@@ -9,6 +9,11 @@
       "import": "./dist/kysely.mjs",
       "require": "./dist/kysely.cjs"
     },
+    "./kysely/pagination": {
+      "types": "./dist/kysely/pagination.d.ts",
+      "import": "./dist/kysely/pagination.mjs",
+      "require": "./dist/kysely/pagination.cjs"
+    },
     "./rls": {
       "types": "./dist/rls.d.ts",
       "import": "./dist/rls.mjs",
