@@ -4,7 +4,7 @@
   "description": "Laravel Telescope-style debugging and monitoring for web applications",
   "type": "module",
   "scripts": {
-    "build:ui": "pnpm --filter @geekmidas/telescope-ui build && tsx scripts/embed-ui.ts"
+    "build:ui": "pnpm --filter @geekmidas/telescope-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
   },
   "exports": {
     ".": {
