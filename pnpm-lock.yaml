@@ -598,6 +598,12 @@ importers:
 
   packages/telescope:
     dependencies:
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@pinojs/redact':
+        specifier: ^0.4.0
+        version: 0.4.0
       nanoid:
         specifier: ~5.1.5
         version: 5.1.6
