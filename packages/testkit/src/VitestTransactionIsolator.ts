@@ -124,30 +124,37 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
    * Creates a wrapped version of Vitest's test API that provides transaction isolation.
    * Each test will run within a database transaction that is automatically rolled back.
    *
-   * @param conn - The database connection to use
-   * @param setup - Optional setup function to run within the transaction before each test
-   * @param level - The transaction isolation level (defaults to REPEATABLE_READ)
+   * @param options - Configuration options for transaction wrapping
    * @returns A wrapped test API with transaction support
    *
    * @example
    * ```typescript
-   * const isolatedTest = isolator.wrapVitestWithTransaction(db, async (trx) => {
-   *   // Optional setup: create common test data
-   *   await trx.insert('settings', { key: 'test', value: 'true' });
+   * const isolatedTest = isolator.wrapVitestWithTransaction({
+   *   connection: db,
+   *   setup: async (trx) => {
+   *     await trx.insert('settings', { key: 'test', value: 'true' });
+   *   },
+   *   fixtures: {
+   *     factory: (trx) => new Factory(trx),
+   *   },
    * });
    *
-   * isolatedTest('test with transaction', async ({ trx }) => {
-   *   const user = await trx.insert('users', { name: 'Test' });
+   * isolatedTest('test with transaction', async ({ trx, factory }) => {
+   *   const user = await factory.insert('user', { name: 'Test' });
    *   expect(user).toBeDefined();
    * });
    * ```
    */
   wrapVitestWithTransaction<Extended extends Record<string, unknown> = {}>(
-    createConnection: DatabaseConnection<TConn>,
-    setup?: (trx: Transaction) => Promise<void>,
-    level: IsolationLevel = IsolationLevel.REPEATABLE_READ,
-    fixtures?: FixtureCreators<Transaction, Extended>,
+    options: TransactionWrapperOptions<TConn, Transaction, Extended>,
   ) {
+    const {
+      connection,
+      setup,
+      isolationLevel = IsolationLevel.REPEATABLE_READ,
+      fixtures,
+    } = options;
+
     // Build fixture definitions for additional fixtures that depend on trx
     const additionalFixtures: Record<string, unknown> = {};
     if (fixtures) {
@@ -174,9 +181,9 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
         }
 
         let testError: Error | undefined;
-        const conn = await createConnection();
+        const conn = await connection();
         try {
-          await this.transact(conn, level, async (transaction) => {
+          await this.transact(conn, isolationLevel, async (transaction) => {
             try {
               // Provide the transaction to the test
               await setup?.(transaction);
