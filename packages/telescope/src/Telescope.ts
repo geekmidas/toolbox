@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { createRedactor, type Redactor } from './redact';
 import type {
   ExceptionEntry,
   LogEntry,
@@ -20,10 +21,12 @@ export class Telescope {
   private options: NormalizedTelescopeOptions;
   private wsClients = new Set<WebSocket>();
   private pruneInterval?: ReturnType<typeof setInterval>;
+  private redactor?: Redactor;
 
   constructor(options: TelescopeOptions) {
     this.storage = options.storage;
     this.options = this.normalizeOptions(options);
+    this.redactor = createRedactor(options.redact);
 
     // Set up auto-pruning if configured
     if (this.options.pruneAfterHours) {
@@ -47,11 +50,16 @@ export class Telescope {
     if (!this.options.enabled) return '';
 
     const id = nanoid();
-    const fullEntry: RequestEntry = {
+    let fullEntry: RequestEntry = {
       ...entry,
       id,
       timestamp: new Date(),
     };
+
+    // Apply redaction if configured
+    if (this.redactor) {
+      fullEntry = this.redactor(fullEntry);
+    }
 
     await this.storage.saveRequest(fullEntry);
     this.broadcast({
@@ -98,14 +106,17 @@ export class Telescope {
     if (!this.options.enabled || entries.length === 0) return;
 
     const timestamp = new Date();
-    const logEntries: LogEntry[] = entries.map((e) => ({
-      id: nanoid(),
-      level: e.level,
-      message: e.message,
-      context: e.context,
-      requestId: e.requestId,
-      timestamp,
-    }));
+    const logEntries: LogEntry[] = entries.map((e) => {
+      const entry: LogEntry = {
+        id: nanoid(),
+        level: e.level,
+        message: e.message,
+        context: e.context,
+        requestId: e.requestId,
+        timestamp,
+      };
+      return this.redactor ? this.redactor(entry) : entry;
+    });
 
     await this.saveLogEntries(logEntries);
   }
@@ -118,19 +129,7 @@ export class Telescope {
     context?: Record<string, unknown>,
     requestId?: string,
   ): Promise<void> {
-    if (!this.options.enabled) return;
-
-    const entry: LogEntry = {
-      id: nanoid(),
-      level: 'debug',
-      message,
-      context,
-      requestId,
-      timestamp: new Date(),
-    };
-
-    await this.storage.saveLog(entry);
-    this.broadcast({ type: 'log', payload: entry, timestamp: Date.now() });
+    return this.logSingle('debug', message, context, requestId);
   }
 
   /**
@@ -141,19 +140,7 @@ export class Telescope {
     context?: Record<string, unknown>,
     requestId?: string,
   ): Promise<void> {
-    if (!this.options.enabled) return;
-
-    const entry: LogEntry = {
-      id: nanoid(),
-      level: 'info',
-      message,
-      context,
-      requestId,
-      timestamp: new Date(),
-    };
-
-    await this.storage.saveLog(entry);
-    this.broadcast({ type: 'log', payload: entry, timestamp: Date.now() });
+    return this.logSingle('info', message, context, requestId);
   }
 
   /**
@@ -164,19 +151,7 @@ export class Telescope {
     context?: Record<string, unknown>,
     requestId?: string,
   ): Promise<void> {
-    if (!this.options.enabled) return;
-
-    const entry: LogEntry = {
-      id: nanoid(),
-      level: 'warn',
-      message,
-      context,
-      requestId,
-      timestamp: new Date(),
-    };
-
-    await this.storage.saveLog(entry);
-    this.broadcast({ type: 'log', payload: entry, timestamp: Date.now() });
+    return this.logSingle('warn', message, context, requestId);
   }
 
   /**
@@ -187,16 +162,29 @@ export class Telescope {
     context?: Record<string, unknown>,
     requestId?: string,
   ): Promise<void> {
+    return this.logSingle('error', message, context, requestId);
+  }
+
+  private async logSingle(
+    level: LogEntry['level'],
+    message: string,
+    context?: Record<string, unknown>,
+    requestId?: string,
+  ): Promise<void> {
     if (!this.options.enabled) return;
 
-    const entry: LogEntry = {
+    let entry: LogEntry = {
       id: nanoid(),
-      level: 'error',
+      level,
       message,
       context,
       requestId,
       timestamp: new Date(),
     };
+
+    if (this.redactor) {
+      entry = this.redactor(entry);
+    }
 
     await this.storage.saveLog(entry);
     this.broadcast({ type: 'log', payload: entry, timestamp: Date.now() });
