@@ -127,6 +127,20 @@ export interface TelescopeStats {
 }
 
 /**
+ * Redaction configuration for Telescope.
+ * Uses @pinojs/redact for immutable, selective redaction.
+ */
+export type TelescopeRedactOptions =
+  | boolean
+  | string[]
+  | {
+      /** Paths to redact using dot/bracket notation (e.g., 'headers.authorization', '*.password') */
+      paths: string[];
+      /** Replacement value (default: '[REDACTED]') */
+      censor?: string;
+    };
+
+/**
  * Configuration options for Telescope
  */
 export interface TelescopeOptions {
@@ -144,6 +158,26 @@ export interface TelescopeOptions {
   ignorePatterns?: string[];
   /** Auto-prune entries older than this many hours (default: undefined - no auto-prune) */
   pruneAfterHours?: number;
+  /**
+   * Redaction configuration for sensitive data.
+   * - `true`: Enable redaction with default sensitive paths
+   * - `string[]`: Custom paths to redact (merged with defaults)
+   * - `{ paths, censor }`: Full control over redaction
+   * - `false` or `undefined`: No redaction (default)
+   *
+   * @example
+   * // Enable with defaults
+   * redact: true
+   *
+   * @example
+   * // Add custom paths (merged with defaults)
+   * redact: ['user.ssn', 'payment.cardNumber']
+   *
+   * @example
+   * // Full control
+   * redact: { paths: ['headers.authorization'], censor: '***' }
+   */
+  redact?: TelescopeRedactOptions;
 }
 
 /**
