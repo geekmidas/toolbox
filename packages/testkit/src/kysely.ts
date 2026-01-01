@@ -51,10 +51,9 @@ export { faker, type FakerFactory } from './faker';
  * This ensures tests don't affect each other's data and run faster than truncating tables.
  *
  * @template Database - The database schema type
+ * @template Extended - Additional fixtures to provide
  * @param api - The Vitest test API (usually `test` from vitest)
- * @param db - The Kysely database instance
- * @param setup - Optional setup function to run before each test in the transaction
- * @param level - Transaction isolation level (defaults to REPEATABLE_READ)
+ * @param options - Configuration options for transaction wrapping
  * @returns A wrapped test API that provides transaction isolation
  *
  * @example
@@ -64,7 +63,9 @@ export { faker, type FakerFactory } from './faker';
  * import { db } from './database';
  *
  * // Create isolated test with automatic rollback
- * const isolatedTest = wrapVitestKyselyTransaction(test, db);
+ * const isolatedTest = wrapVitestKyselyTransaction(test, {
+ *   connection: db,
+ * });
  *
  * // Use in tests - each test gets its own transaction
  * isolatedTest('should create user', async ({ trx }) => {
