@@ -22,7 +22,25 @@ export type {
   ExtendedDatabaseFixtures,
   FixtureCreators,
   TestWithExtendedFixtures,
+  TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
+
+/**
+ * Kysely-specific options for transaction wrapping.
+ */
+export interface KyselyTransactionOptions<
+  Database,
+  Extended extends Record<string, unknown> = {},
+> {
+  /** Function that creates or returns a Kysely database instance */
+  connection: DatabaseConnection<Kysely<Database>>;
+  /** Optional setup function to run within the transaction before each test */
+  setup?: (trx: Transaction<Database>) => Promise<void>;
+  /** Transaction isolation level (defaults to REPEATABLE_READ) */
+  isolationLevel?: IsolationLevel;
+  /** Additional fixtures that depend on the transaction */
+  fixtures?: FixtureCreators<Transaction<Database>, Extended>;
+}
 
 // Re-export faker and FakerFactory for type portability in declaration files
 export { faker, type FakerFactory } from './faker';
