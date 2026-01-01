@@ -341,13 +341,21 @@ describe('Hono Server Adapter Integration Tests', () => {
   });
 
   describe('GET /', () => {
-    it('should return API info', async () => {
+    it('should return dashboard UI or API info', async () => {
       const res = await app.request('/');
 
       expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.message).toBe('Studio API is running');
-      expect(data.endpoints).toBeDefined();
+      const contentType = res.headers.get('content-type') || '';
+
+      // If UI is embedded, returns HTML; otherwise returns JSON API info
+      if (contentType.includes('text/html')) {
+        const html = await res.text();
+        expect(html).toContain('<!doctype html>');
+      } else {
+        const data = await res.json();
+        expect(data.message).toBe('Studio API is running');
+        expect(data.endpoints).toBeDefined();
+      }
     });
   });
 });

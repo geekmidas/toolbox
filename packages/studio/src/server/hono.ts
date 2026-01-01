@@ -7,6 +7,7 @@ import {
   FilterOperator,
   type SortConfig,
 } from '../types';
+import { getAsset, getIndexHtml } from '../ui-assets';
 
 /**
  * Interface for the Studio instance used by the Hono adapter.
@@ -171,21 +172,50 @@ export function createStudioApp(studio: StudioLike): Hono {
   // Static Assets & Dashboard UI
   // ============================================
 
-  // TODO: Add static asset serving once UI is built
-  // app.get('/assets/:filename', (c) => { ... });
+  // Static assets
+  app.get('/assets/:filename', (c) => {
+    const filename = c.req.param('filename');
+    const assetPath = `assets/${filename}`;
+    const asset = getAsset(assetPath);
+    if (asset) {
+      return c.body(asset.content, 200, {
+        'Content-Type': asset.contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+    }
+    return c.notFound();
+  });
 
   // Dashboard UI - serve React app
   app.get('/', (c) => {
-    // TODO: Serve actual UI once built
-    return c.json({
-      message: 'Studio API is running',
-      endpoints: {
-        schema: '/api/schema',
-        tables: '/api/tables',
-        tableInfo: '/api/tables/:name',
-        tableRows: '/api/tables/:name/rows',
-      },
-    });
+    const html = getIndexHtml();
+    if (!html) {
+      return c.json({
+        message: 'Studio API is running',
+        note: 'UI not available. Run "pnpm build:ui" first.',
+        endpoints: {
+          schema: '/api/schema',
+          tables: '/api/tables',
+          tableInfo: '/api/tables/:name',
+          tableRows: '/api/tables/:name/rows',
+        },
+      });
+    }
+    return c.html(html);
+  });
+
+  // SPA fallback - serve index.html for client-side routing
+  app.get('/*', (c) => {
+    // Skip API routes
+    if (c.req.path.startsWith('/api/')) {
+      return c.notFound();
+    }
+
+    const html = getIndexHtml();
+    if (!html) {
+      return c.notFound();
+    }
+    return c.html(html);
   });
 
   return app;

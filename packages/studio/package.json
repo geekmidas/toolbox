@@ -4,7 +4,7 @@
   "description": "Unified development tools dashboard with database browser and request monitoring",
   "type": "module",
   "scripts": {
-    "build:ui": "pnpm --filter @geekmidas/studio-ui build && tsx scripts/embed-ui.ts"
+    "build:ui": "pnpm --filter @geekmidas/studio-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
   },
   "exports": {
     ".": {
