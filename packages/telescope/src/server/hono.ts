@@ -196,20 +196,19 @@ export function createUI(telescope: Telescope): Hono {
   // Dashboard UI - serve React app
   app.get('/', (c) => {
     const html = getIndexHtml();
-    if (html) {
-      return c.html(html);
+    if (!html) {
+      return c.text('Telescope UI not available. Run "pnpm build:ui" first.', 500);
     }
-    // Fallback to inline HTML if UI assets not available
-    return c.html(telescope.getDashboardHtml());
+    return c.html(html);
   });
 
   app.get('/*', (c) => {
     // SPA fallback - serve index.html for client-side routing
     const html = getIndexHtml();
-    if (html) {
-      return c.html(html);
+    if (!html) {
+      return c.text('Telescope UI not available. Run "pnpm build:ui" first.', 500);
     }
-    return c.html(telescope.getDashboardHtml());
+    return c.html(html);
   });
 
   return app;
