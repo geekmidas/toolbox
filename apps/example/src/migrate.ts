@@ -1,7 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FileMigrationProvider, Kysely, Migrator, PostgresDialect } from 'kysely';
+import {
+  FileMigrationProvider,
+  Kysely,
+  Migrator,
+  PostgresDialect,
+} from 'kysely';
 import pg from 'pg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

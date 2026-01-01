@@ -1,4 +1,8 @@
-import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
+import {
+  Direction,
+  InMemoryMonitoringStorage,
+  Studio,
+} from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import type { Database } from '../services/DatabaseService.js';
