@@ -44,6 +44,15 @@ export interface TelescopeConfig {
   websocket?: boolean;
 }
 
+export interface StudioConfig {
+  /** Enable/disable studio (default: true in development) */
+  enabled?: boolean;
+  /** Path prefix for studio UI (default: /__studio) */
+  path?: string;
+  /** Schema to introspect (default: 'public') */
+  schema?: string;
+}
+
 export interface OpenApiConfig {
   /** Enable OpenAPI generation (default: true) */
   enabled?: boolean;
@@ -85,6 +94,16 @@ export interface GkmConfig {
    * - A TelescopeConfig object for inline configuration
    */
   telescope?: string | boolean | TelescopeConfig;
+  /**
+   * Studio configuration for database browsing.
+   * Can be:
+   * - A string path to a module that exports a Studio instance (recommended)
+   * - A boolean to enable/disable with defaults
+   * - A StudioConfig object for inline configuration
+   *
+   * Requires a database connection configured via services.
+   */
+  studio?: string | boolean | StudioConfig;
   /**
    * OpenAPI generation configuration.
    * Can be:

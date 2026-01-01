@@ -29,6 +29,7 @@ export interface TemplateOptions {
   template: TemplateName;
   telescope: boolean;
   database: boolean;
+  studio: boolean;
   loggerType: LoggerType;
   routesStructure: RoutesStructure;
   monorepo: boolean;

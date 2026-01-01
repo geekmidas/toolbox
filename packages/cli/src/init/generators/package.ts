@@ -12,7 +12,7 @@ export function generatePackageJson(
   options: TemplateOptions,
   template: TemplateConfig,
 ): GeneratedFile[] {
-  const { name, telescope, database, monorepo } = options;
+  const { name, telescope, database, studio, monorepo } = options;
 
   // Start with template dependencies
   const dependencies = { ...template.dependencies };
@@ -22,6 +22,10 @@ export function generatePackageJson(
   // Add optional dependencies based on user choices
   if (telescope) {
     dependencies['@geekmidas/telescope'] = 'workspace:*';
+  }
+
+  if (studio) {
+    dependencies['@geekmidas/studio'] = 'workspace:*';
   }
 
   if (database) {

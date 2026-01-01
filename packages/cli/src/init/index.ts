@@ -85,6 +85,12 @@ export async function initCommand(
         initial: true,
       },
       {
+        type: (prev) => (options.yes ? null : prev ? 'confirm' : null),
+        name: 'studio',
+        message: 'Include Studio (database browser)?',
+        initial: true,
+      },
+      {
         type: options.yes ? null : 'select',
         name: 'loggerType',
         message: 'Logger:',
@@ -140,11 +146,13 @@ export async function initCommand(
 
   const monorepo =
     options.monorepo ?? (options.yes ? false : (answers.monorepo ?? false));
+  const database = options.yes ? true : (answers.database ?? true);
   const templateOptions: TemplateOptions = {
     name,
     template: options.template || answers.template || 'minimal',
     telescope: options.yes ? true : (answers.telescope ?? true),
-    database: options.yes ? true : (answers.database ?? true),
+    database,
+    studio: database && (options.yes ? true : (answers.studio ?? true)),
     loggerType: options.yes ? 'pino' : (answers.loggerType ?? 'pino'),
     routesStructure: options.yes
       ? 'centralized-endpoints'

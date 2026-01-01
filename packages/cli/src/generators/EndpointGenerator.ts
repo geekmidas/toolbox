@@ -338,6 +338,10 @@ export function setupEndpoints(
     const telescopeWebSocketEnabled = context.telescope?.websocket;
     const usesExternalTelescope = !!context.telescope?.telescopePath;
 
+    // Generate studio imports and setup if enabled
+    const studioEnabled = context.studio?.enabled;
+    const usesExternalStudio = !!context.studio?.studioPath;
+
     // Generate imports based on whether telescope is external or inline
     let telescopeImports = '';
     if (telescopeEnabled) {
@@ -351,6 +355,22 @@ import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
       } else {
         telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
 import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+      }
+    }
+
+    // Generate imports for studio
+    let studioImports = '';
+    if (studioEnabled) {
+      if (usesExternalStudio) {
+        const relativeStudioPath = relative(
+          dirname(appPath),
+          context.studio!.studioPath!,
+        );
+        studioImports = `import ${context.studio!.studioImportPattern} from '${relativeStudioPath}';
+import { createStudioApp } from '@geekmidas/studio/server/hono';`;
+      } else {
+        studioImports = `// Studio requires a configured instance - use studio config path
+// import { createStudioApp } from '@geekmidas/studio/server/hono';`;
       }
     }
 
@@ -425,6 +445,16 @@ ${telescopeWebSocketSetupCode}
       }
     }
 
+    // Generate studio setup - requires external instance
+    let studioSetup = '';
+    if (studioEnabled && usesExternalStudio) {
+      studioSetup = `
+  // Mount Studio data browser UI
+  const studioApp = createStudioApp(studio);
+  honoApp.route('${context.studio!.path}', studioApp);
+`;
+    }
+
     const content = `/**
  * Generated server application
  *
@@ -439,6 +469,7 @@ import { setupSubscribers } from './subscribers.js';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${telescopeImports}
+${studioImports}
 
 export interface ServerApp {
   app: HonoType;
@@ -484,7 +515,7 @@ export interface ServerApp {
  */
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
-${telescopeSetup}
+${telescopeSetup}${studioSetup}
   // Setup HTTP endpoints
   setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 

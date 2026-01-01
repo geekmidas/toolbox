@@ -7,7 +7,11 @@ import chokidar from 'chokidar';
 import { config as dotenvConfig } from 'dotenv';
 import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
-import type { BuildContext, NormalizedTelescopeConfig } from '../build/types';
+import type {
+  BuildContext,
+  NormalizedStudioConfig,
+  NormalizedTelescopeConfig,
+} from '../build/types';
 import { loadConfig, parseModuleConfig } from '../config';
 import {
   CronGenerator,
@@ -20,6 +24,7 @@ import type {
   GkmConfig,
   LegacyProvider,
   Runtime,
+  StudioConfig,
   TelescopeConfig,
 } from '../types';
 
@@ -153,6 +158,48 @@ export function normalizeTelescopeConfig(
   };
 }
 
+/**
+ * Normalize studio configuration
+ * @internal Exported for testing
+ */
+export function normalizeStudioConfig(
+  config: GkmConfig['studio'],
+): NormalizedStudioConfig | undefined {
+  if (config === false) {
+    return undefined;
+  }
+
+  // Handle string path (e.g., './src/config/studio')
+  if (typeof config === 'string') {
+    const { path: studioPath, importPattern: studioImportPattern } =
+      parseModuleConfig(config, 'studio');
+
+    return {
+      enabled: true,
+      studioPath,
+      studioImportPattern,
+      path: '/__studio',
+      schema: 'public',
+    };
+  }
+
+  // Default to enabled in development mode
+  const isEnabled =
+    config === true || config === undefined || config.enabled !== false;
+
+  if (!isEnabled) {
+    return undefined;
+  }
+
+  const studioConfig: StudioConfig = typeof config === 'object' ? config : {};
+
+  return {
+    enabled: true,
+    path: studioConfig.path ?? '/__studio',
+    schema: studioConfig.schema ?? 'public',
+  };
+}
+
 export interface DevOptions {
   port?: number;
   enableOpenApi?: boolean;
@@ -207,6 +254,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
     logger.log(`🔭 Telescope enabled at ${telescope.path}`);
   }
 
+  // Normalize studio configuration
+  const studio = normalizeStudioConfig(config.studio);
+  if (studio) {
+    logger.log(`🗄️  Studio enabled at ${studio.path}`);
+  }
+
   // Resolve OpenAPI configuration
   const openApiConfig = resolveOpenApiConfig(config);
   if (openApiConfig.enabled) {
@@ -219,6 +272,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     loggerPath,
     loggerImportPattern,
     telescope,
+    studio,
   };
 
   // Build initial version
@@ -243,6 +297,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     options.port || 3000,
     resolved.enableOpenApi,
     telescope,
+    studio,
     runtime,
   );
 
@@ -392,6 +447,7 @@ class DevServer {
     private requestedPort: number,
     private enableOpenApi: boolean,
     private telescope?: NormalizedTelescopeConfig,
+    private studio?: NormalizedStudioConfig,
     private runtime: Runtime = 'node',
   ) {
     this.actualPort = requestedPort;
@@ -461,6 +517,11 @@ class DevServer {
       if (this.telescope) {
         logger.log(
           `🔭 Telescope available at http://localhost:${this.actualPort}${this.telescope.path}`,
+        );
+      }
+      if (this.studio) {
+        logger.log(
+          `🗄️  Studio available at http://localhost:${this.actualPort}${this.studio.path}`,
         );
       }
     }

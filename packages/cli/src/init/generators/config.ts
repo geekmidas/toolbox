@@ -11,7 +11,7 @@ export function generateConfigFiles(
   options: TemplateOptions,
   template: TemplateConfig,
 ): GeneratedFile[] {
-  const { telescope, routesStructure } = options;
+  const { telescope, studio, routesStructure } = options;
   const isServerless = template.name === 'serverless';
   const hasWorker = template.name === 'worker';
 
@@ -52,6 +52,11 @@ export default defineConfig({
     enabled: true,
     path: '/__telescope',
   },`;
+  }
+
+  if (studio) {
+    gkmConfig += `
+  studio: './src/config/studio#studio',`;
   }
 
   // Always add openapi config (output path is fixed to .gkm/openapi.ts)

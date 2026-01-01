@@ -38,12 +38,25 @@ export interface NormalizedTelescopeConfig {
   websocket: boolean;
 }
 
+export interface NormalizedStudioConfig {
+  enabled: boolean;
+  /** Path to user's studio module (if provided) */
+  studioPath?: string;
+  /** Import pattern for studio (e.g., '{ studio }' or 'studio') */
+  studioImportPattern?: string;
+  /** UI path for studio dashboard */
+  path: string;
+  /** Database schema to introspect */
+  schema: string;
+}
+
 export interface BuildContext {
   envParserPath: string;
   envParserImportPattern: string;
   loggerPath: string;
   loggerImportPattern: string;
   telescope?: NormalizedTelescopeConfig;
+  studio?: NormalizedStudioConfig;
 }
 
 export interface ProviderBuildResult {

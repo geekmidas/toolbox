@@ -95,6 +95,58 @@ export default e
       },
     ];
 
+    // Add database service if enabled
+    if (options.database) {
+      // Update env.ts to include database config
+      files[0] = {
+        path: 'src/config/env.ts',
+        content: `import { EnvironmentParser } from '@geekmidas/envkit';
+
+export const envParser = new EnvironmentParser(process.env);
+
+export const config = envParser
+  .create((get) => ({
+    port: get('PORT').string().transform(Number).default(3000),
+    nodeEnv: get('NODE_ENV').string().default('development'),
+    database: {
+      url: get('DATABASE_URL').string().default('postgresql://localhost:5432/mydb'),
+    },
+  }))
+  .parse();
+`,
+      };
+
+      files.push({
+        path: 'src/services/database.ts',
+        content: `import type { Service } from '@geekmidas/services';
+import { Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
+
+// Define your database schema
+export interface Database {
+  // Add your tables here
+}
+
+export const databaseService = {
+  serviceName: 'database' as const,
+  async register(envParser) {
+    const config = envParser
+      .create((get) => ({
+        url: get('DATABASE_URL').string(),
+      }))
+      .parse();
+
+    return new Kysely<Database>({
+      dialect: new PostgresDialect({
+        pool: new pg.Pool({ connectionString: config.url }),
+      }),
+    });
+  },
+} satisfies Service<'database', Kysely<Database>>;
+`,
+      });
+    }
+
     // Add Telescope config if enabled
     if (options.telescope) {
       files.push({
@@ -105,6 +157,25 @@ import { InMemoryStorage } from '@geekmidas/telescope/storage/memory';
 export const telescope = new Telescope({
   storage: new InMemoryStorage({ maxEntries: 100 }),
   enabled: process.env.NODE_ENV === 'development',
+});
+`,
+      });
+    }
+
+    // Add Studio config if enabled (requires database)
+    if (options.studio && options.database) {
+      files.push({
+        path: 'src/config/studio.ts',
+        content: `import { Studio } from '@geekmidas/studio';
+import { InMemoryMonitoringStorage } from '@geekmidas/studio';
+import { databaseService, type Database } from '../services/database';
+
+export const studio = new Studio<Database>({
+  database: databaseService,
+  monitoring: {
+    storage: new InMemoryMonitoringStorage({ maxEntries: 100 }),
+    enabled: process.env.NODE_ENV === 'development',
+  },
 });
 `,
       });

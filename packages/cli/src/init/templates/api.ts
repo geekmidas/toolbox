@@ -195,6 +195,29 @@ export const telescope = new Telescope({
       });
     }
 
+    // Add Studio config if enabled (requires database)
+    if (options.studio && options.database) {
+      files.push({
+        path: 'src/config/studio.ts',
+        content: `import { Studio } from '@geekmidas/studio';
+import { InMemoryMonitoringStorage } from '@geekmidas/studio';
+import { databaseService, type Database } from '../services/database';
+
+// Note: Studio requires a Kysely database instance
+// This config creates Studio with inline monitoring storage
+// In production, you may want to use a persistent storage
+
+export const studio = new Studio<Database>({
+  database: databaseService,
+  monitoring: {
+    storage: new InMemoryMonitoringStorage({ maxEntries: 100 }),
+    enabled: process.env.NODE_ENV === 'development',
+  },
+});
+`,
+      });
+    }
+
     return files;
   },
 };
