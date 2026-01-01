@@ -209,6 +209,34 @@ export type FixtureCreators<
 };
 
 /**
+ * The test API returned by extendWithFixtures.
+ * Provides access to both the transaction (trx) and all extended fixtures.
+ *
+ * @template Transaction - The transaction type
+ * @template Extended - The type of additional fixtures provided
+ * @template BaseTest - The base wrapped test type
+ */
+export type TestWithExtendedFixtures<
+  Transaction,
+  Extended extends Record<string, unknown>,
+  BaseTest extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+> = BaseTest & {
+  <C extends object>(
+    name: string,
+    fn: (
+      context: DatabaseFixtures<Transaction> & Extended & C,
+    ) => Promise<void>,
+  ): void;
+  <C extends object>(
+    name: string,
+    options: object,
+    fn: (
+      context: DatabaseFixtures<Transaction> & Extended & C,
+    ) => Promise<void>,
+  ): void;
+};
+
+/**
  * Extends a wrapped test API with additional fixtures that depend on the transaction.
  * This allows composing test context with factories, repositories, or other helpers.
  *
