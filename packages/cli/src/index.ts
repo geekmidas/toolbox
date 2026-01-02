@@ -111,7 +111,7 @@ program
 program
   .command('dev')
   .description('Start development server with automatic reload')
-  .option('--port <port>', 'Port to run the development server on', '3000')
+  .option('-p, --port <port>', 'Port to run the development server on')
   .option(
     '--enable-openapi',
     'Enable OpenAPI documentation for development server',
@@ -126,6 +126,7 @@ program
 
       await devCommand({
         port: options.port ? Number.parseInt(options.port) : 3000,
+        portExplicit: !!options.port,
         enableOpenApi: options.enableOpenapi ?? true,
       });
     } catch (error) {

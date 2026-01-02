@@ -230,6 +230,7 @@ export function normalizeHooksConfig(
 
 export interface DevOptions {
   port?: number;
+  portExplicit?: boolean;
   enableOpenApi?: boolean;
 }
 
@@ -332,6 +333,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const devServer = new DevServer(
     resolved.providers[0] as LegacyProvider,
     options.port || 3000,
+    options.portExplicit ?? false,
     enableOpenApi,
     telescope,
     studio,
@@ -499,6 +501,7 @@ class DevServer {
   constructor(
     private provider: LegacyProvider,
     private requestedPort: number,
+    private portExplicit: boolean,
     private enableOpenApi: boolean,
     private telescope?: NormalizedTelescopeConfig,
     private studio?: NormalizedStudioConfig,
@@ -512,13 +515,26 @@ class DevServer {
       await this.stop();
     }
 
-    // Find an available port
-    this.actualPort = await findAvailablePort(this.requestedPort);
+    // Check port availability
+    if (this.portExplicit) {
+      // Port was explicitly specified - throw if unavailable
+      const available = await isPortAvailable(this.requestedPort);
+      if (!available) {
+        throw new Error(
+          `Port ${this.requestedPort} is already in use. ` +
+            `Either stop the process using that port or omit -p/--port to auto-select an available port.`,
+        );
+      }
+      this.actualPort = this.requestedPort;
+    } else {
+      // Find an available port starting from the default
+      this.actualPort = await findAvailablePort(this.requestedPort);
 
-    if (this.actualPort !== this.requestedPort) {
-      logger.log(
-        `ℹ️  Port ${this.requestedPort} was in use, using port ${this.actualPort} instead`,
-      );
+      if (this.actualPort !== this.requestedPort) {
+        logger.log(
+          `ℹ️  Port ${this.requestedPort} was in use, using port ${this.actualPort} instead`,
+        );
+      }
     }
 
     const serverEntryPath = join(
