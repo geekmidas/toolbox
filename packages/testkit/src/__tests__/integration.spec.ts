@@ -192,10 +192,14 @@ describe('Testkit Integration Tests', () => {
       // Create complex seeds
       const seeds = {
         blogWithAdminAndPosts: KyselyFactory.createSeed(
-          async (
-            attrs: { postCount?: number },
-            factory: KyselyFactory<TestDatabase, typeof builders, {}>,
-          ) => {
+          async ({
+            attrs,
+            factory,
+          }: {
+            attrs: { postCount?: number };
+            factory: KyselyFactory<TestDatabase, typeof builders, {}>;
+            db: any;
+          }) => {
             // Create admin user
             const admin = await factory.insert('user', {
               name: 'Blog Admin',
@@ -229,10 +233,14 @@ describe('Testkit Integration Tests', () => {
         ),
 
         usersWithPosts: KyselyFactory.createSeed(
-          async (
-            attrs: { userCount?: number; postsPerUser?: number },
-            factory: KyselyFactory<TestDatabase, typeof builders, {}>,
-          ) => {
+          async ({
+            attrs,
+            factory,
+          }: {
+            attrs: { userCount?: number; postsPerUser?: number };
+            factory: KyselyFactory<TestDatabase, typeof builders, {}>;
+            db: any;
+          }) => {
             const userCount = attrs.userCount || 2;
             const postsPerUser = attrs.postsPerUser || 2;
 
