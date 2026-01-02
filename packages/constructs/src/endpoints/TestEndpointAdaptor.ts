@@ -195,6 +195,24 @@ export class TestEndpointAdaptor<
       ...(rawDb !== undefined && { db: rawDb }),
     } as any);
 
+    // Check authorization
+    const isAuthorized = await this.endpoint.authorize({
+      header,
+      cookie,
+      services: ctx.services,
+      logger,
+      session,
+    });
+
+    if (!isAuthorized) {
+      logger.warn('Unauthorized access attempt');
+      return {
+        body: { error: 'Unauthorized' } as any,
+        status: 401,
+        headers: {},
+      };
+    }
+
     // Create audit context if audit storage is provided
     // The auditorStorage instance is required when endpoint uses .auditor()
     const auditorStorage = (ctx as any).auditorStorage as TAuditStorage;
