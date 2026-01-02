@@ -10,7 +10,9 @@
     "lint": "biome check .",
     "fmt": "biome format . --write",
     "test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
-    "test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage"
+    "test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage",
+    "bench": "NODE_OPTIONS=\"--import tsx\" vitest bench",
+    "bench:ci": "NODE_OPTIONS=\"--import tsx\" vitest bench --run"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
