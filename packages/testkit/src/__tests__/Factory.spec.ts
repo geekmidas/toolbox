@@ -46,7 +46,7 @@ describe('Factory', () => {
 
   describe('createSeed static method', () => {
     it('should return the seed function unchanged', () => {
-      const seedFn = async (attrs: any, factory: any, db: any) => {
+      const seedFn = async ({ attrs, factory, db }: { attrs: any; factory: any; db: any }) => {
         return { id: 1, name: 'test' };
       };
 
@@ -57,12 +57,14 @@ describe('Factory', () => {
     });
 
     it('should work with different seed function signatures', () => {
-      const simpleSeed = () => Promise.resolve({ simple: true });
-      const complexSeed = async (
-        attrs: { name: string },
-        factory: any,
-        db: any,
-      ) => {
+      const simpleSeed = async () => ({ simple: true });
+      const complexSeed = async ({
+        attrs,
+      }: {
+        attrs: { name: string };
+        factory: any;
+        db: any;
+      }) => {
         return { name: attrs.name, created: true };
       };
 
@@ -124,8 +126,8 @@ describe('Factory', () => {
     });
 
     it('should properly type FactorySeed', () => {
-      // Test that FactorySeed requires async return
-      const seed: FactorySeed = async (attrs, factory, db) => ({
+      // Test that FactorySeed requires async return with object parameter
+      const seed: FactorySeed = async ({ attrs, factory, db }) => ({
         seeded: true,
       });
 
@@ -155,7 +157,7 @@ describe('Factory types', () => {
       TestFactory,
       { created: number },
       any
-    > = async (attrs, factory, db) => {
+    > = async ({ attrs }) => {
       return { created: attrs.count };
     };
 
