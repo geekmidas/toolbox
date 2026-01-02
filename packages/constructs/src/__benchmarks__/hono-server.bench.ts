@@ -141,7 +141,7 @@ describe('Hono E2E - Complex Validation', () => {
         ),
         payment: z.object({
           method: z.enum(['credit_card', 'paypal', 'bank_transfer']),
-          details: z.record(z.string()),
+          details: z.record(z.string(), z.string()),
         }),
       }),
     )
