@@ -50,6 +50,11 @@ export interface NormalizedStudioConfig {
   schema: string;
 }
 
+export interface NormalizedHooksConfig {
+  /** Path to server hooks module */
+  serverHooksPath: string;
+}
+
 export interface BuildContext {
   envParserPath: string;
   envParserImportPattern: string;
@@ -57,6 +62,7 @@ export interface BuildContext {
   loggerImportPattern: string;
   telescope?: NormalizedTelescopeConfig;
   studio?: NormalizedStudioConfig;
+  hooks?: NormalizedHooksConfig;
 }
 
 export interface ProviderBuildResult {
