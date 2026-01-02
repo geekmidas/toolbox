@@ -23,5 +23,9 @@ export default defineConfig({
         branches: 85,
       },
     },
+    benchmark: {
+      include: ['**/__benchmarks__/**/*.bench.ts'],
+      exclude: ['**/node_modules/**', '**/dist/**'],
+    },
   },
 });
