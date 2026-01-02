@@ -45,10 +45,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       expect(appContent).not.toContain('serverHooks');
       expect(appContent).not.toContain('beforeSetup');
@@ -88,10 +85,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       expect(appContent).toContain(
         "if (typeof serverHooks.beforeSetup === 'function')",
@@ -113,10 +107,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       expect(appContent).toContain(
         "if (typeof serverHooks.afterSetup === 'function')",
@@ -146,10 +137,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       // Use specific patterns to find the actual calls (not imports/comments)
       const telescopeIndex = appContent.indexOf('createMiddleware(telescope)');
@@ -181,10 +169,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       // Use specific patterns to find the actual calls (not imports/comments)
       const setupEndpointsIndex = appContent.indexOf(
@@ -211,10 +196,7 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
       // Should have a relative import path
       expect(appContent).toMatch(
