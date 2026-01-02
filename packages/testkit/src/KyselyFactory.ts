@@ -4,8 +4,8 @@ import type {
   Kysely,
   Selectable,
 } from 'kysely';
-import { type ExtractSeedAttrs, Factory, type FactorySeed } from './Factory.ts';
-import { type FakerFactory, faker } from './faker.ts';
+import { type ExtractSeedAttrs, Factory, type FactorySeed } from './Factory';
+import { type FakerFactory, faker } from './faker';
 
 /**
  * Factory implementation for Kysely ORM, providing test data creation utilities.
@@ -71,7 +71,7 @@ export class KyselyFactory<
    * };
    * ```
    */
-  static createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
+  static override createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
     return Factory.createSeed(seedFn);
   }
 

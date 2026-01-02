@@ -1,7 +1,7 @@
 import type { Knex } from 'knex';
 import type { Model } from 'objection';
-import { type ExtractSeedAttrs, Factory, type FactorySeed } from './Factory.ts';
-import { type FakerFactory, faker } from './faker.ts';
+import { type ExtractSeedAttrs, Factory, type FactorySeed } from './Factory';
+import { type FakerFactory, faker } from './faker';
 
 /**
  * Factory implementation for Objection.js ORM, providing test data creation utilities.
@@ -64,7 +64,7 @@ export class ObjectionFactory<
    * };
    * ```
    */
-  static createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
+  static override createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
     return Factory.createSeed(seedFn);
   }
 
