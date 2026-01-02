@@ -582,12 +582,12 @@ importers:
         version: 3.25.1(zod@4.1.13)
 
   packages/services:
-    dependencies:
+    devDependencies:
       '@geekmidas/envkit':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../envkit
       '@geekmidas/logger':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../logger
 
   packages/storage:
