@@ -726,12 +726,6 @@ importers:
       '@faker-js/faker':
         specifier: ~9.9.0
         version: 9.9.0
-      '@geekmidas/envkit':
-        specifier: workspace:*
-        version: link:../envkit
-      '@geekmidas/logger':
-        specifier: workspace:*
-        version: link:../logger
       '@types/aws-lambda':
         specifier: '>=8.10.92'
         version: 8.10.150
@@ -757,6 +751,12 @@ importers:
         specifier: ~3.2.4
         version: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)
     devDependencies:
+      '@geekmidas/envkit':
+        specifier: workspace:^
+        version: link:../envkit
+      '@geekmidas/logger':
+        specifier: workspace:^
+        version: link:../logger
       '@types/pg':
         specifier: ~8.15.4
         version: 8.15.4
