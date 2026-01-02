@@ -9,6 +9,7 @@ import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
 import type {
   BuildContext,
+  NormalizedHooksConfig,
   NormalizedStudioConfig,
   NormalizedTelescopeConfig,
 } from '../build/types';
@@ -204,6 +205,29 @@ export function normalizeStudioConfig(
   };
 }
 
+/**
+ * Normalize hooks configuration
+ * @internal Exported for testing
+ */
+export function normalizeHooksConfig(
+  config: GkmConfig['hooks'],
+): NormalizedHooksConfig | undefined {
+  if (!config?.server) {
+    return undefined;
+  }
+
+  // Resolve the path (handle .ts extension)
+  const serverPath = config.server.endsWith('.ts')
+    ? config.server
+    : `${config.server}.ts`;
+
+  const resolvedPath = resolve(process.cwd(), serverPath);
+
+  return {
+    serverHooksPath: resolvedPath,
+  };
+}
+
 export interface DevOptions {
   port?: number;
   enableOpenApi?: boolean;
@@ -264,6 +288,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
     logger.log(`🗄️  Studio enabled at ${studio.path}`);
   }
 
+  // Normalize hooks configuration
+  const hooks = normalizeHooksConfig(config.hooks);
+  if (hooks) {
+    logger.log(`🪝 Server hooks enabled from ${config.hooks?.server}`);
+  }
+
   // Resolve OpenAPI configuration
   const openApiConfig = resolveOpenApiConfig(config);
   // Enable OpenAPI docs endpoint if either root config or provider config enables it
@@ -279,6 +309,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     loggerImportPattern,
     telescope,
     studio,
+    hooks,
   };
 
   // Build initial version
@@ -313,6 +344,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const envParserFile = config.envParser.split('#')[0];
   const loggerFile = config.logger.split('#')[0];
 
+  // Get hooks file path for watching
+  const hooksFile = config.hooks?.server?.split('#')[0];
+
   const watchPatterns = [
     config.routes,
     ...(config.functions ? [config.functions] : []),
@@ -321,6 +355,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
     // Add .ts extension if not present for config files
     envParserFile.endsWith('.ts') ? envParserFile : `${envParserFile}.ts`,
     loggerFile.endsWith('.ts') ? loggerFile : `${loggerFile}.ts`,
+    // Add hooks file to watch list
+    ...(hooksFile
+      ? [hooksFile.endsWith('.ts') ? hooksFile : `${hooksFile}.ts`]
+      : []),
   ].flat();
 
   // Normalize patterns - remove leading ./ when using cwd option
