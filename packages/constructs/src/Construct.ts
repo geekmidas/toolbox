@@ -93,9 +93,9 @@ export abstract class Construct<
 
       return Array.from(envVars).sort();
     } catch (error) {
-      console.error(
-        'Error determining environment variables for construct:',
-        error,
+      this.logger.error(
+        { error },
+        'Error determining environment variables for construct',
       );
 
       return [];
