@@ -56,12 +56,12 @@ export class Subscriber<
       TLogger,
       OutSchema
     >,
-    public readonly timeout: number = 30000,
+    public override readonly timeout: number = 30000,
     protected _subscribedEvents?: TSubscribedEvents,
-    public readonly outputSchema?: OutSchema,
-    public readonly services: TServices = [] as unknown as TServices,
-    public readonly logger: TLogger = DEFAULT_LOGGER as TLogger,
-    public readonly publisherService?: Service<
+    public override readonly outputSchema?: OutSchema,
+    public override readonly services: TServices = [] as unknown as TServices,
+    public override readonly logger: TLogger = DEFAULT_LOGGER as TLogger,
+    public override readonly publisherService?: Service<
       TEventPublisherServiceName,
       TEventPublisher
     >,

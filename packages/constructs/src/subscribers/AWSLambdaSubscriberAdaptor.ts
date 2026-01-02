@@ -177,20 +177,24 @@ export class AWSLambdaSubscriber<
   }
 
   private isSQSEvent(event: SQSEvent | SNSEvent): event is SQSEvent {
+    const firstRecord = event.Records[0];
     return (
       'Records' in event &&
       event.Records.length > 0 &&
-      'eventSource' in event.Records[0] &&
-      event.Records[0].eventSource === 'aws:sqs'
+      firstRecord !== undefined &&
+      'eventSource' in firstRecord &&
+      firstRecord.eventSource === 'aws:sqs'
     );
   }
 
   private isSNSEvent(event: SQSEvent | SNSEvent): event is SNSEvent {
+    const firstRecord = event.Records[0];
     return (
       'Records' in event &&
       event.Records.length > 0 &&
-      'EventSource' in event.Records[0] &&
-      event.Records[0].EventSource === 'aws:sns'
+      firstRecord !== undefined &&
+      'EventSource' in firstRecord &&
+      firstRecord.EventSource === 'aws:sns'
     );
   }
 

@@ -36,7 +36,7 @@ export class AmazonApiGatewayV2Endpoint<
   TSession,
   TEventPublisher
 > {
-  getInput(e: APIGatewayProxyEventV2): GetInputResponse {
+  override getInput(e: APIGatewayProxyEventV2): GetInputResponse {
     // API Gateway V2 handles arrays as comma-separated values
     const queryParams = e.queryStringParameters || {};
     const processedParams: Record<string, string | string[]> = {};
@@ -59,7 +59,7 @@ export class AmazonApiGatewayV2Endpoint<
       params: e.pathParameters || {},
     };
   }
-  getLoggerContext(
+  override getLoggerContext(
     event: APIGatewayProxyEventV2,
     context: Context,
   ): LoggerContext {
@@ -78,8 +78,8 @@ export class AmazonApiGatewayV2Endpoint<
     };
   }
   constructor(
-    protected envParser: EnvironmentParser<{}>,
-    protected readonly endpoint: Endpoint<
+    protected override envParser: EnvironmentParser<{}>,
+    protected override readonly endpoint: Endpoint<
       TRoute,
       TMethod,
       TInput,

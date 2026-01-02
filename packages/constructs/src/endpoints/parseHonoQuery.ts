@@ -18,6 +18,7 @@ export function parseHonoQuery(c: Context): Record<string, any> {
       // Navigate/create the nested structure
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
+        if (!part) continue;
         if (
           !current[part] ||
           typeof current[part] !== 'object' ||
@@ -30,6 +31,7 @@ export function parseHonoQuery(c: Context): Record<string, any> {
 
       // Set the final value, checking for arrays in nested keys
       const lastPart = parts[parts.length - 1];
+      if (!lastPart) continue;
       const multipleValues = c.req.queries(key);
       if (multipleValues && multipleValues.length > 1) {
         current[lastPart] = multipleValues;

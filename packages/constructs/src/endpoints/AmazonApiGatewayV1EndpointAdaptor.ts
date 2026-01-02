@@ -37,7 +37,7 @@ export class AmazonApiGatewayV1Endpoint<
   TSession,
   TEventPublisher
 > {
-  getInput(e: APIGatewayProxyEvent): GetInputResponse {
+  override getInput(e: APIGatewayProxyEvent): GetInputResponse {
     // For arrays, AWS API Gateway V1 provides multiValueQueryStringParameters
     const multiValueParams = e.multiValueQueryStringParameters || {};
     const singleValueParams = e.queryStringParameters || {};
@@ -65,7 +65,7 @@ export class AmazonApiGatewayV1Endpoint<
       params: e.pathParameters || {},
     };
   }
-  getLoggerContext(
+  override getLoggerContext(
     data: APIGatewayProxyEvent,
     context: Context,
   ): LoggerContext {
@@ -84,8 +84,8 @@ export class AmazonApiGatewayV1Endpoint<
     };
   }
   constructor(
-    protected envParser: EnvironmentParser<{}>,
-    protected readonly endpoint: Endpoint<
+    protected override envParser: EnvironmentParser<{}>,
+    protected override readonly endpoint: Endpoint<
       TRoute,
       TMethod,
       TInput,

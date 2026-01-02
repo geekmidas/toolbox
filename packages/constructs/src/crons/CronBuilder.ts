@@ -39,7 +39,7 @@ export class CronBuilder<
     super(ConstructType.Cron);
   }
 
-  memorySize(memorySize: number): this {
+  override memorySize(memorySize: number): this {
     this._memorySize = memorySize;
     return this;
   }
@@ -60,7 +60,7 @@ export class CronBuilder<
     return this;
   }
 
-  input<T extends ComposableStandardSchema>(
+  override input<T extends ComposableStandardSchema>(
     schema: T,
   ): CronBuilder<
     T,
@@ -86,7 +86,7 @@ export class CronBuilder<
     >;
   }
 
-  output<T extends StandardSchemaV1>(
+  override output<T extends StandardSchemaV1>(
     schema: T,
   ): CronBuilder<
     TInput,
@@ -112,7 +112,7 @@ export class CronBuilder<
     >;
   }
 
-  services<T extends Service[]>(
+  override services<T extends Service[]>(
     services: T,
   ): CronBuilder<
     TInput,
@@ -141,7 +141,7 @@ export class CronBuilder<
     >;
   }
 
-  logger<T extends Logger>(
+  override logger<T extends Logger>(
     logger: T,
   ): CronBuilder<
     TInput,
@@ -167,7 +167,7 @@ export class CronBuilder<
     >;
   }
 
-  publisher<T extends EventPublisher<any>, TName extends string>(
+  override publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
   ): CronBuilder<
     TInput,
@@ -200,7 +200,7 @@ export class CronBuilder<
    * Set the database service for this cron job.
    * The database will be available in the handler context as `db`.
    */
-  database<T, TName extends string>(
+  override database<T, TName extends string>(
     service: Service<TName, T>,
   ): CronBuilder<
     TInput,
@@ -229,7 +229,7 @@ export class CronBuilder<
     >;
   }
 
-  handle(
+  override handle(
     fn: FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>,
   ): Cron<
     TInput,

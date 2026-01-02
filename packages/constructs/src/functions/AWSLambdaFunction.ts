@@ -88,7 +88,7 @@ export class AWSLambdaFunction<
 > {
   constructor(
     envParser: EnvironmentParser<{}>,
-    readonly fn: Function<
+    override readonly fn: Function<
       TInput,
       TServices,
       TLogger,

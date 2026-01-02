@@ -109,7 +109,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
+  override event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
     event: TEvent,
   ): this {
     this._events.push(event);
@@ -126,7 +126,7 @@ export class EndpointBuilder<
     return this;
   }
 
-  publisher<T extends EventPublisher<any>, TName extends string>(
+  override publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
   ): EndpointBuilder<
     TRoute,
@@ -437,7 +437,7 @@ export class EndpointBuilder<
    * This enables audit functionality and makes `auditor` available in the handler context.
    * The audit action type is automatically inferred from the storage's generic parameter.
    */
-  auditor<T extends AuditStorage<any>, TName extends string>(
+  override auditor<T extends AuditStorage<any>, TName extends string>(
     storage: Service<TName, T>,
   ): EndpointBuilder<
     TRoute,
@@ -544,7 +544,7 @@ export class EndpointBuilder<
    * })
    * ```
    */
-  database<T, TName extends string>(
+  override database<T, TName extends string>(
     service: Service<TName, T>,
   ): EndpointBuilder<
     TRoute,

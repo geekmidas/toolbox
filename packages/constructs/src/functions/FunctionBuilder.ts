@@ -41,11 +41,11 @@ export class FunctionBuilder<
 > {
   protected _memorySize?: number;
 
-  constructor(public type = ConstructType.Function) {
+  constructor(public override type = ConstructType.Function) {
     super(type);
   }
 
-  timeout(timeout: number): this {
+  override timeout(timeout: number): this {
     this._timeout = timeout;
     return this;
   }
@@ -186,7 +186,7 @@ export class FunctionBuilder<
     >;
   }
 
-  publisher<T extends EventPublisher<any>, TName extends string>(
+  override publisher<T extends EventPublisher<any>, TName extends string>(
     publisher: Service<TName, T>,
   ): FunctionBuilder<
     TInput,
@@ -221,7 +221,7 @@ export class FunctionBuilder<
     >;
   }
 
-  auditor<T extends AuditStorage, TName extends string>(
+  override auditor<T extends AuditStorage, TName extends string>(
     storage: Service<TName, T>,
   ): FunctionBuilder<
     TInput,
@@ -292,7 +292,7 @@ export class FunctionBuilder<
    * Set the database service for this function.
    * The database will be available in the handler context as `db`.
    */
-  database<T, TName extends string>(
+  override database<T, TName extends string>(
     service: Service<TName, T>,
   ): FunctionBuilder<
     TInput,

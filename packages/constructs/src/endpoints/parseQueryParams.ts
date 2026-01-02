@@ -28,6 +28,7 @@ export function parseQueryParams(
       // Navigate/create the nested structure
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
+        if (!part) continue;
         if (
           !current[part] ||
           typeof current[part] !== 'object' ||
@@ -40,6 +41,7 @@ export function parseQueryParams(
 
       // Set the final value
       const lastPart = parts[parts.length - 1];
+      if (!lastPart) continue;
       current[lastPart] = value;
     } else {
       // Simple key, just assign the value
