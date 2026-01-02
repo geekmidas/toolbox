@@ -52,17 +52,20 @@
     "access": "public"
   },
   "dependencies": {
-    "@geekmidas/logger": "workspace:*",
     "@pinojs/redact": "^0.4.0",
     "nanoid": "~5.1.5"
   },
   "peerDependencies": {
+    "@geekmidas/logger": "workspace:^",
     "hono": "^4.0.0",
     "kysely": "^0.28.0",
     "pino": "^9.0.0",
     "pino-abstract-transport": "^2.0.0 || ^3.0.0"
   },
   "peerDependenciesMeta": {
+    "@geekmidas/logger": {
+      "optional": true
+    },
     "hono": {
       "optional": true
     },
@@ -77,6 +80,7 @@
     }
   },
   "devDependencies": {
+    "@geekmidas/logger": "workspace:^",
     "hono": "^4.7.0",
     "kysely": "~0.28.2",
     "pino": "^9.6.0",

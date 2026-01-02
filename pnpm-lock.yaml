@@ -667,9 +667,6 @@ importers:
 
   packages/telescope:
     dependencies:
-      '@geekmidas/logger':
-        specifier: workspace:*
-        version: link:../logger
       '@pinojs/redact':
         specifier: ^0.4.0
         version: 0.4.0
@@ -677,6 +674,9 @@ importers:
         specifier: ~5.1.5
         version: 5.1.6
     devDependencies:
+      '@geekmidas/logger':
+        specifier: workspace:^
+        version: link:../logger
       hono:
         specifier: ^4.7.0
         version: 4.8.2
