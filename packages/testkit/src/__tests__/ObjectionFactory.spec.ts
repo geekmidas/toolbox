@@ -216,7 +216,7 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
+    const createAdminSeed = async ({ attrs, factory }: { attrs: any; factory: any; db: Knex }) => {
       return await factory.insert('user', {
         name: attrs.name || 'Admin User',
       });
@@ -247,7 +247,7 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const createAdminSeed = async (attrs: any, factory: any, db: Knex) => {
+    const createAdminSeed = async ({ factory }: { attrs: any; factory: any; db: Knex }) => {
       return await factory.insert('user', {
         name: 'Default Admin',
         role: 'admin',
@@ -283,11 +283,11 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const complexSeed = async (
-      attrs: any,
-      passedFactory: any,
-      passedDb: Knex,
-    ) => {
+    const complexSeed = async ({
+      attrs,
+      factory: passedFactory,
+      db: passedDb,
+    }: { attrs: any; factory: any; db: Knex }) => {
       // Verify that factory and db are passed correctly
       expect(passedFactory).toBe(factory);
       expect(passedDb).toBe(trx);
@@ -310,7 +310,7 @@ describe('ObjectionFactory', () => {
   });
 
   it('should return the seed function unchanged', () => {
-    const seedFn = async (attrs: any, factory: any, db: any) => {
+    const seedFn = async ({ attrs }: { attrs: any; factory: any; db: any }) => {
       return { id: 1, name: 'test' };
     };
 
@@ -481,7 +481,7 @@ describe('ObjectionFactory', () => {
   });
 
   it('should handle seed function errors gracefully', async ({ trx }) => {
-    const failingSeed = async (attrs: any, factory: any, db: Knex) => {
+    const failingSeed = async ({ }: { attrs: any; factory: any; db: Knex }) => {
       throw new Error('Seed failed');
     };
 
@@ -508,11 +508,13 @@ describe('ObjectionFactory', () => {
       });
     };
 
-    const adminSeed = async (
-      attrs: { isSuper?: boolean },
-      factory: any,
-      db: Knex,
-    ) => {
+    const adminSeed = async ({
+      factory,
+    }: {
+      attrs: { isSuper?: boolean };
+      factory: any;
+      db: Knex;
+    }) => {
       return factory.insert('user', {
         name: 'Admin',
       });
