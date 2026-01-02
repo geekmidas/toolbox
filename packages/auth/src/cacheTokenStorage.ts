@@ -2,12 +2,12 @@ import type { Cache } from '@geekmidas/cache';
 import type { TokenStorage } from './client.js';
 
 export class CacheTokenStorage implements TokenStorage {
-  private cache: Cache<string>;
+  private cache: Cache;
   private accessTokenKey: string;
   private refreshTokenKey: string;
 
   constructor(
-    cache: Cache<string>,
+    cache: Cache,
     accessTokenKey: string = 'access_token',
     refreshTokenKey: string = 'refresh_token',
   ) {
@@ -17,8 +17,8 @@ export class CacheTokenStorage implements TokenStorage {
   }
 
   async getAccessToken(): Promise<string | null> {
-    const token = await this.cache.get(this.accessTokenKey);
-    return token || null;
+    const token = await this.cache.get<string>(this.accessTokenKey);
+    return token ?? null;
   }
 
   async setAccessToken(token: string, ttl?: number): Promise<void> {
@@ -26,8 +26,8 @@ export class CacheTokenStorage implements TokenStorage {
   }
 
   async getRefreshToken(): Promise<string | null> {
-    const token = await this.cache.get(this.refreshTokenKey);
-    return token || null;
+    const token = await this.cache.get<string>(this.refreshTokenKey);
+    return token ?? null;
   }
 
   async setRefreshToken(token: string, ttl?: number): Promise<void> {

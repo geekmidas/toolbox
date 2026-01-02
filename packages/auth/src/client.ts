@@ -123,7 +123,10 @@ export class TokenClient {
 
   isTokenExpired(token: string): boolean {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const parts = token.split('.');
+      const payloadPart = parts[1];
+      if (!payloadPart) return true;
+      const payload = JSON.parse(atob(payloadPart));
       const now = Math.floor(Date.now() / 1000);
       return payload.exp < now;
     } catch {
@@ -133,7 +136,10 @@ export class TokenClient {
 
   getTokenExpiration(token: string): Date | null {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const parts = token.split('.');
+      const payloadPart = parts[1];
+      if (!payloadPart) return null;
+      const payload = JSON.parse(atob(payloadPart));
       return new Date(payload.exp * 1000);
     } catch {
       return null;
@@ -160,7 +166,10 @@ export class TokenClient {
         throw new Error('Failed to refresh token');
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      };
       const { accessToken, refreshToken: newRefreshToken } = data;
 
       await this.setTokens(accessToken, newRefreshToken);

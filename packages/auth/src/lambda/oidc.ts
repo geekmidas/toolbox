@@ -158,7 +158,7 @@ export class OidcAuthorizer<TClaims extends OidcClaims = OidcClaims> {
       if (cookieName) {
         const cookieHeader = headers['cookie'] ?? headers['Cookie'] ?? '';
         const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-        if (match) {
+        if (match?.[1]) {
           return match[1];
         }
       }

@@ -56,7 +56,8 @@ export class TokenManager {
     try {
       return jwt.verify(token, this.accessTokenSecret) as DecodedToken;
     } catch (error) {
-      throw new Error(`Invalid access token: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid access token: ${message}`);
     }
   }
 
@@ -64,7 +65,8 @@ export class TokenManager {
     try {
       return jwt.verify(token, this.refreshTokenSecret) as DecodedToken;
     } catch (error) {
-      throw new Error(`Invalid refresh token: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid refresh token: ${message}`);
     }
   }
 
