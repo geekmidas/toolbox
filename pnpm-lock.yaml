@@ -601,25 +601,26 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ~3.844.0
         version: 3.844.0
-      '@geekmidas/cache':
-        specifier: workspace:*
-        version: link:../cache
       zod:
         specifier: ~4.1.13
         version: 4.1.13
+    devDependencies:
+      '@geekmidas/cache':
+        specifier: workspace:^
+        version: link:../cache
 
   packages/studio:
     dependencies:
-      '@geekmidas/db':
-        specifier: workspace:*
-        version: link:../db
-      '@geekmidas/telescope':
-        specifier: workspace:*
-        version: link:../telescope
       nanoid:
         specifier: ~5.1.5
         version: 5.1.6
     devDependencies:
+      '@geekmidas/db':
+        specifier: workspace:^
+        version: link:../db
+      '@geekmidas/telescope':
+        specifier: workspace:^
+        version: link:../telescope
       '@types/pg':
         specifier: ~8.16.0
         version: 8.16.0
