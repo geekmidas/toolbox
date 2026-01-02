@@ -5,7 +5,7 @@ import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import { loadConfig, parseModuleConfig } from '../config';
-import { normalizeTelescopeConfig } from '../dev';
+import { normalizeHooksConfig, normalizeTelescopeConfig } from '../dev';
 import {
   CronGenerator,
   EndpointGenerator,
@@ -55,12 +55,19 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     logger.log(`🔭 Telescope enabled at ${telescope.path}`);
   }
 
+  // Normalize hooks configuration
+  const hooks = normalizeHooksConfig(config.hooks);
+  if (hooks) {
+    logger.log(`🪝 Server hooks enabled`);
+  }
+
   const buildContext: BuildContext = {
     envParserPath,
     envParserImportPattern,
     loggerPath,
     loggerImportPattern,
     telescope,
+    hooks,
   };
 
   // Initialize generators
