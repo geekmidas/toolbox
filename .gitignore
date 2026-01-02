@@ -48,4 +48,4 @@ bad-migrations
 
 *.p8
 
-.claude/settings.local.json 
+.claude/settings.local.json *.tsbuildinfo

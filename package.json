@@ -9,6 +9,7 @@
     "docs:preview": "pnpm --filter @geekmidas/docs preview",
     "lint": "biome check .",
     "fmt": "biome format . --write",
+    "ts:check": "tsc --build",
     "test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
     "test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage",
     "bench": "NODE_OPTIONS=\"--import tsx\" vitest bench",

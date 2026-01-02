@@ -1,10 +1,54 @@
 {
   "name": "@geekmidas/ui",
   "version": "0.1.0",
-  "description": "Shared UI build utilities",
+  "description": "Shared UI component library with Supabase-inspired dark theme",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./primitives": {
+      "types": "./dist/primitives/index.d.ts",
+      "import": "./dist/primitives/index.js",
+      "require": "./dist/primitives/index.cjs"
+    },
+    "./layout": {
+      "types": "./dist/layout/index.d.ts",
+      "import": "./dist/layout/index.js",
+      "require": "./dist/layout/index.cjs"
+    },
+    "./data-display": {
+      "types": "./dist/data-display/index.d.ts",
+      "import": "./dist/data-display/index.js",
+      "require": "./dist/data-display/index.cjs"
+    },
+    "./feedback": {
+      "types": "./dist/feedback/index.d.ts",
+      "import": "./dist/feedback/index.js",
+      "require": "./dist/feedback/index.cjs"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
+      "import": "./dist/hooks/index.js",
+      "require": "./dist/hooks/index.cjs"
+    },
+    "./styles": "./src/styles/globals.css",
+    "./theme": {
+      "types": "./dist/styles/theme.d.ts",
+      "import": "./dist/styles/theme.js",
+      "require": "./dist/styles/theme.cjs"
+    }
+  },
   "bin": {
     "embed-ui": "./scripts/embed-ui.ts"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "ts:check": "tsc --noEmit",
+    "storybook": "storybook dev -p 6006",
+    "build:storybook": "storybook build -o dist/storybook"
   },
   "repository": {
     "type": "git",
@@ -14,7 +58,34 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
+  "dependencies": {
+    "clsx": "^2.1.1"
+  },
   "devDependencies": {
-    "tsx": "~4.19.4"
-  }
+    "@storybook/addon-a11y": "^8.4.7",
+    "@storybook/addon-essentials": "^8.4.7",
+    "@storybook/addon-interactions": "^8.4.7",
+    "@storybook/react": "^8.4.7",
+    "@storybook/react-vite": "^8.4.7",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "storybook": "^8.4.7",
+    "tailwindcss": "^4.0.0",
+    "tsdown": "^0.9.1",
+    "tsx": "~4.19.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "src/styles",
+    "scripts"
+  ]
 }

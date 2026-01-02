@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "files": [],
+  "references": [
+    { "path": "./packages/audit" },
+    { "path": "./packages/auth" },
+    { "path": "./packages/cache" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/client" },
+    { "path": "./packages/cloud" },
+    { "path": "./packages/constructs" },
+    { "path": "./packages/db" },
+    { "path": "./packages/emailkit" },
+    { "path": "./packages/envkit" },
+    { "path": "./packages/errors" },
+    { "path": "./packages/events" },
+    { "path": "./packages/logger" },
+    { "path": "./packages/rate-limit" },
+    { "path": "./packages/schema" },
+    { "path": "./packages/services" },
+    { "path": "./packages/storage" },
+    { "path": "./packages/studio" },
+    { "path": "./packages/telescope" },
+    { "path": "./packages/testkit" },
+    { "path": "./packages/ui" }
+  ]
+}
