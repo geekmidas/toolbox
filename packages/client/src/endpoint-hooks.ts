@@ -149,10 +149,13 @@ export function createEndpointHooks<Paths>(
         () => ({
           queryKey,
           queryFn: () =>
-            fetcher(
-              endpoint as Parameters<typeof fetcher>[0],
-              config as Parameters<typeof fetcher>[1],
-            ),
+            // Type assertion needed due to complex conditional types
+            (
+              fetcher as (
+                endpoint: T,
+                config?: unknown,
+              ) => Promise<ExtractEndpointResponse<Paths, T>>
+            )(endpoint, config),
           ...queryOptions,
         }),
         [
@@ -182,10 +185,13 @@ export function createEndpointHooks<Paths>(
       const memoizedOptions = useMemo(
         () => ({
           mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
-            fetcher(
-              endpoint as Parameters<typeof fetcher>[0],
-              config as Parameters<typeof fetcher>[1],
-            ),
+            // Type assertion needed due to complex conditional types
+            (
+              fetcher as (
+                endpoint: T,
+                config?: unknown,
+              ) => Promise<ExtractEndpointResponse<Paths, T>>
+            )(endpoint, config),
           ...mutationOptions,
         }),
         [endpoint, JSON.stringify(mutationOptions)],

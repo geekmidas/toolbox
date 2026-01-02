@@ -129,8 +129,8 @@ export function createOpenAPIHooks<Paths>(
     operationId: OpId,
   ): string {
     // Runtime lookup from registry
-    if (operations && operations[operationId as string]) {
-      const op = operations[operationId as string];
+    const op = operations?.[operationId as string];
+    if (op) {
       return `${op.method.toUpperCase()} ${op.path}`;
     }
     // Fallback for compile-time only usage

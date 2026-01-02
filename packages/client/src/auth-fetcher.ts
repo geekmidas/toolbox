@@ -199,7 +199,7 @@ export function createAuthAwareFetcher<
       const strategy =
         authStrategies[schemeName as UsedSecuritySchemes<EndpointAuth>];
 
-      if (strategy) {
+      if (strategy && scheme) {
         authHeaders = await resolveAuthHeaders(strategy, scheme);
       }
     }

@@ -160,7 +160,7 @@ export class TypedFetcher<Paths> {
   ): ParseEndpoint<T> {
     const [method, ...routeParts] = endpoint.split(' ');
     const route = routeParts.join(' ');
-    return { method: method.toLowerCase(), route } as ParseEndpoint<T>;
+    return { method: method?.toLowerCase() ?? '', route } as ParseEndpoint<T>;
   }
 }
 
