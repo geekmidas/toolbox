@@ -6,16 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   benchmark:
     name: Run Benchmarks
@@ -47,39 +37,9 @@ jobs:
       - name: Transform benchmark results
         run: node scripts/transform-benchmarks.js vitest-bench.json benchmark-results.json
 
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          name: Toolbox Benchmarks
-          tool: 'customBiggerIsBetter'
-          output-file-path: benchmark-results.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.ref == 'refs/heads/main' }}
-          comment-on-alert: true
-          comment-always: ${{ github.event_name == 'pull_request' }}
-          alert-threshold: '110%'
-          fail-on-alert: ${{ github.ref == 'refs/heads/main' }}
-          gh-pages-branch: main
-          benchmark-data-dir-path: .benchmarks
-          skip-fetch-gh-pages: true
-
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: benchmark-results.json
           retention-days: 30
-
-      - name: Setup Pages
-        if: github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@v4
-
-      - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .benchmarks
-
-      - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@v4
