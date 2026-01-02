@@ -170,22 +170,14 @@ program
 
 program
   .command('openapi')
-  .description(
-    'Generate OpenAPI specification from endpoints (TypeScript by default)',
-  )
-  .option(
-    '--output <path>',
-    'Output file path for the OpenAPI spec',
-    'openapi.ts',
-  )
-  .option('--json', 'Generate JSON instead of TypeScript (legacy)', false)
-  .action(async (options: { output?: string; json?: boolean }) => {
+  .description('Generate OpenAPI specification from endpoints')
+  .action(async () => {
     try {
       const globalOptions = program.opts();
       if (globalOptions.cwd) {
         process.chdir(globalOptions.cwd);
       }
-      await openapiCommand(options);
+      await openapiCommand({});
     } catch (error) {
       console.error('OpenAPI generation failed:', (error as Error).message);
       process.exit(1);
