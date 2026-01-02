@@ -216,20 +216,19 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const createAdminSeed = async ({ attrs, factory }: { attrs: any; factory: any; db: Knex }) => {
-      return await factory.insert('user', {
-        name: attrs.name || 'Admin User',
-      });
-    };
-
     const seeds = {
-      createAdmin: createAdminSeed,
+      createAdmin: ObjectionFactory.createSeed(
+        async ({ attrs, factory }: { attrs: { name?: string }; factory: any; db: Knex }) => {
+          return await factory.insert('user', {
+            name: attrs.name || 'Admin User',
+          });
+        },
+      ),
     };
 
     const factory = new ObjectionFactory(builders, seeds, trx);
 
-    const attrs = { name: 'Super Admin' };
-    const result = await factory.seed('createAdmin', attrs);
+    const result = await factory.seed('createAdmin', { name: 'Super Admin' });
 
     expect(result).toBeInstanceOf(User);
     expect(result.name).toBe('Super Admin');
@@ -247,15 +246,15 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const createAdminSeed = async ({ factory }: { attrs: any; factory: any; db: Knex }) => {
-      return await factory.insert('user', {
-        name: 'Default Admin',
-        role: 'admin',
-      });
-    };
-
     const seeds = {
-      createAdmin: createAdminSeed,
+      createAdmin: ObjectionFactory.createSeed(
+        async ({ factory }: { attrs: any; factory: any; db: Knex }) => {
+          return await factory.insert('user', {
+            name: 'Default Admin',
+            role: 'admin',
+          });
+        },
+      ),
     };
 
     const factory = new ObjectionFactory(builders, seeds, trx);
@@ -283,25 +282,28 @@ describe('ObjectionFactory', () => {
 
     const builders = { user: userBuilder };
 
-    const complexSeed = async ({
-      attrs,
-      factory: passedFactory,
-      db: passedDb,
-    }: { attrs: any; factory: any; db: Knex }) => {
-      // Verify that factory and db are passed correctly
-      expect(passedFactory).toBe(factory);
-      expect(passedDb).toBe(trx);
-
-      return await passedFactory.insert('user', {
-        name: `Complex ${attrs.data}`,
-      });
-    };
+    let factoryRef: any;
 
     const seeds = {
-      complexSeed,
+      complexSeed: ObjectionFactory.createSeed(
+        async ({
+          attrs,
+          factory: passedFactory,
+          db: passedDb,
+        }: { attrs: { data: string }; factory: any; db: Knex }) => {
+          // Verify that factory and db are passed correctly
+          expect(passedFactory).toBe(factoryRef);
+          expect(passedDb).toBe(trx);
+
+          return await passedFactory.insert('user', {
+            name: `Complex ${attrs.data}`,
+          });
+        },
+      ),
     };
 
     const factory = new ObjectionFactory(builders, seeds, trx);
+    factoryRef = factory;
 
     const result = await factory.seed('complexSeed', { data: 'test' });
 
@@ -481,12 +483,12 @@ describe('ObjectionFactory', () => {
   });
 
   it('should handle seed function errors gracefully', async ({ trx }) => {
-    const failingSeed = async ({ }: { attrs: any; factory: any; db: Knex }) => {
-      throw new Error('Seed failed');
-    };
-
     const seeds = {
-      failingSeed,
+      failingSeed: ObjectionFactory.createSeed(
+        async ({}: { attrs: any; factory: any; db: Knex }) => {
+          throw new Error('Seed failed');
+        },
+      ),
     };
 
     const factory = new ObjectionFactory({}, seeds, trx);
@@ -508,20 +510,22 @@ describe('ObjectionFactory', () => {
       });
     };
 
-    const adminSeed = async ({
-      factory,
-    }: {
-      attrs: { isSuper?: boolean };
-      factory: any;
-      db: Knex;
-    }) => {
-      return factory.insert('user', {
-        name: 'Admin',
-      });
-    };
-
     const builders = { user: userBuilder };
-    const seeds = { admin: adminSeed };
+    const seeds = {
+      admin: ObjectionFactory.createSeed(
+        async ({
+          factory,
+        }: {
+          attrs: { isSuper?: boolean };
+          factory: any;
+          db: Knex;
+        }) => {
+          return factory.insert('user', {
+            name: 'Admin',
+          });
+        },
+      ),
+    };
 
     // This should compile without type errors
     const factory = new ObjectionFactory(builders, seeds, trx);
