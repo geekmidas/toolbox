@@ -1,6 +1,6 @@
-import type { Hono } from 'hono';
-import type { Logger } from '@geekmidas/logger';
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+import type { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 interface HookContext {
