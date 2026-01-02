@@ -187,3 +187,54 @@ faker.identifier();      // "com.example.widget1"
 const center = { lat: 40.7128, lng: -74.0060 };
 faker.coordinates.within(center, 1000);  // Within 1km
 ```
+
+## Better Auth Testing
+
+In-memory adapter for testing [Better Auth](https://better-auth.com) without a real database:
+
+```typescript
+import { memoryAdapter } from '@geekmidas/testkit/better-auth';
+import { betterAuth } from 'better-auth';
+
+describe('Authentication', () => {
+  const adapter = memoryAdapter({
+    debugLogs: false,
+    initialData: {
+      user: [{ id: '1', email: 'test@example.com', name: 'Test User' }],
+    },
+  });
+
+  const auth = betterAuth({
+    database: adapter,
+    // ... other config
+  });
+
+  afterEach(() => {
+    adapter.clear(); // Reset data between tests
+  });
+
+  it('should create user', async () => {
+    await auth.api.signUp({
+      email: 'new@example.com',
+      password: 'password123',
+    });
+
+    const data = adapter.getAllData();
+    expect(data.user).toHaveLength(2);
+  });
+});
+```
+
+### Memory Adapter API
+
+```typescript
+function memoryAdapter(config?: {
+  debugLogs?: boolean;      // Log operations to console
+  usePlural?: boolean;      // Use plural table names
+  initialData?: Record<string, any[]>;  // Pre-populate data
+}): DatabaseAdapter & {
+  clear(): void;            // Reset all data
+  getAllData(): Record<string, any[]>;  // Get all stored data
+  getStore(): Map<string, any>;  // Access underlying store
+};
+```
