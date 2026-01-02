@@ -4,7 +4,9 @@ import { e } from '../endpoints';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 
 describe('Endpoint Handling - Simple', () => {
-  const simpleEndpoint = e.get('/health').handle(async () => ({ status: 'ok' }));
+  const simpleEndpoint = e
+    .get('/health')
+    .handle(async () => ({ status: 'ok' }));
   const adaptor = new TestEndpointAdaptor(simpleEndpoint);
 
   bench('simple GET endpoint', async () => {

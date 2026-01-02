@@ -52,7 +52,11 @@ describe('Schema Conversion - Complex', () => {
   const unionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('text'), content: z.string() }),
     z.object({ type: z.literal('image'), url: z.string() }),
-    z.object({ type: z.literal('video'), url: z.string(), duration: z.number() }),
+    z.object({
+      type: z.literal('video'),
+      url: z.string(),
+      duration: z.number(),
+    }),
   ]);
 
   bench('discriminated union schema', async () => {

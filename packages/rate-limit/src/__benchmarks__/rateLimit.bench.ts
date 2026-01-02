@@ -1,10 +1,10 @@
-import { bench, describe } from 'vitest';
 import { InMemoryCache } from '@geekmidas/cache/memory';
+import { bench, describe } from 'vitest';
 import {
-  checkRateLimit,
   type RateLimitConfig,
   type RateLimitContext,
   type RateLimitData,
+  checkRateLimit,
 } from '../index';
 
 // Helper to create a mock context
@@ -12,7 +12,12 @@ function createContext(ip: string): RateLimitContext {
   return {
     header: (key: string) => (key === 'x-forwarded-for' ? ip : undefined),
     services: {},
-    logger: { info: () => {}, error: () => {}, debug: () => {}, warn: () => {} } as any,
+    logger: {
+      info: () => {},
+      error: () => {},
+      debug: () => {},
+      warn: () => {},
+    } as any,
     session: {},
     path: '/test',
     method: 'GET',

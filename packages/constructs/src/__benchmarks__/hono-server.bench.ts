@@ -1,9 +1,9 @@
-import { bench, describe } from 'vitest';
 import { Hono } from 'hono';
+import { bench, describe } from 'vitest';
 import { z } from 'zod';
 import { e } from '../endpoints';
-import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import type { Endpoint } from '../endpoints/Endpoint';
+import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 
 /**
  * E2E benchmarks with Hono app.request() - tests the full request/response cycle
@@ -202,7 +202,10 @@ describe('Hono E2E - Concurrent Requests', () => {
   const endpoints = [
     e.get('/health').handle(async () => ({ status: 'ok' })),
     e.get('/users').handle(async () => [{ id: '1' }]),
-    e.get('/users/:id').params(z.object({ id: z.string() })).handle(async () => ({ id: '1' })),
+    e
+      .get('/users/:id')
+      .params(z.object({ id: z.string() }))
+      .handle(async () => ({ id: '1' })),
   ];
 
   const app = createApp(endpoints);

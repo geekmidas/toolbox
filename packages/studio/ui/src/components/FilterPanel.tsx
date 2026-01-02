@@ -118,12 +118,16 @@ export function FilterPanel({
               {index > 0 && (
                 <span className="text-xs text-slate-500 w-8">and</span>
               )}
-              {index === 0 && <span className="text-xs text-slate-500 w-8">Where</span>}
+              {index === 0 && (
+                <span className="text-xs text-slate-500 w-8">Where</span>
+              )}
 
               {/* Column select */}
               <select
                 value={filter.column}
-                onChange={(e) => updateFilter(index, { column: e.target.value })}
+                onChange={(e) =>
+                  updateFilter(index, { column: e.target.value })
+                }
                 className="select flex-1 min-w-0"
               >
                 {columns.map((col) => (
@@ -153,7 +157,9 @@ export function FilterPanel({
                 <input
                   type="text"
                   value={filter.value}
-                  onChange={(e) => updateFilter(index, { value: e.target.value })}
+                  onChange={(e) =>
+                    updateFilter(index, { value: e.target.value })
+                  }
                   placeholder="Enter value..."
                   className="input flex-1 min-w-0"
                 />
