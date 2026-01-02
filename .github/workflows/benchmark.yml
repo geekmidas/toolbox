@@ -37,13 +37,34 @@ jobs:
         run: pnpm build
 
       - name: Run benchmarks
-        run: pnpm bench:ci -- --outputJson=benchmark-results.json
+        run: pnpm bench:ci --outputJson vitest-bench.json
+
+      - name: Transform benchmark results
+        run: |
+          node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('vitest-bench.json', 'utf8'));
+            const results = [];
+            for (const file of data.files || []) {
+              for (const group of file.groups || []) {
+                for (const bench of group.benchmarks || []) {
+                  results.push({
+                    name: group.fullName + ' > ' + bench.name,
+                    unit: 'ops/sec',
+                    value: Math.round(bench.hz),
+                    range: '±' + bench.rme.toFixed(2) + '%'
+                  });
+                }
+              }
+            }
+            fs.writeFileSync('benchmark-results.json', JSON.stringify(results, null, 2));
+          "
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: Toolbox Benchmarks
-          tool: 'customSmallerIsBetter'
+          tool: 'customBiggerIsBetter'
           output-file-path: benchmark-results.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # On main: deploy to GitHub Pages
