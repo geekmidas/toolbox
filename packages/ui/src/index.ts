@@ -1,17 +1,10 @@
 // @geekmidas/ui - Shared UI component library
-// Re-export all components and utilities
 
-// Primitives
-export * from './primitives';
+// shadcn/ui components (primary)
+export * from './components/ui';
 
-// Layout
-export * from './layout';
-
-// Data Display
-export * from './data-display';
-
-// Feedback
-export * from './feedback';
+// Utilities
+export { cn } from './lib/utils';
 
 // Hooks
 export * from './hooks';
