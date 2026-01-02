@@ -43,6 +43,11 @@
       "types": "./dist/better-auth.d.ts",
       "import": "./dist/better-auth.mjs",
       "require": "./dist/better-auth.cjs"
+    },
+    "./benchmark": {
+      "types": "./dist/benchmark.d.ts",
+      "import": "./dist/benchmark.mjs",
+      "require": "./dist/benchmark.cjs"
     }
   },
   "dependencies": {
