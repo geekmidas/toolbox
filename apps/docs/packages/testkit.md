@@ -17,105 +17,173 @@ pnpm add -D @geekmidas/testkit
 - ✅ Batch operations support
 - ✅ Database migration utilities
 - ✅ Complex seed scenarios
+- ✅ Enhanced faker with timestamps, sequences, and coordinates
 
 ## Kysely Factory
 
-### Basic Usage
+### Builders
+
+Use `createBuilder` to define type-safe builders that receive `{ attrs, faker, factory, db }`:
 
 ```typescript
 import { KyselyFactory } from '@geekmidas/testkit/kysely';
-import { db } from './database';
 
-// Define builders
+interface Database {
+  users: { id: string; name: string; email: string; createdAt: Date };
+  posts: { id: string; title: string; userId: string };
+}
+
 const builders = {
-  user: (data) => ({
-    id: data.id ?? randomUUID(),
-    name: data.name ?? 'Test User',
-    email: data.email ?? 'test@example.com',
-    createdAt: data.createdAt ?? new Date(),
-  }),
-  post: (data) => ({
-    id: data.id ?? randomUUID(),
-    title: data.title ?? 'Test Post',
-    content: data.content ?? 'Lorem ipsum',
-    authorId: data.authorId,
-    createdAt: data.createdAt ?? new Date(),
-  }),
+  user: KyselyFactory.createBuilder<Database, 'users'>('users',
+    ({ attrs, faker }) => ({
+      id: faker.string.uuid(),
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      createdAt: new Date(),
+      ...attrs,
+    })
+  ),
+  post: KyselyFactory.createBuilder<Database, 'posts'>('posts',
+    ({ attrs, faker }) => ({
+      id: faker.string.uuid(),
+      title: faker.lorem.sentence(),
+      ...attrs,
+    })
+  ),
 };
 
-// Create factory
 const factory = new KyselyFactory(builders, {}, db);
 
-// Use in tests
-describe('User API', () => {
-  beforeEach(async () => {
-    await factory.beginTransaction();
-  });
+// Insert single record
+const user = await factory.insert('user', { name: 'John Doe' });
 
-  afterEach(async () => {
-    await factory.rollbackTransaction();
-  });
+// Insert multiple records
+const posts = await factory.insertMany(3, 'post', { userId: user.id });
 
-  it('should create user with posts', async () => {
-    const user = await factory.insert('user', {
-      name: 'John Doe',
-    });
-
-    const posts = await factory.insertMany('post', [
-      { title: 'First Post', authorId: user.id },
-      { title: 'Second Post', authorId: user.id },
-    ]);
-
-    expect(posts).toHaveLength(2);
-  });
-});
+// Insert with dynamic attributes
+const users = await factory.insertMany(5, 'user', (idx, faker) => ({
+  email: `user${idx}@example.com`,
+}));
 ```
 
-### Seed Functions
+### Seeds
+
+Use `createSeed` to define type-safe seed functions that receive `{ attrs, factory, db }`:
 
 ```typescript
 const seeds = {
-  userWithPosts: async (factory, data) => {
-    const user = await factory.insert('user', data.user);
-    const posts = await factory.insertMany('post', 
-      data.posts.map(post => ({ ...post, authorId: user.id }))
-    );
-    return { user, posts };
-  },
+  userWithPosts: KyselyFactory.createSeed(
+    async ({ attrs, factory }: {
+      attrs: { postCount?: number };
+      factory: KyselyFactory<Database, typeof builders, {}>;
+      db: Kysely<Database>;
+    }) => {
+      const user = await factory.insert('user');
+      const posts = await factory.insertMany(
+        attrs.postCount || 3,
+        'post',
+        { userId: user.id }
+      );
+      return { user, posts };
+    }
+  ),
 };
 
 const factory = new KyselyFactory(builders, seeds, db);
 
-// Use seed
-const { user, posts } = await factory.seed('userWithPosts', {
-  user: { name: 'Jane Doe' },
-  posts: [{ title: 'Post 1' }, { title: 'Post 2' }],
-});
+// Use seed with type-safe attrs
+const { user, posts } = await factory.seed('userWithPosts', { postCount: 5 });
 ```
 
 ## Objection.js Factory
 
+### Builders
+
 ```typescript
 import { ObjectionFactory } from '@geekmidas/testkit/objection';
-import { User, Post } from './models';
+import { Model } from 'objection';
 
-const factory = new ObjectionFactory({
-  User: (data) => User.fromJson({
-    name: data.name ?? 'Test User',
-    email: data.email ?? 'test@example.com',
-  }),
-  Post: (data) => Post.fromJson({
-    title: data.title ?? 'Test Post',
-    content: data.content ?? 'Lorem ipsum',
-  }),
+class User extends Model {
+  static tableName = 'users';
+  id!: string;
+  name!: string;
+}
+
+const builders = {
+  user: ObjectionFactory.createBuilder(User, ({ attrs, faker }) => ({
+    name: faker.person.fullName(),
+    ...attrs,
+  })),
+};
+
+const factory = new ObjectionFactory(builders, {}, knex);
+const user = await factory.insert('user', { name: 'Jane Doe' });
+```
+
+### Seeds
+
+```typescript
+const seeds = {
+  adminUser: ObjectionFactory.createSeed(
+    async ({ attrs, factory }: {
+      attrs: { name?: string };
+      factory: ObjectionFactory<typeof builders, {}>;
+      db: Knex;
+    }) => {
+      return factory.insert('user', {
+        name: attrs.name || 'Admin User',
+        role: 'admin',
+      });
+    }
+  ),
+};
+
+const factory = new ObjectionFactory(builders, seeds, knex);
+const admin = await factory.seed('adminUser', { name: 'Super Admin' });
+```
+
+## Transaction Isolation
+
+Wrap tests with automatic transaction rollback:
+
+```typescript
+import { test } from 'vitest';
+import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
+
+const it = wrapVitestKyselyTransaction<Database>(test, {
+  connection: () => db,
 });
 
-// Use in tests
-const user = await factory.create('User', {
-  name: 'John Doe',
-  posts: [
-    { title: 'First Post' },
-    { title: 'Second Post' },
-  ],
+it('should create user', async ({ trx }) => {
+  const user = await trx
+    .insertInto('users')
+    .values({ name: 'Test' })
+    .returningAll()
+    .executeTakeFirst();
+
+  expect(user).toBeDefined();
+  // Automatically rolled back after test
 });
+```
+
+## Enhanced Faker
+
+```typescript
+import { faker } from '@geekmidas/testkit/faker';
+
+// Timestamps for database records
+const { createdAt, updatedAt } = faker.timestamps();
+
+// Sequential numbers
+faker.sequence();        // 1
+faker.sequence();        // 2
+faker.sequence('user');  // 1 (separate sequence)
+
+// Prices and identifiers
+faker.price();           // 29.99
+faker.identifier();      // "com.example.widget1"
+
+// Coordinates
+const center = { lat: 40.7128, lng: -74.0060 };
+faker.coordinates.within(center, 1000);  // Within 1km
 ```
