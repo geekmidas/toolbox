@@ -634,6 +634,7 @@ class KyselyFactory<DB, Builders, Seeds> {
     db: Kysely<DB> | ControlledTransaction<DB>
   );
 
+  // Create a type-safe builder for a specific table
   static createBuilder<DB, TableName extends keyof DB & string>(
     table: TableName,
     defaults?: (context: {
@@ -645,20 +646,28 @@ class KyselyFactory<DB, Builders, Seeds> {
     autoInsert?: boolean
   ): BuilderFunction;
 
+  // Create a type-safe seed function
+  static createSeed<Seed extends FactorySeed>(
+    seedFn: (context: { attrs: Attrs; factory: Factory; db: DB }) => Promise<Result>
+  ): Seed;
+
+  // Insert a single record
   insert<K extends keyof Builders>(
     builderName: K,
     attrs?: Partial<BuilderAttrs>
   ): Promise<BuilderResult>;
 
+  // Insert multiple records
   insertMany<K extends keyof Builders>(
     count: number,
     builderName: K,
     attrs?: Partial<BuilderAttrs> | ((idx: number, faker: FakerFactory) => Partial<BuilderAttrs>)
   ): Promise<BuilderResult[]>;
 
+  // Execute a seed function
   seed<K extends keyof Seeds>(
     seedName: K,
-    attrs?: SeedAttrs
+    attrs?: ExtractSeedAttrs<Seeds[K]>  // Attrs type is extracted from seed function
   ): Promise<SeedResult>;
 }
 ```
