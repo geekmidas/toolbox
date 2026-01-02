@@ -164,9 +164,6 @@ importers:
 
   packages/auth:
     dependencies:
-      '@geekmidas/cache':
-        specifier: workspace:*
-        version: link:../cache
       '@openauthjs/openauth':
         specifier: ~0.4.3
         version: 0.4.3(arctic@2.3.4)(hono@4.8.2)
@@ -186,6 +183,9 @@ importers:
         specifier: ^9.0.2
         version: 9.0.2
     devDependencies:
+      '@geekmidas/cache':
+        specifier: workspace:^
+        version: link:../cache
       '@types/jsonwebtoken':
         specifier: ^9.0.5
         version: 9.0.10

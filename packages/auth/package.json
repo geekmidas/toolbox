@@ -63,19 +63,23 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "~0.4.3",
-    "@geekmidas/cache": "workspace:*",
     "jose": "~5.10.0",
     "jsonwebtoken": "^9.0.2",
     "@types/ms": "~2.1.0"
   },
   "devDependencies": {
+    "@geekmidas/cache": "workspace:^",
     "@types/jsonwebtoken": "^9.0.5"
   },
   "peerDependencies": {
+    "@geekmidas/cache": "workspace:^",
     "@types/aws-lambda": ">=8.10.92",
     "hono": ">=4.0.0"
   },
   "peerDependenciesMeta": {
+    "@geekmidas/cache": {
+      "optional": true
+    },
     "@types/aws-lambda": {
       "optional": true
     },
