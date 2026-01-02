@@ -32,20 +32,22 @@
     "access": "public"
   },
   "dependencies": {
-    "@geekmidas/db": "workspace:*",
-    "@geekmidas/telescope": "workspace:*",
     "nanoid": "~5.1.5"
   },
   "peerDependencies": {
+    "@geekmidas/db": "workspace:^",
+    "@geekmidas/telescope": "workspace:^",
     "hono": "^4.0.0",
     "kysely": "^0.28.0"
   },
   "peerDependenciesMeta": {
-    "hono": {
-      "optional": true
-    }
+    "@geekmidas/db": { "optional": true },
+    "@geekmidas/telescope": { "optional": true },
+    "hono": { "optional": true }
   },
   "devDependencies": {
+    "@geekmidas/db": "workspace:^",
+    "@geekmidas/telescope": "workspace:^",
     "@types/pg": "~8.16.0",
     "hono": "^4.7.0",
     "kysely": "~0.28.2",
