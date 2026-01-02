@@ -64,6 +64,34 @@ export interface OpenApiConfig {
   description?: string;
 }
 
+export interface HooksConfig {
+  /**
+   * Path to a module exporting server lifecycle hooks.
+   * The module should export `beforeSetup` and/or `afterSetup` functions.
+   *
+   * @example
+   * ```typescript
+   * // src/config/hooks.ts
+   * import type { Hono } from 'hono';
+   * import type { Logger } from '@geekmidas/logger';
+   * import type { EnvironmentParser } from '@geekmidas/envkit';
+   *
+   * // Called BEFORE gkm endpoints are registered
+   * export function beforeSetup(app: Hono, ctx: { envParser: EnvironmentParser; logger: Logger }) {
+   *   app.use('*', cors());
+   *   app.get('/custom/health', (c) => c.json({ status: 'ok' }));
+   * }
+   *
+   * // Called AFTER gkm endpoints are registered
+   * export function afterSetup(app: Hono, ctx: { envParser: EnvironmentParser; logger: Logger }) {
+   *   app.notFound((c) => c.json({ error: 'Not found' }, 404));
+   *   app.onError((err, c) => c.json({ error: err.message }, 500));
+   * }
+   * ```
+   */
+  server?: string;
+}
+
 export interface ProvidersConfig {
   aws?: {
     apiGateway?: {
@@ -86,6 +114,16 @@ export interface GkmConfig {
   envParser: string;
   logger: string;
   providers?: ProvidersConfig;
+  /**
+   * Server lifecycle hooks for customizing the Hono app.
+   * Allows adding custom routes, middleware, error handlers, etc.
+   *
+   * @example
+   * hooks: {
+   *   server: './src/config/hooks'
+   * }
+   */
+  hooks?: HooksConfig;
   /**
    * Telescope configuration for debugging/monitoring.
    * Can be:
