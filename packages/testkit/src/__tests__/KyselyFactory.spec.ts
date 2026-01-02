@@ -279,7 +279,7 @@ describe('KyselyFactory', () => {
 
       const seeds = {
         createAdminUser: KyselyFactory.createSeed(
-          async (attrs: { name?: string }, factory: any, db: any) => {
+          async ({ attrs, factory }: { attrs: { name?: string }; factory: any; db: any }) => {
             return await factory.insert('user', {
               name: attrs.name || 'Admin User',
               email: 'admin@example.com',
@@ -319,11 +319,14 @@ describe('KyselyFactory', () => {
 
         const seeds = {
           createCustomUser: KyselyFactory.createSeed(
-            async (
-              attrs: { name: string; email: string },
-              factory: any,
-              db: any,
-            ) => {
+            async ({
+              attrs,
+              factory,
+            }: {
+              attrs: { name: string; email: string };
+              factory: any;
+              db: any;
+            }) => {
               return await factory.insert('user', attrs);
             },
           ),
