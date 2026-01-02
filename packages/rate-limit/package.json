@@ -21,10 +21,20 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
-  "dependencies": {
-    "@geekmidas/cache": "workspace:*",
-    "@geekmidas/logger": "workspace:*",
-    "@geekmidas/services": "workspace:*"
+  "dependencies": {},
+  "peerDependencies": {
+    "@geekmidas/cache": "workspace:^",
+    "@geekmidas/logger": "workspace:^",
+    "@geekmidas/services": "workspace:^"
   },
-  "peerDependencies": {}
+  "peerDependenciesMeta": {
+    "@geekmidas/cache": { "optional": true },
+    "@geekmidas/logger": { "optional": true },
+    "@geekmidas/services": { "optional": true }
+  },
+  "devDependencies": {
+    "@geekmidas/cache": "workspace:^",
+    "@geekmidas/logger": "workspace:^",
+    "@geekmidas/services": "workspace:^"
+  }
 }

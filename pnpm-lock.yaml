@@ -552,15 +552,15 @@ importers:
         version: 13.1.2
 
   packages/rate-limit:
-    dependencies:
+    devDependencies:
       '@geekmidas/cache':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../cache
       '@geekmidas/logger':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../logger
       '@geekmidas/services':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../services
 
   packages/schema:
