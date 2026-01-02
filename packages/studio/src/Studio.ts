@@ -290,7 +290,7 @@ export class Studio<DB = unknown> {
         ignorePatterns: options.monitoring.ignorePatterns ?? [],
         recordBody: options.monitoring.recordBody ?? true,
         maxBodySize: options.monitoring.maxBodySize ?? 64 * 1024,
-        pruneAfterHours: options.monitoring.pruneAfterHours,
+        pruneAfterHours: options.monitoring.pruneAfterHours ?? 24,
       },
       data: {
         db: options.data.db,

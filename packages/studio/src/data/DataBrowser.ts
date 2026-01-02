@@ -127,14 +127,18 @@ export class DataBrowser<DB = unknown> {
 
     if (hasMore && resultRows.length > 0) {
       const lastRow = resultRows[resultRows.length - 1];
-      nextCursor = encodeCursor(lastRow[cursorConfig.field]);
+      if (lastRow) {
+        nextCursor = encodeCursor(lastRow[cursorConfig.field]);
+      }
     }
 
     // For prev cursor, we need to know if there are previous results
     // This would require a separate query, so we'll only set it if there's an input cursor
     if (options.cursor && resultRows.length > 0) {
       const firstRow = resultRows[0];
-      prevCursor = encodeCursor(firstRow[cursorConfig.field]);
+      if (firstRow) {
+        prevCursor = encodeCursor(firstRow[cursorConfig.field]);
+      }
     }
 
     return {

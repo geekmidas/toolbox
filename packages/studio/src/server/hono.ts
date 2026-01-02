@@ -29,7 +29,10 @@ function parseFilters(c: Context): FilterCondition[] {
   url.searchParams.forEach((value, key) => {
     const match = key.match(/^filter\[(\w+)\]\[(\w+)\]$/);
     if (match) {
-      const [, column, operator] = match;
+      const column = match[1];
+      const operator = match[2];
+      if (!column || !operator) return;
+
       const op = operator as FilterOperator;
 
       // Validate operator
@@ -70,13 +73,19 @@ function parseSort(c: Context): SortConfig[] {
   const sortParam = c.req.query('sort');
   if (!sortParam) return [];
 
-  return sortParam.split(',').map((part) => {
-    const [column, dir] = part.split(':');
-    return {
-      column,
-      direction: dir === 'desc' ? Direction.Desc : Direction.Asc,
-    };
-  });
+  return sortParam
+    .split(',')
+    .map((part) => {
+      const parts = part.split(':');
+      const column = parts[0];
+      const dir = parts[1];
+      if (!column) return null;
+      return {
+        column,
+        direction: dir === 'desc' ? Direction.Desc : Direction.Asc,
+      };
+    })
+    .filter((s): s is SortConfig => s !== null);
 }
 
 /**
@@ -222,4 +231,4 @@ export function createStudioApp(studio: StudioLike): Hono {
 }
 
 // Re-export types
-export type { StudioLike, DataBrowser };
+export type { DataBrowser };

@@ -84,7 +84,7 @@ export function validateFilter(
   };
 
   const allowedOps =
-    typeCompatibility[columnInfo.type] ?? typeCompatibility.unknown;
+    typeCompatibility[columnInfo.type] ?? typeCompatibility.unknown ?? [];
 
   if (!allowedOps.includes(filter.operator)) {
     return {
