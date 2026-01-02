@@ -513,28 +513,113 @@ describe('User Service', () => {
 
 ## Seeds
 
-Seeds are functions that create complex test scenarios:
+Seeds are functions that create complex test scenarios. Use `createSeed` to define type-safe seed functions that receive `{ attrs, factory, db }` as a single context object:
+
+### Defining Seeds with Kysely
 
 ```typescript
-const blogSeed = async (factory: Factory) => {
-  const author = await factory.insert('user', {
-    name: 'Blog Author',
-    role: 'author',
-  });
+import { KyselyFactory } from '@geekmidas/testkit/kysely';
 
-  const categories = await factory.insertMany(3, 'category');
+// Define seeds using createSeed for type safety
+const seeds = {
+  // Simple seed with typed attrs
+  adminUser: KyselyFactory.createSeed(
+    async ({ attrs, factory }: {
+      attrs: { name?: string };
+      factory: KyselyFactory<Database, typeof builders, {}>;
+      db: Kysely<Database>
+    }) => {
+      return factory.insert('user', {
+        name: attrs.name || 'Admin User',
+        role: 'admin',
+      });
+    }
+  ),
 
-  const posts = await factory.insertMany(5, 'post', (index) => ({
-    title: `Post ${index + 1}`,
-    authorId: author.id,
-    categoryId: categories[index % categories.length].id,
-  }));
+  // Complex seed creating related records
+  blogWithPosts: KyselyFactory.createSeed(
+    async ({ attrs, factory }) => {
+      const author = await factory.insert('user', {
+        name: attrs.authorName || 'Blog Author',
+        role: 'author',
+      });
 
-  return { author, categories, posts };
+      const categories = await factory.insertMany(3, 'category');
+
+      const posts = await factory.insertMany(attrs.postCount || 5, 'post', (index) => ({
+        title: `Post ${index + 1}`,
+        authorId: author.id,
+        categoryId: categories[index % categories.length].id,
+      }));
+
+      return { author, categories, posts };
+    }
+  ),
 };
 
-// Use in tests
-const data = await factory.seed('blog');
+// Create factory with seeds
+const factory = new KyselyFactory(builders, seeds, db);
+
+// Use in tests - attrs are type-safe
+const admin = await factory.seed('adminUser', { name: 'Super Admin' });
+const blog = await factory.seed('blogWithPosts', {
+  authorName: 'Jane Doe',
+  postCount: 10
+});
+```
+
+### Defining Seeds with Objection.js
+
+```typescript
+import { ObjectionFactory } from '@geekmidas/testkit/objection';
+import type { Knex } from 'knex';
+
+const seeds = {
+  userWithProfile: ObjectionFactory.createSeed(
+    async ({ attrs, factory, db }: {
+      attrs: { email?: string };
+      factory: ObjectionFactory<typeof builders, {}>;
+      db: Knex
+    }) => {
+      const user = await factory.insert('user', {
+        email: attrs.email || 'user@example.com',
+      });
+
+      await factory.insert('profile', { userId: user.id });
+
+      return user;
+    }
+  ),
+};
+
+const factory = new ObjectionFactory(builders, seeds, knex);
+const user = await factory.seed('userWithProfile', { email: 'custom@example.com' });
+```
+
+### Seed Context Object
+
+All seed functions receive a single context object with three properties:
+
+| Property | Description |
+|----------|-------------|
+| `attrs` | Configuration attributes passed to `factory.seed()` |
+| `factory` | The factory instance for creating records |
+| `db` | The database connection (Kysely or Knex transaction) |
+
+This pattern allows you to destructure only what you need:
+
+```typescript
+// Use all three
+KyselyFactory.createSeed(async ({ attrs, factory, db }) => {
+  // Direct db access for complex queries
+  const existing = await db.selectFrom('users').where('role', '=', 'admin').execute();
+  // ...
+});
+
+// Or just what you need
+KyselyFactory.createSeed(async ({ factory }) => {
+  return factory.insert('user');
+});
 ```
 
 ## API Reference
