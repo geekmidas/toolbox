@@ -30,7 +30,7 @@ describe('Schema Conversion - Complex', () => {
       profile: z.object({
         name: z.string(),
         bio: z.string().optional(),
-        settings: z.record(z.unknown()),
+        settings: z.record(z.string(), z.unknown()),
       }),
       contacts: z.array(
         z.object({
