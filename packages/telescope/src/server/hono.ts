@@ -40,13 +40,14 @@ export function createMiddleware(telescope: Telescope): MiddlewareHandler {
     ) {
       try {
         const contentType = c.req.header('content-type') || '';
+        // Clone the request to avoid consuming the body stream
+        const clonedRequest = c.req.raw.clone();
         if (contentType.includes('application/json')) {
-          body = await c.req.json();
+          body = await clonedRequest.json();
         } else if (contentType.includes('application/x-www-form-urlencoded')) {
-          const formData = await c.req.formData();
-          body = Object.fromEntries(formData.entries());
+          body = Object.fromEntries((await clonedRequest.formData()).entries());
         } else if (contentType.includes('text/')) {
-          body = await c.req.text();
+          body = await clonedRequest.text();
         }
       } catch {
         // Ignore body parsing errors
