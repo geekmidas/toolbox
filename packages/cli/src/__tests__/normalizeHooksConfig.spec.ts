@@ -45,7 +45,9 @@ describe('normalizeHooksConfig', () => {
     const result = normalizeHooksConfig({ server: 'config/server-hooks' });
 
     expect(result).toBeDefined();
-    expect(result!.serverHooksPath).toBe('/test/project/config/server-hooks.ts');
+    expect(result!.serverHooksPath).toBe(
+      '/test/project/config/server-hooks.ts',
+    );
   });
 
   it('should handle nested directory paths', () => {
