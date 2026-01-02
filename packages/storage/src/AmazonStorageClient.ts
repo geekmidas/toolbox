@@ -51,7 +51,7 @@ export class AmazonStorageClient implements StorageClient {
     private readonly client: S3Client,
     private readonly bucket: string,
     private readonly acl = AmazonCannedAccessControlList.AuthenticatedRead,
-    readonly cache?: Cache<string>,
+    readonly cache?: Cache,
   ) {}
 
   getVersionDownloadURL(file: File, versionId: string): Promise<string> {
@@ -85,7 +85,7 @@ export class AmazonStorageClient implements StorageClient {
 
   async getDownloadURL(file: File, expiresIn = 60 * 60): Promise<string> {
     const cacheKey = `download-url:${file.path}`;
-    const cachedURL = await this.cache?.get(cacheKey);
+    const cachedURL = await this.cache?.get<string>(cacheKey);
 
     if (cachedURL) {
       return cachedURL;
@@ -191,5 +191,5 @@ interface AmazonStorageClientCreateOptions {
   secretAccessKey?: string;
   endpoint?: string;
   forcePathStyle?: boolean;
-  cache?: Cache<string>;
+  cache?: Cache;
 }

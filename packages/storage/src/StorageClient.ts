@@ -12,7 +12,7 @@ export enum StorageProvider {
 
 export interface StorageClient {
   readonly provider: StorageProvider;
-  readonly cache?: Cache<string>;
+  readonly cache?: Cache;
   /**
    * Get a URL to upload a file to.
    *
