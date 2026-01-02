@@ -1,3 +1,5 @@
+import { LogLevel } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { Hono } from 'hono';
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
@@ -10,11 +12,20 @@ import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
  * through the Hono framework without network overhead.
  */
 
+// Silent logger for benchmarks - no console output
+const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
+const api = e.logger(silentLogger);
+
 // Helper to create a Hono app from endpoints
 function createApp(
   endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any>[],
 ): Hono {
   const app = new Hono();
+
+  // Silent error handler for benchmarks
+  app.onError((err, c) => {
+    return c.json({ error: err.message }, 500);
+  });
 
   // Add routes using a mock service discovery
   const mockServiceDiscovery = {
@@ -29,7 +40,7 @@ function createApp(
 }
 
 describe('Hono E2E - Simple Endpoints', () => {
-  const healthEndpoint = e
+  const healthEndpoint = api
     .get('/health')
     .handle(async () => ({ status: 'ok' }));
 
@@ -42,7 +53,7 @@ describe('Hono E2E - Simple Endpoints', () => {
 
 describe('Hono E2E - CRUD Operations', () => {
   const endpoints = [
-    e
+    api
       .get('/users')
       .output(z.array(z.object({ id: z.string(), name: z.string() })))
       .handle(async () => [
@@ -50,26 +61,26 @@ describe('Hono E2E - CRUD Operations', () => {
         { id: '2', name: 'Bob' },
       ]),
 
-    e
+    api
       .get('/users/:id')
       .params(z.object({ id: z.string() }))
       .output(z.object({ id: z.string(), name: z.string() }))
       .handle(async ({ params }) => ({ id: params.id, name: 'User' })),
 
-    e
+    api
       .post('/users')
       .body(z.object({ name: z.string(), email: z.string().email() }))
       .output(z.object({ id: z.string() }))
       .handle(async () => ({ id: crypto.randomUUID() })),
 
-    e
+    api
       .put('/users/:id')
       .params(z.object({ id: z.string() }))
       .body(z.object({ name: z.string() }))
       .output(z.object({ success: z.boolean() }))
       .handle(async () => ({ success: true })),
 
-    e
+    api
       .delete('/users/:id')
       .params(z.object({ id: z.string() }))
       .output(z.object({ deleted: z.boolean() }))
@@ -108,7 +119,7 @@ describe('Hono E2E - CRUD Operations', () => {
 });
 
 describe('Hono E2E - Complex Validation', () => {
-  const complexEndpoint = e
+  const complexEndpoint = api
     .post('/orders')
     .body(
       z.object({
@@ -167,7 +178,7 @@ describe('Hono E2E - Complex Validation', () => {
 });
 
 describe('Hono E2E - Query Parameters', () => {
-  const searchEndpoint = e
+  const searchEndpoint = api
     .get('/search')
     .query(
       z.object({
@@ -200,9 +211,9 @@ describe('Hono E2E - Query Parameters', () => {
 
 describe('Hono E2E - Concurrent Requests', () => {
   const endpoints = [
-    e.get('/health').handle(async () => ({ status: 'ok' })),
-    e.get('/users').handle(async () => [{ id: '1' }]),
-    e
+    api.get('/health').handle(async () => ({ status: 'ok' })),
+    api.get('/users').handle(async () => [{ id: '1' }]),
+    api
       .get('/users/:id')
       .params(z.object({ id: z.string() }))
       .handle(async () => ({ id: '1' })),
