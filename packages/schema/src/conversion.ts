@@ -31,12 +31,8 @@ export const StandardSchemaJsonSchema: VendorConvertors = {
       });
 
       return result;
-    } catch (error) {
+    } catch {
       // Fallback to basic conversion if zod-to-json-schema is not available
-      console.warn(
-        'zod-to-json-schema not available, using basic conversion',
-        error,
-      );
       return { type: 'object' };
     }
   },
