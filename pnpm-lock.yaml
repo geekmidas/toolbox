@@ -268,12 +268,6 @@ importers:
 
   packages/client:
     dependencies:
-      '@geekmidas/constructs':
-        specifier: workspace:*
-        version: link:../constructs
-      '@geekmidas/schema':
-        specifier: workspace:*
-        version: link:../schema
       '@standard-schema/spec':
         specifier: ^1.0.0
         version: 1.0.0
@@ -290,6 +284,12 @@ importers:
         specifier: ~4.1.13
         version: 4.1.13
     devDependencies:
+      '@geekmidas/constructs':
+        specifier: workspace:^
+        version: link:../constructs
+      '@geekmidas/schema':
+        specifier: workspace:^
+        version: link:../schema
       '@testing-library/dom':
         specifier: ~10.4.0
         version: 10.4.0

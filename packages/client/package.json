@@ -57,10 +57,11 @@
     "access": "public"
   },
   "dependencies": {
-    "@geekmidas/schema": "workspace:*",
     "@standard-schema/spec": "^1.0.0"
   },
   "devDependencies": {
+    "@geekmidas/constructs": "workspace:^",
+    "@geekmidas/schema": "workspace:^",
     "@testing-library/jest-dom": "~6.6.3",
     "@testing-library/dom": "~10.4.0",
     "@testing-library/react": "~16.3.0",
@@ -71,7 +72,8 @@
     "msw": "~2.10.3"
   },
   "peerDependencies": {
-    "@geekmidas/constructs": "workspace:*",
+    "@geekmidas/constructs": "workspace:^",
+    "@geekmidas/schema": "workspace:^",
     "@tanstack/react-query": ">=5.0.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
@@ -79,7 +81,10 @@
   },
   "peerDependenciesMeta": {
     "@geekmidas/constructs": {
-      "optional": false
+      "optional": true
+    },
+    "@geekmidas/schema": {
+      "optional": true
     },
     "@tanstack/react-query": {
       "optional": true
