@@ -56,6 +56,7 @@ jobs:
           fail-on-alert: ${{ github.ref == 'refs/heads/main' }}
           gh-pages-branch: main
           benchmark-data-dir-path: .benchmarks
+          skip-fetch-gh-pages: true
 
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
