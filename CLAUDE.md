@@ -446,6 +446,7 @@ Command-line tools for building, development, and deployment.
 - React Query hooks generation from OpenAPI
 - Auto-discovery of endpoints via glob patterns
 - Environment and logger configuration
+- Server hooks for custom middleware and routes (`beforeSetup`, `afterSetup`)
 
 **Usage Pattern:**
 ```bash
