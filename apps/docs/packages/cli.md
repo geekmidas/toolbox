@@ -287,3 +287,104 @@ gkm build
 gkm openapi
 gkm dev
 ```
+
+### Server Hooks
+
+Server hooks allow you to customize the Hono application before and after gkm endpoints are registered. This is useful for adding custom routes, middleware, error handlers, and more.
+
+**Configuration:**
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',
+  hooks: {
+    server: './src/config/hooks', // Path to hooks module
+  },
+});
+```
+
+**Hooks Module:**
+
+Create a hooks file that exports `beforeSetup` and/or `afterSetup` functions:
+
+```typescript
+// src/config/hooks.ts
+import type { Hono } from 'hono';
+import type { Logger } from '@geekmidas/logger';
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import { cors } from 'hono/cors';
+
+interface HookContext {
+  envParser: EnvironmentParser<any>;
+  logger: Logger;
+}
+
+/**
+ * Called AFTER telescope middleware but BEFORE gkm endpoints.
+ * Use this for global middleware and custom routes.
+ */
+export async function beforeSetup(app: Hono, ctx: HookContext) {
+  // Add CORS middleware
+  app.use('*', cors({
+    origin: ['http://localhost:3000'],
+    credentials: true,
+  }));
+
+  // Add custom health endpoint
+  app.get('/health', (c) => c.json({ status: 'ok' }));
+
+  // Add webhook endpoints
+  app.post('/webhooks/:provider', async (c) => {
+    const provider = c.req.param('provider');
+    const body = await c.req.json();
+    ctx.logger.info({ provider, body }, 'Received webhook');
+    return c.json({ received: true, provider });
+  });
+}
+
+/**
+ * Called AFTER gkm endpoints are registered.
+ * Use this for error handlers and fallback routes.
+ */
+export async function afterSetup(app: Hono, ctx: HookContext) {
+  // Global error handler
+  app.onError((err, c) => {
+    ctx.logger.error({ err: err.message }, 'Unhandled error');
+    return c.json({ error: 'Internal Server Error' }, 500);
+  });
+
+  // Custom 404 handler
+  app.notFound((c) => {
+    return c.json({
+      error: 'Not Found',
+      message: `Route ${c.req.method} ${c.req.path} not found`,
+    }, 404);
+  });
+}
+```
+
+**Execution Order:**
+
+```
+1. Create Hono app
+2. Telescope middleware (captures all requests)
+3. → beforeSetup() hook
+4. Studio UI (if enabled)
+5. gkm endpoints
+6. → afterSetup() hook
+```
+
+**Common Use Cases:**
+
+| Hook | Use Case |
+|------|----------|
+| `beforeSetup` | CORS middleware, request ID injection, custom routes, webhooks |
+| `afterSetup` | Error handlers, 404 handlers, catch-all routes |
+
+::: tip
+Custom routes added in `beforeSetup` are automatically captured by Telescope since the telescope middleware runs first.
+:::
