@@ -343,11 +343,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
   await devServer.start();
 
   // Watch for file changes
-  const envParserFile = config.envParser.split('#')[0];
-  const loggerFile = config.logger.split('#')[0];
+  const envParserFile = config.envParser.split('#')[0] ?? config.envParser;
+  const loggerFile = config.logger.split('#')[0] ?? config.logger;
 
   // Get hooks file path for watching
-  const hooksFile = config.hooks?.server?.split('#')[0];
+  const hooksFileParts = config.hooks?.server?.split('#');
+  const hooksFile = hooksFileParts?.[0];
 
   const watchPatterns = [
     config.routes,
@@ -361,7 +362,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
     ...(hooksFile
       ? [hooksFile.endsWith('.ts') ? hooksFile : `${hooksFile}.ts`]
       : []),
-  ].flat();
+  ].flat().filter((p): p is string => typeof p === 'string');
 
   // Normalize patterns - remove leading ./ when using cwd option
   const normalizedPatterns = watchPatterns.map((p) =>
@@ -379,7 +380,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   // Also watch the directories for new files
   const dirsToWatch = [
-    ...new Set(resolvedFiles.map((f) => f.split('/').slice(0, -1).join('/'))),
+    ...new Set(
+      resolvedFiles.map((f) => {
+        const parts = f.split('/');
+        return parts.slice(0, -1).join('/');
+      }),
+    ),
   ];
 
   logger.log(

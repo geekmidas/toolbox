@@ -50,7 +50,9 @@ export function parseModuleConfig(
   configString: string,
   defaultAlias: string,
 ): ParsedModuleConfig {
-  const [path, exportName] = configString.split('#');
+  const parts = configString.split('#');
+  const path = parts[0] ?? configString;
+  const exportName = parts[1];
   const importPattern = !exportName
     ? defaultAlias
     : exportName === defaultAlias

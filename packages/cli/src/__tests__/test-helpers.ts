@@ -118,7 +118,8 @@ export const ${exportName} = new CronBuilder()
  */
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
   const m = method.toLowerCase() as Lowercase<HttpMethod>;
-  const builder = e[m](path);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const builder = (e as any)[m](path);
   builder.output(z.object({ message: z.string() }));
   return builder.handle(async () => ({ message: `Hello from ${path}` }));
 }
@@ -177,4 +178,4 @@ export async function waitFor(
 
 import { dirname } from 'node:path';
 import { FunctionBuilder } from '@geekmidas/constructs/functions';
-import type { HttpMethod } from '../../../api/src/constructs/types';
+import type { HttpMethod } from '@geekmidas/constructs/types';
