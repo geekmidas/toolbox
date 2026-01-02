@@ -218,7 +218,10 @@ describe('ObjectionFactory', () => {
 
     const seeds = {
       createAdmin: ObjectionFactory.createSeed(
-        async ({ attrs, factory }: { attrs: { name?: string }; factory: any; db: Knex }) => {
+        async ({
+          attrs,
+          factory,
+        }: { attrs: { name?: string }; factory: any; db: Knex }) => {
           return await factory.insert('user', {
             name: attrs.name || 'Admin User',
           });
