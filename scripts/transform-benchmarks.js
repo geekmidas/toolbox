@@ -34,4 +34,6 @@ for (const file of data.files || []) {
 }
 
 writeFileSync(outputFile, JSON.stringify(results, null, 2));
-process.stdout.write(`Transformed ${results.length} benchmarks to ${outputFile}\n`);
+process.stdout.write(
+  `Transformed ${results.length} benchmarks to ${outputFile}\n`,
+);
