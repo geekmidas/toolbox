@@ -2,7 +2,7 @@ import { bench, describe } from 'vitest';
 import { InMemoryCache } from '../memory';
 
 describe('InMemoryCache', () => {
-  const cache = new InMemoryCache<string>();
+  const cache = new InMemoryCache();
 
   bench('set with TTL', async () => {
     await cache.set('key', 'value', 3600);
@@ -31,14 +31,14 @@ describe('InMemoryCache', () => {
 
 describe('InMemoryCache - Large Scale', () => {
   bench('1000 sequential sets', async () => {
-    const cache = new InMemoryCache<string>();
+    const cache = new InMemoryCache();
     for (let i = 0; i < 1000; i++) {
       await cache.set(`key-${i}`, `value-${i}`, 3600);
     }
   });
 
   bench('1000 sequential gets', async () => {
-    const cache = new InMemoryCache<string>();
+    const cache = new InMemoryCache();
     // Pre-populate
     for (let i = 0; i < 1000; i++) {
       await cache.set(`key-${i}`, `value-${i}`, 3600);
