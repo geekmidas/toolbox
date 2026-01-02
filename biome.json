@@ -8,7 +8,7 @@
     "lineEnding": "lf",
     "lineWidth": 80,
     "attributePosition": "auto",
-    "ignore": ["node_modules/*", ".turbo"]
+    "ignore": ["node_modules/*", ".turbo", ".benchmarks"]
   },
   "organizeImports": { "enabled": true },
   "linter": {
@@ -35,7 +35,8 @@
       "**/.claude/*",
       "**/.gkm/*",
       "**/node_modules/*",
-      "**/.turbo/*"
+      "**/.turbo/*",
+      "**/.benchmarks/*"
     ]
   },
   "javascript": {
