@@ -384,6 +384,30 @@ import { createStudioApp } from '@geekmidas/studio/server/hono';`;
       }
     }
 
+    // Generate imports for server hooks
+    let hooksImports = '';
+    let beforeSetupCall = '';
+    let afterSetupCall = '';
+    if (context.hooks?.serverHooksPath) {
+      const relativeHooksPath = relative(
+        dirname(appPath),
+        context.hooks.serverHooksPath,
+      );
+      hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
+      beforeSetupCall = `
+  // Call beforeSetup hook if defined
+  if (typeof serverHooks.beforeSetup === 'function') {
+    await serverHooks.beforeSetup(honoApp, { envParser, logger });
+  }
+`;
+      afterSetupCall = `
+  // Call afterSetup hook if defined
+  if (typeof serverHooks.afterSetup === 'function') {
+    await serverHooks.afterSetup(honoApp, { envParser, logger });
+  }
+`;
+    }
+
     const telescopeWebSocketSetupCode = telescopeWebSocketEnabled
       ? `
   // Setup WebSocket for real-time telescope updates
@@ -480,6 +504,7 @@ import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${telescopeImports}
 ${studioImports}
+${hooksImports}
 
 export interface ServerApp {
   app: HonoType;
@@ -525,9 +550,10 @@ export interface ServerApp {
  */
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
-${telescopeSetup}${studioSetup}
+${telescopeSetup}${beforeSetupCall}${studioSetup}
   // Setup HTTP endpoints
   await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
+${afterSetupCall}
 
   return {
     app: honoApp,
