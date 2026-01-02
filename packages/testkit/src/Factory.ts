@@ -162,6 +162,8 @@ export type FactorySeed<Attrs = any, Factory = any, Result = any, DB = any> = (
  * Helper type to extract the Attrs type from a FactorySeed function.
  * Used internally by Factory implementations to correctly type the seed method parameters.
  */
-export type ExtractSeedAttrs<T> = T extends FactorySeed<infer A, any, any, any>
+export type ExtractSeedAttrs<T> = T extends (
+  context: { attrs: infer A; factory: any; db: any },
+) => any
   ? A
   : never;
