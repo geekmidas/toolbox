@@ -159,12 +159,15 @@ export class KyselyStorage<DB> implements TelescopeStorage {
       const statusFilter = options.status;
       if (statusFilter.endsWith('xx')) {
         // Handle status ranges like "2xx", "4xx", "5xx"
-        const category = parseInt(statusFilter[0], 10);
-        const minStatus = category * 100;
-        const maxStatus = minStatus + 99;
-        query = query
-          .where('status', '>=', minStatus)
-          .where('status', '<=', maxStatus);
+        const firstChar = statusFilter[0];
+        if (firstChar) {
+          const category = parseInt(firstChar, 10);
+          const minStatus = category * 100;
+          const maxStatus = minStatus + 99;
+          query = query
+            .where('status', '>=', minStatus)
+            .where('status', '<=', maxStatus);
+        }
       } else {
         // Handle exact status codes
         query = query.where('status', '=', parseInt(statusFilter, 10));
@@ -333,15 +336,13 @@ export class KyselyStorage<DB> implements TelescopeStorage {
       .filter((d): d is Date => d != null)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+    const newestDate = allDates[allDates.length - 1];
     return {
       requests: Number(requestsResult?.count ?? 0),
       exceptions: Number(exceptionsResult?.count ?? 0),
       logs: Number(logsResult?.count ?? 0),
       oldestEntry: allDates[0] ? new Date(allDates[0]) : undefined,
-      newestEntry:
-        allDates.length > 0
-          ? new Date(allDates[allDates.length - 1])
-          : undefined,
+      newestEntry: newestDate ? new Date(newestDate) : undefined,
     };
   }
 

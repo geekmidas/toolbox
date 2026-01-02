@@ -52,7 +52,9 @@ export class InMemoryStorage implements TelescopeStorage {
       result = result.filter((r) => {
         // Handle status ranges like "2xx", "4xx", "5xx"
         if (statusFilter.endsWith('xx')) {
-          const category = parseInt(statusFilter[0], 10);
+          const firstChar = statusFilter[0];
+          if (!firstChar) return false;
+          const category = parseInt(firstChar, 10);
           return Math.floor(r.status / 100) === category;
         }
         // Handle exact status codes
@@ -154,8 +156,15 @@ export class InMemoryStorage implements TelescopeStorage {
   // Private helpers
 
   private enforceLimit(type: 'requests' | 'exceptions' | 'logs'): void {
-    if (this[type].length > this.maxEntries) {
-      this[type] = this[type].slice(0, this.maxEntries);
+    const entries = this[type];
+    if (entries.length > this.maxEntries) {
+      if (type === 'requests') {
+        this.requests = this.requests.slice(0, this.maxEntries);
+      } else if (type === 'exceptions') {
+        this.exceptions = this.exceptions.slice(0, this.maxEntries);
+      } else {
+        this.logs = this.logs.slice(0, this.maxEntries);
+      }
     }
   }
 

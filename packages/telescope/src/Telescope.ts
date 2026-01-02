@@ -402,7 +402,7 @@ export class Telescope {
         line.match(/at\s+(.+):(\d+):(\d+)/);
 
       if (match) {
-        if (match.length === 5) {
+        if (match.length === 5 && match[1] && match[2] && match[3] && match[4]) {
           // Has function name
           frames.push({
             function: match[1],
@@ -411,7 +411,7 @@ export class Telescope {
             column: parseInt(match[4], 10),
             isApp: !match[2].includes('node_modules'),
           });
-        } else if (match.length === 4) {
+        } else if (match.length === 4 && match[1] && match[2] && match[3]) {
           // No function name
           frames.push({
             function: '<anonymous>',
