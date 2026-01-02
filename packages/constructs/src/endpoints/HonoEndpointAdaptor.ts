@@ -561,8 +561,7 @@ export class HonoEndpoint<
         );
 
         return c.json(openApiSchema);
-      } catch (error) {
-        console.error('Error generating OpenAPI schema:', error);
+      } catch {
         return c.json(
           { error: 'Failed to generate OpenAPI documentation' },
           500,
