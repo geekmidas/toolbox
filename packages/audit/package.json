@@ -33,16 +33,19 @@
     "access": "public"
   },
   "dependencies": {
-    "@geekmidas/schema": "workspace:*",
     "@standard-schema/spec": "~1.0.0",
     "nanoid": "~5.1.5"
   },
   "peerDependencies": {
-    "@geekmidas/cache": "workspace:*",
+    "@geekmidas/cache": "workspace:^",
+    "@geekmidas/schema": "workspace:^",
     "kysely": "^0.28.0"
   },
   "peerDependenciesMeta": {
     "@geekmidas/cache": {
+      "optional": true
+    },
+    "@geekmidas/schema": {
       "optional": true
     },
     "kysely": {
@@ -50,7 +53,8 @@
     }
   },
   "devDependencies": {
-    "@geekmidas/cache": "workspace:*",
+    "@geekmidas/cache": "workspace:^",
+    "@geekmidas/schema": "workspace:^",
     "kysely": "~0.28.2",
     "pg": "~8.16.0",
     "@types/pg": "~8.15.6"

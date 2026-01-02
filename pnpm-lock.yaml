@@ -139,9 +139,6 @@ importers:
 
   packages/audit:
     dependencies:
-      '@geekmidas/schema':
-        specifier: workspace:*
-        version: link:../schema
       '@standard-schema/spec':
         specifier: ~1.0.0
         version: 1.0.0
@@ -150,8 +147,11 @@ importers:
         version: 5.1.6
     devDependencies:
       '@geekmidas/cache':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../cache
+      '@geekmidas/schema':
+        specifier: workspace:^
+        version: link:../schema
       '@types/pg':
         specifier: ~8.15.6
         version: 8.15.6
