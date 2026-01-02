@@ -1,0 +1,66 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  deployments: write
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run benchmarks
+        run: pnpm bench:ci -- --outputJson=benchmark-results.json
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Toolbox Benchmarks
+          tool: 'customSmallerIsBetter'
+          output-file-path: benchmark-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # On main: deploy to GitHub Pages
+          auto-push: ${{ github.ref == 'refs/heads/main' }}
+          # On PR: comment with comparison
+          comment-on-alert: true
+          comment-always: ${{ github.event_name == 'pull_request' }}
+          # Fail if 10% slower than baseline (main branch only)
+          alert-threshold: '110%'
+          fail-on-alert: ${{ github.ref == 'refs/heads/main' }}
+          # GitHub Pages branch
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
