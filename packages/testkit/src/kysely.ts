@@ -14,6 +14,7 @@ import {
  */
 
 export { KyselyFactory } from './KyselyFactory';
+export type { ExtractSeedAttrs, FactorySeed } from './Factory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';

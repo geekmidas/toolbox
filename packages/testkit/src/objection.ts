@@ -15,6 +15,7 @@ import {
  */
 
 export { ObjectionFactory } from './ObjectionFactory';
+export type { ExtractSeedAttrs, FactorySeed } from './Factory';
 export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
