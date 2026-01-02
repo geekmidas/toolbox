@@ -4,7 +4,7 @@ import type {
   Kysely,
   Selectable,
 } from 'kysely';
-import { Factory, type FactorySeed } from './Factory.ts';
+import { type ExtractSeedAttrs, Factory, type FactorySeed } from './Factory.ts';
 import { type FakerFactory, faker } from './faker.ts';
 
 /**
@@ -55,8 +55,21 @@ export class KyselyFactory<
    * Inherits from the base Factory class implementation.
    *
    * @template Seed - The seed function type
-   * @param seedFn - The seed function to wrap
+   * @param seedFn - The seed function to wrap (receives { attrs, factory, db } object)
    * @returns The same seed function with proper typing
+   *
+   * @example
+   * ```typescript
+   * const seeds = {
+   *   userWithPosts: KyselyFactory.createSeed(
+   *     async ({ attrs, factory }) => {
+   *       const user = await factory.insert('user', attrs);
+   *       await factory.insertMany(3, 'post', { userId: user.id });
+   *       return user;
+   *     },
+   *   ),
+   * };
+   * ```
    */
   static createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
     return Factory.createSeed(seedFn);
@@ -359,7 +372,7 @@ export class KyselyFactory<
    */
   seed<K extends keyof Seeds>(
     seedName: K,
-    attrs?: Parameters<Seeds[K]>[0],
+    attrs?: ExtractSeedAttrs<Seeds[K]>,
   ): ReturnType<Seeds[K]> {
     if (!(seedName in this.seeds)) {
       throw new Error(
@@ -369,6 +382,6 @@ export class KyselyFactory<
       );
     }
 
-    return this.seeds[seedName](attrs || {}, this, this.db);
+    return this.seeds[seedName]({ attrs: attrs || {}, factory: this, db: this.db });
   }
 }
