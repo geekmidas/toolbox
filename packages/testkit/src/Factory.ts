@@ -39,7 +39,7 @@ export abstract class Factory<
    *
    * @example
    * ```typescript
-   * const userWithPostsSeed = Factory.createSeed(async (attrs, factory, db) => {
+   * const userWithPostsSeed = Factory.createSeed(async ({ attrs, factory, db }) => {
    *   const user = await factory.insert('user', attrs);
    *   return user;
    * });
@@ -86,7 +86,7 @@ export abstract class Factory<
    */
   abstract seed<K extends keyof Seeds>(
     seedName: K,
-    attrs?: Parameters<Seeds[K]>[0],
+    attrs?: ExtractSeedAttrs<Seeds[K]>,
   ): ReturnType<Seeds[K]>;
 }
 
@@ -133,15 +133,16 @@ export type MixedFactoryBuilder<
  * @template Result - The type of object returned by the seed
  * @template DB - The database connection type (Kysely, Knex, etc.)
  *
- * @param attrs - Configuration attributes for the seed
- * @param factory - The factory instance for creating records
- * @param db - The database connection
+ * @param context - Object containing attrs, factory, and db
+ * @param context.attrs - Configuration attributes for the seed
+ * @param context.factory - The factory instance for creating records
+ * @param context.db - The database connection
  * @returns A promise resolving to the seed result
  *
  * @example
  * ```typescript
  * const userWithPostsSeed: FactorySeed<{ postCount?: number }, Factory, User, DB> =
- *   async (attrs, factory, db) => {
+ *   async ({ attrs, factory, db }) => {
  *     const user = await factory.insert('user', attrs);
  *     const postCount = attrs.postCount || 3;
  *
@@ -154,7 +155,13 @@ export type MixedFactoryBuilder<
  * ```
  */
 export type FactorySeed<Attrs = any, Factory = any, Result = any, DB = any> = (
-  attrs: Attrs,
-  factory: Factory,
-  db: DB,
+  context: { attrs: Attrs; factory: Factory; db: DB },
 ) => Promise<Result>;
+
+/**
+ * Helper type to extract the Attrs type from a FactorySeed function.
+ * Used internally by Factory implementations to correctly type the seed method parameters.
+ */
+export type ExtractSeedAttrs<T> = T extends FactorySeed<infer A, any, any, any>
+  ? A
+  : never;
