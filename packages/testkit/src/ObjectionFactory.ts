@@ -404,6 +404,10 @@ export class ObjectionFactory<
       );
     }
 
-    return this.seeds[seedName]({ attrs: attrs || {}, factory: this, db: this.db });
+    return this.seeds[seedName]({
+      attrs: attrs || {},
+      factory: this,
+      db: this.db,
+    });
   }
 }
