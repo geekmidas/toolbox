@@ -1,10 +1,16 @@
+import { LogLevel } from '@geekmidas/logger';
+import { ConsoleLogger } from '@geekmidas/logger/console';
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
 import { e } from '../endpoints';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 
+// Silent logger for benchmarks - no console output
+const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
+const api = e.logger(silentLogger);
+
 describe('Endpoint Handling - Simple', () => {
-  const simpleEndpoint = e
+  const simpleEndpoint = api
     .get('/health')
     .handle(async () => ({ status: 'ok' }));
   const adaptor = new TestEndpointAdaptor(simpleEndpoint);
@@ -18,7 +24,7 @@ describe('Endpoint Handling - Simple', () => {
 });
 
 describe('Endpoint Handling - With Validation', () => {
-  const validatedEndpoint = e
+  const validatedEndpoint = api
     .post('/users')
     .body(z.object({ name: z.string(), email: z.string().email() }))
     .output(z.object({ id: z.string() }))
@@ -34,7 +40,7 @@ describe('Endpoint Handling - With Validation', () => {
     });
   });
 
-  const complexBodyEndpoint = e
+  const complexBodyEndpoint = api
     .post('/complex')
     .body(
       z.object({
@@ -79,7 +85,7 @@ describe('Endpoint Handling - With Validation', () => {
 });
 
 describe('Endpoint Handling - Path Params', () => {
-  const paramsEndpoint = e
+  const paramsEndpoint = api
     .get('/users/:id')
     .params(z.object({ id: z.string() }))
     .output(z.object({ id: z.string(), name: z.string() }))
@@ -97,7 +103,7 @@ describe('Endpoint Handling - Path Params', () => {
 });
 
 describe('Endpoint Handling - Query Params', () => {
-  const queryEndpoint = e
+  const queryEndpoint = api
     .get('/search')
     .query(
       z.object({
