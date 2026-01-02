@@ -49,17 +49,13 @@ jobs:
           tool: 'customBiggerIsBetter'
           output-file-path: benchmark-results.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # On main: deploy to GitHub Pages
           auto-push: ${{ github.ref == 'refs/heads/main' }}
-          # On PR: comment with comparison
           comment-on-alert: true
           comment-always: ${{ github.event_name == 'pull_request' }}
-          # Fail if 10% slower than baseline (main branch only)
           alert-threshold: '110%'
           fail-on-alert: ${{ github.ref == 'refs/heads/main' }}
-          # GitHub Pages branch
-          gh-pages-branch: gh-pages
-          benchmark-data-dir-path: benchmarks
+          gh-pages-branch: main
+          benchmark-data-dir-path: .benchmarks
 
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
