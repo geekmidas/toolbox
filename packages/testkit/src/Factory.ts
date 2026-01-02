@@ -154,16 +154,21 @@ export type MixedFactoryBuilder<
  *   };
  * ```
  */
-export type FactorySeed<Attrs = any, Factory = any, Result = any, DB = any> = (
-  context: { attrs: Attrs; factory: Factory; db: DB },
-) => Promise<Result>;
+export type FactorySeed<
+  Attrs = any,
+  Factory = any,
+  Result = any,
+  DB = any,
+> = (context: { attrs: Attrs; factory: Factory; db: DB }) => Promise<Result>;
 
 /**
  * Helper type to extract the Attrs type from a FactorySeed function.
  * Used internally by Factory implementations to correctly type the seed method parameters.
  */
-export type ExtractSeedAttrs<T> = T extends (
-  context: { attrs: infer A; factory: any; db: any },
-) => any
+export type ExtractSeedAttrs<T> = T extends (context: {
+  attrs: infer A;
+  factory: any;
+  db: any;
+}) => any
   ? A
   : never;
