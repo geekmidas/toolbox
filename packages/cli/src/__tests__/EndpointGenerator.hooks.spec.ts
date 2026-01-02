@@ -64,12 +64,9 @@ describe('EndpointGenerator hooks generation', () => {
         provider: 'server',
       });
 
-      const appContent = await readFile(
-        join(testOutputDir, 'app.ts'),
-        'utf-8',
-      );
+      const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
 
-      expect(appContent).toContain("import * as serverHooks from");
+      expect(appContent).toContain('import * as serverHooks from');
       expect(appContent).toContain('hooks.ts');
     });
 
