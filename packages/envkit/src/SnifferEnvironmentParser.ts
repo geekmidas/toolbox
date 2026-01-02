@@ -153,7 +153,7 @@ export class SnifferEnvironmentParser<T extends EmptyObject = EmptyObject> {
 class SnifferConfigParser<
   TResponse extends EmptyObject,
 > extends ConfigParser<TResponse> {
-  parse(): any {
+  override parse(): any {
     return this.parseWithMocks(this.getConfig());
   }
 
