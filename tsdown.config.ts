@@ -4,7 +4,7 @@ export default defineConfig({
   workspace: ['packages/*'],
   clean: true,
   outDir: 'dist',
-  entry: ['src/', '!**/__tests__/**', '!**/*.spec.*'],
+  entry: ['src/', '!**/__tests__/**', '!**/*.spec.*', '!**/__benchmarks__/**'],
   format: ['cjs', 'esm'],
   external: ['vitest'],
   sourcemap: true,
