@@ -3,7 +3,6 @@ import { bench, describe } from 'vitest';
 import {
   type RateLimitConfig,
   type RateLimitContext,
-  type RateLimitData,
   checkRateLimit,
 } from '../index';
 
@@ -25,8 +24,8 @@ function createContext(ip: string): RateLimitContext {
 }
 
 describe('Rate Limiting', () => {
-  const cache = new InMemoryCache<RateLimitData>();
-  const config: RateLimitConfig<RateLimitData> = {
+  const cache = new InMemoryCache();
+  const config: RateLimitConfig = {
     limit: 100,
     windowMs: 60000,
     cache,
@@ -46,8 +45,8 @@ describe('Rate Limiting', () => {
 
 describe('Rate Limiting - High Volume', () => {
   bench('100 requests same IP', async () => {
-    const cache = new InMemoryCache<RateLimitData>();
-    const config: RateLimitConfig<RateLimitData> = {
+    const cache = new InMemoryCache();
+    const config: RateLimitConfig = {
       limit: 1000,
       windowMs: 60000,
       cache,
@@ -60,8 +59,8 @@ describe('Rate Limiting - High Volume', () => {
   });
 
   bench('100 requests different IPs', async () => {
-    const cache = new InMemoryCache<RateLimitData>();
-    const config: RateLimitConfig<RateLimitData> = {
+    const cache = new InMemoryCache();
+    const config: RateLimitConfig = {
       limit: 100,
       windowMs: 60000,
       cache,
@@ -76,8 +75,8 @@ describe('Rate Limiting - High Volume', () => {
 
 describe('Rate Limiting - Window Sizes', () => {
   bench('1 second window', async () => {
-    const cache = new InMemoryCache<RateLimitData>();
-    const config: RateLimitConfig<RateLimitData> = {
+    const cache = new InMemoryCache();
+    const config: RateLimitConfig = {
       limit: 10,
       windowMs: 1000,
       cache,
@@ -87,8 +86,8 @@ describe('Rate Limiting - Window Sizes', () => {
   });
 
   bench('1 minute window', async () => {
-    const cache = new InMemoryCache<RateLimitData>();
-    const config: RateLimitConfig<RateLimitData> = {
+    const cache = new InMemoryCache();
+    const config: RateLimitConfig = {
       limit: 100,
       windowMs: 60000,
       cache,
@@ -98,8 +97,8 @@ describe('Rate Limiting - Window Sizes', () => {
   });
 
   bench('1 hour window', async () => {
-    const cache = new InMemoryCache<RateLimitData>();
-    const config: RateLimitConfig<RateLimitData> = {
+    const cache = new InMemoryCache();
+    const config: RateLimitConfig = {
       limit: 1000,
       windowMs: 3600000,
       cache,

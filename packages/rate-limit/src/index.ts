@@ -19,7 +19,7 @@ export class TooManyRequestsError extends Error {
 /**
  * Rate limit configuration for an endpoint
  */
-export interface RateLimitConfig<T = RateLimitData> {
+export interface RateLimitConfig {
   /**
    * Maximum number of requests allowed in the window
    */
@@ -33,7 +33,7 @@ export interface RateLimitConfig<T = RateLimitData> {
   /**
    * Cache instance to store rate limit data
    */
-  cache: Cache<T>;
+  cache: Cache;
 
   /**
    * Key generator function to identify clients
@@ -192,7 +192,7 @@ export async function checkRateLimit<
   TLogger extends Logger = Logger,
   TSession = unknown,
 >(
-  config: RateLimitConfig<RateLimitData>,
+  config: RateLimitConfig,
   ctx: RateLimitContext<TServices, TLogger, TSession>,
 ): Promise<RateLimitInfo> {
   // Check if we should skip rate limiting
@@ -212,7 +212,7 @@ export async function checkRateLimit<
 
   // Get current data from cache
   const now = Date.now();
-  let data = await config.cache.get(key);
+  let data = await config.cache.get<RateLimitData>(key);
 
   // If no data or window expired, create new entry
   if (!data || data.resetTime <= now) {
