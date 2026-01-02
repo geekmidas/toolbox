@@ -7,6 +7,9 @@ export default defineConfig({
   logger: './src/config/logger',
   telescope: './src/config/telescope#telescope',
   studio: './src/config/studio#studio',
+  hooks: {
+    server: './src/config/hooks',
+  },
   runtime: 'node',
   env: ['.env', '.env.example'],
   openapi: true,
