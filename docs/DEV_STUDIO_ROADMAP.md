@@ -64,17 +64,6 @@ Refactor Telescope into a modular architecture where core functionality is envir
 - [ ] Add WebSocket support for real-time updates
 - [ ] SSE fallback for environments without WebSocket
 
-#### Express Extension (`@geekmidas/telescope/express`)
-- [ ] Express middleware for request capture
-- [ ] Error handler middleware
-- [ ] Mount UI routes
-
-#### Other Extensions (Future)
-- [ ] Fastify extension
-- [ ] Koa extension
-- [ ] Cloudflare Workers extension
-- [ ] Vercel Edge extension
-
 ### Phase 6: Constructs Auto-Instrumentation
 - [ ] Auto-instrument `@geekmidas/constructs` endpoints with OTel spans
 - [ ] Capture request/response metadata as span attributes
@@ -100,6 +89,13 @@ Refactor Telescope into a modular architecture where core functionality is envir
 - [ ] Request replay functionality
 - [ ] cURL command generator from requests
 - [ ] OpenAPI documentation viewer
+
+### Future: Other Telescope Extensions
+- [ ] Express extension
+- [ ] Fastify extension
+- [ ] Koa extension
+- [ ] Cloudflare Workers extension
+- [ ] Vercel Edge extension
 
 ---
 
@@ -159,11 +155,6 @@ packages/telescope/
 │   │   ├── middleware.ts
 │   │   └── ui.ts
 │   │
-│   ├── express/             # Express extension
-│   │   ├── index.ts
-│   │   ├── middleware.ts
-│   │   └── errorHandler.ts
-│   │
 │   └── logger/              # Logger integrations
 │       ├── pino.ts
 │       └── console.ts
@@ -173,7 +164,6 @@ packages/telescope/
     #   "."           -> core
     #   "./lambda"    -> lambda extension
     #   "./hono"      -> hono extension
-    #   "./express"   -> express extension
     #   "./metrics"   -> metrics
     #   "./otlp"      -> otlp receiver
 ```
