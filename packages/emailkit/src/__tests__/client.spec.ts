@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
-import { createEmailClient, SMTPClient } from '../client';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SMTPClient, createEmailClient } from '../client';
 import type { EmailClientConfig, TemplateRecord } from '../types';
 
 // Mock nodemailer
@@ -19,9 +19,9 @@ vi.mock('@react-email/components', () => ({
   render: vi.fn(),
 }));
 
+import { render } from '@react-email/components';
 // Import mocked modules
 import nodemailer from 'nodemailer';
-import { render } from '@react-email/components';
 
 // Test templates
 interface WelcomeProps {
