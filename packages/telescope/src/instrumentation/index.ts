@@ -21,4 +21,9 @@
 
 export { setupTelemetry } from './setup';
 export type { TelemetryOptions } from './setup';
-export { createSpan, withSpan, getActiveSpan, setSpanAttributes } from './tracing';
+export {
+  createSpan,
+  withSpan,
+  getActiveSpan,
+  setSpanAttributes,
+} from './tracing';
