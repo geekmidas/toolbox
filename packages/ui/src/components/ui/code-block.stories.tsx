@@ -11,7 +11,15 @@ const meta: Meta<typeof CodeBlock> = {
   argTypes: {
     language: {
       control: 'select',
-      options: ['typescript', 'javascript', 'json', 'bash', 'sql', 'jsx', 'tsx'],
+      options: [
+        'typescript',
+        'javascript',
+        'json',
+        'bash',
+        'sql',
+        'jsx',
+        'tsx',
+      ],
     },
     showLineNumbers: {
       control: 'boolean',
