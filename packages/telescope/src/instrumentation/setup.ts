@@ -197,7 +197,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
   process.on('SIGTERM', () => {
     sdk
       ?.shutdown()
-      .then(() => console.log('Telemetry shut down'))
+      .then(() => )
       .catch((error) => console.error('Error shutting down telemetry', error))
       .finally(() => process.exit(0));
   });
