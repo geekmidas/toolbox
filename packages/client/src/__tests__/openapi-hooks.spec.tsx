@@ -3,8 +3,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
  * @vitest-environment jsdom
  */
 import { renderHook, waitFor } from '@testing-library/react';
-// biome-ignore lint/style/useImportType: required for React provider
-import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOpenAPIHooks } from '../openapi-hooks';
 import './setup';
