@@ -754,4 +754,198 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
       expect(auditsInDb[0].actorType).toBe('user');
     });
   });
+
+  describe('RLS context with real database', () => {
+    it('should set RLS context variables in transaction', async () => {
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      type TestSession = { userId: string; tenantId: string };
+
+      const outputSchema = z.object({
+        userId: z.string(),
+        tenantId: z.string(),
+      });
+
+      const endpoint = new Endpoint({
+        route: '/rls-test',
+        method: 'GET',
+        fn: async (ctx) => {
+          // Query the session variables to verify they were set
+          const userIdResult = await sql<{ value: string }>`
+            SELECT current_setting('app.user_id', true) as value
+          `.execute(ctx.db);
+
+          const tenantIdResult = await sql<{ value: string }>`
+            SELECT current_setting('app.tenant_id', true) as value
+          `.execute(ctx.db);
+
+          return {
+            userId: userIdResult.rows[0]?.value ?? 'not-set',
+            tenantId: tenantIdResult.rows[0]?.value ?? 'not-set',
+          };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 200,
+        getSession: async () => ({
+          userId: 'test-user-123',
+          tenantId: 'test-tenant-456',
+        }),
+        authorize: undefined,
+        description: undefined,
+        databaseService,
+        rlsConfig: {
+          extractor: async ({ session }) => ({
+            user_id: session.userId,
+            tenant_id: session.tenantId,
+          }),
+          prefix: 'app',
+        },
+        rlsBypass: false,
+      });
+
+      const adapter = new AmazonApiGatewayV2Endpoint(
+        envParser,
+        endpoint as any,
+      );
+      const handler = adapter.handler;
+
+      const event = createMockV2Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body!);
+      expect(body.userId).toBe('test-user-123');
+      expect(body.tenantId).toBe('test-tenant-456');
+    });
+
+    it('should bypass RLS when rlsBypass is true', async () => {
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      type TestSession = { userId: string };
+
+      const outputSchema = z.object({ userId: z.string() });
+
+      const endpoint = new Endpoint({
+        route: '/admin/rls-bypass',
+        method: 'GET',
+        fn: async (ctx) => {
+          // Query the session variable - should not be set when bypassed
+          const userIdResult = await sql<{ value: string | null }>`
+            SELECT current_setting('app.user_id', true) as value
+          `.execute(ctx.db);
+
+          // current_setting returns empty string when not set
+          return {
+            userId: userIdResult.rows[0]?.value || 'not-set',
+          };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 200,
+        getSession: async () => ({ userId: 'admin-user' }),
+        authorize: undefined,
+        description: undefined,
+        databaseService,
+        rlsConfig: {
+          extractor: async ({ session }) => ({
+            user_id: session.userId,
+          }),
+          prefix: 'app',
+        },
+        rlsBypass: true, // Bypass RLS
+      });
+
+      const adapter = new AmazonApiGatewayV2Endpoint(
+        envParser,
+        endpoint as any,
+      );
+      const handler = adapter.handler;
+
+      const event = createMockV2Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body!);
+      // When bypassed, the RLS context should not be set (returns 'not-set')
+      expect(body.userId).toBe('not-set');
+    });
+
+    it('should use custom prefix for RLS context variables', async () => {
+      const databaseService: Service<'database', Kysely<TestDatabase>> = {
+        serviceName: 'database' as const,
+        register: vi.fn().mockResolvedValue(db),
+      };
+
+      type TestSession = { userId: string };
+
+      const outputSchema = z.object({ userId: z.string() });
+
+      const endpoint = new Endpoint({
+        route: '/custom-prefix',
+        method: 'GET',
+        fn: async (ctx) => {
+          // Query the session variable with custom prefix
+          const userIdResult = await sql<{ value: string }>`
+            SELECT current_setting('myapp.user_id', true) as value
+          `.execute(ctx.db);
+
+          return {
+            userId: userIdResult.rows[0]?.value ?? 'not-set',
+          };
+        },
+        input: undefined,
+        output: outputSchema,
+        services: [databaseService],
+        logger: mockLogger,
+        timeout: undefined,
+        memorySize: undefined,
+        status: 200,
+        getSession: async () => ({ userId: 'custom-user' }),
+        authorize: undefined,
+        description: undefined,
+        databaseService,
+        rlsConfig: {
+          extractor: async ({ session }) => ({
+            user_id: session.userId,
+          }),
+          prefix: 'myapp', // Custom prefix
+        },
+        rlsBypass: false,
+      });
+
+      const adapter = new AmazonApiGatewayV2Endpoint(
+        envParser,
+        endpoint as any,
+      );
+      const handler = adapter.handler;
+
+      const event = createMockV2Event();
+      const context = createMockContext();
+      const response = await handler(event, context);
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body!);
+      expect(body.userId).toBe('custom-user');
+    });
+  });
 });
