@@ -17,54 +17,64 @@ import {
   createAuthAwareFetcher,
 } from '../auth-fetcher';
 
-// Test types
+// Test types - structured to match OpenAPI spec format
 interface TestPaths {
-  'GET /users': {
-    responses: {
-      200: {
-        content: {
-          'application/json': { users: Array<{ id: string; name: string }> };
+  '/users': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { users: Array<{ id: string; name: string }> };
+          };
         };
       };
     };
   };
-  'GET /protected': {
-    responses: {
-      200: {
-        content: {
-          'application/json': { data: string };
+  '/protected': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { data: string };
+          };
         };
       };
     };
   };
-  'GET /api-key-protected': {
-    responses: {
-      200: {
-        content: {
-          'application/json': { data: string };
+  '/api-key-protected': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { data: string };
+          };
         };
       };
     };
   };
-  'GET /iam-protected': {
-    responses: {
-      200: {
-        content: {
-          'application/json': { data: string };
+  '/iam-protected': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { data: string };
+          };
         };
       };
     };
   };
-  'POST /data': {
-    requestBody: {
-      content: {
-        'application/json': { value: string };
-      };
-    };
-    responses: {
-      201: {
+  '/data': {
+    post: {
+      requestBody: {
         content: {
-          'application/json': { id: string };
+          'application/json': { value: string };
+        };
+      };
+      responses: {
+        201: {
+          content: {
+            'application/json': { id: string };
+          };
         };
       };
     };
