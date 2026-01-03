@@ -10,12 +10,11 @@ import {
   vi,
 } from 'vitest';
 import {
-  createAuthAwareFetcher,
   type ApiKeyProvider,
-  type AuthFetcherOptions,
   type AwsSigner,
   type SecuritySchemeObject,
   type TokenProvider,
+  createAuthAwareFetcher,
 } from '../auth-fetcher';
 
 // Test types
