@@ -26,12 +26,12 @@
 - [x] OpenTelemetry SDK setup with Pino instrumentation
 - [x] Tests for all OTLP functionality
 
+### Bug Fixes
+- [x] **OpenAPI React Query generation bug** - Fixed indentation in generated `paths` type and conditional type distribution in `BuildRequestConfig` (packages/cli/src/generators/OpenApiTsGenerator.ts, packages/client/src/types.ts)
+
 ---
 
 ## Pending
-
-### Bug Fixes
-- [ ] **OpenAPI React Query generation bug** - Args for `useQuery` and `useMutation` are incorrect in generated hooks (packages/cli/src/openapi/, packages/client/src/react-query/)
 
 ### Phase 4: Studio UI Polish
 - [ ] Analytics page data visualization improvements
