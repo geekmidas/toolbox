@@ -85,9 +85,8 @@ export function withSpanSync<T>(
   const span = tracer.startSpan(name, { attributes });
 
   try {
-    const result = context.with(
-      trace.setSpan(context.active(), span),
-      () => fn(span),
+    const result = context.with(trace.setSpan(context.active(), span), () =>
+      fn(span),
     );
     span.setStatus({ code: SpanStatusCode.OK });
     return result;
