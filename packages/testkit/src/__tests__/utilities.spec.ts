@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMockLogger } from '../logger';
 import { waitFor } from '../timer';
-import { createMockContext, createMockV1Event, createMockV2Event } from '../aws';
+import {
+  createMockContext,
+  createMockV1Event,
+  createMockV2Event,
+} from '../aws';
 import { itWithDir } from '../os/directory';
 import fs from 'node:fs/promises';
 import path from 'node:path';
