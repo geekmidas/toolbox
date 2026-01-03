@@ -2,7 +2,7 @@ import { runAdapterTest } from 'better-auth/adapters/test';
 import { afterAll, describe } from 'vitest';
 import { memoryAdapter } from '../better-auth';
 
-describe.skip('Memory Adapter Tests', async () => {
+describe('Memory Adapter Tests', async () => {
   afterAll(async () => {
     // Run DB cleanup here...
   });
