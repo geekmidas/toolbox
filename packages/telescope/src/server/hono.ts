@@ -145,9 +145,7 @@ function parseMetricsQueryOptions(c: Context): MetricsQueryOptions {
 
   return {
     range:
-      start && end
-        ? { start: new Date(start), end: new Date(end) }
-        : undefined,
+      start && end ? { start: new Date(start), end: new Date(end) } : undefined,
     bucketSize: bucketSize ? parseInt(bucketSize, 10) : undefined,
     limit: limit ? parseInt(limit, 10) : undefined,
   };
