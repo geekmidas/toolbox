@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
   --color-background: hsl(var(--background));
@@ -54,7 +54,6 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
   }
-
 }
 
 @layer base {
@@ -63,9 +62,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings:
-      'rlig' 1,
-      'calt' 1;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
@@ -125,25 +122,51 @@ html {
 /* Code font */
 code,
 pre {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-    'Liberation Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
 }
 
 /* HTTP method colors for badges */
-.method-get { --method-color: 217 91% 60%; }
-.method-post { --method-color: 142 71% 45%; }
-.method-put { --method-color: 38 92% 50%; }
-.method-patch { --method-color: 263 70% 50%; }
-.method-delete { --method-color: 0 84% 60%; }
+.method-get {
+  --method-color: 217 91% 60%;
+}
+.method-post {
+  --method-color: 142 71% 45%;
+}
+.method-put {
+  --method-color: 38 92% 50%;
+}
+.method-patch {
+  --method-color: 263 70% 50%;
+}
+.method-delete {
+  --method-color: 0 84% 60%;
+}
 
 /* Status code colors */
-.status-2xx { --status-color: 142 71% 45%; }
-.status-3xx { --status-color: 217 91% 60%; }
-.status-4xx { --status-color: 38 92% 50%; }
-.status-5xx { --status-color: 0 84% 60%; }
+.status-2xx {
+  --status-color: 142 71% 45%;
+}
+.status-3xx {
+  --status-color: 217 91% 60%;
+}
+.status-4xx {
+  --status-color: 38 92% 50%;
+}
+.status-5xx {
+  --status-color: 0 84% 60%;
+}
 
 /* Log level colors */
-.log-debug { --log-color: 0 0% 45%; }
-.log-info { --log-color: 217 91% 60%; }
-.log-warn { --log-color: 38 92% 50%; }
-.log-error { --log-color: 0 84% 60%; }
+.log-debug {
+  --log-color: 0 0% 45%;
+}
+.log-info {
+  --log-color: 217 91% 60%;
+}
+.log-warn {
+  --log-color: 38 92% 50%;
+}
+.log-error {
+  --log-color: 0 84% 60%;
+}
