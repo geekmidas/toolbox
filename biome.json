@@ -8,7 +8,7 @@
     "lineEnding": "lf",
     "lineWidth": 80,
     "attributePosition": "auto",
-    "ignore": ["node_modules/*", ".turbo", ".benchmarks"]
+    "ignore": ["node_modules/*", ".turbo", ".benchmarks", "**/tsconfig*.json"]
   },
   "organizeImports": { "enabled": true },
   "linter": {
@@ -36,7 +36,8 @@
       "**/.gkm/*",
       "**/node_modules/*",
       "**/.turbo/*",
-      "**/.benchmarks/*"
+      "**/.benchmarks/*",
+      "**/tsconfig*.json"
     ]
   },
   "javascript": {
