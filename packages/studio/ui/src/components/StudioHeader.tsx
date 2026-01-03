@@ -1,4 +1,9 @@
-import { ConnectionStatus, Header, HeaderActions, HeaderTitle } from '@geekmidas/ui';
+import {
+  ConnectionStatus,
+  Header,
+  HeaderActions,
+  HeaderTitle,
+} from '@geekmidas/ui';
 import { Database, RefreshCw } from 'lucide-react';
 import { useStudio } from '../providers/StudioProvider';
 
