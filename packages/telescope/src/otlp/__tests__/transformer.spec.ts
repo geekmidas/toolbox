@@ -92,7 +92,10 @@ describe('OTLP Transformer', () => {
                     startTimeUnixNano: '1704067200000000000',
                     endTimeUnixNano: '1704067200010000000',
                     attributes: [
-                      { key: 'db.system', value: { stringValue: 'postgresql' } },
+                      {
+                        key: 'db.system',
+                        value: { stringValue: 'postgresql' },
+                      },
                     ],
                   },
                 ],

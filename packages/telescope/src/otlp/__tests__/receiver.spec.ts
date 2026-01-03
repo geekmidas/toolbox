@@ -343,7 +343,10 @@ describe('OTLPReceiver', () => {
                     endTimeUnixNano: '1704067200100000000',
                     attributes: [
                       { key: 'http.method', value: { stringValue: 'GET' } },
-                      { key: 'http.target', value: { stringValue: '/api/test' } },
+                      {
+                        key: 'http.target',
+                        value: { stringValue: '/api/test' },
+                      },
                       { key: 'http.status_code', value: { intValue: '200' } },
                     ],
                   },
