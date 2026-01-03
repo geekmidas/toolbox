@@ -276,34 +276,39 @@ function RequestDetailPanel({
       <div className="flex-1 overflow-auto p-4">
         {activeTab === 'request' && (
           <div className="space-y-4">
-            <InfoRow label="Duration" value={formatDuration(request.duration)} />
+            <InfoRow
+              label="Duration"
+              value={formatDuration(request.duration)}
+            />
             <InfoRow label="Time" value={formatTime(request.timestamp)} />
             {request.ip && <InfoRow label="IP" value={request.ip} />}
             {request.userAgent && (
               <InfoRow label="User Agent" value={request.userAgent} />
             )}
-            {request.requestBody !== undefined && request.requestBody !== null && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Request Body</h4>
-                <pre className="bg-background rounded p-3 text-xs overflow-auto max-h-[300px]">
-                  {formatBody(request.requestBody)}
-                </pre>
-              </div>
-            )}
+            {request.requestBody !== undefined &&
+              request.requestBody !== null && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Request Body</h4>
+                  <pre className="bg-background rounded p-3 text-xs overflow-auto max-h-[300px]">
+                    {formatBody(request.requestBody)}
+                  </pre>
+                </div>
+              )}
           </div>
         )}
 
         {activeTab === 'response' && (
           <div className="space-y-4">
             <InfoRow label="Status" value={`${request.status}`} />
-            {request.responseBody !== undefined && request.responseBody !== null && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">Response Body</h4>
-                <pre className="bg-background rounded p-3 text-xs overflow-auto max-h-[400px]">
-                  {formatBody(request.responseBody)}
-                </pre>
-              </div>
-            )}
+            {request.responseBody !== undefined &&
+              request.responseBody !== null && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Response Body</h4>
+                  <pre className="bg-background rounded p-3 text-xs overflow-auto max-h-[400px]">
+                    {formatBody(request.responseBody)}
+                  </pre>
+                </div>
+              )}
           </div>
         )}
 
