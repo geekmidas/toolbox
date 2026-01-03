@@ -154,15 +154,17 @@ export type FilteredRequestConfig<
   : never;
 
 /**
- * Helper to build request config with correct required/optional fields
+ * Helper to build request config with correct required/optional fields.
+ * Uses [T] extends [never] pattern to prevent distribution over union types,
+ * which would cause the entire type to become `never`.
  */
 type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
   // params: required if not never
-  (TParams extends never ? {} : { params: TParams }) &
+  ([TParams] extends [never] ? {} : { params: TParams }) &
     // body: required if not never
-    (TBody extends never ? {} : { body: TBody }) &
+    ([TBody] extends [never] ? {} : { body: TBody }) &
     // query: optional if not never
-    (TQuery extends never ? {} : { query?: TQuery }) & {
+    ([TQuery] extends [never] ? {} : { query?: TQuery }) & {
       // headers: always optional
       headers?: Record<string, string>;
     }
