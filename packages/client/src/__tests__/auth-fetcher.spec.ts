@@ -375,7 +375,10 @@ describe('createAuthAwareFetcher', () => {
           lastReceivedHeaders = Object.fromEntries(request.headers.entries());
           const auth = request.headers.get('Authorization');
           if (!auth || !auth.startsWith('Bearer ')) {
-            return HttpResponse.json({ message: 'Unauthorized' }, { status: 401 });
+            return HttpResponse.json(
+              { message: 'Unauthorized' },
+              { status: 401 },
+            );
           }
           return HttpResponse.json({ data: 'secret' });
         }),
