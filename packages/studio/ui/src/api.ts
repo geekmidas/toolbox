@@ -1,11 +1,14 @@
 import type {
+  EndpointMetrics,
   ExceptionEntry,
   FilterConfig,
   LogEntry,
   QueryResult,
   RequestEntry,
+  RequestMetrics,
   SchemaInfo,
   SortConfig,
+  StatusDistribution,
   StudioStats,
   TableInfo,
   TableSummary,
@@ -136,6 +139,52 @@ export async function getLogs(
 
   const queryStr = params.toString();
   return fetchJson(`/api/logs${queryStr ? `?${queryStr}` : ''}`);
+}
+
+// ============================================================================
+// Metrics API
+// ============================================================================
+
+export interface MetricsQueryOptions {
+  start?: string;
+  end?: string;
+  bucketSize?: number;
+  limit?: number;
+}
+
+export async function getMetrics(
+  options: MetricsQueryOptions = {},
+): Promise<RequestMetrics> {
+  const params = new URLSearchParams();
+  if (options.start) params.set('start', options.start);
+  if (options.end) params.set('end', options.end);
+  if (options.bucketSize) params.set('bucketSize', String(options.bucketSize));
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/metrics${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function getEndpointMetrics(
+  options: MetricsQueryOptions = {},
+): Promise<EndpointMetrics[]> {
+  const params = new URLSearchParams();
+  if (options.start) params.set('start', options.start);
+  if (options.end) params.set('end', options.end);
+  if (options.limit) params.set('limit', String(options.limit));
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/metrics/endpoints${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function getStatusDistribution(
+  options: MetricsQueryOptions = {},
+): Promise<StatusDistribution> {
+  const params = new URLSearchParams();
+  if (options.start) params.set('start', options.start);
+  if (options.end) params.set('end', options.end);
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/metrics/status${queryStr ? `?${queryStr}` : ''}`);
 }
 
 // ============================================================================

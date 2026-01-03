@@ -41,6 +41,26 @@
       "types": "./dist/logger/console.d.ts",
       "import": "./dist/logger/console.mjs",
       "require": "./dist/logger/console.cjs"
+    },
+    "./metrics": {
+      "types": "./dist/metrics/index.d.ts",
+      "import": "./dist/metrics/index.mjs",
+      "require": "./dist/metrics/index.cjs"
+    },
+    "./otlp": {
+      "types": "./dist/otlp/index.d.ts",
+      "import": "./dist/otlp/index.mjs",
+      "require": "./dist/otlp/index.cjs"
+    },
+    "./otlp/hono": {
+      "types": "./dist/otlp/hono.d.ts",
+      "import": "./dist/otlp/hono.mjs",
+      "require": "./dist/otlp/hono.cjs"
+    },
+    "./instrumentation": {
+      "types": "./dist/instrumentation/index.d.ts",
+      "import": "./dist/instrumentation/index.mjs",
+      "require": "./dist/instrumentation/index.cjs"
     }
   },
   "repository": {
@@ -57,6 +77,16 @@
   },
   "peerDependencies": {
     "@geekmidas/logger": "workspace:^",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/instrumentation-pino": "^0.44.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/sdk-logs": "^0.57.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-node": "^1.30.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
     "hono": "^4.0.0",
     "kysely": "^0.28.0",
     "pino": "^9.0.0",
@@ -64,6 +94,36 @@
   },
   "peerDependenciesMeta": {
     "@geekmidas/logger": {
+      "optional": true
+    },
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "@opentelemetry/auto-instrumentations-node": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-logs-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-trace-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/instrumentation-pino": {
+      "optional": true
+    },
+    "@opentelemetry/resources": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-logs": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-node": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-node": {
+      "optional": true
+    },
+    "@opentelemetry/semantic-conventions": {
       "optional": true
     },
     "hono": {
@@ -81,6 +141,16 @@
   },
   "devDependencies": {
     "@geekmidas/logger": "workspace:^",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/instrumentation-pino": "^0.44.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/sdk-logs": "^0.57.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-node": "^1.30.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
     "hono": "^4.7.0",
     "kysely": "~0.28.2",
     "pino": "^9.6.0",

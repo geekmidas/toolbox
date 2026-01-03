@@ -1,12 +1,20 @@
 import { nanoid } from 'nanoid';
+import {
+  MetricsAggregator,
+  type MetricsAggregatorOptions,
+} from './metrics/MetricsAggregator';
 import { type Redactor, createRedactor } from './redact';
 import type {
+  EndpointMetrics,
   ExceptionEntry,
   LogEntry,
+  MetricsQueryOptions,
   NormalizedTelescopeOptions,
   QueryOptions,
   RequestEntry,
+  RequestMetrics,
   StackFrame,
+  StatusDistribution,
   TelescopeEvent,
   TelescopeOptions,
   TelescopeStorage,
@@ -22,11 +30,13 @@ export class Telescope {
   private wsClients = new Set<WebSocket>();
   private pruneInterval?: ReturnType<typeof setInterval>;
   private redactor?: Redactor;
+  private metricsAggregator: MetricsAggregator;
 
-  constructor(options: TelescopeOptions) {
+  constructor(options: TelescopeOptions & { metrics?: MetricsAggregatorOptions }) {
     this.storage = options.storage;
     this.options = this.normalizeOptions(options);
     this.redactor = createRedactor(options.redact);
+    this.metricsAggregator = new MetricsAggregator(options.metrics);
 
     // Set up auto-pruning if configured
     if (this.options.pruneAfterHours) {
@@ -60,6 +70,9 @@ export class Telescope {
     if (this.redactor) {
       fullEntry = this.redactor(fullEntry);
     }
+
+    // Record metrics (before storage for real-time aggregation)
+    this.metricsAggregator.record(fullEntry);
 
     await this.storage.saveRequest(fullEntry);
     this.broadcast({
@@ -260,6 +273,38 @@ export class Telescope {
    */
   async getStats() {
     return this.storage.getStats();
+  }
+
+  // ============================================
+  // Public API - Metrics
+  // ============================================
+
+  /**
+   * Get aggregated request metrics
+   */
+  getMetrics(options?: MetricsQueryOptions): RequestMetrics {
+    return this.metricsAggregator.getMetrics(options);
+  }
+
+  /**
+   * Get metrics for individual endpoints
+   */
+  getEndpointMetrics(options?: MetricsQueryOptions): EndpointMetrics[] {
+    return this.metricsAggregator.getEndpointMetrics(options);
+  }
+
+  /**
+   * Get status code distribution
+   */
+  getStatusDistribution(options?: MetricsQueryOptions): StatusDistribution {
+    return this.metricsAggregator.getStatusDistribution(options);
+  }
+
+  /**
+   * Reset metrics data
+   */
+  resetMetrics(): void {
+    this.metricsAggregator.reset();
   }
 
   // ============================================

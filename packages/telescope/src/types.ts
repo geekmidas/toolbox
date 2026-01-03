@@ -226,3 +226,145 @@ export interface RequestContext {
   body?: unknown;
   ip?: string;
 }
+
+// ============================================
+// Metrics Types
+// ============================================
+
+/**
+ * Time range for metrics queries
+ */
+export interface TimeRange {
+  /** Start of time range */
+  start: Date;
+  /** End of time range */
+  end: Date;
+}
+
+/**
+ * A single point in a time series
+ */
+export interface TimeSeriesPoint {
+  /** Unix timestamp in milliseconds */
+  timestamp: number;
+  /** Number of requests in this bucket */
+  count: number;
+  /** Average duration in milliseconds */
+  avgDuration: number;
+  /** Number of errors (4xx + 5xx) */
+  errorCount: number;
+}
+
+/**
+ * Aggregated request metrics
+ */
+export interface RequestMetrics {
+  /** Total number of requests */
+  totalRequests: number;
+  /** Average duration in milliseconds */
+  avgDuration: number;
+  /** 50th percentile duration */
+  p50Duration: number;
+  /** 95th percentile duration */
+  p95Duration: number;
+  /** 99th percentile duration */
+  p99Duration: number;
+  /** Error rate as percentage (0-100) */
+  errorRate: number;
+  /** Success rate as percentage (0-100) */
+  successRate: number;
+  /** Requests per second (averaged over time range) */
+  requestsPerSecond: number;
+  /** Time series data for charts */
+  timeSeries: TimeSeriesPoint[];
+}
+
+/**
+ * Metrics for a specific endpoint (method + path pattern)
+ */
+export interface EndpointMetrics {
+  /** HTTP method */
+  method: string;
+  /** Path pattern (e.g., /users/:id) */
+  path: string;
+  /** Total request count */
+  count: number;
+  /** Average duration in milliseconds */
+  avgDuration: number;
+  /** 95th percentile duration */
+  p95Duration: number;
+  /** Error rate as percentage */
+  errorRate: number;
+  /** Timestamp of last request */
+  lastSeen: number;
+}
+
+/**
+ * Status code distribution
+ */
+export interface StatusDistribution {
+  /** 2xx responses */
+  '2xx': number;
+  /** 3xx responses */
+  '3xx': number;
+  /** 4xx responses */
+  '4xx': number;
+  /** 5xx responses */
+  '5xx': number;
+}
+
+/**
+ * Options for querying metrics
+ */
+export interface MetricsQueryOptions {
+  /** Time range for the query */
+  range?: TimeRange;
+  /** Bucket size for time series in milliseconds (default: 60000 = 1 minute) */
+  bucketSize?: number;
+  /** Limit number of endpoints returned */
+  limit?: number;
+}
+
+/**
+ * A metrics bucket for aggregation (stored in memory/db)
+ */
+export interface MetricsBucket {
+  /** Bucket timestamp (start of bucket) */
+  timestamp: number;
+  /** Bucket duration in milliseconds */
+  bucketSize: number;
+  /** Request count */
+  count: number;
+  /** Sum of durations (for calculating avg) */
+  durationSum: number;
+  /** Min duration */
+  durationMin: number;
+  /** Max duration */
+  durationMax: number;
+  /** Duration samples for percentile calculation */
+  durationSamples: number[];
+  /** Error count (4xx + 5xx) */
+  errorCount: number;
+  /** Status distribution */
+  statusDistribution: StatusDistribution;
+}
+
+/**
+ * Endpoint-specific metrics bucket
+ */
+export interface EndpointBucket {
+  /** HTTP method */
+  method: string;
+  /** Path pattern */
+  path: string;
+  /** Request count */
+  count: number;
+  /** Sum of durations */
+  durationSum: number;
+  /** Duration samples for percentiles */
+  durationSamples: number[];
+  /** Error count */
+  errorCount: number;
+  /** Last seen timestamp */
+  lastSeen: number;
+}

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { Telescope } from '../Telescope';
-import type { QueryOptions } from '../types';
+import type { MetricsQueryOptions, QueryOptions } from '../types';
 import { getAsset, getIndexHtml } from '../ui-assets';
 
 const CONTEXT_KEY = 'telescope-request-id';
@@ -135,6 +135,25 @@ function parseQueryOptions(c: Context): QueryOptions {
 }
 
 /**
+ * Parse metrics query options from Hono context
+ */
+function parseMetricsQueryOptions(c: Context): MetricsQueryOptions {
+  const start = c.req.query('start');
+  const end = c.req.query('end');
+  const bucketSize = c.req.query('bucketSize');
+  const limit = c.req.query('limit');
+
+  return {
+    range:
+      start && end
+        ? { start: new Date(start), end: new Date(end) }
+        : undefined,
+    bucketSize: bucketSize ? parseInt(bucketSize, 10) : undefined,
+    limit: limit ? parseInt(limit, 10) : undefined,
+  };
+}
+
+/**
  * Create Hono app with dashboard UI and API routes
  */
 export function createUI(telescope: Telescope): Hono {
@@ -178,6 +197,30 @@ export function createUI(telescope: Telescope): Hono {
   app.get('/api/stats', async (c) => {
     const stats = await telescope.getStats();
     return c.json(stats);
+  });
+
+  // Metrics API
+  app.get('/api/metrics', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const metrics = telescope.getMetrics(options);
+    return c.json(metrics);
+  });
+
+  app.get('/api/metrics/endpoints', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const endpoints = telescope.getEndpointMetrics(options);
+    return c.json(endpoints);
+  });
+
+  app.get('/api/metrics/status', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const distribution = telescope.getStatusDistribution(options);
+    return c.json(distribution);
+  });
+
+  app.delete('/api/metrics', (c) => {
+    telescope.resetMetrics();
+    return c.json({ success: true });
   });
 
   // Static assets

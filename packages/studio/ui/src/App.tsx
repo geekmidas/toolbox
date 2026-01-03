@@ -11,6 +11,7 @@ import {
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Database,
   FileText,
   Home,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { StudioHeader } from './components/StudioHeader';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasePage } from './pages/DatabasePage';
 import { ExceptionsPage } from './pages/ExceptionsPage';
@@ -64,6 +66,11 @@ function AppLayout() {
                 Exceptions
               </SidebarItem>
             </Link>
+            <Link to="/analytics">
+              <SidebarItem icon={BarChart3} active={isActive('/analytics')}>
+                Analytics
+              </SidebarItem>
+            </Link>
           </SidebarSection>
 
           <SidebarSection title="Data">
@@ -97,6 +104,7 @@ function AppLayout() {
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/exceptions" element={<ExceptionsPage />} />
             <Route path="/exceptions/:id" element={<ExceptionsPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/database" element={<DatabasePage />} />
             <Route path="/database/:table" element={<DatabasePage />} />
             <Route path="/services" element={<ComingSoon title="Services" />} />
