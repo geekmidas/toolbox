@@ -32,7 +32,9 @@ export class Telescope {
   private redactor?: Redactor;
   private metricsAggregator: MetricsAggregator;
 
-  constructor(options: TelescopeOptions & { metrics?: MetricsAggregatorOptions }) {
+  constructor(
+    options: TelescopeOptions & { metrics?: MetricsAggregatorOptions },
+  ) {
     this.storage = options.storage;
     this.options = this.normalizeOptions(options);
     this.redactor = createRedactor(options.redact);
