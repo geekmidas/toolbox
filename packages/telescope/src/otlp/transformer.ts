@@ -59,7 +59,9 @@ function nanoToMs(nanoStr: string): number {
 /**
  * Map OTLP severity number to Telescope log level
  */
-function mapSeverity(severity?: SeverityNumber): 'debug' | 'info' | 'warn' | 'error' {
+function mapSeverity(
+  severity?: SeverityNumber,
+): 'debug' | 'info' | 'warn' | 'error' {
   if (severity === undefined) return 'info';
   if (severity <= SeverityNumber.SEVERITY_NUMBER_DEBUG4) return 'debug';
   if (severity <= SeverityNumber.SEVERITY_NUMBER_INFO4) return 'info';
@@ -74,9 +76,10 @@ function getHttpStatus(span: Span): number {
   const attrs = attributesToObject(span.attributes);
 
   // Look for HTTP status code in various attribute names
-  const statusCode = attrs['http.status_code']
-    ?? attrs['http.response.status_code']
-    ?? attrs['http.response_status_code'];
+  const statusCode =
+    attrs['http.status_code'] ??
+    attrs['http.response.status_code'] ??
+    attrs['http.response_status_code'];
 
   if (typeof statusCode === 'number') return statusCode;
   if (typeof statusCode === 'string') return parseInt(statusCode, 10) || 200;
@@ -107,29 +110,25 @@ function isHttpServerSpan(span: Span): boolean {
 /**
  * Transform HTTP-related span attributes to RequestEntry format
  */
-function transformHttpSpan(span: Span, resourceAttrs: Record<string, unknown>): Omit<RequestEntry, 'id' | 'timestamp'> {
+function transformHttpSpan(
+  span: Span,
+  resourceAttrs: Record<string, unknown>,
+): Omit<RequestEntry, 'id' | 'timestamp'> {
   const attrs = attributesToObject(span.attributes);
 
   // Extract HTTP method
   const method = String(
-    attrs['http.method'] ??
-    attrs['http.request.method'] ??
-    'GET'
+    attrs['http.method'] ?? attrs['http.request.method'] ?? 'GET',
   ).toUpperCase();
 
   // Extract path
   const path = String(
-    attrs['http.target'] ??
-    attrs['url.path'] ??
-    attrs['http.route'] ??
-    '/'
+    attrs['http.target'] ?? attrs['url.path'] ?? attrs['http.route'] ?? '/',
   );
 
   // Extract full URL
   const url = String(
-    attrs['http.url'] ??
-    attrs['url.full'] ??
-    `http://localhost${path}`
+    attrs['http.url'] ?? attrs['url.full'] ?? `http://localhost${path}`,
   );
 
   // Extract headers (if available)
@@ -149,9 +148,8 @@ function transformHttpSpan(span: Span, resourceAttrs: Record<string, unknown>): 
   const status = getHttpStatus(span);
 
   // Extract client IP
-  const ip = attrs['net.peer.ip']
-    ?? attrs['client.address']
-    ?? attrs['http.client_ip'];
+  const ip =
+    attrs['net.peer.ip'] ?? attrs['client.address'] ?? attrs['http.client_ip'];
 
   return {
     method,
@@ -166,7 +164,9 @@ function transformHttpSpan(span: Span, resourceAttrs: Record<string, unknown>): 
     tags: [
       `trace:${span.traceId}`,
       `span:${span.spanId}`,
-      ...(resourceAttrs['service.name'] ? [`service:${resourceAttrs['service.name']}`] : []),
+      ...(resourceAttrs['service.name']
+        ? [`service:${resourceAttrs['service.name']}`]
+        : []),
     ],
   };
 }
@@ -181,7 +181,9 @@ export function transformTraces(
   const entries: Array<Omit<RequestEntry, 'id' | 'timestamp'>> = [];
 
   for (const resourceSpans of request.resourceSpans ?? []) {
-    const resourceAttrs = attributesToObject(resourceSpans.resource?.attributes);
+    const resourceAttrs = attributesToObject(
+      resourceSpans.resource?.attributes,
+    );
 
     for (const scopeSpans of resourceSpans.scopeSpans ?? []) {
       for (const span of scopeSpans.spans ?? []) {
@@ -210,7 +212,8 @@ function transformLogRecord(
   let message = '';
   if (record.body) {
     const bodyValue = extractValue(record.body);
-    message = typeof bodyValue === 'string' ? bodyValue : JSON.stringify(bodyValue);
+    message =
+      typeof bodyValue === 'string' ? bodyValue : JSON.stringify(bodyValue);
   }
 
   // Build context from attributes
@@ -283,7 +286,9 @@ export function transformMetrics(
   const points: MetricDataPoint[] = [];
 
   for (const resourceMetrics of request.resourceMetrics ?? []) {
-    const resourceAttrs = attributesToObject(resourceMetrics.resource?.attributes);
+    const resourceAttrs = attributesToObject(
+      resourceMetrics.resource?.attributes,
+    );
 
     for (const scopeMetrics of resourceMetrics.scopeMetrics ?? []) {
       for (const metric of scopeMetrics.metrics ?? []) {
