@@ -2,10 +2,13 @@ import { trace } from '@opentelemetry/api';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  addSpanEvent,
   createSpan,
   getActiveSpan,
   getSpanId,
   getTraceId,
+  recordException,
+  setSpanAttributes,
   withSpan,
   withSpanSync,
 } from '../tracing';
@@ -118,6 +121,88 @@ describe('Tracing Utilities', () => {
       expect(traceId?.length).toBe(32); // 16 bytes hex
       expect(spanId).toBeDefined();
       expect(spanId?.length).toBe(16); // 8 bytes hex
+    });
+
+    it('should return undefined outside span context', () => {
+      // Outside of any span context
+      const traceId = getTraceId();
+      const spanId = getSpanId();
+      // These may be undefined if no span is active
+      expect(traceId === undefined || typeof traceId === 'string').toBe(true);
+      expect(spanId === undefined || typeof spanId === 'string').toBe(true);
+    });
+  });
+
+  describe('setSpanAttributes', () => {
+    it('should set attributes on active span', async () => {
+      await withSpan('attrs-span', async (span) => {
+        setSpanAttributes({ 'custom.key': 'custom-value', 'custom.num': 42 });
+        // Span should still be valid
+        expect(span.isRecording()).toBe(true);
+      });
+    });
+
+    it('should not throw when no active span', () => {
+      // Should not throw even when called outside span context
+      expect(() => {
+        setSpanAttributes({ key: 'value' });
+      }).not.toThrow();
+    });
+  });
+
+  describe('recordException', () => {
+    it('should record exception on active span', async () => {
+      await withSpan('exception-span', async () => {
+        const error = new Error('Test exception');
+        recordException(error);
+        // Should not throw
+      });
+    });
+
+    it('should not throw when no active span', () => {
+      expect(() => {
+        recordException(new Error('No span error'));
+      }).not.toThrow();
+    });
+  });
+
+  describe('addSpanEvent', () => {
+    it('should add event to active span', async () => {
+      await withSpan('event-span', async () => {
+        addSpanEvent('test.event', { detail: 'some detail' });
+        // Should not throw
+      });
+    });
+
+    it('should add event without attributes', async () => {
+      await withSpan('event-span-simple', async () => {
+        addSpanEvent('simple.event');
+        // Should not throw
+      });
+    });
+
+    it('should not throw when no active span', () => {
+      expect(() => {
+        addSpanEvent('orphan.event', { data: 123 });
+      }).not.toThrow();
+    });
+  });
+
+  describe('error handling edge cases', () => {
+    it('should handle non-Error exceptions in withSpan', async () => {
+      await expect(
+        withSpan('string-error-span', async () => {
+          throw 'string error'; // Non-Error exception
+        }),
+      ).rejects.toBe('string error');
+    });
+
+    it('should handle non-Error exceptions in withSpanSync', () => {
+      expect(() =>
+        withSpanSync('sync-string-error', () => {
+          throw 'sync string error';
+        }),
+      ).toThrow();
     });
   });
 });
