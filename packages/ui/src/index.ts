@@ -6,6 +6,9 @@ export * from './components/ui';
 // Layout components
 export * from './components/layout';
 
+// Data display components
+export * from './components/data-display';
+
 // Utilities
 export { cn } from './lib/utils';
 
