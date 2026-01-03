@@ -99,7 +99,9 @@ export function DashboardPage() {
       {/* Activity Chart */}
       {metrics.requestsPerMinute.length > 0 && (
         <div className="p-4 bg-surface rounded-lg border border-border">
-          <h3 className="text-sm font-medium mb-3">Request Activity (last 60s)</h3>
+          <h3 className="text-sm font-medium mb-3">
+            Request Activity (last 60s)
+          </h3>
           <SparkBar
             data={metrics.requestsPerMinute}
             height={60}

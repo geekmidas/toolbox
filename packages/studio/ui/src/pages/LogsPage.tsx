@@ -159,7 +159,10 @@ export function LogsPage() {
 
       {/* Log Detail Panel */}
       {selectedLog && (
-        <LogDetailPanel log={selectedLog} onClose={() => setSelectedLog(null)} />
+        <LogDetailPanel
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+        />
       )}
     </div>
   );
@@ -182,7 +185,10 @@ function LogDetailPanel({
             {formatTime(log.timestamp)}
           </span>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-surface-hover rounded">
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-surface-hover rounded"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>

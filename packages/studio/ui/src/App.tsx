@@ -69,7 +69,10 @@ function AppLayout() {
               </SidebarItem>
             </Link>
             <Link to="/exceptions">
-              <SidebarItem icon={AlertTriangle} active={isActive('/exceptions')}>
+              <SidebarItem
+                icon={AlertTriangle}
+                active={isActive('/exceptions')}
+              >
                 Exceptions
               </SidebarItem>
             </Link>

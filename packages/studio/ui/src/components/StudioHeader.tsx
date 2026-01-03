@@ -21,11 +21,15 @@ export function StudioHeader() {
         {stats && (
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span>
-              <span className="font-medium text-foreground">{stats.requests}</span>{' '}
+              <span className="font-medium text-foreground">
+                {stats.requests}
+              </span>{' '}
               requests
             </span>
             <span>
-              <span className="font-medium text-foreground">{stats.exceptions}</span>{' '}
+              <span className="font-medium text-foreground">
+                {stats.exceptions}
+              </span>{' '}
               exceptions
             </span>
             <span>

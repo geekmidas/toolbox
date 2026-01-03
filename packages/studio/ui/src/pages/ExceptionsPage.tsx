@@ -205,7 +205,10 @@ function ExceptionDetailPanel({
             </p>
           </div>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-surface-hover rounded">
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-surface-hover rounded"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
