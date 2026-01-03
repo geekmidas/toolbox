@@ -122,7 +122,9 @@ export const Notification: Story = {
       <CardContent className="grid gap-4">
         <div className="flex items-center space-x-4 rounded-md border p-4">
           <div className="flex-1 space-y-1">
-            <p className="text-sm font-medium leading-none">Push Notifications</p>
+            <p className="text-sm font-medium leading-none">
+              Push Notifications
+            </p>
             <p className="text-sm text-muted-foreground">
               Send notifications to device.
             </p>
@@ -130,7 +132,9 @@ export const Notification: Story = {
         </div>
         <div className="flex items-center space-x-4 rounded-md border p-4">
           <div className="flex-1 space-y-1">
-            <p className="text-sm font-medium leading-none">Email Notifications</p>
+            <p className="text-sm font-medium leading-none">
+              Email Notifications
+            </p>
             <p className="text-sm text-muted-foreground">
               Receive emails about activity.
             </p>
