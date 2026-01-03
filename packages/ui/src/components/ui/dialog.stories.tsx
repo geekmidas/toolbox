@@ -48,7 +48,11 @@ export const Default: Story = {
             <Label htmlFor="username" className="text-right">
               Username
             </Label>
-            <Input id="username" defaultValue="@johndoe" className="col-span-3" />
+            <Input
+              id="username"
+              defaultValue="@johndoe"
+              className="col-span-3"
+            />
           </div>
         </div>
         <DialogFooter>
