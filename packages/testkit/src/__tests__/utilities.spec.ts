@@ -1,14 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createMockLogger } from '../logger';
-import { waitFor } from '../timer';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import {
   createMockContext,
   createMockV1Event,
   createMockV2Event,
 } from '../aws';
+import { createMockLogger } from '../logger';
 import { itWithDir } from '../os/directory';
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { waitFor } from '../timer';
 
 describe('testkit utilities', () => {
   describe('createMockLogger', () => {
