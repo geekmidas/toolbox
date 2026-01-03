@@ -17,7 +17,9 @@ import type {
 /**
  * Callback for handling OTLP metrics
  */
-export type MetricsHandler = (points: MetricDataPoint[]) => void | Promise<void>;
+export type MetricsHandler = (
+  points: MetricDataPoint[],
+) => void | Promise<void>;
 
 /**
  * Options for OTLPReceiver
