@@ -55,7 +55,10 @@ export const WithDescription: Story = {
 export const Disabled: Story = {
   render: () => (
     <div className="grid w-full max-w-sm items-center gap-1.5">
-      <Label htmlFor="disabled" className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+      <Label
+        htmlFor="disabled"
+        className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+      >
         Disabled field
       </Label>
       <Input id="disabled" placeholder="Disabled" disabled className="peer" />
