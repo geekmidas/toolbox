@@ -160,40 +160,26 @@ export const memoryAdapter = (
       supportsNumericIds: false,
     },
 
-    adapter: ({
-      debugLog,
-      transformInput,
-      transformOutput,
-      getModelName,
-      transformWhereClause,
-    }) => ({
-      create: async ({ data, model, select }) => {
+    // Note: The framework automatically transforms field names in both directions:
+    // - Input data is already transformed before reaching the adapter (e.g., email -> email_address)
+    // - Output data is automatically transformed after the adapter returns (e.g., email_address -> email)
+    // Therefore, we should NOT call transformInput or transformOutput ourselves.
+    adapter: ({ debugLog, getModelName, transformWhereClause }) => ({
+      create: async ({ data, model }) => {
         debugLog('CREATE', { model, data });
         const modelName = getModelName(model);
         const modelData = storeInstance.getModel(modelName);
 
-        const transformedData = await transformInput(data, model, 'create');
-
-        if (!transformedData.id) {
-          transformedData.id = crypto.randomUUID();
+        // Data is already transformed by the framework - store directly
+        if (!data.id) {
+          data.id = crypto.randomUUID();
         }
 
-        modelData.set(transformedData.id, { ...transformedData, ...data });
-
-        if (data.email_address) {
-          modelData.set(transformedData.id, {
-            ...transformedData,
-            email: data.email_address,
-          });
-        }
-        const created = modelData.get(transformedData.id);
-
-        const out = (await transformOutput(created, model, select)) as any;
-
-        return out;
+        modelData.set(data.id, { ...data });
+        return modelData.get(data.id);
       },
 
-      findOne: async ({ where, model, select }) => {
+      findOne: async ({ where, model }) => {
         debugLog('FIND_ONE', { model, where });
         const modelName = getModelName(model);
         const modelData = storeInstance.getModel(modelName);
@@ -201,9 +187,7 @@ export const memoryAdapter = (
 
         for (const record of modelData.values()) {
           if (matchesWhere(record, transformedWhere)) {
-            const t = (await transformOutput(record, model, select)) as any;
-
-            return t;
+            return record;
           }
         }
         return null;
@@ -231,9 +215,7 @@ export const memoryAdapter = (
           results = results.slice(0, limit);
         }
 
-        return Promise.all(
-          results.map((record) => transformOutput(record, model)),
-        ) as any;
+        return results;
       },
 
       update: async ({ where, update, model }) => {
@@ -245,14 +227,10 @@ export const memoryAdapter = (
 
         for (const [id, record] of modelData.entries()) {
           if (matchesWhere(record, transformedWhere)) {
-            const transformedData = await transformInput(
-              update as any,
-              model,
-              'update',
-            );
-            const updated = { ...record, ...transformedData };
+            // Update data is already transformed by the framework
+            const updated = { ...record, ...update };
             modelData.set(id, updated);
-            return transformOutput(updated, model) as any;
+            return updated;
           }
         }
         return null;
@@ -265,11 +243,11 @@ export const memoryAdapter = (
         const transformedWhere = transformWhereClause({ model, where });
 
         let count = 0;
-        const transformedData = await transformInput(update, model, 'update');
 
         for (const [id, record] of modelData.entries()) {
           if (matchesWhere(record, transformedWhere)) {
-            modelData.set(id, { ...record, ...transformedData });
+            // Update data is already transformed by the framework
+            modelData.set(id, { ...record, ...update });
             count++;
           }
         }
@@ -280,9 +258,10 @@ export const memoryAdapter = (
         debugLog('DELETE', { model, where });
         const modelName = getModelName(model);
         const modelData = storeInstance.getModel(modelName);
+        const transformedWhere = transformWhereClause({ model, where });
 
         for (const [id, record] of modelData.entries()) {
-          if (matchesWhere(record, where)) {
+          if (matchesWhere(record, transformedWhere)) {
             modelData.delete(id);
             return;
           }
@@ -293,24 +272,28 @@ export const memoryAdapter = (
         debugLog('DELETE_MANY', { model, where });
         const modelName = getModelName(model);
         const modelData = storeInstance.getModel(modelName);
+        const transformedWhere = transformWhereClause({ model, where });
 
         const toDelete: string[] = [];
         for (const [id, record] of modelData.entries()) {
-          if (matchesWhere(record, where)) {
+          if (matchesWhere(record, transformedWhere)) {
             toDelete.push(id);
           }
         }
 
-        toDelete.forEach((id) => modelData.delete(id));
+        for (const id of toDelete) {
+          modelData.delete(id);
+        }
         return toDelete.length;
       },
 
       count: async ({ where, model }) => {
         const modelName = getModelName(model);
         const modelData = storeInstance.getModel(modelName);
+        const transformedWhere = transformWhereClause({ model, where });
 
         return Array.from(modelData.values()).filter((record) =>
-          matchesWhere(record, where),
+          matchesWhere(record, transformedWhere),
         ).length;
       },
     }),
