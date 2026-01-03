@@ -139,4 +139,93 @@ describe('faker', () => {
       expect(result).toBeGreaterThan(0);
     });
   });
+
+  describe('coordinates', () => {
+    const center = { lat: 40.7128, lng: -74.006 }; // New York City
+
+    describe('within', () => {
+      it('should generate a coordinate within the given radius', () => {
+        const radius = 1000; // 1km
+        const result = faker.coordinates.within(center, radius);
+
+        expect(result).toHaveProperty('lat');
+        expect(result).toHaveProperty('lng');
+        expect(typeof result.lat).toBe('number');
+        expect(typeof result.lng).toBe('number');
+
+        // Calculate distance using Haversine formula
+        const R = 6378137; // Earth's radius in meters
+        const dLat = ((result.lat - center.lat) * Math.PI) / 180;
+        const dLng = ((result.lng - center.lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((center.lat * Math.PI) / 180) *
+            Math.cos((result.lat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        expect(distance).toBeLessThanOrEqual(radius);
+      });
+
+      it('should generate different coordinates on multiple calls', () => {
+        const radius = 1000;
+        const results = Array.from({ length: 10 }, () =>
+          faker.coordinates.within(center, radius),
+        );
+
+        // Not all results should be identical
+        const uniqueLats = new Set(results.map((r) => r.lat));
+        expect(uniqueLats.size).toBeGreaterThan(1);
+      });
+    });
+
+    describe('outside', () => {
+      it('should generate a coordinate outside the minimum radius', () => {
+        const minRadius = 1000; // 1km
+        const maxRadius = 5000; // 5km
+        const result = faker.coordinates.outside(center, minRadius, maxRadius);
+
+        expect(result).toHaveProperty('lat');
+        expect(result).toHaveProperty('lng');
+        expect(typeof result.lat).toBe('number');
+        expect(typeof result.lng).toBe('number');
+
+        // Calculate distance using Haversine formula
+        const R = 6378137;
+        const dLat = ((result.lat - center.lat) * Math.PI) / 180;
+        const dLng = ((result.lng - center.lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((center.lat * Math.PI) / 180) *
+            Math.cos((result.lat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+
+        expect(distance).toBeGreaterThanOrEqual(minRadius);
+        expect(distance).toBeLessThanOrEqual(maxRadius);
+      });
+
+      it('should generate different coordinates on multiple calls', () => {
+        const results = Array.from({ length: 10 }, () =>
+          faker.coordinates.outside(center, 1000, 5000),
+        );
+
+        const uniqueLats = new Set(results.map((r) => r.lat));
+        expect(uniqueLats.size).toBeGreaterThan(1);
+      });
+
+      it('should normalize longitude to valid range', () => {
+        // Use a center near the antimeridian
+        const pacificCenter = { lat: 0, lng: 179 };
+        const result = faker.coordinates.outside(pacificCenter, 100000, 500000);
+
+        expect(result.lng).toBeGreaterThanOrEqual(-180);
+        expect(result.lng).toBeLessThanOrEqual(180);
+      });
+    });
+  });
 });
