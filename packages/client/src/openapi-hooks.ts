@@ -66,7 +66,7 @@ type OperationParams<
         : Spec extends { parameters: { path: infer P } }
           ? P
           : never;
-      query?: Spec extends { parameters: { query?: infer Q } } ? Q : never;
+      query?: Spec extends { parameters?: { query?: infer Q } } ? Q : never;
       body?: Spec extends {
         requestBody: { content: { 'application/json': infer Body } };
       }
