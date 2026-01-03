@@ -35,7 +35,10 @@ describe('testkit utilities', () => {
       logger.trace('trace');
 
       expect(logger.debug).toHaveBeenCalledWith('debug message');
-      expect(logger.info).toHaveBeenCalledWith({ data: 'test' }, 'info message');
+      expect(logger.info).toHaveBeenCalledWith(
+        { data: 'test' },
+        'info message',
+      );
       expect(logger.warn).toHaveBeenCalledWith('warning');
       expect(logger.error).toHaveBeenCalledWith('error');
       expect(logger.fatal).toHaveBeenCalledWith('fatal');
