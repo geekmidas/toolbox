@@ -24,10 +24,25 @@ export default meta;
 type Story = StoryObj<typeof Table>;
 
 const invoices = [
-  { invoice: 'INV001', status: 'Paid', method: 'Credit Card', amount: '$250.00' },
+  {
+    invoice: 'INV001',
+    status: 'Paid',
+    method: 'Credit Card',
+    amount: '$250.00',
+  },
   { invoice: 'INV002', status: 'Pending', method: 'PayPal', amount: '$150.00' },
-  { invoice: 'INV003', status: 'Unpaid', method: 'Bank Transfer', amount: '$350.00' },
-  { invoice: 'INV004', status: 'Paid', method: 'Credit Card', amount: '$450.00' },
+  {
+    invoice: 'INV003',
+    status: 'Unpaid',
+    method: 'Bank Transfer',
+    amount: '$350.00',
+  },
+  {
+    invoice: 'INV004',
+    status: 'Paid',
+    method: 'Credit Card',
+    amount: '$450.00',
+  },
   { invoice: 'INV005', status: 'Paid', method: 'PayPal', amount: '$550.00' },
 ];
 
@@ -127,8 +142,16 @@ export const RequestsTable: Story = {
 const logs = [
   { level: 'info', message: 'Application started', timestamp: '12:00:01' },
   { level: 'debug', message: 'Connected to database', timestamp: '12:00:02' },
-  { level: 'warn', message: 'Cache miss for key: user_123', timestamp: '12:00:05' },
-  { level: 'error', message: 'Failed to process request', timestamp: '12:00:08' },
+  {
+    level: 'warn',
+    message: 'Cache miss for key: user_123',
+    timestamp: '12:00:05',
+  },
+  {
+    level: 'error',
+    message: 'Failed to process request',
+    timestamp: '12:00:08',
+  },
   { level: 'info', message: 'Request completed', timestamp: '12:00:10' },
 ];
 
