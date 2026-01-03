@@ -103,7 +103,7 @@ export interface StudioStats {
 export type WebSocketMessage =
   | { type: 'request'; payload: RequestEntry }
   | { type: 'exception'; payload: ExceptionEntry }
-  | { type: 'log'; payload: LogEntry }
+  | { type: 'log'; payload: LogEntry };
 
 // ============================================================================
 // Metrics Types
