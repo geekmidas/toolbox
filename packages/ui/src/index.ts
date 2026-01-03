@@ -9,6 +9,9 @@ export * from './components/layout';
 // Data display components
 export * from './components/data-display';
 
+// Feedback components
+export * from './components/feedback';
+
 // Utilities
 export { cn } from './lib/utils';
 

@@ -24,6 +24,11 @@
       "import": "./dist/components/data-display/index.js",
       "require": "./dist/components/data-display/index.cjs"
     },
+    "./feedback": {
+      "types": "./dist/components/feedback/index.d.ts",
+      "import": "./dist/components/feedback/index.js",
+      "require": "./dist/components/feedback/index.cjs"
+    },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",
       "import": "./dist/hooks/index.js",
