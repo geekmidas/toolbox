@@ -402,7 +402,13 @@ export class Telescope {
         line.match(/at\s+(.+):(\d+):(\d+)/);
 
       if (match) {
-        if (match.length === 5 && match[1] && match[2] && match[3] && match[4]) {
+        if (
+          match.length === 5 &&
+          match[1] &&
+          match[2] &&
+          match[3] &&
+          match[4]
+        ) {
           // Has function name
           frames.push({
             function: match[1],
