@@ -48,14 +48,20 @@ export const RequestList: Story = {
   render: () => (
     <ScrollArea className="h-80 w-96 rounded-md border">
       <div className="p-4">
-        <h4 className="mb-4 text-sm font-medium leading-none">Recent Requests</h4>
+        <h4 className="mb-4 text-sm font-medium leading-none">
+          Recent Requests
+        </h4>
         {requests.map((req) => (
           <div key={req.id}>
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
                 <Badge
                   variant={
-                    req.method.toLowerCase() as 'get' | 'post' | 'put' | 'delete'
+                    req.method.toLowerCase() as
+                      | 'get'
+                      | 'post'
+                      | 'put'
+                      | 'delete'
                   }
                   className="w-16 justify-center"
                 >
