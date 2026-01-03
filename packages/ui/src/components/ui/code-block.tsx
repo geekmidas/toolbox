@@ -10,15 +10,24 @@ export interface CodeBlockProps {
 }
 
 const CodeBlock = React.forwardRef<HTMLPreElement, CodeBlockProps>(
-  ({ code, language = 'typescript', showLineNumbers = false, className }, ref) => {
+  (
+    { code, language = 'typescript', showLineNumbers = false, className },
+    ref,
+  ) => {
     return (
       <Highlight theme={themes.vsDark} code={code.trim()} language={language}>
-        {({ className: highlightClassName, style, tokens, getLineProps, getTokenProps }) => (
+        {({
+          className: highlightClassName,
+          style,
+          tokens,
+          getLineProps,
+          getTokenProps,
+        }) => (
           <pre
             ref={ref}
             className={cn(
               'overflow-auto rounded-md border bg-[#1e1e1e] p-4 text-sm',
-              className
+              className,
             )}
             style={style}
           >
