@@ -110,12 +110,16 @@ describe('MetricsAggregator', () => {
       const bucketSize = 60000; // 1 minute
 
       // Record requests in different buckets
-      aggregator.record(createRequest({
-        timestamp: new Date(now.getTime() - 2 * bucketSize),
-      }));
-      aggregator.record(createRequest({
-        timestamp: new Date(now.getTime() - bucketSize),
-      }));
+      aggregator.record(
+        createRequest({
+          timestamp: new Date(now.getTime() - 2 * bucketSize),
+        }),
+      );
+      aggregator.record(
+        createRequest({
+          timestamp: new Date(now.getTime() - bucketSize),
+        }),
+      );
       aggregator.record(createRequest({ timestamp: now }));
 
       const metrics = aggregator.getMetrics({
