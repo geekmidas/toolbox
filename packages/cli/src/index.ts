@@ -5,8 +5,8 @@ import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index';
 import { devCommand } from './dev/index';
 import { type InitOptions, initCommand } from './init/index';
-import { generateReactQueryCommand } from './openapi-react-query';
 import { openapiCommand } from './openapi';
+import { generateReactQueryCommand } from './openapi-react-query';
 import type { LegacyProvider, MainProvider } from './types';
 
 const program = new Command();
