@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@geekmidas/audit": "workspace:*",
+    "@tanstack/react-query": "~5.90.16",
     "@geekmidas/cli": "workspace:*",
     "@geekmidas/constructs": "workspace:*",
     "@geekmidas/db": "workspace:*",
