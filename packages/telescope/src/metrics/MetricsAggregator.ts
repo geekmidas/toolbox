@@ -95,7 +95,8 @@ export class MetricsAggregator {
     const rangeMs = range.end.getTime() - range.start.getTime();
     const rangeSeconds = rangeMs / 1000;
     const avgDuration = totalRequests > 0 ? totalDuration / totalRequests : 0;
-    const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+    const errorRate =
+      totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
     // Build time series (re-bucket if needed)
     const timeSeries = this.buildTimeSeries(bucketsInRange, range, bucketSize);
@@ -122,10 +123,12 @@ export class MetricsAggregator {
     const results: EndpointMetrics[] = [];
 
     for (const [, bucket] of this.endpoints) {
-      const avgDuration = bucket.count > 0 ? bucket.durationSum / bucket.count : 0;
+      const avgDuration =
+        bucket.count > 0 ? bucket.durationSum / bucket.count : 0;
       bucket.durationSamples.sort((a, b) => a - b);
       const p95 = this.percentile(bucket.durationSamples, 95);
-      const errorRate = bucket.count > 0 ? (bucket.errorCount / bucket.count) * 100 : 0;
+      const errorRate =
+        bucket.count > 0 ? (bucket.errorCount / bucket.count) * 100 : 0;
 
       results.push({
         method: bucket.method,
@@ -181,7 +184,9 @@ export class MetricsAggregator {
   // ============================================
 
   private getBucketTimestamp(timestamp: number): number {
-    return Math.floor(timestamp / this.options.bucketSize) * this.options.bucketSize;
+    return (
+      Math.floor(timestamp / this.options.bucketSize) * this.options.bucketSize
+    );
   }
 
   private updateBucket(bucketTs: number, entry: RequestEntry): void {
@@ -285,7 +290,10 @@ export class MetricsAggregator {
     const timestamps = Array.from(this.buckets.keys()).sort((a, b) => a - b);
 
     // Remove oldest buckets
-    const toRemove = timestamps.slice(0, timestamps.length - this.options.maxBuckets);
+    const toRemove = timestamps.slice(
+      0,
+      timestamps.length - this.options.maxBuckets,
+    );
     for (const ts of toRemove) {
       this.buckets.delete(ts);
     }
@@ -337,7 +345,12 @@ export class MetricsAggregator {
       let point = points.get(targetTs);
 
       if (!point) {
-        point = { timestamp: targetTs, count: 0, avgDuration: 0, errorCount: 0 };
+        point = {
+          timestamp: targetTs,
+          count: 0,
+          avgDuration: 0,
+          errorCount: 0,
+        };
         points.set(targetTs, point);
       }
 
@@ -346,14 +359,17 @@ export class MetricsAggregator {
       if (totalCount > 0) {
         point.avgDuration =
           (point.avgDuration * point.count +
-            (bucket.count > 0 ? bucket.durationSum / bucket.count : 0) * bucket.count) /
+            (bucket.count > 0 ? bucket.durationSum / bucket.count : 0) *
+              bucket.count) /
           totalCount;
       }
       point.count = totalCount;
       point.errorCount += bucket.errorCount;
     }
 
-    return Array.from(points.values()).sort((a, b) => a.timestamp - b.timestamp);
+    return Array.from(points.values()).sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
   }
 
   private percentile(sortedValues: number[], p: number): number {
