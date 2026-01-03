@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Badge } from './badge';
+import { CodeBlock } from './code-block';
 import { ScrollArea, ScrollBar } from './scroll-area';
 import { Separator } from './separator';
 
@@ -117,11 +118,7 @@ export const Horizontal: Story = {
   ),
 };
 
-export const CodeBlock: Story = {
-  render: () => (
-    <ScrollArea className="h-48 w-96 rounded-md border bg-muted/50">
-      <pre className="p-4 text-xs font-mono">
-        {`import { Hono } from 'hono';
+const studioCode = `import { Hono } from 'hono';
 import { Studio } from '@geekmidas/studio';
 import { InMemoryStorage } from '@geekmidas/telescope';
 
@@ -142,8 +139,12 @@ const studio = new Studio({
 
 app.route('/__studio', createStudioApp(studio));
 
-export default app;`}
-      </pre>
+export default app;`;
+
+export const WithCodeBlock: Story = {
+  render: () => (
+    <ScrollArea className="h-48 w-96 rounded-md border">
+      <CodeBlock code={studioCode} language="typescript" showLineNumbers />
     </ScrollArea>
   ),
 };

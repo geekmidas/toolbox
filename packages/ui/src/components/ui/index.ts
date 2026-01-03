@@ -53,6 +53,7 @@ export {
 } from './table';
 export { Separator } from './separator';
 export { ScrollArea, ScrollBar } from './scroll-area';
+export { CodeBlock, type CodeBlockProps } from './code-block';
 export {
   DropdownMenu,
   DropdownMenuTrigger,
