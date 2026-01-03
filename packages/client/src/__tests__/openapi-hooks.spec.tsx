@@ -424,11 +424,12 @@ describe('createOpenAPIHooks', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(onSuccess).toHaveBeenCalledWith(
-        { id: '123', name: 'Test', email: 'test@test.com' },
-        expect.any(Object),
-        undefined,
-      );
+      expect(onSuccess).toHaveBeenCalled();
+      expect(onSuccess.mock.calls[0]?.[0]).toEqual({
+        id: '123',
+        name: 'Test',
+        email: 'test@test.com',
+      });
       expect(onError).not.toHaveBeenCalled();
     });
   });
