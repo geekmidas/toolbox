@@ -5,6 +5,7 @@ import type {
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
+import { UnauthorizedError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type {
@@ -206,11 +207,10 @@ export class TestEndpointAdaptor<
 
     if (!isAuthorized) {
       logger.warn('Unauthorized access attempt');
-      return {
-        body: { error: 'Unauthorized' } as any,
-        status: 401,
-        headers: {},
-      };
+      throw new UnauthorizedError(
+        'Unauthorized access to the endpoint',
+        'You do not have permission to access this resource.',
+      );
     }
 
     // Create audit context if audit storage is provided
