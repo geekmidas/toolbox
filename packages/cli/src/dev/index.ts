@@ -362,7 +362,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
     ...(hooksFile
       ? [hooksFile.endsWith('.ts') ? hooksFile : `${hooksFile}.ts`]
       : []),
-  ].flat().filter((p): p is string => typeof p === 'string');
+  ]
+    .flat()
+    .filter((p): p is string => typeof p === 'string');
 
   // Normalize patterns - remove leading ./ when using cwd option
   const normalizedPatterns = watchPatterns.map((p) =>
