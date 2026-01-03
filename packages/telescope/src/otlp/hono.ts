@@ -31,9 +31,7 @@ import type {
  * // POST /v1/metrics
  * ```
  */
-export function createOTLPRoutes(
-  options: OTLPReceiverOptions,
-): Hono {
+export function createOTLPRoutes(options: OTLPReceiverOptions): Hono {
   const receiver = new OTLPReceiver(options);
   const app = new Hono();
 
@@ -44,10 +42,7 @@ export function createOTLPRoutes(
 
       // Only support JSON for now
       if (!contentType.includes('application/json')) {
-        return c.json(
-          { error: 'Only application/json is supported' },
-          415,
-        );
+        return c.json({ error: 'Only application/json is supported' }, 415);
       }
 
       const request = await c.req.json<ExportTraceServiceRequest>();
@@ -56,7 +51,10 @@ export function createOTLPRoutes(
       return c.json(response, response.partialSuccess ? 206 : 200);
     } catch (error) {
       return c.json(
-        { error: error instanceof Error ? error.message : 'Failed to process traces' },
+        {
+          error:
+            error instanceof Error ? error.message : 'Failed to process traces',
+        },
         400,
       );
     }
@@ -68,10 +66,7 @@ export function createOTLPRoutes(
       const contentType = c.req.header('content-type') || '';
 
       if (!contentType.includes('application/json')) {
-        return c.json(
-          { error: 'Only application/json is supported' },
-          415,
-        );
+        return c.json({ error: 'Only application/json is supported' }, 415);
       }
 
       const request = await c.req.json<ExportLogsServiceRequest>();
@@ -80,7 +75,10 @@ export function createOTLPRoutes(
       return c.json(response, response.partialSuccess ? 206 : 200);
     } catch (error) {
       return c.json(
-        { error: error instanceof Error ? error.message : 'Failed to process logs' },
+        {
+          error:
+            error instanceof Error ? error.message : 'Failed to process logs',
+        },
         400,
       );
     }
@@ -92,10 +90,7 @@ export function createOTLPRoutes(
       const contentType = c.req.header('content-type') || '';
 
       if (!contentType.includes('application/json')) {
-        return c.json(
-          { error: 'Only application/json is supported' },
-          415,
-        );
+        return c.json({ error: 'Only application/json is supported' }, 415);
       }
 
       const request = await c.req.json<ExportMetricsServiceRequest>();
@@ -104,7 +99,12 @@ export function createOTLPRoutes(
       return c.json(response, response.partialSuccess ? 206 : 200);
     } catch (error) {
       return c.json(
-        { error: error instanceof Error ? error.message : 'Failed to process metrics' },
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to process metrics',
+        },
         400,
       );
     }
