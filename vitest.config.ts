@@ -16,6 +16,8 @@ export default defineConfig({
         '**/exports/**',
         '**/.gkm/**',
         '**/__benchmarks__/**',
+        '**/packages/ui/**',
+        '**/*.stories.tsx',
       ],
       include: ['packages/*/src/**/*.{ts,tsx}'],
       thresholds: {
