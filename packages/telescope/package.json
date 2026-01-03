@@ -149,6 +149,7 @@
     "@opentelemetry/resources": "^1.30.0",
     "@opentelemetry/sdk-logs": "^0.57.0",
     "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-base": "^1.30.0",
     "@opentelemetry/sdk-trace-node": "^1.30.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
     "hono": "^4.7.0",
