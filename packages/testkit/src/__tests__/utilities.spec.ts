@@ -190,13 +190,16 @@ describe('testkit utilities', () => {
       expect(stat.isDirectory()).toBe(true);
     });
 
-    itWithDir('should allow creating files in the directory', async ({ dir }) => {
-      const testFile = path.join(dir, 'test.txt');
-      await fs.writeFile(testFile, 'hello');
+    itWithDir(
+      'should allow creating files in the directory',
+      async ({ dir }) => {
+        const testFile = path.join(dir, 'test.txt');
+        await fs.writeFile(testFile, 'hello');
 
-      const content = await fs.readFile(testFile, 'utf-8');
-      expect(content).toBe('hello');
-    });
+        const content = await fs.readFile(testFile, 'utf-8');
+        expect(content).toBe('hello');
+      },
+    );
 
     itWithDir('should provide unique directories per test', async ({ dir }) => {
       // The directory should have a UUID-like name (uppercase hex)
