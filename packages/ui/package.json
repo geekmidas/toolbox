@@ -14,6 +14,11 @@
       "import": "./dist/components/ui/index.js",
       "require": "./dist/components/ui/index.cjs"
     },
+    "./layout": {
+      "types": "./dist/components/layout/index.d.ts",
+      "import": "./dist/components/layout/index.js",
+      "require": "./dist/components/layout/index.cjs"
+    },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",
       "import": "./dist/hooks/index.js",

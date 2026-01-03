@@ -3,6 +3,9 @@
 // shadcn/ui components (primary)
 export * from './components/ui';
 
+// Layout components
+export * from './components/layout';
+
 // Utilities
 export { cn } from './lib/utils';
 
