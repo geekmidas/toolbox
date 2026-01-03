@@ -150,7 +150,7 @@ function createWrapper() {
     },
   });
 
-  return ({ children }: { children: React.ReactNode }) => (
+  return ({ children }: { children: any }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
