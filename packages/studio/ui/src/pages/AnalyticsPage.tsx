@@ -1,10 +1,6 @@
 import { Badge, MetricCard } from '@geekmidas/ui';
 import { useEffect, useState } from 'react';
-import {
-  getEndpointMetrics,
-  getMetrics,
-  getStatusDistribution,
-} from '../api';
+import { getEndpointMetrics, getMetrics, getStatusDistribution } from '../api';
 import type {
   EndpointMetrics,
   RequestMetrics,
