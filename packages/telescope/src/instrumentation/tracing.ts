@@ -26,10 +26,7 @@ export function setSpanAttributes(attributes: Attributes): void {
 /**
  * Create a new span as a child of the current span
  */
-export function createSpan(
-  name: string,
-  attributes?: Attributes,
-): Span {
+export function createSpan(name: string, attributes?: Attributes): Span {
   const tracer = trace.getTracer('@geekmidas/telescope');
   const span = tracer.startSpan(name, { attributes });
   return span;
@@ -137,10 +134,7 @@ export function recordException(error: Error): void {
 /**
  * Add an event to the current span
  */
-export function addSpanEvent(
-  name: string,
-  attributes?: Attributes,
-): void {
+export function addSpanEvent(name: string, attributes?: Attributes): void {
   const span = getActiveSpan();
   if (span) {
     span.addEvent(name, attributes);
