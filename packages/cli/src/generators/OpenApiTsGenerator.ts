@@ -551,10 +551,10 @@ export class OpenApiTsGenerator {
         `${baseName}Input`,
       );
       parts.push(`requestBody: {
-      content: {
-        'application/json': ${bodyName};
-      };
-    }`);
+        content: {
+          'application/json': ${bodyName};
+        };
+      }`);
     }
 
     // Query parameters
@@ -564,8 +564,8 @@ export class OpenApiTsGenerator {
         `${baseName}Query`,
       );
       parts.push(`parameters: {
-      query: ${queryName};
-    }`);
+        query: ${queryName};
+      }`);
     }
 
     // Responses
@@ -573,12 +573,12 @@ export class OpenApiTsGenerator {
       ? await this.getSchemaName(info.output, `${baseName}Output`)
       : 'unknown';
     parts.push(`responses: {
-      200: {
-        content: {
-          'application/json': ${outputName};
+        200: {
+          content: {
+            'application/json': ${outputName};
+          };
         };
-      };
-    }`);
+      }`);
 
     return `{\n      ${parts.join(';\n      ')};\n    }`;
   }
