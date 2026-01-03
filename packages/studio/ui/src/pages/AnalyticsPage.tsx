@@ -27,7 +27,9 @@ function formatTimestamp(ts: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
-function getMethodColor(method: string): 'default' | 'success' | 'warning' | 'danger' {
+function getMethodColor(
+  method: string,
+): 'default' | 'success' | 'warning' | 'danger' {
   switch (method.toUpperCase()) {
     case 'GET':
       return 'success';
@@ -94,7 +96,10 @@ export function AnalyticsPage() {
   }
 
   const totalStatus = statusDist
-    ? statusDist['2xx'] + statusDist['3xx'] + statusDist['4xx'] + statusDist['5xx']
+    ? statusDist['2xx'] +
+      statusDist['3xx'] +
+      statusDist['4xx'] +
+      statusDist['5xx']
     : 0;
 
   return (
@@ -123,12 +128,24 @@ export function AnalyticsPage() {
         <MetricCard
           title="Success Rate"
           value={formatPercent(metrics?.successRate ?? 100)}
-          trend={(metrics?.successRate ?? 100) >= 99 ? 'up' : (metrics?.successRate ?? 100) >= 95 ? 'neutral' : 'down'}
+          trend={
+            (metrics?.successRate ?? 100) >= 99
+              ? 'up'
+              : (metrics?.successRate ?? 100) >= 95
+                ? 'neutral'
+                : 'down'
+          }
         />
         <MetricCard
           title="Error Rate"
           value={formatPercent(metrics?.errorRate ?? 0)}
-          trend={(metrics?.errorRate ?? 0) <= 1 ? 'up' : (metrics?.errorRate ?? 0) <= 5 ? 'neutral' : 'down'}
+          trend={
+            (metrics?.errorRate ?? 0) <= 1
+              ? 'up'
+              : (metrics?.errorRate ?? 0) <= 5
+                ? 'neutral'
+                : 'down'
+          }
         />
       </div>
 
@@ -205,7 +222,10 @@ export function AnalyticsPage() {
           <h2 className="text-sm font-medium mb-4">Request Volume</h2>
           <div className="h-32 flex items-end gap-1">
             {metrics.timeSeries.map((point, i) => {
-              const maxCount = Math.max(...metrics.timeSeries.map((p) => p.count), 1);
+              const maxCount = Math.max(
+                ...metrics.timeSeries.map((p) => p.count),
+                1,
+              );
               const height = (point.count / maxCount) * 100;
               const hasErrors = point.errorCount > 0;
               return (
@@ -233,7 +253,8 @@ export function AnalyticsPage() {
             <span>
               {metrics.timeSeries[metrics.timeSeries.length - 1]
                 ? formatTimestamp(
-                    metrics.timeSeries[metrics.timeSeries.length - 1]!.timestamp,
+                    metrics.timeSeries[metrics.timeSeries.length - 1]!
+                      .timestamp,
                   )
                 : ''}
             </span>
@@ -261,7 +282,10 @@ export function AnalyticsPage() {
             <tbody>
               {endpoints.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <td
+                    colSpan={6}
+                    className="text-center py-8 text-muted-foreground"
+                  >
                     No endpoints recorded yet
                   </td>
                 </tr>
