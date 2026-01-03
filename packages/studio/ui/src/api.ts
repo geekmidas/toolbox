@@ -1,8 +1,12 @@
 import type {
+  ExceptionEntry,
   FilterConfig,
+  LogEntry,
   QueryResult,
+  RequestEntry,
   SchemaInfo,
   SortConfig,
+  StudioStats,
   TableInfo,
   TableSummary,
 } from './types';
@@ -16,6 +20,10 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
   return res.json();
 }
+
+// ============================================================================
+// Database API
+// ============================================================================
 
 export async function getSchema(refresh = false): Promise<SchemaInfo> {
   const url = refresh ? '/api/schema?refresh=true' : '/api/schema';
@@ -68,4 +76,74 @@ export async function queryTable(
   const url = `/api/tables/${encodeURIComponent(tableName)}/rows${queryStr ? `?${queryStr}` : ''}`;
 
   return fetchJson(url);
+}
+
+// ============================================================================
+// Monitoring API (from Telescope)
+// ============================================================================
+
+export async function getStats(): Promise<StudioStats> {
+  return fetchJson('/api/stats');
+}
+
+export interface MonitoringQueryOptions {
+  limit?: number;
+  search?: string;
+  method?: string;
+  status?: string;
+  level?: string;
+}
+
+export async function getRequests(
+  options: MonitoringQueryOptions = {},
+): Promise<RequestEntry[]> {
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.search) params.set('search', options.search);
+  if (options.method) params.set('method', options.method);
+  if (options.status) params.set('status', options.status);
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/requests${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function getRequest(id: string): Promise<RequestEntry> {
+  return fetchJson(`/api/requests/${encodeURIComponent(id)}`);
+}
+
+export async function getExceptions(
+  options: MonitoringQueryOptions = {},
+): Promise<ExceptionEntry[]> {
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.search) params.set('search', options.search);
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/exceptions${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function getException(id: string): Promise<ExceptionEntry> {
+  return fetchJson(`/api/exceptions/${encodeURIComponent(id)}`);
+}
+
+export async function getLogs(
+  options: MonitoringQueryOptions = {},
+): Promise<LogEntry[]> {
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.search) params.set('search', options.search);
+  if (options.level) params.set('level', options.level);
+
+  const queryStr = params.toString();
+  return fetchJson(`/api/logs${queryStr ? `?${queryStr}` : ''}`);
+}
+
+// ============================================================================
+// WebSocket
+// ============================================================================
+
+export function createWebSocket(): WebSocket {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}${BASE_URL}/ws`;
+  return new WebSocket(wsUrl);
 }

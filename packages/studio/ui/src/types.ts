@@ -1,3 +1,7 @@
+// ============================================================================
+// Database Types
+// ============================================================================
+
 export interface ColumnInfo {
   name: string;
   type: string;
@@ -48,3 +52,55 @@ export interface SortConfig {
   column: string;
   direction: 'asc' | 'desc';
 }
+
+// ============================================================================
+// Monitoring Types (from Telescope)
+// ============================================================================
+
+export interface RequestEntry {
+  id: string;
+  method: string;
+  path: string;
+  status: number;
+  duration: number;
+  timestamp: string;
+  requestHeaders?: Record<string, string>;
+  requestBody?: unknown;
+  responseHeaders?: Record<string, string>;
+  responseBody?: unknown;
+  ip?: string;
+  userAgent?: string;
+}
+
+export interface ExceptionEntry {
+  id: string;
+  name: string;
+  message: string;
+  stack: string;
+  timestamp: string;
+  context?: Record<string, unknown>;
+  request?: {
+    method: string;
+    path: string;
+  };
+}
+
+export interface LogEntry {
+  id: string;
+  level: string;
+  message: string;
+  timestamp: string;
+  context?: Record<string, unknown>;
+  requestId?: string;
+}
+
+export interface StudioStats {
+  requests: number;
+  exceptions: number;
+  logs: number;
+}
+
+export type WebSocketMessage =
+  | { type: 'request'; payload: RequestEntry }
+  | { type: 'exception'; payload: ExceptionEntry }
+  | { type: 'log'; payload: LogEntry }
