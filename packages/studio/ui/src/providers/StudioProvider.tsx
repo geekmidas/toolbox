@@ -90,7 +90,9 @@ export function StudioProvider({ children }: StudioProviderProps) {
   // Add new entries
   const addRequest = useCallback((request: RequestEntry) => {
     setRequests((prev) => [request, ...prev].slice(0, 100));
-    setStats((prev) => (prev ? { ...prev, requests: prev.requests + 1 } : prev));
+    setStats((prev) =>
+      prev ? { ...prev, requests: prev.requests + 1 } : prev,
+    );
   }, []);
 
   const addLog = useCallback((log: LogEntry) => {
