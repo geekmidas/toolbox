@@ -130,9 +130,15 @@ export const Disabled: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-4">
       <Button disabled>Default</Button>
-      <Button variant="secondary" disabled>Secondary</Button>
-      <Button variant="destructive" disabled>Destructive</Button>
-      <Button variant="outline" disabled>Outline</Button>
+      <Button variant="secondary" disabled>
+        Secondary
+      </Button>
+      <Button variant="destructive" disabled>
+        Destructive
+      </Button>
+      <Button variant="outline" disabled>
+        Outline
+      </Button>
     </div>
   ),
 };
