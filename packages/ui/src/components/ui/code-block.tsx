@@ -54,7 +54,7 @@ const CodeBlock = React.forwardRef<HTMLPreElement, CodeBlockProps>(
         )}
       </Highlight>
     );
-  }
+  },
 );
 CodeBlock.displayName = 'CodeBlock';
 
