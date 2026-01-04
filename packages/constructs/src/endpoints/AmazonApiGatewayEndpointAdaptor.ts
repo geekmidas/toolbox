@@ -34,6 +34,26 @@ export interface TelescopeIntegration {
   middleware: MiddlewareObj<any, any, Error, Context>;
 }
 
+/**
+ * OpenTelemetry instrumentation interface.
+ * Use with `@geekmidas/telescope/instrumentation` for automatic span creation.
+ */
+export interface TelemetryIntegration {
+  /**
+   * Middy middleware for OpenTelemetry instrumentation.
+   * Import from `@geekmidas/telescope/instrumentation`:
+   *
+   * ```typescript
+   * import { telemetryMiddleware } from '@geekmidas/telescope/instrumentation';
+   *
+   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+   *   telemetry: { middleware: telemetryMiddleware() },
+   * });
+   * ```
+   */
+  middleware: MiddlewareObj<any, any, Error, Context>;
+}
+
 import {
   UnauthorizedError,
   UnprocessableEntityError,
@@ -77,6 +97,21 @@ export interface AmazonApiGatewayEndpointOptions {
    * ```
    */
   telescope?: TelescopeIntegration;
+
+  /**
+   * OpenTelemetry instrumentation for automatic span creation.
+   * Creates spans for each request with proper trace context propagation.
+   *
+   * @example
+   * ```typescript
+   * import { telemetryMiddleware } from '@geekmidas/telescope/instrumentation';
+   *
+   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+   *   telemetry: { middleware: telemetryMiddleware() },
+   * });
+   * ```
+   */
+  telemetry?: TelemetryIntegration;
 }
 
 export abstract class AmazonApiGatewayEndpoint<
@@ -483,6 +518,11 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.session())
       .use(this.authorize())
       .use(this.events());
+
+    // Add telemetry middleware if configured (runs early for span creation)
+    if (this.options.telemetry?.middleware) {
+      chain = chain.use(this.options.telemetry.middleware);
+    }
 
     // Add Telescope middleware if configured (runs first/last in chain)
     if (this.options.telescope?.middleware) {

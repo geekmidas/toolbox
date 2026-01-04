@@ -44,3 +44,42 @@ export {
   NoopSpanProcessor,
 } from './core';
 export type { SpanProcessorOptions, SpanProcessorStrategy } from '../adapters/types';
+
+// HTTP instrumentation utilities for constructs
+export {
+  getConstructsTracer,
+  toOtelAttributes,
+  extractTraceContext,
+  injectTraceContext,
+  createHttpServerSpan,
+  endHttpSpan,
+  withHttpSpan,
+  createChildSpan,
+  withChildSpan,
+  isTracingEnabled,
+} from './http';
+export type {
+  HttpRequestAttributes,
+  HttpResponseAttributes,
+  EndpointAttributes,
+  UserAttributes,
+  HttpSpanAttributes,
+} from './http';
+
+// Middleware for Lambda auto-instrumentation
+export {
+  telemetryMiddleware,
+  getSpanFromEvent,
+  getContextFromEvent,
+  withEventContext,
+} from './middleware';
+export type { TelemetryMiddlewareOptions } from './middleware';
+
+// Middleware for Hono auto-instrumentation
+export {
+  honoTelemetryMiddleware,
+  getSpanFromContext,
+  getTraceContextFromHono,
+  withHonoSpanContext,
+} from './hono';
+export type { HonoTelemetryMiddlewareOptions } from './hono';
