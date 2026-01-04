@@ -14,6 +14,26 @@ import type {
 } from 'aws-lambda';
 import set from 'lodash.set';
 
+/**
+ * Telescope integration interface.
+ * Use with `@geekmidas/telescope/lambda` for full integration.
+ */
+export interface TelescopeIntegration {
+  /**
+   * Middy middleware for Telescope integration.
+   * Import from `@geekmidas/telescope/lambda`:
+   *
+   * ```typescript
+   * import { telescopeMiddleware } from '@geekmidas/telescope/lambda';
+   *
+   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+   *   telescope: telescopeMiddleware(telescope),
+   * });
+   * ```
+   */
+  middleware: MiddlewareObj<any, any, Error, Context>;
+}
+
 import {
   UnauthorizedError,
   UnprocessableEntityError,
@@ -40,6 +60,25 @@ import {
 
 // Helper function to publish events
 
+/**
+ * Options for Amazon API Gateway endpoint adaptors
+ */
+export interface AmazonApiGatewayEndpointOptions {
+  /**
+   * Telescope integration for request recording and monitoring.
+   *
+   * @example
+   * ```typescript
+   * import { telescopeMiddleware } from '@geekmidas/telescope/lambda';
+   *
+   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+   *   telescope: { middleware: telescopeMiddleware(telescope) },
+   * });
+   * ```
+   */
+  telescope?: TelescopeIntegration;
+}
+
 export abstract class AmazonApiGatewayEndpoint<
   THandler extends
     | AmazonApiGatewayV1EndpointHandler
@@ -61,6 +100,8 @@ export abstract class AmazonApiGatewayEndpoint<
     unknown
   >,
 > {
+  protected options: AmazonApiGatewayEndpointOptions;
+
   constructor(
     protected envParser: EnvironmentParser<{}>,
     protected readonly endpoint: Endpoint<
@@ -77,7 +118,10 @@ export abstract class AmazonApiGatewayEndpoint<
       TAuditStorageServiceName,
       TAuditAction
     >,
-  ) {}
+    options: AmazonApiGatewayEndpointOptions = {},
+  ) {
+    this.options = options;
+  }
 
   private error(): Middleware<TEvent, TInput, TServices, TLogger> {
     return {
@@ -430,7 +474,7 @@ export abstract class AmazonApiGatewayEndpoint<
 
   get handler() {
     const handler = this._handler.bind(this);
-    return middy(handler)
+    let chain = middy(handler)
       .use(this.logger())
       .use(this.error())
       .use(this.services())
@@ -438,7 +482,14 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.database())
       .use(this.session())
       .use(this.authorize())
-      .use(this.events()) as unknown as THandler;
+      .use(this.events());
+
+    // Add Telescope middleware if configured (runs first/last in chain)
+    if (this.options.telescope?.middleware) {
+      chain = chain.use(this.options.telescope.middleware);
+    }
+
+    return chain as unknown as THandler;
   }
 }
 

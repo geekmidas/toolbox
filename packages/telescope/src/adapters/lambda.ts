@@ -1,16 +1,20 @@
 import type { Context as LambdaContext } from 'aws-lambda';
 import { nanoid } from 'nanoid';
 import type { Telescope } from '../Telescope';
-import {
-  flushTelemetry,
-  setGlobalSpanProcessor,
-} from '../instrumentation/core';
+import { flushTelemetry } from '../instrumentation/core';
 import type {
   AdapterRequestContext,
   AdapterResponseContext,
   LambdaAdapterConfig,
   TelescopeAdapter,
 } from './types';
+
+// Re-export Middy middleware for convenience
+export {
+  telescopeMiddleware,
+  createTelescopeHandler,
+  type TelescopeMiddlewareOptions,
+} from './middy';
 
 /**
  * Lambda resource attributes detected from environment

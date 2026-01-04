@@ -10,6 +10,7 @@ import type { EventPublisher } from '@geekmidas/events';
 import type { Service } from '@geekmidas/services';
 import {
   AmazonApiGatewayEndpoint,
+  type AmazonApiGatewayEndpointOptions,
   type AmazonApiGatewayV1EndpointHandler,
   type GetInputResponse,
   type LoggerContext,
@@ -95,7 +96,8 @@ export class AmazonApiGatewayV1Endpoint<
       TSession,
       TEventPublisher
     >,
+    options: AmazonApiGatewayEndpointOptions = {},
   ) {
-    super(envParser, endpoint);
+    super(envParser, endpoint, options);
   }
 }

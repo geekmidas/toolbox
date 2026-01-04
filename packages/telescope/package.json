@@ -87,6 +87,7 @@
   },
   "peerDependencies": {
     "@geekmidas/logger": "workspace:^",
+    "@middy/core": "^5.0.0 || ^6.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.56.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
@@ -106,6 +107,9 @@
   },
   "peerDependenciesMeta": {
     "@geekmidas/logger": {
+      "optional": true
+    },
+    "@middy/core": {
       "optional": true
     },
     "@opentelemetry/api": {
@@ -159,6 +163,7 @@
   },
   "devDependencies": {
     "@geekmidas/logger": "workspace:^",
+    "@middy/core": "^6.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.56.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",

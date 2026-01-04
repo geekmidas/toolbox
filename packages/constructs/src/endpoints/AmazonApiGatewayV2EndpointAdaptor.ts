@@ -9,6 +9,7 @@ import type { Service } from '@geekmidas/services';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import {
   AmazonApiGatewayEndpoint,
+  type AmazonApiGatewayEndpointOptions,
   type AmazonApiGatewayV2EndpointHandler,
   type GetInputResponse,
   type LoggerContext,
@@ -89,7 +90,11 @@ export class AmazonApiGatewayV2Endpoint<
       TSession,
       TEventPublisher
     >,
+    options: AmazonApiGatewayEndpointOptions = {},
   ) {
-    super(envParser, endpoint);
+    super(envParser, endpoint, options);
   }
 }
+
+// Re-export options type for convenience
+export type { AmazonApiGatewayEndpointOptions };
