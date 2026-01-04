@@ -1,5 +1,6 @@
 import type {
   EndpointBucket,
+  EndpointDetails,
   EndpointMetrics,
   MetricsBucket,
   MetricsQueryOptions,
@@ -32,10 +33,24 @@ const DEFAULT_OPTIONS: Required<MetricsAggregatorOptions> = {
  * In-memory metrics aggregator for Telescope.
  * Aggregates request data into time-bucketed metrics for efficient querying.
  */
+/**
+ * Endpoint time bucket for per-endpoint time series
+ */
+interface EndpointTimeBucket {
+  timestamp: number;
+  count: number;
+  durationSum: number;
+  errorCount: number;
+  statusDistribution: StatusDistribution;
+}
+
 export class MetricsAggregator {
   private options: Required<MetricsAggregatorOptions>;
   private buckets: Map<number, MetricsBucket> = new Map();
   private endpoints: Map<string, EndpointBucket> = new Map();
+  // Map of endpoint key -> Map of timestamp -> bucket
+  private endpointTimeBuckets: Map<string, Map<number, EndpointTimeBucket>> =
+    new Map();
 
   constructor(options: MetricsAggregatorOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -260,6 +275,63 @@ export class MetricsAggregator {
       const idx = Math.floor(Math.random() * endpoint.count);
       if (idx < this.options.maxSamplesPerBucket) {
         endpoint.durationSamples[idx] = entry.duration;
+      }
+    }
+
+    // Update endpoint time bucket
+    this.updateEndpointTimeBucket(key, entry);
+  }
+
+  private updateEndpointTimeBucket(key: string, entry: RequestEntry): void {
+    const timestamp = entry.timestamp.getTime();
+    const bucketTs = this.getBucketTimestamp(timestamp);
+
+    let endpointBuckets = this.endpointTimeBuckets.get(key);
+    if (!endpointBuckets) {
+      endpointBuckets = new Map();
+      this.endpointTimeBuckets.set(key, endpointBuckets);
+    }
+
+    let bucket = endpointBuckets.get(bucketTs);
+    if (!bucket) {
+      bucket = {
+        timestamp: bucketTs,
+        count: 0,
+        durationSum: 0,
+        errorCount: 0,
+        statusDistribution: { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
+      };
+      endpointBuckets.set(bucketTs, bucket);
+    }
+
+    bucket.count++;
+    bucket.durationSum += entry.duration;
+
+    if (entry.status >= 400) {
+      bucket.errorCount++;
+    }
+
+    if (entry.status >= 200 && entry.status < 300) {
+      bucket.statusDistribution['2xx']++;
+    } else if (entry.status >= 300 && entry.status < 400) {
+      bucket.statusDistribution['3xx']++;
+    } else if (entry.status >= 400 && entry.status < 500) {
+      bucket.statusDistribution['4xx']++;
+    } else if (entry.status >= 500) {
+      bucket.statusDistribution['5xx']++;
+    }
+
+    // Prune old endpoint buckets (keep max buckets per endpoint)
+    if (endpointBuckets.size > this.options.maxBuckets) {
+      const timestamps = Array.from(endpointBuckets.keys()).sort(
+        (a, b) => a - b,
+      );
+      const toRemove = timestamps.slice(
+        0,
+        timestamps.length - this.options.maxBuckets,
+      );
+      for (const ts of toRemove) {
+        endpointBuckets.delete(ts);
       }
     }
   }

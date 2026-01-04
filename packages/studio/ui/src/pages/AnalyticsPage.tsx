@@ -1,5 +1,15 @@
-import { Badge, MetricCard } from '@geekmidas/ui';
-import { useEffect, useState } from 'react';
+import {
+  AreaTimeSeriesChart,
+  Badge,
+  BarListChart,
+  createTimeRange,
+  LatencyPercentilesChart,
+  MetricCard,
+  StatusDistributionChart,
+  TimeRangeSelector,
+  type TimeRange,
+} from '@geekmidas/ui';
+import { useCallback, useEffect, useState } from 'react';
 import { getEndpointMetrics, getMetrics, getStatusDistribution } from '../api';
 import type {
   EndpointMetrics,
@@ -29,7 +39,7 @@ function formatTimestamp(ts: number): string {
 
 function getMethodColor(
   method: string,
-): 'default' | 'success' | 'warning' | 'danger' {
+): 'default' | 'success' | 'warning' | 'destructive' {
   switch (method.toUpperCase()) {
     case 'GET':
       return 'success';
@@ -39,7 +49,7 @@ function getMethodColor(
     case 'PATCH':
       return 'warning';
     case 'DELETE':
-      return 'danger';
+      return 'destructive';
     default:
       return 'default';
   }
@@ -51,33 +61,40 @@ export function AnalyticsPage() {
   const [statusDist, setStatusDist] = useState<StatusDistribution | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>(() =>
+    createTimeRange('1h'),
+  );
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const timeRangeParams = {
+        start: timeRange.start.toISOString(),
+        end: timeRange.end.toISOString(),
+      };
+      const [metricsData, endpointsData, statusData] = await Promise.all([
+        getMetrics(timeRangeParams),
+        getEndpointMetrics({ limit: 10, ...timeRangeParams }),
+        getStatusDistribution(timeRangeParams),
+      ]);
+      setMetrics(metricsData);
+      setEndpoints(endpointsData);
+      setStatusDist(statusData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load metrics');
+    } finally {
+      setLoading(false);
+    }
+  }, [timeRange.start, timeRange.end]);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        const [metricsData, endpointsData, statusData] = await Promise.all([
-          getMetrics(),
-          getEndpointMetrics({ limit: 10 }),
-          getStatusDistribution(),
-        ]);
-        setMetrics(metricsData);
-        setEndpoints(endpointsData);
-        setStatusDist(statusData);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load metrics');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchData();
 
     // Refresh every 30 seconds
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   if (loading && !metrics) {
     return (
@@ -95,20 +112,17 @@ export function AnalyticsPage() {
     );
   }
 
-  const totalStatus = statusDist
-    ? statusDist['2xx'] +
-      statusDist['3xx'] +
-      statusDist['4xx'] +
-      statusDist['5xx']
-    : 0;
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Analytics</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Request metrics and performance insights
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Analytics</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Request metrics and performance insights
+          </p>
+        </div>
+        <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
       </div>
 
       {/* Overview Metrics */}
@@ -149,39 +163,15 @@ export function AnalyticsPage() {
         />
       </div>
 
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Status Distribution */}
         <div className="bg-card rounded-lg border p-4">
           <h2 className="text-sm font-medium mb-4">Status Distribution</h2>
-          {statusDist && totalStatus > 0 ? (
-            <div className="space-y-3">
-              <StatusBar
-                label="2xx Success"
-                count={statusDist['2xx']}
-                total={totalStatus}
-                color="bg-green-500"
-              />
-              <StatusBar
-                label="3xx Redirect"
-                count={statusDist['3xx']}
-                total={totalStatus}
-                color="bg-blue-500"
-              />
-              <StatusBar
-                label="4xx Client Error"
-                count={statusDist['4xx']}
-                total={totalStatus}
-                color="bg-yellow-500"
-              />
-              <StatusBar
-                label="5xx Server Error"
-                count={statusDist['5xx']}
-                total={totalStatus}
-                color="bg-red-500"
-              />
-            </div>
+          {statusDist ? (
+            <StatusDistributionChart data={statusDist} />
           ) : (
-            <div className="text-sm text-muted-foreground text-center py-8">
+            <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
               No requests recorded yet
             </div>
           )}
@@ -191,81 +181,51 @@ export function AnalyticsPage() {
         <div className="bg-card rounded-lg border p-4">
           <h2 className="text-sm font-medium mb-4">Latency Percentiles</h2>
           {metrics ? (
-            <div className="space-y-3">
-              <LatencyBar
-                label="p50 (Median)"
-                value={metrics.p50Duration}
-                max={metrics.p99Duration || 1}
-              />
-              <LatencyBar
-                label="p95"
-                value={metrics.p95Duration}
-                max={metrics.p99Duration || 1}
-              />
-              <LatencyBar
-                label="p99"
-                value={metrics.p99Duration}
-                max={metrics.p99Duration || 1}
-              />
-            </div>
+            <LatencyPercentilesChart
+              p50={metrics.p50Duration}
+              p95={metrics.p95Duration}
+              p99={metrics.p99Duration}
+            />
           ) : (
-            <div className="text-sm text-muted-foreground text-center py-8">
+            <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
               No requests recorded yet
             </div>
           )}
         </div>
       </div>
 
-      {/* Time Series (placeholder for now) */}
-      {metrics && metrics.timeSeries.length > 0 && (
-        <div className="bg-card rounded-lg border p-4">
-          <h2 className="text-sm font-medium mb-4">Request Volume</h2>
-          <div className="h-32 flex items-end gap-1">
-            {metrics.timeSeries.map((point, i) => {
-              const maxCount = Math.max(
-                ...metrics.timeSeries.map((p) => p.count),
-                1,
-              );
-              const height = (point.count / maxCount) * 100;
-              const hasErrors = point.errorCount > 0;
-              return (
-                <div
-                  key={i}
-                  className="flex-1 group relative"
-                  title={`${formatTimestamp(point.timestamp)}: ${point.count} requests`}
-                >
-                  <div
-                    className={`w-full rounded-t transition-all ${
-                      hasErrors ? 'bg-red-500/80' : 'bg-primary/80'
-                    } group-hover:opacity-80`}
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-            <span>
-              {metrics.timeSeries[0]
-                ? formatTimestamp(metrics.timeSeries[0].timestamp)
-                : ''}
-            </span>
-            <span>
-              {metrics.timeSeries[metrics.timeSeries.length - 1]
-                ? formatTimestamp(
-                    metrics.timeSeries[metrics.timeSeries.length - 1]!
-                      .timestamp,
-                  )
-                : ''}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Request Volume Time Series */}
+      <div className="bg-card rounded-lg border p-4">
+        <h2 className="text-sm font-medium mb-4">Request Volume</h2>
+        <AreaTimeSeriesChart
+          data={(metrics?.timeSeries ?? []).map((p) => ({
+            timestamp: p.timestamp,
+            value: p.count,
+            secondaryValue: p.errorCount,
+          }))}
+          primaryLabel="Requests"
+          secondaryLabel="Errors"
+          primaryColor="blue"
+          secondaryColor="red"
+        />
+      </div>
 
-      {/* Top Endpoints */}
+      {/* Top Endpoints - Chart View */}
+      <div className="bg-card rounded-lg border p-4">
+        <h2 className="text-sm font-medium mb-4">Top Endpoints by Request Count</h2>
+        <BarListChart
+          data={endpoints.map((ep) => ({
+            name: `${ep.method} ${ep.path}`,
+            value: ep.count,
+          }))}
+          emptyMessage="No endpoints recorded yet"
+        />
+      </div>
+
+      {/* Top Endpoints - Table View */}
       <div className="bg-card rounded-lg border">
         <div className="p-4 border-b">
-          <h2 className="text-sm font-medium">Top Endpoints</h2>
+          <h2 className="text-sm font-medium">Endpoint Details</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -294,7 +254,7 @@ export function AnalyticsPage() {
                   <tr key={i} className="border-t hover:bg-muted/30">
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant={getMethodColor(ep.method)} size="sm">
+                        <Badge variant={getMethodColor(ep.method)}>
                           {ep.method}
                         </Badge>
                         <span className="font-mono text-xs">{ep.path}</span>
@@ -331,62 +291,6 @@ export function AnalyticsPage() {
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusBar({
-  label,
-  count,
-  total,
-  color,
-}: {
-  label: string;
-  count: number;
-  total: number;
-  color: string;
-}) {
-  const percent = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span>{label}</span>
-        <span className="text-muted-foreground">
-          {formatNumber(count)} ({percent.toFixed(1)}%)
-        </span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} transition-all`}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function LatencyBar({
-  label,
-  value,
-  max,
-}: {
-  label: string;
-  value: number;
-  max: number;
-}) {
-  const percent = max > 0 ? (value / max) * 100 : 0;
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span>{label}</span>
-        <span className="font-mono">{formatDuration(value)}</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className="h-full bg-primary transition-all"
-          style={{ width: `${percent}%` }}
-        />
       </div>
     </div>
   );

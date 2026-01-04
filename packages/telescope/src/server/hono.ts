@@ -263,6 +263,20 @@ export function createUI(telescope: Telescope): Hono {
 }
 
 /**
+ * Options for setupWebSocket
+ */
+export interface WebSocketOptions {
+  /**
+   * Enable real-time metrics broadcasting (default: true)
+   */
+  broadcastMetrics?: boolean;
+  /**
+   * Metrics broadcast interval in milliseconds (default: 5000)
+   */
+  metricsBroadcastInterval?: number;
+}
+
+/**
  * Set up WebSocket routes for real-time updates.
  * Requires @hono/node-ws for Node.js or Bun's built-in WebSocket.
  */
@@ -270,7 +284,15 @@ export function setupWebSocket(
   app: Hono,
   telescope: Telescope,
   upgradeWebSocket: (handler: any) => any,
+  options: WebSocketOptions = {},
 ): void {
+  const { broadcastMetrics = true, metricsBroadcastInterval = 5000 } = options;
+
+  // Start metrics broadcast if enabled
+  if (broadcastMetrics) {
+    telescope.startMetricsBroadcast(metricsBroadcastInterval);
+  }
+
   app.get(
     '/ws',
     upgradeWebSocket(() => ({

@@ -10,6 +10,7 @@ import * as api from '../api';
 import type {
   ExceptionEntry,
   LogEntry,
+  MetricsSnapshot,
   RequestEntry,
   StudioStats,
   WebSocketMessage,
@@ -26,6 +27,9 @@ interface StudioContextValue {
   requests: RequestEntry[];
   logs: LogEntry[];
   exceptions: ExceptionEntry[];
+
+  // Real-time metrics from WebSocket
+  realtimeMetrics: MetricsSnapshot | null;
 
   // Loading state
   loading: boolean;
@@ -57,6 +61,8 @@ export function StudioProvider({ children }: StudioProviderProps) {
   const [requests, setRequests] = useState<RequestEntry[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exceptions, setExceptions] = useState<ExceptionEntry[]>([]);
+  const [realtimeMetrics, setRealtimeMetrics] =
+    useState<MetricsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load initial data
@@ -148,6 +154,9 @@ export function StudioProvider({ children }: StudioProviderProps) {
               case 'log':
                 addLog(message.payload as LogEntry);
                 break;
+              case 'metrics':
+                setRealtimeMetrics(message.payload as MetricsSnapshot);
+                break;
             }
           } catch {
             // Ignore parse errors
@@ -172,6 +181,7 @@ export function StudioProvider({ children }: StudioProviderProps) {
     requests,
     logs,
     exceptions,
+    realtimeMetrics,
     loading,
     refresh,
     addRequest,

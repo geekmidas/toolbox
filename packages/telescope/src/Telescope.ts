@@ -9,6 +9,7 @@ import type {
   ExceptionEntry,
   LogEntry,
   MetricsQueryOptions,
+  MetricsSnapshot,
   NormalizedTelescopeOptions,
   QueryOptions,
   RequestEntry,
@@ -29,6 +30,7 @@ export class Telescope {
   private options: NormalizedTelescopeOptions;
   private wsClients = new Set<WebSocket>();
   private pruneInterval?: ReturnType<typeof setInterval>;
+  private metricsBroadcastInterval?: ReturnType<typeof setInterval>;
   private redactor?: Redactor;
   private metricsAggregator: MetricsAggregator;
 
@@ -309,6 +311,59 @@ export class Telescope {
     this.metricsAggregator.reset();
   }
 
+  /**
+   * Get a real-time metrics snapshot for broadcasting
+   */
+  getMetricsSnapshot(): MetricsSnapshot {
+    const metrics = this.metricsAggregator.getMetrics();
+    const statusDist = this.metricsAggregator.getStatusDistribution();
+
+    return {
+      timestamp: Date.now(),
+      totalRequests: metrics.totalRequests,
+      requestsPerSecond: metrics.requestsPerSecond,
+      avgDuration: metrics.avgDuration,
+      errorRate: metrics.errorRate,
+      p50: metrics.p50Duration,
+      p95: metrics.p95Duration,
+      p99: metrics.p99Duration,
+      statusDistribution: statusDist,
+    };
+  }
+
+  /**
+   * Start broadcasting metrics to WebSocket clients at a given interval.
+   * Call this after setting up WebSocket to enable real-time metrics updates.
+   *
+   * @param intervalMs - Broadcast interval in milliseconds (default: 5000)
+   */
+  startMetricsBroadcast(intervalMs = 5000): void {
+    if (this.metricsBroadcastInterval) {
+      return; // Already running
+    }
+
+    this.metricsBroadcastInterval = setInterval(() => {
+      if (this.wsClients.size > 0) {
+        const snapshot = this.getMetricsSnapshot();
+        this.broadcast({
+          type: 'metrics',
+          payload: snapshot,
+          timestamp: Date.now(),
+        });
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Stop broadcasting metrics to WebSocket clients
+   */
+  stopMetricsBroadcast(): void {
+    if (this.metricsBroadcastInterval) {
+      clearInterval(this.metricsBroadcastInterval);
+      this.metricsBroadcastInterval = undefined;
+    }
+  }
+
   // ============================================
   // Public API - WebSocket
   // ============================================
@@ -364,6 +419,7 @@ export class Telescope {
     if (this.pruneInterval) {
       clearInterval(this.pruneInterval);
     }
+    this.stopMetricsBroadcast();
     this.wsClients.clear();
   }
 

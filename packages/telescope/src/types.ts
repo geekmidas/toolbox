@@ -201,7 +201,32 @@ export type TelescopeEventType =
   | 'exception'
   | 'log'
   | 'stats'
+  | 'metrics'
   | 'connected';
+
+/**
+ * Real-time metrics snapshot for WebSocket broadcast
+ */
+export interface MetricsSnapshot {
+  /** Timestamp of the snapshot */
+  timestamp: number;
+  /** Total requests in the time window */
+  totalRequests: number;
+  /** Requests per second */
+  requestsPerSecond: number;
+  /** Average duration in milliseconds */
+  avgDuration: number;
+  /** Error rate as percentage */
+  errorRate: number;
+  /** 50th percentile duration */
+  p50: number;
+  /** 95th percentile duration */
+  p95: number;
+  /** 99th percentile duration */
+  p99: number;
+  /** Status code distribution */
+  statusDistribution: StatusDistribution;
+}
 
 /**
  * WebSocket event payload
@@ -367,4 +392,34 @@ export interface EndpointBucket {
   errorCount: number;
   /** Last seen timestamp */
   lastSeen: number;
+}
+
+/**
+ * Detailed metrics for a specific endpoint
+ */
+export interface EndpointDetails {
+  /** HTTP method */
+  method: string;
+  /** Path pattern */
+  path: string;
+  /** Total request count */
+  count: number;
+  /** Average duration in milliseconds */
+  avgDuration: number;
+  /** 50th percentile duration */
+  p50Duration: number;
+  /** 95th percentile duration */
+  p95Duration: number;
+  /** 99th percentile duration */
+  p99Duration: number;
+  /** Error rate as percentage */
+  errorRate: number;
+  /** Success rate as percentage */
+  successRate: number;
+  /** Timestamp of last request */
+  lastSeen: number;
+  /** Status distribution */
+  statusDistribution: StatusDistribution;
+  /** Time series data for this endpoint */
+  timeSeries: TimeSeriesPoint[];
 }

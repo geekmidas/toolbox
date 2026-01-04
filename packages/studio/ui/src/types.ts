@@ -103,7 +103,8 @@ export interface StudioStats {
 export type WebSocketMessage =
   | { type: 'request'; payload: RequestEntry }
   | { type: 'exception'; payload: ExceptionEntry }
-  | { type: 'log'; payload: LogEntry };
+  | { type: 'log'; payload: LogEntry }
+  | { type: 'metrics'; payload: MetricsSnapshot };
 
 // ============================================================================
 // Metrics Types
@@ -143,4 +144,16 @@ export interface StatusDistribution {
   '3xx': number;
   '4xx': number;
   '5xx': number;
+}
+
+export interface MetricsSnapshot {
+  timestamp: number;
+  totalRequests: number;
+  requestsPerSecond: number;
+  avgDuration: number;
+  errorRate: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  statusDistribution: StatusDistribution;
 }

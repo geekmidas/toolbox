@@ -36,3 +36,23 @@ export {
   type SparkBarProps,
   type MetricCardProps,
 } from './sparkline';
+
+// Tremor-based charts
+export {
+  AreaTimeSeriesChart,
+  BarListChart,
+  LatencyPercentilesChart,
+  StatusDistributionChart,
+  TimeRangeSelector,
+  createTimeRange,
+  type AreaTimeSeriesChartProps,
+  type BarListChartProps,
+  type BarListItem,
+  type LatencyPercentilesChartProps,
+  type StatusDistributionChartProps,
+  type StatusDistributionData,
+  type TimeRange,
+  type TimeRangePreset,
+  type TimeRangeSelectorProps,
+  type TimeSeriesDataPoint,
+} from './charts';
