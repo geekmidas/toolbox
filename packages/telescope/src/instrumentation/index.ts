@@ -83,3 +83,7 @@ export {
   withHonoSpanContext,
 } from './hono';
 export type { HonoTelemetryMiddlewareOptions } from './hono';
+
+// OTelTelemetry - Telemetry interface implementation using OpenTelemetry
+export { OTelTelemetry } from './otel';
+export type { OTelTelemetryOptions } from './otel';

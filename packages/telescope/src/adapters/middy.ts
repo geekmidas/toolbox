@@ -74,12 +74,21 @@ function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2
   // API Gateway v2 (HTTP API)
   if ('rawPath' in event && event.requestContext?.http) {
     const v2Event = event as APIGatewayProxyEventV2;
+    // Filter out undefined values from query parameters
+    const query: Record<string, string> = {};
+    if (v2Event.queryStringParameters) {
+      for (const [key, value] of Object.entries(v2Event.queryStringParameters)) {
+        if (value !== undefined) {
+          query[key] = value;
+        }
+      }
+    }
     return {
       method: v2Event.requestContext.http.method,
       path: v2Event.rawPath,
       url: v2Event.rawPath + (v2Event.rawQueryString ? `?${v2Event.rawQueryString}` : ''),
       headers,
-      query: v2Event.queryStringParameters || {},
+      query,
       body: parseBody(v2Event.body, v2Event.isBase64Encoded),
       ip: v2Event.requestContext.http.sourceIp,
       requestId: v2Event.requestContext.requestId,

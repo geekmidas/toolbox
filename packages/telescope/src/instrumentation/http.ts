@@ -126,9 +126,10 @@ export function extractTraceContext(
   const normalizedHeaders: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (value) {
-      normalizedHeaders[key.toLowerCase()] = Array.isArray(value)
-        ? value[0]
-        : value;
+      const stringValue = Array.isArray(value) ? value[0] : value;
+      if (stringValue) {
+        normalizedHeaders[key.toLowerCase()] = stringValue;
+      }
     }
   }
 

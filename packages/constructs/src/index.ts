@@ -1,7 +1,13 @@
 // Core construct types
 export { Construct, ConstructType } from './Construct';
 
-// Error types
+// Telemetry interface
+export type {
+  Telemetry,
+  TelemetryContext,
+  TelemetryRequest,
+  TelemetryResponse,
+} from './telemetry';
 
 // Types
 export type {

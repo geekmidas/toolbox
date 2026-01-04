@@ -203,7 +203,8 @@ function getClientIp(c: Context): string | undefined {
   // Try various headers in order of preference
   const xForwardedFor = c.req.header('x-forwarded-for');
   if (xForwardedFor) {
-    return xForwardedFor.split(',')[0].trim();
+    const first = xForwardedFor.split(',')[0];
+    return first?.trim();
   }
 
   const xRealIp = c.req.header('x-real-ip');

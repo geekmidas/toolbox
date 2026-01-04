@@ -4,6 +4,7 @@ import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
+import type { Telemetry } from '../telemetry';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -15,42 +16,10 @@ import type {
 import set from 'lodash.set';
 
 /**
- * Telescope integration interface.
- * Use with `@geekmidas/telescope/lambda` for full integration.
+ * Telescope integration for request recording.
+ * Uses Middy middleware pattern for compatibility with existing telescope package.
  */
 export interface TelescopeIntegration {
-  /**
-   * Middy middleware for Telescope integration.
-   * Import from `@geekmidas/telescope/lambda`:
-   *
-   * ```typescript
-   * import { telescopeMiddleware } from '@geekmidas/telescope/lambda';
-   *
-   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
-   *   telescope: telescopeMiddleware(telescope),
-   * });
-   * ```
-   */
-  middleware: MiddlewareObj<any, any, Error, Context>;
-}
-
-/**
- * OpenTelemetry instrumentation interface.
- * Use with `@geekmidas/telescope/instrumentation` for automatic span creation.
- */
-export interface TelemetryIntegration {
-  /**
-   * Middy middleware for OpenTelemetry instrumentation.
-   * Import from `@geekmidas/telescope/instrumentation`:
-   *
-   * ```typescript
-   * import { telemetryMiddleware } from '@geekmidas/telescope/instrumentation';
-   *
-   * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
-   *   telemetry: { middleware: telemetryMiddleware() },
-   * });
-   * ```
-   */
   middleware: MiddlewareObj<any, any, Error, Context>;
 }
 
@@ -99,19 +68,19 @@ export interface AmazonApiGatewayEndpointOptions {
   telescope?: TelescopeIntegration;
 
   /**
-   * OpenTelemetry instrumentation for automatic span creation.
-   * Creates spans for each request with proper trace context propagation.
+   * Telemetry integration for distributed tracing.
+   * Works with any OpenTelemetry-compatible backend.
    *
    * @example
    * ```typescript
-   * import { telemetryMiddleware } from '@geekmidas/telescope/instrumentation';
+   * import { OTelTelemetry } from '@geekmidas/telescope/instrumentation';
    *
    * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
-   *   telemetry: { middleware: telemetryMiddleware() },
+   *   telemetry: new OTelTelemetry(),
    * });
    * ```
    */
-  telemetry?: TelemetryIntegration;
+  telemetry?: Telemetry;
 }
 
 export abstract class AmazonApiGatewayEndpoint<
@@ -507,6 +476,46 @@ export abstract class AmazonApiGatewayEndpoint<
     return lambdaResponse;
   }
 
+  /**
+   * Convert Telemetry interface to Middy middleware
+   */
+  private telemetry(): Middleware<TEvent, TInput, TServices, TLogger> | null {
+    if (!this.options.telemetry) {
+      return null;
+    }
+
+    const telemetry = this.options.telemetry;
+    let ctx: any;
+
+    return {
+      before: (request) => {
+        ctx = telemetry.onRequestStart({
+          event: request.event,
+          context: request.context,
+        });
+      },
+      after: (request) => {
+        if (ctx) {
+          telemetry.onRequestEnd(ctx, {
+            statusCode: request.response?.statusCode ?? 200,
+            body: request.response?.body,
+            headers: request.response?.headers,
+          });
+        }
+      },
+      onError: (request) => {
+        if (ctx && request.error) {
+          telemetry.onRequestError(
+            ctx,
+            request.error instanceof Error
+              ? request.error
+              : new Error(String(request.error)),
+          );
+        }
+      },
+    };
+  }
+
   get handler() {
     const handler = this._handler.bind(this);
     let chain = middy(handler)
@@ -520,8 +529,9 @@ export abstract class AmazonApiGatewayEndpoint<
       .use(this.events());
 
     // Add telemetry middleware if configured (runs early for span creation)
-    if (this.options.telemetry?.middleware) {
-      chain = chain.use(this.options.telemetry.middleware);
+    const telemetryMiddleware = this.telemetry();
+    if (telemetryMiddleware) {
+      chain = chain.use(telemetryMiddleware);
     }
 
     // Add Telescope middleware if configured (runs first/last in chain)
