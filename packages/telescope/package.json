@@ -62,12 +62,12 @@
       "import": "./dist/instrumentation/index.mjs",
       "require": "./dist/instrumentation/index.cjs"
     },
-    "./adapters": {
-      "types": "./dist/adapters/index.d.ts",
-      "import": "./dist/adapters/index.mjs",
-      "require": "./dist/adapters/index.cjs"
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs",
+      "require": "./dist/core.cjs"
     },
-    "./adapters/lambda": {
+    "./lambda": {
       "types": "./dist/adapters/lambda.d.ts",
       "import": "./dist/adapters/lambda.mjs",
       "require": "./dist/adapters/lambda.cjs"
