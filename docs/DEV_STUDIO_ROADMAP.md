@@ -64,12 +64,28 @@ Refactored Telescope into a modular architecture where core functionality is env
 - [x] WebSocket support for real-time updates
 - [ ] SSE fallback for environments without WebSocket (future)
 
-### Phase 6: Constructs Auto-Instrumentation
-- [ ] Auto-instrument `@geekmidas/constructs` endpoints with OTel spans
-- [ ] Capture request/response metadata as span attributes
-- [ ] Propagate trace context through service calls
-- [ ] Add instrumentation hooks for custom spans
-- [ ] Auto-flush integration for Lambda handlers
+### Phase 6: Constructs Auto-Instrumentation ✅
+
+Implemented automatic OpenTelemetry instrumentation for `@geekmidas/constructs` endpoints.
+
+#### HTTP Instrumentation Utilities (`@geekmidas/telescope/instrumentation`)
+- [x] `createHttpServerSpan()` - Create spans with OTel semantic conventions
+- [x] `extractTraceContext()` / `injectTraceContext()` - Trace context propagation
+- [x] `withHttpSpan()` / `withChildSpan()` - Scoped span execution
+- [x] `toOtelAttributes()` - Convert to OpenTelemetry attribute format
+
+#### Lambda Telemetry Middleware
+- [x] Automatic span creation for API Gateway v1/v2 and ALB events
+- [x] Request/response body recording (optional)
+- [x] Custom extractors for userId, endpointName, operationId
+- [x] Trace context propagation from incoming headers
+- [x] Integration via `telemetry.middleware` option in constructs adaptor
+
+#### Hono Telemetry Middleware
+- [x] Automatic span creation for Hono requests
+- [x] Path filtering with `ignorePaths` option
+- [x] Client IP extraction (x-forwarded-for, x-real-ip, cf-connecting-ip)
+- [x] Request ID extraction from headers
 
 ### Phase 7: Studio Dashboard
 - [ ] Dashboard home page with key metrics overview
