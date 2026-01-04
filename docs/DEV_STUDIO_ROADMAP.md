@@ -87,12 +87,14 @@ Implemented automatic OpenTelemetry instrumentation for `@geekmidas/constructs` 
 - [x] Client IP extraction (x-forwarded-for, x-real-ip, cf-connecting-ip)
 - [x] Request ID extraction from headers
 
-### Phase 7: Studio Dashboard
-- [ ] Dashboard home page with key metrics overview
-- [ ] Service health status indicators
-- [ ] Recent errors summary widget
-- [ ] Slowest endpoints widget
-- [ ] Request volume trends chart
+### Phase 7: Studio Dashboard ✅
+- [x] Dashboard home page with key metrics overview
+- [x] Service health status indicators
+- [x] Recent errors summary widget
+- [x] Slowest endpoints widget (with p95 latency)
+- [x] Request volume trends chart (AreaTimeSeriesChart)
+- [x] Real-time metrics from WebSocket (request rate, p95, error rate)
+- [x] Success rate and p95 latency metrics cards
 
 ### Phase 8: Configuration UI
 - [ ] Environment variables viewer/editor

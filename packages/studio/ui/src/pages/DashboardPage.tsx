@@ -1,21 +1,63 @@
-import { MetricCard, SparkBar } from '@geekmidas/ui';
+import {
+  AreaTimeSeriesChart,
+  Badge,
+  MetricCard,
+  SparkBar,
+} from '@geekmidas/ui';
 import {
   AlertTriangle,
   ArrowRight,
+  CheckCircle2,
   Clock,
   Database,
   FileText,
   Network,
+  TrendingUp,
+  Zap,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getEndpointMetrics, getMetrics } from '../api';
+import type { EndpointMetrics, RequestMetrics } from '../types';
 import { useStudio } from '../providers/StudioProvider';
 
 export function DashboardPage() {
-  const { stats, requests, exceptions, loading } = useStudio();
+  const { stats, requests, exceptions, loading, realtimeMetrics, connected } =
+    useStudio();
 
-  // Calculate metrics from recent data
-  const metrics = useMemo(() => {
+  // Fetch aggregated metrics and endpoint data
+  const [metricsData, setMetricsData] = useState<RequestMetrics | null>(null);
+  const [endpoints, setEndpoints] = useState<EndpointMetrics[]>([]);
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const timeRange = {
+        start: oneHourAgo.toISOString(),
+        end: now.toISOString(),
+      };
+
+      const [metrics, endpointData] = await Promise.all([
+        getMetrics(timeRange),
+        getEndpointMetrics({ limit: 5, ...timeRange }),
+      ]);
+
+      setMetricsData(metrics);
+      setEndpoints(endpointData);
+    } catch (error) {
+      console.error('Failed to fetch metrics:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 30000);
+    return () => clearInterval(interval);
+  }, [fetchMetrics]);
+
+  // Calculate local metrics from recent data for sparkline
+  const localMetrics = useMemo(() => {
     if (!requests.length) {
       return {
         avgDuration: 0,
@@ -54,6 +96,28 @@ export function DashboardPage() {
     };
   }, [requests]);
 
+  // Sort endpoints by p95 latency for "slowest" view
+  const slowestEndpoints = useMemo(() => {
+    return [...endpoints].sort((a, b) => b.p95Duration - a.p95Duration);
+  }, [endpoints]);
+
+  // Calculate service health
+  const serviceHealth = useMemo(() => {
+    const errorRate = realtimeMetrics?.errorRate ?? localMetrics.errorRate;
+    const hasRecentErrors = exceptions.some((e) => {
+      const age = Date.now() - new Date(e.timestamp).getTime();
+      return age < 5 * 60 * 1000; // Last 5 minutes
+    });
+
+    if (errorRate > 10 || hasRecentErrors) {
+      return { status: 'unhealthy', label: 'Issues Detected', color: 'red' };
+    }
+    if (errorRate > 5) {
+      return { status: 'degraded', label: 'Degraded', color: 'yellow' };
+    }
+    return { status: 'healthy', label: 'Healthy', color: 'green' };
+  }, [realtimeMetrics, localMetrics.errorRate, exceptions]);
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -64,51 +128,138 @@ export function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Service Health Banner */}
+      <div
+        className={`flex items-center gap-3 p-4 rounded-lg border ${
+          serviceHealth.color === 'green'
+            ? 'bg-green-500/10 border-green-500/30'
+            : serviceHealth.color === 'yellow'
+              ? 'bg-yellow-500/10 border-yellow-500/30'
+              : 'bg-red-500/10 border-red-500/30'
+        }`}
+      >
+        <CheckCircle2
+          className={`h-5 w-5 ${
+            serviceHealth.color === 'green'
+              ? 'text-green-500'
+              : serviceHealth.color === 'yellow'
+                ? 'text-yellow-500'
+                : 'text-red-500'
+          }`}
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">Service Status:</span>
+            <span
+              className={
+                serviceHealth.color === 'green'
+                  ? 'text-green-500'
+                  : serviceHealth.color === 'yellow'
+                    ? 'text-yellow-500'
+                    : 'text-red-500'
+              }
+            >
+              {serviceHealth.label}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {connected ? 'Real-time monitoring active' : 'Connecting...'}
+          </p>
+        </div>
+        {realtimeMetrics && (
+          <div className="text-right text-sm">
+            <div className="text-muted-foreground">
+              {realtimeMetrics.requestsPerSecond.toFixed(1)} req/s
+            </div>
+            <div className="text-muted-foreground">
+              p95: {formatDuration(realtimeMetrics.p95)}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Requests"
-          value={stats?.requests ?? 0}
+          title="Total Requests"
+          value={metricsData?.totalRequests ?? stats?.requests ?? 0}
           icon={<Network className="h-4 w-4" />}
-          sparklineData={metrics.requestsPerMinute}
-          description="last 60s"
+          sparklineData={localMetrics.requestsPerMinute}
+          description="last hour"
+          trend="neutral"
+          trendValue={`${(metricsData?.requestsPerSecond ?? 0).toFixed(1)}/s`}
         />
 
         <MetricCard
           title="Avg Duration"
-          value={`${Math.round(metrics.avgDuration)}ms`}
+          value={formatDuration(metricsData?.avgDuration ?? localMetrics.avgDuration)}
           icon={<Clock className="h-4 w-4" />}
+          trend="neutral"
+          trendValue={`p95: ${formatDuration(metricsData?.p95Duration ?? 0)}`}
         />
 
         <MetricCard
-          title="Error Rate"
-          value={`${metrics.errorRate.toFixed(1)}%`}
-          icon={<AlertTriangle className="h-4 w-4" />}
-          trend={metrics.errorRate > 5 ? 'up' : 'neutral'}
-          trendValue={metrics.errorRate > 5 ? 'High' : undefined}
+          title="Success Rate"
+          value={`${(metricsData?.successRate ?? 100 - localMetrics.errorRate).toFixed(1)}%`}
+          icon={<TrendingUp className="h-4 w-4" />}
+          trend={
+            (metricsData?.successRate ?? 100) >= 99
+              ? 'up'
+              : (metricsData?.successRate ?? 100) >= 95
+                ? 'neutral'
+                : 'down'
+          }
         />
 
         <MetricCard
           title="Exceptions"
           value={stats?.exceptions ?? 0}
           icon={<AlertTriangle className="h-4 w-4" />}
-          trend={(stats?.exceptions ?? 0) > 0 ? 'up' : 'neutral'}
+          trend={(stats?.exceptions ?? 0) > 0 ? 'down' : 'up'}
+          trendValue={(stats?.exceptions ?? 0) > 0 ? 'Active' : 'None'}
         />
       </div>
 
-      {/* Activity Chart */}
-      {metrics.requestsPerMinute.length > 0 && (
+      {/* Request Volume Chart */}
+      {metricsData?.timeSeries && metricsData.timeSeries.length > 0 && (
         <div className="p-4 bg-surface rounded-lg border border-border">
-          <h3 className="text-sm font-medium mb-3">
-            Request Activity (last 60s)
-          </h3>
-          <SparkBar
-            data={metrics.requestsPerMinute}
-            height={60}
-            color="var(--color-accent)"
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium">Request Volume (last hour)</h3>
+            <Link
+              to="/analytics"
+              className="text-xs text-accent hover:underline"
+            >
+              View Analytics →
+            </Link>
+          </div>
+          <AreaTimeSeriesChart
+            data={metricsData.timeSeries.map((p) => ({
+              timestamp: p.timestamp,
+              value: p.count,
+              secondaryValue: p.errorCount,
+            }))}
+            primaryLabel="Requests"
+            secondaryLabel="Errors"
+            primaryColor="blue"
+            secondaryColor="red"
           />
         </div>
       )}
+
+      {/* Fallback to sparkline if no time series data */}
+      {(!metricsData?.timeSeries || metricsData.timeSeries.length === 0) &&
+        localMetrics.requestsPerMinute.length > 0 && (
+          <div className="p-4 bg-surface rounded-lg border border-border">
+            <h3 className="text-sm font-medium mb-3">
+              Request Activity (last 60s)
+            </h3>
+            <SparkBar
+              data={localMetrics.requestsPerMinute}
+              height={60}
+              color="var(--color-accent)"
+            />
+          </div>
+        )}
 
       {/* Quick Links */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -133,6 +284,49 @@ export function DashboardPage() {
           description="Browse and query your database"
         />
       </div>
+
+      {/* Slowest Endpoints */}
+      {slowestEndpoints.length > 0 && (
+        <div className="bg-surface rounded-lg border border-border">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-amber-500" />
+              <h3 className="font-medium">Slowest Endpoints</h3>
+            </div>
+            <Link
+              to="/analytics"
+              className="text-sm text-accent hover:underline flex items-center gap-1"
+            >
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="divide-y divide-border">
+            {slowestEndpoints.slice(0, 5).map((endpoint, i) => (
+              <Link
+                key={`${endpoint.method}-${endpoint.path}`}
+                to={`/analytics/endpoint?method=${encodeURIComponent(endpoint.method)}&path=${encodeURIComponent(endpoint.path)}`}
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-hover transition-colors"
+              >
+                <span className="text-xs text-muted-foreground w-4">
+                  #{i + 1}
+                </span>
+                <Badge variant={getMethodVariant(endpoint.method)}>
+                  {endpoint.method}
+                </Badge>
+                <span className="flex-1 truncate text-sm font-mono">
+                  {endpoint.path}
+                </span>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-amber-500">
+                    {formatDuration(endpoint.p95Duration)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">p95</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -287,4 +481,20 @@ function formatDuration(ms: number) {
 
 function formatTime(timestamp: string) {
   return new Date(timestamp).toLocaleTimeString();
+}
+
+function getMethodVariant(
+  method: string,
+): 'get' | 'post' | 'put' | 'patch' | 'delete' | 'secondary' {
+  const variants: Record<
+    string,
+    'get' | 'post' | 'put' | 'patch' | 'delete' | 'secondary'
+  > = {
+    GET: 'get',
+    POST: 'post',
+    PUT: 'put',
+    PATCH: 'patch',
+    DELETE: 'delete',
+  };
+  return variants[method.toUpperCase()] || 'secondary';
 }
