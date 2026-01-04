@@ -9,14 +9,18 @@ import {
   LoggerProvider,
 } from '@opentelemetry/sdk-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import {
-  BatchSpanProcessor,
-  ConsoleSpanExporter,
-} from '@opentelemetry/sdk-trace-node';
+import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
+import type { SpanProcessorStrategy } from '../adapters/types';
+import {
+  createSpanProcessor,
+  getRecommendedStrategy,
+  setGlobalLogProcessor,
+  setGlobalSpanProcessor,
+} from './core';
 
 /**
  * Options for configuring telemetry
@@ -66,6 +70,21 @@ export interface TelemetryOptions {
    * Headers to send with OTLP requests
    */
   headers?: Record<string, string>;
+
+  /**
+   * Span processor strategy.
+   * - 'batch': Efficient batching for long-running servers (default)
+   * - 'simple': Immediate export for serverless environments (Lambda, Edge)
+   *
+   * If not specified, automatically selected based on environment detection.
+   */
+  spanProcessorStrategy?: SpanProcessorStrategy;
+
+  /**
+   * Environment type for automatic configuration
+   * @default 'server'
+   */
+  environment?: 'server' | 'lambda' | 'edge' | 'custom';
 }
 
 let sdk: NodeSDK | null = null;
@@ -104,6 +123,8 @@ export function setupTelemetry(options: TelemetryOptions): void {
     debug = false,
     resourceAttributes = {},
     headers = {},
+    spanProcessorStrategy,
+    environment = 'server',
   } = options;
 
   // Enable debug logging if requested
@@ -169,11 +190,18 @@ export function setupTelemetry(options: TelemetryOptions): void {
     traceExporter = new ConsoleSpanExporter();
   }
 
+  // Determine span processor strategy
+  const strategy = spanProcessorStrategy ?? getRecommendedStrategy(environment);
+  const spanProcessor = createSpanProcessor(traceExporter, { strategy });
+
+  // Register globally for flush operations
+  setGlobalSpanProcessor(spanProcessor);
+
   // Create and configure SDK
   sdk = new NodeSDK({
     resource,
     traceExporter,
-    spanProcessors: [new BatchSpanProcessor(traceExporter)],
+    spanProcessors: [spanProcessor],
     instrumentations,
   });
 
@@ -185,9 +213,11 @@ export function setupTelemetry(options: TelemetryOptions): void {
     });
 
     const loggerProvider = new LoggerProvider({ resource });
-    loggerProvider.addLogRecordProcessor(
-      new BatchLogRecordProcessor(logExporter),
-    );
+    const logProcessor = new BatchLogRecordProcessor(logExporter);
+    loggerProvider.addLogRecordProcessor(logProcessor);
+
+    // Register for flush operations
+    setGlobalLogProcessor(logProcessor);
   }
 
   // Start the SDK

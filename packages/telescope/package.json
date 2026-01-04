@@ -61,6 +61,16 @@
       "types": "./dist/instrumentation/index.d.ts",
       "import": "./dist/instrumentation/index.mjs",
       "require": "./dist/instrumentation/index.cjs"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.mjs",
+      "require": "./dist/adapters/index.cjs"
+    },
+    "./adapters/lambda": {
+      "types": "./dist/adapters/lambda.d.ts",
+      "import": "./dist/adapters/lambda.mjs",
+      "require": "./dist/adapters/lambda.cjs"
     }
   },
   "repository": {
@@ -85,8 +95,10 @@
     "@opentelemetry/resources": "^1.30.0",
     "@opentelemetry/sdk-logs": "^0.57.0",
     "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-base": "^1.30.0",
     "@opentelemetry/sdk-trace-node": "^1.30.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
+    "@types/aws-lambda": "^8.10.0",
     "hono": "^4.0.0",
     "kysely": "^0.28.0",
     "pino": "^9.0.0",
@@ -120,7 +132,13 @@
     "@opentelemetry/sdk-node": {
       "optional": true
     },
+    "@opentelemetry/sdk-trace-base": {
+      "optional": true
+    },
     "@opentelemetry/sdk-trace-node": {
+      "optional": true
+    },
+    "@types/aws-lambda": {
       "optional": true
     },
     "@opentelemetry/semantic-conventions": {
@@ -152,6 +170,7 @@
     "@opentelemetry/sdk-trace-base": "^1.30.0",
     "@opentelemetry/sdk-trace-node": "^1.30.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
+    "@types/aws-lambda": "^8.10.149",
     "hono": "^4.7.0",
     "kysely": "~0.28.2",
     "pino": "^9.6.0",

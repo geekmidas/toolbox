@@ -1,15 +1,42 @@
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler, Next } from 'hono';
+import type {
+  HonoAdapterConfig,
+  TelescopeHonoContext,
+} from '../adapters/types';
+import { flushTelemetry } from '../instrumentation/core';
 import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
 import { getAsset, getIndexHtml } from '../ui-assets';
 
-const CONTEXT_KEY = 'telescope-request-id';
+const CONTEXT_KEY = 'telescope-context';
+
+/** Default Hono adapter configuration */
+const DEFAULT_CONFIG: HonoAdapterConfig = {
+  environment: 'server',
+};
+
+/**
+ * Options for the Telescope Hono middleware
+ */
+export interface TelescopeMiddlewareOptions {
+  /**
+   * Whether to flush telemetry after each request.
+   * Enable this for serverless environments (Lambda, Edge).
+   * @default false
+   */
+  flushOnResponse?: boolean;
+}
 
 /**
  * Create Hono middleware that captures requests and responses
  */
-export function createMiddleware(telescope: Telescope): MiddlewareHandler {
+export function createMiddleware(
+  telescope: Telescope,
+  options: TelescopeMiddlewareOptions = {},
+): MiddlewareHandler {
+  const { flushOnResponse = false } = options;
+
   return async (c: Context, next: Next) => {
     if (!telescope.enabled) {
       return next();
@@ -94,7 +121,17 @@ export function createMiddleware(telescope: Telescope): MiddlewareHandler {
         ip,
       });
 
-      c.set(CONTEXT_KEY, requestId);
+      // Store context for access by other middleware
+      const ctx: TelescopeHonoContext = {
+        requestId,
+        startTime,
+      };
+      c.set(CONTEXT_KEY, ctx);
+
+      // Flush telemetry for serverless environments
+      if (flushOnResponse) {
+        await flushTelemetry();
+      }
     } catch (error) {
       await telescope.exception(error as Error);
       throw error;
@@ -336,11 +373,20 @@ export function setupWebSocket(
 }
 
 /**
- * Get the request ID from Hono context (set by middleware)
+ * Get the Telescope context from Hono context (set by middleware)
  */
-export function getRequestId(c: Context): string | undefined {
+export function getTelescopeContext(c: Context): TelescopeHonoContext | undefined {
   return c.get(CONTEXT_KEY);
 }
 
-// Re-export types
+/**
+ * Get the request ID from Hono context (set by middleware)
+ */
+export function getRequestId(c: Context): string | undefined {
+  return getTelescopeContext(c)?.requestId;
+}
+
+// Re-export types and utilities
 export type { Telescope };
+export type { TelescopeHonoContext, HonoAdapterConfig } from '../adapters/types';
+export { flushTelemetry } from '../instrumentation/core';

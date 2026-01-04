@@ -19,11 +19,28 @@
  * ```
  */
 
-export { setupTelemetry } from './setup';
+export { setupTelemetry, shutdownTelemetry } from './setup';
 export type { TelemetryOptions } from './setup';
 export {
   createSpan,
   withSpan,
+  withSpanSync,
   getActiveSpan,
   setSpanAttributes,
+  getTraceId,
+  getSpanId,
+  recordException,
+  addSpanEvent,
 } from './tracing';
+export {
+  createSpanProcessor,
+  getRecommendedStrategy,
+  flushTelemetry,
+  withTelemetryFlush,
+  setGlobalSpanProcessor,
+  setGlobalLogProcessor,
+  isTelemetryInitialized,
+  enableTelemetryDebug,
+  NoopSpanProcessor,
+} from './core';
+export type { SpanProcessorOptions, SpanProcessorStrategy } from '../adapters/types';
