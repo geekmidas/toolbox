@@ -37,32 +37,32 @@
 - [ ] Analytics page data visualization improvements
 - [ ] Real-time metrics updates via WebSocket
 - [ ] Time range selector for metrics queries
-- [ ] Endpoint details drill-down view
+- [x] Endpoint details drill-down view
 - [ ] Export metrics as CSV/JSON
 
-### Phase 5: Telescope Modular Architecture (Core + Extensions)
+### Phase 5: Telescope Modular Architecture (Core + Extensions) ✅
 
-Refactor Telescope into a modular architecture where core functionality is environment-agnostic, with pluggable extensions for specific environments.
+Refactored Telescope into a modular architecture where core functionality is environment-agnostic, with pluggable extensions for specific environments.
 
 #### Core (`@geekmidas/telescope`)
-- [ ] Extract environment-agnostic core: storage, metrics, types, OTLP receiver
-- [ ] Define `TelescopeAdapter` interface for environment extensions
-- [ ] Core tracing utilities that work anywhere (no Node.js specifics)
-- [ ] Pluggable span processor strategy (batch vs simple)
-- [ ] `flushTelemetry()` for manual flush before context freeze
+- [x] Extract environment-agnostic core: storage, metrics, types, OTLP receiver
+- [x] Define `TelescopeAdapter` interface for environment extensions
+- [x] Core tracing utilities that work anywhere (no Node.js specifics)
+- [x] Pluggable span processor strategy (batch vs simple)
+- [x] `flushTelemetry()` for manual flush before context freeze
 
 #### Lambda Extension (`@geekmidas/telescope/lambda`)
-- [ ] `SimpleSpanProcessor` for immediate export (no batching)
-- [ ] Lambda resource detector (function name, memory, region, request ID)
-- [ ] Auto-flush wrapper for Lambda handlers
-- [ ] Integration with `@geekmidas/constructs` Lambda adapters
-- [ ] Cold start detection and metrics
-- [ ] X-Ray trace header propagation
+- [x] `SimpleSpanProcessor` for immediate export (no batching)
+- [x] Lambda resource detector (function name, memory, region, request ID)
+- [x] Auto-flush wrapper for Lambda handlers
+- [x] Integration with `@geekmidas/constructs` Lambda adapters
+- [x] Cold start detection
+- [ ] X-Ray trace header propagation (future)
 
 #### Hono Extension (`@geekmidas/telescope/hono`)
-- [ ] Already exists - middleware and UI routes
-- [ ] Add WebSocket support for real-time updates
-- [ ] SSE fallback for environments without WebSocket
+- [x] Middleware and UI routes
+- [x] WebSocket support for real-time updates
+- [ ] SSE fallback for environments without WebSocket (future)
 
 ### Phase 6: Constructs Auto-Instrumentation
 - [ ] Auto-instrument `@geekmidas/constructs` endpoints with OTel spans
