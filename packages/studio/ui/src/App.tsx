@@ -29,6 +29,7 @@ import { StudioHeader } from './components/StudioHeader';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasePage } from './pages/DatabasePage';
+import { EndpointDetailsPage } from './pages/EndpointDetailsPage';
 import { ExceptionsPage } from './pages/ExceptionsPage';
 import { LogsPage } from './pages/LogsPage';
 import { RequestsPage } from './pages/RequestsPage';
@@ -115,6 +116,7 @@ function AppLayout() {
             <Route path="/exceptions" element={<ExceptionsPage />} />
             <Route path="/exceptions/:id" element={<ExceptionsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/analytics/endpoint" element={<EndpointDetailsPage />} />
             <Route path="/database" element={<DatabasePage />} />
             <Route path="/database/:table" element={<DatabasePage />} />
             <Route path="/services" element={<ComingSoon title="Services" />} />

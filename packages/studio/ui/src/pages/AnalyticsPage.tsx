@@ -10,6 +10,7 @@ import {
   type TimeRange,
 } from '@geekmidas/ui';
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getEndpointMetrics, getMetrics, getStatusDistribution } from '../api';
 import type {
   EndpointMetrics,
@@ -251,14 +252,22 @@ export function AnalyticsPage() {
                 </tr>
               ) : (
                 endpoints.map((ep, i) => (
-                  <tr key={i} className="border-t hover:bg-muted/30">
+                  <tr
+                    key={i}
+                    className="border-t hover:bg-muted/30 cursor-pointer"
+                  >
                     <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
+                      <Link
+                        to={`/analytics/endpoint?method=${encodeURIComponent(ep.method)}&path=${encodeURIComponent(ep.path)}`}
+                        className="flex items-center gap-2"
+                      >
                         <Badge variant={getMethodColor(ep.method)}>
                           {ep.method}
                         </Badge>
-                        <span className="font-mono text-xs">{ep.path}</span>
-                      </div>
+                        <span className="font-mono text-xs hover:underline">
+                          {ep.path}
+                        </span>
+                      </Link>
                     </td>
                     <td className="text-right px-4 py-2 font-mono">
                       {formatNumber(ep.count)}

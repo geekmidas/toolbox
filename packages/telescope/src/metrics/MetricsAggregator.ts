@@ -187,11 +187,89 @@ export class MetricsAggregator {
   }
 
   /**
+   * Get detailed metrics for a specific endpoint
+   */
+  getEndpointDetails(
+    method: string,
+    path: string,
+    options: MetricsQueryOptions = {},
+  ): EndpointDetails | null {
+    const key = `${method}:${path}`;
+    const endpoint = this.endpoints.get(key);
+
+    if (!endpoint) {
+      return null;
+    }
+
+    // Calculate percentiles
+    const samples = [...endpoint.durationSamples].sort((a, b) => a - b);
+    const p50 = this.percentile(samples, 50);
+    const p95 = this.percentile(samples, 95);
+    const p99 = this.percentile(samples, 99);
+
+    const avgDuration =
+      endpoint.count > 0 ? endpoint.durationSum / endpoint.count : 0;
+    const errorRate =
+      endpoint.count > 0 ? (endpoint.errorCount / endpoint.count) * 100 : 0;
+
+    // Get time series for this endpoint
+    const endpointBuckets = this.endpointTimeBuckets.get(key);
+    const timeSeries: TimeSeriesPoint[] = [];
+    const statusDistribution: StatusDistribution = {
+      '2xx': 0,
+      '3xx': 0,
+      '4xx': 0,
+      '5xx': 0,
+    };
+
+    if (endpointBuckets) {
+      const range = options.range ?? this.getDefaultRange();
+      const startTs = range.start.getTime();
+      const endTs = range.end.getTime();
+
+      for (const [ts, bucket] of endpointBuckets) {
+        if (ts >= startTs && ts <= endTs) {
+          timeSeries.push({
+            timestamp: bucket.timestamp,
+            count: bucket.count,
+            avgDuration:
+              bucket.count > 0 ? bucket.durationSum / bucket.count : 0,
+            errorCount: bucket.errorCount,
+          });
+
+          statusDistribution['2xx'] += bucket.statusDistribution['2xx'];
+          statusDistribution['3xx'] += bucket.statusDistribution['3xx'];
+          statusDistribution['4xx'] += bucket.statusDistribution['4xx'];
+          statusDistribution['5xx'] += bucket.statusDistribution['5xx'];
+        }
+      }
+
+      timeSeries.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    return {
+      method: endpoint.method,
+      path: endpoint.path,
+      count: endpoint.count,
+      avgDuration,
+      p50Duration: p50,
+      p95Duration: p95,
+      p99Duration: p99,
+      errorRate,
+      successRate: 100 - errorRate,
+      lastSeen: endpoint.lastSeen,
+      statusDistribution,
+      timeSeries,
+    };
+  }
+
+  /**
    * Reset all metrics
    */
   reset(): void {
     this.buckets.clear();
     this.endpoints.clear();
+    this.endpointTimeBuckets.clear();
   }
 
   // ============================================

@@ -5,6 +5,7 @@ import {
 } from './metrics/MetricsAggregator';
 import { type Redactor, createRedactor } from './redact';
 import type {
+  EndpointDetails,
   EndpointMetrics,
   ExceptionEntry,
   LogEntry,
@@ -295,6 +296,17 @@ export class Telescope {
    */
   getEndpointMetrics(options?: MetricsQueryOptions): EndpointMetrics[] {
     return this.metricsAggregator.getEndpointMetrics(options);
+  }
+
+  /**
+   * Get detailed metrics for a specific endpoint
+   */
+  getEndpointDetails(
+    method: string,
+    path: string,
+    options?: MetricsQueryOptions,
+  ): EndpointDetails | null {
+    return this.metricsAggregator.getEndpointDetails(method, path, options);
   }
 
   /**

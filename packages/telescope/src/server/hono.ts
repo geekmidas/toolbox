@@ -210,6 +210,25 @@ export function createUI(telescope: Telescope): Hono {
     return c.json(endpoints);
   });
 
+  // Endpoint details - method and path are query params to avoid URL encoding issues
+  app.get('/api/metrics/endpoint', (c) => {
+    const method = c.req.query('method');
+    const path = c.req.query('path');
+
+    if (!method || !path) {
+      return c.json({ error: 'method and path are required' }, 400);
+    }
+
+    const options = parseMetricsQueryOptions(c);
+    const details = telescope.getEndpointDetails(method, path, options);
+
+    if (!details) {
+      return c.json({ error: 'Endpoint not found' }, 404);
+    }
+
+    return c.json(details);
+  });
+
   app.get('/api/metrics/status', (c) => {
     const options = parseMetricsQueryOptions(c);
     const distribution = telescope.getStatusDistribution(options);

@@ -139,6 +139,21 @@ export interface EndpointMetrics {
   lastSeen: number;
 }
 
+export interface EndpointDetails {
+  method: string;
+  path: string;
+  count: number;
+  avgDuration: number;
+  p50Duration: number;
+  p95Duration: number;
+  p99Duration: number;
+  errorRate: number;
+  successRate: number;
+  lastSeen: number;
+  statusDistribution: StatusDistribution;
+  timeSeries: TimeSeriesPoint[];
+}
+
 export interface StatusDistribution {
   '2xx': number;
   '3xx': number;

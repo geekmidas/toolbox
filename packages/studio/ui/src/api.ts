@@ -1,4 +1,5 @@
 import type {
+  EndpointDetails,
   EndpointMetrics,
   ExceptionEntry,
   FilterConfig,
@@ -174,6 +175,20 @@ export async function getEndpointMetrics(
 
   const queryStr = params.toString();
   return fetchJson(`/api/metrics/endpoints${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function getEndpointDetails(
+  method: string,
+  path: string,
+  options: MetricsQueryOptions = {},
+): Promise<EndpointDetails> {
+  const params = new URLSearchParams();
+  params.set('method', method);
+  params.set('path', path);
+  if (options.start) params.set('start', options.start);
+  if (options.end) params.set('end', options.end);
+
+  return fetchJson(`/api/metrics/endpoint?${params.toString()}`);
 }
 
 export async function getStatusDistribution(
