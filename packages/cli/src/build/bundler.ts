@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export interface BundleOptions {
@@ -26,43 +27,62 @@ export async function bundleServer(options: BundleOptions): Promise<void> {
   // Ensure output directory exists
   await mkdir(outputDir, { recursive: true });
 
-  // Generate tsdown config for production bundle
-  const tsdownConfig = {
-    entry: [entryPoint],
-    outDir: outputDir,
-    format: ['esm'] as const,
-    platform: 'node' as const,
-    target: 'node22',
-    minify,
-    sourcemap,
-    external: [
-      // Always exclude node: builtins
-      'node:*',
-      // User-specified externals
-      ...external,
-    ],
-    banner: {
-      js: '#!/usr/bin/env node',
-    },
-    clean: true,
-    // Output as .mjs for explicit ESM
-    outExtension: {
-      '.js': '.mjs',
-    },
-  };
+  // Build command-line arguments for tsdown
+  const args = [
+    'npx',
+    'tsdown',
+    entryPoint,
+    '--no-config', // Don't use any config file from workspace
+    '--out-dir',
+    outputDir,
+    '--format',
+    'esm',
+    '--platform',
+    'node',
+    '--target',
+    'node22',
+    '--clean',
+  ];
 
-  const configPath = join(outputDir, 'tsdown.bundle.config.json');
-  await writeFile(configPath, JSON.stringify(tsdownConfig, null, 2));
+  if (minify) {
+    args.push('--minify');
+  }
+
+  if (sourcemap) {
+    args.push('--sourcemap');
+  }
+
+  // Add external packages
+  for (const ext of external) {
+    args.push('--external', ext);
+  }
+
+  // Always exclude node: builtins
+  args.push('--external', 'node:*');
 
   try {
-    // Run tsdown with the config
-    // Use npx to ensure we use the locally installed version
-    execSync(`npx tsdown --config ${configPath}`, {
+    // Run tsdown with command-line arguments
+    execSync(args.join(' '), {
       cwd: process.cwd(),
       stdio: 'inherit',
     });
+
+    // Rename output to .mjs for explicit ESM
+    // tsdown outputs as server.js for ESM format
+    const jsOutput = join(outputDir, 'server.js');
+    const mjsOutput = join(outputDir, 'server.mjs');
+
+    if (existsSync(jsOutput)) {
+      await rename(jsOutput, mjsOutput);
+    }
+
+    // Add shebang to the bundled file
+    const { readFile } = await import('node:fs/promises');
+    const content = await readFile(mjsOutput, 'utf-8');
+    if (!content.startsWith('#!')) {
+      await writeFile(mjsOutput, `#!/usr/bin/env node\n${content}`);
+    }
   } catch (error) {
-    // Clean up config file on error
     throw new Error(
       `Failed to bundle server: ${error instanceof Error ? error.message : 'Unknown error'}`,
     );

@@ -226,6 +226,14 @@ gkm docker --slim
 | Multi-stage | Builds from source in container | No pre-built bundle |
 | Slim | Copies pre-built bundle | `--slim` or bundle exists |
 
+**Container Best Practices:**
+
+Both Dockerfile types include:
+- **tini** as the init process (handles SIGTERM propagation and zombie reaping)
+- Non-root user (`hono`) for security
+- Health check endpoint for container orchestration
+- Minimal Alpine base image
+
 ### Prepack
 
 Combined workflow: build production server and generate Docker files.

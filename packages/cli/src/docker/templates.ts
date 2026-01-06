@@ -42,6 +42,10 @@ FROM ${baseImage} AS runner
 
 WORKDIR /app
 
+# Install tini for proper signal handling as PID 1
+# Handles SIGTERM propagation and zombie process reaping
+RUN apk add --no-cache tini
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
@@ -62,6 +66,8 @@ USER hono
 
 EXPOSE ${port}
 
+# Use tini as entrypoint to handle PID 1 responsibilities
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.mjs"]
 `;
 }
@@ -76,6 +82,10 @@ export function generateSlimDockerfile(options: DockerTemplateOptions): string {
 FROM ${baseImage}
 
 WORKDIR /app
+
+# Install tini for proper signal handling as PID 1
+# Handles SIGTERM propagation and zombie process reaping
+RUN apk add --no-cache tini
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \\
@@ -97,6 +107,8 @@ USER hono
 
 EXPOSE ${port}
 
+# Use tini as entrypoint to handle PID 1 responsibilities
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.mjs"]
 `;
 }

@@ -110,11 +110,11 @@ export async function dockerCommand(
   await writeFile(composePath, dockerCompose);
   logger.log('Generated: .gkm/docker/docker-compose.yml');
 
-  // Generate .dockerignore
+  // Generate .dockerignore in project root (Docker looks for it there)
   const dockerignore = generateDockerignore();
-  const dockerignorePath = join(dockerDir, '.dockerignore');
+  const dockerignorePath = join(process.cwd(), '.dockerignore');
   await writeFile(dockerignorePath, dockerignore);
-  logger.log('Generated: .gkm/docker/.dockerignore');
+  logger.log('Generated: .dockerignore (project root)');
 
   // Generate docker-entrypoint.sh
   const entrypoint = generateDockerEntrypoint();
