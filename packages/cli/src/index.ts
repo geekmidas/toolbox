@@ -246,18 +246,20 @@ program
 
 program
   .command('prepack')
-  .description('Build production server and generate Docker files')
+  .description('Generate Docker files for production deployment')
   .option('--build', 'Build Docker image after generating files')
   .option('--push', 'Push image to registry after building')
   .option('--tag <tag>', 'Image tag', 'latest')
   .option('--registry <registry>', 'Container registry URL')
-  .option('--skip-bundle', 'Skip bundling step')
+  .option('--slim', 'Build locally first, then use slim Dockerfile')
+  .option('--skip-bundle', 'Skip bundling step (only with --slim)')
   .action(
     async (options: {
       build?: boolean;
       push?: boolean;
       tag?: string;
       registry?: string;
+      slim?: boolean;
       skipBundle?: boolean;
     }) => {
       try {
@@ -268,30 +270,37 @@ program
 
         console.log('🚀 Preparing production package...\n');
 
-        // Step 1: Build production server
-        console.log('📦 Building production server...');
-        await buildCommand({
-          provider: 'server',
-          production: true,
-          skipBundle: options.skipBundle,
-        });
-        console.log('✅ Production server built\n');
+        if (options.slim) {
+          // Slim mode: Build locally first, then use slim Dockerfile
+          console.log('📦 Building production server locally...');
+          await buildCommand({
+            provider: 'server',
+            production: true,
+            skipBundle: options.skipBundle,
+          });
+          console.log('✅ Production server built\n');
+        }
 
-        // Step 2: Generate Docker files
+        // Generate Docker files
         console.log('🐳 Generating Docker files...');
         await dockerCommand({
           build: options.build,
           push: options.push,
           tag: options.tag,
           registry: options.registry,
-          slim: true, // Use slim since we just built
+          slim: options.slim,
         });
         console.log('✅ Docker files generated\n');
 
         // Summary
         console.log('📋 Prepack complete!');
-        console.log('   Output: .gkm/server/dist/server.mjs');
-        console.log('   Docker: .gkm/docker/Dockerfile');
+        if (options.slim) {
+          console.log('   Output: .gkm/server/dist/server.mjs');
+          console.log('   Docker: .gkm/docker/Dockerfile (slim)');
+        } else {
+          console.log('   Docker: .gkm/docker/Dockerfile (multi-stage)');
+          console.log('   Build will compile from source inside container');
+        }
 
         if (options.build) {
           const tag = options.tag ?? 'latest';

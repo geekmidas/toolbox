@@ -2,7 +2,6 @@ import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { buildCommand } from '../build';
 import { loadConfig } from '../config';
 import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
 import {
@@ -24,7 +23,7 @@ export interface DockerOptions {
   tag?: string;
   /** Container registry URL */
   registry?: string;
-  /** Use slim Dockerfile (assumes pre-built bundle exists) */
+  /** Use slim Dockerfile (requires pre-built bundle from `gkm build --production`) */
   slim?: boolean;
 }
 
@@ -38,6 +37,9 @@ export interface DockerGeneratedFiles {
 /**
  * Docker command implementation
  * Generates Dockerfile, docker-compose.yml, and related files
+ *
+ * Default: Multi-stage Dockerfile that builds from source inside Docker
+ * --slim: Slim Dockerfile that copies pre-built bundle (requires prior build)
  */
 export async function dockerCommand(
   options: DockerOptions,
@@ -52,24 +54,22 @@ export async function dockerCommand(
       : undefined;
   const healthCheckPath = serverConfig?.production?.healthCheck ?? '/health';
 
-  // Check if production build exists
-  const serverDir = join(process.cwd(), '.gkm', 'server');
-  const distDir = join(serverDir, 'dist');
-  const hasBuild = existsSync(join(distDir, 'server.mjs'));
+  // Determine Dockerfile type
+  // Default: Multi-stage (builds inside Docker for reproducibility)
+  // --slim: Requires pre-built bundle
+  const useSlim = options.slim === true;
 
-  // If no build exists and not using slim, trigger a production build
-  if (!hasBuild && !options.slim) {
-    logger.log(
-      '📦 Production build not found. Running: gkm build --provider server --production',
-    );
-    await buildCommand({
-      provider: 'server',
-      production: true,
-    });
+  if (useSlim) {
+    // Verify pre-built bundle exists for slim mode
+    const distDir = join(process.cwd(), '.gkm', 'server', 'dist');
+    const hasBuild = existsSync(join(distDir, 'server.mjs'));
+
+    if (!hasBuild) {
+      throw new Error(
+        'Slim Dockerfile requires a pre-built bundle. Run `gkm build --provider server --production` first, or omit --slim to use multi-stage build.',
+      );
+    }
   }
-
-  // Determine if we should use slim Dockerfile
-  const useSlim = options.slim ?? hasBuild;
 
   // Generate Docker files
   const dockerDir = join(process.cwd(), '.gkm', 'docker');

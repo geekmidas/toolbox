@@ -186,7 +186,7 @@ When using `--production`, the build:
 Generate Docker deployment files for production.
 
 ```bash
-# Generate Dockerfile and docker-compose.yml
+# Generate multi-stage Dockerfile (builds from source inside Docker)
 gkm docker
 
 # Generate and build Docker image
@@ -195,7 +195,8 @@ gkm docker --build
 # Build and push to registry
 gkm docker --build --push --registry ghcr.io/myorg --tag v1.0.0
 
-# Use slim Dockerfile (assumes bundle exists)
+# Use slim Dockerfile (requires pre-built bundle)
+gkm build --provider server --production
 gkm docker --slim
 ```
 
@@ -207,13 +208,13 @@ gkm docker --slim
 | `--push` | Push image to registry after building |
 | `--tag <tag>` | Image tag (default: latest) |
 | `--registry <url>` | Container registry URL |
-| `--slim` | Use slim Dockerfile (pre-built bundle) |
+| `--slim` | Use slim Dockerfile (requires pre-built bundle) |
 
 **Generated Files:**
 
 ```
 .gkm/docker/
-├── Dockerfile           # Multi-stage or slim build
+├── Dockerfile           # Multi-stage (default) or slim build
 ├── docker-compose.yml   # With optional services
 ├── .dockerignore
 └── docker-entrypoint.sh
@@ -223,8 +224,8 @@ gkm docker --slim
 
 | Type | Description | When Used |
 |------|-------------|-----------|
-| Multi-stage | Builds from source in container | No pre-built bundle |
-| Slim | Copies pre-built bundle | `--slim` or bundle exists |
+| Multi-stage | Builds from source inside Docker | Default (recommended) |
+| Slim | Copies pre-built bundle | `--slim` flag (requires prior build) |
 
 **Container Best Practices:**
 
@@ -236,17 +237,20 @@ Both Dockerfile types include:
 
 ### Prepack
 
-Combined workflow: build production server and generate Docker files.
+Generate Docker files for production deployment.
 
 ```bash
-# Build and generate Docker files
+# Generate multi-stage Dockerfile (recommended for CI/CD)
 gkm prepack
 
-# Build, generate, and create Docker image
+# Generate and build Docker image
 gkm prepack --build
 
 # Full deployment workflow
 gkm prepack --build --push --registry ghcr.io/myorg --tag v1.0.0
+
+# Local development: build locally first, then slim Dockerfile
+gkm prepack --slim
 ```
 
 **Options:**
@@ -257,13 +261,15 @@ gkm prepack --build --push --registry ghcr.io/myorg --tag v1.0.0
 | `--push` | Push image to registry after building |
 | `--tag <tag>` | Image tag (default: latest) |
 | `--registry <url>` | Container registry URL |
-| `--skip-bundle` | Skip bundling step |
+| `--slim` | Build locally first, then use slim Dockerfile |
+| `--skip-bundle` | Skip bundling step (only with --slim) |
 
-**Equivalent to:**
+**Workflow Comparison:**
 
-```bash
-gkm build --provider server --production && gkm docker --slim
-```
+| Command | What it does |
+|---------|--------------|
+| `gkm prepack --build` | Generates multi-stage Dockerfile, builds inside Docker |
+| `gkm prepack --slim --build` | Builds locally, then creates slim Docker image |
 
 ### OpenAPI
 
