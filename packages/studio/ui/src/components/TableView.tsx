@@ -8,10 +8,18 @@ import type {
 } from '../types';
 import { FilterPanel } from './FilterPanel';
 
-interface TableViewProps {
+export interface ForeignKeyClickInfo {
+  targetTable: string;
+  targetColumn: string;
+  value: unknown;
+}
+
+export interface TableViewProps {
   tableName: string;
   tableInfo: TableInfo | null;
   onRowSelect: (row: Record<string, unknown>) => void;
+  onForeignKeyClick?: (info: ForeignKeyClickInfo) => void;
+  initialFilters?: FilterConfig[];
 }
 
 const PAGE_SIZES = [25, 50, 100];
@@ -139,12 +147,14 @@ export function TableView({
   tableName,
   tableInfo,
   onRowSelect,
+  onForeignKeyClick,
+  initialFilters,
 }: TableViewProps) {
   const [data, setData] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortConfig[]>([]);
-  const [filters, setFilters] = useState<FilterConfig[]>([]);
+  const [filters, setFilters] = useState<FilterConfig[]>(initialFilters ?? []);
   const [showFilters, setShowFilters] = useState(false);
   const [pageSize, setPageSize] = useState(50);
   const [cursors, setCursors] = useState<string[]>([]);
@@ -185,6 +195,14 @@ export function TableView({
     setCurrentPage(0);
     loadData();
   }, [tableName, sort, filters, pageSize]);
+
+  // Update filters when initialFilters changes (e.g., FK navigation)
+  useEffect(() => {
+    if (initialFilters) {
+      setFilters(initialFilters);
+      setShowFilters(initialFilters.length > 0);
+    }
+  }, [initialFilters]);
 
   const handleSort = useCallback((column: string) => {
     setSort((prev) => {
@@ -428,16 +446,43 @@ export function TableView({
                   <td className="row-number px-3 py-2 text-right">
                     {startRow + idx}
                   </td>
-                  {columns.map((col) => (
-                    <td
-                      key={col.name}
-                      className={`px-3 py-2 text-sm max-w-xs truncate ${
-                        row[col.name] === null ? 'cell-null' : 'text-slate-300'
-                      }`}
-                    >
-                      {formatValue(row[col.name])}
-                    </td>
-                  ))}
+                  {columns.map((col) => {
+                    const value = row[col.name];
+                    const isFkClickable =
+                      col.isForeignKey &&
+                      col.foreignKeyTable &&
+                      col.foreignKeyColumn &&
+                      value !== null &&
+                      onForeignKeyClick;
+
+                    return (
+                      <td
+                        key={col.name}
+                        className={`px-3 py-2 text-sm max-w-xs truncate ${
+                          value === null ? 'cell-null' : 'text-slate-300'
+                        }`}
+                      >
+                        {isFkClickable ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onForeignKeyClick({
+                                targetTable: col.foreignKeyTable!,
+                                targetColumn: col.foreignKeyColumn!,
+                                value,
+                              });
+                            }}
+                            className="text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+                          >
+                            {formatValue(value)}
+                          </button>
+                        ) : (
+                          formatValue(value)
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}

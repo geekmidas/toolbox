@@ -56,7 +56,7 @@ function getMethodColor(
   }
 }
 
-export function AnalyticsPage() {
+export function PerformancePage() {
   const [metrics, setMetrics] = useState<RequestMetrics | null>(null);
   const [endpoints, setEndpoints] = useState<EndpointMetrics[]>([]);
   const [statusDist, setStatusDist] = useState<StatusDistribution | null>(null);
@@ -100,7 +100,7 @@ export function AnalyticsPage() {
   if (loading && !metrics) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Loading analytics...
+        Loading performance data...
       </div>
     );
   }
@@ -118,9 +118,9 @@ export function AnalyticsPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Analytics</h1>
+          <h1 className="text-xl font-semibold">Performance</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Request metrics and performance insights
+            Endpoint metrics and latency insights
           </p>
         </div>
         <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
@@ -258,7 +258,7 @@ export function AnalyticsPage() {
                   >
                     <td className="px-4 py-2">
                       <Link
-                        to={`/analytics/endpoint?method=${encodeURIComponent(ep.method)}&path=${encodeURIComponent(ep.path)}`}
+                        to={`/performance/endpoint?method=${encodeURIComponent(ep.method)}&path=${encodeURIComponent(ep.path)}`}
                         className="flex items-center gap-2"
                       >
                         <Badge variant={getMethodColor(ep.method)}>

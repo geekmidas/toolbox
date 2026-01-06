@@ -184,7 +184,7 @@ export function RequestsPage() {
                       ? 'border-accent'
                       : 'border-border'
                   }`}
-                  onClick={() => navigate(`/requests/${request.id}`)}
+                  onClick={() => navigate(`/monitoring/requests/${request.id}`)}
                 >
                   <HttpMethodBadge method={request.method as any} size="sm" />
                   <span className="flex-1 truncate font-mono text-sm">
@@ -208,7 +208,7 @@ export function RequestsPage() {
       {selectedRequest && (
         <RequestDetailPanel
           request={selectedRequest}
-          onClose={() => navigate('/requests')}
+          onClose={() => navigate('/monitoring/requests')}
         />
       )}
     </div>

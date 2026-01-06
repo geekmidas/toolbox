@@ -8,15 +8,7 @@ import {
   SidebarItem,
   SidebarSection,
 } from '@geekmidas/ui';
-import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Database,
-  FileText,
-  Home,
-  Network,
-} from 'lucide-react';
+import { Activity, Database, Gauge, Home } from 'lucide-react';
 import {
   BrowserRouter,
   Link,
@@ -26,12 +18,13 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { StudioHeader } from './components/StudioHeader';
-import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasePage } from './pages/DatabasePage';
 import { EndpointDetailsPage } from './pages/EndpointDetailsPage';
 import { ExceptionsPage } from './pages/ExceptionsPage';
 import { LogsPage } from './pages/LogsPage';
+import { MonitoringPage } from './pages/MonitoringPage';
+import { PerformancePage } from './pages/PerformancePage';
 import { RequestsPage } from './pages/RequestsPage';
 import { StudioProvider } from './providers/StudioProvider';
 
@@ -56,46 +49,19 @@ function AppLayout() {
                 Dashboard
               </SidebarItem>
             </Link>
-          </SidebarSection>
-
-          <SidebarSection title="Monitoring">
-            <Link to="/requests">
-              <SidebarItem icon={Network} active={isActive('/requests')}>
-                Requests
-              </SidebarItem>
-            </Link>
-            <Link to="/logs">
-              <SidebarItem icon={FileText} active={isActive('/logs')}>
-                Logs
-              </SidebarItem>
-            </Link>
-            <Link to="/exceptions">
-              <SidebarItem
-                icon={AlertTriangle}
-                active={isActive('/exceptions')}
-              >
-                Exceptions
-              </SidebarItem>
-            </Link>
-            <Link to="/analytics">
-              <SidebarItem icon={BarChart3} active={isActive('/analytics')}>
-                Analytics
-              </SidebarItem>
-            </Link>
-          </SidebarSection>
-
-          <SidebarSection title="Data">
             <Link to="/database">
               <SidebarItem icon={Database} active={isActive('/database')}>
                 Database
               </SidebarItem>
             </Link>
-          </SidebarSection>
-
-          <SidebarSection title="Inspect">
-            <Link to="/services">
-              <SidebarItem icon={Activity} active={isActive('/services')}>
-                Services
+            <Link to="/monitoring/requests">
+              <SidebarItem icon={Activity} active={isActive('/monitoring')}>
+                Monitoring
+              </SidebarItem>
+            </Link>
+            <Link to="/performance">
+              <SidebarItem icon={Gauge} active={isActive('/performance')}>
+                Performance
               </SidebarItem>
             </Link>
           </SidebarSection>
@@ -110,32 +76,28 @@ function AppLayout() {
         <ShellContent>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/requests" element={<RequestsPage />} />
-            <Route path="/requests/:id" element={<RequestsPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/exceptions" element={<ExceptionsPage />} />
-            <Route path="/exceptions/:id" element={<ExceptionsPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/analytics/endpoint" element={<EndpointDetailsPage />} />
             <Route path="/database" element={<DatabasePage />} />
             <Route path="/database/:table" element={<DatabasePage />} />
-            <Route path="/services" element={<ComingSoon title="Services" />} />
+            <Route path="/monitoring" element={<MonitoringPage />}>
+              <Route index element={<Navigate to="/monitoring/requests" replace />} />
+              <Route path="requests" element={<RequestsPage />} />
+              <Route path="requests/:id" element={<RequestsPage />} />
+              <Route path="logs" element={<LogsPage />} />
+              <Route path="exceptions" element={<ExceptionsPage />} />
+              <Route path="exceptions/:id" element={<ExceptionsPage />} />
+            </Route>
+            <Route path="/performance" element={<PerformancePage />} />
+            <Route path="/performance/endpoint" element={<EndpointDetailsPage />} />
+            {/* Redirects for old routes */}
+            <Route path="/requests/*" element={<Navigate to="/monitoring/requests" replace />} />
+            <Route path="/logs" element={<Navigate to="/monitoring/logs" replace />} />
+            <Route path="/exceptions/*" element={<Navigate to="/monitoring/exceptions" replace />} />
+            <Route path="/analytics/*" element={<Navigate to="/performance" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ShellContent>
       </ShellMain>
     </Shell>
-  );
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-muted-foreground">
-      <div className="text-center">
-        <h2 className="text-lg font-medium mb-2">{title}</h2>
-        <p className="text-sm">Coming soon...</p>
-      </div>
-    </div>
   );
 }
 

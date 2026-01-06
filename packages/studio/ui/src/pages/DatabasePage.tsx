@@ -1,14 +1,16 @@
 import { NoData } from '@geekmidas/ui';
 import { Database, Search } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import * as api from '../api';
 import { RowDetail } from '../components/RowDetail';
 import { TableView } from '../components/TableView';
-import type { TableInfo, TableSummary } from '../types';
+import type { ForeignKeyClickInfo } from '../components/TableView';
+import type { FilterConfig, TableInfo, TableSummary } from '../types';
 
 export function DatabasePage() {
   const { table: tableParam } = useParams<{ table: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [tables, setTables] = useState<TableSummary[]>([]);
@@ -23,6 +25,25 @@ export function DatabasePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [initialFilters, setInitialFilters] = useState<FilterConfig[]>([]);
+
+  // Parse filter from URL query params
+  useEffect(() => {
+    const filterColumn = searchParams.get('filterColumn');
+    const filterValue = searchParams.get('filterValue');
+
+    if (filterColumn && filterValue) {
+      setInitialFilters([
+        {
+          column: filterColumn,
+          operator: 'eq',
+          value: filterValue,
+        },
+      ]);
+    } else {
+      setInitialFilters([]);
+    }
+  }, [searchParams]);
 
   // Update selected table when URL param changes
   useEffect(() => {
@@ -90,6 +111,16 @@ export function DatabasePage() {
       setSelectedTable(tableName);
       setSelectedRow(null);
       navigate(`/database/${tableName}`);
+    },
+    [navigate],
+  );
+
+  const handleForeignKeyClick = useCallback(
+    (info: ForeignKeyClickInfo) => {
+      const valueStr = String(info.value);
+      navigate(
+        `/database/${info.targetTable}?filterColumn=${encodeURIComponent(info.targetColumn)}&filterValue=${encodeURIComponent(valueStr)}`,
+      );
     },
     [navigate],
   );
@@ -176,6 +207,8 @@ export function DatabasePage() {
             tableName={selectedTable}
             tableInfo={tableInfo}
             onRowSelect={setSelectedRow}
+            onForeignKeyClick={handleForeignKeyClick}
+            initialFilters={initialFilters}
           />
         )}
       </div>

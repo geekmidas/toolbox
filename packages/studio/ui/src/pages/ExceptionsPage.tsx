@@ -143,7 +143,7 @@ export function ExceptionsPage() {
                       ? 'border-accent'
                       : 'border-border'
                   }`}
-                  onClick={() => navigate(`/exceptions/${exception.id}`)}
+                  onClick={() => navigate(`/monitoring/exceptions/${exception.id}`)}
                 >
                   <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ export function ExceptionsPage() {
       {selectedException && (
         <ExceptionDetailPanel
           exception={selectedException}
-          onClose={() => navigate('/exceptions')}
+          onClose={() => navigate('/monitoring/exceptions')}
         />
       )}
     </div>

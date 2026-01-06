@@ -129,7 +129,7 @@ export function EndpointDetailsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link
-            to="/analytics"
+            to="/performance"
             className="p-2 rounded-md hover:bg-muted transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -264,7 +264,7 @@ export function EndpointDetailsPage() {
                     </td>
                     <td className="px-4 py-2">
                       <Link
-                        to={`/requests/${req.id}`}
+                        to={`/monitoring/requests/${req.id}`}
                         className="font-mono text-xs text-primary hover:underline"
                       >
                         {req.id.slice(0, 8)}...
