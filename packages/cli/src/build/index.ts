@@ -5,7 +5,13 @@ import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import { loadConfig, parseModuleConfig } from '../config';
-import { normalizeHooksConfig, normalizeTelescopeConfig } from '../dev';
+import {
+  getProductionConfigFromGkm,
+  normalizeHooksConfig,
+  normalizeProductionConfig,
+  normalizeStudioConfig,
+  normalizeTelescopeConfig,
+} from '../dev';
 import {
   CronGenerator,
   EndpointGenerator,
@@ -30,6 +36,17 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   // Resolve providers from new config format
   const resolved = resolveProviders(config, options);
 
+  // Normalize production configuration
+  const productionConfigFromGkm = getProductionConfigFromGkm(config);
+  const production = normalizeProductionConfig(
+    options.production ?? false,
+    productionConfigFromGkm,
+  );
+
+  if (production) {
+    logger.log(`🏭 Building for PRODUCTION`);
+  }
+
   logger.log(`Building with providers: ${resolved.providers.join(', ')}`);
   logger.log(`Loading routes from: ${config.routes}`);
   if (config.functions) {
@@ -49,10 +66,18 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const { path: loggerPath, importPattern: loggerImportPattern } =
     parseModuleConfig(config.logger, 'logger');
 
-  // Normalize telescope configuration
-  const telescope = normalizeTelescopeConfig(config.telescope);
+  // Normalize telescope configuration (disabled in production)
+  const telescope = production
+    ? undefined
+    : normalizeTelescopeConfig(config.telescope);
   if (telescope) {
     logger.log(`🔭 Telescope enabled at ${telescope.path}`);
+  }
+
+  // Normalize studio configuration (disabled in production)
+  const studio = production ? undefined : normalizeStudioConfig(config.studio);
+  if (studio) {
+    logger.log(`🗄️  Studio enabled at ${studio.path}`);
   }
 
   // Normalize hooks configuration
@@ -67,7 +92,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     loggerPath,
     loggerImportPattern,
     telescope,
+    studio,
     hooks,
+    production,
   };
 
   // Initialize generators
@@ -121,6 +148,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       allCrons,
       allSubscribers,
       resolved.enableOpenApi,
+      options.skipBundle ?? false,
     );
   }
 }
@@ -138,6 +166,7 @@ async function buildForProvider(
   crons: GeneratedConstruct<Cron<any, any, any, any>>[],
   subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
   enableOpenApi: boolean,
+  skipBundle: boolean,
 ): Promise<void> {
   const outputDir = join(process.cwd(), '.gkm', provider);
 
@@ -186,6 +215,20 @@ async function buildForProvider(
       routeMetadata,
       subscriberInfos,
     );
+
+    // Bundle for production if enabled
+    if (context.production && context.production.bundle && !skipBundle) {
+      logger.log(`\n📦 Bundling production server...`);
+      const { bundleServer } = await import('./bundler');
+      await bundleServer({
+        entryPoint: join(outputDir, 'server.ts'),
+        outputDir: join(outputDir, 'dist'),
+        minify: context.production.minify,
+        sourcemap: false,
+        external: context.production.external,
+      });
+      logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+    }
   } else {
     // For AWS providers, generate AWS manifest
     await generateAwsManifest(

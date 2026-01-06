@@ -333,6 +333,11 @@ export async function setupEndpoints(
     outputDir: string,
     context: BuildContext,
   ): Promise<string> {
+    // Use production generator if in production mode
+    if (context.production?.enabled) {
+      return this.generateProductionAppFile(outputDir, context);
+    }
+
     const appFileName = 'app.ts';
     const appPath = join(outputDir, appFileName);
 
@@ -633,5 +638,187 @@ export const handler = adapter.handler;
 // Server handler - implement based on your server framework
 export const handler = ${exportName};
 `;
+  }
+
+  /**
+   * Generate a production-optimized app.ts file
+   * No dev tools (Telescope, Studio, WebSocket), includes health checks and graceful shutdown
+   */
+  private async generateProductionAppFile(
+    outputDir: string,
+    context: BuildContext,
+  ): Promise<string> {
+    const appFileName = 'app.ts';
+    const appPath = join(outputDir, appFileName);
+
+    const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
+    const relativeEnvParserPath = relative(
+      dirname(appPath),
+      context.envParserPath,
+    );
+
+    const production = context.production!;
+    const healthCheckPath = production.healthCheck;
+    const enableGracefulShutdown = production.gracefulShutdown;
+    const enableOpenApi = production.openapi;
+    const includeSubscribers = production.subscribers === 'include';
+
+    // Generate imports for server hooks
+    let hooksImports = '';
+    let beforeSetupCall = '';
+    let afterSetupCall = '';
+    if (context.hooks?.serverHooksPath) {
+      const relativeHooksPath = relative(
+        dirname(appPath),
+        context.hooks.serverHooksPath,
+      );
+      hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
+      beforeSetupCall = `
+  // Call beforeSetup hook if defined
+  if (typeof serverHooks.beforeSetup === 'function') {
+    await serverHooks.beforeSetup(honoApp, { envParser, logger });
+  }
+`;
+      afterSetupCall = `
+  // Call afterSetup hook if defined
+  if (typeof serverHooks.afterSetup === 'function') {
+    await serverHooks.afterSetup(honoApp, { envParser, logger });
+  }
+`;
+    }
+
+    // Subscriber setup code
+    const subscriberSetup = includeSubscribers
+      ? `
+      // Start subscribers in background
+      await setupSubscribers(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to start subscribers');
+      });
+`
+      : '';
+
+    const subscriberImport = includeSubscribers
+      ? `import { setupSubscribers } from './subscribers.js';`
+      : '';
+
+    // Graceful shutdown code
+    const gracefulShutdownCode = enableGracefulShutdown
+      ? `
+  // Graceful shutdown handling
+  let isShuttingDown = false;
+
+  const shutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.info('Graceful shutdown initiated');
+    // Allow in-flight requests to complete (30s timeout)
+    setTimeout(() => process.exit(0), 30000);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+`
+      : '';
+
+    const content = `/**
+ * Generated production server application
+ *
+ * This is a production-optimized build without dev tools.
+ * - No Telescope debugging dashboard
+ * - No Studio database browser
+ * - No WebSocket updates
+ * - Includes health checks and graceful shutdown
+ */
+import { Hono } from 'hono';
+import type { Hono as HonoType } from 'hono';
+import { setupEndpoints } from './endpoints.js';
+${subscriberImport}
+import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
+import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+${hooksImports}
+
+export interface ServerApp {
+  app: HonoType;
+  start: (options?: {
+    port?: number;
+    serve: (app: HonoType, port: number) => void | Promise<void>;
+  }) => Promise<void>;
+}
+
+/**
+ * Create and configure the production Hono application
+ */
+export async function createApp(app?: HonoType): Promise<ServerApp> {
+  const honoApp = app || new Hono();
+
+  // Health check endpoint (always first)
+  honoApp.get('${healthCheckPath}', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
+  honoApp.get('/ready', (c) => c.json({ ready: true }));
+${beforeSetupCall}
+  // Setup HTTP endpoints (OpenAPI: ${enableOpenApi})
+  await setupEndpoints(honoApp, envParser, logger, ${enableOpenApi});
+${afterSetupCall}
+  return {
+    app: honoApp,
+    async start(options) {
+      if (!options?.serve) {
+        throw new Error(
+          'serve function is required. Pass a serve function for your runtime:\\n' +
+          '  - Bun: (app, port) => Bun.serve({ port, fetch: app.fetch })\\n' +
+          '  - Node: (app, port) => serve({ fetch: app.fetch, port })'
+        );
+      }
+
+      const port = options.port ?? Number(process.env.PORT) ?? 3000;
+${gracefulShutdownCode}${subscriberSetup}
+      logger.info({ port }, 'Starting production server');
+
+      // Start HTTP server using provided serve function
+      await options.serve(honoApp, port);
+
+      logger.info({ port }, 'Production server started');
+    }
+  };
+}
+
+// Default export for convenience
+export default createApp;
+`;
+
+    await writeFile(appPath, content);
+
+    // Also generate the production server entry point
+    await this.generateProductionServerEntry(outputDir);
+
+    return appPath;
+  }
+
+  /**
+   * Generate production server.ts entry point
+   */
+  private async generateProductionServerEntry(
+    outputDir: string,
+  ): Promise<void> {
+    const serverPath = join(outputDir, 'server.ts');
+
+    const content = `#!/usr/bin/env node
+/**
+ * Production server entry point
+ * Generated by 'gkm build --provider server --production'
+ */
+import { serve } from '@hono/node-server';
+import { createApp } from './app.js';
+
+const port = Number(process.env.PORT) || 3000;
+
+const { app, start } = await createApp();
+
+await start({
+  port,
+  serve: (app, port) => serve({ fetch: app.fetch, port }),
+});
+`;
+
+    await writeFile(serverPath, content);
   }
 }

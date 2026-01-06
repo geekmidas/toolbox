@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json' assert { type: 'json' };
 import { buildCommand } from './build/index';
 import { devCommand } from './dev/index';
+import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
 import { openapiCommand } from './openapi';
 import { generateReactQueryCommand } from './openapi-react-query';
@@ -57,11 +58,15 @@ program
     '--enable-openapi',
     'Enable OpenAPI documentation generation for server builds',
   )
+  .option('--production', 'Build for production (no dev tools, bundled output)')
+  .option('--skip-bundle', 'Skip bundling step in production build')
   .action(
     async (options: {
       provider?: string;
       providers?: string;
       enableOpenapi?: boolean;
+      production?: boolean;
+      skipBundle?: boolean;
     }) => {
       try {
         const globalOptions = program.opts();
@@ -80,6 +85,8 @@ program
           await buildCommand({
             provider: options.provider as MainProvider,
             enableOpenApi: options.enableOpenapi || false,
+            production: options.production || false,
+            skipBundle: options.skipBundle || false,
           });
         }
         // Handle legacy providers option
@@ -93,12 +100,16 @@ program
           await buildCommand({
             providers: providerList,
             enableOpenApi: options.enableOpenapi || false,
+            production: options.production || false,
+            skipBundle: options.skipBundle || false,
           });
         }
         // Default to config-driven build
         else {
           await buildCommand({
             enableOpenApi: options.enableOpenapi || false,
+            production: options.production || false,
+            skipBundle: options.skipBundle || false,
           });
         }
       } catch (error) {
@@ -207,6 +218,89 @@ program
           'React Query generation failed:',
           (error as Error).message,
         );
+        process.exit(1);
+      }
+    },
+  );
+
+program
+  .command('docker')
+  .description('Generate Docker deployment files')
+  .option('--build', 'Build Docker image after generating files')
+  .option('--push', 'Push image to registry after building')
+  .option('--tag <tag>', 'Image tag', 'latest')
+  .option('--registry <registry>', 'Container registry URL')
+  .option('--slim', 'Use slim Dockerfile (assumes pre-built bundle exists)')
+  .action(async (options: DockerOptions) => {
+    try {
+      const globalOptions = program.opts();
+      if (globalOptions.cwd) {
+        process.chdir(globalOptions.cwd);
+      }
+      await dockerCommand(options);
+    } catch (error) {
+      console.error('Docker command failed:', (error as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('prepack')
+  .description('Build production server and generate Docker files')
+  .option('--build', 'Build Docker image after generating files')
+  .option('--push', 'Push image to registry after building')
+  .option('--tag <tag>', 'Image tag', 'latest')
+  .option('--registry <registry>', 'Container registry URL')
+  .option('--skip-bundle', 'Skip bundling step')
+  .action(
+    async (options: {
+      build?: boolean;
+      push?: boolean;
+      tag?: string;
+      registry?: string;
+      skipBundle?: boolean;
+    }) => {
+      try {
+        const globalOptions = program.opts();
+        if (globalOptions.cwd) {
+          process.chdir(globalOptions.cwd);
+        }
+
+        console.log('🚀 Preparing production package...\n');
+
+        // Step 1: Build production server
+        console.log('📦 Building production server...');
+        await buildCommand({
+          provider: 'server',
+          production: true,
+          skipBundle: options.skipBundle,
+        });
+        console.log('✅ Production server built\n');
+
+        // Step 2: Generate Docker files
+        console.log('🐳 Generating Docker files...');
+        await dockerCommand({
+          build: options.build,
+          push: options.push,
+          tag: options.tag,
+          registry: options.registry,
+          slim: true, // Use slim since we just built
+        });
+        console.log('✅ Docker files generated\n');
+
+        // Summary
+        console.log('📋 Prepack complete!');
+        console.log('   Output: .gkm/server/dist/server.mjs');
+        console.log('   Docker: .gkm/docker/Dockerfile');
+
+        if (options.build) {
+          const tag = options.tag ?? 'latest';
+          const registry = options.registry;
+          const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
+          console.log(`   Image:  ${imageRef}`);
+        }
+      } catch (error) {
+        console.error('Prepack failed:', (error as Error).message);
         process.exit(1);
       }
     },

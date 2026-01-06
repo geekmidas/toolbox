@@ -20,9 +20,46 @@ export interface AWSLambdaConfig extends ProviderConfig {
   // Additional AWS Lambda specific options
 }
 
+export interface ProductionConfig {
+  /** Enable production mode (default: false) */
+  enabled?: boolean;
+  /** Bundle server into single file (default: true) */
+  bundle?: boolean;
+  /** Minify bundled output (default: true) */
+  minify?: boolean;
+  /** Health check endpoint path (default: '/health') */
+  healthCheck?: string;
+  /** Enable graceful shutdown handling (default: true) */
+  gracefulShutdown?: boolean;
+  /** Packages to exclude from bundling (default: []) */
+  external?: string[];
+  /** Include subscribers in production build (default: 'exclude' for serverless) */
+  subscribers?: 'include' | 'exclude';
+  /** Include OpenAPI spec in production (default: false) */
+  openapi?: boolean;
+}
+
+export interface DockerConfig {
+  /** Container registry URL (e.g., 'ghcr.io/myorg') */
+  registry?: string;
+  /** Docker image name (default: derived from package.json name) */
+  imageName?: string;
+  /** Base Docker image (default: 'node:22-alpine') */
+  baseImage?: string;
+  /** Container port (default: 3000) */
+  port?: number;
+  /** docker-compose services to include */
+  compose?: {
+    /** Additional services like postgres, redis */
+    services?: ('postgres' | 'redis' | 'rabbitmq')[];
+  };
+}
+
 export interface ServerConfig extends ProviderConfig {
   enableOpenApi?: boolean;
   port?: number;
+  /** Production build configuration */
+  production?: ProductionConfig;
 }
 
 export type Runtime = 'node' | 'bun';
@@ -177,6 +214,20 @@ export interface GkmConfig {
    * env: ['.env', '.env.local']
    */
   env?: string | string[];
+  /**
+   * Docker deployment configuration.
+   * Used by `gkm docker` and `gkm prepack` commands.
+   *
+   * @example
+   * docker: {
+   *   registry: 'ghcr.io/myorg',
+   *   imageName: 'my-api',
+   *   compose: {
+   *     services: ['postgres', 'redis']
+   *   }
+   * }
+   */
+  docker?: DockerConfig;
 }
 
 export interface BuildOptions {
@@ -184,6 +235,10 @@ export interface BuildOptions {
   // Legacy support - will be deprecated
   providers?: LegacyProvider[];
   enableOpenApi?: boolean;
+  /** Build for production (no dev tools, bundled output) */
+  production?: boolean;
+  /** Skip bundling step in production build */
+  skipBundle?: boolean;
 }
 
 export interface RouteInfo {

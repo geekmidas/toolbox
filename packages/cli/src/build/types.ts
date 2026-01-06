@@ -55,6 +55,17 @@ export interface NormalizedHooksConfig {
   serverHooksPath: string;
 }
 
+export interface NormalizedProductionConfig {
+  enabled: boolean;
+  bundle: boolean;
+  minify: boolean;
+  healthCheck: string;
+  gracefulShutdown: boolean;
+  external: string[];
+  subscribers: 'include' | 'exclude';
+  openapi: boolean;
+}
+
 export interface BuildContext {
   envParserPath: string;
   envParserImportPattern: string;
@@ -63,6 +74,8 @@ export interface BuildContext {
   telescope?: NormalizedTelescopeConfig;
   studio?: NormalizedStudioConfig;
   hooks?: NormalizedHooksConfig;
+  /** Production build configuration */
+  production?: NormalizedProductionConfig;
 }
 
 export interface ProviderBuildResult {

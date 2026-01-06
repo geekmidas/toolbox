@@ -10,6 +10,7 @@ import { resolveProviders } from '../build/providerResolver';
 import type {
   BuildContext,
   NormalizedHooksConfig,
+  NormalizedProductionConfig,
   NormalizedStudioConfig,
   NormalizedTelescopeConfig,
 } from '../build/types';
@@ -28,7 +29,9 @@ import {
 import type {
   GkmConfig,
   LegacyProvider,
+  ProductionConfig,
   Runtime,
+  ServerConfig,
   StudioConfig,
   TelescopeConfig,
 } from '../types';
@@ -226,6 +229,48 @@ export function normalizeHooksConfig(
   return {
     serverHooksPath: resolvedPath,
   };
+}
+
+/**
+ * Normalize production configuration
+ * @internal Exported for testing
+ */
+export function normalizeProductionConfig(
+  cliProduction: boolean,
+  configProduction?: ProductionConfig,
+): NormalizedProductionConfig | undefined {
+  // Production mode is only enabled if --production CLI flag is passed
+  if (!cliProduction) {
+    return undefined;
+  }
+
+  // Merge CLI flag with config options
+  const config = configProduction ?? {};
+
+  return {
+    enabled: true,
+    bundle: config.bundle ?? true,
+    minify: config.minify ?? true,
+    healthCheck: config.healthCheck ?? '/health',
+    gracefulShutdown: config.gracefulShutdown ?? true,
+    external: config.external ?? [],
+    subscribers: config.subscribers ?? 'exclude',
+    openapi: config.openapi ?? false,
+  };
+}
+
+/**
+ * Get production config from GkmConfig
+ * @internal
+ */
+export function getProductionConfigFromGkm(
+  config: GkmConfig,
+): ProductionConfig | undefined {
+  const serverConfig = config.providers?.server;
+  if (typeof serverConfig === 'object') {
+    return (serverConfig as ServerConfig).production;
+  }
+  return undefined;
 }
 
 export interface DevOptions {
