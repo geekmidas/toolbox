@@ -145,24 +145,117 @@ my-project/
 Generate Lambda handlers or server applications from endpoint definitions.
 
 ```bash
-# Build for AWS API Gateway v2
-gkm build --provider aws-apigatewayv2 --source "./src/endpoints/**/*.ts"
-
-# Build for AWS API Gateway v1
-gkm build --provider aws-apigatewayv1 --source "./src/endpoints/**/*.ts"
+# Build for AWS (uses config)
+gkm build --provider aws
 
 # Build server application
-gkm build --provider server --port 3000
+gkm build --provider server
+
+# Build for production (no dev tools, bundled)
+gkm build --provider server --production
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--provider` | Target provider (aws-apigatewayv1, aws-apigatewayv2, server) |
-| `--source` | Glob pattern for endpoint files |
-| `--output` | Output directory (default: ./dist) |
-| `--port` | Server port (for server provider) |
+| `--provider` | Target provider (aws, server) |
+| `--production` | Build for production (no dev tools, bundled output) |
+| `--skip-bundle` | Skip bundling step in production build |
+| `--enable-openapi` | Enable OpenAPI documentation generation |
+
+**Production Build:**
+
+When using `--production`, the build:
+- Excludes Telescope debugging dashboard
+- Excludes Studio database browser
+- Excludes WebSocket setup
+- Adds health check endpoints (`/health`, `/ready`)
+- Adds graceful shutdown handling
+- Bundles output to a single `.mjs` file using tsdown
+
+```bash
+# Production build outputs to:
+# .gkm/server/app.ts        (production app)
+# .gkm/server/server.ts     (entry point)
+# .gkm/server/dist/server.mjs (bundled output)
+```
+
+### Docker
+
+Generate Docker deployment files for production.
+
+```bash
+# Generate Dockerfile and docker-compose.yml
+gkm docker
+
+# Generate and build Docker image
+gkm docker --build
+
+# Build and push to registry
+gkm docker --build --push --registry ghcr.io/myorg --tag v1.0.0
+
+# Use slim Dockerfile (assumes bundle exists)
+gkm docker --slim
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--build` | Build Docker image after generating files |
+| `--push` | Push image to registry after building |
+| `--tag <tag>` | Image tag (default: latest) |
+| `--registry <url>` | Container registry URL |
+| `--slim` | Use slim Dockerfile (pre-built bundle) |
+
+**Generated Files:**
+
+```
+.gkm/docker/
+├── Dockerfile           # Multi-stage or slim build
+├── docker-compose.yml   # With optional services
+├── .dockerignore
+└── docker-entrypoint.sh
+```
+
+**Dockerfile Types:**
+
+| Type | Description | When Used |
+|------|-------------|-----------|
+| Multi-stage | Builds from source in container | No pre-built bundle |
+| Slim | Copies pre-built bundle | `--slim` or bundle exists |
+
+### Prepack
+
+Combined workflow: build production server and generate Docker files.
+
+```bash
+# Build and generate Docker files
+gkm prepack
+
+# Build, generate, and create Docker image
+gkm prepack --build
+
+# Full deployment workflow
+gkm prepack --build --push --registry ghcr.io/myorg --tag v1.0.0
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--build` | Build Docker image after generating files |
+| `--push` | Push image to registry after building |
+| `--tag <tag>` | Image tag (default: latest) |
+| `--registry <url>` | Container registry URL |
+| `--skip-bundle` | Skip bundling step |
+
+**Equivalent to:**
+
+```bash
+gkm build --provider server --production && gkm docker --slim
+```
 
 ### OpenAPI
 
@@ -248,6 +341,32 @@ export default defineConfig({
     version: '1.0.0',
     description: 'API for my application',
   },
+
+  // Production build configuration (optional)
+  providers: {
+    server: {
+      production: {
+        bundle: true,           // Bundle to single file
+        minify: true,           // Minify output
+        healthCheck: '/health', // Health check endpoint
+        gracefulShutdown: true, // Enable graceful shutdown
+        external: [],           // Packages to exclude from bundle
+        subscribers: 'exclude', // 'include' or 'exclude'
+        openapi: false,         // Include OpenAPI in production
+      },
+    },
+  },
+
+  // Docker configuration (optional)
+  docker: {
+    registry: 'ghcr.io/myorg',
+    imageName: 'my-api',
+    baseImage: 'node:22-alpine',
+    port: 3000,
+    compose: {
+      services: ['postgres', 'redis'], // Include in docker-compose
+    },
+  },
 });
 ```
 
@@ -286,6 +405,76 @@ Then run commands without options:
 gkm build
 gkm openapi
 gkm dev
+```
+
+### Production Configuration
+
+The `providers.server.production` configuration controls production build behavior:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `bundle` | `boolean` | `true` | Bundle output to single file |
+| `minify` | `boolean` | `true` | Minify bundled output |
+| `healthCheck` | `string` | `/health` | Health check endpoint path |
+| `gracefulShutdown` | `boolean` | `true` | Enable graceful shutdown handling |
+| `external` | `string[]` | `[]` | Packages to exclude from bundling |
+| `subscribers` | `'include' \| 'exclude'` | `'exclude'` | Include subscribers in production |
+| `openapi` | `boolean` | `false` | Include OpenAPI docs in production |
+
+**Production vs Development:**
+
+| Feature | Development | Production |
+|---------|-------------|------------|
+| Telescope | ✓ | ✗ |
+| Studio | ✓ | ✗ |
+| WebSocket | ✓ | ✗ |
+| Health Check | ✗ | ✓ |
+| Graceful Shutdown | ✗ | ✓ |
+| Bundled | ✗ | ✓ |
+
+### Docker Configuration
+
+The `docker` configuration controls Docker file generation:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `registry` | `string` | `''` | Container registry URL |
+| `imageName` | `string` | package name | Docker image name |
+| `baseImage` | `string` | `node:22-alpine` | Base Docker image |
+| `port` | `number` | `3000` | Container port |
+| `compose.services` | `string[]` | `[]` | Services for docker-compose |
+
+**Available Compose Services:**
+
+| Service | Description | Environment Variables |
+|---------|-------------|-----------------------|
+| `postgres` | PostgreSQL 16 | `DATABASE_URL` |
+| `redis` | Redis 7 | `REDIS_URL` |
+| `rabbitmq` | RabbitMQ 3 | `RABBITMQ_URL` |
+
+**Example docker-compose.yml with services:**
+
+```yaml
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
 ```
 
 ### Server Hooks
