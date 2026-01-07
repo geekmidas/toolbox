@@ -124,7 +124,8 @@ function generateValidators(
     })`);
   }
 
-  return validators.join(',');
+  // Add trailing comma if there are validators (needed before the handler function)
+  return validators.length > 0 ? validators.join(',') + ',' : '';
 }
 
 /**

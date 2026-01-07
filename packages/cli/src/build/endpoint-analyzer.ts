@@ -74,8 +74,9 @@ export function analyzeEndpointFeatures(
     hasBodyValidation: !!endpoint.input?.body,
     hasQueryValidation: !!endpoint.input?.query,
     hasParamValidation: !!endpoint.input?.params,
-    hasAudits:
-      (endpoint.audits?.length ?? 0) > 0 || !!endpoint.auditorStorageService,
+    // Only declarative audits (.audit([...])) require full tier with transaction wrapping
+    // Having auditorStorageService just makes auditor available to handler (like other services)
+    hasAudits: (endpoint.audits?.length ?? 0) > 0,
     hasEvents: (endpoint.events?.length ?? 0) > 0,
     hasRateLimit: !!endpoint.rateLimit,
     hasRls: !!endpoint.rlsConfig && !endpoint.rlsBypass,
