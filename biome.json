@@ -8,9 +8,16 @@
     "lineEnding": "lf",
     "lineWidth": 80,
     "attributePosition": "auto",
-    "ignore": ["node_modules/*", ".turbo", ".benchmarks", "**/tsconfig*.json"]
+    "includes": [
+      "**",
+      "!**/node_modules/**/*",
+      "!**/.turbo",
+      "!**/.benchmarks",
+      "!**/tsconfig*.json",
+      "!**/ui-assets.ts"
+    ]
   },
-  "organizeImports": { "enabled": true },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
@@ -27,17 +34,22 @@
       "style": {
         "useImportType": "error"
       },
-      "suspicious": { "noConsoleLog": "error", "noExplicitAny": "off" }
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noConsole": { "level": "error", "options": { "allow": ["log"] } }
+      }
     },
-    "ignore": [
-      "**/dist/*",
-      "**/__generated__/*",
-      "**/.claude/*",
-      "**/.gkm/*",
-      "**/node_modules/*",
-      "**/.turbo/*",
-      "**/.benchmarks/*",
-      "**/tsconfig*.json"
+    "includes": [
+      "**",
+      "!**/dist/**/*",
+      "!**/__generated__/**/*",
+      "!**/.claude/**/*",
+      "!**/.gkm/**/*",
+      "!**/node_modules/**/*",
+      "!**/.turbo/**/*",
+      "!**/.benchmarks/**/*",
+      "!**/tsconfig*.json",
+      "!**/ui-assets.ts"
     ]
   },
   "javascript": {
