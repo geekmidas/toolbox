@@ -17,6 +17,7 @@ import {
   ResponseBuilder,
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
+import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
 import { parseHonoQuery } from './parseHonoQuery';
 
 import { withRlsContext } from '@geekmidas/db/rls';
@@ -347,9 +348,9 @@ export class HonoEndpoint<
       }) as TLogger;
 
       try {
-        const headerValues = c.req.header();
-        const header = Endpoint.createHeaders(headerValues);
-        const cookie = Endpoint.createCookies(headerValues.cookie);
+        // Lazy accessors - no upfront parsing, use native Hono methods
+        const header = createHonoHeaders(c);
+        const cookie = createHonoCookies(c);
 
         // Only register services if endpoint has any
         const services = features.hasServices
