@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import type { Studio } from '../Studio';
 import type { DataBrowser } from '../data/DataBrowser';
 import {
   Direction,
@@ -11,10 +12,22 @@ import { getAsset, getIndexHtml } from '../ui-assets';
 
 /**
  * Interface for the Studio instance used by the Hono adapter.
- * Only requires the data browser - monitoring routes are separate.
  */
 export interface StudioLike {
   data: DataBrowser<unknown>;
+  // Monitoring methods
+  getRequests: Studio<unknown>['getRequests'];
+  getRequest: Studio<unknown>['getRequest'];
+  getExceptions: Studio<unknown>['getExceptions'];
+  getException: Studio<unknown>['getException'];
+  getLogs: Studio<unknown>['getLogs'];
+  getStats: Studio<unknown>['getStats'];
+  // Metrics methods
+  getMetrics: Studio<unknown>['getMetrics'];
+  getEndpointMetrics: Studio<unknown>['getEndpointMetrics'];
+  getEndpointDetails: Studio<unknown>['getEndpointDetails'];
+  getStatusDistribution: Studio<unknown>['getStatusDistribution'];
+  resetMetrics: Studio<unknown>['resetMetrics'];
 }
 
 /**
@@ -89,13 +102,62 @@ function parseSort(c: Context): SortConfig[] {
 }
 
 /**
+ * Parse query options for monitoring endpoints.
+ */
+function parseQueryOptions(c: Context) {
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+  const search = c.req.query('search');
+  const before = c.req.query('before');
+  const after = c.req.query('after');
+  const tags = c.req.query('tags')?.split(',').filter(Boolean);
+  const method = c.req.query('method');
+  const status = c.req.query('status');
+  const level = c.req.query('level') as
+    | 'debug'
+    | 'info'
+    | 'warn'
+    | 'error'
+    | undefined;
+
+  return {
+    limit: Math.min(limit, 100),
+    offset,
+    search,
+    before: before ? new Date(before) : undefined,
+    after: after ? new Date(after) : undefined,
+    tags,
+    method: method || undefined,
+    status: status || undefined,
+    level: level || undefined,
+  };
+}
+
+/**
+ * Parse metrics query options from query parameters.
+ */
+function parseMetricsQueryOptions(c: Context) {
+  const start = c.req.query('start');
+  const end = c.req.query('end');
+  const bucketSize = c.req.query('bucketSize');
+  const limit = c.req.query('limit');
+
+  return {
+    range:
+      start && end ? { start: new Date(start), end: new Date(end) } : undefined,
+    bucketSize: bucketSize ? parseInt(bucketSize, 10) : undefined,
+    limit: limit ? parseInt(limit, 10) : undefined,
+  };
+}
+
+/**
  * Create Hono app with Studio API routes and dashboard UI.
  */
 export function createStudioApp(studio: StudioLike): Hono {
   const app = new Hono();
 
   // ============================================
-  // Schema API
+  // Database API
   // ============================================
 
   /**
@@ -142,12 +204,6 @@ export function createStudioApp(studio: StudioLike): Hono {
   /**
    * GET /api/tables/:name/rows
    * Query table data with pagination, filtering, and sorting
-   *
-   * Query parameters:
-   * - pageSize: number (default: 50, max: 100)
-   * - cursor: string (pagination cursor)
-   * - filter[column][operator]=value (e.g., filter[status][eq]=active)
-   * - sort=column:direction (e.g., sort=created_at:desc)
    */
   app.get('/api/tables/:name/rows', async (c) => {
     const tableName = c.req.param('name');
@@ -175,6 +231,138 @@ export function createStudioApp(studio: StudioLike): Hono {
       }
       throw error;
     }
+  });
+
+  // ============================================
+  // Monitoring API
+  // ============================================
+
+  /**
+   * GET /api/stats
+   * Get storage statistics
+   */
+  app.get('/api/stats', async (c) => {
+    const stats = await studio.getStats();
+    return c.json(stats);
+  });
+
+  /**
+   * GET /api/requests
+   * Get request entries
+   */
+  app.get('/api/requests', async (c) => {
+    const options = parseQueryOptions(c);
+    const requests = await studio.getRequests(options);
+    return c.json(requests);
+  });
+
+  /**
+   * GET /api/requests/:id
+   * Get a single request by ID
+   */
+  app.get('/api/requests/:id', async (c) => {
+    const request = await studio.getRequest(c.req.param('id'));
+    if (!request) {
+      return c.json({ error: 'Request not found' }, 404);
+    }
+    return c.json(request);
+  });
+
+  /**
+   * GET /api/exceptions
+   * Get exception entries
+   */
+  app.get('/api/exceptions', async (c) => {
+    const options = parseQueryOptions(c);
+    const exceptions = await studio.getExceptions(options);
+    return c.json(exceptions);
+  });
+
+  /**
+   * GET /api/exceptions/:id
+   * Get a single exception by ID
+   */
+  app.get('/api/exceptions/:id', async (c) => {
+    const exception = await studio.getException(c.req.param('id'));
+    if (!exception) {
+      return c.json({ error: 'Exception not found' }, 404);
+    }
+    return c.json(exception);
+  });
+
+  /**
+   * GET /api/logs
+   * Get log entries
+   */
+  app.get('/api/logs', async (c) => {
+    const options = parseQueryOptions(c);
+    const logs = await studio.getLogs(options);
+    return c.json(logs);
+  });
+
+  // ============================================
+  // Metrics API
+  // ============================================
+
+  /**
+   * GET /api/metrics
+   * Get aggregated request metrics
+   */
+  app.get('/api/metrics', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const metrics = studio.getMetrics(options);
+    return c.json(metrics);
+  });
+
+  /**
+   * GET /api/metrics/endpoints
+   * Get metrics grouped by endpoint
+   */
+  app.get('/api/metrics/endpoints', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const endpoints = studio.getEndpointMetrics(options);
+    return c.json(endpoints);
+  });
+
+  /**
+   * GET /api/metrics/endpoint
+   * Get detailed metrics for a specific endpoint
+   */
+  app.get('/api/metrics/endpoint', (c) => {
+    const method = c.req.query('method');
+    const path = c.req.query('path');
+
+    if (!method || !path) {
+      return c.json({ error: 'method and path are required' }, 400);
+    }
+
+    const options = parseMetricsQueryOptions(c);
+    const details = studio.getEndpointDetails(method, path, options);
+
+    if (!details) {
+      return c.json({ error: 'Endpoint not found' }, 404);
+    }
+
+    return c.json(details);
+  });
+
+  /**
+   * GET /api/metrics/status
+   * Get HTTP status code distribution
+   */
+  app.get('/api/metrics/status', (c) => {
+    const options = parseMetricsQueryOptions(c);
+    const distribution = studio.getStatusDistribution(options);
+    return c.json(distribution);
+  });
+
+  /**
+   * DELETE /api/metrics
+   * Reset all metrics
+   */
+  app.delete('/api/metrics', (c) => {
+    studio.resetMetrics();
+    return c.json({ success: true });
   });
 
   // ============================================
@@ -207,6 +395,11 @@ export function createStudioApp(studio: StudioLike): Hono {
           tables: '/api/tables',
           tableInfo: '/api/tables/:name',
           tableRows: '/api/tables/:name/rows',
+          stats: '/api/stats',
+          requests: '/api/requests',
+          exceptions: '/api/exceptions',
+          logs: '/api/logs',
+          metrics: '/api/metrics',
         },
       });
     }
@@ -215,9 +408,9 @@ export function createStudioApp(studio: StudioLike): Hono {
 
   // SPA fallback - serve index.html for client-side routing
   app.get('/*', (c) => {
-    // Skip API routes
+    // Return 404 JSON for API routes
     if (c.req.path.startsWith('/api/')) {
-      return c.notFound();
+      return c.json({ error: 'Not found' }, 404);
     }
 
     const html = getIndexHtml();

@@ -211,6 +211,55 @@ export class Studio<DB = unknown> {
   }
 
   // ============================================
+  // Public API - Metrics (delegated to Telescope)
+  // ============================================
+
+  /**
+   * Get aggregated request metrics.
+   */
+  getMetrics(
+    options?: Parameters<Telescope['getMetrics']>[0],
+  ): ReturnType<Telescope['getMetrics']> {
+    return this.telescope.getMetrics(options);
+  }
+
+  /**
+   * Get metrics grouped by endpoint.
+   */
+  getEndpointMetrics(
+    options?: Parameters<Telescope['getEndpointMetrics']>[0],
+  ): ReturnType<Telescope['getEndpointMetrics']> {
+    return this.telescope.getEndpointMetrics(options);
+  }
+
+  /**
+   * Get detailed metrics for a specific endpoint.
+   */
+  getEndpointDetails(
+    method: string,
+    path: string,
+    options?: Parameters<Telescope['getEndpointDetails']>[2],
+  ): ReturnType<Telescope['getEndpointDetails']> {
+    return this.telescope.getEndpointDetails(method, path, options);
+  }
+
+  /**
+   * Get HTTP status code distribution.
+   */
+  getStatusDistribution(
+    options?: Parameters<Telescope['getStatusDistribution']>[0],
+  ): ReturnType<Telescope['getStatusDistribution']> {
+    return this.telescope.getStatusDistribution(options);
+  }
+
+  /**
+   * Reset all metrics.
+   */
+  resetMetrics(): void {
+    this.telescope.resetMetrics();
+  }
+
+  // ============================================
   // Public API - WebSocket
   // ============================================
 

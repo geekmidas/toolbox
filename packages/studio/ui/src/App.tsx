@@ -1,22 +1,11 @@
-import {
-  Shell,
-  ShellContent,
-  ShellHeader,
-  ShellMain,
-  ShellSidebar,
-  Sidebar,
-  SidebarItem,
-  SidebarSection,
-} from '@geekmidas/ui';
 import { Activity, Database, Gauge, Home } from 'lucide-react';
 import {
   BrowserRouter,
-  Link,
   Navigate,
   Route,
   Routes,
-  useLocation,
 } from 'react-router-dom';
+import { NavRail, NavRailItem, NavRailSection } from './components/NavRail';
 import { StudioHeader } from './components/StudioHeader';
 import { DashboardPage } from './pages/DashboardPage';
 import { DatabasePage } from './pages/DatabasePage';
@@ -29,51 +18,33 @@ import { RequestsPage } from './pages/RequestsPage';
 import { StudioProvider } from './providers/StudioProvider';
 
 function AppLayout() {
-  const location = useLocation();
-  const currentPath = location.pathname;
-
-  const isActive = (path: string) => {
-    if (path === '/') {
-      return currentPath === '/' || currentPath === '';
-    }
-    return currentPath.startsWith(path);
-  };
-
   return (
-    <Shell>
-      <ShellSidebar>
-        <Sidebar>
-          <SidebarSection>
-            <Link to="/">
-              <SidebarItem icon={Home} active={isActive('/')}>
-                Dashboard
-              </SidebarItem>
-            </Link>
-            <Link to="/database">
-              <SidebarItem icon={Database} active={isActive('/database')}>
-                Database
-              </SidebarItem>
-            </Link>
-            <Link to="/monitoring/requests">
-              <SidebarItem icon={Activity} active={isActive('/monitoring')}>
-                Monitoring
-              </SidebarItem>
-            </Link>
-            <Link to="/performance">
-              <SidebarItem icon={Gauge} active={isActive('/performance')}>
-                Performance
-              </SidebarItem>
-            </Link>
-          </SidebarSection>
-        </Sidebar>
-      </ShellSidebar>
+    <div className="flex h-screen w-full bg-[#0a0a0a]">
+      {/* Navigation Rail */}
+      <NavRail>
+        <NavRailSection>
+          <NavRailItem to="/" icon={Home}>
+            Dashboard
+          </NavRailItem>
+          <NavRailItem to="/database" icon={Database}>
+            Database
+          </NavRailItem>
+          <NavRailItem to="/monitoring/requests" icon={Activity} matchPath="/monitoring">
+            Monitoring
+          </NavRailItem>
+          <NavRailItem to="/performance" icon={Gauge}>
+            Performance
+          </NavRailItem>
+        </NavRailSection>
+      </NavRail>
 
-      <ShellMain>
-        <ShellHeader>
-          <StudioHeader />
-        </ShellHeader>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <StudioHeader />
 
-        <ShellContent>
+        {/* Content */}
+        <main className="flex-1 overflow-auto">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/database" element={<DatabasePage />} />
@@ -113,9 +84,9 @@ function AppLayout() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </ShellContent>
-      </ShellMain>
-    </Shell>
+        </main>
+      </div>
+    </div>
   );
 }
 
