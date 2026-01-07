@@ -282,7 +282,11 @@ describe('KyselyFactory', () => {
           async ({
             attrs,
             factory,
-          }: { attrs: { name?: string }; factory: any; db: any }) => {
+          }: {
+            attrs: { name?: string };
+            factory: any;
+            db: any;
+          }) => {
             return await factory.insert('user', {
               name: attrs.name || 'Admin User',
               email: 'admin@example.com',

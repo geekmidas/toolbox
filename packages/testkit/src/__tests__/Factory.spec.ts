@@ -50,7 +50,11 @@ describe('Factory', () => {
         attrs,
         factory,
         db,
-      }: { attrs: any; factory: any; db: any }) => {
+      }: {
+        attrs: any;
+        factory: any;
+        db: any;
+      }) => {
         return { id: 1, name: 'test' };
       };
 

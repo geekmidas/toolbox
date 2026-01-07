@@ -221,7 +221,11 @@ describe('ObjectionFactory', () => {
         async ({
           attrs,
           factory,
-        }: { attrs: { name?: string }; factory: any; db: Knex }) => {
+        }: {
+          attrs: { name?: string };
+          factory: any;
+          db: Knex;
+        }) => {
           return await factory.insert('user', {
             name: attrs.name || 'Admin User',
           });
@@ -293,7 +297,11 @@ describe('ObjectionFactory', () => {
           attrs,
           factory: passedFactory,
           db: passedDb,
-        }: { attrs: { data: string }; factory: any; db: Knex }) => {
+        }: {
+          attrs: { data: string };
+          factory: any;
+          db: Knex;
+        }) => {
           // Verify that factory and db are passed correctly
           expect(passedFactory).toBe(factoryRef);
           expect(passedDb).toBe(trx);
