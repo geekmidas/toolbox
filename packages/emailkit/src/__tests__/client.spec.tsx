@@ -25,7 +25,10 @@ const TestTemplate = ({ name }: { name: string }) => <div>Hello {name}!</div>;
 const AnotherTemplate = ({
   title,
   message,
-}: { title: string; message: string }) => (
+}: {
+  title: string;
+  message: string;
+}) => (
   <div>
     <h1>{title}</h1>
     <p>{message}</p>

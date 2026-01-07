@@ -6,7 +6,10 @@
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
 import { Endpoint, ResponseBuilder } from '../endpoints/Endpoint';
-import { createHonoCookies, createHonoHeaders } from '../endpoints/lazyAccessors';
+import {
+  createHonoCookies,
+  createHonoHeaders,
+} from '../endpoints/lazyAccessors';
 
 // =============================================================================
 // ResponseBuilder Overhead
@@ -78,9 +81,9 @@ describe('ResponseBuilder Usage', () => {
 
 const SAMPLE_HEADERS: Record<string, string> = {
   'content-type': 'application/json',
-  'authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test',
+  authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test',
   'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-  'accept': 'application/json, text/plain, */*',
+  accept: 'application/json, text/plain, */*',
   'accept-language': 'en-US,en;q=0.9',
   'accept-encoding': 'gzip, deflate, br',
   'cache-control': 'no-cache',
@@ -235,7 +238,12 @@ describe('Zod Output Validation', () => {
 // =============================================================================
 
 describe('Full Minimal Handler Context', () => {
-  const logger = { info: () => {}, error: () => {}, debug: () => {}, warn: () => {} };
+  const logger = {
+    info: () => {},
+    error: () => {},
+    debug: () => {},
+    warn: () => {},
+  };
 
   bench('current approach (eager parsing)', () => {
     const context = {
@@ -362,7 +370,9 @@ describe('Hono Lazy Accessors', () => {
         header: (name?: string) => {
           if (name) return req.headers.get(name) ?? undefined;
           const all: Record<string, string> = {};
-          req.headers.forEach((v, k) => { all[k] = v; });
+          req.headers.forEach((v, k) => {
+            all[k] = v;
+          });
           return all;
         },
       },
