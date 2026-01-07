@@ -37,6 +37,14 @@ export interface ProductionConfig {
   subscribers?: 'include' | 'exclude';
   /** Include OpenAPI spec in production (default: false) */
   openapi?: boolean;
+  /**
+   * Enable build-time optimized handler generation (default: true)
+   * Generates specialized handlers based on endpoint tier:
+   * - minimal: Near-raw-Hono performance for simple endpoints
+   * - standard: Optimized handlers for auth/services
+   * - full: Uses HonoEndpoint.addRoutes for complex endpoints
+   */
+  optimizedHandlers?: boolean;
 }
 
 export interface DockerConfig {

@@ -256,6 +256,7 @@ export function normalizeProductionConfig(
     external: config.external ?? [],
     subscribers: config.subscribers ?? 'exclude',
     openapi: config.openapi ?? false,
+    optimizedHandlers: config.optimizedHandlers ?? true, // Default to optimized handlers in production
   };
 }
 

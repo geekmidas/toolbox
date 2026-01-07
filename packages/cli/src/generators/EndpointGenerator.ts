@@ -1,6 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
+import {
+  analyzeEndpoint,
+  summarizeAnalysis,
+  type EndpointAnalysis,
+} from '../build/endpoint-analyzer';
+import { generateOptimizedEndpointsFile } from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
 import {
@@ -249,7 +255,7 @@ export class EndpointGenerator extends ConstructGenerator<
         any
       >
     >[],
-    _context: BuildContext,
+    context: BuildContext,
   ): Promise<string> {
     const endpointsFileName = 'endpoints.ts';
     const endpointsPath = join(outputDir, endpointsFileName);
@@ -267,8 +273,8 @@ export class EndpointGenerator extends ConstructGenerator<
       importsByFile.get(importPath)!.push(key);
     }
 
-    // Generate import statements
-    const imports = Array.from(importsByFile.entries())
+    // Generate import statements for endpoints
+    const endpointImports = Array.from(importsByFile.entries())
       .map(
         ([importPath, exports]) =>
           `import { ${exports.join(', ')} } from '${importPath}';`,
@@ -277,13 +283,24 @@ export class EndpointGenerator extends ConstructGenerator<
 
     const allExportNames = endpoints.map(({ key }) => key);
 
+    // Check if we should use optimized handler generation
+    if (context.production?.enabled && context.production.optimizedHandlers) {
+      return this.generateOptimizedEndpointsFile(
+        endpointsPath,
+        endpoints,
+        endpointImports,
+        allExportNames,
+      );
+    }
+
+    // Standard generation (development or optimizedHandlers: false)
     const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { HonoEndpoint } from '@geekmidas/constructs/hono';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import { ServiceDiscovery } from '@geekmidas/services';
 import type { Hono } from 'hono';
-${imports}
+${endpointImports}
 
 const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>[] = [
   ${allExportNames.join(',\n  ')}
@@ -323,6 +340,63 @@ export async function setupEndpoints(
   }
 }
 `;
+
+    await writeFile(endpointsPath, content);
+
+    return endpointsPath;
+  }
+
+  /**
+   * Generate optimized endpoints file with tiered handlers
+   */
+  private async generateOptimizedEndpointsFile(
+    endpointsPath: string,
+    endpoints: GeneratedConstruct<
+      Endpoint<
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any,
+        any
+      >
+    >[],
+    endpointImports: string,
+    allExportNames: string[],
+  ): Promise<string> {
+    const logger = console;
+
+    // Analyze each endpoint
+    const analyses: EndpointAnalysis[] = endpoints.map(({ key, construct }) =>
+      analyzeEndpoint(construct, key),
+    );
+
+    // Log analysis summary
+    const summary = summarizeAnalysis(analyses);
+    logger.log(`\n📊 Endpoint Analysis:`);
+    logger.log(`   Total: ${summary.total} endpoints`);
+    logger.log(
+      `   - Minimal (near-raw-Hono): ${summary.byTier.minimal} endpoints`,
+    );
+    logger.log(`   - Standard (auth/services): ${summary.byTier.standard} endpoints`);
+    logger.log(
+      `   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
+    );
+
+    // Generate optimized file
+    const content = generateOptimizedEndpointsFile(
+      analyses,
+      endpointImports,
+      allExportNames,
+    );
 
     await writeFile(endpointsPath, content);
 
