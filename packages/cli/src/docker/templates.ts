@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, parse } from 'node:path';
 import type { DockerConfig, GkmConfig } from '../types';
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
@@ -24,14 +24,38 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 
 /**
  * Detect package manager from lockfiles
+ * Walks up the directory tree to find lockfile (for monorepos)
  */
 export function detectPackageManager(
   cwd: string = process.cwd(),
 ): PackageManager {
-  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (existsSync(join(cwd, 'bun.lockb'))) return 'bun';
-  if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn';
-  if (existsSync(join(cwd, 'package-lock.json'))) return 'npm';
+  const lockfiles: [string, PackageManager][] = [
+    ['pnpm-lock.yaml', 'pnpm'],
+    ['bun.lockb', 'bun'],
+    ['yarn.lock', 'yarn'],
+    ['package-lock.json', 'npm'],
+  ];
+
+  let dir = cwd;
+  const root = parse(dir).root;
+
+  // Walk up the directory tree
+  while (dir !== root) {
+    for (const [lockfile, pm] of lockfiles) {
+      if (existsSync(join(dir, lockfile))) {
+        return pm;
+      }
+    }
+    dir = dirname(dir);
+  }
+
+  // Check root directory
+  for (const [lockfile, pm] of lockfiles) {
+    if (existsSync(join(root, lockfile))) {
+      return pm;
+    }
+  }
+
   return 'pnpm'; // default
 }
 
