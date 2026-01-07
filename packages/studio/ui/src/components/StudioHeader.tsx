@@ -37,9 +37,7 @@ export function StudioHeader() {
     <header className="flex items-center justify-between h-14 px-6 border-b border-white/[0.06] bg-[#0a0a0a]">
       {/* Page Title */}
       <div className="flex items-center gap-3">
-        <h1 className="text-[15px] font-semibold text-white">
-          {pageTitle}
-        </h1>
+        <h1 className="text-[15px] font-semibold text-white">{pageTitle}</h1>
       </div>
 
       {/* Right side: Stats + Actions */}
@@ -55,7 +53,9 @@ export function StudioHeader() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-white/40">Exceptions</span>
-              <span className={`font-medium tabular-nums ${stats.exceptions > 0 ? 'text-red-400' : 'text-white'}`}>
+              <span
+                className={`font-medium tabular-nums ${stats.exceptions > 0 ? 'text-red-400' : 'text-white'}`}
+              >
                 {stats.exceptions.toLocaleString()}
               </span>
             </div>
@@ -85,7 +85,9 @@ export function StudioHeader() {
             disabled:opacity-50 disabled:cursor-not-allowed
           "
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+          />
           Refresh
         </button>
 

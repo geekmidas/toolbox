@@ -1,10 +1,5 @@
 import { Activity, Database, Gauge, Home } from 'lucide-react';
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-} from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { NavRail, NavRailItem, NavRailSection } from './components/NavRail';
 import { StudioHeader } from './components/StudioHeader';
 import { DashboardPage } from './pages/DashboardPage';
@@ -29,7 +24,11 @@ function AppLayout() {
           <NavRailItem to="/database" icon={Database}>
             Database
           </NavRailItem>
-          <NavRailItem to="/monitoring/requests" icon={Activity} matchPath="/monitoring">
+          <NavRailItem
+            to="/monitoring/requests"
+            icon={Activity}
+            matchPath="/monitoring"
+          >
             Monitoring
           </NavRailItem>
           <NavRailItem to="/performance" icon={Gauge}>

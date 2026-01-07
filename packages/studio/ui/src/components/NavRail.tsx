@@ -64,7 +64,9 @@ export function NavRail({ children, header, footer }: NavRailProps) {
                 hover:bg-white/[0.06]
                 transition-colors
               "
-              aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+              aria-label={
+                collapsed ? 'Expand navigation' : 'Collapse navigation'
+              }
             >
               {collapsed ? (
                 <ChevronRight className="h-4 w-4" />
@@ -74,16 +76,10 @@ export function NavRail({ children, header, footer }: NavRailProps) {
             </button>
           </div>
 
-          {header && (
-            <div className="px-2 mb-2">
-              {header}
-            </div>
-          )}
+          {header && <div className="px-2 mb-2">{header}</div>}
 
           {/* Navigation items */}
-          <div className="flex-1 flex flex-col gap-0.5 px-2">
-            {children}
-          </div>
+          <div className="flex-1 flex flex-col gap-0.5 px-2">{children}</div>
 
           {footer && (
             <div className="px-2 py-2 border-t border-white/[0.06]">
@@ -103,7 +99,12 @@ interface NavRailItemProps {
   matchPath?: string;
 }
 
-export function NavRailItem({ to, icon: Icon, children, matchPath }: NavRailItemProps) {
+export function NavRailItem({
+  to,
+  icon: Icon,
+  children,
+  matchPath,
+}: NavRailItemProps) {
   const { collapsed } = useNavRail();
   const location = useLocation();
 
@@ -123,9 +124,10 @@ export function NavRailItem({ to, icon: Icon, children, matchPath }: NavRailItem
         text-sm font-medium
         transition-colors duration-150
         ${collapsed ? 'justify-center px-0' : ''}
-        ${isActive
-          ? 'text-white bg-white/[0.08]'
-          : 'text-white/60 hover:text-white/90 hover:bg-white/[0.04]'
+        ${
+          isActive
+            ? 'text-white bg-white/[0.08]'
+            : 'text-white/60 hover:text-white/90 hover:bg-white/[0.04]'
         }
       `}
     >
@@ -134,20 +136,18 @@ export function NavRailItem({ to, icon: Icon, children, matchPath }: NavRailItem
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-emerald-500 rounded-full" />
       )}
 
-      <Icon className={`h-[18px] w-[18px] shrink-0 ${collapsed ? '' : 'ml-0.5'}`} />
+      <Icon
+        className={`h-[18px] w-[18px] shrink-0 ${collapsed ? '' : 'ml-0.5'}`}
+      />
 
-      {!collapsed && (
-        <span className="truncate">{children}</span>
-      )}
+      {!collapsed && <span className="truncate">{children}</span>}
     </Link>
   );
 
   if (collapsed) {
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          {content}
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
         <TooltipContent
           side="right"
           sideOffset={8}
