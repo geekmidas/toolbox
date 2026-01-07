@@ -363,9 +363,9 @@ describe('HonoEndpoint Events', () => {
       email: 'test@example.com',
     });
 
-    // No events should be published
+    // No events should be published - with optimization, event processing is skipped entirely
+    // for endpoints without events configured, so no log message is emitted
     expect(mockPublisher.publish).not.toHaveBeenCalled();
-    expect(mockLogger.debug).toHaveBeenCalledWith('No events to publish');
   });
 
   it('should continue processing even when event publishing fails', async () => {
