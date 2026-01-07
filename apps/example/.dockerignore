@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output (except what we need)
+.gkm/aws*
+.gkm/server/*.ts
+!.gkm/server/dist
+
+# IDE and editor
+.idea
+.vscode
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__
+coverage
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Environment files (handle secrets separately)
+.env
+.env.*
+!.env.example
+
+# Docker files (don't copy recursively)
+Dockerfile*
+docker-compose*
+.dockerignore
