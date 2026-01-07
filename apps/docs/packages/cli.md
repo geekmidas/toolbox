@@ -209,12 +209,14 @@ gkm docker --slim
 | `--tag <tag>` | Image tag (default: latest) |
 | `--registry <url>` | Container registry URL |
 | `--slim` | Use slim Dockerfile (requires pre-built bundle) |
+| `--turbo` | Use turbo prune for monorepo optimization |
+| `--turbo-package <name>` | Package name for turbo prune |
 
 **Generated Files:**
 
 ```
 .gkm/docker/
-├── Dockerfile           # Multi-stage (default) or slim build
+├── Dockerfile           # Multi-stage (default), slim, or turbo build
 ├── docker-compose.yml   # With optional services
 ├── .dockerignore
 └── docker-entrypoint.sh
@@ -226,10 +228,42 @@ gkm docker --slim
 |------|-------------|-----------|
 | Multi-stage | Builds from source inside Docker | Default (recommended) |
 | Slim | Copies pre-built bundle | `--slim` flag (requires prior build) |
+| Turbo | Prunes monorepo before building | `--turbo` flag (for monorepos) |
+
+**Build Speed Optimizations:**
+
+The generated Dockerfiles are optimized for fast rebuilds:
+
+1. **BuildKit cache mounts** - The pnpm store is cached between builds:
+   ```dockerfile
+   RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+       pnpm fetch
+   ```
+
+2. **pnpm fetch + offline install** - Dependencies are fetched first (cacheable), then installed offline:
+   ```dockerfile
+   COPY pnpm-lock.yaml ./
+   RUN pnpm fetch
+   COPY package.json ./
+   RUN pnpm install --frozen-lockfile --offline
+   ```
+
+3. **Turbo prune for monorepos** - Only copies necessary packages:
+   ```bash
+   gkm docker --turbo --turbo-package my-api
+   ```
+
+**Rebuild Performance:**
+
+| Scenario | Without Optimization | With Optimization |
+|----------|---------------------|-------------------|
+| Code change only | ~2-3 min | ~30s |
+| New dependency | ~3-4 min | ~1 min |
+| Fresh build | ~4-5 min | ~3-4 min |
 
 **Container Best Practices:**
 
-Both Dockerfile types include:
+All Dockerfile types include:
 - **tini** as the init process (handles SIGTERM propagation and zombie reaping)
 - Non-root user (`hono`) for security
 - Health check endpoint for container orchestration
@@ -263,6 +297,8 @@ gkm prepack --slim
 | `--registry <url>` | Container registry URL |
 | `--slim` | Build locally first, then use slim Dockerfile |
 | `--skip-bundle` | Skip bundling step (only with --slim) |
+| `--turbo` | Use turbo prune for monorepo optimization |
+| `--turbo-package <name>` | Package name for turbo prune |
 
 **Workflow Comparison:**
 

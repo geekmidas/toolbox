@@ -9,41 +9,72 @@ export interface DockerTemplateOptions {
   prebuilt: boolean;
 }
 
+export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
+  /** Enable turbo prune for monorepo optimization */
+  turbo?: boolean;
+  /** Package name for turbo prune (defaults to current directory name) */
+  turboPackage?: string;
+}
+
 /**
  * Generate a multi-stage Dockerfile for building from source
+ * Optimized for build speed with:
+ * - BuildKit cache mounts for pnpm store
+ * - pnpm fetch for better layer caching
+ * - Optional turbo prune for monorepos
  */
 export function generateMultiStageDockerfile(
-  options: DockerTemplateOptions,
+  options: MultiStageDockerfileOptions,
 ): string {
-  const { baseImage, port, healthCheckPath } = options;
+  const { baseImage, port, healthCheckPath, turbo, turboPackage } = options;
 
-  return `# Stage 1: Build
-FROM ${baseImage} AS builder
+  if (turbo) {
+    return generateTurboDockerfile({
+      ...options,
+      turboPackage: turboPackage ?? 'api',
+    });
+  }
+
+  return `# syntax=docker/dockerfile:1
+# Stage 1: Dependencies
+FROM ${baseImage} AS deps
 
 WORKDIR /app
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy lockfile first for better caching
+COPY pnpm-lock.yaml ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Fetch dependencies (downloads to virtual store, cached separately)
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm fetch
 
-# Copy source
+# Copy package.json after fetch
+COPY package.json ./
+
+# Install from cache (fast - no network needed)
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm install --frozen-lockfile --offline
+
+# Stage 2: Build
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy source (deps already installed)
 COPY . .
 
 # Build production server
 RUN pnpm gkm build --provider server --production
 
-# Stage 2: Production
+# Stage 3: Production
 FROM ${baseImage} AS runner
 
 WORKDIR /app
 
 # Install tini for proper signal handling as PID 1
-# Handles SIGTERM propagation and zombie process reaping
 RUN apk add --no-cache tini
 
 # Create non-root user
@@ -67,6 +98,83 @@ USER hono
 EXPOSE ${port}
 
 # Use tini as entrypoint to handle PID 1 responsibilities
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "server.mjs"]
+`;
+}
+
+/**
+ * Generate a Dockerfile optimized for Turbo monorepos
+ * Uses turbo prune to create minimal Docker context
+ */
+function generateTurboDockerfile(options: MultiStageDockerfileOptions): string {
+  const { baseImage, port, healthCheckPath, turboPackage } = options;
+
+  return `# syntax=docker/dockerfile:1
+# Stage 1: Prune monorepo
+FROM ${baseImage} AS pruner
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN pnpm add -g turbo
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN turbo prune ${turboPackage} --docker
+
+# Stage 2: Install dependencies
+FROM ${baseImage} AS deps
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/pnpm-lock.yaml ./
+COPY --from=pruner /app/out/json/ ./
+
+# Fetch and install from cache
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm fetch
+
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm install --frozen-lockfile --offline
+
+# Stage 3: Build
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Build production server
+RUN pnpm gkm build --provider server --production
+
+# Stage 4: Production
+FROM ${baseImage} AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache tini
+
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 hono
+
+COPY --from=builder --chown=hono:nodejs /app/.gkm/server/dist/server.mjs ./
+
+ENV NODE_ENV=production
+ENV PORT=${port}
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+
+USER hono
+
+EXPOSE ${port}
+
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.mjs"]
 `;

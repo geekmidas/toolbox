@@ -231,6 +231,8 @@ program
   .option('--tag <tag>', 'Image tag', 'latest')
   .option('--registry <registry>', 'Container registry URL')
   .option('--slim', 'Use slim Dockerfile (assumes pre-built bundle exists)')
+  .option('--turbo', 'Use turbo prune for monorepo optimization')
+  .option('--turbo-package <name>', 'Package name for turbo prune')
   .action(async (options: DockerOptions) => {
     try {
       const globalOptions = program.opts();
@@ -253,6 +255,8 @@ program
   .option('--registry <registry>', 'Container registry URL')
   .option('--slim', 'Build locally first, then use slim Dockerfile')
   .option('--skip-bundle', 'Skip bundling step (only with --slim)')
+  .option('--turbo', 'Use turbo prune for monorepo optimization')
+  .option('--turbo-package <name>', 'Package name for turbo prune')
   .action(
     async (options: {
       build?: boolean;
@@ -261,6 +265,8 @@ program
       registry?: string;
       slim?: boolean;
       skipBundle?: boolean;
+      turbo?: boolean;
+      turboPackage?: string;
     }) => {
       try {
         const globalOptions = program.opts();
@@ -281,6 +287,8 @@ program
           tag: options.tag,
           registry: options.registry,
           slim: options.slim,
+          turbo: options.turbo,
+          turboPackage: options.turboPackage,
         });
         if (options.slim) {
         } else {

@@ -25,6 +25,10 @@ export interface DockerOptions {
   registry?: string;
   /** Use slim Dockerfile (requires pre-built bundle from `gkm build --production`) */
   slim?: boolean;
+  /** Enable turbo prune for monorepo optimization */
+  turbo?: boolean;
+  /** Package name for turbo prune (defaults to package.json name) */
+  turboPackage?: string;
 }
 
 export interface DockerGeneratedFiles {
@@ -81,6 +85,8 @@ export async function dockerCommand(
     port: dockerConfig.port,
     healthCheckPath,
     prebuilt: useSlim,
+    turbo: options.turbo,
+    turboPackage: options.turboPackage ?? dockerConfig.imageName,
   };
 
   // Generate Dockerfile
@@ -88,9 +94,11 @@ export async function dockerCommand(
     ? generateSlimDockerfile(templateOptions)
     : generateMultiStageDockerfile(templateOptions);
 
+  const dockerMode = useSlim ? 'slim' : options.turbo ? 'turbo' : 'multi-stage';
+
   const dockerfilePath = join(dockerDir, 'Dockerfile');
   await writeFile(dockerfilePath, dockerfile);
-  logger.log(`Generated: .gkm/docker/Dockerfile${useSlim ? ' (slim)' : ''}`);
+  logger.log(`Generated: .gkm/docker/Dockerfile (${dockerMode})`);
 
   // Generate docker-compose.yml
   const composeOptions = {
@@ -144,6 +152,7 @@ export async function dockerCommand(
 
 /**
  * Build Docker image
+ * Uses BuildKit for cache mount support
  */
 async function buildDockerImage(
   imageName: string,
@@ -159,10 +168,15 @@ async function buildDockerImage(
   logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
 
   try {
-    execSync(`docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`, {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-    });
+    // Use BuildKit for cache mount support (required for --mount=type=cache)
+    execSync(
+      `DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`,
+      {
+        cwd: process.cwd(),
+        stdio: 'inherit',
+        env: { ...process.env, DOCKER_BUILDKIT: '1' },
+      },
+    );
     logger.log(`✅ Docker image built: ${fullImageName}`);
   } catch (error) {
     throw new Error(
