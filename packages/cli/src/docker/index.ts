@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { loadConfig } from '../config';
 import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
 import {
+  detectPackageManager,
   generateDockerEntrypoint,
   generateDockerignore,
   generateMultiStageDockerfile,
@@ -79,6 +80,9 @@ export async function dockerCommand(
   const dockerDir = join(process.cwd(), '.gkm', 'docker');
   await mkdir(dockerDir, { recursive: true });
 
+  // Detect package manager from lockfiles
+  const packageManager = detectPackageManager();
+
   const templateOptions = {
     imageName: dockerConfig.imageName,
     baseImage: dockerConfig.baseImage,
@@ -87,6 +91,7 @@ export async function dockerCommand(
     prebuilt: useSlim,
     turbo: options.turbo,
     turboPackage: options.turboPackage ?? dockerConfig.imageName,
+    packageManager,
   };
 
   // Generate Dockerfile
@@ -98,7 +103,9 @@ export async function dockerCommand(
 
   const dockerfilePath = join(dockerDir, 'Dockerfile');
   await writeFile(dockerfilePath, dockerfile);
-  logger.log(`Generated: .gkm/docker/Dockerfile (${dockerMode})`);
+  logger.log(
+    `Generated: .gkm/docker/Dockerfile (${dockerMode}, ${packageManager})`,
+  );
 
   // Generate docker-compose.yml
   const composeOptions = {

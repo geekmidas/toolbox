@@ -1,4 +1,8 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DockerConfig, GkmConfig } from '../types';
+
+export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 
 export interface DockerTemplateOptions {
   imageName: string;
@@ -7,6 +11,8 @@ export interface DockerTemplateOptions {
   healthCheckPath: string;
   /** Whether the build is pre-built (slim Dockerfile) or needs building */
   prebuilt: boolean;
+  /** Detected package manager */
+  packageManager: PackageManager;
 }
 
 export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
@@ -17,16 +23,85 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 }
 
 /**
+ * Detect package manager from lockfiles
+ */
+export function detectPackageManager(
+  cwd: string = process.cwd(),
+): PackageManager {
+  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (existsSync(join(cwd, 'bun.lockb'))) return 'bun';
+  if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn';
+  if (existsSync(join(cwd, 'package-lock.json'))) return 'npm';
+  return 'pnpm'; // default
+}
+
+/**
+ * Get package manager specific commands and paths
+ */
+function getPmConfig(pm: PackageManager) {
+  const configs = {
+    pnpm: {
+      install: 'corepack enable && corepack prepare pnpm@latest --activate',
+      lockfile: 'pnpm-lock.yaml',
+      fetch: 'pnpm fetch',
+      installCmd: 'pnpm install --frozen-lockfile --offline',
+      cacheTarget: '/root/.local/share/pnpm/store',
+      cacheId: 'pnpm',
+      run: 'pnpm',
+      addGlobal: 'pnpm add -g',
+    },
+    npm: {
+      install: '', // npm comes with node
+      lockfile: 'package-lock.json',
+      fetch: '', // npm doesn't have fetch
+      installCmd: 'npm ci',
+      cacheTarget: '/root/.npm',
+      cacheId: 'npm',
+      run: 'npm run',
+      addGlobal: 'npm install -g',
+    },
+    yarn: {
+      install: 'corepack enable && corepack prepare yarn@stable --activate',
+      lockfile: 'yarn.lock',
+      fetch: '', // yarn doesn't have fetch
+      installCmd: 'yarn install --frozen-lockfile',
+      cacheTarget: '/root/.yarn/cache',
+      cacheId: 'yarn',
+      run: 'yarn',
+      addGlobal: 'yarn global add',
+    },
+    bun: {
+      install: 'npm install -g bun',
+      lockfile: 'bun.lockb',
+      fetch: '', // bun doesn't have fetch
+      installCmd: 'bun install --frozen-lockfile',
+      cacheTarget: '/root/.bun/install/cache',
+      cacheId: 'bun',
+      run: 'bun run',
+      addGlobal: 'bun add -g',
+    },
+  };
+  return configs[pm];
+}
+
+/**
  * Generate a multi-stage Dockerfile for building from source
  * Optimized for build speed with:
- * - BuildKit cache mounts for pnpm store
- * - pnpm fetch for better layer caching
+ * - BuildKit cache mounts for package manager store
+ * - pnpm fetch for better layer caching (when using pnpm)
  * - Optional turbo prune for monorepos
  */
 export function generateMultiStageDockerfile(
   options: MultiStageDockerfileOptions,
 ): string {
-  const { baseImage, port, healthCheckPath, turbo, turboPackage } = options;
+  const {
+    baseImage,
+    port,
+    healthCheckPath,
+    turbo,
+    turboPackage,
+    packageManager,
+  } = options;
 
   if (turbo) {
     return generateTurboDockerfile({
@@ -35,28 +110,41 @@ export function generateMultiStageDockerfile(
     });
   }
 
-  return `# syntax=docker/dockerfile:1
-# Stage 1: Dependencies
-FROM ${baseImage} AS deps
+  const pm = getPmConfig(packageManager);
+  const installPm = pm.install
+    ? `\n# Install ${packageManager}\nRUN ${pm.install}\n`
+    : '';
+  const hasFetch = packageManager === 'pnpm';
 
-WORKDIR /app
-
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Copy lockfile first for better caching
-COPY pnpm-lock.yaml ./
+  // pnpm has fetch which allows better caching
+  const depsStage = hasFetch
+    ? `# Copy lockfile first for better caching
+COPY ${pm.lockfile} ./
 
 # Fetch dependencies (downloads to virtual store, cached separately)
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
-    pnpm fetch
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.fetch}
 
 # Copy package.json after fetch
 COPY package.json ./
 
 # Install from cache (fast - no network needed)
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
-    pnpm install --frozen-lockfile --offline
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.installCmd}`
+    : `# Copy package files
+COPY package.json ${pm.lockfile} ./
+
+# Install dependencies with cache
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.installCmd}`;
+
+  return `# syntax=docker/dockerfile:1
+# Stage 1: Dependencies
+FROM ${baseImage} AS deps
+
+WORKDIR /app
+${installPm}
+${depsStage}
 
 # Stage 2: Build
 FROM deps AS builder
@@ -67,7 +155,7 @@ WORKDIR /app
 COPY . .
 
 # Build production server
-RUN pnpm gkm build --provider server --production
+RUN ${pm.run} gkm build --provider server --production
 
 # Stage 3: Production
 FROM ${baseImage} AS runner
@@ -108,7 +196,24 @@ CMD ["node", "server.mjs"]
  * Uses turbo prune to create minimal Docker context
  */
 function generateTurboDockerfile(options: MultiStageDockerfileOptions): string {
-  const { baseImage, port, healthCheckPath, turboPackage } = options;
+  const { baseImage, port, healthCheckPath, turboPackage, packageManager } =
+    options;
+
+  const pm = getPmConfig(packageManager);
+  const installPm = pm.install ? `RUN ${pm.install}` : '';
+  const hasFetch = packageManager === 'pnpm';
+
+  // pnpm has fetch which allows better caching
+  const depsInstall = hasFetch
+    ? `# Fetch and install from cache
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.fetch}
+
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.installCmd}`
+    : `# Install dependencies with cache
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${pm.installCmd}`;
 
   return `# syntax=docker/dockerfile:1
 # Stage 1: Prune monorepo
@@ -116,8 +221,8 @@ FROM ${baseImage} AS pruner
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-RUN pnpm add -g turbo
+${installPm}
+RUN ${pm.addGlobal} turbo
 
 COPY . .
 
@@ -129,18 +234,13 @@ FROM ${baseImage} AS deps
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+${installPm}
 
 # Copy pruned lockfile and package.jsons
-COPY --from=pruner /app/out/pnpm-lock.yaml ./
+COPY --from=pruner /app/out/${pm.lockfile} ./
 COPY --from=pruner /app/out/json/ ./
 
-# Fetch and install from cache
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
-    pnpm fetch
-
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
-    pnpm install --frozen-lockfile --offline
+${depsInstall}
 
 # Stage 3: Build
 FROM deps AS builder
@@ -151,7 +251,7 @@ WORKDIR /app
 COPY --from=pruner /app/out/full/ ./
 
 # Build production server
-RUN pnpm gkm build --provider server --production
+RUN ${pm.run} gkm build --provider server --production
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
