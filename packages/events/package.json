@@ -47,10 +47,18 @@
     "@aws-sdk/client-sns": "~3.908.0"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/schema": { "optional": true },
-    "amqplib": { "optional": true },
-    "@aws-sdk/client-sqs": { "optional": true },
-    "@aws-sdk/client-sns": { "optional": true }
+    "@geekmidas/schema": {
+      "optional": true
+    },
+    "amqplib": {
+      "optional": true
+    },
+    "@aws-sdk/client-sqs": {
+      "optional": true
+    },
+    "@aws-sdk/client-sns": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@geekmidas/schema": "workspace:^",

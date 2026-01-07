@@ -27,8 +27,12 @@
     "@geekmidas/logger": "workspace:^"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/envkit": { "optional": true },
-    "@geekmidas/logger": { "optional": true }
+    "@geekmidas/envkit": {
+      "optional": true
+    },
+    "@geekmidas/logger": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@geekmidas/envkit": "workspace:^",

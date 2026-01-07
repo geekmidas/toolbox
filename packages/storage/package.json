@@ -33,11 +33,21 @@
     "@aws-sdk/s3-request-presigner": "~3.844.0"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/cache": { "optional": true },
-    "zod": { "optional": true },
-    "@aws-sdk/client-s3": { "optional": true },
-    "@aws-sdk/s3-presigned-post": { "optional": true },
-    "@aws-sdk/s3-request-presigner": { "optional": true }
+    "@geekmidas/cache": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/s3-presigned-post": {
+      "optional": true
+    },
+    "@aws-sdk/s3-request-presigner": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@geekmidas/cache": "workspace:^"

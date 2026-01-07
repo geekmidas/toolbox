@@ -41,9 +41,15 @@
     "kysely": "^0.28.0"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/db": { "optional": true },
-    "@geekmidas/telescope": { "optional": true },
-    "hono": { "optional": true }
+    "@geekmidas/db": {
+      "optional": true
+    },
+    "@geekmidas/telescope": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@geekmidas/db": "workspace:^",

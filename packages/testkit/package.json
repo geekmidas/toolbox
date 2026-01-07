@@ -79,15 +79,35 @@
     "better-auth": ">=1.3.34"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/envkit": { "optional": true },
-    "@geekmidas/logger": { "optional": true },
-    "kysely": { "optional": true },
-    "pg": { "optional": true },
-    "knex": { "optional": true },
-    "objection": { "optional": true },
-    "db-errors": { "optional": true },
-    "vitest": { "optional": true },
-    "@types/aws-lambda": { "optional": true },
-    "better-auth": { "optional": true }
+    "@geekmidas/envkit": {
+      "optional": true
+    },
+    "@geekmidas/logger": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "knex": {
+      "optional": true
+    },
+    "objection": {
+      "optional": true
+    },
+    "db-errors": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    },
+    "@types/aws-lambda": {
+      "optional": true
+    },
+    "better-auth": {
+      "optional": true
+    }
   }
 }

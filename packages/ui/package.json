@@ -104,5 +104,8 @@
     "react-dom": ">=18.0.0",
     "tailwindcss": ">=4.0.0"
   },
-  "files": ["dist", "src/styles"]
+  "files": [
+    "dist",
+    "src/styles"
+  ]
 }

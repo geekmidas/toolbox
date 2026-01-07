@@ -108,18 +108,44 @@
     "hono": ">=4.8.2"
   },
   "peerDependenciesMeta": {
-    "@geekmidas/audit": { "optional": true },
-    "@geekmidas/cache": { "optional": true },
-    "@geekmidas/db": { "optional": true },
-    "@geekmidas/envkit": { "optional": true },
-    "@geekmidas/errors": { "optional": true },
-    "@geekmidas/events": { "optional": true },
-    "@geekmidas/logger": { "optional": true },
-    "@geekmidas/rate-limit": { "optional": true },
-    "@geekmidas/schema": { "optional": true },
-    "@geekmidas/services": { "optional": true },
-    "@middy/core": { "optional": true },
-    "@types/aws-lambda": { "optional": true },
-    "hono": { "optional": true }
+    "@geekmidas/audit": {
+      "optional": true
+    },
+    "@geekmidas/cache": {
+      "optional": true
+    },
+    "@geekmidas/db": {
+      "optional": true
+    },
+    "@geekmidas/envkit": {
+      "optional": true
+    },
+    "@geekmidas/errors": {
+      "optional": true
+    },
+    "@geekmidas/events": {
+      "optional": true
+    },
+    "@geekmidas/logger": {
+      "optional": true
+    },
+    "@geekmidas/rate-limit": {
+      "optional": true
+    },
+    "@geekmidas/schema": {
+      "optional": true
+    },
+    "@geekmidas/services": {
+      "optional": true
+    },
+    "@middy/core": {
+      "optional": true
+    },
+    "@types/aws-lambda": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
   }
 }
