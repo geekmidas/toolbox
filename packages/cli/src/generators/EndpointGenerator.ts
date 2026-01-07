@@ -6,7 +6,11 @@ import {
   summarizeAnalysis,
   type EndpointAnalysis,
 } from '../build/endpoint-analyzer';
-import { generateOptimizedEndpointsFile } from '../build/handler-templates';
+import {
+  generateOptimizedEndpointsFile,
+  generateEndpointFilesNested,
+  type EndpointImportInfo,
+} from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
 import {
@@ -347,7 +351,7 @@ export async function setupEndpoints(
   }
 
   /**
-   * Generate optimized endpoints file with tiered handlers
+   * Generate optimized endpoints files with nested folder structure (per-endpoint files)
    */
   private async generateOptimizedEndpointsFile(
     endpointsPath: string,
@@ -369,14 +373,33 @@ export async function setupEndpoints(
         any
       >
     >[],
-    endpointImports: string,
-    allExportNames: string[],
+    _endpointImports: string,
+    _allExportNames: string[],
   ): Promise<string> {
     const logger = console;
+    const outputDir = dirname(endpointsPath);
+
+    // Create endpoints subdirectory with tier folders
+    const endpointsDir = join(outputDir, 'endpoints');
+    await mkdir(join(endpointsDir, 'minimal'), { recursive: true });
+    await mkdir(join(endpointsDir, 'standard'), { recursive: true });
+    await mkdir(join(endpointsDir, 'full'), { recursive: true });
 
     // Analyze each endpoint
     const analyses: EndpointAnalysis[] = endpoints.map(({ key, construct }) =>
       analyzeEndpoint(construct, key),
+    );
+
+    // Build endpoint import info with correct relative paths from each tier folder
+    // Use paths relative to the tier folder (e.g., endpoints/standard/)
+    const endpointImports: EndpointImportInfo[] = endpoints.map(
+      ({ key, path }) => {
+        // Calculate relative path from tier folder (one level deeper than endpointsDir)
+        const tierDir = join(endpointsDir, 'standard'); // Use any tier as reference - same depth
+        const relativePath = relative(tierDir, path.relative);
+        const importPath = relativePath.replace(/\.ts$/, '.js');
+        return { exportName: key, importPath };
+      },
     );
 
     // Log analysis summary
@@ -391,16 +414,30 @@ export async function setupEndpoints(
       `   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
     );
 
-    // Generate optimized file
-    const content = generateOptimizedEndpointsFile(
-      analyses,
-      endpointImports,
-      allExportNames,
+    // Generate files with nested structure (per-endpoint files)
+    const files = generateEndpointFilesNested(analyses, endpointImports);
+
+    // Write each file, creating directories as needed
+    for (const [filename, content] of Object.entries(files)) {
+      const filePath = join(endpointsDir, filename);
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, content);
+    }
+
+    // Count files by type
+    const endpointFiles = Object.keys(files).filter(
+      (f) => !f.endsWith('index.ts') && !f.endsWith('validators.ts'),
+    ).length;
+    const indexFiles = Object.keys(files).filter((f) =>
+      f.endsWith('index.ts'),
+    ).length;
+
+    logger.log(
+      `   Generated ${endpointFiles} endpoint files + ${indexFiles} index files + validators.ts`,
     );
 
-    await writeFile(endpointsPath, content);
-
-    return endpointsPath;
+    // Return path to index file
+    return join(endpointsDir, 'index.ts');
   }
 
   private async generateAppFile(
@@ -794,6 +831,11 @@ export const handler = ${exportName};
 `
       : '';
 
+    // Use endpoints/index.js for optimized builds, endpoints.js otherwise
+    const endpointsImportPath = production.optimizedHandlers
+      ? './endpoints/index.js'
+      : './endpoints.js';
+
     const content = `/**
  * Generated production server application
  *
@@ -805,7 +847,7 @@ export const handler = ${exportName};
  */
 import { Hono } from 'hono';
 import type { Hono as HonoType } from 'hono';
-import { setupEndpoints } from './endpoints.js';
+import { setupEndpoints } from '${endpointsImportPath}';
 ${subscriberImport}
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';

@@ -3,6 +3,7 @@ import { EndpointFactory } from './EndpointFactory';
 export { EndpointFactory } from './EndpointFactory';
 export {
   Endpoint,
+  ResponseBuilder,
   type EndpointOutput,
   type EndpointSchemas,
   type EndpointHandler,
@@ -28,5 +29,6 @@ export {
   isBuiltInSecurityScheme,
   getSecurityScheme,
 } from './Authorizer';
+export { publishConstructEvents } from '../publisher';
 
 export const e = new EndpointFactory();
