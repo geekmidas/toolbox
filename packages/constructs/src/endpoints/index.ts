@@ -30,5 +30,13 @@ export {
   getSecurityScheme,
 } from './Authorizer';
 export { publishConstructEvents } from '../publisher';
+export {
+  createHonoHeaders,
+  createHonoCookies,
+  createApiGatewayHeaders,
+  createApiGatewayCookies,
+  createNoopHeaders,
+  createNoopCookies,
+} from './lazyAccessors';
 
 export const e = new EndpointFactory();
