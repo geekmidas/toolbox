@@ -1,9 +1,8 @@
 import path from 'node:path';
-import fg from 'fast-glob';
-import { Endpoint } from './Endpoint';
-
 import type { Service } from '@geekmidas/services';
+import fg from 'fast-glob';
 import type { HttpMethod } from '../types';
+import { Endpoint } from './Endpoint';
 
 // Re-export utility functions
 

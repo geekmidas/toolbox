@@ -44,11 +44,12 @@ export interface Telemetry {
   onRequestEnd(ctx: TelemetryContext, response: TelemetryResponse): void;
   onRequestError(ctx: TelemetryContext, error: Error): void;
 }
+
 import {
-  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
+  type HttpSpanAttributes,
 } from './http';
 
 /**

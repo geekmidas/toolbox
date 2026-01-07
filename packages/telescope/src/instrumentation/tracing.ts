@@ -1,8 +1,8 @@
 import {
   type Attributes,
+  context,
   type Span,
   SpanStatusCode,
-  context,
   trace,
 } from '@opentelemetry/api';
 

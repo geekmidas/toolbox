@@ -35,5 +35,5 @@ export class EventConnectionFactory {
   }
 }
 
-export { EventPublisherType } from './types';
 export type { EventConnection } from './types';
+export { EventPublisherType } from './types';

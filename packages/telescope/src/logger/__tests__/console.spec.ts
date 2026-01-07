@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Telescope } from '../../Telescope';
 import { InMemoryStorage } from '../../storage/memory';
-import { TelescopeLogger, createTelescopeLogger } from '../console';
+import { Telescope } from '../../Telescope';
 import type { Logger } from '../console';
+import { createTelescopeLogger, TelescopeLogger } from '../console';
 
 describe('TelescopeLogger', () => {
   let telescope: Telescope;

@@ -1,15 +1,25 @@
-import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
+import { withRlsContext } from '@geekmidas/db/rls';
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import { wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { checkRateLimit, getRateLimitHeaders } from '@geekmidas/rate-limit';
+import {
+  type Service,
+  ServiceDiscovery,
+  type ServiceRecord,
+} from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { logger as honoLogger } from 'hono/logger';
 import { timing } from 'hono/timing';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { validator } from 'hono/validator';
+import { publishConstructEvents } from '../publisher';
 import type { HttpMethod, LowerHttpMethod } from '../types';
+import type { MappedAudit } from './audit';
 import {
   Endpoint,
   type EndpointContext,
@@ -19,17 +29,6 @@ import {
 import { getEndpointsFromRoutes } from './helpers';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
 import { parseHonoQuery } from './parseHonoQuery';
-
-import { withRlsContext } from '@geekmidas/db/rls';
-import { wrapError } from '@geekmidas/errors';
-import {
-  type Service,
-  ServiceDiscovery,
-  type ServiceRecord,
-} from '@geekmidas/services';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { publishConstructEvents } from '../publisher';
-import type { MappedAudit } from './audit';
 import {
   createAuditContext,
   executeWithAuditTransaction,

@@ -14,7 +14,10 @@
       "!**/.turbo",
       "!**/.benchmarks",
       "!**/tsconfig*.json",
-      "!**/ui-assets.ts"
+      "!**/ui-assets.ts",
+      "!**/coverage/**/*",
+      "!**/dist/**/*",
+      "!**/.vitepress/**/*"
     ]
   },
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
@@ -49,7 +52,10 @@
       "!**/.turbo/**/*",
       "!**/.benchmarks/**/*",
       "!**/tsconfig*.json",
-      "!**/ui-assets.ts"
+      "!**/ui-assets.ts",
+      "!**/coverage/**/*",
+      "!**/dist/**/*",
+      "!**/.vitepress/**/*"
     ]
   },
   "javascript": {

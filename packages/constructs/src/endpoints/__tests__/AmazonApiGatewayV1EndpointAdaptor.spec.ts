@@ -8,14 +8,12 @@ import {
   UnauthorizedError,
 } from '@geekmidas/errors';
 import type { Logger } from '@geekmidas/logger';
+import { createMockContext, createMockV1Event } from '@geekmidas/testkit/aws';
+import { createMockLogger } from '@geekmidas/testkit/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Endpoint } from '../Endpoint';
-
-import { createMockContext, createMockV1Event } from '@geekmidas/testkit/aws';
-
-import { createMockLogger } from '@geekmidas/testkit/logger';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
+import { Endpoint } from '../Endpoint';
 /**
  * Common test event types for AWS adapter testing
  */

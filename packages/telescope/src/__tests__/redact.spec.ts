@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Telescope } from '../Telescope';
-import { DEFAULT_REDACT_PATHS, createRedactor } from '../redact';
+import { createRedactor, DEFAULT_REDACT_PATHS } from '../redact';
 import { InMemoryStorage } from '../storage/memory';
+import { Telescope } from '../Telescope';
 
 describe('createRedactor', () => {
   it('should return undefined when options is undefined', () => {

@@ -149,11 +149,7 @@ export class EnvironmentBuilder<
     this.record = record;
     this.resolvers = resolvers;
     this.options = {
-      onUnmatchedValue:
-        options.onUnmatchedValue ??
-        ((key, value) => {
-          console.warn(`No resolver found for key "${key}":`, { value });
-        }),
+      onUnmatchedValue: options.onUnmatchedValue ?? ((key, value) => {}),
     };
   }
 

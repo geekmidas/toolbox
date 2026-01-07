@@ -222,7 +222,6 @@ function createHandlerMiddleware<
       const status = (metadata.status ?? endpoint.status) as any;
       return c.json(output, status);
     } catch (error) {
-      console.error('Handler error:', error);
       return c.json({ error: 'Internal Server Error' }, 500);
     }
   };
@@ -523,7 +522,6 @@ export class MinimalHonoEndpoint {
 
         return c.json(output, endpoint.status as any);
       } catch (error) {
-        console.error('Handler error:', error);
         return c.json({ error: 'Internal Server Error' }, 500);
       }
     });

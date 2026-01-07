@@ -28,9 +28,9 @@ import {
 } from 'vitest';
 import { z } from 'zod';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
+import type { MappedAudit } from '../audit';
 import { Endpoint, type EndpointContext } from '../Endpoint';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
-import type { MappedAudit } from '../audit';
 
 // Use unique table names to avoid conflicts with parallel tests
 const AUDIT_TABLE = 'hono_audit_logs' as const;

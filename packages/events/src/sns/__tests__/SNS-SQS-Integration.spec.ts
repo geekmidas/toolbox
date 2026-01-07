@@ -9,8 +9,8 @@ import {
   CreateQueueCommand,
   DeleteQueueCommand,
   GetQueueAttributesCommand,
-  SQSClient,
   SetQueueAttributesCommand,
+  SQSClient,
 } from '@aws-sdk/client-sqs';
 import { describe, expect, it } from 'vitest';
 import { SQSConnection } from '../../sqs/SQSConnection';

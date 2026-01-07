@@ -1,11 +1,11 @@
 import type { Context as LambdaContext } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Telescope } from '../../Telescope';
 import { InMemoryStorage } from '../../storage/memory';
+import { Telescope } from '../../Telescope';
 import {
-  LambdaAdapter,
   detectLambdaResources,
   extractLambdaInvocationContext,
+  LambdaAdapter,
   wrapLambdaHandler,
 } from '../lambda';
 

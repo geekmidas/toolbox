@@ -7,8 +7,9 @@ import type {
 
 // Helper to access Resource property from Statement union type
 type StatementWithResource = Statement & { Resource: string | string[] };
+
 import * as jose from 'jose';
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
   afterAll,

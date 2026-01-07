@@ -2,10 +2,10 @@ import type { Knex } from 'knex';
 import type { TestAPI } from 'vitest';
 import { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 import {
+  extendWithFixtures as baseExtendWithFixtures,
   type DatabaseConnection,
   type FixtureCreators,
   type IsolationLevel,
-  extendWithFixtures as baseExtendWithFixtures,
 } from './VitestTransactionIsolator';
 
 /**
@@ -14,11 +14,10 @@ import {
  * and transaction isolation for test suites.
  */
 
-export { ObjectionFactory } from './ObjectionFactory';
 export type { ExtractSeedAttrs, FactorySeed } from './Factory';
-export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
-export { IsolationLevel } from './VitestTransactionIsolator';
+export { ObjectionFactory } from './ObjectionFactory';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
+export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export type {
   DatabaseFixtures,
   ExtendedDatabaseFixtures,
@@ -26,6 +25,7 @@ export type {
   TestWithExtendedFixtures,
   TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
+export { IsolationLevel } from './VitestTransactionIsolator';
 
 /**
  * Objection.js-specific options for transaction wrapping.
@@ -44,7 +44,7 @@ export interface ObjectionTransactionOptions<
 }
 
 // Re-export faker and FakerFactory for type portability in declaration files
-export { faker, type FakerFactory } from './faker';
+export { type FakerFactory, faker } from './faker';
 
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Objection.js.

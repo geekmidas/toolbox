@@ -8,6 +8,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { paths } from '../openapi-types';
 import { TypedQueryClient, useTypedInvalidateQueries } from '../react-query';
+
 // Mock the fetcher module
 vi.mock('../fetcher', () => ({
   createTypedFetcher: () => vi.fn(),

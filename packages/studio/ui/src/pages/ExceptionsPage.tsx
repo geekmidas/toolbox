@@ -47,7 +47,6 @@ export function ExceptionsPage() {
       });
       setExceptions(data);
     } catch (error) {
-      console.error('Failed to load exceptions:', error);
     } finally {
       setLoading(false);
     }

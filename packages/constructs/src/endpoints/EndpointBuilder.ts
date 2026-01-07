@@ -1,6 +1,6 @@
 import type {
-  AuditStorage,
   AuditableAction,
+  AuditStorage,
   ExtractStorageAuditAction,
 } from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
@@ -14,14 +14,14 @@ import { BaseFunctionBuilder } from '../functions';
 import type { HttpMethod } from '../types';
 import type { Authorizer, SecurityScheme } from './Authorizer';
 import { getSecurityScheme } from './Authorizer';
-import { Endpoint, type EndpointSchemas } from './Endpoint';
+import type { ActorExtractor, MappedAudit } from './audit';
 import type {
   AuthorizeFn,
   EndpointHandler,
   SessionFn,
   SuccessStatus,
 } from './Endpoint';
-import type { ActorExtractor, MappedAudit } from './audit';
+import { Endpoint, type EndpointSchemas } from './Endpoint';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 

@@ -1,12 +1,10 @@
+import { EnvironmentParser } from '@geekmidas/envkit';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-
-import { EnvironmentParser } from '@geekmidas/envkit';
 import { e } from '../endpoints';
-
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { publishConstructEvents } from '../publisher';
 
 // Test event types

@@ -29,8 +29,8 @@ import {
 import { z } from 'zod';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
-import { Endpoint, type EndpointContext } from '../Endpoint';
 import type { MappedAudit } from '../audit';
+import { Endpoint, type EndpointContext } from '../Endpoint';
 
 // Database schema - use different table names to avoid conflicts with HonoEndpoint tests
 interface TestDatabase {

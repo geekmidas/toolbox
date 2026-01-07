@@ -1,7 +1,8 @@
 #!/usr/bin/env -S npx tsx
 
 import { Command } from 'commander';
-import pkg from '../package.json' assert { type: 'json' };
+import pkg from '../package.json';
+
 import { buildCommand } from './build/index';
 import { devCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
@@ -38,7 +39,6 @@ program
       }
       await initCommand(name, options);
     } catch (error) {
-      console.error('Init failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -77,9 +77,6 @@ program
         // Handle new single provider option
         if (options.provider) {
           if (!['aws', 'server'].includes(options.provider)) {
-            console.error(
-              `Invalid provider: ${options.provider}. Must be 'aws' or 'server'.`,
-            );
             process.exit(1);
           }
           await buildCommand({
@@ -91,9 +88,6 @@ program
         }
         // Handle legacy providers option
         else if (options.providers) {
-          console.warn(
-            '⚠️  --providers flag is deprecated. Use --provider instead.',
-          );
           const providerList = [
             ...new Set(options.providers.split(',').map((p) => p.trim())),
           ] as LegacyProvider[];
@@ -113,7 +107,6 @@ program
           });
         }
       } catch (error) {
-        console.error('Build failed:', (error as Error).message);
         process.exit(1);
       }
     },
@@ -141,7 +134,6 @@ program
         enableOpenApi: options.enableOpenapi ?? true,
       });
     } catch (error) {
-      console.error('Dev server failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -190,7 +182,6 @@ program
       }
       await openapiCommand({});
     } catch (error) {
-      console.error('OpenAPI generation failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -214,10 +205,6 @@ program
         }
         await generateReactQueryCommand(options);
       } catch (error) {
-        console.error(
-          'React Query generation failed:',
-          (error as Error).message,
-        );
         process.exit(1);
       }
     },
@@ -241,7 +228,6 @@ program
       }
       await dockerCommand(options);
     } catch (error) {
-      console.error('Docker command failed:', (error as Error).message);
       process.exit(1);
     }
   });
@@ -300,7 +286,6 @@ program
           const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
         }
       } catch (error) {
-        console.error('Prepack failed:', (error as Error).message);
         process.exit(1);
       }
     },

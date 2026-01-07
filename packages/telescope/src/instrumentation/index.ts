@@ -19,74 +19,72 @@
  * ```
  */
 
-export { setupTelemetry, shutdownTelemetry } from './setup';
-export type { TelemetryOptions } from './setup';
-export {
-  createSpan,
-  withSpan,
-  withSpanSync,
-  getActiveSpan,
-  setSpanAttributes,
-  getTraceId,
-  getSpanId,
-  recordException,
-  addSpanEvent,
-} from './tracing';
-export {
-  createSpanProcessor,
-  getRecommendedStrategy,
-  flushTelemetry,
-  withTelemetryFlush,
-  setGlobalSpanProcessor,
-  setGlobalLogProcessor,
-  isTelemetryInitialized,
-  enableTelemetryDebug,
-  NoopSpanProcessor,
-} from './core';
 export type {
   SpanProcessorOptions,
   SpanProcessorStrategy,
 } from '../adapters/types';
+export {
+  createSpanProcessor,
+  enableTelemetryDebug,
+  flushTelemetry,
+  getRecommendedStrategy,
+  isTelemetryInitialized,
+  NoopSpanProcessor,
+  setGlobalLogProcessor,
+  setGlobalSpanProcessor,
+  withTelemetryFlush,
+} from './core';
+export type { HonoTelemetryMiddlewareOptions } from './hono';
+// Middleware for Hono auto-instrumentation
+export {
+  getSpanFromContext,
+  getTraceContextFromHono,
+  honoTelemetryMiddleware,
+  withHonoSpanContext,
+} from './hono';
+export type {
+  EndpointAttributes,
+  HttpRequestAttributes,
+  HttpResponseAttributes,
+  HttpSpanAttributes,
+  UserAttributes,
+} from './http';
 
 // HTTP instrumentation utilities for constructs
 export {
-  getConstructsTracer,
-  toOtelAttributes,
-  extractTraceContext,
-  injectTraceContext,
+  createChildSpan,
   createHttpServerSpan,
   endHttpSpan,
-  withHttpSpan,
-  createChildSpan,
-  withChildSpan,
+  extractTraceContext,
+  getConstructsTracer,
+  injectTraceContext,
   isTracingEnabled,
+  toOtelAttributes,
+  withChildSpan,
+  withHttpSpan,
 } from './http';
-export type {
-  HttpRequestAttributes,
-  HttpResponseAttributes,
-  EndpointAttributes,
-  UserAttributes,
-  HttpSpanAttributes,
-} from './http';
+export type { TelemetryMiddlewareOptions } from './middleware';
 
 // Middleware for Lambda auto-instrumentation
 export {
-  telemetryMiddleware,
-  getSpanFromEvent,
   getContextFromEvent,
+  getSpanFromEvent,
+  telemetryMiddleware,
   withEventContext,
 } from './middleware';
-export type { TelemetryMiddlewareOptions } from './middleware';
-
-// Middleware for Hono auto-instrumentation
-export {
-  honoTelemetryMiddleware,
-  getSpanFromContext,
-  getTraceContextFromHono,
-  withHonoSpanContext,
-} from './hono';
-export type { HonoTelemetryMiddlewareOptions } from './hono';
-
+export type { OTelTelemetryOptions } from './otel';
 // OTelTelemetry - Telemetry interface implementation using OpenTelemetry
 export { OTelTelemetry } from './otel';
-export type { OTelTelemetryOptions } from './otel';
+export type { TelemetryOptions } from './setup';
+export { setupTelemetry, shutdownTelemetry } from './setup';
+export {
+  addSpanEvent,
+  createSpan,
+  getActiveSpan,
+  getSpanId,
+  getTraceId,
+  recordException,
+  setSpanAttributes,
+  withSpan,
+  withSpanSync,
+} from './tracing';

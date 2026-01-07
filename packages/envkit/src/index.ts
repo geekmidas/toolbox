@@ -1,13 +1,13 @@
-export { EnvironmentParser, ConfigParser } from './EnvironmentParser';
 export {
   EnvironmentBuilder,
-  environmentCase,
+  type EnvironmentBuilderOptions,
+  type EnvironmentResolver,
   type EnvRecord,
   type EnvValue,
-  type EnvironmentResolver,
-  type Resolvers,
-  type EnvironmentBuilderOptions,
+  environmentCase,
   type InputValue,
+  type Resolvers,
   type TypedInputValue,
   type TypedResolvers,
 } from './EnvironmentBuilder';
+export { ConfigParser, EnvironmentParser } from './EnvironmentParser';

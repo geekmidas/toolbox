@@ -1,6 +1,6 @@
-export { RabbitMQConnection } from './RabbitMQConnection';
 export type { RabbitMQConnectionConfig } from './RabbitMQConnection';
-export { RabbitMQPublisher } from './RabbitMQPublisher';
+export { RabbitMQConnection } from './RabbitMQConnection';
 export type { RabbitMQPublisherOptions } from './RabbitMQPublisher';
-export { RabbitMQSubscriber } from './RabbitMQSubscriber';
+export { RabbitMQPublisher } from './RabbitMQPublisher';
 export type { RabbitMQSubscriberOptions } from './RabbitMQSubscriber';
+export { RabbitMQSubscriber } from './RabbitMQSubscriber';

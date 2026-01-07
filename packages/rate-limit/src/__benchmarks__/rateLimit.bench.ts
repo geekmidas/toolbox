@@ -1,9 +1,9 @@
 import { InMemoryCache } from '@geekmidas/cache/memory';
 import { bench, describe } from 'vitest';
 import {
+  checkRateLimit,
   type RateLimitConfig,
   type RateLimitContext,
-  checkRateLimit,
 } from '../index';
 
 // Helper to create a mock context

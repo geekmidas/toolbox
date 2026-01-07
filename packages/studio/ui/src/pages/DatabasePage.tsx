@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import * as api from '../api';
 import { RowDetail } from '../components/RowDetail';
-import { TableView } from '../components/TableView';
 import type { ForeignKeyClickInfo } from '../components/TableView';
+import { TableView } from '../components/TableView';
 import type { FilterConfig, TableInfo, TableSummary } from '../types';
 
 export function DatabasePage() {

@@ -1,4 +1,5 @@
 import { SubscriberBuilder } from './SubscriberBuilder';
+
 export { Subscriber } from './Subscriber';
 export { SubscriberBuilder };
 

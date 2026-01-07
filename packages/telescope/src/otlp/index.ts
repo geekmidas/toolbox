@@ -1,5 +1,5 @@
-export { OTLPReceiver } from './receiver';
 export type { MetricsHandler, OTLPReceiverOptions } from './receiver';
+export { OTLPReceiver } from './receiver';
 export type { MetricDataPoint } from './transformer';
 export {
   transformLogs,

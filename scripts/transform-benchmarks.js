@@ -11,9 +11,6 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const [inputFile, outputFile] = process.argv.slice(2);
 
 if (!inputFile || !outputFile) {
-  console.error(
-    'Usage: node scripts/transform-benchmarks.js <input.json> <output.json>',
-  );
   process.exit(1);
 }
 

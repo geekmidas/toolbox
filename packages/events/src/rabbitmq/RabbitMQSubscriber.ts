@@ -102,8 +102,6 @@ export class RabbitMQSubscriber<
           // Ack message
           channel.ack(msg);
         } catch (error) {
-          // Log error and nack message (requeue)
-          console.error('Error processing message:', error);
           channel.nack(msg, false, true);
         }
       },

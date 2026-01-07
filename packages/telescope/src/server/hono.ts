@@ -1,11 +1,11 @@
-import { Hono } from 'hono';
 import type { Context, MiddlewareHandler, Next } from 'hono';
-import type { Telescope } from '../Telescope';
+import { Hono } from 'hono';
 import type {
   HonoAdapterConfig,
   TelescopeHonoContext,
 } from '../adapters/types';
 import { flushTelemetry } from '../instrumentation/core';
+import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
 import { getAsset, getIndexHtml } from '../ui-assets';
 
@@ -391,7 +391,7 @@ export function getRequestId(c: Context): string | undefined {
 // Re-export types and utilities
 export type { Telescope };
 export type {
-  TelescopeHonoContext,
   HonoAdapterConfig,
+  TelescopeHonoContext,
 } from '../adapters/types';
 export { flushTelemetry } from '../instrumentation/core';

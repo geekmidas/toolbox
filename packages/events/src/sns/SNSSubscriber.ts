@@ -3,8 +3,8 @@ import {
   CreateQueueCommand,
   DeleteQueueCommand,
   GetQueueAttributesCommand,
-  SQSClient,
   SetQueueAttributesCommand,
+  SQSClient,
 } from '@aws-sdk/client-sqs';
 import { SQSConnection } from '../sqs/SQSConnection';
 import { SQSSubscriber } from '../sqs/SQSSubscriber';
@@ -137,9 +137,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
           SubscriptionArn: this.subscriptionArn,
         });
         await this.connection.snsClient.send(command);
-      } catch (error) {
-        console.error('Error unsubscribing:', error);
-      }
+      } catch (error) {}
     }
 
     // Delete queue if configured
@@ -149,9 +147,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
           QueueUrl: this.queueUrl,
         });
         await this.sqsClient.send(command);
-      } catch (error) {
-        console.error('Error deleting queue:', error);
-      }
+      } catch (error) {}
     }
 
     this.sqsClient.destroy();

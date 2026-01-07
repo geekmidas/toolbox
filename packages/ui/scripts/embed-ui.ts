@@ -6,7 +6,7 @@
  * Usage: embed-ui <input-dir> <output-file>
  * Example: embed-ui dist/ui src/ui-assets.ts
  */
-import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 
 interface Asset {
   path: string;
@@ -48,8 +48,6 @@ function collectAssets(dir: string, basePath: string = ''): Asset[] {
 
 const args = process.argv.slice(2);
 if (args.length !== 2) {
-  console.error('Usage: embed-ui <input-dir> <output-file>');
-  console.error('Example: embed-ui dist/ui src/ui-assets.ts');
   process.exit(1);
 }
 
@@ -61,7 +59,6 @@ try {
   // Find the index.html to extract references
   const indexHtml = assets.find((a) => a.path === 'index.html');
   if (!indexHtml) {
-    console.error('index.html not found in build output');
     process.exit(1);
   }
 
@@ -90,8 +87,6 @@ export function getIndexHtml(): string {
 `;
 
   writeFileSync(outputFile, output);
-  console.error(`Embedded ${assets.length} UI assets into ${outputFile}`);
 } catch (error) {
-  console.error('Error embedding UI assets:', error);
   process.exit(1);
 }

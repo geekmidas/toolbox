@@ -2,8 +2,8 @@ import type { Knex } from 'knex';
 import { Model } from 'objection';
 import { describe, expect, test } from 'vitest';
 import { createKnexDb, createTestTablesKnex } from '../../test/helpers';
-import { ObjectionFactory } from '../ObjectionFactory';
 import { faker } from '../faker';
+import { ObjectionFactory } from '../ObjectionFactory';
 import { wrapVitestObjectionTransaction } from '../objection';
 
 // Define simple Objection models for testing

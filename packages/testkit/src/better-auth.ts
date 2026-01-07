@@ -1,7 +1,7 @@
 import {
+  createAdapterFactory,
   type DBAdapterDebugLogOption,
   type Where,
-  createAdapterFactory,
 } from 'better-auth/adapters';
 
 interface MemoryAdapterConfig {

@@ -1,15 +1,15 @@
 import type {
+  AuditableAction,
   AuditRecord,
   AuditStorage,
-  AuditableAction,
 } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import type { MappedAudit } from '../audit';
 import { e } from '../EndpointFactory';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
-import type { MappedAudit } from '../audit';
 
 // Test audit action types
 type TestAuditAction =

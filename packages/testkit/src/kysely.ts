@@ -2,10 +2,10 @@ import type { Kysely, Transaction } from 'kysely';
 import type { TestAPI } from 'vitest';
 import { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 import {
+  extendWithFixtures as baseExtendWithFixtures,
   type DatabaseConnection,
   type FixtureCreators,
   type IsolationLevel,
-  extendWithFixtures as baseExtendWithFixtures,
 } from './VitestTransactionIsolator';
 
 /**
@@ -13,11 +13,10 @@ import {
  * Provides factories, migrators, and transaction isolators for Kysely ORM.
  */
 
-export { KyselyFactory } from './KyselyFactory';
 export type { ExtractSeedAttrs, FactorySeed } from './Factory';
+export { KyselyFactory } from './KyselyFactory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
-export { IsolationLevel } from './VitestTransactionIsolator';
 export type {
   DatabaseFixtures,
   ExtendedDatabaseFixtures,
@@ -25,6 +24,7 @@ export type {
   TestWithExtendedFixtures,
   TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
+export { IsolationLevel } from './VitestTransactionIsolator';
 
 /**
  * Kysely-specific options for transaction wrapping.
@@ -44,7 +44,7 @@ export interface KyselyTransactionOptions<
 }
 
 // Re-export faker and FakerFactory for type portability in declaration files
-export { faker, type FakerFactory } from './faker';
+export { type FakerFactory, faker } from './faker';
 
 /**
  * Creates a wrapped Vitest test API with automatic transaction rollback for Kysely.

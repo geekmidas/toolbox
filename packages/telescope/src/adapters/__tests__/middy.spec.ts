@@ -4,8 +4,8 @@ import type {
   Context,
 } from 'aws-lambda';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Telescope } from '../../Telescope';
 import { InMemoryStorage } from '../../storage/memory';
+import { Telescope } from '../../Telescope';
 import { createTelescopeHandler, telescopeMiddleware } from '../middy';
 
 describe('Telescope Middy Middleware', () => {

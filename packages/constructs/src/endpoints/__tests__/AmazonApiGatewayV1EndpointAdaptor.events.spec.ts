@@ -10,10 +10,9 @@ import {
   createMockContext,
   createMockV1Event as createMockEvent,
 } from '@geekmidas/testkit/aws';
+import { createMockLogger } from '@geekmidas/testkit/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-
-import { createMockLogger } from '@geekmidas/testkit/logger';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
 import { Endpoint } from '../Endpoint';
 

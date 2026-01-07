@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Endpoint } from '../Endpoint';
-import { SuccessStatus } from '../Endpoint';
+import { Endpoint, SuccessStatus } from '../Endpoint';
 
 describe('Endpoint manifest fields', () => {
   it('should store timeout and memorySize', () => {

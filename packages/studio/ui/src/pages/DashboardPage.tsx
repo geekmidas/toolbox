@@ -45,9 +45,7 @@ export function DashboardPage() {
 
       setMetricsData(metrics);
       setEndpoints(endpointData);
-    } catch (error) {
-      console.error('Failed to fetch metrics:', error);
-    }
+    } catch (error) {}
   }, []);
 
   useEffect(() => {

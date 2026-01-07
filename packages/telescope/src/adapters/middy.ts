@@ -4,8 +4,8 @@ import type {
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
-import type { Telescope } from '../Telescope';
 import { flushTelemetry } from '../instrumentation/core';
+import type { Telescope } from '../Telescope';
 
 /**
  * Options for the Telescope Middy middleware

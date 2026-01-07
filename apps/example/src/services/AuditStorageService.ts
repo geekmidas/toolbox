@@ -1,4 +1,4 @@
-import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
 
 /**

@@ -1,3 +1,3 @@
-export * from './types';
-export * from './MetricsStorage';
 export * from './InMemoryMetricsStorage';
+export * from './MetricsStorage';
+export * from './types';

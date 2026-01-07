@@ -1,3 +1,4 @@
+import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
@@ -7,8 +8,6 @@ import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
 import { Cron, type ScheduleExpression } from './Cron';
-
-import type { EventPublisher } from '@geekmidas/events';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 

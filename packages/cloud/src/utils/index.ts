@@ -100,7 +100,6 @@ export function buildResourceEnv(
     if (processor) {
       Object.assign(env, processor(k, value));
     } else {
-      console.warn(`No processor found for resource type: `, { value });
     }
   }
 

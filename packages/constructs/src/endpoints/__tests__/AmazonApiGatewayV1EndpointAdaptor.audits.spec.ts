@@ -1,7 +1,7 @@
 import type {
+  AuditableAction,
   AuditRecord,
   AuditStorage,
-  AuditableAction,
 } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
@@ -10,8 +10,8 @@ import { createMockContext, createMockV1Event } from '@geekmidas/testkit/aws';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { AmazonApiGatewayV1Endpoint } from '../AmazonApiGatewayV1EndpointAdaptor';
-import { Endpoint } from '../Endpoint';
 import type { ActorExtractor, MappedAudit } from '../audit';
+import { Endpoint } from '../Endpoint';
 
 // In-memory audit storage for testing
 class InMemoryAuditStorage implements AuditStorage {

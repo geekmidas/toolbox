@@ -14,10 +14,7 @@ export class BasicSubscriber<TMessage extends PublishableMessage<string, any>>
 
     for (const messageType of messages) {
       emitter.on(messageType, (message: TMessage) => {
-        listener(message).catch((error) => {
-          // Log error but don't throw to prevent unhandled promise rejections
-          console.error(`Error processing message ${messageType}:`, error);
-        });
+        listener(message).catch((error) => {});
       });
     }
   }

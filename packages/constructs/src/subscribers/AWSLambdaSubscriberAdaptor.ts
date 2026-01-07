@@ -2,6 +2,7 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import { wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
+import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import { ServiceDiscovery } from '@geekmidas/services';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -13,8 +14,6 @@ import type {
   SQSEvent,
   SQSRecord,
 } from 'aws-lambda';
-
-import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Subscriber } from './Subscriber';
 
 export type AWSLambdaHandler<TEvent = any, TResult = any> = Handler<

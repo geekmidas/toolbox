@@ -2,8 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
-  type EndpointAnalysis,
   analyzeEndpoint,
+  type EndpointAnalysis,
   summarizeAnalysis,
 } from '../build/endpoint-analyzer';
 import {

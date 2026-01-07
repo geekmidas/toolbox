@@ -1,8 +1,8 @@
 import { it as base, beforeAll, describe, expect } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
-import { type TestDatabase, createTestTables } from '../../test/helpers';
-import { KyselyFactory } from '../KyselyFactory';
+import { createTestTables, type TestDatabase } from '../../test/helpers';
 import { createKyselyDb } from '../helpers';
+import { KyselyFactory } from '../KyselyFactory';
 import { extendWithFixtures, wrapVitestKyselyTransaction } from '../kysely';
 
 const db = () => createKyselyDb<TestDatabase>(TEST_DATABASE_CONFIG);

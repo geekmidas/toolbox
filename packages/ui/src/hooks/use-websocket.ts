@@ -186,7 +186,6 @@ export function useWebSocket<T = unknown>(
       const message = typeof data === 'string' ? data : JSON.stringify(data);
       wsRef.current.send(message);
     } else {
-      console.warn('WebSocket is not connected');
     }
   }, []);
 

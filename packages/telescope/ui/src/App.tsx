@@ -82,7 +82,6 @@ export function App() {
       setExceptions(exceptionsData);
       setLogs(logsData);
     } catch (error) {
-      console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
     }
@@ -102,9 +101,7 @@ export function App() {
         status: filters.status || undefined,
       });
       setRequests(data);
-    } catch (error) {
-      console.error('Failed to fetch requests:', error);
-    }
+    } catch (error) {}
   }, []);
 
   // Fetch logs with filters
@@ -116,9 +113,7 @@ export function App() {
         level: filters.level || undefined,
       });
       setLogs(data);
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
-    }
+    } catch (error) {}
   }, []);
 
   // Fetch exceptions with filters
@@ -129,9 +124,7 @@ export function App() {
         search: filters.search || undefined,
       });
       setExceptions(data);
-    } catch (error) {
-      console.error('Failed to fetch exceptions:', error);
-    }
+    } catch (error) {}
   }, []);
 
   // Handle request filter changes with debounce

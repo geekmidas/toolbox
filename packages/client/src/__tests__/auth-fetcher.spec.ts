@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
   afterAll,
@@ -12,9 +12,9 @@ import {
 import {
   type ApiKeyProvider,
   type AwsSigner,
+  createAuthAwareFetcher,
   type SecuritySchemeObject,
   type TokenProvider,
-  createAuthAwareFetcher,
 } from '../auth-fetcher';
 
 // Test types - structured to match OpenAPI spec format

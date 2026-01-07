@@ -1,7 +1,7 @@
 import type {
+  AuditableAction,
   AuditRecord,
   AuditStorage,
-  AuditableAction,
 } from '@geekmidas/audit';
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { LogLevel } from '@geekmidas/logger';
@@ -10,8 +10,8 @@ import type { Service } from '@geekmidas/services';
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
 import { e } from '../endpoints';
-import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 import type { MappedAudit } from '../endpoints/audit';
+import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 
 // Silent logger for benchmarks - no console output
 const silentLogger = new ConsoleLogger({}, LogLevel.Silent);

@@ -1,8 +1,8 @@
 export {
   Cron,
-  type ScheduleExpression,
   type CronExpression,
   type RateExpression,
+  type ScheduleExpression,
 } from './Cron';
 export { CronBuilder } from './CronBuilder';
 

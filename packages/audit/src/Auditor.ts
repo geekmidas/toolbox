@@ -1,9 +1,9 @@
 import type {
   AuditActor,
+  AuditableAction,
   AuditMetadata,
   AuditOptions,
   AuditRecord,
-  AuditableAction,
   ExtractAuditPayload,
   ExtractAuditType,
 } from './types';

@@ -2,12 +2,12 @@ import {
   AreaTimeSeriesChart,
   Badge,
   BarListChart,
+  createTimeRange,
   LatencyPercentilesChart,
   MetricCard,
   StatusDistributionChart,
   type TimeRange,
   TimeRangeSelector,
-  createTimeRange,
 } from '@geekmidas/ui';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';

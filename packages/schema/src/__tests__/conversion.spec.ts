@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import {
-  SchemaVendor,
   convertSchemaWithComponents,
   convertStandardSchemaToJsonSchema,
   getSchemaMetadata,
   getZodMetadata,
+  SchemaVendor,
 } from '../conversion';
 import { createComponentCollector } from '../openapi';
 

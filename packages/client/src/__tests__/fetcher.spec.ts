@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type FetchFn, createTypedFetcher } from '../fetcher';
+import { createTypedFetcher, type FetchFn } from '../fetcher';
 import type { paths } from '../openapi-types';
 import './setup';
 

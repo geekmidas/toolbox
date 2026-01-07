@@ -1,13 +1,12 @@
 // Core
-export { Telescope } from './Telescope';
 
-// Storage
-export { InMemoryStorage } from './storage/memory';
-export type { InMemoryStorageOptions } from './storage/memory';
-
+export type { MetricsAggregatorOptions } from './metrics';
 // Metrics
 export { MetricsAggregator } from './metrics';
-export type { MetricsAggregatorOptions } from './metrics';
+export type { InMemoryStorageOptions } from './storage/memory';
+// Storage
+export { InMemoryStorage } from './storage/memory';
+export { Telescope } from './Telescope';
 
 // Types
 export type {

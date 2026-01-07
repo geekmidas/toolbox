@@ -3,7 +3,7 @@ import {
   MetricsAggregator,
   type MetricsAggregatorOptions,
 } from './metrics/MetricsAggregator';
-import { type Redactor, createRedactor } from './redact';
+import { createRedactor, type Redactor } from './redact';
 import type {
   EndpointDetails,
   EndpointMetrics,

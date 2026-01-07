@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExceptionEntry, LogEntry, RequestEntry } from '../../types';
 import {
+  getTelescopeMigration,
   KyselyStorage,
   type TelescopeExceptionTable,
   type TelescopeLogTable,
   type TelescopeRequestTable,
-  getTelescopeMigration,
 } from '../kysely';
 
 // Helper to create mock query builder

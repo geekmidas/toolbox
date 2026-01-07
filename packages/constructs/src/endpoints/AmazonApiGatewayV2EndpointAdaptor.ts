@@ -1,12 +1,10 @@
-import type { Logger } from '@geekmidas/logger';
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { HttpMethod } from '../types';
-import type { Endpoint, EndpointSchemas } from './Endpoint';
-
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
+import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
+import type { HttpMethod } from '../types';
 import {
   AmazonApiGatewayEndpoint,
   type AmazonApiGatewayEndpointOptions,
@@ -14,6 +12,7 @@ import {
   type GetInputResponse,
   type LoggerContext,
 } from './AmazonApiGatewayEndpointAdaptor';
+import type { Endpoint, EndpointSchemas } from './Endpoint';
 import { parseQueryParams } from './parseQueryParams';
 
 export class AmazonApiGatewayV2Endpoint<

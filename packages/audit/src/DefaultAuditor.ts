@@ -3,10 +3,10 @@ import type { Auditor } from './Auditor';
 import type { AuditStorage } from './storage';
 import type {
   AuditActor,
+  AuditableAction,
   AuditMetadata,
   AuditOptions,
   AuditRecord,
-  AuditableAction,
   ExtractAuditPayload,
   ExtractAuditType,
 } from './types';

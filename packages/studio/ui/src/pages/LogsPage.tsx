@@ -44,7 +44,6 @@ export function LogsPage() {
       });
       setLogs(data);
     } catch (error) {
-      console.error('Failed to load logs:', error);
     } finally {
       setLoading(false);
     }

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type Authorizer,
   BUILT_IN_SECURITY_SCHEMES,
-  type SecurityScheme,
   createAuthorizer,
   getSecurityScheme,
   isBuiltInSecurityScheme,
+  type SecurityScheme,
 } from '../Authorizer';
 
 describe('Authorizer', () => {

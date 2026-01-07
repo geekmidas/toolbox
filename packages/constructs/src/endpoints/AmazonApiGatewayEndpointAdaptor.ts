@@ -1,19 +1,18 @@
-import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
+import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { withRlsContext } from '@geekmidas/db/rls';
-import type { Logger } from '@geekmidas/logger';
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Telemetry } from '../telemetry';
-import type { HttpMethod } from '../types';
-import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
-
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
 import middy, { type MiddlewareObj } from '@middy/core';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyEventV2,
   Context,
 } from 'aws-lambda';
 import set from 'lodash.set';
+import type { Telemetry } from '../telemetry';
+import type { HttpMethod } from '../types';
+import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 
 /**
  * Telescope integration for request recording.
@@ -29,19 +28,18 @@ import {
   wrapError,
 } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
+import type {
+  InferComposableStandardSchema,
+  InferStandardSchema,
+} from '@geekmidas/schema';
 import {
   type Service,
   ServiceDiscovery,
   type ServiceRecord,
 } from '@geekmidas/services';
-
-import type {
-  InferComposableStandardSchema,
-  InferStandardSchema,
-} from '@geekmidas/schema';
 import { publishConstructEvents } from '../publisher';
-import type { CookieFn, HeaderFn } from './Endpoint';
 import type { MappedAudit } from './audit';
+import type { CookieFn, HeaderFn } from './Endpoint';
 import {
   createAuditContext,
   executeWithAuditTransaction,

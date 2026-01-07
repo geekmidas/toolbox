@@ -21,9 +21,9 @@ import {
 } from '../generators';
 import type { BuildOptions, LegacyProvider, RouteInfo } from '../types';
 import {
-  type ServerAppInfo,
   generateAwsManifest,
   generateServerManifest,
+  type ServerAppInfo,
 } from './manifests';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';

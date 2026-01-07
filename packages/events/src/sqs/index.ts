@@ -1,6 +1,6 @@
-export { SQSConnection } from './SQSConnection';
 export type { SQSConnectionConfig } from './SQSConnection';
-export { SQSPublisher } from './SQSPublisher';
+export { SQSConnection } from './SQSConnection';
 export type { SQSPublisherOptions } from './SQSPublisher';
-export { SQSSubscriber } from './SQSSubscriber';
+export { SQSPublisher } from './SQSPublisher';
 export type { SQSSubscriberOptions } from './SQSSubscriber';
+export { SQSSubscriber } from './SQSSubscriber';

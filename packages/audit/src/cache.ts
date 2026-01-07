@@ -1,6 +1,6 @@
 import type { Cache } from '@geekmidas/cache';
 import type { AuditQueryOptions, AuditStorage } from './storage';
-import type { AuditRecord, AuditableAction } from './types';
+import type { AuditableAction, AuditRecord } from './types';
 
 /**
  * Configuration for CacheAuditStorage.

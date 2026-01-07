@@ -54,7 +54,6 @@ export function RequestsPage() {
       });
       setRequests(data);
     } catch (error) {
-      console.error('Failed to load requests:', error);
     } finally {
       setLoading(false);
     }

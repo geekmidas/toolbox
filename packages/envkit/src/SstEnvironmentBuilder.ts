@@ -1,8 +1,8 @@
 import {
-  type EnvRecord,
   EnvironmentBuilder,
   type EnvironmentBuilderOptions,
   type EnvironmentResolver,
+  type EnvRecord,
   type InputValue,
   type Resolvers,
 } from './EnvironmentBuilder';
@@ -289,10 +289,10 @@ export class SstEnvironmentBuilder<
   }
 }
 
-// Re-export useful types
-export { environmentCase } from './EnvironmentBuilder';
 export type {
+  EnvironmentBuilderOptions,
   EnvRecord,
   EnvValue,
-  EnvironmentBuilderOptions,
 } from './EnvironmentBuilder';
+// Re-export useful types
+export { environmentCase } from './EnvironmentBuilder';

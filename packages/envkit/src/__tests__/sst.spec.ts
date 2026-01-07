@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type ApiGatewayV2,
   type Bucket,
+  environmentCase,
   type Function,
+  normalizeResourceEnv,
   type Postgres,
   ResourceType,
   type Secret,
   type Vpc,
-  environmentCase,
-  normalizeResourceEnv,
 } from '../sst';
 
 describe('sst', () => {

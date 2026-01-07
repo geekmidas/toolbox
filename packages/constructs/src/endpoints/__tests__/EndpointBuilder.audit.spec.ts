@@ -1,13 +1,13 @@
 import type {
+  AuditableAction,
   AuditRecord,
   AuditStorage,
-  AuditableAction,
 } from '@geekmidas/audit';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { EndpointBuilder } from '../EndpointBuilder';
 import type { ActorExtractor, MappedAudit } from '../audit';
+import { EndpointBuilder } from '../EndpointBuilder';
 
 // In-memory audit storage for testing
 class InMemoryAuditStorage implements AuditStorage {

@@ -1,6 +1,6 @@
 import type {
-  AuditStorage,
   AuditableAction,
+  AuditStorage,
   ExtractStorageAuditAction,
 } from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
@@ -14,9 +14,9 @@ import type {
   BuiltInSecuritySchemeId,
   SecurityScheme,
 } from './Authorizer';
+import type { ActorExtractor } from './audit';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
-import type { ActorExtractor } from './audit';
 import type { RlsConfig } from './rls';
 
 // Re-export SecurityScheme to make the type portable in declaration files

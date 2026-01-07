@@ -10,11 +10,11 @@ import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
 import {
-  type TemplateName,
-  type TemplateOptions,
   getTemplate,
   loggerTypeChoices,
   routesStructureChoices,
+  type TemplateName,
+  type TemplateOptions,
   templateChoices,
 } from './templates/index.js';
 import {
@@ -126,7 +126,6 @@ export async function initCommand(
   // Build final options
   const name = projectName || answers.name;
   if (!name) {
-    console.error('  Error: Project name is required\n');
     process.exit(1);
   }
 
@@ -134,12 +133,10 @@ export async function initCommand(
   if (projectName) {
     const nameValid = validateProjectName(projectName);
     if (nameValid !== true) {
-      console.error(`  Error: ${nameValid}\n`);
       process.exit(1);
     }
     const dirValid = checkDirectoryExists(projectName, cwd);
     if (dirValid !== true) {
-      console.error(`  Error: ${dirValid}\n`);
       process.exit(1);
     }
   }
@@ -213,9 +210,7 @@ export async function initCommand(
         cwd: targetDir,
         stdio: 'inherit',
       });
-    } catch {
-      console.error('\n  Warning: Failed to install dependencies.');
-    }
+    } catch {}
 
     // Format generated files with biome
     try {

@@ -226,12 +226,8 @@ export function errorHandlingExample() {
     return config;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error('Configuration validation failed:');
-      console.error('Missing or invalid environment variables:');
-
       error.errors.forEach((err) => {
         const path = err.path.join('.');
-        console.error(`  ${path}: ${err.message}`);
       });
 
       // In a real app, you might want to exit

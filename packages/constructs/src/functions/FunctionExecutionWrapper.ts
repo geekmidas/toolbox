@@ -1,4 +1,4 @@
-import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
+import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { withAuditableTransaction } from '@geekmidas/audit/kysely';
 import type { EnvironmentParser } from '@geekmidas/envkit';

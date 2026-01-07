@@ -1,6 +1,6 @@
 import * as jose from 'jose';
 import { describe, expect, it } from 'vitest';
-import { JwtVerifier, decodeJwt } from '../jwt';
+import { decodeJwt, JwtVerifier } from '../jwt';
 
 const TEST_SECRET = 'super-secret-key-for-testing-only-32chars';
 

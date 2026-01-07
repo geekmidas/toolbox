@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DefaultAuditor } from '../DefaultAuditor';
 import type { AuditStorage } from '../storage';
-import type { AuditRecord, AuditableAction } from '../types';
+import type { AuditableAction, AuditRecord } from '../types';
 
 // Define test audit actions
 type TestAuditAction =

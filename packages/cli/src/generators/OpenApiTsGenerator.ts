@@ -1,7 +1,7 @@
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
-  StandardSchemaJsonSchema,
   getSchemaMetadata,
+  StandardSchemaJsonSchema,
 } from '@geekmidas/schema/conversion';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 

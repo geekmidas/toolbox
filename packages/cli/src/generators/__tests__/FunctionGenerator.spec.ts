@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { f } from '@geekmidas/constructs/functions';
 import type { Function } from '@geekmidas/constructs/functions';
+import { f } from '@geekmidas/constructs/functions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {

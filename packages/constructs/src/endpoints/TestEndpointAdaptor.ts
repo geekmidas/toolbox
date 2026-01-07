@@ -1,7 +1,7 @@
 import type {
   AuditActor,
-  AuditStorage,
   AuditableAction,
+  AuditStorage,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
@@ -20,13 +20,13 @@ import {
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
+import type { MappedAudit } from './audit';
 import {
   type CookieOptions,
   Endpoint,
   type EndpointSchemas,
   ResponseBuilder,
 } from './Endpoint';
-import type { MappedAudit } from './audit';
 import {
   createCookieHeaderAccessor,
   createObjectHeaders,

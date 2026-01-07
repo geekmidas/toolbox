@@ -6,13 +6,13 @@
  * request/response metadata as span attributes.
  */
 import type { MiddlewareObj } from '@middy/core';
-import { type Span, context, trace } from '@opentelemetry/api';
+import { context, type Span, trace } from '@opentelemetry/api';
 import type { Context as LambdaContext } from 'aws-lambda';
 import {
-  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
+  type HttpSpanAttributes,
 } from './http';
 
 /**

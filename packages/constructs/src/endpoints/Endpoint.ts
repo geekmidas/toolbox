@@ -1,4 +1,4 @@
-import type { AuditStorage, AuditableAction, Auditor } from '@geekmidas/audit';
+import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import type {
   EventPublisher,
   ExtractPublisherMessage,
@@ -15,9 +15,9 @@ import {
   convertStandardSchemaToJsonSchema,
 } from '@geekmidas/schema/conversion';
 import {
+  buildOpenApiSchema,
   type ComponentCollector,
   type OpenApiSchemaOptions,
-  buildOpenApiSchema,
 } from '@geekmidas/schema/openapi';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';

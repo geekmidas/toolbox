@@ -1,13 +1,13 @@
 import { InMemoryCache } from '@geekmidas/cache/memory';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  checkRateLimit,
+  defaultKeyGenerator,
+  getRateLimitHeaders,
   type RateLimitConfig,
   type RateLimitContext,
   type RateLimitData,
   TooManyRequestsError,
-  checkRateLimit,
-  defaultKeyGenerator,
-  getRateLimitHeaders,
 } from '../index';
 
 describe('Rate Limiting', () => {

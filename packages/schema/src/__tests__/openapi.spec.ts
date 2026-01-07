@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type ComponentCollector,
   buildOpenApiSchema,
+  type ComponentCollector,
   createComponentCollector,
 } from '../openapi';
 

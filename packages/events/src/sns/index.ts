@@ -1,6 +1,6 @@
-export { SNSConnection } from './SNSConnection';
 export type { SNSConnectionConfig } from './SNSConnection';
-export { SNSPublisher } from './SNSPublisher';
+export { SNSConnection } from './SNSConnection';
 export type { SNSPublisherOptions } from './SNSPublisher';
-export { SNSSubscriber } from './SNSSubscriber';
+export { SNSPublisher } from './SNSPublisher';
 export type { SNSSubscriberOptions } from './SNSSubscriber';
+export { SNSSubscriber } from './SNSSubscriber';

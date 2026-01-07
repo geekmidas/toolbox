@@ -1,10 +1,9 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { HttpMethod } from '@geekmidas/constructs';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import type { HttpMethod } from '@geekmidas/constructs';
 import {
   createMockBuildContext,
   createMockEndpointFile,

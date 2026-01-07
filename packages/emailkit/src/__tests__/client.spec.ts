@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SMTPClient, createEmailClient } from '../client';
+import { createEmailClient, SMTPClient } from '../client';
 import type { EmailClientConfig, TemplateRecord } from '../types';
 
 // Mock nodemailer

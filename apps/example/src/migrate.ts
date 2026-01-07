@@ -35,21 +35,15 @@ async function migrate() {
 
   for (const result of results ?? []) {
     if (result.status === 'Success') {
-      console.info(
-        `✅ Migration "${result.migrationName}" executed successfully`,
-      );
     } else if (result.status === 'Error') {
-      console.error(`❌ Migration "${result.migrationName}" failed`);
     }
   }
 
   if (error) {
-    console.error('Migration failed:', error);
     process.exit(1);
   }
 
   await db.destroy();
-  console.info('\n🎉 Migrations complete!');
 }
 
 migrate();

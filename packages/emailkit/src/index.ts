@@ -1,11 +1,11 @@
-export { SMTPClient, createEmailClient } from './client';
+export { createEmailClient, SMTPClient } from './client';
 export type {
+  Attachment,
   EmailClient,
   EmailClientConfig,
-  SMTPConfig,
   EmailOptions,
+  EmailTemplate,
   PlainEmailOptions,
   SendResult,
-  Attachment,
-  EmailTemplate,
+  SMTPConfig,
 } from './types';

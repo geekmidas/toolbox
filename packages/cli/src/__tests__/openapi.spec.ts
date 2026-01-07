@@ -3,8 +3,8 @@ import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  OPENAPI_OUTPUT_PATH,
   generateOpenApi,
+  OPENAPI_OUTPUT_PATH,
   openapiCommand,
   resolveOpenApiConfig,
 } from '../openapi';

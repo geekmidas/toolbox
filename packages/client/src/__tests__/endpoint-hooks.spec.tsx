@@ -3,7 +3,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
 // biome-ignore lint/style/useImportType: needed for JSX
 import React, { createElement } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';

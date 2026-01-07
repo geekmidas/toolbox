@@ -1,12 +1,12 @@
 import {
   AreaTimeSeriesChart,
   Badge,
+  createTimeRange,
   LatencyPercentilesChart,
   MetricCard,
   StatusDistributionChart,
   type TimeRange,
   TimeRangeSelector,
-  createTimeRange,
 } from '@geekmidas/ui';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';

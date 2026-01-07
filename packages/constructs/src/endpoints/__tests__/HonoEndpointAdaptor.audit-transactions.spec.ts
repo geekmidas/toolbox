@@ -1,7 +1,7 @@
 import type {
+  AuditableAction,
   AuditRecord,
   AuditStorage,
-  AuditableAction,
 } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
@@ -10,9 +10,9 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import type { MappedAudit } from '../audit';
 import { Endpoint, type EndpointContext } from '../Endpoint';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
-import type { MappedAudit } from '../audit';
 
 /**
  * Mock transaction that simulates Kysely Transaction behavior.

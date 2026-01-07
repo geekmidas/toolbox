@@ -1,4 +1,4 @@
-import { type Span, context, trace } from '@opentelemetry/api';
+import { context, type Span, trace } from '@opentelemetry/api';
 /**
  * OpenTelemetry instrumentation middleware for Hono
  *
@@ -8,10 +8,10 @@ import { type Span, context, trace } from '@opentelemetry/api';
  */
 import type { Context, MiddlewareHandler } from 'hono';
 import {
-  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
+  type HttpSpanAttributes,
 } from './http';
 
 /**

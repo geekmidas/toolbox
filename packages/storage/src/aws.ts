@@ -1,11 +1,11 @@
 export {
-  AmazonStorageClient,
   AmazonCannedAccessControlList,
+  AmazonStorageClient,
 } from './AmazonStorageClient';
 export type {
-  StorageClient,
   DocumentVersion,
   File,
   GetUploadParams,
   GetUploadResponse,
+  StorageClient,
 } from './StorageClient';

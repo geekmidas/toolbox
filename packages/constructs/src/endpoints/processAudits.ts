@@ -1,16 +1,16 @@
 import type {
   AuditActor,
-  AuditStorage,
   AuditableAction,
   Auditor,
+  AuditStorage,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
 import type { ActorExtractor, MappedAudit } from './audit';
+import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
 
 /**
  * Process declarative audit definitions after successful endpoint execution.

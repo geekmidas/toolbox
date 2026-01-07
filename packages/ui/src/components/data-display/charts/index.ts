@@ -18,9 +18,9 @@ export {
   type StatusDistributionData,
 } from './status-distribution-chart';
 export {
-  TimeRangeSelector,
   createTimeRange,
   type TimeRange,
   type TimeRangePreset,
+  TimeRangeSelector,
   type TimeRangeSelectorProps,
 } from './time-range-selector';

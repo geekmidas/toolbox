@@ -1,28 +1,28 @@
 // Re-export everything from SstEnvironmentBuilder
-export {
-  SstEnvironmentBuilder,
-  sstResolvers,
-  ResourceType,
-  type ApiGatewayV2,
-  type Postgres,
-  type Function,
-  type Bucket,
-  type Vpc,
-  type Secret,
-  type SnsTopic,
-  type SstResource,
-  type ResourceProcessor,
-} from './SstEnvironmentBuilder';
-
-// Re-export environmentCase from EnvironmentBuilder
-export { environmentCase } from './EnvironmentBuilder';
 
 // Re-export types from EnvironmentBuilder
 export type {
+  EnvironmentBuilderOptions,
   EnvRecord,
   EnvValue,
-  EnvironmentBuilderOptions,
 } from './EnvironmentBuilder';
+
+// Re-export environmentCase from EnvironmentBuilder
+export { environmentCase } from './EnvironmentBuilder';
+export {
+  type ApiGatewayV2,
+  type Bucket,
+  type Function,
+  type Postgres,
+  type ResourceProcessor,
+  ResourceType,
+  type Secret,
+  type SnsTopic,
+  SstEnvironmentBuilder,
+  type SstResource,
+  sstResolvers,
+  type Vpc,
+} from './SstEnvironmentBuilder';
 
 // Import for deprecated function
 import {

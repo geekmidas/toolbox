@@ -22,8 +22,8 @@ import {
   SubscriberGenerator,
 } from '../generators';
 import {
-  OPENAPI_OUTPUT_PATH,
   generateOpenApi,
+  OPENAPI_OUTPUT_PATH,
   resolveOpenApiConfig,
 } from '../openapi';
 import type {

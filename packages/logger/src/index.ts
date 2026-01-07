@@ -2,6 +2,6 @@ export {
   type CreateLoggerOptions,
   type LogFn,
   type Logger,
-  type RedactOptions,
   LogLevel,
+  type RedactOptions,
 } from './types';

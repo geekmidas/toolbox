@@ -110,7 +110,6 @@ let sdk: NodeSDK | null = null;
  */
 export function setupTelemetry(options: TelemetryOptions): void {
   if (sdk) {
-    console.warn('Telemetry already initialized');
     return;
   }
 
@@ -228,7 +227,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
     sdk
       ?.shutdown()
       .then(() => {})
-      .catch((error) => console.error('Error shutting down telemetry', error))
+      .catch((error) => {})
       .finally(() => process.exit(0));
   });
 }

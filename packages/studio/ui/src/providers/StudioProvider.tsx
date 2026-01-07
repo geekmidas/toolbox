@@ -1,6 +1,6 @@
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -82,7 +82,6 @@ export function StudioProvider({ children }: StudioProviderProps) {
       setExceptions(exceptionsData);
       setLogs(logsData);
     } catch (error) {
-      console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
     }

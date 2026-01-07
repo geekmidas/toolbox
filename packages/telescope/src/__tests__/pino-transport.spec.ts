@@ -1,8 +1,8 @@
 import pino from 'pino';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Telescope } from '../Telescope';
 import { createPinoTransport } from '../logger/pino';
 import { InMemoryStorage } from '../storage/memory';
+import { Telescope } from '../Telescope';
 
 describe('createPinoTransport', () => {
   let telescope: Telescope;

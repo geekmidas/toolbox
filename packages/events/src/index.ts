@@ -1,4 +1,13 @@
 // Generic types and interfaces
+
+export { EventConnectionFactory } from './EventConnection';
+export type { EventPublisherConnectionString } from './Publisher';
+
+// Generic factories
+export { Publisher } from './Publisher';
+export type { EventSubscriberConnectionString } from './Subscriber';
+
+export { Subscriber } from './Subscriber';
 export type {
   EventConnection,
   EventPublisher,
@@ -8,15 +17,6 @@ export type {
   PublishableMessage,
 } from './types';
 export { EventPublisherType } from './types';
-
-// Generic factories
-export { Publisher } from './Publisher';
-export type { EventPublisherConnectionString } from './Publisher';
-
-export { Subscriber } from './Subscriber';
-export type { EventSubscriberConnectionString } from './Subscriber';
-
-export { EventConnectionFactory } from './EventConnection';
 
 // Specific integrations should be imported via subpaths:
 // - @geekmidas/events/basic

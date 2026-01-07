@@ -1,6 +1,6 @@
 'use client';
 
-import { type VariantProps, cva } from 'class-variance-authority';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { type LucideIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import * as React from 'react';
 import { cn } from '../../lib/utils';

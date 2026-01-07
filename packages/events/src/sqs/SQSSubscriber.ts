@@ -79,7 +79,6 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
           await this.processMessages(response.Messages);
         }
       } catch (error) {
-        console.error('Error receiving messages from SQS:', error);
         await this.sleep(1000);
       }
     }
@@ -104,9 +103,6 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
         // If expectedTopicArn is set, verify the message is from that topic
         if (this.options.expectedTopicArn && topicArn) {
           if (topicArn !== this.options.expectedTopicArn) {
-            console.warn(
-              `Received message from unexpected topic: ${topicArn}, expected: ${this.options.expectedTopicArn}`,
-            );
             await this.deleteMessage(message.ReceiptHandle!);
             continue;
           }
@@ -129,7 +125,6 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
           await this.deleteMessage(message.ReceiptHandle!);
         }
       } catch (error) {
-        console.error('Error processing message:', error);
         // Message will become visible again
       }
     }
@@ -166,7 +161,6 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
         messageType: parsed.type,
       };
     } catch (error) {
-      console.error('Failed to parse message:', error);
       return null;
     }
   }
@@ -178,9 +172,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
         ReceiptHandle: receiptHandle,
       });
       await this.connection.sqsClient.send(command);
-    } catch (error) {
-      console.error('Error deleting message:', error);
-    }
+    } catch (error) {}
   }
 
   private sleep(ms: number): Promise<void> {
