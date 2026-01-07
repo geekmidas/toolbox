@@ -2,14 +2,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
+  type EndpointAnalysis,
   analyzeEndpoint,
   summarizeAnalysis,
-  type EndpointAnalysis,
 } from '../build/endpoint-analyzer';
 import {
-  generateOptimizedEndpointsFile,
-  generateEndpointFilesNested,
   type EndpointImportInfo,
+  generateEndpointFilesNested,
 } from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
@@ -409,7 +408,9 @@ export async function setupEndpoints(
     logger.log(
       `   - Minimal (near-raw-Hono): ${summary.byTier.minimal} endpoints`,
     );
-    logger.log(`   - Standard (auth/services): ${summary.byTier.standard} endpoints`);
+    logger.log(
+      `   - Standard (auth/services): ${summary.byTier.standard} endpoints`,
+    );
     logger.log(
       `   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
     );

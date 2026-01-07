@@ -40,7 +40,12 @@ export function LatencyPercentilesChart({
   valueFormatter = defaultFormatDuration,
 }: LatencyPercentilesChartProps) {
   const chartData = [
-    { name: 'p50', label: 'p50 (Median)', value: p50, color: PERCENTILE_COLORS.p50 },
+    {
+      name: 'p50',
+      label: 'p50 (Median)',
+      value: p50,
+      color: PERCENTILE_COLORS.p50,
+    },
     { name: 'p95', label: 'p95', value: p95, color: PERCENTILE_COLORS.p95 },
     { name: 'p99', label: 'p99', value: p99, color: PERCENTILE_COLORS.p99 },
   ];

@@ -268,21 +268,13 @@ program
           process.chdir(globalOptions.cwd);
         }
 
-        console.log('🚀 Preparing production package...\n');
-
         if (options.slim) {
-          // Slim mode: Build locally first, then use slim Dockerfile
-          console.log('📦 Building production server locally...');
           await buildCommand({
             provider: 'server',
             production: true,
             skipBundle: options.skipBundle,
           });
-          console.log('✅ Production server built\n');
         }
-
-        // Generate Docker files
-        console.log('🐳 Generating Docker files...');
         await dockerCommand({
           build: options.build,
           push: options.push,
@@ -290,23 +282,14 @@ program
           registry: options.registry,
           slim: options.slim,
         });
-        console.log('✅ Docker files generated\n');
-
-        // Summary
-        console.log('📋 Prepack complete!');
         if (options.slim) {
-          console.log('   Output: .gkm/server/dist/server.mjs');
-          console.log('   Docker: .gkm/docker/Dockerfile (slim)');
         } else {
-          console.log('   Docker: .gkm/docker/Dockerfile (multi-stage)');
-          console.log('   Build will compile from source inside container');
         }
 
         if (options.build) {
           const tag = options.tag ?? 'latest';
           const registry = options.registry;
           const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
-          console.log(`   Image:  ${imageRef}`);
         }
       } catch (error) {
         console.error('Prepack failed:', (error as Error).message);

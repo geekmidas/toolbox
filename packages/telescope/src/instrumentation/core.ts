@@ -1,11 +1,11 @@
 import { DiagConsoleLogger, DiagLogLevel, diag } from '@opentelemetry/api';
 import {
+  BatchSpanProcessor,
   type ReadableSpan,
+  SimpleSpanProcessor,
   type Span,
   type SpanExporter,
   type SpanProcessor,
-  BatchSpanProcessor,
-  SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import type {
   SpanProcessorOptions,
@@ -134,7 +134,9 @@ export async function flushTelemetry(timeoutMs = 30000): Promise<void> {
   ) {
     promises.push(
       Promise.race([
-        (state.logProcessor as { forceFlush: () => Promise<void> }).forceFlush(),
+        (
+          state.logProcessor as { forceFlush: () => Promise<void> }
+        ).forceFlush(),
         new Promise<void>((_, reject) =>
           setTimeout(() => reject(new Error('Log flush timeout')), timeoutMs),
         ),

@@ -87,7 +87,9 @@ export function analyzeEndpointFeatures(
 /**
  * Determine the optimization tier for an endpoint based on its features
  */
-export function determineEndpointTier(features: EndpointFeatures): EndpointTier {
+export function determineEndpointTier(
+  features: EndpointFeatures,
+): EndpointTier {
   const {
     hasAuth,
     hasServices,
@@ -152,7 +154,9 @@ export function analyzeEndpoint(
     exportName,
     features,
     tier,
-    serviceNames: endpoint.services.map((s: { serviceName: string }) => s.serviceName),
+    serviceNames: endpoint.services.map(
+      (s: { serviceName: string }) => s.serviceName,
+    ),
     databaseServiceName: endpoint.databaseService?.serviceName,
   };
 }

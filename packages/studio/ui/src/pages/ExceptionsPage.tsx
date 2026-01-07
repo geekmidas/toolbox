@@ -143,7 +143,9 @@ export function ExceptionsPage() {
                       ? 'border-accent'
                       : 'border-border'
                   }`}
-                  onClick={() => navigate(`/monitoring/exceptions/${exception.id}`)}
+                  onClick={() =>
+                    navigate(`/monitoring/exceptions/${exception.id}`)
+                  }
                 >
                   <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-2">

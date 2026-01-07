@@ -79,7 +79,10 @@ function AppLayout() {
             <Route path="/database" element={<DatabasePage />} />
             <Route path="/database/:table" element={<DatabasePage />} />
             <Route path="/monitoring" element={<MonitoringPage />}>
-              <Route index element={<Navigate to="/monitoring/requests" replace />} />
+              <Route
+                index
+                element={<Navigate to="/monitoring/requests" replace />}
+              />
               <Route path="requests" element={<RequestsPage />} />
               <Route path="requests/:id" element={<RequestsPage />} />
               <Route path="logs" element={<LogsPage />} />
@@ -87,12 +90,27 @@ function AppLayout() {
               <Route path="exceptions/:id" element={<ExceptionsPage />} />
             </Route>
             <Route path="/performance" element={<PerformancePage />} />
-            <Route path="/performance/endpoint" element={<EndpointDetailsPage />} />
+            <Route
+              path="/performance/endpoint"
+              element={<EndpointDetailsPage />}
+            />
             {/* Redirects for old routes */}
-            <Route path="/requests/*" element={<Navigate to="/monitoring/requests" replace />} />
-            <Route path="/logs" element={<Navigate to="/monitoring/logs" replace />} />
-            <Route path="/exceptions/*" element={<Navigate to="/monitoring/exceptions" replace />} />
-            <Route path="/analytics/*" element={<Navigate to="/performance" replace />} />
+            <Route
+              path="/requests/*"
+              element={<Navigate to="/monitoring/requests" replace />}
+            />
+            <Route
+              path="/logs"
+              element={<Navigate to="/monitoring/logs" replace />}
+            />
+            <Route
+              path="/exceptions/*"
+              element={<Navigate to="/monitoring/exceptions" replace />}
+            />
+            <Route
+              path="/analytics/*"
+              element={<Navigate to="/performance" replace />}
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ShellContent>

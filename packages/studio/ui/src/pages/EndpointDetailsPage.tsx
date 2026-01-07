@@ -4,9 +4,9 @@ import {
   LatencyPercentilesChart,
   MetricCard,
   StatusDistributionChart,
+  type TimeRange,
   TimeRangeSelector,
   createTimeRange,
-  type TimeRange,
 } from '@geekmidas/ui';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -38,7 +38,13 @@ function getMethodVariant(
   method: string,
 ): 'get' | 'post' | 'put' | 'patch' | 'delete' | 'default' {
   const m = method.toLowerCase();
-  if (m === 'get' || m === 'post' || m === 'put' || m === 'patch' || m === 'delete') {
+  if (
+    m === 'get' ||
+    m === 'post' ||
+    m === 'put' ||
+    m === 'patch' ||
+    m === 'delete'
+  ) {
     return m;
   }
   return 'default';

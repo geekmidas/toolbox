@@ -6,14 +6,14 @@
  * request/response metadata as span attributes.
  */
 import type { MiddlewareObj } from '@middy/core';
+import { type Span, context, trace } from '@opentelemetry/api';
 import type { Context as LambdaContext } from 'aws-lambda';
 import {
+  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
-  type HttpSpanAttributes,
 } from './http';
-import { context, trace, type Span } from '@opentelemetry/api';
 
 /**
  * Options for the telemetry middleware
@@ -185,7 +185,8 @@ function buildSpanAttributes(
   options: TelemetryMiddlewareOptions,
 ): HttpSpanAttributes {
   // Detect event type (API Gateway v1, v2, ALB, or direct invoke)
-  const isV2 = 'requestContext' in event && 'http' in (event.requestContext || {});
+  const isV2 =
+    'requestContext' in event && 'http' in (event.requestContext || {});
   const isV1 =
     'requestContext' in event &&
     'httpMethod' in event &&
@@ -218,8 +219,7 @@ function buildSpanAttributes(
     route = event.resource;
     host = event.headers?.Host || event.headers?.host;
     scheme = 'https';
-    userAgent =
-      event.headers?.['User-Agent'] || event.headers?.['user-agent'];
+    userAgent = event.headers?.['User-Agent'] || event.headers?.['user-agent'];
     clientIp = event.requestContext?.identity?.sourceIp;
     requestId = event.requestContext?.requestId;
   } else if ('httpMethod' in event) {
@@ -227,8 +227,7 @@ function buildSpanAttributes(
     method = event.httpMethod;
     path = event.path;
     host = event.headers?.host;
-    userAgent =
-      event.headers?.['user-agent'] || event.headers?.['User-Agent'];
+    userAgent = event.headers?.['user-agent'] || event.headers?.['User-Agent'];
     clientIp = event.headers?.['x-forwarded-for']?.split(',')[0]?.trim();
   }
 

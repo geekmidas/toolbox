@@ -1,5 +1,9 @@
+import type {
+  APIGatewayProxyEvent,
+  APIGatewayProxyEventV2,
+  Context,
+} from 'aws-lambda';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { APIGatewayProxyEvent, APIGatewayProxyEventV2, Context } from 'aws-lambda';
 import { Telescope } from '../../Telescope';
 import { InMemoryStorage } from '../../storage/memory';
 import { createTelescopeHandler, telescopeMiddleware } from '../middy';
@@ -120,7 +124,9 @@ describe('Telescope Middy Middleware', () => {
       });
 
       it('should respect recordBody option when false', async () => {
-        const middleware = telescopeMiddleware(telescope, { recordBody: false });
+        const middleware = telescopeMiddleware(telescope, {
+          recordBody: false,
+        });
         const event = createV2Event({
           method: 'POST',
           path: '/api/users',
@@ -129,7 +135,10 @@ describe('Telescope Middy Middleware', () => {
         const request = {
           event,
           context: mockContext,
-          response: { statusCode: 200, body: JSON.stringify({ token: 'secret-token' }) },
+          response: {
+            statusCode: 200,
+            body: JSON.stringify({ token: 'secret-token' }),
+          },
           error: null,
           internal: {},
           __telescopeStartTime: Date.now(),
@@ -241,7 +250,9 @@ describe('Telescope Middy Middleware', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0].status).toBe(500);
         expect(requests[0].path).toBe('/api/data');
-        expect(requests[0].responseBody).toEqual({ error: 'Database connection failed' });
+        expect(requests[0].responseBody).toEqual({
+          error: 'Database connection failed',
+        });
       });
     });
   });
@@ -288,7 +299,9 @@ describe('Telescope Middy Middleware', () => {
       const handler = createTelescopeHandler(telescope, baseHandler);
       const event = createV2Event({ path: '/api/failing' });
 
-      await expect(handler(event, mockContext)).rejects.toThrow('Handler failed');
+      await expect(handler(event, mockContext)).rejects.toThrow(
+        'Handler failed',
+      );
 
       const exceptions = await storage.getExceptions();
       expect(exceptions).toHaveLength(1);
@@ -336,7 +349,9 @@ describe('Telescope Middy Middleware', () => {
     it('should handle base64 encoded body', async () => {
       const middleware = telescopeMiddleware(telescope);
       const bodyContent = { data: 'test' };
-      const base64Body = Buffer.from(JSON.stringify(bodyContent)).toString('base64');
+      const base64Body = Buffer.from(JSON.stringify(bodyContent)).toString(
+        'base64',
+      );
 
       const event: APIGatewayProxyEventV2 = {
         ...createV2Event(),
@@ -397,7 +412,10 @@ describe('Telescope Middy Middleware', () => {
 
     it('should construct URL with query string for v2 events', async () => {
       const middleware = telescopeMiddleware(telescope);
-      const event = createV2Event({ path: '/api/search', queryString: 'q=test&page=1' });
+      const event = createV2Event({
+        path: '/api/search',
+        queryString: 'q=test&page=1',
+      });
       const request = {
         event,
         context: mockContext,
@@ -503,14 +521,16 @@ describe('Telescope Middy Middleware', () => {
 
 // Helper functions to create mock events
 
-function createV2Event(options: {
-  method?: string;
-  path?: string;
-  body?: string | null;
-  query?: Record<string, string>;
-  queryString?: string;
-  ip?: string;
-} = {}): APIGatewayProxyEventV2 {
+function createV2Event(
+  options: {
+    method?: string;
+    path?: string;
+    body?: string | null;
+    query?: Record<string, string>;
+    queryString?: string;
+    ip?: string;
+  } = {},
+): APIGatewayProxyEventV2 {
   return {
     version: '2.0',
     routeKey: `${options.method || 'GET'} ${options.path || '/'}`,
@@ -541,13 +561,15 @@ function createV2Event(options: {
   };
 }
 
-function createV1Event(options: {
-  method?: string;
-  path?: string;
-  body?: string | null;
-  query?: Record<string, string>;
-  ip?: string;
-} = {}): APIGatewayProxyEvent {
+function createV1Event(
+  options: {
+    method?: string;
+    path?: string;
+    body?: string | null;
+    query?: Record<string, string>;
+    ip?: string;
+  } = {},
+): APIGatewayProxyEvent {
   return {
     httpMethod: options.method || 'GET',
     path: options.path || '/',

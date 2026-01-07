@@ -15,21 +15,16 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { bench, describe } from 'vitest';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
-import {
-  allEndpoints,
-  mockLogger,
-  simpleEndpoint,
-  authEndpoint,
-  dbEndpoint,
-  authDbEndpoint,
-  postEndpoint,
-  complexEndpoint,
-  queryEndpoint,
-  paramEndpoint,
-} from './fixtures';
+import { allEndpoints, mockLogger, simpleEndpoint } from './fixtures';
 import { OptimizedHonoEndpoint } from './strategies/strategy-a-lazy-services';
-import { MiddlewareHonoEndpoint, MinimalHonoEndpoint } from './strategies/strategy-c-middleware';
-import { OptInEventHonoEndpoint, FullyOptimizedHonoEndpoint } from './strategies/strategy-d-opt-in-events';
+import {
+  MiddlewareHonoEndpoint,
+  MinimalHonoEndpoint,
+} from './strategies/strategy-c-middleware';
+import {
+  FullyOptimizedHonoEndpoint,
+  OptInEventHonoEndpoint,
+} from './strategies/strategy-d-opt-in-events';
 
 // ============================================================================
 // Test Setup
@@ -53,15 +48,33 @@ const lazyServicesApp = createTestApp(allEndpoints, OptimizedHonoEndpoint);
 const middlewareApp = createTestApp(allEndpoints, MiddlewareHonoEndpoint);
 const minimalApp = createTestApp(allEndpoints, MinimalHonoEndpoint);
 const optInEventsApp = createTestApp(allEndpoints, OptInEventHonoEndpoint);
-const fullyOptimizedApp = createTestApp(allEndpoints, FullyOptimizedHonoEndpoint);
+const fullyOptimizedApp = createTestApp(
+  allEndpoints,
+  FullyOptimizedHonoEndpoint,
+);
 
 // Simple apps for focused comparison
 const currentSimpleApp = createTestApp([simpleEndpoint] as any, HonoEndpoint);
-const lazySimpleApp = createTestApp([simpleEndpoint] as any, OptimizedHonoEndpoint);
-const middlewareSimpleApp = createTestApp([simpleEndpoint] as any, MiddlewareHonoEndpoint);
-const minimalSimpleApp = createTestApp([simpleEndpoint] as any, MinimalHonoEndpoint);
-const optInSimpleApp = createTestApp([simpleEndpoint] as any, OptInEventHonoEndpoint);
-const fullyOptimizedSimpleApp = createTestApp([simpleEndpoint] as any, FullyOptimizedHonoEndpoint);
+const lazySimpleApp = createTestApp(
+  [simpleEndpoint] as any,
+  OptimizedHonoEndpoint,
+);
+const middlewareSimpleApp = createTestApp(
+  [simpleEndpoint] as any,
+  MiddlewareHonoEndpoint,
+);
+const minimalSimpleApp = createTestApp(
+  [simpleEndpoint] as any,
+  MinimalHonoEndpoint,
+);
+const optInSimpleApp = createTestApp(
+  [simpleEndpoint] as any,
+  OptInEventHonoEndpoint,
+);
+const fullyOptimizedSimpleApp = createTestApp(
+  [simpleEndpoint] as any,
+  FullyOptimizedHonoEndpoint,
+);
 
 // ============================================================================
 // Request Factory Helpers
@@ -99,7 +112,9 @@ function createRequest(
 describe('Baseline: Raw Hono vs HonoEndpoint', () => {
   // Raw Hono baseline
   const rawHono = new Hono();
-  rawHono.get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
+  rawHono.get('/health', (c) =>
+    c.json({ status: 'ok', timestamp: Date.now() }),
+  );
 
   bench('raw Hono (baseline)', async () => {
     const req = createRequest('/health');
@@ -375,23 +390,43 @@ describe('Concurrent Requests: 100 Parallel', () => {
   const req = createRequest('/health');
 
   bench('Current Implementation', async () => {
-    await Promise.all(Array(100).fill(null).map(() => currentApp.fetch(req)));
+    await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(() => currentApp.fetch(req)),
+    );
   });
 
   bench('Strategy A: Lazy Services', async () => {
-    await Promise.all(Array(100).fill(null).map(() => lazyServicesApp.fetch(req)));
+    await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(() => lazyServicesApp.fetch(req)),
+    );
   });
 
   bench('Strategy C: Middleware Composition', async () => {
-    await Promise.all(Array(100).fill(null).map(() => middlewareApp.fetch(req)));
+    await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(() => middlewareApp.fetch(req)),
+    );
   });
 
   bench('Strategy D: Opt-in Events', async () => {
-    await Promise.all(Array(100).fill(null).map(() => optInEventsApp.fetch(req)));
+    await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(() => optInEventsApp.fetch(req)),
+    );
   });
 
   bench('Combined: Fully Optimized', async () => {
-    await Promise.all(Array(100).fill(null).map(() => fullyOptimizedApp.fetch(req)));
+    await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(() => fullyOptimizedApp.fetch(req)),
+    );
   });
 });
 

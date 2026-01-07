@@ -48,10 +48,7 @@ export function BarListChart<T extends BarListItem>({
         return (
           <div
             key={index}
-            className={cn(
-              'group',
-              isClickable && 'cursor-pointer',
-            )}
+            className={cn('group', isClickable && 'cursor-pointer')}
             onClick={() => onItemClick?.(item)}
           >
             <div className="flex items-center justify-between mb-1">

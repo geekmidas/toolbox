@@ -71,7 +71,24 @@ interface EndpointFeatures {
 /**
  * Analyze endpoint features at registration time (not per-request)
  */
-function analyzeEndpointFeatures(endpoint: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>): EndpointFeatures {
+function analyzeEndpointFeatures(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
+): EndpointFeatures {
   return {
     hasAuth: endpoint.authorizer !== 'none',
     hasServices: endpoint.services.length > 0,
@@ -80,7 +97,8 @@ function analyzeEndpointFeatures(endpoint: Endpoint<any, any, any, any, any, any
     hasQueryValidation: !!endpoint.input?.query,
     hasParamValidation: !!endpoint.input?.params,
     // Audit context needed if declarative audits OR auditor storage service configured (for manual audits)
-    hasAudits: (endpoint.audits?.length ?? 0) > 0 || !!endpoint.auditorStorageService,
+    hasAudits:
+      (endpoint.audits?.length ?? 0) > 0 || !!endpoint.auditorStorageService,
     hasEvents: (endpoint.events?.length ?? 0) > 0,
     hasRateLimit: !!endpoint.rateLimit,
     hasRls: !!endpoint.rlsConfig && !endpoint.rlsBypass,
@@ -397,12 +415,17 @@ export class HonoEndpoint<
 
         // Create audit context only if audits are configured
         const auditContext = features.hasAudits
-          ? await createAuditContext(endpoint as any, serviceDiscovery, logger, {
-              session,
-              header,
-              cookie,
-              services: services as Record<string, unknown>,
-            })
+          ? await createAuditContext(
+              endpoint as any,
+              serviceDiscovery,
+              logger,
+              {
+                session,
+                header,
+                cookie,
+                services: services as Record<string, unknown>,
+              },
+            )
           : undefined;
 
         const audits = features.hasAudits

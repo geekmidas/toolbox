@@ -7,13 +7,21 @@
  * 3. Cached service instances are reused
  */
 import type { Logger } from '@geekmidas/logger';
-import type { Service, ServiceDiscovery, ServiceRecord } from '@geekmidas/services';
+import type {
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { type Context, Hono } from 'hono';
+import type { Hono } from 'hono';
 import { validator } from 'hono/validator';
-import type { HttpMethod, LowerHttpMethod } from '../../types';
-import { Endpoint, type EndpointSchemas, ResponseBuilder } from '../../endpoints/Endpoint';
+import {
+  Endpoint,
+  type EndpointSchemas,
+  ResponseBuilder,
+} from '../../endpoints/Endpoint';
 import { parseHonoQuery } from '../../endpoints/parseHonoQuery';
+import type { HttpMethod, LowerHttpMethod } from '../../types';
 
 /**
  * Lazy service resolver that caches service instances
@@ -24,7 +32,10 @@ class LazyServiceResolver<TServices extends Service[]> {
   private pendingRegistrations = new Map<string, Promise<any>>();
 
   constructor(
-    private serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, Logger>,
+    private serviceDiscovery: ServiceDiscovery<
+      ServiceRecord<TServices>,
+      Logger
+    >,
     private availableServices: TServices,
   ) {}
 
@@ -45,9 +56,13 @@ class LazyServiceResolver<TServices extends Service[]> {
     }
 
     // Find and register service
-    const service = this.availableServices.find((s) => s.serviceName === serviceName);
+    const service = this.availableServices.find(
+      (s) => s.serviceName === serviceName,
+    );
     if (!service) {
-      throw new Error(`Service '${serviceName}' not found in available services`);
+      throw new Error(
+        `Service '${serviceName}' not found in available services`,
+      );
     }
 
     const registrationPromise = this.serviceDiscovery
@@ -86,7 +101,8 @@ class LazyServiceResolver<TServices extends Service[]> {
     );
 
     if (servicesToRegister.length > 0) {
-      const registered = await this.serviceDiscovery.register(servicesToRegister);
+      const registered =
+        await this.serviceDiscovery.register(servicesToRegister);
 
       // Cache all registered services
       for (const [name, instance] of Object.entries(registered)) {
@@ -127,7 +143,10 @@ export class OptimizedHonoEndpoint {
   /**
    * Add routes with lazy service resolution
    */
-  static addRoutes<TServices extends Service[] = [], TLogger extends Logger = Logger>(
+  static addRoutes<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -157,7 +176,22 @@ export class OptimizedHonoEndpoint {
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
   >(
-    endpoint: Endpoint<TRoute, TMethod, TInput, TOutSchema, TServices, TLogger, any, any, any, any, any, any, any, any>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
@@ -189,7 +223,10 @@ export class OptimizedHonoEndpoint {
       validator('query', async (_, c) => {
         if (!endpoint.input?.query) return undefined;
         const parsedQuery = parseHonoQuery(c);
-        const parsed = await Endpoint.validate(endpoint.input.query, parsedQuery);
+        const parsed = await Endpoint.validate(
+          endpoint.input.query,
+          parsedQuery,
+        );
         if (parsed.issues) return c.json(parsed.issues, 422);
         return parsed.value;
       }),

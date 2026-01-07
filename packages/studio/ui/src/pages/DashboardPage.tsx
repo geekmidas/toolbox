@@ -18,8 +18,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getEndpointMetrics, getMetrics } from '../api';
-import type { EndpointMetrics, RequestMetrics } from '../types';
 import { useStudio } from '../providers/StudioProvider';
+import type { EndpointMetrics, RequestMetrics } from '../types';
 
 export function DashboardPage() {
   const { stats, requests, exceptions, loading, realtimeMetrics, connected } =
@@ -192,7 +192,9 @@ export function DashboardPage() {
 
         <MetricCard
           title="Avg Duration"
-          value={formatDuration(metricsData?.avgDuration ?? localMetrics.avgDuration)}
+          value={formatDuration(
+            metricsData?.avgDuration ?? localMetrics.avgDuration,
+          )}
           icon={<Clock className="h-4 w-4" />}
           trend="neutral"
           trendValue={`p95: ${formatDuration(metricsData?.p95Duration ?? 0)}`}

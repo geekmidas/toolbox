@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler, Next } from 'hono';
+import type { Telescope } from '../Telescope';
 import type {
   HonoAdapterConfig,
   TelescopeHonoContext,
 } from '../adapters/types';
 import { flushTelemetry } from '../instrumentation/core';
-import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
 import { getAsset, getIndexHtml } from '../ui-assets';
 
@@ -375,7 +375,9 @@ export function setupWebSocket(
 /**
  * Get the Telescope context from Hono context (set by middleware)
  */
-export function getTelescopeContext(c: Context): TelescopeHonoContext | undefined {
+export function getTelescopeContext(
+  c: Context,
+): TelescopeHonoContext | undefined {
   return c.get(CONTEXT_KEY);
 }
 
@@ -388,5 +390,8 @@ export function getRequestId(c: Context): string | undefined {
 
 // Re-export types and utilities
 export type { Telescope };
-export type { TelescopeHonoContext, HonoAdapterConfig } from '../adapters/types';
+export type {
+  TelescopeHonoContext,
+  HonoAdapterConfig,
+} from '../adapters/types';
 export { flushTelemetry } from '../instrumentation/core';

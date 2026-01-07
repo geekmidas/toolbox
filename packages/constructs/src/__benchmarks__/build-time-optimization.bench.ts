@@ -16,11 +16,10 @@ import { bench, describe } from 'vitest';
 import { Endpoint, ResponseBuilder } from '../endpoints';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import {
-  mockLogger,
-  simpleEndpoint,
   authEndpoint,
+  mockLogger,
   postEndpoint,
-  databaseService,
+  simpleEndpoint,
 } from './fixtures';
 
 const envParser = new EnvironmentParser({});
@@ -170,41 +169,40 @@ HonoEndpoint.addRoutes(
 // ============================================================================
 
 const buildTimeBodyApp = new Hono();
-const bodyServiceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
+const bodyServiceDiscovery = ServiceDiscovery.getInstance(
+  mockLogger,
+  envParser,
+);
 
 // Simulates generated code with body validation
-buildTimeBodyApp.post(
-  '/users',
-  validateBody(postEndpoint),
-  async (c) => {
-    const headerValues = c.req.header();
-    const header = Endpoint.createHeaders(headerValues);
-    const cookie = Endpoint.createCookies(headerValues.cookie);
+buildTimeBodyApp.post('/users', validateBody(postEndpoint), async (c) => {
+  const headerValues = c.req.header();
+  const header = Endpoint.createHeaders(headerValues);
+  const cookie = Endpoint.createCookies(headerValues.cookie);
 
-    const services = await bodyServiceDiscovery.register(postEndpoint.services);
+  const services = await bodyServiceDiscovery.register(postEndpoint.services);
 
-    const responseBuilder = new ResponseBuilder();
-    const result = await postEndpoint.handler(
-      {
-        services,
-        logger: mockLogger,
-        body: (c.req.valid as any)('json'),
-        query: undefined,
-        params: undefined,
-        session: undefined,
-        header,
-        cookie,
-        auditor: undefined,
-        db: undefined,
-      } as any,
-      responseBuilder,
-    );
+  const responseBuilder = new ResponseBuilder();
+  const result = await postEndpoint.handler(
+    {
+      services,
+      logger: mockLogger,
+      body: (c.req.valid as any)('json'),
+      query: undefined,
+      params: undefined,
+      session: undefined,
+      header,
+      cookie,
+      auditor: undefined,
+      db: undefined,
+    } as any,
+    responseBuilder,
+  );
 
-    const status = (responseBuilder.getMetadata().status ??
-      postEndpoint.status) as any;
-    return c.json(result, status);
-  },
-);
+  const status = (responseBuilder.getMetadata().status ??
+    postEndpoint.status) as any;
+  return c.json(result, status);
+});
 
 // Runtime version for comparison
 const runtimeBodyApp = new Hono();
@@ -220,7 +218,11 @@ HonoEndpoint.addRoutes(
 
 function createRequest(
   path: string,
-  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const { method = 'GET', body, headers = {} } = options;
   const init: RequestInit = {

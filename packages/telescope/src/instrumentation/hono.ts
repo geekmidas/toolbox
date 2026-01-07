@@ -1,3 +1,4 @@
+import { type Span, context, trace } from '@opentelemetry/api';
 /**
  * OpenTelemetry instrumentation middleware for Hono
  *
@@ -6,12 +7,11 @@
  * request/response metadata as span attributes.
  */
 import type { Context, MiddlewareHandler } from 'hono';
-import { context, trace, type Span } from '@opentelemetry/api';
 import {
+  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
-  type HttpSpanAttributes,
 } from './http';
 
 /**
@@ -80,7 +80,10 @@ export function honoTelemetryMiddleware(
 ): MiddlewareHandler {
   return async (c, next) => {
     // Check if path should be ignored
-    if (options.ignorePaths && shouldIgnorePath(c.req.path, options.ignorePaths)) {
+    if (
+      options.ignorePaths &&
+      shouldIgnorePath(c.req.path, options.ignorePaths)
+    ) {
       return next();
     }
 
@@ -169,9 +172,10 @@ function buildHonoSpanAttributes(
 
   // Use actual path for route unless it's a specific route pattern
   const routePath = c.req.routePath;
-  const route = routePath && routePath !== '*' && !routePath.includes('/*')
-    ? routePath
-    : url.pathname;
+  const route =
+    routePath && routePath !== '*' && !routePath.includes('/*')
+      ? routePath
+      : url.pathname;
 
   const attrs: HttpSpanAttributes = {
     method: req.method,

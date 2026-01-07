@@ -54,7 +54,9 @@ function registerProcessHooks(): void {
 /**
  * Extract request data from API Gateway event (v1 or v2)
  */
-function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2): {
+function extractRequestData(
+  event: APIGatewayProxyEvent | APIGatewayProxyEventV2,
+): {
   method: string;
   path: string;
   url: string;
@@ -77,7 +79,9 @@ function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2
     // Filter out undefined values from query parameters
     const query: Record<string, string> = {};
     if (v2Event.queryStringParameters) {
-      for (const [key, value] of Object.entries(v2Event.queryStringParameters)) {
+      for (const [key, value] of Object.entries(
+        v2Event.queryStringParameters,
+      )) {
         if (value !== undefined) {
           query[key] = value;
         }
@@ -86,7 +90,9 @@ function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2
     return {
       method: v2Event.requestContext.http.method,
       path: v2Event.rawPath,
-      url: v2Event.rawPath + (v2Event.rawQueryString ? `?${v2Event.rawQueryString}` : ''),
+      url:
+        v2Event.rawPath +
+        (v2Event.rawQueryString ? `?${v2Event.rawQueryString}` : ''),
       headers,
       query,
       body: parseBody(v2Event.body, v2Event.isBase64Encoded),
@@ -98,7 +104,9 @@ function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2
   // API Gateway v1 (REST API)
   const v1Event = event as APIGatewayProxyEvent;
   const queryString = v1Event.queryStringParameters
-    ? new URLSearchParams(v1Event.queryStringParameters as Record<string, string>).toString()
+    ? new URLSearchParams(
+        v1Event.queryStringParameters as Record<string, string>,
+      ).toString()
     : '';
 
   return {
@@ -116,7 +124,10 @@ function extractRequestData(event: APIGatewayProxyEvent | APIGatewayProxyEventV2
 /**
  * Parse request body
  */
-function parseBody(body: string | null | undefined, isBase64Encoded?: boolean): unknown {
+function parseBody(
+  body: string | null | undefined,
+  isBase64Encoded?: boolean,
+): unknown {
   if (!body) return undefined;
 
   try {
@@ -137,11 +148,7 @@ function extractResponseData(response: unknown): {
   headers: Record<string, string>;
   body: unknown;
 } {
-  if (
-    response &&
-    typeof response === 'object' &&
-    'statusCode' in response
-  ) {
+  if (response && typeof response === 'object' && 'statusCode' in response) {
     const res = response as {
       statusCode?: number;
       headers?: Record<string, string>;
@@ -186,7 +193,12 @@ function tryParseJson(str: string): unknown {
 export function telescopeMiddleware(
   telescope: Telescope,
   options: TelescopeMiddlewareOptions = {},
-): MiddlewareObj<APIGatewayProxyEvent | APIGatewayProxyEventV2, any, Error, Context> {
+): MiddlewareObj<
+  APIGatewayProxyEvent | APIGatewayProxyEventV2,
+  any,
+  Error,
+  Context
+> {
   const {
     flushThresholdMs = 1000,
     recordBody = true,

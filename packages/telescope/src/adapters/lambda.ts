@@ -93,17 +93,12 @@ const DEFAULT_LAMBDA_CONFIG: LambdaAdapterConfig = {
  * Lambda adapter for Telescope.
  * Provides Lambda-specific request/response handling with auto-flush.
  */
-export class LambdaAdapter
-  implements TelescopeAdapter<LambdaAdapterConfig>
-{
+export class LambdaAdapter implements TelescopeAdapter<LambdaAdapterConfig> {
   readonly config: LambdaAdapterConfig;
   private telescope: Telescope;
   private resourceAttributes: LambdaResourceAttributes | null = null;
 
-  constructor(
-    telescope: Telescope,
-    config: Partial<LambdaAdapterConfig> = {},
-  ) {
+  constructor(telescope: Telescope, config: Partial<LambdaAdapterConfig> = {}) {
     this.telescope = telescope;
     this.config = { ...DEFAULT_LAMBDA_CONFIG, ...config };
   }
@@ -370,7 +365,9 @@ function isAlbEvent(event: unknown): event is AlbEvent {
   );
 }
 
-function isApiGatewayResponse(response: unknown): response is ApiGatewayResponse {
+function isApiGatewayResponse(
+  response: unknown,
+): response is ApiGatewayResponse {
   return (
     typeof response === 'object' &&
     response !== null &&

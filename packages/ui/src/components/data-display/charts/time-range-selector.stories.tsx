@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { useState } from 'react';
 import {
-  createTimeRange,
-  TimeRangeSelector,
   type TimeRange,
+  TimeRangeSelector,
+  createTimeRange,
 } from './time-range-selector';
 
 const meta: Meta<typeof TimeRangeSelector> = {

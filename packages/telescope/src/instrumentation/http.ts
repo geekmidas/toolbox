@@ -106,7 +106,8 @@ export function toOtelAttributes(attrs: HttpSpanAttributes): Attributes {
   // User attributes
   if (attrs.user?.userId) otelAttrs['enduser.id'] = attrs.user.userId;
   if (attrs.user?.sessionId) otelAttrs['session.id'] = attrs.user.sessionId;
-  if (attrs.user?.roles?.length) otelAttrs['enduser.role'] = attrs.user.roles.join(',');
+  if (attrs.user?.roles?.length)
+    otelAttrs['enduser.role'] = attrs.user.roles.join(',');
 
   // Custom attributes
   if (attrs.custom) {
@@ -231,8 +232,7 @@ export async function withHttpSpan<T>(
       () => fn(span),
     );
 
-    const statusCode =
-      (result as { statusCode?: number }).statusCode ?? 200;
+    const statusCode = (result as { statusCode?: number }).statusCode ?? 200;
     endHttpSpan(span, { statusCode });
 
     return result;
@@ -249,10 +249,7 @@ export async function withHttpSpan<T>(
 /**
  * Create a child span for internal operations (middleware, handlers, etc.)
  */
-export function createChildSpan(
-  name: string,
-  attributes?: Attributes,
-): Span {
+export function createChildSpan(name: string, attributes?: Attributes): Span {
   const tracer = getConstructsTracer();
   return tracer.startSpan(name, {
     kind: SpanKind.INTERNAL,
@@ -299,7 +296,8 @@ export function isTracingEnabled(): boolean {
     const tracer = trace.getTracer(TRACER_NAME);
     // Check if we have a real tracer (not a no-op)
     const span = tracer.startSpan('test');
-    const isReal = span.spanContext().traceId !== '00000000000000000000000000000000';
+    const isReal =
+      span.spanContext().traceId !== '00000000000000000000000000000000';
     span.end();
     return isReal;
   } catch {

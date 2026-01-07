@@ -2,9 +2,9 @@ import type { AuditStorage, AuditableAction } from '@geekmidas/audit';
 import { withRlsContext } from '@geekmidas/db/rls';
 import type { Logger } from '@geekmidas/logger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { Telemetry } from '../telemetry';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
-import type { Telemetry } from '../telemetry';
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import middy, { type MiddlewareObj } from '@middy/core';

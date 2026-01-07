@@ -8,17 +8,21 @@
  * 4. Per-route event publishing configuration
  */
 import type { Logger } from '@geekmidas/logger';
-import type { Service, ServiceDiscovery, ServiceRecord } from '@geekmidas/services';
+import type {
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { type Context, Hono, type Next } from 'hono';
+import type { Context, Hono, Next } from 'hono';
 import { validator } from 'hono/validator';
-import type { HttpMethod, LowerHttpMethod } from '../../types';
 import {
   Endpoint,
   type EndpointSchemas,
   ResponseBuilder,
 } from '../../endpoints/Endpoint';
 import { parseHonoQuery } from '../../endpoints/parseHonoQuery';
+import type { HttpMethod, LowerHttpMethod } from '../../types';
 
 // ============================================================================
 // Event Publishing Middleware (Per-Route)
@@ -28,8 +32,26 @@ import { parseHonoQuery } from '../../endpoints/parseHonoQuery';
  * Creates event publishing middleware only for endpoints with events
  * This runs AFTER the handler to publish events on success
  */
-function createEventPublishMiddleware<TServices extends Service[], TLogger extends Logger>(
-  endpoint: Endpoint<any, any, any, any, TServices, TLogger, any, any, any, any, any, any, any, any>,
+function createEventPublishMiddleware<
+  TServices extends Service[],
+  TLogger extends Logger,
+>(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    TServices,
+    TLogger,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
   serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
 ): ((c: Context, next: Next) => Promise<Response | void>) | null {
   // Return null if no events configured - middleware won't be added
@@ -79,7 +101,22 @@ declare module 'hono' {
   interface ContextVariableMap {
     __response: unknown;
     __logger: Logger;
-    __endpoint: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>;
+    __endpoint: Endpoint<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >;
   }
 }
 
@@ -95,7 +132,10 @@ export class OptInEventHonoEndpoint {
   /**
    * Add routes with opt-in event publishing
    */
-  static addRoutes<TServices extends Service[] = [], TLogger extends Logger = Logger>(
+  static addRoutes<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -128,7 +168,22 @@ export class OptInEventHonoEndpoint {
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
   >(
-    endpoint: Endpoint<TRoute, TMethod, TInput, TOutSchema, TServices, TLogger, any, any, any, any, any, any, any, any>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
@@ -145,11 +200,16 @@ export class OptInEventHonoEndpoint {
     const dbPromise = endpoint.databaseService
       ? serviceDiscovery
           .register([endpoint.databaseService])
-          .then((s) => s[endpoint.databaseService!.serviceName as keyof typeof s])
+          .then(
+            (s) => s[endpoint.databaseService!.serviceName as keyof typeof s],
+          )
       : Promise.resolve(undefined);
 
     // Build middleware chain
-    const middlewares: ((c: Context, next: Next) => Promise<Response | void>)[] = [];
+    const middlewares: ((
+      c: Context,
+      next: Next,
+    ) => Promise<Response | void>)[] = [];
 
     // Validators (always needed)
     const validators = [
@@ -162,7 +222,10 @@ export class OptInEventHonoEndpoint {
       validator('query', async (_, c) => {
         if (!endpoint.input?.query) return undefined;
         const parsedQuery = parseHonoQuery(c);
-        const parsed = await Endpoint.validate(endpoint.input.query, parsedQuery);
+        const parsed = await Endpoint.validate(
+          endpoint.input.query,
+          parsedQuery,
+        );
         if (parsed.issues) return c.json(parsed.issues, 422);
         return parsed.value;
       }),
@@ -175,7 +238,10 @@ export class OptInEventHonoEndpoint {
     ];
 
     // Add event middleware ONLY if endpoint has events
-    const eventMiddleware = createEventPublishMiddleware(endpoint, serviceDiscovery);
+    const eventMiddleware = createEventPublishMiddleware(
+      endpoint,
+      serviceDiscovery,
+    );
     if (eventMiddleware) {
       middlewares.push(eventMiddleware);
     }
@@ -277,7 +343,10 @@ export class FullyOptimizedHonoEndpoint {
   /**
    * Add routes with all optimizations
    */
-  static addRoutes<TServices extends Service[] = [], TLogger extends Logger = Logger>(
+  static addRoutes<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -307,7 +376,22 @@ export class FullyOptimizedHonoEndpoint {
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
   >(
-    endpoint: Endpoint<TRoute, TMethod, TInput, TOutSchema, TServices, TLogger, any, any, any, any, any, any, any, any>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
@@ -333,7 +417,10 @@ export class FullyOptimizedHonoEndpoint {
         : Promise.resolve({} as any);
 
     // Build minimal middleware chain
-    const middlewares: ((c: Context, next: Next) => Promise<Response | void>)[] = [];
+    const middlewares: ((
+      c: Context,
+      next: Next,
+    ) => Promise<Response | void>)[] = [];
 
     // Validators
     const validators = [
@@ -346,7 +433,10 @@ export class FullyOptimizedHonoEndpoint {
       validator('query', async (_, c) => {
         if (!endpoint.input?.query) return undefined;
         const parsedQuery = parseHonoQuery(c);
-        const parsed = await Endpoint.validate(endpoint.input.query, parsedQuery);
+        const parsed = await Endpoint.validate(
+          endpoint.input.query,
+          parsedQuery,
+        );
         if (parsed.issues) return c.json(parsed.issues, 422);
         return parsed.value;
       }),
@@ -367,7 +457,9 @@ export class FullyOptimizedHonoEndpoint {
         const cookie = Endpoint.createCookies(headerValues.cookie);
 
         const db = hasDatabaseService
-          ? services[endpoint.databaseService!.serviceName as keyof typeof services]
+          ? services[
+              endpoint.databaseService!.serviceName as keyof typeof services
+            ]
           : undefined;
 
         const session = await endpoint.getSession({
@@ -403,7 +495,11 @@ export class FullyOptimizedHonoEndpoint {
         if (Endpoint.isSuccessStatus(c.res.status)) {
           const response = c.get('__response');
           if (response !== undefined) {
-            await simulateEventPublish(endpoint.events!, response, endpoint.logger);
+            await simulateEventPublish(
+              endpoint.events!,
+              response,
+              endpoint.logger,
+            );
           }
         }
       });
@@ -415,7 +511,9 @@ export class FullyOptimizedHonoEndpoint {
         const services = await servicesPromise;
 
         const db = hasDatabaseService
-          ? services[endpoint.databaseService!.serviceName as keyof typeof services]
+          ? services[
+              endpoint.databaseService!.serviceName as keyof typeof services
+            ]
           : undefined;
 
         const headerValues = c.req.header();

@@ -1,17 +1,17 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import type { Context as LambdaContext } from 'aws-lambda';
-import {
-  telemetryMiddleware,
-  getSpanFromEvent,
-  getContextFromEvent,
-  withEventContext,
-} from '../middleware';
+import { trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { trace } from '@opentelemetry/api';
+import type { Context as LambdaContext } from 'aws-lambda';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  getContextFromEvent,
+  getSpanFromEvent,
+  telemetryMiddleware,
+  withEventContext,
+} from '../middleware';
 
 describe('telemetryMiddleware', () => {
   let mockContext: LambdaContext;
@@ -170,7 +170,10 @@ describe('telemetryMiddleware', () => {
 
     it('should record request body when recordBody is true', async () => {
       const bodyMiddleware = telemetryMiddleware({ recordBody: true });
-      const bodyContent = JSON.stringify({ name: 'John', email: 'john@example.com' });
+      const bodyContent = JSON.stringify({
+        name: 'John',
+        email: 'john@example.com',
+      });
 
       const event = {
         httpMethod: 'POST',
@@ -232,7 +235,9 @@ describe('telemetryMiddleware', () => {
       } as any);
 
       const spans = exporter.getFinishedSpans();
-      expect(spans[0].attributes['faas.invocation_id']).toBe('test-request-id-123');
+      expect(spans[0].attributes['faas.invocation_id']).toBe(
+        'test-request-id-123',
+      );
       expect(spans[0].attributes['faas.name']).toBe('test-function');
     });
   });
@@ -245,7 +250,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await middleware.after!({
         event,
         context: mockContext,
@@ -264,7 +273,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await middleware.after!({
         event,
         context: mockContext,
@@ -277,7 +290,9 @@ describe('telemetryMiddleware', () => {
     });
 
     it('should record response body when recordResponseBody is true', async () => {
-      const responseMiddleware = telemetryMiddleware({ recordResponseBody: true });
+      const responseMiddleware = telemetryMiddleware({
+        recordResponseBody: true,
+      });
       const responseBody = '{"users":[{"id":"1","name":"John"}]}';
 
       const event = {
@@ -286,7 +301,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await responseMiddleware.before!({ event, context: mockContext, response: null } as any);
+      await responseMiddleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await responseMiddleware.after!({
         event,
         context: mockContext,
@@ -306,7 +325,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
 
       const error = new Error('Database connection failed');
       await middleware.onError!({
@@ -330,7 +353,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
 
       const error = Object.assign(new Error('Forbidden'), { statusCode: 403 });
       await middleware.onError!({
@@ -353,7 +380,11 @@ describe('telemetryMiddleware', () => {
         headers: {},
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
 
       const result = await withEventContext(event, async () => {
         return 'executed-in-context';
@@ -390,7 +421,11 @@ describe('telemetryMiddleware', () => {
         },
       };
 
-      await userMiddleware.before!({ event, context: mockContext, response: null } as any);
+      await userMiddleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await userMiddleware.after!({
         event,
         context: mockContext,
@@ -413,7 +448,11 @@ describe('telemetryMiddleware', () => {
         endpointName: 'ListUsers',
       };
 
-      await endpointMiddleware.before!({ event, context: mockContext, response: null } as any);
+      await endpointMiddleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await endpointMiddleware.after!({
         event,
         context: mockContext,
@@ -436,7 +475,11 @@ describe('telemetryMiddleware', () => {
         operationId: 'createOrder',
       };
 
-      await opMiddleware.before!({ event, context: mockContext, response: null } as any);
+      await opMiddleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await opMiddleware.after!({
         event,
         context: mockContext,
@@ -461,7 +504,11 @@ describe('telemetryMiddleware', () => {
         },
       };
 
-      await middleware.before!({ event, context: mockContext, response: null } as any);
+      await middleware.before!({
+        event,
+        context: mockContext,
+        response: null,
+      } as any);
       await middleware.after!({
         event,
         context: mockContext,

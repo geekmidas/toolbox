@@ -2,12 +2,12 @@ import {
   AreaTimeSeriesChart,
   Badge,
   BarListChart,
-  createTimeRange,
   LatencyPercentilesChart,
   MetricCard,
   StatusDistributionChart,
-  TimeRangeSelector,
   type TimeRange,
+  TimeRangeSelector,
+  createTimeRange,
 } from '@geekmidas/ui';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -113,7 +113,6 @@ export function PerformancePage() {
     );
   }
 
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -213,7 +212,9 @@ export function PerformancePage() {
 
       {/* Top Endpoints - Chart View */}
       <div className="bg-card rounded-lg border p-4">
-        <h2 className="text-sm font-medium mb-4">Top Endpoints by Request Count</h2>
+        <h2 className="text-sm font-medium mb-4">
+          Top Endpoints by Request Count
+        </h2>
         <BarListChart
           data={endpoints.map((ep) => ({
             name: `${ep.method} ${ep.path}`,

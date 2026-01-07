@@ -5,7 +5,7 @@
  * OpenTelemetry. Works with any OTel-compatible backend (Jaeger, Zipkin,
  * Datadog, Honeycomb, etc.)
  */
-import { trace, type Span } from '@opentelemetry/api';
+import { type Span, trace } from '@opentelemetry/api';
 import type { Context as LambdaContext } from 'aws-lambda';
 
 /**
@@ -45,10 +45,10 @@ export interface Telemetry {
   onRequestError(ctx: TelemetryContext, error: Error): void;
 }
 import {
+  type HttpSpanAttributes,
   createHttpServerSpan,
   endHttpSpan,
   extractTraceContext,
-  type HttpSpanAttributes,
 } from './http';
 
 /**
@@ -137,7 +137,9 @@ export class OTelTelemetry implements Telemetry {
     // Record body if requested
     if (this.options.recordBody && event.body) {
       const bodyStr =
-        typeof event.body === 'string' ? event.body : JSON.stringify(event.body);
+        typeof event.body === 'string'
+          ? event.body
+          : JSON.stringify(event.body);
       span.setAttribute(
         'http.request.body',
         bodyStr.length > 4096 ? `${bodyStr.slice(0, 4096)}...` : bodyStr,
@@ -170,7 +172,10 @@ export class OTelTelemetry implements Telemetry {
   /**
    * Build span attributes from Lambda event
    */
-  private buildSpanAttributes(event: any, lambdaContext: any): HttpSpanAttributes {
+  private buildSpanAttributes(
+    event: any,
+    lambdaContext: any,
+  ): HttpSpanAttributes {
     // Detect event type (API Gateway v1, v2, ALB, or direct invoke)
     const isV2 =
       'requestContext' in event && 'http' in (event.requestContext || {});

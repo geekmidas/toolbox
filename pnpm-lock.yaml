@@ -698,6 +698,9 @@ importers:
       '@geekmidas/logger':
         specifier: workspace:^
         version: link:../logger
+      '@middy/core':
+        specifier: ^6.0.0
+        version: 6.3.2
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
@@ -14303,7 +14306,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

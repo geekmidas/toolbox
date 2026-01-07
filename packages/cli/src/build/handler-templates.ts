@@ -93,9 +93,7 @@ export function generateOptimizedImports(analyses: EndpointAnalysis[]): string {
     imports.push(`import { validator } from 'hono/validator';`);
   }
 
-  imports.push(
-    `import { Endpoint } from '@geekmidas/constructs/endpoints';`,
-  );
+  imports.push(`import { Endpoint } from '@geekmidas/constructs/endpoints';`);
 
   if (needsResponseBuilder) {
     imports.push(
@@ -135,7 +133,9 @@ export function generateOptimizedImports(analyses: EndpointAnalysis[]): string {
 /**
  * Generate reusable validator middleware factories
  */
-export function generateValidatorFactories(analyses: EndpointAnalysis[]): string {
+export function generateValidatorFactories(
+  analyses: EndpointAnalysis[],
+): string {
   const needsBody = analyses.some((a) => a.features.hasBodyValidation);
   const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
   const needsParams = analyses.some((a) => a.features.hasParamValidation);
@@ -205,7 +205,9 @@ function generateValidators(
   }
 
   // Add trailing comma if there are validators (needed before the handler function)
-  return validators.length > 0 ? '\n    ' + validators.join(',\n    ') + ',' : '';
+  return validators.length > 0
+    ? '\n    ' + validators.join(',\n    ') + ','
+    : '';
 }
 
 /**
@@ -492,7 +494,10 @@ export function generateOptimizedEndpointsFile(
 ): string {
   const imports = generateOptimizedImports(analyses);
   const validatorFactories = generateValidatorFactories(analyses);
-  const setupFunction = generateOptimizedSetupFunction(analyses, allExportNames);
+  const setupFunction = generateOptimizedSetupFunction(
+    analyses,
+    allExportNames,
+  );
 
   return `/**
  * Generated optimized endpoints file
@@ -619,7 +624,9 @@ export function setupMinimalEndpoints(
     ? generateValidatorImports(minimalEndpoints)
     : '';
 
-  const handlers = minimalEndpoints.map((a) => generateMinimalHandler(a)).join('\n');
+  const handlers = minimalEndpoints
+    .map((a) => generateMinimalHandler(a))
+    .join('\n');
 
   return `/**
  * Minimal-tier endpoint handlers (${minimalEndpoints.length} endpoints)
@@ -1038,7 +1045,10 @@ export function setupFullEndpoints(
   }
 
   const imports = tierEndpoints
-    .map((a) => `import { setup${capitalize(a.exportName)} } from './${a.exportName}.js';`)
+    .map(
+      (a) =>
+        `import { setup${capitalize(a.exportName)} } from './${a.exportName}.js';`,
+    )
     .join('\n');
 
   if (tier === 'minimal') {
@@ -1065,7 +1075,10 @@ ${calls}
 
   if (tier === 'standard') {
     const calls = tierEndpoints
-      .map((a) => `  setup${capitalize(a.exportName)}(app, serviceDiscovery, logger);`)
+      .map(
+        (a) =>
+          `  setup${capitalize(a.exportName)}(app, serviceDiscovery, logger);`,
+      )
       .join('\n');
 
     return `/**
@@ -1089,7 +1102,10 @@ ${calls}
 
   // full
   const calls = tierEndpoints
-    .map((a) => `  setup${capitalize(a.exportName)}(app, serviceDiscovery, openApiOptions);`)
+    .map(
+      (a) =>
+        `  setup${capitalize(a.exportName)}(app, serviceDiscovery, openApiOptions);`,
+    )
     .join('\n');
 
   return `/**
@@ -1122,7 +1138,9 @@ ${calls}
 /**
  * Generate validator imports for a single endpoint
  */
-function generateValidatorImportsForEndpoint(analysis: EndpointAnalysis): string {
+function generateValidatorImportsForEndpoint(
+  analysis: EndpointAnalysis,
+): string {
   const imports: string[] = [];
   if (analysis.features.hasBodyValidation) imports.push('validateBody');
   if (analysis.features.hasQueryValidation) imports.push('validateQuery');
@@ -1168,7 +1186,10 @@ export function generateEndpointFilesNested(
         files[fileName] = generateMinimalEndpointFile(analysis, endpointImport);
         break;
       case 'standard':
-        files[fileName] = generateStandardEndpointFile(analysis, endpointImport);
+        files[fileName] = generateStandardEndpointFile(
+          analysis,
+          endpointImport,
+        );
         break;
       case 'full':
         files[fileName] = generateFullEndpointFile(analysis, endpointImport);

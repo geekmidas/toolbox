@@ -43,7 +43,10 @@ export {
   enableTelemetryDebug,
   NoopSpanProcessor,
 } from './core';
-export type { SpanProcessorOptions, SpanProcessorStrategy } from '../adapters/types';
+export type {
+  SpanProcessorOptions,
+  SpanProcessorStrategy,
+} from '../adapters/types';
 
 // HTTP instrumentation utilities for constructs
 export {

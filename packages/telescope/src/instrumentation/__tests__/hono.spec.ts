@@ -1,17 +1,17 @@
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import {
-  honoTelemetryMiddleware,
-  getSpanFromContext,
-  getTraceContextFromHono,
-  withHonoSpanContext,
-} from '../hono';
+import { trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { trace } from '@opentelemetry/api';
+import { Hono } from 'hono';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  getSpanFromContext,
+  getTraceContextFromHono,
+  honoTelemetryMiddleware,
+  withHonoSpanContext,
+} from '../hono';
 
 describe('honoTelemetryMiddleware', () => {
   let app: Hono;

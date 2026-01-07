@@ -1,12 +1,12 @@
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
-import { OTelTelemetry } from '../otel';
+import { trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { trace } from '@opentelemetry/api';
 import type { Context } from 'aws-lambda';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { OTelTelemetry } from '../otel';
 
 describe('OTelTelemetry', () => {
   let exporter: InMemorySpanExporter;

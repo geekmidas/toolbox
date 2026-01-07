@@ -8,17 +8,21 @@
  * 4. Typed context instead of magic strings
  */
 import type { Logger } from '@geekmidas/logger';
-import type { Service, ServiceDiscovery, ServiceRecord } from '@geekmidas/services';
+import type {
+  Service,
+  ServiceDiscovery,
+  ServiceRecord,
+} from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { type Context, Hono, type Next } from 'hono';
+import type { Context, Hono, Next } from 'hono';
 import { validator } from 'hono/validator';
-import type { HttpMethod, LowerHttpMethod } from '../../types';
 import {
   Endpoint,
   type EndpointSchemas,
   ResponseBuilder,
 } from '../../endpoints/Endpoint';
 import { parseHonoQuery } from '../../endpoints/parseHonoQuery';
+import type { HttpMethod, LowerHttpMethod } from '../../types';
 
 // ============================================================================
 // Typed Context
@@ -46,8 +50,26 @@ declare module 'hono' {
 /**
  * Creates middleware that initializes the endpoint context
  */
-function createContextMiddleware<TServices extends Service[], TLogger extends Logger>(
-  endpoint: Endpoint<any, any, any, any, TServices, TLogger, any, any, any, any, any, any, any, any>,
+function createContextMiddleware<
+  TServices extends Service[],
+  TLogger extends Logger,
+>(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    TServices,
+    TLogger,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
   serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
 ): (c: Context, next: Next) => Promise<Response | void> {
   // Pre-resolve service registration promise at setup time
@@ -85,8 +107,26 @@ function createContextMiddleware<TServices extends Service[], TLogger extends Lo
 /**
  * Creates auth middleware (only if endpoint has authorization)
  */
-function createAuthMiddleware<TServices extends Service[], TLogger extends Logger>(
-  endpoint: Endpoint<any, any, any, any, TServices, TLogger, any, any, any, any, any, any, any, any>,
+function createAuthMiddleware<
+  TServices extends Service[],
+  TLogger extends Logger,
+>(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    TServices,
+    TLogger,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
 ): ((c: Context, next: Next) => Promise<Response | void>) | null {
   if (endpoint.authorizer === 'none') {
     return null;
@@ -124,8 +164,26 @@ function createAuthMiddleware<TServices extends Service[], TLogger extends Logge
 /**
  * Creates the core handler middleware
  */
-function createHandlerMiddleware<TServices extends Service[], TLogger extends Logger>(
-  endpoint: Endpoint<any, any, any, any, TServices, TLogger, any, any, any, any, any, any, any, any>,
+function createHandlerMiddleware<
+  TServices extends Service[],
+  TLogger extends Logger,
+>(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    TServices,
+    TLogger,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
 ): (c: Context) => Promise<Response> {
   return async (c) => {
     const ctx = c.get('ctx');
@@ -174,7 +232,24 @@ function createHandlerMiddleware<TServices extends Service[], TLogger extends Lo
 // Validator Factories
 // ============================================================================
 
-function createBodyValidator(endpoint: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>) {
+function createBodyValidator(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
+) {
   return validator('json', async (value, c) => {
     if (!endpoint.input?.body) return undefined;
     const parsed = await Endpoint.validate(endpoint.input.body, value);
@@ -183,7 +258,24 @@ function createBodyValidator(endpoint: Endpoint<any, any, any, any, any, any, an
   });
 }
 
-function createQueryValidator(endpoint: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>) {
+function createQueryValidator(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
+) {
   return validator('query', async (_, c) => {
     if (!endpoint.input?.query) return undefined;
     const parsedQuery = parseHonoQuery(c);
@@ -193,7 +285,24 @@ function createQueryValidator(endpoint: Endpoint<any, any, any, any, any, any, a
   });
 }
 
-function createParamValidator(endpoint: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>) {
+function createParamValidator(
+  endpoint: Endpoint<
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >,
+) {
   return validator('param', async (params, c) => {
     if (!endpoint.input?.params) return undefined;
     const parsed = await Endpoint.validate(endpoint.input.params, params);
@@ -213,7 +322,10 @@ export class MiddlewareHonoEndpoint {
   /**
    * Add routes using middleware composition
    */
-  static addRoutes<TServices extends Service[] = [], TLogger extends Logger = Logger>(
+  static addRoutes<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -243,7 +355,22 @@ export class MiddlewareHonoEndpoint {
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
   >(
-    endpoint: Endpoint<TRoute, TMethod, TInput, TOutSchema, TServices, TLogger, any, any, any, any, any, any, any, any>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      TInput,
+      TOutSchema,
+      TServices,
+      TLogger,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
@@ -251,7 +378,10 @@ export class MiddlewareHonoEndpoint {
     const method = endpoint.method.toLowerCase() as LowerHttpMethod<TMethod>;
 
     // Build middleware chain
-    const middlewares: ((c: Context, next: Next) => Promise<Response | void>)[] = [];
+    const middlewares: ((
+      c: Context,
+      next: Next,
+    ) => Promise<Response | void>)[] = [];
 
     // 1. Context initialization (always needed)
     middlewares.push(createContextMiddleware(endpoint, serviceDiscovery));
@@ -286,7 +416,10 @@ export class MiddlewareHonoEndpoint {
  * No middleware composition, just inline handler
  */
 export class MinimalHonoEndpoint {
-  static addRoutes<TServices extends Service[] = [], TLogger extends Logger = Logger>(
+  static addRoutes<
+    TServices extends Service[] = [],
+    TLogger extends Logger = Logger,
+  >(
     endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
@@ -302,7 +435,22 @@ export class MinimalHonoEndpoint {
     TServices extends Service[] = [],
     TLogger extends Logger = Logger,
   >(
-    endpoint: Endpoint<TRoute, TMethod, any, any, TServices, TLogger, any, any, any, any, any, any, any, any>,
+    endpoint: Endpoint<
+      TRoute,
+      TMethod,
+      any,
+      any,
+      TServices,
+      TLogger,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any
+    >,
     serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
     app: Hono,
   ): void {
@@ -332,14 +480,20 @@ export class MinimalHonoEndpoint {
         let query: any;
         if (endpoint.input?.query) {
           const parsedQuery = parseHonoQuery(c);
-          const parsed = await Endpoint.validate(endpoint.input.query, parsedQuery);
+          const parsed = await Endpoint.validate(
+            endpoint.input.query,
+            parsedQuery,
+          );
           if (parsed.issues) return c.json(parsed.issues, 422);
           query = parsed.value;
         }
 
         let params: any;
         if (endpoint.input?.params) {
-          const parsed = await Endpoint.validate(endpoint.input.params, c.req.param());
+          const parsed = await Endpoint.validate(
+            endpoint.input.params,
+            c.req.param(),
+          );
           if (parsed.issues) return c.json(parsed.issues, 422);
           params = parsed.value;
         }
