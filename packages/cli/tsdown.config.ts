@@ -9,4 +9,7 @@ export default defineConfig({
   ],
   dts: true,
   format: ['cjs', 'esm'],
+  outExtensions: (ctx) => ({
+    js: ctx.format === 'es' ? '.mjs' : '.cjs',
+  }),
 });
