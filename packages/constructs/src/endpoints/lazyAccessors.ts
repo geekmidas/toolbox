@@ -103,6 +103,7 @@ export function createApiGatewayHeaders(
 
 /**
  * Create a lazy cookie accessor for API Gateway events.
+ * Decodes URL-encoded values to match browser behavior.
  */
 export function createApiGatewayCookies(
   cookies: string[] | undefined,
@@ -120,7 +121,7 @@ export function createApiGatewayCookies(
           if (eqIndex > 0) {
             const key = cookie.slice(0, eqIndex);
             const value = cookie.slice(eqIndex + 1);
-            parsed[key] = value;
+            parsed[key] = decodeURIComponent(value);
           }
         }
       } else if (cookieHeader) {
@@ -131,7 +132,79 @@ export function createApiGatewayCookies(
           if (eqIndex > 0) {
             const key = trimmed.slice(0, eqIndex);
             const value = trimmed.slice(eqIndex + 1);
-            parsed[key] = value;
+            parsed[key] = decodeURIComponent(value);
+          }
+        }
+      }
+    }
+    return parsed;
+  };
+
+  return ((name?: string) => {
+    if (name !== undefined) {
+      return parse()[name];
+    }
+    return parse();
+  }) as CookieFn;
+}
+
+/**
+ * Create a lazy header accessor for plain object headers (test adaptor, etc).
+ * Headers are already available as an object, just provide lazy access.
+ */
+export function createObjectHeaders(
+  headers: Record<string, string> | undefined,
+): HeaderFn {
+  let normalized: Record<string, string> | null = null;
+
+  return ((key?: string) => {
+    if (key !== undefined) {
+      // Try direct lookup first (common case)
+      if (headers) {
+        const direct = headers[key] ?? headers[key.toLowerCase()];
+        if (direct !== undefined) return direct;
+      }
+      // Fall back to normalized lookup for case-insensitivity
+      if (!normalized && headers) {
+        normalized = {};
+        for (const [k, v] of Object.entries(headers)) {
+          normalized[k.toLowerCase()] = v;
+        }
+      }
+      return normalized?.[key.toLowerCase()];
+    }
+    // Return all headers
+    if (!normalized && headers) {
+      normalized = {};
+      for (const [k, v] of Object.entries(headers)) {
+        normalized[k.toLowerCase()] = v;
+      }
+    }
+    return normalized ?? {};
+  }) as HeaderFn;
+}
+
+/**
+ * Create a lazy cookie accessor from a cookie header string.
+ * Decodes URL-encoded values to match browser behavior.
+ */
+export function createCookieHeaderAccessor(
+  cookieHeader: string | undefined,
+): CookieFn {
+  let parsed: Record<string, string> | null = null;
+
+  const parse = () => {
+    if (!parsed) {
+      parsed = {};
+      if (cookieHeader) {
+        for (const part of cookieHeader.split(';')) {
+          const trimmed = part.trim();
+          const eqIndex = trimmed.indexOf('=');
+          if (eqIndex > 0) {
+            const key = trimmed.slice(0, eqIndex);
+            const value = trimmed.slice(eqIndex + 1);
+            // Decode URL-encoded values to match Endpoint.createCookies behavior
+            parsed[key] = decodeURIComponent(value);
           }
         }
       }

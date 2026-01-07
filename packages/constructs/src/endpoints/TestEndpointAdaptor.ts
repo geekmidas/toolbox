@@ -28,6 +28,10 @@ import {
 } from './Endpoint';
 import type { MappedAudit } from './audit';
 import {
+  createCookieHeaderAccessor,
+  createObjectHeaders,
+} from './lazyAccessors';
+import {
   type AuditExecutionContext,
   executeWithAuditTransaction,
 } from './processAudits';
@@ -177,8 +181,9 @@ export class TestEndpointAdaptor<
       'params',
     );
 
-    const header = Endpoint.createHeaders(ctx.headers);
-    const cookie = Endpoint.createCookies(ctx.headers.cookie);
+    // Lazy accessors - defer parsing until needed
+    const header = createObjectHeaders(ctx.headers);
+    const cookie = createCookieHeaderAccessor(ctx.headers.cookie);
     const logger = this.endpoint.logger.child({
       route: this.endpoint.route,
       host: ctx.headers.host,
