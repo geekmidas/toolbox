@@ -90,7 +90,7 @@ function analyzeEndpointFeatures(
 	>,
 ): EndpointFeatures {
 	return {
-		hasAuth: endpoint.authorizer !== 'none',
+		hasAuth: !!endpoint.authorizer && endpoint.authorizer.name !== 'none',
 		hasServices: endpoint.services.length > 0,
 		hasDatabase: !!endpoint.databaseService,
 		hasBodyValidation: !!endpoint.input?.body,
