@@ -93,18 +93,12 @@ describe('processAudits', () => {
 			const storage = new InMemoryAuditStorage();
 			const discovery = createMockServiceDiscovery(storage);
 
-			await processEndpointAudits(
-				endpoint,
-				{ id: '123' },
-				discovery,
-				logger,
-				{
-					session: {},
-					header: () => undefined,
-					cookie: () => undefined,
-					services: {},
-				},
-			);
+			await processEndpointAudits(endpoint, { id: '123' }, discovery, logger, {
+				session: {},
+				header: () => undefined,
+				cookie: () => undefined,
+				services: {},
+			});
 
 			expect(storage.records).toHaveLength(0);
 		});
@@ -535,10 +529,7 @@ describe('processAudits', () => {
 		it('should run handler without context', async () => {
 			const handlerFn = vi.fn().mockResolvedValue({ id: '123' });
 
-			const result = await executeWithAuditTransaction(
-				undefined,
-				handlerFn,
-			);
+			const result = await executeWithAuditTransaction(undefined, handlerFn);
 
 			expect(result).toEqual({ id: '123' });
 			expect(handlerFn).toHaveBeenCalledWith(undefined);
@@ -554,10 +545,7 @@ describe('processAudits', () => {
 			const context = { auditor, storage };
 			const handlerFn = vi.fn().mockResolvedValue({ id: '123' });
 
-			const result = await executeWithAuditTransaction(
-				context,
-				handlerFn,
-			);
+			const result = await executeWithAuditTransaction(context, handlerFn);
 
 			expect(result).toEqual({ id: '123' });
 			expect(storage.withTransactionCalled).toBe(true);
@@ -611,13 +599,10 @@ describe('processAudits', () => {
 
 			const context = { auditor, storage };
 
-			await executeWithAuditTransaction(
-				context,
-				async (a) => {
-					a!.audit('user.created', { userId: '123', email: 'test@test.com' });
-					return { id: '123' };
-				},
-			);
+			await executeWithAuditTransaction(context, async (a) => {
+				a!.audit('user.created', { userId: '123', email: 'test@test.com' });
+				return { id: '123' };
+			});
 
 			expect(storage.records).toHaveLength(1);
 		});

@@ -408,7 +408,9 @@ describe('SNSSubscriber', () => {
 				const connectionString = `sns://?topicArn=${encodeURIComponent(topicArn)}&region=${AWS_REGION}&endpoint=${encodeURIComponent(LOCALSTACK_ENDPOINT)}&accessKeyId=test&secretAccessKey=test&queueName=test-queue-${uniqueId()}`;
 
 				const subscriber =
-					await SNSSubscriber.fromConnectionString<TestMessage>(connectionString);
+					await SNSSubscriber.fromConnectionString<TestMessage>(
+						connectionString,
+					);
 
 				expect(subscriber).toBeInstanceOf(SNSSubscriber);
 
@@ -426,7 +428,9 @@ describe('SNSSubscriber', () => {
 				const connectionString = `sns://?topicArn=${encodeURIComponent(topicArn)}&region=${AWS_REGION}&endpoint=${encodeURIComponent(LOCALSTACK_ENDPOINT)}&accessKeyId=test&secretAccessKey=test&queueName=${queueName}&waitTimeSeconds=5&deleteQueueOnClose=true`;
 
 				const subscriber =
-					await SNSSubscriber.fromConnectionString<TestMessage>(connectionString);
+					await SNSSubscriber.fromConnectionString<TestMessage>(
+						connectionString,
+					);
 
 				// Subscribe to trigger queue creation
 				await subscriber.subscribe(['user.created'], async () => {});

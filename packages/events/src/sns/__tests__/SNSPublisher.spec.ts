@@ -67,7 +67,9 @@ async function createQueue(queueName: string): Promise<string> {
 		credentials: AWS_CREDENTIALS,
 	});
 
-	const response = await client.send(new CreateQueueCommand({ QueueName: queueName }));
+	const response = await client.send(
+		new CreateQueueCommand({ QueueName: queueName }),
+	);
 	client.destroy();
 
 	if (!response.QueueUrl) {
@@ -179,7 +181,9 @@ async function unsubscribe(subscriptionArn: string): Promise<void> {
 		credentials: AWS_CREDENTIALS,
 	});
 
-	await client.send(new UnsubscribeCommand({ SubscriptionArn: subscriptionArn }));
+	await client.send(
+		new UnsubscribeCommand({ SubscriptionArn: subscriptionArn }),
+	);
 	client.destroy();
 }
 
@@ -402,7 +406,9 @@ describe('SNSPublisher', () => {
 				const connectionString = `sns://?topicArn=${encodeURIComponent(topicArn)}&region=${AWS_REGION}&endpoint=${encodeURIComponent(LOCALSTACK_ENDPOINT)}&accessKeyId=test&secretAccessKey=test`;
 
 				const publisher =
-					await SNSPublisher.fromConnectionString<TestMessage>(connectionString);
+					await SNSPublisher.fromConnectionString<TestMessage>(
+						connectionString,
+					);
 
 				expect(publisher).toBeInstanceOf(SNSPublisher);
 

@@ -53,8 +53,7 @@ describe('Publisher', () => {
 			const connection = new BasicConnection();
 			await connection.connect();
 
-			const publisher =
-				await Publisher.fromConnection<TestMessage>(connection);
+			const publisher = await Publisher.fromConnection<TestMessage>(connection);
 
 			expect(publisher).toBeInstanceOf(BasicPublisher);
 
@@ -66,8 +65,7 @@ describe('Publisher', () => {
 				'sqs://?queueUrl=https://sqs.us-east-1.amazonaws.com/123456789/test-queue&region=us-east-1&endpoint=http://localhost:4566',
 			);
 
-			const publisher =
-				await Publisher.fromConnection<TestMessage>(connection);
+			const publisher = await Publisher.fromConnection<TestMessage>(connection);
 
 			expect(publisher).toBeInstanceOf(SQSPublisher);
 		});
