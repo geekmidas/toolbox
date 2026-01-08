@@ -1,3 +1,4 @@
+// @ts-nocheck - Experimental benchmark file
 /**
  * Hono Adaptor Performance Benchmarks
  *

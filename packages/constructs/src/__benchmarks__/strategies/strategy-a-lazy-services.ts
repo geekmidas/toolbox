@@ -1,3 +1,4 @@
+// @ts-nocheck - Experimental benchmark strategy file
 /**
  * Strategy A: Lazy Service Resolution
  *

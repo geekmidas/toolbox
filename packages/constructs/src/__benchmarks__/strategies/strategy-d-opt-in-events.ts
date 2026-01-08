@@ -1,3 +1,4 @@
+// @ts-nocheck - Experimental benchmark strategy file
 /**
  * Strategy D: Opt-in Event Publishing
  *
