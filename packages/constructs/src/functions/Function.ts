@@ -143,7 +143,7 @@ export class Function<
 	}
 
 	constructor(
-		protected readonly fn: Fn,
+		public readonly fn: Fn,
 		timeout = 30000, // Default timeout of 30 seconds
 		type: ConstructType = ConstructType.Function,
 		public input?: TInput,
