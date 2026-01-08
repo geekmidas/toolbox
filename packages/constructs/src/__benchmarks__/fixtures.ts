@@ -15,6 +15,8 @@ export const mockLogger: Logger = {
 	warn: () => {},
 	error: () => {},
 	debug: () => {},
+	fatal: () => {},
+	trace: () => {},
 	child: () => mockLogger,
 };
 
