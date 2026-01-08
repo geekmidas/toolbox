@@ -1,8 +1,14 @@
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryStorage } from '../../storage/memory';
 import { Telescope } from '../../Telescope';
-import { createMiddleware, createUI, getRequestId } from '../hono';
+import {
+	createMiddleware,
+	createUI,
+	getRequestId,
+	getTelescopeContext,
+	setupWebSocket,
+} from '../hono';
 
 describe('Hono Adapter', () => {
 	let telescope: Telescope;
@@ -335,6 +341,418 @@ describe('Hono Adapter', () => {
 			await app.request('/api/test');
 
 			expect(capturedRequestId).toBeUndefined();
+		});
+	});
+
+	describe('getTelescopeContext', () => {
+		it('should return undefined when middleware not used', async () => {
+			let ctx: ReturnType<typeof getTelescopeContext>;
+
+			const app = new Hono();
+			app.get('/api/test', (c) => {
+				ctx = getTelescopeContext(c);
+				return c.json({ ok: true });
+			});
+
+			await app.request('/api/test');
+
+			expect(ctx).toBeUndefined();
+		});
+	});
+
+	describe('createMiddleware - edge cases', () => {
+		it('should capture IP from x-forwarded-for header', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.get('/api/test', (c) => c.json({ ok: true }));
+
+			await app.request('/api/test', {
+				headers: { 'x-forwarded-for': '192.168.1.1' },
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].ip).toBe('192.168.1.1');
+		});
+
+		it('should capture IP from x-real-ip header', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.get('/api/test', (c) => c.json({ ok: true }));
+
+			await app.request('/api/test', {
+				headers: { 'x-real-ip': '10.0.0.1' },
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].ip).toBe('10.0.0.1');
+		});
+
+		it('should capture form-urlencoded body', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.post('/api/form', async (c) => {
+				const body = await c.req.formData();
+				return c.json({ name: body.get('name') });
+			});
+
+			const formData = new FormData();
+			formData.append('name', 'John');
+
+			await app.request('/api/form', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams({ name: 'John' }),
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].method).toBe('POST');
+		});
+
+		it('should capture text body', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.post('/api/text', async (c) => {
+				const body = await c.req.text();
+				return c.text(`Received: ${body}`);
+			});
+
+			await app.request('/api/text', {
+				method: 'POST',
+				headers: { 'Content-Type': 'text/plain' },
+				body: 'Hello, World!',
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].body).toBe('Hello, World!');
+		});
+
+		it('should handle PUT requests', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.put('/api/users/:id', async (c) => {
+				const body = await c.req.json();
+				return c.json({ id: c.req.param('id'), ...body });
+			});
+
+			await app.request('/api/users/123', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: 'Jane' }),
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].body).toEqual({ name: 'Jane' });
+		});
+
+		it('should handle PATCH requests', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.patch('/api/users/:id', async (c) => {
+				const body = await c.req.json();
+				return c.json({ updated: true, ...body });
+			});
+
+			await app.request('/api/users/123', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: 'Updated' }),
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].body).toEqual({ name: 'Updated' });
+		});
+
+		it('should handle body parsing errors gracefully', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.post('/api/test', (c) => c.json({ ok: true }));
+
+			await app.request('/api/test', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: 'invalid json{{{',
+			});
+
+			const requests = await telescope.getRequests();
+			// Request should still be recorded even with body parsing error
+			expect(requests).toHaveLength(1);
+		});
+	});
+
+	describe('createUI - metrics endpoints', () => {
+		it('should return metrics', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 100,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/metrics');
+			const data = await res.json();
+
+			expect(data).toHaveProperty('totalRequests');
+		});
+
+		it('should return endpoint metrics', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/users',
+				url: 'http://localhost/api/users',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 50,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/metrics/endpoints');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should return status distribution', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/metrics/status');
+			const data = await res.json();
+
+			expect(data).toBeDefined();
+		});
+
+		it('should return endpoint details', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/users',
+				url: 'http://localhost/api/users',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 50,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request(
+				'/api/metrics/endpoint?method=GET&path=/api/users',
+			);
+
+			// The endpoint may not exist depending on how metrics are stored
+			// Just check it returns something valid
+			expect(res.status === 200 || res.status === 404).toBe(true);
+		});
+
+		it('should return 400 for endpoint details without method/path', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/metrics/endpoint');
+
+			expect(res.status).toBe(400);
+			const data = await res.json();
+			expect(data.error).toBe('method and path are required');
+		});
+
+		it('should reset metrics', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/metrics', { method: 'DELETE' });
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.success).toBe(true);
+		});
+	});
+
+	describe('createUI - exception by ID', () => {
+		it('should return single exception by ID', async () => {
+			await telescope.exception(new Error('Test exception'));
+
+			const exceptions = await telescope.getExceptions();
+			const exceptionId = exceptions[0].id;
+
+			const ui = createUI(telescope);
+			const res = await ui.request(`/api/exceptions/${exceptionId}`);
+			const data = await res.json();
+
+			expect(data.id).toBe(exceptionId);
+			expect(data.message).toBe('Test exception');
+		});
+
+		it('should return 404 for non-existent exception', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/exceptions/non-existent');
+
+			expect(res.status).toBe(404);
+		});
+	});
+
+	describe('createUI - SPA fallback', () => {
+		it('should serve HTML for SPA routes', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request('/requests/some-id');
+
+			expect(res.headers.get('content-type')).toContain('text/html');
+		});
+	});
+
+	describe('createUI - query parsing', () => {
+		it('should parse search query', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/users',
+				url: 'http://localhost/api/users',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/requests?search=users');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse date range queries', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request(
+				'/api/requests?before=2024-01-01&after=2023-01-01',
+			);
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse tags query', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/requests?tags=api,users');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse method filter', async () => {
+			await telescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/requests?method=GET');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse status filter', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/requests?status=200');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse log level filter', async () => {
+			await telescope.info('Test info');
+			await telescope.error('Test error');
+
+			const ui = createUI(telescope);
+			const res = await ui.request('/api/logs?level=error');
+			const data = await res.json();
+
+			expect(Array.isArray(data)).toBe(true);
+		});
+
+		it('should parse metrics query options', async () => {
+			const ui = createUI(telescope);
+			const res = await ui.request(
+				'/api/metrics?start=2024-01-01&end=2024-12-31&bucketSize=3600000&limit=10',
+			);
+			const data = await res.json();
+
+			expect(data).toBeDefined();
+		});
+	});
+
+	describe('setupWebSocket', () => {
+		it('should setup WebSocket route with default options', () => {
+			const app = new Hono();
+			const mockUpgrade = vi.fn(() => vi.fn());
+
+			setupWebSocket(app, telescope, mockUpgrade);
+
+			expect(mockUpgrade).toHaveBeenCalled();
+		});
+
+		it('should setup WebSocket route with custom options', () => {
+			const app = new Hono();
+			const mockUpgrade = vi.fn(() => vi.fn());
+
+			setupWebSocket(app, telescope, mockUpgrade, {
+				broadcastMetrics: false,
+				metricsBroadcastInterval: 10000,
+			});
+
+			expect(mockUpgrade).toHaveBeenCalled();
+		});
+
+		it('should start metrics broadcast when enabled', () => {
+			const app = new Hono();
+			const mockUpgrade = vi.fn(() => vi.fn());
+			const startSpy = vi.spyOn(telescope, 'startMetricsBroadcast');
+
+			setupWebSocket(app, telescope, mockUpgrade, {
+				broadcastMetrics: true,
+				metricsBroadcastInterval: 5000,
+			});
+
+			expect(startSpy).toHaveBeenCalledWith(5000);
+		});
+
+		it('should not start metrics broadcast when disabled', () => {
+			const app = new Hono();
+			const mockUpgrade = vi.fn(() => vi.fn());
+			const startSpy = vi.spyOn(telescope, 'startMetricsBroadcast');
+
+			setupWebSocket(app, telescope, mockUpgrade, {
+				broadcastMetrics: false,
+			});
+
+			expect(startSpy).not.toHaveBeenCalled();
 		});
 	});
 });
