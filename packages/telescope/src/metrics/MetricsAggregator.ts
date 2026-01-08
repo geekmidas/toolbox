@@ -471,7 +471,7 @@ export class MetricsAggregator {
 
 	private buildTimeSeries(
 		buckets: MetricsBucket[],
-		range: TimeRange,
+		_range: TimeRange,
 		targetBucketSize: number,
 	): TimeSeriesPoint[] {
 		if (buckets.length === 0) return [];

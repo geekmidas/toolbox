@@ -24,7 +24,7 @@ import {
  * const envVars = sniffer.getEnvironmentVariables(); // ['DATABASE_URL', 'API_KEY']
  * ```
  */
-export class SnifferEnvironmentParser<T extends EmptyObject = EmptyObject> {
+export class SnifferEnvironmentParser<_T extends EmptyObject = EmptyObject> {
 	private readonly accessedVars: Set<string> = new Set();
 
 	/**
@@ -97,7 +97,7 @@ export class SnifferEnvironmentParser<T extends EmptyObject = EmptyObject> {
 			{ ...z },
 			{
 				get: (target, prop) => {
-					// @ts-ignore
+					// @ts-expect-error
 					const value = target[prop];
 
 					if (typeof value === 'function') {

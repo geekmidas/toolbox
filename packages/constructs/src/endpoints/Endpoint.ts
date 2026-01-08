@@ -1049,7 +1049,7 @@ export class ResponseBuilder {
 	}
 
 	cookie(name: string, value: string, options?: CookieOptions): this {
-		this.metadata.cookies!.set(name, { value, options });
+		this.metadata.cookies?.set(name, { value, options });
 		return this;
 	}
 
@@ -1057,7 +1057,7 @@ export class ResponseBuilder {
 		name: string,
 		options?: Pick<CookieOptions, 'domain' | 'path'>,
 	): this {
-		this.metadata.cookies!.set(name, {
+		this.metadata.cookies?.set(name, {
 			value: '',
 			options: { ...options, maxAge: 0, expires: new Date(0) },
 		});

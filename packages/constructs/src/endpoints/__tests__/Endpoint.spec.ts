@@ -103,8 +103,8 @@ describe('Endpoint', () => {
 
 			const spec = await endpoint.toOpenApi3Route();
 
-			expect(spec['/users']!.post).toHaveProperty('requestBody');
-			expect((spec['/users']!.post! as any).requestBody).toMatchObject({
+			expect(spec['/users']?.post).toHaveProperty('requestBody');
+			expect((spec['/users']?.post! as any).requestBody).toMatchObject({
 				required: true,
 				content: {
 					'application/json': {
@@ -186,7 +186,7 @@ describe('Endpoint', () => {
 				method: 'GET',
 				authorize: undefined,
 				description: 'List users with pagination',
-				fn: async (ctx) => [],
+				fn: async (_ctx) => [],
 				input: {
 					query: searchSchema,
 				},
@@ -201,8 +201,8 @@ describe('Endpoint', () => {
 
 			const spec = await endpoint.toOpenApi3Route();
 
-			expect(spec['/users']!.get).toHaveProperty('parameters');
-			const parameters = (spec['/users']!.get! as any).parameters;
+			expect(spec['/users']?.get).toHaveProperty('parameters');
+			const parameters = (spec['/users']?.get! as any).parameters;
 
 			expect(parameters).toHaveLength(3);
 			expect(parameters).toContainEqual({
@@ -349,7 +349,7 @@ describe('Endpoint', () => {
 				output: z.object({
 					users: z.array(z.object({ id: z.string(), name: z.string() })),
 				}),
-				fn: async ({}) => ({
+				fn: async () => ({
 					users: [],
 				}),
 				input: {
@@ -364,7 +364,7 @@ describe('Endpoint', () => {
 
 			const spec = await endpoint.toOpenApi3Route();
 
-			expect(spec['/users']!.get).not.toHaveProperty('requestBody');
+			expect(spec['/users']?.get).not.toHaveProperty('requestBody');
 		});
 
 		it('should correctly separate path and query parameters', async () => {

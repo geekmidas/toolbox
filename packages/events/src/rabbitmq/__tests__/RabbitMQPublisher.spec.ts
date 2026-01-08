@@ -320,7 +320,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 				url: RABBITMQ_URL,
 				exchange: testExchange,
 			});
-			const publisher = new RabbitMQPublisher<TestMessage>(connection);
+			const _publisher = new RabbitMQPublisher<TestMessage>(connection);
 
 			await expect(connection.close()).resolves.toBeUndefined();
 		});

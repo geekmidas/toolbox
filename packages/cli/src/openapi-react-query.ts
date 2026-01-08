@@ -56,7 +56,7 @@ export async function generateReactQueryCommand(
 				{ cwd: process.cwd() },
 			);
 			logger.log(`TypeScript types generated: ${typesPath}`);
-		} catch (error) {
+		} catch (_error) {
 			logger.warn(
 				'Could not generate types with openapi-typescript. Install it for better type inference.',
 			);
@@ -182,7 +182,7 @@ function schemaToTypeString(schema: any): string {
 }
 
 function generateReactQueryCode(
-	spec: OpenAPISpec,
+	_spec: OpenAPISpec,
 	operations: OperationInfo[],
 	apiName: string,
 ): string {

@@ -198,7 +198,7 @@ export async function initCommand(
 	// Write app files
 	for (const { path, content } of appFiles) {
 		const fullPath = join(appDir, path);
-		const displayPath = isMonorepo ? `${apiPath}/${path}` : path;
+		const _displayPath = isMonorepo ? `${apiPath}/${path}` : path;
 		await mkdir(dirname(fullPath), { recursive: true });
 		await writeFile(fullPath, content);
 	}
@@ -224,5 +224,5 @@ export async function initCommand(
 	}
 
 	// Print next steps
-	const devCommand = getRunCommand(pkgManager, 'dev');
+	const _devCommand = getRunCommand(pkgManager, 'dev');
 }

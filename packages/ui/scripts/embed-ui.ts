@@ -6,7 +6,7 @@
  * Usage: embed-ui <input-dir> <output-file>
  * Example: embed-ui dist/ui src/ui-assets.ts
  */
-import { readdirSync, readFileSync, writeFileSync } from 'fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 interface Asset {
 	path: string;
@@ -87,6 +87,6 @@ export function getIndexHtml(): string {
 `;
 
 	writeFileSync(outputFile, output);
-} catch (error) {
+} catch (_error) {
 	process.exit(1);
 }

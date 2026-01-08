@@ -149,7 +149,7 @@ export class EnvironmentBuilder<
 		this.record = record;
 		this.resolvers = resolvers;
 		this.options = {
-			onUnmatchedValue: options.onUnmatchedValue ?? ((key, value) => {}),
+			onUnmatchedValue: options.onUnmatchedValue ?? ((_key, _value) => {}),
 		};
 	}
 

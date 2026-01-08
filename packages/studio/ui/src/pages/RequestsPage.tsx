@@ -53,7 +53,7 @@ export function RequestsPage() {
 				status: filters.status || undefined,
 			});
 			setRequests(data);
-		} catch (error) {
+		} catch (_error) {
 		} finally {
 			setLoading(false);
 		}

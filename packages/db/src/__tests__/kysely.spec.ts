@@ -51,7 +51,7 @@ describe('Kysely Transaction Helper', () => {
 				isTransaction: true,
 			} as any; // ControlledTransaction
 
-			const callback = vi.fn(async (trx) => {
+			const callback = vi.fn(async (_trx) => {
 				return 'controlled';
 			});
 
@@ -178,7 +178,7 @@ describe('Kysely Transaction Helper', () => {
 				})),
 			} as unknown as Kysely<any>;
 
-			const result = await withTransaction(mockDb, async (trx) => {
+			const result = await withTransaction(mockDb, async (_trx) => {
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				return 'async-result';
 			});
@@ -267,7 +267,7 @@ describe('Kysely Transaction Helper', () => {
 				})),
 			} as unknown as Kysely<any>;
 
-			const callback = vi.fn(async (trx) => 'result');
+			const callback = vi.fn(async (_trx) => 'result');
 
 			const result = await withTransaction(mockDb, callback, {
 				isolationLevel: 'serializable',
@@ -298,7 +298,7 @@ describe('Kysely Transaction Helper', () => {
 				})),
 			} as unknown as Kysely<any>;
 
-			const callback = vi.fn(async (trx) => 'result');
+			const callback = vi.fn(async (_trx) => 'result');
 
 			const result = await withTransaction(mockDb, callback);
 

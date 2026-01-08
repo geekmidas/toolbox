@@ -14,7 +14,7 @@ export class BasicSubscriber<TMessage extends PublishableMessage<string, any>>
 
 		for (const messageType of messages) {
 			emitter.on(messageType, (message: TMessage) => {
-				listener(message).catch((error) => {});
+				listener(message).catch((_error) => {});
 			});
 		}
 	}

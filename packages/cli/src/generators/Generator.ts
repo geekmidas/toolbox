@@ -1,7 +1,7 @@
+import { relative } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
 import fg from 'fast-glob';
 import kebabCase from 'lodash.kebabcase';
-import { relative } from 'path';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, Routes } from '../types';
 

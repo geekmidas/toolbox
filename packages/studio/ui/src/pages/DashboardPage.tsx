@@ -45,7 +45,7 @@ export function DashboardPage() {
 
 			setMetricsData(metrics);
 			setEndpoints(endpointData);
-		} catch (error) {}
+		} catch (_error) {}
 	}, []);
 
 	useEffect(() => {

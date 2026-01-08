@@ -113,7 +113,7 @@ export default defineConfig({
 			},
 			{
 				path: 'tsconfig.json',
-				content: JSON.stringify(tsConfig, null, 2) + '\n',
+				content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 			},
 		];
 	}
@@ -201,15 +201,15 @@ export default defineConfig({
 		},
 		{
 			path: 'tsconfig.json',
-			content: JSON.stringify(tsConfig, null, 2) + '\n',
+			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 		{
 			path: 'biome.json',
-			content: JSON.stringify(biomeConfig, null, 2) + '\n',
+			content: `${JSON.stringify(biomeConfig, null, 2)}\n`,
 		},
 		{
 			path: 'turbo.json',
-			content: JSON.stringify(turboConfig, null, 2) + '\n',
+			content: `${JSON.stringify(turboConfig, null, 2)}\n`,
 		},
 	];
 }

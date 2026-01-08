@@ -13,7 +13,7 @@ export const DummyService = {
 
 		// For environment detection (when env is empty), return ConfigParser
 		// This allows build-time detection without needing actual env values
-		// @ts-ignore - accessing internal property to detect sniffer
+		// @ts-expect-error - accessing internal property to detect sniffer
 		const envData = envParser.env || {};
 		if (Object.keys(envData).length === 0) {
 			return configParser;

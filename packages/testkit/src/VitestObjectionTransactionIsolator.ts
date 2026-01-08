@@ -36,7 +36,7 @@ export class VitestObjectionTransactionIsolator extends VitestPostgresTransactio
 	Knex,
 	Knex.Transaction
 > {
-	async destroy(conn: Knex<any, any[]>): Promise<void> {}
+	async destroy(_conn: Knex<any, any[]>): Promise<void> {}
 	/**
 	 * Creates a Knex transaction with the specified isolation level.
 	 * Implements the abstract transact method from VitestPostgresTransactionIsolator.

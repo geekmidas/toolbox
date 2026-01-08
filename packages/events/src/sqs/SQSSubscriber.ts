@@ -78,7 +78,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 				if (response.Messages && response.Messages.length > 0) {
 					await this.processMessages(response.Messages);
 				}
-			} catch (error) {
+			} catch (_error) {
 				await this.sleep(1000);
 			}
 		}
@@ -124,7 +124,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 					// Delete messages we're not subscribed to
 					await this.deleteMessage(message.ReceiptHandle!);
 				}
-			} catch (error) {
+			} catch (_error) {
 				// Message will become visible again
 			}
 		}
@@ -160,7 +160,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 				payload: parsed,
 				messageType: parsed.type,
 			};
-		} catch (error) {
+		} catch (_error) {
 			return null;
 		}
 	}
@@ -172,7 +172,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 				ReceiptHandle: receiptHandle,
 			});
 			await this.connection.sqsClient.send(command);
-		} catch (error) {}
+		} catch (_error) {}
 	}
 
 	private sleep(ms: number): Promise<void> {

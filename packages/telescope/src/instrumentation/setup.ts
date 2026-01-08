@@ -9,7 +9,10 @@ import {
 	LoggerProvider,
 } from '@opentelemetry/sdk-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
+import {
+	ConsoleSpanExporter,
+	type SpanExporter,
+} from '@opentelemetry/sdk-trace-node';
 import {
 	ATTR_SERVICE_NAME,
 	ATTR_SERVICE_VERSION,
@@ -147,9 +150,9 @@ export function setupTelemetry(options: TelemetryOptions): void {
 			new PinoInstrumentation({
 				// Inject trace context into log records
 				logHook: (span, record) => {
-					record['trace_id'] = span.spanContext().traceId;
-					record['span_id'] = span.spanContext().spanId;
-					record['trace_flags'] = span.spanContext().traceFlags;
+					record.trace_id = span.spanContext().traceId;
+					record.span_id = span.spanContext().spanId;
+					record.trace_flags = span.spanContext().traceFlags;
 				},
 			}),
 		);
@@ -178,7 +181,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 	}
 
 	// Create exporters
-	let traceExporter;
+	let traceExporter: SpanExporter;
 	if (endpoint) {
 		traceExporter = new OTLPTraceExporter({
 			url: `${endpoint}/traces`,
@@ -227,7 +230,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 		sdk
 			?.shutdown()
 			.then(() => {})
-			.catch((error) => {})
+			.catch((_error) => {})
 			.finally(() => process.exit(0));
 	});
 }

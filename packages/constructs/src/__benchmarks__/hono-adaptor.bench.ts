@@ -46,7 +46,7 @@ function createTestApp(
 const currentApp = createTestApp(allEndpoints, HonoEndpoint);
 const lazyServicesApp = createTestApp(allEndpoints, OptimizedHonoEndpoint);
 const middlewareApp = createTestApp(allEndpoints, MiddlewareHonoEndpoint);
-const minimalApp = createTestApp(allEndpoints, MinimalHonoEndpoint);
+const _minimalApp = createTestApp(allEndpoints, MinimalHonoEndpoint);
 const optInEventsApp = createTestApp(allEndpoints, OptInEventHonoEndpoint);
 const fullyOptimizedApp = createTestApp(
 	allEndpoints,
@@ -504,7 +504,7 @@ describe('Middleware Overhead Analysis', () => {
 		c.set('startTime' as any, Date.now());
 		await next();
 	});
-	multiMiddlewareApp.use('*', async (c, next) => {
+	multiMiddlewareApp.use('*', async (_c, next) => {
 		await next();
 		// Post-processing
 	});

@@ -115,11 +115,11 @@ export type UpdateUser = z.infer<typeof updateUserSchema>;
 	return [
 		{
 			path: 'packages/models/package.json',
-			content: JSON.stringify(packageJson, null, 2) + '\n',
+			content: `${JSON.stringify(packageJson, null, 2)}\n`,
 		},
 		{
 			path: 'packages/models/tsconfig.json',
-			content: JSON.stringify(tsConfig, null, 2) + '\n',
+			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 		{
 			path: 'packages/models/src/index.ts',

@@ -161,7 +161,7 @@ export class OptimizedHonoEndpoint {
 		});
 
 		for (const endpoint of sortedEndpoints) {
-			this.addRoute(endpoint, serviceDiscovery, app);
+			OptimizedHonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
 		}
 	}
 
@@ -246,7 +246,7 @@ export class OptimizedHonoEndpoint {
 
 					// Resolve database service only if configured
 					const db = hasDatabaseService
-						? await serviceResolver.get(endpoint.databaseService!.serviceName)
+						? await serviceResolver.get(endpoint.databaseService?.serviceName)
 						: undefined;
 
 					// Only check authorization if configured
@@ -309,7 +309,7 @@ export class OptimizedHonoEndpoint {
 
 					const status = (metadata.status ?? endpoint.status) as any;
 					return c.json(output, status);
-				} catch (error) {
+				} catch (_error) {
 					return c.json({ error: 'Internal Server Error' }, 500);
 				}
 			},

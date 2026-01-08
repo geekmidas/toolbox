@@ -42,8 +42,8 @@ describe('generatePackageJson', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.dependencies['@geekmidas/db']).toBe('workspace:*');
-		expect(pkg.dependencies['kysely']).toBeDefined();
-		expect(pkg.dependencies['pg']).toBeDefined();
+		expect(pkg.dependencies.kysely).toBeDefined();
+		expect(pkg.dependencies.pg).toBeDefined();
 	});
 
 	it('should exclude telescope when disabled', () => {
@@ -64,18 +64,18 @@ describe('generatePackageJson', () => {
 	it('should use tilde versions for external packages', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['hono']).toMatch(/^~/);
-		expect(pkg.dependencies['pino']).toMatch(/^~/);
-		expect(pkg.devDependencies['typescript']).toMatch(/^~/);
+		expect(pkg.dependencies.hono).toMatch(/^~/);
+		expect(pkg.dependencies.pino).toMatch(/^~/);
+		expect(pkg.devDependencies.typescript).toMatch(/^~/);
 	});
 
 	it('should include biome and turbo for non-monorepo', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
-		expect(pkg.devDependencies['turbo']).toBeDefined();
-		expect(pkg.scripts['lint']).toBeDefined();
-		expect(pkg.scripts['fmt']).toBeDefined();
+		expect(pkg.devDependencies.turbo).toBeDefined();
+		expect(pkg.scripts.lint).toBeDefined();
+		expect(pkg.scripts.fmt).toBeDefined();
 	});
 
 	it('should exclude biome and turbo for monorepo apps', () => {
@@ -87,9 +87,9 @@ describe('generatePackageJson', () => {
 		const files = generatePackageJson(options, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.devDependencies['@biomejs/biome']).toBeUndefined();
-		expect(pkg.devDependencies['turbo']).toBeUndefined();
-		expect(pkg.scripts['lint']).toBeUndefined();
-		expect(pkg.scripts['fmt']).toBeUndefined();
+		expect(pkg.devDependencies.turbo).toBeUndefined();
+		expect(pkg.scripts.lint).toBeUndefined();
+		expect(pkg.scripts.fmt).toBeUndefined();
 	});
 
 	it('should include models package for monorepo apps', () => {
@@ -101,7 +101,7 @@ describe('generatePackageJson', () => {
 		const files = generatePackageJson(options, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.dependencies['@test-project/models']).toBe('workspace:*');
-		expect(pkg.dependencies['zod']).toBeUndefined(); // zod is in models
+		expect(pkg.dependencies.zod).toBeUndefined(); // zod is in models
 	});
 
 	it('should use scoped package name for monorepo apps', () => {
@@ -161,7 +161,7 @@ describe('generateConfigFiles', () => {
 		};
 		const files = generateConfigFiles(options, minimalTemplate);
 		const tsConfig = files.find((f) => f.path === 'tsconfig.json');
-		const config = JSON.parse(tsConfig!.content);
+		const config = JSON.parse(tsConfig?.content);
 		expect(config.extends).toBe('../../tsconfig.json');
 		expect(config.compilerOptions.paths).toBeDefined();
 		expect(config.compilerOptions.paths['@test-project/*']).toBeDefined();
@@ -281,7 +281,7 @@ describe('generateMonorepoFiles', () => {
 		};
 		const files = generateMonorepoFiles(options, minimalTemplate);
 		const pkgJson = files.find((f) => f.path === 'package.json');
-		const pkg = JSON.parse(pkgJson!.content);
+		const pkg = JSON.parse(pkgJson?.content);
 		expect(pkg.scripts.dev).toBe('turbo dev');
 		expect(pkg.scripts.build).toBe('turbo build');
 		expect(pkg.scripts.lint).toBe('biome lint .');
@@ -317,7 +317,7 @@ describe('generateModelsPackage', () => {
 		const pkgJson = files.find(
 			(f) => f.path === 'packages/models/package.json',
 		);
-		const pkg = JSON.parse(pkgJson!.content);
+		const pkg = JSON.parse(pkgJson?.content);
 		expect(pkg.name).toBe('@test-project/models');
 	});
 
@@ -331,7 +331,7 @@ describe('generateModelsPackage', () => {
 		const pkgJson = files.find(
 			(f) => f.path === 'packages/models/package.json',
 		);
-		const pkg = JSON.parse(pkgJson!.content);
+		const pkg = JSON.parse(pkgJson?.content);
 		expect(pkg.dependencies.zod).toBeDefined();
 	});
 
@@ -360,7 +360,7 @@ describe('generateModelsPackage', () => {
 		const tsConfig = files.find(
 			(f) => f.path === 'packages/models/tsconfig.json',
 		);
-		const config = JSON.parse(tsConfig!.content);
+		const config = JSON.parse(tsConfig?.content);
 		expect(config.extends).toBe('../../tsconfig.json');
 	});
 });

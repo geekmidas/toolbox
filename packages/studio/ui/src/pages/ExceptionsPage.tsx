@@ -46,7 +46,7 @@ export function ExceptionsPage() {
 				search: filters.search || undefined,
 			});
 			setExceptions(data);
-		} catch (error) {
+		} catch (_error) {
 		} finally {
 			setLoading(false);
 		}

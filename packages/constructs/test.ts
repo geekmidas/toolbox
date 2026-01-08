@@ -22,7 +22,7 @@ export class CacheService {
 
 	static register(envParser: EnvironmentParser<{}>): CacheClient {
 		if (!CacheService.client) {
-			const config = this.config(envParser).parse();
+			const config = CacheService.config(envParser).parse();
 			CacheService.client = new UpstashCache(config.url, config.token);
 		}
 		return CacheService.client;
@@ -42,7 +42,7 @@ export class EventsService {
 			endpoint: get('AWS_ENDPOINT_URL').string().optional(),
 		}));
 
-	static register(envParser: EnvironmentParser<{}>): ShortstaffEventPublisher {
+	static register(_envParser: EnvironmentParser<{}>): ShortstaffEventPublisher {
 		return EventsService.instance;
 	}
 }
@@ -86,6 +86,6 @@ export const login = r
 	.post('/auth/login')
 	.body(LoginUserSchema)
 	.output(LoginResponseSchema)
-	.handle(async ({ body, services, header }, res) => {
+	.handle(async ({ body, services, header }, _res) => {
 		return { token: 'mock-jwt-token' };
 	});

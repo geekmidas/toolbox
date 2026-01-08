@@ -26,7 +26,7 @@ export async function createTempDir(prefix = 'cli-test-'): Promise<string> {
 export async function cleanupDir(path: string): Promise<void> {
 	try {
 		await rm(path, { recursive: true, force: true });
-	} catch (error) {
+	} catch (_error) {
 		// Ignore errors during cleanup
 	}
 }

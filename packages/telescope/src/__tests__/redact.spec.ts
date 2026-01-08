@@ -17,7 +17,7 @@ describe('createRedactor', () => {
 		expect(redactor).toBeDefined();
 
 		const data = { headers: { authorization: 'Bearer secret' } };
-		const result = redactor!(data);
+		const result = redactor?.(data);
 		expect(result.headers.authorization).toBe('[REDACTED]');
 	});
 
@@ -27,11 +27,11 @@ describe('createRedactor', () => {
 
 		// Should redact default paths
 		const data1 = { headers: { authorization: 'Bearer token' } };
-		expect(redactor!(data1).headers.authorization).toBe('[REDACTED]');
+		expect(redactor?.(data1).headers.authorization).toBe('[REDACTED]');
 
 		// Should redact custom paths
 		const data2 = { custom: { secret: 'mysecret' } };
-		expect(redactor!(data2).custom.secret).toBe('[REDACTED]');
+		expect(redactor?.(data2).custom.secret).toBe('[REDACTED]');
 	});
 
 	it('should use custom censor value', () => {
@@ -39,7 +39,7 @@ describe('createRedactor', () => {
 		expect(redactor).toBeDefined();
 
 		const data = { headers: { authorization: 'Bearer token' } };
-		const result = redactor!(data);
+		const result = redactor?.(data);
 		expect(result.headers.authorization).toBe('***');
 	});
 
@@ -50,7 +50,7 @@ describe('createRedactor', () => {
 			headers: { 'content-type': 'application/json' },
 			body: { username: 'john', email: 'john@example.com' },
 		};
-		const result = redactor!(data);
+		const result = redactor?.(data);
 
 		expect(result.headers['content-type']).toBe('application/json');
 		expect(result.body.username).toBe('john');

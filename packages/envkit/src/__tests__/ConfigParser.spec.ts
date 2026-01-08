@@ -297,7 +297,7 @@ describe('ConfigParser', () => {
 			};
 
 			const parser = new ConfigParser(config);
-			const result = parser.parse();
+			const _result = parser.parse();
 		});
 	});
 

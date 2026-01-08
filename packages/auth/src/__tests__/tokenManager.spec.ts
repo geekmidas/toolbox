@@ -76,7 +76,7 @@ describe('TokenManager', () => {
 
 			const expiration = tokenManager.getTokenExpiration(accessToken);
 			expect(expiration).toBeInstanceOf(Date);
-			expect(expiration!.getTime()).toBeGreaterThan(Date.now());
+			expect(expiration?.getTime()).toBeGreaterThan(Date.now());
 		});
 
 		it('should handle expired tokens correctly', async () => {
@@ -102,8 +102,8 @@ describe('TokenManager', () => {
 			const decoded = tokenManager.decodeToken(accessToken);
 
 			expect(decoded).not.toBeNull();
-			expect(decoded!.userId).toBe(userPayload.userId);
-			expect(decoded!.email).toBe(userPayload.email);
+			expect(decoded?.userId).toBe(userPayload.userId);
+			expect(decoded?.email).toBe(userPayload.email);
 		});
 	});
 

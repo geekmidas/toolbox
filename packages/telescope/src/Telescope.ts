@@ -479,7 +479,7 @@ export class Telescope {
 		return this.options.ignorePatterns.some((pattern) => {
 			if (pattern.includes('*')) {
 				const regex = new RegExp(
-					'^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
+					`^${pattern.replace(/\*/g, '.*').replace(/\?/g, '.')}$`,
 				);
 				return regex.test(path);
 			}

@@ -194,7 +194,7 @@ export function TableView({
 		setCursors([]);
 		setCurrentPage(0);
 		loadData();
-	}, [tableName, sort, filters, pageSize]);
+	}, [loadData]);
 
 	// Update filters when initialFilters changes (e.g., FK navigation)
 	useEffect(() => {

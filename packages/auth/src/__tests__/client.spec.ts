@@ -234,7 +234,7 @@ describe('TokenClient', () => {
 
 			const expiration = client.getTokenExpiration(validToken);
 			expect(expiration).toBeInstanceOf(Date);
-			expect(expiration!.getTime()).toBe(validPayload.exp * 1000);
+			expect(expiration?.getTime()).toBe(validPayload.exp * 1000);
 		});
 
 		it('should identify expired tokens correctly', () => {
@@ -245,7 +245,7 @@ describe('TokenClient', () => {
 
 			const expiration = client.getTokenExpiration(expiredToken);
 			expect(expiration).toBeInstanceOf(Date);
-			expect(expiration!.getTime()).toBe(expiredPayload.exp * 1000);
+			expect(expiration?.getTime()).toBe(expiredPayload.exp * 1000);
 		});
 
 		it('should handle malformed tokens gracefully', () => {

@@ -337,7 +337,7 @@ describe('OidcMiddleware', () => {
 					issuer: 'https://auth.example.com',
 					audience: 'my-api',
 				},
-				onError: (c, error) => {
+				onError: (c, _error) => {
 					return c.json({ customError: 'Token verification failed' }, 401);
 				},
 			});

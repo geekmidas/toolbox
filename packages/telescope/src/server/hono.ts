@@ -12,7 +12,7 @@ import { getAsset, getIndexHtml } from '../ui-assets';
 const CONTEXT_KEY = 'telescope-context';
 
 /** Default Hono adapter configuration */
-const DEFAULT_CONFIG: HonoAdapterConfig = {
+const _DEFAULT_CONFIG: HonoAdapterConfig = {
 	environment: 'server',
 };
 

@@ -7,7 +7,7 @@ import type { TestAPI } from 'vitest';
  * @template Transaction - The transaction type specific to the database driver
  * @template Extended - Additional context properties provided by the extend function
  */
-export interface DatabaseFixtures<Transaction, Extended = object> {
+export interface DatabaseFixtures<Transaction, _Extended = object> {
 	/**
 	 * The database transaction available to the test.
 	 * All database operations should use this transaction to ensure proper rollback.
@@ -178,7 +178,7 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 
 		return extendFn<CombinedFixtures>({
 			// This fixture automatically provides a transaction to each test
-			trx: async ({}, use: (value: Transaction) => Promise<void>) => {
+			trx: async (_: {}, use: (value: Transaction) => Promise<void>) => {
 				// Create a custom error class for rollback
 				class TestRollback extends Error {
 					constructor() {

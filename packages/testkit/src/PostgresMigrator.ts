@@ -23,7 +23,7 @@ async function setupClient(uri: string) {
 		user: url.username,
 		password: url.password,
 		host: url.hostname,
-		port: parseInt(url.port),
+		port: parseInt(url.port, 10),
 		database: 'postgres',
 	});
 

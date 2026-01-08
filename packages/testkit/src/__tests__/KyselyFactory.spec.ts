@@ -88,7 +88,7 @@ describe('KyselyFactory', () => {
 		itWithTransaction('should handle relations', async ({ trx }) => {
 			const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
 				'users',
-				async (attrs) => ({
+				async (_attrs) => ({
 					name: 'John Doe',
 					email: `user${Date.now()}@example.com`,
 					createdAt: new Date(),
@@ -175,7 +175,7 @@ describe('KyselyFactory', () => {
 				const users = await factory.insertMany(3, 'user');
 
 				expect(users).toHaveLength(3);
-				users.forEach((user, index) => {
+				users.forEach((user, _index) => {
 					expect(user.id).toBeDefined();
 					expect(user.name).toBe('John Doe');
 					expect(user.email).toContain('@example.com');
@@ -266,7 +266,7 @@ describe('KyselyFactory', () => {
 		itWithTransaction('should execute seed functions', async ({ trx }) => {
 			const userBuilder = KyselyFactory.createBuilder<TestDatabase, 'users'>(
 				'users',
-				async (attrs) => ({
+				async (_attrs) => ({
 					name: 'John Doe',
 					email: `user${Date.now()}@example.com`,
 					createdAt: new Date(),

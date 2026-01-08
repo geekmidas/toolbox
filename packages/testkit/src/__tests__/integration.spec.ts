@@ -144,7 +144,7 @@ describe('Testkit Integration Tests', () => {
 		});
 
 		it('should handle seeds for complex scenarios', async ({ trx }) => {
-			const c = await trx
+			const _c = await trx
 				.selectFrom('users')
 				.select(trx.fn.count('id').as('count'))
 				.executeTakeFirst();

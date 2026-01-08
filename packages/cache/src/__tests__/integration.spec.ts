@@ -3,10 +3,10 @@ import type { Cache } from '../';
 import { InMemoryCache } from '../memory';
 
 describe('Cache Integration Tests', () => {
-	let memoryCache: Cache;
+	let _memoryCache: Cache;
 
 	beforeEach(() => {
-		memoryCache = new InMemoryCache();
+		_memoryCache = new InMemoryCache();
 	});
 
 	describe('cross-cache behavior consistency', () => {

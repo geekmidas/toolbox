@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeHooksConfig } from '../dev';
 
 describe('normalizeHooksConfig', () => {
-	const originalCwd = process.cwd();
+	const _originalCwd = process.cwd();
 
 	beforeEach(() => {
 		vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
@@ -31,21 +31,21 @@ describe('normalizeHooksConfig', () => {
 		const result = normalizeHooksConfig({ server: './src/hooks.ts' });
 
 		expect(result).toBeDefined();
-		expect(result!.serverHooksPath).toBe('/test/project/src/hooks.ts');
+		expect(result?.serverHooksPath).toBe('/test/project/src/hooks.ts');
 	});
 
 	it('should add .ts extension when missing', () => {
 		const result = normalizeHooksConfig({ server: './src/hooks' });
 
 		expect(result).toBeDefined();
-		expect(result!.serverHooksPath).toBe('/test/project/src/hooks.ts');
+		expect(result?.serverHooksPath).toBe('/test/project/src/hooks.ts');
 	});
 
 	it('should resolve relative paths from cwd', () => {
 		const result = normalizeHooksConfig({ server: 'config/server-hooks' });
 
 		expect(result).toBeDefined();
-		expect(result!.serverHooksPath).toBe(
+		expect(result?.serverHooksPath).toBe(
 			'/test/project/config/server-hooks.ts',
 		);
 	});
@@ -56,7 +56,7 @@ describe('normalizeHooksConfig', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result!.serverHooksPath).toBe(
+		expect(result?.serverHooksPath).toBe(
 			'/test/project/src/config/hooks/server.ts',
 		);
 	});

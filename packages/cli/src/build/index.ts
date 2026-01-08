@@ -217,7 +217,7 @@ async function buildForProvider(
 		);
 
 		// Bundle for production if enabled
-		if (context.production && context.production.bundle && !skipBundle) {
+		if (context.production?.bundle && !skipBundle) {
 			logger.log(`\n📦 Bundling production server...`);
 			const { bundleServer } = await import('./bundler');
 			await bundleServer({

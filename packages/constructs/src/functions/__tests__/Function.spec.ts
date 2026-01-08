@@ -49,7 +49,7 @@ describe('Function', () => {
 
 			const factory = new FunctionFactory([service1, service2, service3]);
 			// Internal defaultServices should have only 2 unique services
-			expect(factory['defaultServices'].length).toBe(2);
+			expect(factory.defaultServices.length).toBe(2);
 		});
 
 		it('should add services using services() method', () => {
@@ -58,7 +58,7 @@ describe('Function', () => {
 
 			const newFactory = factory.services([service1]);
 			expect(newFactory).toBeDefined();
-			expect(newFactory['defaultServices'].length).toBe(1);
+			expect(newFactory.defaultServices.length).toBe(1);
 		});
 
 		it('should merge services when chaining services() calls', () => {
@@ -67,7 +67,7 @@ describe('Function', () => {
 			const factory = new FunctionFactory([service1]);
 
 			const newFactory = factory.services([service2]);
-			expect(newFactory['defaultServices'].length).toBe(2);
+			expect(newFactory.defaultServices.length).toBe(2);
 		});
 
 		it('should set custom logger using logger() method', () => {
@@ -75,7 +75,7 @@ describe('Function', () => {
 			const factory = new FunctionFactory([]);
 
 			const newFactory = factory.logger(customLogger);
-			expect(newFactory['defaultLogger']).toBe(customLogger);
+			expect(newFactory.defaultLogger).toBe(customLogger);
 		});
 	});
 
@@ -274,7 +274,7 @@ describe('Function', () => {
 				const outputSchema = z.object({ result: z.string() });
 
 				const newBuilder = builder.output(outputSchema);
-				expect(newBuilder['outputSchema']).toBe(outputSchema);
+				expect(newBuilder.outputSchema).toBe(outputSchema);
 			});
 
 			it('should set input schema', () => {
@@ -282,7 +282,7 @@ describe('Function', () => {
 				const inputSchema = z.object({ data: z.string() });
 
 				const newBuilder = builder.input(inputSchema);
-				expect(newBuilder['inputSchema']).toBe(inputSchema);
+				expect(newBuilder.inputSchema).toBe(inputSchema);
 			});
 
 			it('should chain multiple builder methods', () => {
@@ -309,7 +309,7 @@ describe('Function', () => {
 				const builder = new FunctionBuilder();
 
 				class MockDatabase {
-					async query(sql: string) {
+					async query(_sql: string) {
 						return [];
 					}
 				}
@@ -322,7 +322,7 @@ describe('Function', () => {
 				};
 
 				const newBuilder = builder.database(databaseService);
-				expect(newBuilder['_databaseService']).toBe(databaseService);
+				expect(newBuilder._databaseService).toBe(databaseService);
 			});
 
 			it('should chain database with other methods', () => {
@@ -331,7 +331,7 @@ describe('Function', () => {
 				const logger = new ConsoleLogger();
 
 				class MockDatabase {
-					async query(sql: string) {
+					async query(_sql: string) {
 						return [];
 					}
 				}
@@ -350,7 +350,7 @@ describe('Function', () => {
 					.output(z.object({ result: z.string() }));
 
 				expect(finalBuilder._services.length).toBe(1);
-				expect(finalBuilder['_databaseService']).toBe(databaseService);
+				expect(finalBuilder._databaseService).toBe(databaseService);
 				expect(finalBuilder).toBeInstanceOf(FunctionBuilder);
 			});
 
@@ -358,7 +358,7 @@ describe('Function', () => {
 				const builder = new FunctionBuilder();
 
 				class MockDatabase {
-					async query(sql: string) {
+					async query(_sql: string) {
 						return [];
 					}
 				}

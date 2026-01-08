@@ -38,7 +38,7 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
-		} catch (error) {
+		} catch (_error) {
 			process.exit(1);
 		}
 	});
@@ -106,7 +106,7 @@ program
 						skipBundle: options.skipBundle || false,
 					});
 				}
-			} catch (error) {
+			} catch (_error) {
 				process.exit(1);
 			}
 		},
@@ -129,11 +129,11 @@ program
 			}
 
 			await devCommand({
-				port: options.port ? Number.parseInt(options.port) : 3000,
+				port: options.port ? Number.parseInt(options.port, 10) : 3000,
 				portExplicit: !!options.port,
 				enableOpenApi: options.enableOpenapi ?? true,
 			});
-		} catch (error) {
+		} catch (_error) {
 			process.exit(1);
 		}
 	});
@@ -181,7 +181,7 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await openapiCommand({});
-		} catch (error) {
+		} catch (_error) {
 			process.exit(1);
 		}
 	});
@@ -204,7 +204,7 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 				await generateReactQueryCommand(options);
-			} catch (error) {
+			} catch (_error) {
 				process.exit(1);
 			}
 		},
@@ -227,7 +227,7 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await dockerCommand(options);
-		} catch (error) {
+		} catch (_error) {
 			process.exit(1);
 		}
 	});
@@ -283,9 +283,9 @@ program
 				if (options.build) {
 					const tag = options.tag ?? 'latest';
 					const registry = options.registry;
-					const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
+					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
 				}
-			} catch (error) {
+			} catch (_error) {
 				process.exit(1);
 			}
 		},

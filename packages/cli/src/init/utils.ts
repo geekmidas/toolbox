@@ -71,7 +71,6 @@ export function getInstallCommand(pkgManager: PackageManager): string {
 			return 'yarn';
 		case 'bun':
 			return 'bun install';
-		case 'npm':
 		default:
 			return 'npm install';
 	}
@@ -91,7 +90,6 @@ export function getRunCommand(
 			return `yarn ${script}`;
 		case 'bun':
 			return `bun run ${script}`;
-		case 'npm':
 		default:
 			return `npm run ${script}`;
 	}

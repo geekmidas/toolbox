@@ -130,7 +130,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ name: 'John', age: 30 }),
 			});
-			// @ts-ignore
+			// @ts-expect-error
 			const response = await adapter.handler(event, mockContext);
 
 			expect(response).toEqual({
@@ -170,7 +170,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					limit: '20',
 				},
 			});
-			// @ts-ignore
+			// @ts-expect-error
 			const response = await adapter.handler(event, mockContext);
 
 			expect(response).toEqual({
@@ -216,7 +216,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					'filter.active': 'true',
 				},
 			});
-			// @ts-ignore
+			// @ts-expect-error
 			const response = await adapter.handler(event, mockContext);
 
 			expect(response).toEqual({
@@ -250,7 +250,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				queryStringParameters: { include: 'profile' },
 				pathParameters: { id: '123' },
 			});
-			// @ts-ignore
+			// @ts-expect-error
 			const response = await adapter.handler(event, mockContext);
 
 			expect(response).toEqual({
@@ -274,7 +274,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event();
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
@@ -296,7 +296,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event();
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.headers).toEqual({
@@ -316,7 +316,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event({ routeKey: 'POST /test' });
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.statusCode).toBe(201);
@@ -337,7 +337,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event({ routeKey: 'POST /test' });
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.statusCode).toBe(201);
@@ -362,7 +362,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event();
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.multiValueHeaders?.['Set-Cookie']).toEqual([
@@ -384,7 +384,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event();
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response.statusCode).toBe(201);
@@ -403,7 +403,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
 				const event = createMockV2Event();
-				// @ts-ignore
+				// @ts-expect-error
 				const response = await adapter.handler(event, mockContext);
 
 				expect(response).toEqual({

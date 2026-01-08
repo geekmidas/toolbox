@@ -66,7 +66,7 @@ function parseFilters(c: Context): FilterCondition[] {
 				let parsedValue: unknown = value;
 				if (value === 'true') parsedValue = true;
 				else if (value === 'false') parsedValue = false;
-				else if (!isNaN(Number(value)) && value !== '')
+				else if (!Number.isNaN(Number(value)) && value !== '')
 					parsedValue = Number(value);
 
 				filters.push({ column, operator: op, value: parsedValue });

@@ -148,7 +148,7 @@ export class TypedFetcher<Paths> {
 		} catch (error) {
 			// Apply error handler
 			if (this.options.onError) {
-				// @ts-ignore
+				// @ts-expect-error
 				await this.options.onError(error);
 			}
 			throw error;

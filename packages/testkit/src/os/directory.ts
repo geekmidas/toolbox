@@ -6,7 +6,7 @@ import { it } from 'vitest';
 
 export const itWithDir = it.extend<DirectoryFixtures>({
 	// This fixture automatically provides a transaction to each test
-	dir: async ({}, use) => {
+	dir: async (_, use) => {
 		const tempDir = os.tmpdir();
 		const directoryName = crypto.randomUUID().replace(/-/g, '').toUpperCase();
 		const dir = path.join(tempDir, directoryName);

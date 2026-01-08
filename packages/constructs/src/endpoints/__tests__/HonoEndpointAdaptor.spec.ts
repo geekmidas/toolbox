@@ -514,12 +514,12 @@ describe('HonoEndpointAdaptor', () => {
 		});
 
 		it('should provide logger to endpoint handler', async () => {
-			let loggedMessage: string | undefined;
+			let _loggedMessage: string | undefined;
 
 			const customLogger: Logger = {
 				...mockLogger,
 				info: vi.fn((obj: any, msg?: string) => {
-					loggedMessage = msg || obj.message;
+					_loggedMessage = msg || obj.message;
 				}),
 			};
 
@@ -1046,7 +1046,7 @@ describe('HonoEndpointAdaptor', () => {
 			const endpoint = new Endpoint({
 				route: '/users/invalid-output',
 				method: 'GET',
-				// @ts-ignore
+				// @ts-expect-error
 				fn: async () => ({ id: 123, name: 'John', age: 'not-a-number' }), // Invalid output
 				input: undefined,
 				output: outputSchema,

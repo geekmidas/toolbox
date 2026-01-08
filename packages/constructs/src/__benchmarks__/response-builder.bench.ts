@@ -303,7 +303,7 @@ describe('Full Minimal Handler Context', () => {
 	});
 
 	bench('minimal (no header/cookie parsing at all)', () => {
-		const context = {
+		const _context = {
 			services: {},
 			logger,
 			body: undefined,
@@ -334,7 +334,7 @@ describe('Handler Execution Comparison', () => {
 	// Current minimal approach
 	bench('minimal handler (current)', async () => {
 		const handler = async () => ({ message: 'pong' as const });
-		const rb = { getMetadata: () => ({}) };
+		const _rb = { getMetadata: () => ({}) };
 		const result = await handler();
 		simpleSchema.parse(result); // output validation
 		JSON.stringify(result);

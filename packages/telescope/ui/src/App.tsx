@@ -81,7 +81,7 @@ export function App() {
 			setRequests(requestsData);
 			setExceptions(exceptionsData);
 			setLogs(logsData);
-		} catch (error) {
+		} catch (_error) {
 		} finally {
 			setLoading(false);
 		}
@@ -101,7 +101,7 @@ export function App() {
 				status: filters.status || undefined,
 			});
 			setRequests(data);
-		} catch (error) {}
+		} catch (_error) {}
 	}, []);
 
 	// Fetch logs with filters
@@ -113,7 +113,7 @@ export function App() {
 				level: filters.level || undefined,
 			});
 			setLogs(data);
-		} catch (error) {}
+		} catch (_error) {}
 	}, []);
 
 	// Fetch exceptions with filters
@@ -124,7 +124,7 @@ export function App() {
 				search: filters.search || undefined,
 			});
 			setExceptions(data);
-		} catch (error) {}
+		} catch (_error) {}
 	}, []);
 
 	// Handle request filter changes with debounce

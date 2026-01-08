@@ -88,9 +88,9 @@ describe('publishEndpointEvents', () => {
 			.output(outputSchema)
 
 			.event({
-				// @ts-ignore
+				// @ts-expect-error
 				type: 'user.created',
-				// @ts-ignore
+				// @ts-expect-error
 				payload: (response) => ({
 					userId: response.id,
 					email: response.email,

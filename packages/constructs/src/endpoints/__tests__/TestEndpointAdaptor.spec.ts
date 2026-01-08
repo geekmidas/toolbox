@@ -8,7 +8,7 @@ import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 describe('TestEndpointAdaptor', () => {
 	const mockServices = {};
-	const logger = new ConsoleLogger();
+	const _logger = new ConsoleLogger();
 
 	describe('request', () => {
 		it('should handle simple endpoint without schemas', async () => {
@@ -443,7 +443,7 @@ describe('TestEndpointAdaptor', () => {
 				.post('/resources')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
-				.handle(async (ctx, response) => {
+				.handle(async (_ctx, response) => {
 					return response.status(SuccessStatus.Created).send({ id: '123' });
 				});
 
@@ -461,7 +461,7 @@ describe('TestEndpointAdaptor', () => {
 			const endpoint = e
 				.post('/auth/logout')
 				.output(z.object({ success: z.boolean() }))
-				.handle(async (ctx, response) => {
+				.handle(async (_ctx, response) => {
 					return response
 						.deleteCookie('session', { path: '/' })
 						.send({ success: true });
@@ -593,7 +593,7 @@ describe('TestEndpointAdaptor', () => {
 				.post('/resources')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
-				.handle(async (ctx, response) => {
+				.handle(async (_ctx, response) => {
 					return response.status(SuccessStatus.Created).send({ id: '123' });
 				});
 
@@ -700,7 +700,7 @@ describe('TestEndpointAdaptor', () => {
 			const endpoint = e
 				.get('/cookies-full')
 				.output(z.object({ success: z.boolean() }))
-				.handle(async (ctx, response) => {
+				.handle(async (_ctx, response) => {
 					return response
 						.cookie('full-cookie', 'value123', {
 							domain: 'example.com',
@@ -729,7 +729,7 @@ describe('TestEndpointAdaptor', () => {
 			const endpoint = e
 				.post('/auth/logout')
 				.output(z.object({ success: z.boolean() }))
-				.handle(async (ctx, response) => {
+				.handle(async (_ctx, response) => {
 					return response
 						.deleteCookie('session', { path: '/' })
 						.send({ success: true });

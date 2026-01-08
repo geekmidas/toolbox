@@ -48,7 +48,7 @@ export class EndpointFactory<
 		| RlsConfig<TServices, TSession, TLogger>
 		| undefined = undefined,
 > {
-	// @ts-ignore
+	// @ts-expect-error
 	private defaultServices: TServices;
 	private basePath: TBasePath = '' as TBasePath;
 	private defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
@@ -79,7 +79,7 @@ export class EndpointFactory<
 		defaultAuthorizeFn,
 		defaultLogger,
 		defaultSessionExtractor,
-		// @ts-ignore
+		// @ts-expect-error
 		defaultServices = [] as TServices,
 		defaultEventPublisher,
 		availableAuthorizers = [],
@@ -131,23 +131,23 @@ export class EndpointFactory<
 		// Handle empty cases
 		if (!basePath && !path) return '/' as JoinPaths<TBasePath, P>;
 		if (!basePath)
-			return (path.startsWith('/') ? path : '/' + path) as JoinPaths<
+			return (path.startsWith('/') ? path : `/${path}`) as JoinPaths<
 				TBasePath,
 				P
 			>;
 		if (!path)
 			return (
-				basePath.startsWith('/') ? basePath : '/' + basePath
+				basePath.startsWith('/') ? basePath : `/${basePath}`
 			) as JoinPaths<TBasePath, P>;
 
 		const base = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
-		const segment = path.startsWith('/') ? path : '/' + path;
+		const segment = path.startsWith('/') ? path : `/${path}`;
 
 		let result = base + segment;
 
 		// Ensure leading slash
 		if (!result.startsWith('/')) {
-			result = '/' + result;
+			result = `/${result}`;
 		}
 
 		// Normalize multiple slashes (except in the middle of the path where they might be intentional)
@@ -984,7 +984,7 @@ export class EndpointFactory<
 		>(fullPath, method);
 
 		if (this.defaultAuthorizeFn) {
-			// @ts-ignore
+			// @ts-expect-error
 			builder._authorize = this.defaultAuthorizeFn;
 		}
 		if (this.defaultServices.length) {

@@ -13,8 +13,8 @@ import { EndpointGenerator } from '../EndpointGenerator';
 import type { GeneratedConstruct } from '../Generator';
 
 describe('EndpointGenerator', () => {
-	let tempDir: string;
-	let outputDir: string;
+	let _tempDir: string;
+	let _outputDir: string;
 	let generator: EndpointGenerator;
 	let context: ReturnType<typeof createMockBuildContext>;
 

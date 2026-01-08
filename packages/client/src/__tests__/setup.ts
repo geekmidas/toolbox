@@ -73,8 +73,8 @@ export const handlers = [
 	// GET /posts with query parameters
 	http.get('https://api.example.com/posts', ({ request }) => {
 		const url = new URL(request.url);
-		const page = parseInt(url.searchParams.get('page') || '1');
-		const limit = parseInt(url.searchParams.get('limit') || '10');
+		const page = parseInt(url.searchParams.get('page') || '1', 10);
+		const limit = parseInt(url.searchParams.get('limit') || '10', 10);
 		const sort = url.searchParams.get('sort') || 'asc';
 
 		// Generate posts based on page to simulate pagination
@@ -182,8 +182,8 @@ export const handlers = [
 	// Paginated users endpoint for infinite queries
 	http.get('https://api.example.com/users/paginated', ({ request }) => {
 		const url = new URL(request.url);
-		const page = parseInt(url.searchParams.get('page') || '1');
-		const limit = parseInt(url.searchParams.get('limit') || '10');
+		const page = parseInt(url.searchParams.get('page') || '1', 10);
+		const limit = parseInt(url.searchParams.get('limit') || '10', 10);
 
 		const allUsers = Array.from({ length: 50 }, (_, i) => ({
 			id: `user-${i + 1}`,
@@ -211,7 +211,7 @@ export const handlers = [
 	http.get('https://api.example.com/messages', ({ request }) => {
 		const url = new URL(request.url);
 		const cursor = url.searchParams.get('cursor');
-		const limit = parseInt(url.searchParams.get('limit') || '10');
+		const limit = parseInt(url.searchParams.get('limit') || '10', 10);
 
 		const allMessages = Array.from({ length: 100 }, (_, i) => ({
 			id: `msg-${i + 1}`,
@@ -253,10 +253,10 @@ export const handlers = [
 				value: `Value ${i + 1}`,
 			})),
 			pagination: {
-				page: parseInt(queryParams.page || '1'),
-				limit: parseInt(queryParams.limit || '10'),
+				page: parseInt(queryParams.page || '1', 10),
+				limit: parseInt(queryParams.limit || '10', 10),
 				total: 50,
-				hasMore: parseInt(queryParams.page || '1') < 5,
+				hasMore: parseInt(queryParams.page || '1', 10) < 5,
 			},
 		});
 	}),

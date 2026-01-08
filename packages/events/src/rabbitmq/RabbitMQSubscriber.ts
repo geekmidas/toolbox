@@ -101,7 +101,7 @@ export class RabbitMQSubscriber<
 
 					// Ack message
 					channel.ack(msg);
-				} catch (error) {
+				} catch (_error) {
 					channel.nack(msg, false, true);
 				}
 			},

@@ -137,7 +137,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
 					SubscriptionArn: this.subscriptionArn,
 				});
 				await this.connection.snsClient.send(command);
-			} catch (error) {}
+			} catch (_error) {}
 		}
 
 		// Delete queue if configured
@@ -147,7 +147,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
 					QueueUrl: this.queueUrl,
 				});
 				await this.sqsClient.send(command);
-			} catch (error) {}
+			} catch (_error) {}
 		}
 
 		this.sqsClient.destroy();

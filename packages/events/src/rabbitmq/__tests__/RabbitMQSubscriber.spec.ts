@@ -160,7 +160,7 @@ describe('RabbitMQSubscriber - Integration Tests', () => {
 
 		let processCount = 0;
 
-		await subscriber.subscribe(['user.created'], async (message) => {
+		await subscriber.subscribe(['user.created'], async (_message) => {
 			processCount++;
 			if (processCount === 1) {
 				// Fail first time

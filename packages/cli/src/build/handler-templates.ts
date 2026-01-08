@@ -205,9 +205,7 @@ function generateValidators(
 	}
 
 	// Add trailing comma if there are validators (needed before the handler function)
-	return validators.length > 0
-		? '\n    ' + validators.join(',\n    ') + ','
-		: '';
+	return validators.length > 0 ? `\n    ${validators.join(',\n    ')},` : '';
 }
 
 /**

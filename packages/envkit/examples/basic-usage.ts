@@ -227,7 +227,7 @@ export function errorHandlingExample() {
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			error.errors.forEach((err) => {
-				const path = err.path.join('.');
+				const _path = err.path.join('.');
 			});
 
 			// In a real app, you might want to exit
@@ -315,7 +315,7 @@ function parseDuration(duration: string): number {
 
 	const [, value, unit] = match;
 	const multipliers = { ms: 1, s: 1000, m: 60000, h: 3600000 };
-	return parseInt(value) * multipliers[unit as keyof typeof multipliers];
+	return parseInt(value, 10) * multipliers[unit as keyof typeof multipliers];
 }
 
 function parseMemorySize(size: string): number {
@@ -325,7 +325,7 @@ function parseMemorySize(size: string): number {
 	const [, value, unit] = match;
 	const multipliers = { B: 1, KB: 1024, MB: 1048576, GB: 1073741824 };
 	return (
-		parseInt(value) *
+		parseInt(value, 10) *
 		multipliers[unit.toUpperCase() as keyof typeof multipliers]
 	);
 }

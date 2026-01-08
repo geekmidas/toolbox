@@ -71,7 +71,7 @@ export function DatabasePage() {
 			}
 		}
 		loadTables();
-	}, []);
+	}, [navigate, selectedTable]);
 
 	// Load table info when selected
 	useEffect(() => {

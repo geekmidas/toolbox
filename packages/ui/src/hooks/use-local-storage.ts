@@ -24,7 +24,7 @@ export function useLocalStorage<T>(
 		try {
 			const item = window.localStorage.getItem(key);
 			return item ? (JSON.parse(item) as T) : initialValue;
-		} catch (error) {
+		} catch (_error) {
 			return initialValue;
 		}
 	}, [initialValue, key]);
@@ -34,7 +34,7 @@ export function useLocalStorage<T>(
 	// Update state when key changes
 	useEffect(() => {
 		setStoredValue(readValue());
-	}, [key, readValue]);
+	}, [readValue]);
 
 	// Listen for storage changes from other tabs/windows
 	useEffect(() => {
@@ -73,7 +73,7 @@ export function useLocalStorage<T>(
 						}),
 					);
 				}
-			} catch (error) {}
+			} catch (_error) {}
 		},
 		[key, storedValue],
 	);
@@ -85,7 +85,7 @@ export function useLocalStorage<T>(
 				window.localStorage.removeItem(key);
 				setStoredValue(initialValue);
 			}
-		} catch (error) {}
+		} catch (_error) {}
 	}, [key, initialValue]);
 
 	return [storedValue, setValue, removeValue];

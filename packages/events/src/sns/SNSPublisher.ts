@@ -2,16 +2,14 @@ import { PublishCommand } from '@aws-sdk/client-sns';
 import type { EventPublisher, PublishableMessage } from '../types';
 import type { SNSConnection } from './SNSConnection';
 
-export interface SNSPublisherOptions {
-	// Optional publisher-specific options
-}
+export type SNSPublisherOptions = {};
 
 export class SNSPublisher<TMessage extends PublishableMessage<string, any>>
 	implements EventPublisher<TMessage>
 {
 	constructor(
 		private connection: SNSConnection,
-		private options: SNSPublisherOptions = {},
+		_options: SNSPublisherOptions = {},
 	) {}
 
 	/**

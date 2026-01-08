@@ -185,7 +185,7 @@ coverage/
 	return [
 		{
 			path: 'package.json',
-			content: JSON.stringify(rootPackageJson, null, 2) + '\n',
+			content: `${JSON.stringify(rootPackageJson, null, 2)}\n`,
 		},
 		{
 			path: 'pnpm-workspace.yaml',
@@ -193,15 +193,15 @@ coverage/
 		},
 		{
 			path: 'tsconfig.json',
-			content: JSON.stringify(tsConfig, null, 2) + '\n',
+			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 		{
 			path: 'biome.json',
-			content: JSON.stringify(biomeConfig, null, 2) + '\n',
+			content: `${JSON.stringify(biomeConfig, null, 2)}\n`,
 		},
 		{
 			path: 'turbo.json',
-			content: JSON.stringify(turboConfig, null, 2) + '\n',
+			content: `${JSON.stringify(turboConfig, null, 2)}\n`,
 		},
 		{
 			path: '.gitignore',

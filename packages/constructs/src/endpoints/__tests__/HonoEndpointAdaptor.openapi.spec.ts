@@ -15,7 +15,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 		warn: () => {},
 		debug: () => {},
 	} as unknown as Logger;
-	const mockEnvParser = {} as EnvironmentParser<{}>;
+	const _mockEnvParser = {} as EnvironmentParser<{}>;
 
 	it('should generate OpenAPI documentation at /docs by default', async () => {
 		// Create test endpoints

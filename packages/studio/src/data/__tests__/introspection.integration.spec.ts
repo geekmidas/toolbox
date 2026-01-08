@@ -185,38 +185,38 @@ describe('Schema Introspection Integration Tests', () => {
 
 			// Check id column (primary key, serial)
 			expect(idCol).toBeDefined();
-			expect(idCol!.type).toBe('number');
-			expect(idCol!.rawType).toBe('int4');
-			expect(idCol!.isPrimaryKey).toBe(true);
-			expect(idCol!.nullable).toBe(false);
+			expect(idCol?.type).toBe('number');
+			expect(idCol?.rawType).toBe('int4');
+			expect(idCol?.isPrimaryKey).toBe(true);
+			expect(idCol?.nullable).toBe(false);
 
 			// Check name column (varchar, not null)
 			expect(nameCol).toBeDefined();
-			expect(nameCol!.type).toBe('string');
-			expect(nameCol!.rawType).toBe('varchar');
-			expect(nameCol!.nullable).toBe(false);
+			expect(nameCol?.type).toBe('string');
+			expect(nameCol?.rawType).toBe('varchar');
+			expect(nameCol?.nullable).toBe(false);
 
 			// Check email column (varchar, unique)
 			expect(emailCol).toBeDefined();
-			expect(emailCol!.type).toBe('string');
-			expect(emailCol!.nullable).toBe(false);
+			expect(emailCol?.type).toBe('string');
+			expect(emailCol?.nullable).toBe(false);
 
 			// Check is_active column (boolean with default)
 			expect(isActiveCol).toBeDefined();
-			expect(isActiveCol!.type).toBe('boolean');
-			expect(isActiveCol!.rawType).toBe('bool');
-			expect(isActiveCol!.nullable).toBe(false);
+			expect(isActiveCol?.type).toBe('boolean');
+			expect(isActiveCol?.rawType).toBe('bool');
+			expect(isActiveCol?.nullable).toBe(false);
 
 			// Check metadata column (jsonb, nullable)
 			expect(metadataCol).toBeDefined();
-			expect(metadataCol!.type).toBe('json');
-			expect(metadataCol!.rawType).toBe('jsonb');
-			expect(metadataCol!.nullable).toBe(true);
+			expect(metadataCol?.type).toBe('json');
+			expect(metadataCol?.rawType).toBe('jsonb');
+			expect(metadataCol?.nullable).toBe(true);
 
 			// Check created_at column (timestamptz)
 			expect(createdAtCol).toBeDefined();
-			expect(createdAtCol!.type).toBe('datetime');
-			expect(createdAtCol!.rawType).toBe('timestamptz');
+			expect(createdAtCol?.type).toBe('datetime');
+			expect(createdAtCol?.rawType).toBe('timestamptz');
 		});
 
 		it('should detect primary key', async () => {
@@ -225,7 +225,7 @@ describe('Schema Introspection Integration Tests', () => {
 			expect(tableInfo.primaryKey).toEqual(['id']);
 
 			const idColumn = tableInfo.columns.find((c) => c.name === 'id');
-			expect(idColumn!.isPrimaryKey).toBe(true);
+			expect(idColumn?.isPrimaryKey).toBe(true);
 		});
 
 		it('should detect foreign keys', async () => {
@@ -233,9 +233,9 @@ describe('Schema Introspection Integration Tests', () => {
 
 			const userIdCol = tableInfo.columns.find((c) => c.name === 'user_id');
 			expect(userIdCol).toBeDefined();
-			expect(userIdCol!.isForeignKey).toBe(true);
-			expect(userIdCol!.foreignKeyTable).toBe('studio_introspect_users');
-			expect(userIdCol!.foreignKeyColumn).toBe('id');
+			expect(userIdCol?.isForeignKey).toBe(true);
+			expect(userIdCol?.foreignKeyTable).toBe('studio_introspect_users');
+			expect(userIdCol?.foreignKeyColumn).toBe('id');
 		});
 
 		it('should detect uuid primary key', async () => {
@@ -245,9 +245,9 @@ describe('Schema Introspection Integration Tests', () => {
 
 			const idColumn = tableInfo.columns.find((c) => c.name === 'id');
 			expect(idColumn).toBeDefined();
-			expect(idColumn!.type).toBe('uuid');
-			expect(idColumn!.rawType).toBe('uuid');
-			expect(idColumn!.isPrimaryKey).toBe(true);
+			expect(idColumn?.type).toBe('uuid');
+			expect(idColumn?.rawType).toBe('uuid');
+			expect(idColumn?.isPrimaryKey).toBe(true);
 		});
 
 		it('should map PostgreSQL types correctly', async () => {
@@ -256,38 +256,38 @@ describe('Schema Introspection Integration Tests', () => {
 
 			// Integer types -> number
 			const userIdCol = usersTable.columns.find((c) => c.name === 'id');
-			expect(userIdCol!.type).toBe('number');
+			expect(userIdCol?.type).toBe('number');
 
 			// Boolean -> boolean
 			const isActiveCol = usersTable.columns.find(
 				(c) => c.name === 'is_active',
 			);
-			expect(isActiveCol!.type).toBe('boolean');
+			expect(isActiveCol?.type).toBe('boolean');
 
 			// JSONB -> json
 			const metadataCol = usersTable.columns.find((c) => c.name === 'metadata');
-			expect(metadataCol!.type).toBe('json');
+			expect(metadataCol?.type).toBe('json');
 
 			// Timestamptz -> datetime
 			const createdAtCol = usersTable.columns.find(
 				(c) => c.name === 'created_at',
 			);
-			expect(createdAtCol!.type).toBe('datetime');
+			expect(createdAtCol?.type).toBe('datetime');
 
 			// UUID -> uuid
 			const postIdCol = postsTable.columns.find((c) => c.name === 'id');
-			expect(postIdCol!.type).toBe('uuid');
+			expect(postIdCol?.type).toBe('uuid');
 
 			// Text -> string
 			const contentCol = postsTable.columns.find((c) => c.name === 'content');
-			expect(contentCol!.type).toBe('string');
-			expect(contentCol!.rawType).toBe('text');
+			expect(contentCol?.type).toBe('string');
+			expect(contentCol?.rawType).toBe('text');
 
 			// Timestamp (without tz) -> datetime
 			const publishedCol = postsTable.columns.find(
 				(c) => c.name === 'published_at',
 			);
-			expect(publishedCol!.type).toBe('datetime');
+			expect(publishedCol?.type).toBe('datetime');
 		});
 
 		it('should detect nullable columns', async () => {
@@ -299,9 +299,9 @@ describe('Schema Introspection Integration Tests', () => {
 				(c) => c.name === 'published_at',
 			);
 
-			expect(titleCol!.nullable).toBe(false);
-			expect(contentCol!.nullable).toBe(true);
-			expect(publishedAtCol!.nullable).toBe(true);
+			expect(titleCol?.nullable).toBe(false);
+			expect(contentCol?.nullable).toBe(true);
+			expect(publishedAtCol?.nullable).toBe(true);
 		});
 
 		it('should provide estimated row count when data exists', async () => {

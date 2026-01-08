@@ -121,7 +121,7 @@ describe('faker', () => {
 			expect(createdAt).toBeInstanceOf(Date);
 			expect(updatedAt).toBeInstanceOf(Date);
 			expect(createdAt.getTime()).toBeLessThanOrEqual(updatedAt.getTime());
-			expect(updatedAt.getTime()).toBeLessThanOrEqual(new Date().getTime());
+			expect(updatedAt.getTime()).toBeLessThanOrEqual(Date.now());
 		});
 
 		it('should have milliseconds set to 0', () => {

@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, relative } from 'path';
+import { join, relative } from 'node:path';
 import type {
 	CronInfo,
 	FunctionInfo,

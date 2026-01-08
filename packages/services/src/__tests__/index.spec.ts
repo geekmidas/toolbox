@@ -433,7 +433,7 @@ describe('ServiceDiscovery', () => {
 
 			const databaseService = {
 				serviceName: 'database' as const,
-				async register(envParser) {
+				async register(_envParser) {
 					// Service can access other services through discovery if needed
 					return { connected: true, logger: 'attached' };
 				},

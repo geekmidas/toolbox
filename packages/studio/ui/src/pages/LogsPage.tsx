@@ -43,7 +43,7 @@ export function LogsPage() {
 				level: filters.level || undefined,
 			});
 			setLogs(data);
-		} catch (error) {
+		} catch (_error) {
 		} finally {
 			setLoading(false);
 		}

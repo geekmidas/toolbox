@@ -181,8 +181,8 @@ describe('DataBrowser Integration Tests', () => {
 			const tableInfo = await browser.getTableInfo('studio_browser_products');
 
 			expect(tableInfo).not.toBeNull();
-			expect(tableInfo!.name).toBe('studio_browser_products');
-			expect(tableInfo!.columns.length).toBeGreaterThan(0);
+			expect(tableInfo?.name).toBe('studio_browser_products');
+			expect(tableInfo?.columns.length).toBeGreaterThan(0);
 		});
 
 		it('should return null for non-existent table', async () => {

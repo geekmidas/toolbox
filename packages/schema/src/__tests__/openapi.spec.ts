@@ -102,7 +102,7 @@ describe('OpenAPI Schema', () => {
 	describe('buildOpenApiSchema', () => {
 		it('should build OpenAPI schema with default options', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							get: {
@@ -132,7 +132,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should build OpenAPI schema with custom options', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/posts': {
 							get: {
@@ -163,7 +163,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should merge multiple endpoints into paths', async () => {
 			const endpoint1 = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							get: {
@@ -176,7 +176,7 @@ describe('OpenAPI Schema', () => {
 			};
 
 			const endpoint2 = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/posts': {
 							get: {
@@ -197,7 +197,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should merge multiple methods for same path', async () => {
 			const endpoint1 = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							get: {
@@ -210,7 +210,7 @@ describe('OpenAPI Schema', () => {
 			};
 
 			const endpoint2 = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							post: {
@@ -269,7 +269,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should not add components when no schemas collected', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/health': {
 							get: {
@@ -299,7 +299,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should handle endpoints with parameters', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users/{id}': {
 							get: {
@@ -331,7 +331,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should handle endpoints with request body', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							post: {
@@ -367,7 +367,7 @@ describe('OpenAPI Schema', () => {
 
 		it('should handle endpoints with multiple response codes', async () => {
 			const mockEndpoint = {
-				async toOpenApi3Route(collector?: ComponentCollector) {
+				async toOpenApi3Route(_collector?: ComponentCollector) {
 					return {
 						'/users': {
 							get: {

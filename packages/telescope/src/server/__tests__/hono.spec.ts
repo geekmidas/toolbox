@@ -81,7 +81,7 @@ describe('Hono Adapter', () => {
 			});
 
 			const requests = await telescope.getRequests();
-			expect(requests[0].headers['authorization']).toBe('Bearer token123');
+			expect(requests[0].headers.authorization).toBe('Bearer token123');
 			expect(requests[0].headers['x-custom-header']).toBe('custom-value');
 		});
 

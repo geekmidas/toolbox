@@ -55,9 +55,7 @@ export interface SendResult {
 	response: string;
 }
 
-export interface EmailTemplate<T = any> {
-	(props: T): ReactElement;
-}
+export type EmailTemplate<T = any> = (props: T) => ReactElement;
 
 // Extract props type from a template function
 export type TemplateProps<T> = T extends EmailTemplate<infer P> ? P : never;

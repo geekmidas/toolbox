@@ -155,7 +155,7 @@ export class TestFunctionAdaptor<
 		}
 
 		// Execute the function
-		const response = await this.fn['fn']({
+		const response = await this.fn.fn({
 			input: parsedInput,
 			services,
 			logger,

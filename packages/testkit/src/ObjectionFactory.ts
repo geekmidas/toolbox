@@ -181,7 +181,7 @@ export class ObjectionFactory<
 				}, {} as any);
 
 				// Use static query method to insert data directly
-				// @ts-ignore
+				// @ts-expect-error
 				const result = await ModelClass.query(db).insert(insertData);
 				return result as Result;
 			} else {

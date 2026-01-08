@@ -273,7 +273,7 @@ export class EndpointGenerator extends ConstructGenerator<
 			if (!importsByFile.has(importPath)) {
 				importsByFile.set(importPath, []);
 			}
-			importsByFile.get(importPath)!.push(key);
+			importsByFile.get(importPath)?.push(key);
 		}
 
 		// Generate import statements for endpoints
@@ -475,9 +475,9 @@ export async function setupEndpoints(
 			if (usesExternalTelescope) {
 				const relativeTelescopePath = relative(
 					dirname(appPath),
-					context.telescope!.telescopePath!,
+					context.telescope?.telescopePath!,
 				);
-				telescopeImports = `import ${context.telescope!.telescopeImportPattern} from '${relativeTelescopePath}';
+				telescopeImports = `import ${context.telescope?.telescopeImportPattern} from '${relativeTelescopePath}';
 import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
 			} else {
 				telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
@@ -491,9 +491,9 @@ import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
 			if (usesExternalStudio) {
 				const relativeStudioPath = relative(
 					dirname(appPath),
-					context.studio!.studioPath!,
+					context.studio?.studioPath!,
 				);
-				studioImports = `import ${context.studio!.studioImportPattern} from '${relativeStudioPath}';
+				studioImports = `import ${context.studio?.studioImportPattern} from '${relativeStudioPath}';
 import { createStudioApp } from '@geekmidas/studio/server/hono';`;
 			} else {
 				studioImports = `// Studio requires a configured instance - use studio config path
@@ -532,7 +532,7 @@ import { createStudioApp } from '@geekmidas/studio/server/hono';`;
     const { createNodeWebSocket } = await import('@hono/node-ws');
     const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: honoApp });
     // Add WebSocket route directly to main app (sub-app routes don't support WS upgrade)
-    honoApp.get('${context.telescope!.path}/ws', upgradeWebSocket(() => ({
+    honoApp.get('${context.telescope?.path}/ws', upgradeWebSocket(() => ({
       onOpen: (_event: Event, ws: any) => {
         telescope.addWsClient(ws);
       },
@@ -571,18 +571,18 @@ ${telescopeWebSocketSetupCode}
 
   // Mount telescope UI
   const telescopeUI = createUI(telescope);
-  honoApp.route('${context.telescope!.path}', telescopeUI);
+  honoApp.route('${context.telescope?.path}', telescopeUI);
 `;
 			} else {
 				// Create inline telescope instance
 				telescopeSetup = `
   // Setup Telescope for debugging/monitoring
-  const telescopeStorage = new InMemoryStorage({ maxEntries: ${context.telescope!.maxEntries} });
+  const telescopeStorage = new InMemoryStorage({ maxEntries: ${context.telescope?.maxEntries} });
   const telescope = new Telescope({
     enabled: true,
-    path: '${context.telescope!.path}',
-    ignorePatterns: ${JSON.stringify(context.telescope!.ignore)},
-    recordBody: ${context.telescope!.recordBody},
+    path: '${context.telescope?.path}',
+    ignorePatterns: ${JSON.stringify(context.telescope?.ignore)},
+    recordBody: ${context.telescope?.recordBody},
     storage: telescopeStorage,
   });
 ${telescopeWebSocketSetupCode}
@@ -591,7 +591,7 @@ ${telescopeWebSocketSetupCode}
 
   // Mount telescope UI
   const telescopeUI = createUI(telescope);
-  honoApp.route('${context.telescope!.path}', telescopeUI);
+  honoApp.route('${context.telescope?.path}', telescopeUI);
 `;
 			}
 		}
@@ -602,7 +602,7 @@ ${telescopeWebSocketSetupCode}
 			studioSetup = `
   // Mount Studio data browser UI
   const studioApp = createStudioApp(studio);
-  honoApp.route('${context.studio!.path}', studioApp);
+  honoApp.route('${context.studio?.path}', studioApp);
 `;
 		}
 

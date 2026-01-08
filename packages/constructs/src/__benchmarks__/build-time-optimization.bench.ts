@@ -36,7 +36,7 @@ const validateBody = (endpoint: any) =>
 		return parsed.value;
 	});
 
-const validateQuery = (endpoint: any) =>
+const _validateQuery = (endpoint: any) =>
 	validator('query', async (_, c) => {
 		if (!endpoint.input?.query) return undefined;
 		const rawQuery = Object.fromEntries(new URL(c.req.url).searchParams);

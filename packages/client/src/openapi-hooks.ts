@@ -96,7 +96,7 @@ type OperationResponse<
 				}
 			? R
 			: Spec extends { responses: { 204: any } }
-				? void
+				? undefined
 				: unknown
 	: never;
 

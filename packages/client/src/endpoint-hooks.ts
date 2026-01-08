@@ -124,7 +124,7 @@ export interface EndpointHooks<Paths> {
  */
 export function createEndpointHooks<Paths>(
 	fetcher: TypedApiFunction<Paths>,
-	options: CreateEndpointHooksOptions = {},
+	_options: CreateEndpointHooksOptions = {},
 ): EndpointHooks<Paths> {
 	return {
 		useQuery: <T extends QueryEndpoint<Paths>>(
@@ -158,12 +158,7 @@ export function createEndpointHooks<Paths>(
 						)(endpoint, config),
 					...queryOptions,
 				}),
-				[
-					queryKey.join(','),
-					endpoint,
-					JSON.stringify(config),
-					JSON.stringify(queryOptions),
-				],
+				[endpoint, config, fetcher, queryKey, queryOptions],
 			);
 
 			return useQuery<ExtractEndpointResponse<Paths, T>, Error>(
@@ -194,7 +189,7 @@ export function createEndpointHooks<Paths>(
 						)(endpoint, config),
 					...mutationOptions,
 				}),
-				[endpoint, JSON.stringify(mutationOptions)],
+				[endpoint, fetcher, mutationOptions],
 			);
 
 			return useMutation<

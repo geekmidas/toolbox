@@ -52,8 +52,8 @@ function createEventPublishMiddleware<
 		any,
 		any
 	>,
-	serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
-): ((c: Context, next: Next) => Promise<Response | void>) | null {
+	_serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
+): ((c: Context, next: Next) => Promise<Response | undefined>) | null {
 	// Return null if no events configured - middleware won't be added
 	if (!endpoint.events || endpoint.events.length === 0) {
 		return null;
@@ -153,7 +153,7 @@ export class OptInEventHonoEndpoint {
 		});
 
 		for (const endpoint of sortedEndpoints) {
-			this.addRoute(endpoint, serviceDiscovery, app);
+			OptInEventHonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
 		}
 	}
 
@@ -201,7 +201,7 @@ export class OptInEventHonoEndpoint {
 			? serviceDiscovery
 					.register([endpoint.databaseService])
 					.then(
-						(s) => s[endpoint.databaseService!.serviceName as keyof typeof s],
+						(s) => s[endpoint.databaseService?.serviceName as keyof typeof s],
 					)
 			: Promise.resolve(undefined);
 
@@ -209,7 +209,7 @@ export class OptInEventHonoEndpoint {
 		const middlewares: ((
 			c: Context,
 			next: Next,
-		) => Promise<Response | void>)[] = [];
+		) => Promise<Response | undefined>)[] = [];
 
 		// Validators (always needed)
 		const validators = [
@@ -256,7 +256,7 @@ export class OptInEventHonoEndpoint {
 				const cookie = Endpoint.createCookies(headerValues.cookie);
 
 				// Handle authorization if needed
-				let session: unknown = undefined;
+				let session: unknown;
 				if (endpoint.authorizer !== 'none') {
 					session = await endpoint.getSession({
 						services: services as any,
@@ -318,7 +318,7 @@ export class OptInEventHonoEndpoint {
 
 				const status = (metadata.status ?? endpoint.status) as any;
 				return c.json(output, status);
-			} catch (error) {
+			} catch (_error) {
 				return c.json({ error: 'Internal Server Error' }, 500);
 			}
 		};
@@ -360,7 +360,7 @@ export class FullyOptimizedHonoEndpoint {
 		});
 
 		for (const endpoint of sortedEndpoints) {
-			this.addRoute(endpoint, serviceDiscovery, app);
+			FullyOptimizedHonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
 		}
 	}
 
@@ -419,7 +419,7 @@ export class FullyOptimizedHonoEndpoint {
 		const middlewares: ((
 			c: Context,
 			next: Next,
-		) => Promise<Response | void>)[] = [];
+		) => Promise<Response | undefined>)[] = [];
 
 		// Validators
 		const validators = [
@@ -457,7 +457,7 @@ export class FullyOptimizedHonoEndpoint {
 
 				const db = hasDatabaseService
 					? services[
-							endpoint.databaseService!.serviceName as keyof typeof services
+							endpoint.databaseService?.serviceName as keyof typeof services
 						]
 					: undefined;
 
@@ -511,7 +511,7 @@ export class FullyOptimizedHonoEndpoint {
 
 				const db = hasDatabaseService
 					? services[
-							endpoint.databaseService!.serviceName as keyof typeof services
+							endpoint.databaseService?.serviceName as keyof typeof services
 						]
 					: undefined;
 
@@ -555,7 +555,7 @@ export class FullyOptimizedHonoEndpoint {
 
 				const status = (metadata.status ?? endpoint.status) as any;
 				return c.json(output, status);
-			} catch (error) {
+			} catch (_error) {
 				return c.json({ error: 'Internal Server Error' }, 500);
 			}
 		};

@@ -80,7 +80,7 @@ export function LatencyPercentilesChart({
 					<Tooltip
 						content={({ active, payload }) => {
 							if (!active || !payload?.length) return null;
-							const item = payload[0]!.payload as (typeof chartData)[number];
+							const item = payload[0]?.payload as (typeof chartData)[number];
 							return (
 								<div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
 									<p className="font-medium">{item.label}</p>

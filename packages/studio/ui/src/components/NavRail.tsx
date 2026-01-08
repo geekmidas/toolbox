@@ -113,7 +113,7 @@ export function NavRailItem({
 		? location.pathname.startsWith(matchPath)
 		: to === '/'
 			? location.pathname === '/'
-			: location.pathname === to || location.pathname.startsWith(to + '/');
+			: location.pathname === to || location.pathname.startsWith(`${to}/`);
 
 	const content = (
 		<Link

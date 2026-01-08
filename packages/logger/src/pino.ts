@@ -100,7 +100,7 @@ function resolveRedactConfig(
  * ```
  */
 export function createLogger(options: CreateLoggerOptions = {}) {
-	// @ts-ignore
+	// @ts-expect-error
 	const pretty = options?.pretty && process.NODE_ENV !== 'production';
 	const baseOptions = pretty
 		? {

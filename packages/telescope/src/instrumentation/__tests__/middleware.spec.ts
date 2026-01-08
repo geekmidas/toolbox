@@ -73,7 +73,7 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await middleware.before!(request as any);
+			await middleware.before?.(request as any);
 
 			// Span should be stored on event
 			const span = getSpanFromEvent(event);
@@ -82,7 +82,11 @@ describe('telemetryMiddleware', () => {
 
 			// End span to export it
 			const response = { statusCode: 201, body: '{"id":"123"}' };
-			await middleware.after!({ event, context: mockContext, response } as any);
+			await middleware.after?.({
+				event,
+				context: mockContext,
+				response,
+			} as any);
 
 			// Check exported spans
 			const spans = exporter.getFinishedSpans();
@@ -112,11 +116,11 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await middleware.before!(request as any);
+			await middleware.before?.(request as any);
 
 			expect(getSpanFromEvent(event)).toBeDefined();
 
-			await middleware.after!({
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -136,11 +140,11 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await middleware.before!(request as any);
+			await middleware.before?.(request as any);
 
 			expect(getSpanFromEvent(event)).toBeDefined();
 
-			await middleware.after!({
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -162,7 +166,7 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await skipMiddleware.before!(request as any);
+			await skipMiddleware.before?.(request as any);
 
 			expect(getSpanFromEvent(event)).toBeUndefined();
 			expect(exporter.getFinishedSpans()).toHaveLength(0);
@@ -183,8 +187,8 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await bodyMiddleware.before!(request as any);
-			await bodyMiddleware.after!({
+			await bodyMiddleware.before?.(request as any);
+			await bodyMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 201 },
@@ -206,8 +210,8 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await bodyMiddleware.before!(request as any);
-			await bodyMiddleware.after!({
+			await bodyMiddleware.before?.(request as any);
+			await bodyMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -227,8 +231,8 @@ describe('telemetryMiddleware', () => {
 			};
 
 			const request = { event, context: mockContext, response: null };
-			await middleware.before!(request as any);
-			await middleware.after!({
+			await middleware.before?.(request as any);
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -250,12 +254,12 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await middleware.after!({
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200, body: '{"users":[]}' },
@@ -273,12 +277,12 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await middleware.after!({
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 404, body: '{"error":"Not found"}' },
@@ -301,12 +305,12 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await responseMiddleware.before!({
+			await responseMiddleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await responseMiddleware.after!({
+			await responseMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200, body: responseBody },
@@ -325,14 +329,14 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
 
 			const error = new Error('Database connection failed');
-			await middleware.onError!({
+			await middleware.onError?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 500 },
@@ -353,14 +357,14 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
 
 			const error = Object.assign(new Error('Forbidden'), { statusCode: 403 });
-			await middleware.onError!({
+			await middleware.onError?.({
 				event,
 				context: mockContext,
 				response: null,
@@ -380,7 +384,7 @@ describe('telemetryMiddleware', () => {
 				headers: {},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
@@ -421,12 +425,12 @@ describe('telemetryMiddleware', () => {
 				},
 			};
 
-			await userMiddleware.before!({
+			await userMiddleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await userMiddleware.after!({
+			await userMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -448,12 +452,12 @@ describe('telemetryMiddleware', () => {
 				endpointName: 'ListUsers',
 			};
 
-			await endpointMiddleware.before!({
+			await endpointMiddleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await endpointMiddleware.after!({
+			await endpointMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },
@@ -475,12 +479,12 @@ describe('telemetryMiddleware', () => {
 				operationId: 'createOrder',
 			};
 
-			await opMiddleware.before!({
+			await opMiddleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await opMiddleware.after!({
+			await opMiddleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 201 },
@@ -504,12 +508,12 @@ describe('telemetryMiddleware', () => {
 				},
 			};
 
-			await middleware.before!({
+			await middleware.before?.({
 				event,
 				context: mockContext,
 				response: null,
 			} as any);
-			await middleware.after!({
+			await middleware.after?.({
 				event,
 				context: mockContext,
 				response: { statusCode: 200 },

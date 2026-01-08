@@ -59,8 +59,6 @@ export function getRecommendedStrategy(
 		case 'edge':
 			// Use simple processor for serverless - immediate export
 			return 'simple';
-		case 'server':
-		case 'custom':
 		default:
 			// Use batch processor for long-running servers - efficient batching
 			return 'batch';

@@ -108,7 +108,7 @@ export class RabbitMQConnection implements EventConnection {
 		try {
 			await this.channel?.close();
 			await this.connection?.close();
-		} catch (error) {
+		} catch (_error) {
 			// Ignore errors during close
 		} finally {
 			this.cleanup();

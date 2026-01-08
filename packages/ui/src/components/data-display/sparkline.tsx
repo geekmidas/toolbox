@@ -98,7 +98,7 @@ const Sparkline = React.forwardRef<SVGSVGElement, SparklineProps>(
 
 		// Create fill path
 		const fillPathD = filled
-			? `${pathD} L ${points[points.length - 1]!.x},${height - padding} L ${points[0]!.x},${height - padding} Z`
+			? `${pathD} L ${points[points.length - 1]?.x},${height - padding} L ${points[0]?.x},${height - padding} Z`
 			: '';
 
 		return (

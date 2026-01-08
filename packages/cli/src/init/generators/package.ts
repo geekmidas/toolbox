@@ -30,27 +30,27 @@ export function generatePackageJson(
 
 	if (database) {
 		dependencies['@geekmidas/db'] = 'workspace:*';
-		dependencies['kysely'] = '~0.28.2';
-		dependencies['pg'] = '~8.16.0';
+		dependencies.kysely = '~0.28.2';
+		dependencies.pg = '~8.16.0';
 		devDependencies['@types/pg'] = '~8.15.0';
 	}
 
 	// Add zod for schema validation (commonly used)
-	dependencies['zod'] = '~4.1.0';
+	dependencies.zod = '~4.1.0';
 
 	// For monorepo apps, remove biome/turbo (they're at root) and lint/fmt scripts
 	if (monorepo) {
 		delete devDependencies['@biomejs/biome'];
-		delete devDependencies['turbo'];
-		delete scripts['lint'];
-		delete scripts['fmt'];
+		delete devDependencies.turbo;
+		delete scripts.lint;
+		delete scripts.fmt;
 		delete scripts['fmt:check'];
 
 		// Add models package as dependency
 		dependencies[`@${name}/models`] = 'workspace:*';
 
 		// Remove zod from api package (it's in models)
-		delete dependencies['zod'];
+		delete dependencies.zod;
 	}
 
 	// Sort dependencies alphabetically
@@ -86,7 +86,7 @@ export function generatePackageJson(
 	return [
 		{
 			path: 'package.json',
-			content: JSON.stringify(packageJson, null, 2) + '\n',
+			content: `${JSON.stringify(packageJson, null, 2)}\n`,
 		},
 	];
 }

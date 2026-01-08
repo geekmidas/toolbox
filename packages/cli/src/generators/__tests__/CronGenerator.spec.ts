@@ -44,7 +44,7 @@ describe('CronGenerator', () => {
 	});
 
 	describe('build', () => {
-		const createMockCronConstruct = (
+		const _createMockCronConstruct = (
 			key: string,
 			schedule: ScheduleExpression = 'rate(1 hour)',
 			timeout: number = 30,

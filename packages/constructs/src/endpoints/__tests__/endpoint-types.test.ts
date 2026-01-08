@@ -4,7 +4,7 @@ import { e } from '../EndpointFactory';
 
 describe('Endpoint type inference', () => {
 	it('should not include body/params/query when not defined', () => {
-		const endpoint = e.get('/test').handle((ctx) => {
+		const _endpoint = e.get('/test').handle((ctx) => {
 			expectTypeOf(ctx).toHaveProperty('services');
 			expectTypeOf(ctx).toHaveProperty('logger');
 			expectTypeOf(ctx).toHaveProperty('header');
@@ -20,7 +20,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include body when defined', () => {
-		const endpoint = e
+		const _endpoint = e
 			.post('/test')
 			.body(z.object({ name: z.string() }))
 			.handle((ctx) => {
@@ -36,7 +36,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include params when defined', () => {
-		const endpoint = e
+		const _endpoint = e
 			.get('/test/:id')
 			.params(z.object({ id: z.string() }))
 			.handle((ctx) => {
@@ -52,7 +52,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include query when defined', () => {
-		const endpoint = e
+		const _endpoint = e
 			.get('/test')
 			.query(z.object({ filter: z.string() }))
 			.handle((ctx) => {
@@ -68,7 +68,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include all properties when all are defined', () => {
-		const endpoint = e
+		const _endpoint = e
 			.post('/test/:id')
 			.body(z.object({ name: z.string() }))
 			.params(z.object({ id: z.string() }))

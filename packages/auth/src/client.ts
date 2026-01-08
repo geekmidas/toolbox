@@ -23,7 +23,7 @@ export class LocalStorageTokenStorage implements TokenStorage {
 		return localStorage.getItem(this.accessTokenKey);
 	}
 
-	setAccessToken(token: string, ttl?: number): void {
+	setAccessToken(token: string, _ttl?: number): void {
 		if (typeof window === 'undefined') return;
 		localStorage.setItem(this.accessTokenKey, token);
 	}
@@ -33,7 +33,7 @@ export class LocalStorageTokenStorage implements TokenStorage {
 		return localStorage.getItem(this.refreshTokenKey);
 	}
 
-	setRefreshToken(token: string, ttl?: number): void {
+	setRefreshToken(token: string, _ttl?: number): void {
 		if (typeof window === 'undefined') return;
 		localStorage.setItem(this.refreshTokenKey, token);
 	}
@@ -53,7 +53,7 @@ export class MemoryTokenStorage implements TokenStorage {
 		return this.accessToken;
 	}
 
-	setAccessToken(token: string, ttl?: number): void {
+	setAccessToken(token: string, _ttl?: number): void {
 		this.accessToken = token;
 	}
 
@@ -61,7 +61,7 @@ export class MemoryTokenStorage implements TokenStorage {
 		return this.refreshToken;
 	}
 
-	setRefreshToken(token: string, ttl?: number): void {
+	setRefreshToken(token: string, _ttl?: number): void {
 		this.refreshToken = token;
 	}
 
@@ -179,7 +179,7 @@ export class TokenClient {
 			}
 
 			return true;
-		} catch (error) {
+		} catch (_error) {
 			await this.clearTokens();
 			if (this.onTokenExpired) {
 				this.onTokenExpired();

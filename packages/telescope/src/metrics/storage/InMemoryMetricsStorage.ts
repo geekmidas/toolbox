@@ -342,7 +342,7 @@ export class InMemoryMetricsStorage implements MetricsStorage {
 	private matchesPattern(name: string, pattern: string): boolean {
 		if (!pattern.includes('*')) return name === pattern;
 		const regex = new RegExp(
-			'^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$',
+			`^${pattern.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`,
 		);
 		return regex.test(name);
 	}

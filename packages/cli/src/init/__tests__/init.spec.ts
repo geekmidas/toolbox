@@ -63,9 +63,9 @@ describe('initCommand', () => {
 			expect(pkg.type).toBe('module');
 			expect(pkg.dependencies['@geekmidas/constructs']).toBe('workspace:*');
 			expect(pkg.dependencies['@geekmidas/telescope']).toBe('workspace:*');
-			expect(pkg.dependencies['zod']).toMatch(/^~/);
+			expect(pkg.dependencies.zod).toMatch(/^~/);
 			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
-			expect(pkg.devDependencies['turbo']).toBeDefined();
+			expect(pkg.devDependencies.turbo).toBeDefined();
 			expect(pkg.scripts.dev).toBe('gkm dev');
 			expect(pkg.scripts.lint).toBe('biome lint .');
 		});
@@ -198,7 +198,7 @@ describe('initCommand', () => {
 			expect(pkg.scripts.build).toBe('turbo build');
 			expect(pkg.scripts.lint).toBe('biome lint .');
 			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
-			expect(pkg.devDependencies['turbo']).toBeDefined();
+			expect(pkg.devDependencies.turbo).toBeDefined();
 		});
 
 		it('should create API package.json with models dependency', async () => {
@@ -216,9 +216,9 @@ describe('initCommand', () => {
 
 			expect(pkg.name).toBe('@my-monorepo/api');
 			expect(pkg.dependencies['@my-monorepo/models']).toBe('workspace:*');
-			expect(pkg.dependencies['zod']).toBeUndefined(); // zod is in models
+			expect(pkg.dependencies.zod).toBeUndefined(); // zod is in models
 			expect(pkg.devDependencies['@biomejs/biome']).toBeUndefined(); // at root
-			expect(pkg.devDependencies['turbo']).toBeUndefined(); // at root
+			expect(pkg.devDependencies.turbo).toBeUndefined(); // at root
 		});
 
 		it('should create API tsconfig with paths', async () => {

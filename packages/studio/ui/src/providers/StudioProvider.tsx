@@ -81,7 +81,7 @@ export function StudioProvider({ children }: StudioProviderProps) {
 			setRequests(requestsData);
 			setExceptions(exceptionsData);
 			setLogs(logsData);
-		} catch (error) {
+		} catch (_error) {
 		} finally {
 			setLoading(false);
 		}

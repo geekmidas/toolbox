@@ -71,7 +71,7 @@ function createContextMiddleware<
 		any
 	>,
 	serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
-): (c: Context, next: Next) => Promise<Response | void> {
+): (c: Context, next: Next) => Promise<Response | undefined> {
 	// Pre-resolve service registration promise at setup time
 	const servicesPromise =
 		endpoint.services.length > 0
@@ -82,7 +82,7 @@ function createContextMiddleware<
 	const dbPromise = endpoint.databaseService
 		? serviceDiscovery
 				.register([endpoint.databaseService])
-				.then((s) => s[endpoint.databaseService!.serviceName as keyof typeof s])
+				.then((s) => s[endpoint.databaseService?.serviceName as keyof typeof s])
 		: Promise.resolve(undefined);
 
 	return async (c, next) => {
@@ -127,7 +127,7 @@ function createAuthMiddleware<
 		any,
 		any
 	>,
-): ((c: Context, next: Next) => Promise<Response | void>) | null {
+): ((c: Context, next: Next) => Promise<Response | undefined>) | null {
 	if (endpoint.authorizer === 'none') {
 		return null;
 	}
@@ -221,7 +221,7 @@ function createHandlerMiddleware<
 
 			const status = (metadata.status ?? endpoint.status) as any;
 			return c.json(output, status);
-		} catch (error) {
+		} catch (_error) {
 			return c.json({ error: 'Internal Server Error' }, 500);
 		}
 	};
@@ -339,7 +339,7 @@ export class MiddlewareHonoEndpoint {
 		});
 
 		for (const endpoint of sortedEndpoints) {
-			this.addRoute(endpoint, serviceDiscovery, app);
+			MiddlewareHonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
 		}
 	}
 
@@ -380,7 +380,7 @@ export class MiddlewareHonoEndpoint {
 		const middlewares: ((
 			c: Context,
 			next: Next,
-		) => Promise<Response | void>)[] = [];
+		) => Promise<Response | undefined>)[] = [];
 
 		// 1. Context initialization (always needed)
 		middlewares.push(createContextMiddleware(endpoint, serviceDiscovery));
@@ -424,7 +424,7 @@ export class MinimalHonoEndpoint {
 		app: Hono,
 	): void {
 		for (const endpoint of endpoints) {
-			this.addRoute(endpoint, serviceDiscovery, app);
+			MinimalHonoEndpoint.addRoute(endpoint, serviceDiscovery, app);
 		}
 	}
 
@@ -521,7 +521,7 @@ export class MinimalHonoEndpoint {
 					: response;
 
 				return c.json(output, endpoint.status as any);
-			} catch (error) {
+			} catch (_error) {
 				return c.json({ error: 'Internal Server Error' }, 500);
 			}
 		});

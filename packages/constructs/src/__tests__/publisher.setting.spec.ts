@@ -414,9 +414,9 @@ describe('publisher service setting combinations', () => {
 				.output(z.object({ id: z.string() }))
 
 				.event({
-					// @ts-ignore
+					// @ts-expect-error
 					type: 'test.created',
-					// @ts-ignore
+					// @ts-expect-error
 					payload: (response) => ({ id: response.id }),
 				})
 				.handle(async () => ({ id: '000' }));

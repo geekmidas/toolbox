@@ -47,7 +47,7 @@ export class VitestKyselyTransactionIsolator<
 	Kysely<Database>,
 	Transaction<Database>
 > {
-	async destroy(conn: Kysely<Database>): Promise<void> {
+	async destroy(_conn: Kysely<Database>): Promise<void> {
 		// return conn.destroy();
 	}
 	/**

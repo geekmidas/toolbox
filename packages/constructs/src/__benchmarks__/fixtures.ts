@@ -51,9 +51,9 @@ export const cacheService = {
 	serviceName: 'cache' as const,
 	async register() {
 		return {
-			get: async (key: string) => null,
-			set: async (key: string, value: unknown) => {},
-			delete: async (key: string) => {},
+			get: async (_key: string) => null,
+			set: async (_key: string, _value: unknown) => {},
+			delete: async (_key: string) => {},
 		};
 	},
 } satisfies Service<'cache', any>;

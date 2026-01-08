@@ -215,7 +215,7 @@ export class EnvironmentParser<T extends EmptyObject> {
 			{
 				get: (target, prop) => {
 					// deno-lint-ignore ban-ts-comment
-					// @ts-ignore
+					// @ts-expect-error
 					const value = target[prop];
 
 					if (typeof value === 'function') {

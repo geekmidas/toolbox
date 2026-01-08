@@ -12,7 +12,7 @@ export {
 	type OAuthFlows,
 	type SecurityScheme,
 } from './Authorizer';
-export { type ActorExtractor, type MappedAudit } from './audit';
+export type { ActorExtractor, MappedAudit } from './audit';
 export {
 	Endpoint,
 	type EndpointContext,

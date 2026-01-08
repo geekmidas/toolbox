@@ -467,7 +467,7 @@ describe('AWSLambdaSubscriber', () => {
 			});
 
 			const subscriber = new Subscriber(
-				// @ts-ignore - intentionally returning wrong type
+				// @ts-expect-error - intentionally returning wrong type
 				async () => ({
 					processed: 'not a number',
 				}),

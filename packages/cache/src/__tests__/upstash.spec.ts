@@ -16,7 +16,7 @@ describe('UpstashCache', () => {
 		for (const key of testKeys) {
 			try {
 				await cache.delete(key);
-			} catch (error) {
+			} catch (_error) {
 				// Ignore cleanup errors
 			}
 		}

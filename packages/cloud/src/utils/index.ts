@@ -1,6 +1,5 @@
+import os from 'node:os';
 import snakecase from 'lodash.snakecase';
-
-import os from 'os';
 
 export function getLocalIpAddress() {
 	const networkInterfaces = os.networkInterfaces();
@@ -68,7 +67,7 @@ const topic = (name: string, value: SnsTopic) => {
 	};
 };
 
-const noop = (name: string, value: any) => ({});
+const noop = (_name: string, _value: any) => ({});
 
 const processors: Record<ResourceType, ResourceProcessor<any>> = {
 	[ResourceType.ApiGatewayV2]: noop,

@@ -92,13 +92,13 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 					getNextPageParam: (lastPage, allPages, lastPageParam) => {
 						if (!lastPage) return undefined;
 						// Type tests - these should compile without error
-						const pageNum: number = lastPage.pagination.page;
+						const _pageNum: number = lastPage.pagination.page;
 						const hasMore: boolean = lastPage.pagination.hasMore;
-						const users: Array<{ id: string; name: string; email: string }> =
+						const _users: Array<{ id: string; name: string; email: string }> =
 							lastPage.users;
 
 						// allPages should be an array
-						const pagesArray: (typeof lastPage)[] = allPages;
+						const _pagesArray: (typeof lastPage)[] = allPages;
 
 						// lastPageParam should be number (as we defined)
 						const param: number = lastPageParam;
@@ -121,16 +121,16 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 					}> = query.data.pages;
 
 					// pageParams should also be typed correctly
-					const pageParams: number[] = query.data.pageParams;
+					const _pageParams: number[] = query.data.pageParams;
 
 					// Test accessing nested data
 					if (pages.length > 0) {
 						const firstPageUsers = pages[0].users;
 						const firstUser = firstPageUsers[0];
 						if (firstUser) {
-							const userId: string = firstUser.id;
-							const userName: string = firstUser.name;
-							const userEmail: string = firstUser.email;
+							const _userId: string = firstUser.id;
+							const _userName: string = firstUser.name;
+							const _userEmail: string = firstUser.email;
 						}
 					}
 				}
@@ -162,12 +162,12 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 
 				// Type test for cursor-based data
 				if (query.data) {
-					const pages: Array<{
+					const _pages: Array<{
 						messages: Array<{ id: string; text: string; timestamp: string }>;
 						nextCursor: string | null;
 					}> = query.data.pages;
 
-					const pageParams: (string | undefined)[] = query.data.pageParams;
+					const _pageParams: (string | undefined)[] = query.data.pageParams;
 				}
 
 				return query;
@@ -863,7 +863,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 				http.get('https://api.example.com/users/paginated', ({ request }) => {
 					requestCount++;
 					const url = new URL(request.url);
-					const page = parseInt(url.searchParams.get('page') || '1');
+					const page = parseInt(url.searchParams.get('page') || '1', 10);
 
 					return HttpResponse.json({
 						users: [
@@ -940,7 +940,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 				http.get('https://api.example.com/users/paginated', ({ request }) => {
 					requestCount++;
 					const url = new URL(request.url);
-					const page = parseInt(url.searchParams.get('page') || '1');
+					const page = parseInt(url.searchParams.get('page') || '1', 10);
 					requestedPages.push(page);
 
 					return HttpResponse.json({

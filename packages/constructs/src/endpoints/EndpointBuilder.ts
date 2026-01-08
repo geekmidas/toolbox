@@ -189,7 +189,7 @@ export class EndpointBuilder<
 		TDatabaseServiceName
 	> {
 		this.schemas.body = schema as unknown as T;
-		// @ts-ignore
+		// @ts-expect-error
 		return this;
 	}
 
@@ -213,7 +213,7 @@ export class EndpointBuilder<
 		TDatabaseServiceName
 	> {
 		this.schemas.query = schema as unknown as T;
-		// @ts-ignore
+		// @ts-expect-error
 		return this;
 	}
 
@@ -259,7 +259,7 @@ export class EndpointBuilder<
 		TDatabaseServiceName
 	> {
 		this.schemas.params = schema as unknown as T;
-		// @ts-ignore
+		// @ts-expect-error
 		return this;
 	}
 

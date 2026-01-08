@@ -50,7 +50,7 @@ export function detectLambdaResources(): LambdaResourceAttributes {
  * Extract invocation context from Lambda event
  */
 export function extractLambdaInvocationContext(
-	event: unknown,
+	_event: unknown,
 	context: LambdaContext,
 ): {
 	requestId: string;
@@ -95,7 +95,6 @@ const DEFAULT_LAMBDA_CONFIG: LambdaAdapterConfig = {
  */
 export class LambdaAdapter implements TelescopeAdapter<LambdaAdapterConfig> {
 	readonly config: LambdaAdapterConfig;
-	private telescope: Telescope;
 	private resourceAttributes: LambdaResourceAttributes | null = null;
 
 	constructor(telescope: Telescope, config: Partial<LambdaAdapterConfig> = {}) {

@@ -130,7 +130,7 @@ export const handler = adapter.handler;
 			if (!importsByFile.has(importPath)) {
 				importsByFile.set(importPath, []);
 			}
-			importsByFile.get(importPath)!.push(key);
+			importsByFile.get(importPath)?.push(key);
 		}
 
 		// Generate import statements

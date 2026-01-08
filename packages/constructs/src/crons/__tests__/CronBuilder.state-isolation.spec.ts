@@ -73,7 +73,7 @@ describe('CronBuilder - State Isolation', () => {
 			const c = new CronBuilder();
 
 			// Create first cron (events array should be empty initially)
-			const cron1 = c.schedule('rate(5 minutes)').handle(async () => ({}));
+			const _cron1 = c.schedule('rate(5 minutes)').handle(async () => ({}));
 
 			// Verify state was reset
 			expect((c as any)._events).toEqual([]);

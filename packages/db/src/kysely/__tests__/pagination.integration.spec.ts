@@ -131,7 +131,7 @@ describe('Pagination Integration Tests', () => {
 		it('should return last page with hasMore false', async () => {
 			// Get all pages
 			let cursor: string | undefined;
-			let pages: { id: number; name: string }[][] = [];
+			const pages: { id: number; name: string }[][] = [];
 
 			do {
 				const page = await paginatedSearch({

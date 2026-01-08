@@ -143,7 +143,7 @@ export class AWSLambdaFunction<
 		TAuditAction
 	> {
 		return {
-			before: (req) => {},
+			before: (_req) => {},
 		};
 	}
 
@@ -303,7 +303,7 @@ export class AWSLambdaFunction<
 		>,
 	) {
 		// Execute the function with the parsed context
-		const result = await this.fn['fn']({
+		const result = await this.fn.fn({
 			input: event.parsedInput,
 			services: event.services,
 			logger: event.logger,

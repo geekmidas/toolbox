@@ -179,7 +179,7 @@ describe('AWSLambdaFunction', () => {
 			});
 
 			const fn = new Function(
-				// @ts-ignore
+				// @ts-expect-error
 				async () => ({
 					id: 123, // Invalid type, should be string
 				}),
@@ -377,7 +377,7 @@ describe('AWSLambdaFunction', () => {
 	describe('database', () => {
 		// Mock database service
 		class MockDatabase {
-			async query(sql: string) {
+			async query(_sql: string) {
 				return [{ id: '1', name: 'Test User' }];
 			}
 		}

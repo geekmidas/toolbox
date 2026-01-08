@@ -69,11 +69,11 @@ describe('createPinoTransport', () => {
 		logger.info('Test before flush');
 
 		// Check immediately - should NOT be flushed yet
-		const logsImmediate = await telescope.getLogs();
+		const _logsImmediate = await telescope.getLogs();
 
 		// Check at 500ms - should NOT be flushed yet
 		await new Promise((resolve) => setTimeout(resolve, 500));
-		const logs500ms = await telescope.getLogs();
+		const _logs500ms = await telescope.getLogs();
 
 		// Check at 1200ms - SHOULD be flushed
 		await new Promise((resolve) => setTimeout(resolve, 700));

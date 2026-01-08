@@ -58,7 +58,7 @@ export class HttpError extends Error {
 		if (options?.cause) {
 			this.cause = options.cause;
 		}
-		// @ts-ignore
+		// @ts-expect-error
 		// Maintains proper stack trace for where our error was thrown
 		Error.captureStackTrace(this, this.constructor);
 	}

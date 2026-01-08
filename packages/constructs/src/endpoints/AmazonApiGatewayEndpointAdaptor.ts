@@ -255,7 +255,7 @@ export abstract class AmazonApiGatewayEndpoint<
 					.register([this.endpoint.databaseService])
 					.then(
 						(s) =>
-							s[this.endpoint.databaseService!.serviceName as keyof typeof s],
+							s[this.endpoint.databaseService?.serviceName as keyof typeof s],
 					);
 
 				(req.event as any).db = db;
@@ -350,7 +350,7 @@ export abstract class AmazonApiGatewayEndpoint<
 			!this.endpoint.rlsBypass &&
 			rawDb !== undefined;
 		const rlsContext = rlsActive
-			? await this.endpoint.rlsConfig!.extractor({
+			? await this.endpoint.rlsConfig?.extractor({
 					services: event.services as ServiceRecord<TServices>,
 					session: event.session,
 					header: event.header,
@@ -411,7 +411,7 @@ export abstract class AmazonApiGatewayEndpoint<
 						baseDb,
 						rlsContext,
 						async (trx: any) => executeHandler(trx),
-						{ prefix: this.endpoint.rlsConfig!.prefix },
+						{ prefix: this.endpoint.rlsConfig?.prefix },
 					);
 				}
 

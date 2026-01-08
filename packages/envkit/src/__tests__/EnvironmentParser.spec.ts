@@ -439,7 +439,7 @@ describe('EnvironmentParser', () => {
 							.string()
 							.transform((v) => {
 								const num = Number(v);
-								if (isNaN(num)) throw new Error('Invalid number');
+								if (Number.isNaN(num)) throw new Error('Invalid number');
 								return num;
 							}),
 					}))
@@ -647,7 +647,7 @@ describe('EnvironmentParser', () => {
 			const env = { REQUIRED: 'value' };
 			const parser = new EnvironmentParser(env);
 
-			const config = parser
+			const _config = parser
 				.create((get) => ({
 					required: get('REQUIRED').string(),
 					optional: get('OPTIONAL').string().optional(),

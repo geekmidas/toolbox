@@ -52,7 +52,7 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should call builder and insert the record', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default Name',
 			});
@@ -73,7 +73,7 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should use empty object as default attributes', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (_attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: 'Default Name',
 			});
@@ -94,14 +94,14 @@ describe('ObjectionFactory', () => {
 
 	it('should throw error for non-existent factory', async ({ trx }) => {
 		const factory = new ObjectionFactory({}, {}, trx);
-		// @ts-ignore
+		// @ts-expect-error
 		await expect(factory.insert('nonExistent')).rejects.toThrow(
 			'Factory "nonExistent" does not exist',
 		);
 	});
 
 	it('should handle builder that returns a promise', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			// Simulate async operation
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			return User.fromJson({
@@ -122,7 +122,7 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should insert multiple records with same attributes', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default Name',
 			});
@@ -148,7 +148,7 @@ describe('ObjectionFactory', () => {
 	it('should insert multiple records with dynamic attributes', async ({
 		trx,
 	}) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default Name',
 			});
@@ -175,7 +175,7 @@ describe('ObjectionFactory', () => {
 	it('should use empty object as default attributes for insertMany', async ({
 		trx,
 	}) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (_attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: 'Default Name',
 			});
@@ -201,14 +201,14 @@ describe('ObjectionFactory', () => {
 		trx,
 	}) => {
 		const factory = new ObjectionFactory({}, {}, trx);
-		// @ts-ignore
+		// @ts-expect-error
 		await expect(factory.insertMany(2, 'nonExistent')).rejects.toThrow(
 			'Builder "nonExistent" is not registered',
 		);
 	});
 
 	it('should execute seed function', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default Name',
 			});
@@ -245,7 +245,7 @@ describe('ObjectionFactory', () => {
 	it('should use empty object as default attributes for seed', async ({
 		trx,
 	}) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (_attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: 'Default Admin',
 			});
@@ -274,14 +274,14 @@ describe('ObjectionFactory', () => {
 
 	it('should throw error for non-existent seed', ({ trx }) => {
 		const factory = new ObjectionFactory({}, {}, trx);
-		// @ts-ignore
+		// @ts-expect-error
 		expect(() => factory.seed('nonExistent')).toThrow(
 			'Seed "nonExistent" is not registered',
 		);
 	});
 
 	it('should pass factory and db to seed function', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Test User',
 			});
@@ -462,7 +462,7 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should handle builder errors gracefully', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (_attrs: any, _factory: any, _db: Knex) => {
 			throw new Error('Builder failed');
 		};
 
@@ -476,7 +476,7 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should handle invalid model data gracefully', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (_attrs: any, _factory: any, _db: Knex) => {
 			// Return invalid model data that will fail validation
 			return User.fromJson({
 				// Missing required fields
@@ -495,11 +495,9 @@ describe('ObjectionFactory', () => {
 
 	it('should handle seed function errors gracefully', async ({ trx }) => {
 		const seeds = {
-			failingSeed: ObjectionFactory.createSeed(
-				async ({}: { attrs: any; factory: any; db: Knex }) => {
-					throw new Error('Seed failed');
-				},
-			),
+			failingSeed: ObjectionFactory.createSeed(async () => {
+				throw new Error('Seed failed');
+			}),
 		};
 
 		const factory = new ObjectionFactory({}, seeds, trx);
@@ -515,7 +513,7 @@ describe('ObjectionFactory', () => {
 
 		type UserAttrs = Partial<Pick<UserInterface, 'name'>>;
 
-		const userBuilder = async (attrs: UserAttrs, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: UserAttrs, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default User',
 			});
@@ -550,13 +548,13 @@ describe('ObjectionFactory', () => {
 	});
 
 	it('should handle complex builder scenarios', async ({ trx }) => {
-		const userBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const userBuilder = async (attrs: any, _factory: any, _db: Knex) => {
 			return User.fromJson({
 				name: attrs.name || 'Default User',
 			});
 		};
 
-		const postBuilder = async (attrs: any, factory: any, db: Knex) => {
+		const postBuilder = async (attrs: any, factory: any, _db: Knex) => {
 			// If no user_id provided, create a user
 			if (!attrs.user_id) {
 				const user = await factory.insert('user');

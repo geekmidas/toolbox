@@ -10,7 +10,7 @@ class TestFactory extends Factory<
 	{ testBuilder: (attrs: any) => any },
 	{ testSeed: (attrs: any, factory: any, db: any) => any }
 > {
-	async insert(builderName: any, attrs?: any) {
+	async insert(_builderName: any, attrs?: any) {
 		return Promise.resolve({ id: 1, ...attrs });
 	}
 
@@ -23,7 +23,7 @@ class TestFactory extends Factory<
 		return results;
 	}
 
-	seed(seedName: any, attrs?: any): any {
+	seed(_seedName: any, attrs?: any): any {
 		return Promise.resolve({ seedResult: true, ...attrs });
 	}
 }
@@ -122,10 +122,14 @@ describe('Factory', () => {
 	describe('type definitions', () => {
 		it('should properly type MixedFactoryBuilder', () => {
 			// Test that the type allows both sync and async returns
-			const syncBuilder: MixedFactoryBuilder = (attrs, factory, db) => ({
+			const syncBuilder: MixedFactoryBuilder = (_attrs, _factory, _db) => ({
 				sync: true,
 			});
-			const asyncBuilder: MixedFactoryBuilder = async (attrs, factory, db) => ({
+			const asyncBuilder: MixedFactoryBuilder = async (
+				_attrs,
+				_factory,
+				_db,
+			) => ({
 				async: true,
 			});
 
@@ -152,7 +156,7 @@ describe('Factory types', () => {
 			TestFactory,
 			{ id: number; name: string },
 			any
-		> = (attrs, factory, db) => {
+		> = (attrs, _factory, _db) => {
 			return { id: 1, name: attrs.name };
 		};
 

@@ -184,7 +184,7 @@ export class InMemoryStorage implements TelescopeStorage {
 
 		if (options?.tags && options.tags.length > 0) {
 			result = result.filter(
-				(e) => e.tags && options.tags!.some((t) => e.tags!.includes(t)),
+				(e) => e.tags && options.tags?.some((t) => e.tags?.includes(t)),
 			);
 		}
 

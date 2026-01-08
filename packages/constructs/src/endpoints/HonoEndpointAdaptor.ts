@@ -362,7 +362,7 @@ export class HonoEndpoint<
 							.register([endpoint.databaseService!])
 							.then(
 								(s) =>
-									s[endpoint.databaseService!.serviceName as keyof typeof s],
+									s[endpoint.databaseService?.serviceName as keyof typeof s],
 							)
 					: undefined;
 
@@ -440,7 +440,7 @@ export class HonoEndpoint<
 				// Extract RLS context only if configured and not bypassed
 				const rlsContext =
 					features.hasRls && rawDb !== undefined
-						? await endpoint.rlsConfig!.extractor({
+						? await endpoint.rlsConfig?.extractor({
 								services,
 								session: session as TSession,
 								header,
@@ -513,7 +513,7 @@ export class HonoEndpoint<
 								baseDb as any,
 								rlsContext,
 								async (trx) => executeHandler(trx as TDatabase),
-								{ prefix: endpoint.rlsConfig!.prefix },
+								{ prefix: endpoint.rlsConfig?.prefix },
 							);
 						}
 
@@ -572,7 +572,7 @@ export class HonoEndpoint<
 						logger.info({ status, body: output }, 'Outgoing response');
 					}
 
-					// @ts-ignore
+					// @ts-expect-error
 					return c.json(output, status);
 				} catch (validationError: any) {
 					logger.error(validationError, 'Output validation failed');

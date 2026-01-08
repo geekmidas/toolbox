@@ -256,8 +256,6 @@ async function resolveAuthHeaders(
 			// in a custom onRequest interceptor if needed
 			return {};
 		}
-
-		case 'none':
 		default:
 			return {};
 	}
