@@ -171,12 +171,14 @@ export const memoryAdapter = (
 				const modelData = storeInstance.getModel(modelName);
 
 				// Data is already transformed by the framework - store directly
-				if (!data.id) {
-					data.id = crypto.randomUUID();
+				const record = data as Record<string, unknown>;
+				if (!record.id) {
+					record.id = crypto.randomUUID();
 				}
 
-				modelData.set(data.id, { ...data });
-				return modelData.get(data.id);
+				const id = record.id as string;
+				modelData.set(id, { ...record });
+				return modelData.get(id);
 			},
 
 			findOne: async ({ where, model }) => {
