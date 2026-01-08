@@ -1,3 +1,4 @@
+import { InMemoryStorage } from '@geekmidas/telescope';
 import {
 	CamelCasePlugin,
 	type Generated,
@@ -16,7 +17,7 @@ import {
 	it,
 } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
-import { DataBrowser } from '../../data/DataBrowser';
+import { Studio } from '../../Studio';
 import { Direction } from '../../types';
 import { createStudioApp } from '../hono';
 
@@ -31,14 +32,10 @@ interface TestDatabase {
 	};
 }
 
-// Minimal Studio-like object for testing the Hono adapter
-interface MockStudio {
-	data: DataBrowser<TestDatabase>;
-}
-
 describe('Hono Server Adapter Integration Tests', () => {
 	let db: Kysely<TestDatabase>;
-	let mockStudio: MockStudio;
+	let studio: Studio<TestDatabase>;
+	let storage: InMemoryStorage;
 	let app: ReturnType<typeof createStudioApp>;
 
 	beforeAll(async () => {
@@ -68,20 +65,17 @@ describe('Hono Server Adapter Integration Tests', () => {
 	});
 
 	beforeEach(async () => {
-		// Create DataBrowser directly for testing
-		const dataBrowser = new DataBrowser({
-			db,
-			cursor: { field: 'id', direction: Direction.Asc },
-			tableCursors: {},
-			excludeTables: [],
-			defaultPageSize: 50,
-			showBinaryColumns: false,
+		storage = new InMemoryStorage();
+		studio = new Studio({
+			monitoring: { storage },
+			data: {
+				db,
+				cursor: { field: 'id', direction: Direction.Asc },
+			},
 		});
+		app = createStudioApp(studio);
 
-		mockStudio = { data: dataBrowser };
-		app = createStudioApp(mockStudio as any);
-
-		// Insert test data
+		// Insert test data for database browsing
 		await db
 			.insertInto('studioHonoProducts')
 			.values([
@@ -107,9 +101,36 @@ describe('Hono Server Adapter Integration Tests', () => {
 				{ name: 'Chair', price: 199.99, category: 'furniture', inStock: true },
 			])
 			.execute();
+
+		// Record some monitoring data
+		await studio.recordRequest({
+			method: 'GET',
+			path: '/api/users',
+			status: 200,
+			duration: 45,
+		});
+		await studio.recordRequest({
+			method: 'POST',
+			path: '/api/users',
+			status: 201,
+			duration: 80,
+		});
+		await studio.recordRequest({
+			method: 'GET',
+			path: '/api/products',
+			status: 500,
+			duration: 120,
+		});
+
+		await studio.info('Application started');
+		await studio.warn('High memory usage detected');
+		await studio.error('Database connection timeout');
+
+		await studio.exception(new Error('Test exception'));
 	});
 
 	afterEach(async () => {
+		studio.destroy();
 		await db.deleteFrom('studioHonoProducts').execute();
 	});
 
