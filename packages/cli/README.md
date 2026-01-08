@@ -311,6 +311,7 @@ gkm build [options]
   - `aws-apigatewayv1`: AWS API Gateway v1 Lambda handlers
   - `aws-apigatewayv2`: AWS API Gateway v2 Lambda handlers
   - `server`: Server application with Hono
+- `--production`: Generate production-optimized bundle (server provider only)
 
 **Example:**
 ```bash
@@ -319,7 +320,17 @@ gkm build --provider aws-apigatewayv1
 
 # Generate server application
 gkm build --provider server
+
+# Generate production bundle for Docker
+gkm build --provider server --production
 ```
+
+**Production Builds:**
+
+When using `--production` with the server provider, the CLI generates an optimized bundle at `.gkm/server/dist/server.mjs`. This bundle:
+- Is minified and tree-shaken for smaller size
+- Includes all dependencies (single-file deployment)
+- Can be used with `gkm docker --slim` for minimal Docker images
 
 ### `gkm openapi`
 
