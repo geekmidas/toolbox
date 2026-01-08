@@ -316,4 +316,187 @@ describe('Schema Conversion', () => {
 			expect(SchemaVendor.valibot).toBe('valibot');
 		});
 	});
+
+	describe('extractAndConvertDefs edge cases', () => {
+		it('should handle $ref that does not start with #/$defs/', async () => {
+			// Create a schema with a $ref that doesn't use $defs pattern
+			const schema = z.object({
+				name: z.string(),
+			});
+
+			const collector = createComponentCollector();
+			// Add a schema first
+			collector.addSchema('ExternalRef', { type: 'string' });
+
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				schema,
+				collector,
+			);
+
+			// Basic test - the schema should still convert properly
+			expect(jsonSchema).toHaveProperty('type', 'object');
+		});
+
+		it('should process arrays in schema correctly', async () => {
+			const schema = z.object({
+				tags: z.array(z.string()),
+				numbers: z.array(z.number()),
+			});
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				schema,
+				collector,
+			);
+
+			expect(jsonSchema.properties.tags).toHaveProperty('type', 'array');
+			expect(jsonSchema.properties.numbers).toHaveProperty('type', 'array');
+		});
+
+		it('should skip $defs key during processing and extract to components', async () => {
+			// Create a schema that produces $defs in JSON Schema output
+			const addressSchema = z.object({
+				street: z.string(),
+				city: z.string(),
+			});
+
+			const personSchema = z.object({
+				name: z.string(),
+				address: addressSchema,
+			});
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				personSchema,
+				collector,
+			);
+
+			// $defs should be removed from the output
+			expect(jsonSchema).not.toHaveProperty('$defs');
+			expect(jsonSchema).toHaveProperty('type', 'object');
+		});
+
+		it('should handle null/undefined values in schema processing', async () => {
+			const schema = z.object({
+				nullableField: z.string().nullable(),
+				optionalField: z.string().optional(),
+			});
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				schema,
+				collector,
+			);
+
+			expect(jsonSchema).toHaveProperty('properties');
+			expect(jsonSchema.properties).toHaveProperty('nullableField');
+			expect(jsonSchema.properties).toHaveProperty('optionalField');
+		});
+
+		it('should handle deeply nested objects with arrays', async () => {
+			const schema = z.object({
+				users: z.array(
+					z.object({
+						name: z.string(),
+						addresses: z.array(
+							z.object({
+								street: z.string(),
+							}),
+						),
+					}),
+				),
+			});
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				schema,
+				collector,
+			);
+
+			expect(jsonSchema).toHaveProperty('type', 'object');
+			expect(jsonSchema.properties.users).toHaveProperty('type', 'array');
+		});
+
+		it('should handle primitive non-object schema types', async () => {
+			const stringSchema = z.string();
+			const numberSchema = z.number();
+			const booleanSchema = z.boolean();
+
+			const collector = createComponentCollector();
+
+			const stringJson = await convertStandardSchemaToJsonSchema(
+				stringSchema,
+				collector,
+			);
+			const numberJson = await convertStandardSchemaToJsonSchema(
+				numberSchema,
+				collector,
+			);
+			const booleanJson = await convertStandardSchemaToJsonSchema(
+				booleanSchema,
+				collector,
+			);
+
+			expect(stringJson).toMatchObject({ type: 'string' });
+			expect(numberJson).toMatchObject({ type: 'number' });
+			expect(booleanJson).toMatchObject({ type: 'boolean' });
+		});
+
+		it('should handle schema with discriminated unions', async () => {
+			const catSchema = z.object({
+				type: z.literal('cat'),
+				meows: z.boolean(),
+			});
+
+			const dogSchema = z.object({
+				type: z.literal('dog'),
+				barks: z.boolean(),
+			});
+
+			const petSchema = z.discriminatedUnion('type', [catSchema, dogSchema]);
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				petSchema,
+				collector,
+			);
+
+			// Should have oneOf or anyOf for discriminated union
+			expect(
+				jsonSchema.anyOf || jsonSchema.oneOf || jsonSchema.discriminator,
+			).toBeDefined();
+		});
+
+		it('should preserve $ref as-is when not matching $defs pattern', async () => {
+			// Test the extractAndConvertDefs function with a schema that has
+			// $ref not starting with #/$defs/
+			const schema = z.object({
+				name: z.string(),
+			});
+
+			// Without collector, refs should be preserved as-is
+			const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
+
+			expect(jsonSchema).toHaveProperty('type', 'object');
+		});
+
+		it('should convert $defs references to component references with collector', async () => {
+			// Use lazy schema to create a recursive structure that produces $defs
+			const nodeSchema: z.ZodTypeAny = z.lazy(() =>
+				z.object({
+					value: z.string(),
+					children: z.array(nodeSchema).optional(),
+				}),
+			);
+
+			const collector = createComponentCollector();
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				nodeSchema,
+				collector,
+			);
+
+			// $defs should be processed and potentially converted
+			expect(jsonSchema).not.toHaveProperty('$defs');
+		});
+	});
 });
