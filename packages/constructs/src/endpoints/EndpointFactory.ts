@@ -48,8 +48,7 @@ export class EndpointFactory<
 		| RlsConfig<TServices, TSession, TLogger>
 		| undefined = undefined,
 > {
-	// @ts-expect-error
-	private defaultServices: TServices;
+	private defaultServices: TServices = [] as unknown as TServices;
 	private basePath: TBasePath = '' as TBasePath;
 	private defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
 	private defaultEventPublisher:
@@ -984,7 +983,6 @@ export class EndpointFactory<
 		>(fullPath, method);
 
 		if (this.defaultAuthorizeFn) {
-			// @ts-expect-error
 			builder._authorize = this.defaultAuthorizeFn;
 		}
 		if (this.defaultServices.length) {
