@@ -130,9 +130,11 @@ describe('core telemetry utilities', () => {
 
 		it('should handle flush timeout gracefully', async () => {
 			const slowProcessor = {
-				forceFlush: vi.fn().mockImplementation(
-					() => new Promise((resolve) => setTimeout(resolve, 100000)),
-				),
+				forceFlush: vi
+					.fn()
+					.mockImplementation(
+						() => new Promise((resolve) => setTimeout(resolve, 100000)),
+					),
 				onStart: vi.fn(),
 				onEnd: vi.fn(),
 				shutdown: vi.fn().mockResolvedValue(undefined),
