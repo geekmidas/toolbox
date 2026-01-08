@@ -6,7 +6,8 @@ import { it } from 'vitest';
 
 export const itWithDir = it.extend<DirectoryFixtures>({
 	// This fixture automatically provides a transaction to each test
-	dir: async (_, use) => {
+	// biome-ignore lint/correctness/noEmptyPattern: this has to be like this to satisfy Biome
+	dir: async ({}, use) => {
 		const tempDir = os.tmpdir();
 		const directoryName = crypto.randomUUID().replace(/-/g, '').toUpperCase();
 		const dir = path.join(tempDir, directoryName);

@@ -178,7 +178,8 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 
 		return extendFn<CombinedFixtures>({
 			// This fixture automatically provides a transaction to each test
-			trx: async (_: {}, use: (value: Transaction) => Promise<void>) => {
+			// biome-ignore lint/correctness/noEmptyPattern: this has to be like this to satisfy Biome
+			trx: async ({}: {}, use: (value: Transaction) => Promise<void>) => {
 				// Create a custom error class for rollback
 				class TestRollback extends Error {
 					constructor() {
