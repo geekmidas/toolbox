@@ -2,7 +2,7 @@
 
 Laravel Telescope-style debugging and monitoring for web applications. Capture and inspect HTTP requests, exceptions, and logs in real-time.
 
-**Framework-agnostic core** with adapters for popular frameworks like Hono (Express coming soon).
+**Framework-agnostic core** with adapters for Hono, AWS Lambda, and more.
 
 ## Installation
 
