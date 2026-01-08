@@ -361,6 +361,233 @@ describe('Hono Server Adapter Integration Tests', () => {
 		});
 	});
 
+	// ============================================
+	// Monitoring API Tests
+	// ============================================
+
+	describe('GET /api/stats', () => {
+		it('should return storage statistics', async () => {
+			const res = await app.request('/api/stats');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.requests).toBe(3);
+			expect(data.exceptions).toBe(1);
+			expect(data.logs).toBe(3);
+		});
+	});
+
+	describe('GET /api/requests', () => {
+		it('should return request entries', async () => {
+			const res = await app.request('/api/requests');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBe(3);
+		});
+
+		it('should accept query parameters', async () => {
+			const res = await app.request('/api/requests?limit=2');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBe(2);
+		});
+	});
+
+	describe('GET /api/requests/:id', () => {
+		it('should return a single request by ID', async () => {
+			const requests = await studio.getRequests();
+			const requestId = requests[0].id;
+
+			const res = await app.request(`/api/requests/${requestId}`);
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.id).toBe(requestId);
+		});
+
+		it('should return 404 for non-existent request', async () => {
+			const res = await app.request('/api/requests/non-existent');
+
+			expect(res.status).toBe(404);
+			const data = await res.json();
+			expect(data.error).toBe('Request not found');
+		});
+	});
+
+	describe('GET /api/exceptions', () => {
+		it('should return exception entries', async () => {
+			const res = await app.request('/api/exceptions');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBe(1);
+			expect(data[0].message).toBe('Test exception');
+		});
+	});
+
+	describe('GET /api/exceptions/:id', () => {
+		it('should return a single exception by ID', async () => {
+			const exceptions = await studio.getExceptions();
+			const exceptionId = exceptions[0].id;
+
+			const res = await app.request(`/api/exceptions/${exceptionId}`);
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.id).toBe(exceptionId);
+			expect(data.message).toBe('Test exception');
+		});
+
+		it('should return 404 for non-existent exception', async () => {
+			const res = await app.request('/api/exceptions/non-existent');
+
+			expect(res.status).toBe(404);
+			const data = await res.json();
+			expect(data.error).toBe('Exception not found');
+		});
+	});
+
+	describe('GET /api/logs', () => {
+		it('should return log entries', async () => {
+			const res = await app.request('/api/logs');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBe(3);
+		});
+
+		it('should accept level filter', async () => {
+			const res = await app.request('/api/logs?level=error');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBe(1);
+			expect(data[0].message).toBe('Database connection timeout');
+		});
+	});
+
+	// ============================================
+	// Metrics API Tests
+	// ============================================
+
+	describe('GET /api/metrics', () => {
+		it('should return aggregated metrics', async () => {
+			const res = await app.request('/api/metrics');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.totalRequests).toBe(3);
+			expect(typeof data.avgDuration).toBe('number');
+		});
+
+		it('should accept time range parameters', async () => {
+			const start = new Date(Date.now() - 3600000).toISOString();
+			const end = new Date().toISOString();
+			const res = await app.request(`/api/metrics?start=${start}&end=${end}`);
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.totalRequests).toBeDefined();
+		});
+	});
+
+	describe('GET /api/metrics/endpoints', () => {
+		it('should return endpoint metrics', async () => {
+			const res = await app.request('/api/metrics/endpoints');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+			expect(data.length).toBeGreaterThan(0);
+		});
+
+		it('should accept limit parameter', async () => {
+			const res = await app.request('/api/metrics/endpoints?limit=1');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(Array.isArray(data)).toBe(true);
+		});
+	});
+
+	describe('GET /api/metrics/endpoint', () => {
+		it('should return details for a specific endpoint', async () => {
+			const res = await app.request(
+				'/api/metrics/endpoint?method=GET&path=/api/users',
+			);
+
+			// May return 200 with data or 404 if endpoint not tracked
+			expect([200, 404]).toContain(res.status);
+			if (res.status === 200) {
+				const data = await res.json();
+				expect(data.method).toBe('GET');
+				expect(data.path).toBe('/api/users');
+			}
+		});
+
+		it('should return 400 if method is missing', async () => {
+			const res = await app.request('/api/metrics/endpoint?path=/api/users');
+
+			expect(res.status).toBe(400);
+			const data = await res.json();
+			expect(data.error).toBe('method and path are required');
+		});
+
+		it('should return 400 if path is missing', async () => {
+			const res = await app.request('/api/metrics/endpoint?method=GET');
+
+			expect(res.status).toBe(400);
+			const data = await res.json();
+			expect(data.error).toBe('method and path are required');
+		});
+
+		it('should return 404 for non-existent endpoint', async () => {
+			const res = await app.request(
+				'/api/metrics/endpoint?method=DELETE&path=/api/unknown',
+			);
+
+			expect(res.status).toBe(404);
+			const data = await res.json();
+			expect(data.error).toBe('Endpoint not found');
+		});
+	});
+
+	describe('GET /api/metrics/status', () => {
+		it('should return status distribution', async () => {
+			const res = await app.request('/api/metrics/status');
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data).toBeDefined();
+		});
+	});
+
+	describe('DELETE /api/metrics', () => {
+		it('should reset metrics', async () => {
+			const res = await app.request('/api/metrics', { method: 'DELETE' });
+
+			expect(res.status).toBe(200);
+			const data = await res.json();
+			expect(data.success).toBe(true);
+
+			// Verify metrics are reset
+			const metricsRes = await app.request('/api/metrics');
+			const metrics = await metricsRes.json();
+			expect(metrics.totalRequests).toBe(0);
+		});
+	});
+
+	// ============================================
+	// UI & Static Assets
+	// ============================================
+
 	describe('GET /', () => {
 		it('should return dashboard UI or API info', async () => {
 			const res = await app.request('/');
@@ -377,6 +604,16 @@ describe('Hono Server Adapter Integration Tests', () => {
 				expect(data.message).toBe('Studio API is running');
 				expect(data.endpoints).toBeDefined();
 			}
+		});
+	});
+
+	describe('API 404 handling', () => {
+		it('should return JSON 404 for unknown API routes', async () => {
+			const res = await app.request('/api/unknown-route');
+
+			expect(res.status).toBe(404);
+			const data = await res.json();
+			expect(data.error).toBe('Not found');
 		});
 	});
 });
