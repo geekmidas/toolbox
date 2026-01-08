@@ -56,7 +56,6 @@ export interface HonoEndpointOptions {
  * This avoids per-request feature detection overhead.
  */
 interface EndpointFeatures {
-	hasAuth: boolean;
 	hasServices: boolean;
 	hasDatabase: boolean;
 	hasBodyValidation: boolean;
@@ -90,7 +89,6 @@ function analyzeEndpointFeatures(
 	>,
 ): EndpointFeatures {
 	return {
-		hasAuth: !!endpoint.authorizer && endpoint.authorizer.name !== 'none',
 		hasServices: endpoint.services.length > 0,
 		hasDatabase: !!endpoint.databaseService,
 		hasBodyValidation: !!endpoint.input?.body,
