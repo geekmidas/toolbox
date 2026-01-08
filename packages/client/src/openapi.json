@@ -1,595 +1,595 @@
 {
-  "openapi": "3.0.0",
-  "info": {
-    "title": "API Documentation",
-    "version": "1.0.0",
-    "description": "Auto-generated API documentation from endpoints"
-  },
-  "paths": {
-    "/explore/jobs": {
-      "get": {
-        "operationId": "exploreJobs",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "role": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 255
-                          },
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "Server",
-                              "Waiter",
-                              "Host",
-                              "Bartender",
-                              "KitchenPorter",
-                              "Steward",
-                              "BusPerson",
-                              "Dishwasher"
-                            ]
-                          },
-                          "overview": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "qualifications": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "hourlyRate": {
-                            "type": "object",
-                            "properties": {
-                              "max": {
-                                "type": "number"
-                              },
-                              "min": {
-                                "type": "number"
-                              }
-                            },
-                            "required": ["max", "min"],
-                            "additionalProperties": false
-                          },
-                          "dateNeeded": {
-                            "type": "object",
-                            "properties": {
-                              "from": {
-                                "type": "string"
-                              },
-                              "to": {
-                                "type": "string"
-                              }
-                            },
-                            "required": ["from", "to"],
-                            "additionalProperties": false
-                          },
-                          "shiftHours": {
-                            "type": "object",
-                            "properties": {
-                              "from": {
-                                "type": "string"
-                              },
-                              "to": {
-                                "type": "string"
-                              }
-                            },
-                            "required": ["from", "to"],
-                            "additionalProperties": false
-                          },
-                          "id": {
-                            "type": "string",
-                            "format": "uuid",
-                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                          },
-                          "updatedAt": {
-                            "type": "string",
-                            "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": ["Draft", "Active", "Closed", "Filled"]
-                          },
-                          "business": {
-                            "type": "object",
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "description": {
-                                "type": "string"
-                              },
-                              "tags": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
-                              },
-                              "createdAt": {
-                                "type": "string",
-                                "format": "date-time",
-                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                              },
-                              "updatedAt": {
-                                "type": "string",
-                                "format": "date-time",
-                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                              },
-                              "rating": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 5
-                              },
-                              "status": {
-                                "type": "string",
-                                "enum": [
-                                  "Active",
-                                  "Inactive",
-                                  "PendingVerification",
-                                  "Suspended"
-                                ]
-                              },
-                              "ratingCount": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 9007199254740991
-                              },
-                              "address": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string",
-                                    "format": "uuid",
-                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time",
-                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                  },
-                                  "updatedAt": {
-                                    "type": "string",
-                                    "format": "date-time",
-                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                  },
-                                  "placeId": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "text": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "city": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "state": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "postalCode": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "country": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "lat": {
-                                    "type": "number"
-                                  },
-                                  "lng": {
-                                    "type": "number"
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "createdAt",
-                                  "updatedAt",
-                                  "text",
-                                  "city",
-                                  "state",
-                                  "postalCode",
-                                  "country",
-                                  "lat",
-                                  "lng"
-                                ],
-                                "additionalProperties": false
-                              },
-                              "image": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string",
-                                    "format": "uuid",
-                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time",
-                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                  },
-                                  "updatedAt": {
-                                    "type": "string",
-                                    "format": "date-time",
-                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                  },
-                                  "mimeType": {
-                                    "type": "string",
-                                    "enum": [
-                                      "image/jpeg",
-                                      "image/png",
-                                      "application/pdf",
-                                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    ]
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "url": {
-                                    "type": "string",
-                                    "format": "uri"
-                                  },
-                                  "contentLength": {
-                                    "type": "number"
-                                  },
-                                  "status": {
-                                    "type": "string",
-                                    "enum": [
-                                      "Pending",
-                                      "Uploaded",
-                                      "Failed",
-                                      "Deleted"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "createdAt",
-                                  "updatedAt",
-                                  "mimeType",
-                                  "name",
-                                  "url",
-                                  "contentLength",
-                                  "status"
-                                ],
-                                "additionalProperties": false
-                              },
-                              "licenses": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "format": "uuid",
-                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
-                                    },
-                                    "createdAt": {
-                                      "type": "string",
-                                      "format": "date-time",
-                                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                    },
-                                    "updatedAt": {
-                                      "type": "string",
-                                      "format": "date-time",
-                                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                                    },
-                                    "mimeType": {
-                                      "type": "string",
-                                      "enum": [
-                                        "image/jpeg",
-                                        "image/png",
-                                        "application/pdf",
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                      ]
-                                    },
-                                    "name": {
-                                      "type": "string"
-                                    },
-                                    "url": {
-                                      "type": "string",
-                                      "format": "uri"
-                                    },
-                                    "contentLength": {
-                                      "type": "number"
-                                    },
-                                    "status": {
-                                      "type": "string",
-                                      "enum": [
-                                        "Pending",
-                                        "Uploaded",
-                                        "Failed",
-                                        "Deleted"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "id",
-                                    "createdAt",
-                                    "updatedAt",
-                                    "mimeType",
-                                    "name",
-                                    "url",
-                                    "contentLength",
-                                    "status"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              }
-                            },
-                            "required": [
-                              "name",
-                              "description",
-                              "tags",
-                              "id",
-                              "createdAt",
-                              "updatedAt",
-                              "rating",
-                              "status",
-                              "ratingCount",
-                              "address",
-                              "image",
-                              "licenses"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "appliedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time",
-                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "closedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time",
-                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "closeReason": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "distanceKm": {
-                            "type": "number"
-                          },
-                          "roleMatch": {
-                            "type": "boolean"
-                          },
-                          "hourlyRateMatch": {
-                            "type": "boolean"
-                          },
-                          "hasApplied": {
-                            "default": false,
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "role",
-                          "type",
-                          "overview",
-                          "qualifications",
-                          "hourlyRate",
-                          "dateNeeded",
-                          "shiftHours",
-                          "id",
-                          "createdAt",
-                          "updatedAt",
-                          "status",
-                          "business",
-                          "distanceKm",
-                          "roleMatch",
-                          "hourlyRateMatch",
-                          "hasApplied"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "pagination": {
-                      "type": "object",
-                      "properties": {
-                        "total": {
-                          "type": "number"
-                        },
-                        "cursor": {
-                          "type": "string"
-                        },
-                        "hasMore": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": ["total", "hasMore"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": ["items", "pagination"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "filter",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "radius": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "types": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "enum": [
-                      "Server",
-                      "Waiter",
-                      "Host",
-                      "Bartender",
-                      "KitchenPorter",
-                      "Steward",
-                      "BusPerson",
-                      "Dishwasher"
-                    ]
-                  }
-                },
-                "hourlyRate": {
-                  "type": "object",
-                  "properties": {
-                    "max": {
-                      "type": "number"
-                    },
-                    "min": {
-                      "type": "number"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "dateNeeded": {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "string"
-                    },
-                    "to": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "shiftHours": {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "string"
-                    },
-                    "to": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "box": {
-                  "type": "object",
-                  "properties": {
-                    "topLeft": {
-                      "type": "object",
-                      "properties": {
-                        "lat": {
-                          "type": "number"
-                        },
-                        "lng": {
-                          "type": "number"
-                        }
-                      },
-                      "required": ["lat", "lng"],
-                      "additionalProperties": false
-                    },
-                    "bottomRight": {
-                      "type": "object",
-                      "properties": {
-                        "lat": {
-                          "type": "number"
-                        },
-                        "lng": {
-                          "type": "number"
-                        }
-                      },
-                      "required": ["lat", "lng"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": ["topLeft", "bottomRight"],
-                  "additionalProperties": false
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "city": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          {
-            "name": "pagination",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "cursor": {
-                  "type": "string"
-                },
-                "limit": {
-                  "default": 20,
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "maximum": 100
-                }
-              },
-              "required": ["limit"],
-              "additionalProperties": false
-            }
-          }
-        ]
-      }
-    }
-  }
+	"openapi": "3.0.0",
+	"info": {
+		"title": "API Documentation",
+		"version": "1.0.0",
+		"description": "Auto-generated API documentation from endpoints"
+	},
+	"paths": {
+		"/explore/jobs": {
+			"get": {
+				"operationId": "exploreJobs",
+				"responses": {
+					"200": {
+						"description": "Successful response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$schema": "https://json-schema.org/draft/2020-12/schema",
+									"type": "object",
+									"properties": {
+										"items": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"role": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 255
+													},
+													"type": {
+														"type": "string",
+														"enum": [
+															"Server",
+															"Waiter",
+															"Host",
+															"Bartender",
+															"KitchenPorter",
+															"Steward",
+															"BusPerson",
+															"Dishwasher"
+														]
+													},
+													"overview": {
+														"type": "string",
+														"minLength": 1
+													},
+													"qualifications": {
+														"type": "string",
+														"minLength": 1
+													},
+													"hourlyRate": {
+														"type": "object",
+														"properties": {
+															"max": {
+																"type": "number"
+															},
+															"min": {
+																"type": "number"
+															}
+														},
+														"required": ["max", "min"],
+														"additionalProperties": false
+													},
+													"dateNeeded": {
+														"type": "object",
+														"properties": {
+															"from": {
+																"type": "string"
+															},
+															"to": {
+																"type": "string"
+															}
+														},
+														"required": ["from", "to"],
+														"additionalProperties": false
+													},
+													"shiftHours": {
+														"type": "object",
+														"properties": {
+															"from": {
+																"type": "string"
+															},
+															"to": {
+																"type": "string"
+															}
+														},
+														"required": ["from", "to"],
+														"additionalProperties": false
+													},
+													"id": {
+														"type": "string",
+														"format": "uuid",
+														"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
+													},
+													"createdAt": {
+														"type": "string",
+														"format": "date-time",
+														"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+													},
+													"updatedAt": {
+														"type": "string",
+														"format": "date-time",
+														"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+													},
+													"status": {
+														"type": "string",
+														"enum": ["Draft", "Active", "Closed", "Filled"]
+													},
+													"business": {
+														"type": "object",
+														"properties": {
+															"name": {
+																"type": "string",
+																"minLength": 1
+															},
+															"description": {
+																"type": "string"
+															},
+															"tags": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															},
+															"id": {
+																"type": "string",
+																"format": "uuid",
+																"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
+															},
+															"createdAt": {
+																"type": "string",
+																"format": "date-time",
+																"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+															},
+															"updatedAt": {
+																"type": "string",
+																"format": "date-time",
+																"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+															},
+															"rating": {
+																"type": "number",
+																"minimum": 0,
+																"maximum": 5
+															},
+															"status": {
+																"type": "string",
+																"enum": [
+																	"Active",
+																	"Inactive",
+																	"PendingVerification",
+																	"Suspended"
+																]
+															},
+															"ratingCount": {
+																"type": "integer",
+																"minimum": 0,
+																"maximum": 9007199254740991
+															},
+															"address": {
+																"type": "object",
+																"properties": {
+																	"id": {
+																		"type": "string",
+																		"format": "uuid",
+																		"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
+																	},
+																	"createdAt": {
+																		"type": "string",
+																		"format": "date-time",
+																		"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																	},
+																	"updatedAt": {
+																		"type": "string",
+																		"format": "date-time",
+																		"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																	},
+																	"placeId": {
+																		"anyOf": [
+																			{
+																				"type": "string"
+																			},
+																			{
+																				"type": "null"
+																			}
+																		]
+																	},
+																	"text": {
+																		"type": "string",
+																		"minLength": 1
+																	},
+																	"city": {
+																		"type": "string",
+																		"minLength": 1
+																	},
+																	"state": {
+																		"type": "string",
+																		"minLength": 1
+																	},
+																	"postalCode": {
+																		"type": "string",
+																		"minLength": 1
+																	},
+																	"country": {
+																		"type": "string",
+																		"minLength": 1
+																	},
+																	"lat": {
+																		"type": "number"
+																	},
+																	"lng": {
+																		"type": "number"
+																	}
+																},
+																"required": [
+																	"id",
+																	"createdAt",
+																	"updatedAt",
+																	"text",
+																	"city",
+																	"state",
+																	"postalCode",
+																	"country",
+																	"lat",
+																	"lng"
+																],
+																"additionalProperties": false
+															},
+															"image": {
+																"type": "object",
+																"properties": {
+																	"id": {
+																		"type": "string",
+																		"format": "uuid",
+																		"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
+																	},
+																	"createdAt": {
+																		"type": "string",
+																		"format": "date-time",
+																		"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																	},
+																	"updatedAt": {
+																		"type": "string",
+																		"format": "date-time",
+																		"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																	},
+																	"mimeType": {
+																		"type": "string",
+																		"enum": [
+																			"image/jpeg",
+																			"image/png",
+																			"application/pdf",
+																			"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+																		]
+																	},
+																	"name": {
+																		"type": "string"
+																	},
+																	"url": {
+																		"type": "string",
+																		"format": "uri"
+																	},
+																	"contentLength": {
+																		"type": "number"
+																	},
+																	"status": {
+																		"type": "string",
+																		"enum": [
+																			"Pending",
+																			"Uploaded",
+																			"Failed",
+																			"Deleted"
+																		]
+																	}
+																},
+																"required": [
+																	"id",
+																	"createdAt",
+																	"updatedAt",
+																	"mimeType",
+																	"name",
+																	"url",
+																	"contentLength",
+																	"status"
+																],
+																"additionalProperties": false
+															},
+															"licenses": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"properties": {
+																		"id": {
+																			"type": "string",
+																			"format": "uuid",
+																			"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$"
+																		},
+																		"createdAt": {
+																			"type": "string",
+																			"format": "date-time",
+																			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																		},
+																		"updatedAt": {
+																			"type": "string",
+																			"format": "date-time",
+																			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+																		},
+																		"mimeType": {
+																			"type": "string",
+																			"enum": [
+																				"image/jpeg",
+																				"image/png",
+																				"application/pdf",
+																				"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+																			]
+																		},
+																		"name": {
+																			"type": "string"
+																		},
+																		"url": {
+																			"type": "string",
+																			"format": "uri"
+																		},
+																		"contentLength": {
+																			"type": "number"
+																		},
+																		"status": {
+																			"type": "string",
+																			"enum": [
+																				"Pending",
+																				"Uploaded",
+																				"Failed",
+																				"Deleted"
+																			]
+																		}
+																	},
+																	"required": [
+																		"id",
+																		"createdAt",
+																		"updatedAt",
+																		"mimeType",
+																		"name",
+																		"url",
+																		"contentLength",
+																		"status"
+																	],
+																	"additionalProperties": false
+																}
+															}
+														},
+														"required": [
+															"name",
+															"description",
+															"tags",
+															"id",
+															"createdAt",
+															"updatedAt",
+															"rating",
+															"status",
+															"ratingCount",
+															"address",
+															"image",
+															"licenses"
+														],
+														"additionalProperties": false
+													},
+													"appliedAt": {
+														"anyOf": [
+															{
+																"type": "string",
+																"format": "date-time",
+																"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+															},
+															{
+																"type": "null"
+															}
+														]
+													},
+													"closedAt": {
+														"anyOf": [
+															{
+																"type": "string",
+																"format": "date-time",
+																"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+															},
+															{
+																"type": "null"
+															}
+														]
+													},
+													"closeReason": {
+														"anyOf": [
+															{
+																"type": "string"
+															},
+															{
+																"type": "null"
+															}
+														]
+													},
+													"distanceKm": {
+														"type": "number"
+													},
+													"roleMatch": {
+														"type": "boolean"
+													},
+													"hourlyRateMatch": {
+														"type": "boolean"
+													},
+													"hasApplied": {
+														"default": false,
+														"type": "boolean"
+													}
+												},
+												"required": [
+													"role",
+													"type",
+													"overview",
+													"qualifications",
+													"hourlyRate",
+													"dateNeeded",
+													"shiftHours",
+													"id",
+													"createdAt",
+													"updatedAt",
+													"status",
+													"business",
+													"distanceKm",
+													"roleMatch",
+													"hourlyRateMatch",
+													"hasApplied"
+												],
+												"additionalProperties": false
+											}
+										},
+										"pagination": {
+											"type": "object",
+											"properties": {
+												"total": {
+													"type": "number"
+												},
+												"cursor": {
+													"type": "string"
+												},
+												"hasMore": {
+													"type": "boolean"
+												}
+											},
+											"required": ["total", "hasMore"],
+											"additionalProperties": false
+										}
+									},
+									"required": ["items", "pagination"],
+									"additionalProperties": false
+								}
+							}
+						}
+					}
+				},
+				"parameters": [
+					{
+						"name": "filter",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "object",
+							"properties": {
+								"radius": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 9007199254740991
+								},
+								"types": {
+									"type": "array",
+									"items": {
+										"type": "string",
+										"enum": [
+											"Server",
+											"Waiter",
+											"Host",
+											"Bartender",
+											"KitchenPorter",
+											"Steward",
+											"BusPerson",
+											"Dishwasher"
+										]
+									}
+								},
+								"hourlyRate": {
+									"type": "object",
+									"properties": {
+										"max": {
+											"type": "number"
+										},
+										"min": {
+											"type": "number"
+										}
+									},
+									"additionalProperties": false
+								},
+								"dateNeeded": {
+									"type": "object",
+									"properties": {
+										"from": {
+											"type": "string"
+										},
+										"to": {
+											"type": "string"
+										}
+									},
+									"additionalProperties": false
+								},
+								"shiftHours": {
+									"type": "object",
+									"properties": {
+										"from": {
+											"type": "string"
+										},
+										"to": {
+											"type": "string"
+										}
+									},
+									"additionalProperties": false
+								},
+								"box": {
+									"type": "object",
+									"properties": {
+										"topLeft": {
+											"type": "object",
+											"properties": {
+												"lat": {
+													"type": "number"
+												},
+												"lng": {
+													"type": "number"
+												}
+											},
+											"required": ["lat", "lng"],
+											"additionalProperties": false
+										},
+										"bottomRight": {
+											"type": "object",
+											"properties": {
+												"lat": {
+													"type": "number"
+												},
+												"lng": {
+													"type": "number"
+												}
+											},
+											"required": ["lat", "lng"],
+											"additionalProperties": false
+										}
+									},
+									"required": ["topLeft", "bottomRight"],
+									"additionalProperties": false
+								},
+								"name": {
+									"type": "string",
+									"minLength": 1
+								},
+								"city": {
+									"type": "string",
+									"minLength": 1
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					{
+						"name": "pagination",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "object",
+							"properties": {
+								"cursor": {
+									"type": "string"
+								},
+								"limit": {
+									"default": 20,
+									"type": "integer",
+									"exclusiveMinimum": 0,
+									"maximum": 100
+								}
+							},
+							"required": ["limit"],
+							"additionalProperties": false
+						}
+					}
+				]
+			}
+		}
+	}
 }

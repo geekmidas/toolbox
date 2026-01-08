@@ -7,7 +7,7 @@ import type { CookieFn, HeaderFn } from './Endpoint';
  * Keys become `prefix.key` (e.g., `app.user_id`).
  */
 export interface RlsContext {
-  [key: string]: string | number | boolean | null | undefined;
+	[key: string]: string | number | boolean | null | undefined;
 }
 
 /**
@@ -27,15 +27,15 @@ export interface RlsContext {
  * ```
  */
 export type RlsContextExtractor<
-  TServices extends Service[] = [],
-  TSession = unknown,
-  TLogger extends Logger = Logger,
+	TServices extends Service[] = [],
+	TSession = unknown,
+	TLogger extends Logger = Logger,
 > = (ctx: {
-  services: ServiceRecord<TServices>;
-  session: TSession;
-  header: HeaderFn;
-  cookie: CookieFn;
-  logger: TLogger;
+	services: ServiceRecord<TServices>;
+	session: TSession;
+	header: HeaderFn;
+	cookie: CookieFn;
+	logger: TLogger;
 }) => RlsContext | Promise<RlsContext>;
 
 /**
@@ -46,14 +46,14 @@ export type RlsContextExtractor<
  * @template TLogger - Logger type
  */
 export interface RlsConfig<
-  TServices extends Service[] = [],
-  TSession = unknown,
-  TLogger extends Logger = Logger,
+	TServices extends Service[] = [],
+	TSession = unknown,
+	TLogger extends Logger = Logger,
 > {
-  /** Function to extract RLS context from request */
-  extractor: RlsContextExtractor<TServices, TSession, TLogger>;
-  /** Prefix for PostgreSQL session variables (default: 'app') */
-  prefix?: string;
+	/** Function to extract RLS context from request */
+	extractor: RlsContextExtractor<TServices, TSession, TLogger>;
+	/** Prefix for PostgreSQL session variables (default: 'app') */
+	prefix?: string;
 }
 
 /**

@@ -5,86 +5,86 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 import { Resource } from '@opentelemetry/resources';
 import {
-  BatchLogRecordProcessor,
-  LoggerProvider,
+	BatchLogRecordProcessor,
+	LoggerProvider,
 } from '@opentelemetry/sdk-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
+	ATTR_SERVICE_NAME,
+	ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
 import type { SpanProcessorStrategy } from '../adapters/types';
 import {
-  createSpanProcessor,
-  getRecommendedStrategy,
-  setGlobalLogProcessor,
-  setGlobalSpanProcessor,
+	createSpanProcessor,
+	getRecommendedStrategy,
+	setGlobalLogProcessor,
+	setGlobalSpanProcessor,
 } from './core';
 
 /**
  * Options for configuring telemetry
  */
 export interface TelemetryOptions {
-  /**
-   * Service name for resource identification
-   */
-  serviceName: string;
+	/**
+	 * Service name for resource identification
+	 */
+	serviceName: string;
 
-  /**
-   * Service version
-   */
-  serviceVersion?: string;
+	/**
+	 * Service version
+	 */
+	serviceVersion?: string;
 
-  /**
-   * OTLP endpoint URL (e.g., 'http://localhost:3000/__telescope/v1')
-   * If not provided, traces will be logged to console
-   */
-  endpoint?: string;
+	/**
+	 * OTLP endpoint URL (e.g., 'http://localhost:3000/__telescope/v1')
+	 * If not provided, traces will be logged to console
+	 */
+	endpoint?: string;
 
-  /**
-   * Whether to instrument Pino for log correlation
-   * @default true
-   */
-  instrumentPino?: boolean;
+	/**
+	 * Whether to instrument Pino for log correlation
+	 * @default true
+	 */
+	instrumentPino?: boolean;
 
-  /**
-   * Whether to enable auto-instrumentation for common libraries
-   * (http, fetch, express, etc.)
-   * @default true
-   */
-  autoInstrument?: boolean;
+	/**
+	 * Whether to enable auto-instrumentation for common libraries
+	 * (http, fetch, express, etc.)
+	 * @default true
+	 */
+	autoInstrument?: boolean;
 
-  /**
-   * Enable debug logging for OTel SDK
-   * @default false
-   */
-  debug?: boolean;
+	/**
+	 * Enable debug logging for OTel SDK
+	 * @default false
+	 */
+	debug?: boolean;
 
-  /**
-   * Additional resource attributes
-   */
-  resourceAttributes?: Record<string, string>;
+	/**
+	 * Additional resource attributes
+	 */
+	resourceAttributes?: Record<string, string>;
 
-  /**
-   * Headers to send with OTLP requests
-   */
-  headers?: Record<string, string>;
+	/**
+	 * Headers to send with OTLP requests
+	 */
+	headers?: Record<string, string>;
 
-  /**
-   * Span processor strategy.
-   * - 'batch': Efficient batching for long-running servers (default)
-   * - 'simple': Immediate export for serverless environments (Lambda, Edge)
-   *
-   * If not specified, automatically selected based on environment detection.
-   */
-  spanProcessorStrategy?: SpanProcessorStrategy;
+	/**
+	 * Span processor strategy.
+	 * - 'batch': Efficient batching for long-running servers (default)
+	 * - 'simple': Immediate export for serverless environments (Lambda, Edge)
+	 *
+	 * If not specified, automatically selected based on environment detection.
+	 */
+	spanProcessorStrategy?: SpanProcessorStrategy;
 
-  /**
-   * Environment type for automatic configuration
-   * @default 'server'
-   */
-  environment?: 'server' | 'lambda' | 'edge' | 'custom';
+	/**
+	 * Environment type for automatic configuration
+	 * @default 'server'
+	 */
+	environment?: 'server' | 'lambda' | 'edge' | 'custom';
 }
 
 let sdk: NodeSDK | null = null;
@@ -109,135 +109,135 @@ let sdk: NodeSDK | null = null;
  * ```
  */
 export function setupTelemetry(options: TelemetryOptions): void {
-  if (sdk) {
-    return;
-  }
+	if (sdk) {
+		return;
+	}
 
-  const {
-    serviceName,
-    serviceVersion = '1.0.0',
-    endpoint,
-    instrumentPino = true,
-    autoInstrument = true,
-    debug = false,
-    resourceAttributes = {},
-    headers = {},
-    spanProcessorStrategy,
-    environment = 'server',
-  } = options;
+	const {
+		serviceName,
+		serviceVersion = '1.0.0',
+		endpoint,
+		instrumentPino = true,
+		autoInstrument = true,
+		debug = false,
+		resourceAttributes = {},
+		headers = {},
+		spanProcessorStrategy,
+		environment = 'server',
+	} = options;
 
-  // Enable debug logging if requested
-  if (debug) {
-    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
-  }
+	// Enable debug logging if requested
+	if (debug) {
+		diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+	}
 
-  // Create resource
-  const resource = new Resource({
-    [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_SERVICE_VERSION]: serviceVersion,
-    ...resourceAttributes,
-  });
+	// Create resource
+	const resource = new Resource({
+		[ATTR_SERVICE_NAME]: serviceName,
+		[ATTR_SERVICE_VERSION]: serviceVersion,
+		...resourceAttributes,
+	});
 
-  // Build instrumentations list
-  const instrumentations = [];
+	// Build instrumentations list
+	const instrumentations = [];
 
-  // Add Pino instrumentation for log correlation
-  if (instrumentPino) {
-    instrumentations.push(
-      new PinoInstrumentation({
-        // Inject trace context into log records
-        logHook: (span, record) => {
-          record['trace_id'] = span.spanContext().traceId;
-          record['span_id'] = span.spanContext().spanId;
-          record['trace_flags'] = span.spanContext().traceFlags;
-        },
-      }),
-    );
-  }
+	// Add Pino instrumentation for log correlation
+	if (instrumentPino) {
+		instrumentations.push(
+			new PinoInstrumentation({
+				// Inject trace context into log records
+				logHook: (span, record) => {
+					record['trace_id'] = span.spanContext().traceId;
+					record['span_id'] = span.spanContext().spanId;
+					record['trace_flags'] = span.spanContext().traceFlags;
+				},
+			}),
+		);
+	}
 
-  // Add auto-instrumentations for common libraries
-  if (autoInstrument) {
-    instrumentations.push(
-      getNodeAutoInstrumentations({
-        // Disable file system instrumentation (too noisy)
-        '@opentelemetry/instrumentation-fs': { enabled: false },
-        // Configure HTTP instrumentation
-        '@opentelemetry/instrumentation-http': {
-          ignoreIncomingRequestHook: (request) => {
-            // Ignore health checks and internal routes
-            const path = request.url || '';
-            return (
-              path.includes('/__health') ||
-              path.includes('/__telescope') ||
-              path.includes('/favicon')
-            );
-          },
-        },
-      }),
-    );
-  }
+	// Add auto-instrumentations for common libraries
+	if (autoInstrument) {
+		instrumentations.push(
+			getNodeAutoInstrumentations({
+				// Disable file system instrumentation (too noisy)
+				'@opentelemetry/instrumentation-fs': { enabled: false },
+				// Configure HTTP instrumentation
+				'@opentelemetry/instrumentation-http': {
+					ignoreIncomingRequestHook: (request) => {
+						// Ignore health checks and internal routes
+						const path = request.url || '';
+						return (
+							path.includes('/__health') ||
+							path.includes('/__telescope') ||
+							path.includes('/favicon')
+						);
+					},
+				},
+			}),
+		);
+	}
 
-  // Create exporters
-  let traceExporter;
-  if (endpoint) {
-    traceExporter = new OTLPTraceExporter({
-      url: `${endpoint}/traces`,
-      headers,
-    });
-  } else {
-    // Fall back to console exporter for debugging
-    traceExporter = new ConsoleSpanExporter();
-  }
+	// Create exporters
+	let traceExporter;
+	if (endpoint) {
+		traceExporter = new OTLPTraceExporter({
+			url: `${endpoint}/traces`,
+			headers,
+		});
+	} else {
+		// Fall back to console exporter for debugging
+		traceExporter = new ConsoleSpanExporter();
+	}
 
-  // Determine span processor strategy
-  const strategy = spanProcessorStrategy ?? getRecommendedStrategy(environment);
-  const spanProcessor = createSpanProcessor(traceExporter, { strategy });
+	// Determine span processor strategy
+	const strategy = spanProcessorStrategy ?? getRecommendedStrategy(environment);
+	const spanProcessor = createSpanProcessor(traceExporter, { strategy });
 
-  // Register globally for flush operations
-  setGlobalSpanProcessor(spanProcessor);
+	// Register globally for flush operations
+	setGlobalSpanProcessor(spanProcessor);
 
-  // Create and configure SDK
-  sdk = new NodeSDK({
-    resource,
-    traceExporter,
-    spanProcessors: [spanProcessor],
-    instrumentations,
-  });
+	// Create and configure SDK
+	sdk = new NodeSDK({
+		resource,
+		traceExporter,
+		spanProcessors: [spanProcessor],
+		instrumentations,
+	});
 
-  // Set up log exporter if endpoint is provided
-  if (endpoint) {
-    const logExporter = new OTLPLogExporter({
-      url: `${endpoint}/logs`,
-      headers,
-    });
+	// Set up log exporter if endpoint is provided
+	if (endpoint) {
+		const logExporter = new OTLPLogExporter({
+			url: `${endpoint}/logs`,
+			headers,
+		});
 
-    const loggerProvider = new LoggerProvider({ resource });
-    const logProcessor = new BatchLogRecordProcessor(logExporter);
-    loggerProvider.addLogRecordProcessor(logProcessor);
+		const loggerProvider = new LoggerProvider({ resource });
+		const logProcessor = new BatchLogRecordProcessor(logExporter);
+		loggerProvider.addLogRecordProcessor(logProcessor);
 
-    // Register for flush operations
-    setGlobalLogProcessor(logProcessor);
-  }
+		// Register for flush operations
+		setGlobalLogProcessor(logProcessor);
+	}
 
-  // Start the SDK
-  sdk.start();
+	// Start the SDK
+	sdk.start();
 
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    sdk
-      ?.shutdown()
-      .then(() => {})
-      .catch((error) => {})
-      .finally(() => process.exit(0));
-  });
+	// Graceful shutdown
+	process.on('SIGTERM', () => {
+		sdk
+			?.shutdown()
+			.then(() => {})
+			.catch((error) => {})
+			.finally(() => process.exit(0));
+	});
 }
 
 /**
  * Shut down telemetry (for testing or graceful shutdown)
  */
 export async function shutdownTelemetry(): Promise<void> {
-  if (sdk) {
-    await sdk.shutdown();
-    sdk = null;
-  }
+	if (sdk) {
+		await sdk.shutdown();
+		sdk = null;
+	}
 }

@@ -1,48 +1,48 @@
 {
-  "name": "@geekmidas/db",
-  "version": "0.2.0",
-  "private": false,
-  "type": "module",
-  "exports": {
-    "./kysely": {
-      "types": "./dist/kysely.d.ts",
-      "import": "./dist/kysely.mjs",
-      "require": "./dist/kysely.cjs"
-    },
-    "./kysely/pagination": {
-      "types": "./dist/kysely/pagination.d.ts",
-      "import": "./dist/kysely/pagination.mjs",
-      "require": "./dist/kysely/pagination.cjs"
-    },
-    "./rls": {
-      "types": "./dist/rls.d.ts",
-      "import": "./dist/rls.mjs",
-      "require": "./dist/rls.cjs"
-    }
-  },
-  "dependencies": {
-    "@faker-js/faker": "~9.9.0"
-  },
-  "scripts": {
-    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
-  },
-  "devDependencies": {
-    "@types/pg": "~8.15.4"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "peerDependencies": {
-    "kysely": "~0.28.2",
-    "pg": "~8.16.3",
-    "knex": "~3.1.0",
-    "objection": "~3.1.5",
-    "db-errors": "~0.2.3",
-    "vitest": "~3.2.4"
-  }
+	"name": "@geekmidas/db",
+	"version": "0.2.0",
+	"private": false,
+	"type": "module",
+	"exports": {
+		"./kysely": {
+			"types": "./dist/kysely.d.ts",
+			"import": "./dist/kysely.mjs",
+			"require": "./dist/kysely.cjs"
+		},
+		"./kysely/pagination": {
+			"types": "./dist/kysely/pagination.d.ts",
+			"import": "./dist/kysely/pagination.mjs",
+			"require": "./dist/kysely/pagination.cjs"
+		},
+		"./rls": {
+			"types": "./dist/rls.d.ts",
+			"import": "./dist/rls.mjs",
+			"require": "./dist/rls.cjs"
+		}
+	},
+	"dependencies": {
+		"@faker-js/faker": "~9.9.0"
+	},
+	"scripts": {
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+	},
+	"devDependencies": {
+		"@types/pg": "~8.15.4"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"peerDependencies": {
+		"kysely": "~0.28.2",
+		"pg": "~8.16.3",
+		"knex": "~3.1.0",
+		"objection": "~3.1.5",
+		"db-errors": "~0.2.3",
+		"vitest": "~3.2.4"
+	}
 }

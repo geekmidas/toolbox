@@ -1,68 +1,68 @@
 {
-  "name": "@geekmidas/events",
-  "version": "0.1.0",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./basic": {
-      "types": "./dist/basic/index.d.ts",
-      "import": "./dist/basic/index.mjs",
-      "require": "./dist/basic/index.cjs"
-    },
-    "./rabbitmq": {
-      "types": "./dist/rabbitmq/index.d.ts",
-      "import": "./dist/rabbitmq/index.mjs",
-      "require": "./dist/rabbitmq/index.cjs"
-    },
-    "./sqs": {
-      "types": "./dist/sqs/index.d.ts",
-      "import": "./dist/sqs/index.mjs",
-      "require": "./dist/sqs/index.cjs"
-    },
-    "./sns": {
-      "types": "./dist/sns/index.d.ts",
-      "import": "./dist/sns/index.mjs",
-      "require": "./dist/sns/index.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "lodash.chunk": "~4.2.0"
-  },
-  "peerDependencies": {
-    "@geekmidas/schema": "workspace:^",
-    "amqplib": "^0.10.3",
-    "@aws-sdk/client-sqs": "~3.908.0",
-    "@aws-sdk/client-sns": "~3.908.0"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/schema": {
-      "optional": true
-    },
-    "amqplib": {
-      "optional": true
-    },
-    "@aws-sdk/client-sqs": {
-      "optional": true
-    },
-    "@aws-sdk/client-sns": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@geekmidas/schema": "workspace:^",
-    "@types/amqplib": "~0.10.7",
-    "@types/lodash.chunk": "~4.2.0"
-  }
+	"name": "@geekmidas/events",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./basic": {
+			"types": "./dist/basic/index.d.ts",
+			"import": "./dist/basic/index.mjs",
+			"require": "./dist/basic/index.cjs"
+		},
+		"./rabbitmq": {
+			"types": "./dist/rabbitmq/index.d.ts",
+			"import": "./dist/rabbitmq/index.mjs",
+			"require": "./dist/rabbitmq/index.cjs"
+		},
+		"./sqs": {
+			"types": "./dist/sqs/index.d.ts",
+			"import": "./dist/sqs/index.mjs",
+			"require": "./dist/sqs/index.cjs"
+		},
+		"./sns": {
+			"types": "./dist/sns/index.d.ts",
+			"import": "./dist/sns/index.mjs",
+			"require": "./dist/sns/index.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"lodash.chunk": "~4.2.0"
+	},
+	"peerDependencies": {
+		"@geekmidas/schema": "workspace:^",
+		"amqplib": "^0.10.3",
+		"@aws-sdk/client-sqs": "~3.908.0",
+		"@aws-sdk/client-sns": "~3.908.0"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/schema": {
+			"optional": true
+		},
+		"amqplib": {
+			"optional": true
+		},
+		"@aws-sdk/client-sqs": {
+			"optional": true
+		},
+		"@aws-sdk/client-sns": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@geekmidas/schema": "workspace:^",
+		"@types/amqplib": "~0.10.7",
+		"@types/lodash.chunk": "~4.2.0"
+	}
 }

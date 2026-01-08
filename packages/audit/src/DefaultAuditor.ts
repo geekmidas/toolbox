@@ -2,27 +2,27 @@ import { nanoid } from 'nanoid';
 import type { Auditor } from './Auditor';
 import type { AuditStorage } from './storage';
 import type {
-  AuditActor,
-  AuditableAction,
-  AuditMetadata,
-  AuditOptions,
-  AuditRecord,
-  ExtractAuditPayload,
-  ExtractAuditType,
+	AuditActor,
+	AuditableAction,
+	AuditMetadata,
+	AuditOptions,
+	AuditRecord,
+	ExtractAuditPayload,
+	ExtractAuditType,
 } from './types';
 
 /**
  * Configuration for DefaultAuditor.
  */
 export interface DefaultAuditorConfig {
-  /** The actor performing audits (set at construction, immutable) */
-  actor: AuditActor;
-  /** Storage backend for persisting audits */
-  storage: AuditStorage;
-  /** Optional metadata to attach to all audits */
-  metadata?: AuditMetadata;
-  /** Optional custom ID generator (defaults to nanoid) */
-  generateId?: () => string;
+	/** The actor performing audits (set at construction, immutable) */
+	actor: AuditActor;
+	/** Storage backend for persisting audits */
+	storage: AuditStorage;
+	/** Optional metadata to attach to all audits */
+	metadata?: AuditMetadata;
+	/** Optional custom ID generator (defaults to nanoid) */
+	generateId?: () => string;
 }
 
 /**
@@ -47,95 +47,95 @@ export interface DefaultAuditorConfig {
  * ```
  */
 export class DefaultAuditor<
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
-  TTransaction = unknown,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
+	TTransaction = unknown,
 > implements Auditor<TAuditAction, TTransaction>
 {
-  readonly actor: AuditActor;
-  private readonly storage: AuditStorage;
-  private metadata?: AuditMetadata;
-  private readonly generateId: () => string;
-  private records: AuditRecord[] = [];
-  private transaction?: TTransaction;
+	readonly actor: AuditActor;
+	private readonly storage: AuditStorage;
+	private metadata?: AuditMetadata;
+	private readonly generateId: () => string;
+	private records: AuditRecord[] = [];
+	private transaction?: TTransaction;
 
-  constructor(config: DefaultAuditorConfig) {
-    this.actor = config.actor;
-    this.storage = config.storage;
-    this.metadata = config.metadata;
-    this.generateId = config.generateId ?? (() => nanoid());
-  }
+	constructor(config: DefaultAuditorConfig) {
+		this.actor = config.actor;
+		this.storage = config.storage;
+		this.metadata = config.metadata;
+		this.generateId = config.generateId ?? (() => nanoid());
+	}
 
-  audit<TType extends ExtractAuditType<TAuditAction>>(
-    type: TType,
-    payload: ExtractAuditPayload<TAuditAction, TType>,
-    options?: AuditOptions,
-  ): void {
-    const record: AuditRecord = {
-      id: this.generateId(),
-      type,
-      operation: options?.operation ?? 'CUSTOM',
-      table: options?.table,
-      entityId: options?.entityId,
-      oldValues: options?.oldValues,
-      newValues: options?.newValues,
-      payload,
-      timestamp: new Date(),
-      actor: this.actor,
-      metadata: this.metadata,
-    };
+	audit<TType extends ExtractAuditType<TAuditAction>>(
+		type: TType,
+		payload: ExtractAuditPayload<TAuditAction, TType>,
+		options?: AuditOptions,
+	): void {
+		const record: AuditRecord = {
+			id: this.generateId(),
+			type,
+			operation: options?.operation ?? 'CUSTOM',
+			table: options?.table,
+			entityId: options?.entityId,
+			oldValues: options?.oldValues,
+			newValues: options?.newValues,
+			payload,
+			timestamp: new Date(),
+			actor: this.actor,
+			metadata: this.metadata,
+		};
 
-    this.records.push(record);
-  }
+		this.records.push(record);
+	}
 
-  record(record: Omit<AuditRecord, 'id' | 'timestamp' | 'actor'>): void {
-    const fullRecord: AuditRecord = {
-      ...record,
-      id: this.generateId(),
-      timestamp: new Date(),
-      actor: this.actor,
-      metadata: this.metadata
-        ? { ...this.metadata, ...record.metadata }
-        : record.metadata,
-    };
+	record(record: Omit<AuditRecord, 'id' | 'timestamp' | 'actor'>): void {
+		const fullRecord: AuditRecord = {
+			...record,
+			id: this.generateId(),
+			timestamp: new Date(),
+			actor: this.actor,
+			metadata: this.metadata
+				? { ...this.metadata, ...record.metadata }
+				: record.metadata,
+		};
 
-    this.records.push(fullRecord);
-  }
+		this.records.push(fullRecord);
+	}
 
-  getRecords(): AuditRecord[] {
-    return [...this.records];
-  }
+	getRecords(): AuditRecord[] {
+		return [...this.records];
+	}
 
-  async flush(trx?: TTransaction): Promise<void> {
-    if (this.records.length === 0) {
-      return;
-    }
+	async flush(trx?: TTransaction): Promise<void> {
+		if (this.records.length === 0) {
+			return;
+		}
 
-    const recordsToFlush = [...this.records];
-    this.records = [];
+		const recordsToFlush = [...this.records];
+		this.records = [];
 
-    // Use explicitly passed transaction, or fall back to stored transaction
-    const transactionToUse = trx ?? this.transaction;
-    await this.storage.write(recordsToFlush, transactionToUse);
-  }
+		// Use explicitly passed transaction, or fall back to stored transaction
+		const transactionToUse = trx ?? this.transaction;
+		await this.storage.write(recordsToFlush, transactionToUse);
+	}
 
-  setTransaction(trx: TTransaction): void {
-    this.transaction = trx;
-  }
+	setTransaction(trx: TTransaction): void {
+		this.transaction = trx;
+	}
 
-  getTransaction(): TTransaction | undefined {
-    return this.transaction;
-  }
+	getTransaction(): TTransaction | undefined {
+		return this.transaction;
+	}
 
-  clear(): void {
-    this.records = [];
-  }
+	clear(): void {
+		this.records = [];
+	}
 
-  addMetadata(metadata: AuditMetadata): void {
-    this.metadata = this.metadata
-      ? { ...this.metadata, ...metadata }
-      : metadata;
-  }
+	addMetadata(metadata: AuditMetadata): void {
+		this.metadata = this.metadata
+			? { ...this.metadata, ...metadata }
+			: metadata;
+	}
 }

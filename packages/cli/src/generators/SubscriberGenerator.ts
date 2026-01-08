@@ -4,100 +4,100 @@ import { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { BuildContext } from '../build/types';
 import type { SubscriberInfo } from '../types';
 import {
-  ConstructGenerator,
-  type GeneratedConstruct,
-  type GeneratorOptions,
+	ConstructGenerator,
+	type GeneratedConstruct,
+	type GeneratorOptions,
 } from './Generator';
 
 export class SubscriberGenerator extends ConstructGenerator<
-  Subscriber<any, any, any, any, any, any>,
-  SubscriberInfo[]
+	Subscriber<any, any, any, any, any, any>,
+	SubscriberInfo[]
 > {
-  isConstruct(value: any): value is Subscriber<any, any, any, any, any, any> {
-    return Subscriber.isSubscriber(value);
-  }
+	isConstruct(value: any): value is Subscriber<any, any, any, any, any, any> {
+		return Subscriber.isSubscriber(value);
+	}
 
-  async build(
-    context: BuildContext,
-    constructs: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
-    outputDir: string,
-    options?: GeneratorOptions,
-  ): Promise<SubscriberInfo[]> {
-    const provider = options?.provider || 'aws-lambda';
-    const logger = console;
-    const subscriberInfos: SubscriberInfo[] = [];
+	async build(
+		context: BuildContext,
+		constructs: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+		outputDir: string,
+		options?: GeneratorOptions,
+	): Promise<SubscriberInfo[]> {
+		const provider = options?.provider || 'aws-lambda';
+		const logger = console;
+		const subscriberInfos: SubscriberInfo[] = [];
 
-    if (provider === 'server') {
-      // Generate subscribers.ts for server-based polling (even if empty)
-      await this.generateServerSubscribersFile(outputDir, constructs);
+		if (provider === 'server') {
+			// Generate subscribers.ts for server-based polling (even if empty)
+			await this.generateServerSubscribersFile(outputDir, constructs);
 
-      logger.log(
-        `Generated server subscribers file with ${constructs.length} subscribers (polling mode)`,
-      );
+			logger.log(
+				`Generated server subscribers file with ${constructs.length} subscribers (polling mode)`,
+			);
 
-      // Return empty array as server subscribers don't have individual handlers
-      return subscriberInfos;
-    }
+			// Return empty array as server subscribers don't have individual handlers
+			return subscriberInfos;
+		}
 
-    if (constructs.length === 0) {
-      return subscriberInfos;
-    }
+		if (constructs.length === 0) {
+			return subscriberInfos;
+		}
 
-    if (provider !== 'aws-lambda') {
-      return subscriberInfos;
-    }
+		if (provider !== 'aws-lambda') {
+			return subscriberInfos;
+		}
 
-    // Create subscribers subdirectory
-    const subscribersDir = join(outputDir, 'subscribers');
-    await mkdir(subscribersDir, { recursive: true });
+		// Create subscribers subdirectory
+		const subscribersDir = join(outputDir, 'subscribers');
+		await mkdir(subscribersDir, { recursive: true });
 
-    // Generate subscriber handlers
-    for (const { key, construct, path } of constructs) {
-      const handlerFile = await this.generateSubscriberHandler(
-        subscribersDir,
-        path.relative,
-        key,
-        construct,
-        context,
-      );
+		// Generate subscriber handlers
+		for (const { key, construct, path } of constructs) {
+			const handlerFile = await this.generateSubscriberHandler(
+				subscribersDir,
+				path.relative,
+				key,
+				construct,
+				context,
+			);
 
-      subscriberInfos.push({
-        name: key,
-        handler: relative(process.cwd(), handlerFile).replace(
-          /\.ts$/,
-          '.handler',
-        ),
-        subscribedEvents: construct.subscribedEvents || [],
-        timeout: construct.timeout,
-        memorySize: construct.memorySize,
-        environment: await construct.getEnvironment(),
-      });
+			subscriberInfos.push({
+				name: key,
+				handler: relative(process.cwd(), handlerFile).replace(
+					/\.ts$/,
+					'.handler',
+				),
+				subscribedEvents: construct.subscribedEvents || [],
+				timeout: construct.timeout,
+				memorySize: construct.memorySize,
+				environment: await construct.getEnvironment(),
+			});
 
-      logger.log(`Generated subscriber handler: ${key}`);
-    }
+			logger.log(`Generated subscriber handler: ${key}`);
+		}
 
-    return subscriberInfos;
-  }
+		return subscriberInfos;
+	}
 
-  private async generateSubscriberHandler(
-    outputDir: string,
-    sourceFile: string,
-    exportName: string,
-    _subscriber: Subscriber<any, any, any, any, any, any>,
-    context: BuildContext,
-  ): Promise<string> {
-    const handlerFileName = `${exportName}.ts`;
-    const handlerPath = join(outputDir, handlerFileName);
+	private async generateSubscriberHandler(
+		outputDir: string,
+		sourceFile: string,
+		exportName: string,
+		_subscriber: Subscriber<any, any, any, any, any, any>,
+		context: BuildContext,
+	): Promise<string> {
+		const handlerFileName = `${exportName}.ts`;
+		const handlerPath = join(outputDir, handlerFileName);
 
-    const relativePath = relative(dirname(handlerPath), sourceFile);
-    const importPath = relativePath.replace(/\.ts$/, '.js');
+		const relativePath = relative(dirname(handlerPath), sourceFile);
+		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-    const relativeEnvParserPath = relative(
-      dirname(handlerPath),
-      context.envParserPath,
-    );
+		const relativeEnvParserPath = relative(
+			dirname(handlerPath),
+			context.envParserPath,
+		);
 
-    const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
+		const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 
@@ -106,44 +106,44 @@ const adapter = new AWSLambdaSubscriber(envParser, ${exportName});
 export const handler = adapter.handler;
 `;
 
-    await writeFile(handlerPath, content);
-    return handlerPath;
-  }
+		await writeFile(handlerPath, content);
+		return handlerPath;
+	}
 
-  private async generateServerSubscribersFile(
-    outputDir: string,
-    subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
-  ): Promise<string> {
-    // Ensure output directory exists
-    await mkdir(outputDir, { recursive: true });
+	private async generateServerSubscribersFile(
+		outputDir: string,
+		subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+	): Promise<string> {
+		// Ensure output directory exists
+		await mkdir(outputDir, { recursive: true });
 
-    const subscribersFileName = 'subscribers.ts';
-    const subscribersPath = join(outputDir, subscribersFileName);
+		const subscribersFileName = 'subscribers.ts';
+		const subscribersPath = join(outputDir, subscribersFileName);
 
-    // Group imports by file
-    const importsByFile = new Map<string, string[]>();
+		// Group imports by file
+		const importsByFile = new Map<string, string[]>();
 
-    for (const { path, key } of subscribers) {
-      const relativePath = relative(dirname(subscribersPath), path.relative);
-      const importPath = relativePath.replace(/\.ts$/, '.js');
+		for (const { path, key } of subscribers) {
+			const relativePath = relative(dirname(subscribersPath), path.relative);
+			const importPath = relativePath.replace(/\.ts$/, '.js');
 
-      if (!importsByFile.has(importPath)) {
-        importsByFile.set(importPath, []);
-      }
-      importsByFile.get(importPath)!.push(key);
-    }
+			if (!importsByFile.has(importPath)) {
+				importsByFile.set(importPath, []);
+			}
+			importsByFile.get(importPath)!.push(key);
+		}
 
-    // Generate import statements
-    const imports = Array.from(importsByFile.entries())
-      .map(
-        ([importPath, exports]) =>
-          `import { ${exports.join(', ')} } from '${importPath}';`,
-      )
-      .join('\n');
+		// Generate import statements
+		const imports = Array.from(importsByFile.entries())
+			.map(
+				([importPath, exports]) =>
+					`import { ${exports.join(', ')} } from '${importPath}';`,
+			)
+			.join('\n');
 
-    const allExportNames = subscribers.map(({ key }) => key);
+		const allExportNames = subscribers.map(({ key }) => key);
 
-    const content = `/**
+		const content = `/**
  * Generated subscribers setup
  *
  * ⚠️  WARNING: This is for LOCAL DEVELOPMENT ONLY
@@ -269,7 +269,7 @@ export async function setupSubscribers(
 }
 `;
 
-    await writeFile(subscribersPath, content);
-    return subscribersPath;
-  }
+		await writeFile(subscribersPath, content);
+		return subscribersPath;
+	}
 }

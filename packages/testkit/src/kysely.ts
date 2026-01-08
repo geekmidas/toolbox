@@ -2,10 +2,10 @@ import type { Kysely, Transaction } from 'kysely';
 import type { TestAPI } from 'vitest';
 import { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 import {
-  extendWithFixtures as baseExtendWithFixtures,
-  type DatabaseConnection,
-  type FixtureCreators,
-  type IsolationLevel,
+	extendWithFixtures as baseExtendWithFixtures,
+	type DatabaseConnection,
+	type FixtureCreators,
+	type IsolationLevel,
 } from './VitestTransactionIsolator';
 
 /**
@@ -18,11 +18,11 @@ export { KyselyFactory } from './KyselyFactory';
 export { PostgresKyselyMigrator } from './PostgresKyselyMigrator';
 export { VitestKyselyTransactionIsolator } from './VitestKyselyTransactionIsolator';
 export type {
-  DatabaseFixtures,
-  ExtendedDatabaseFixtures,
-  FixtureCreators,
-  TestWithExtendedFixtures,
-  TransactionWrapperOptions,
+	DatabaseFixtures,
+	ExtendedDatabaseFixtures,
+	FixtureCreators,
+	TestWithExtendedFixtures,
+	TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 
@@ -30,17 +30,17 @@ export { IsolationLevel } from './VitestTransactionIsolator';
  * Kysely-specific options for transaction wrapping.
  */
 export interface KyselyTransactionOptions<
-  Database,
-  Extended extends Record<string, unknown> = {},
+	Database,
+	Extended extends Record<string, unknown> = {},
 > {
-  /** Function that creates or returns a Kysely database instance */
-  connection: DatabaseConnection<Kysely<Database>>;
-  /** Optional setup function to run within the transaction before each test */
-  setup?: (trx: Transaction<Database>) => Promise<void>;
-  /** Transaction isolation level (defaults to REPEATABLE_READ) */
-  isolationLevel?: IsolationLevel;
-  /** Additional fixtures that depend on the transaction */
-  fixtures?: FixtureCreators<Transaction<Database>, Extended>;
+	/** Function that creates or returns a Kysely database instance */
+	connection: DatabaseConnection<Kysely<Database>>;
+	/** Optional setup function to run within the transaction before each test */
+	setup?: (trx: Transaction<Database>) => Promise<void>;
+	/** Transaction isolation level (defaults to REPEATABLE_READ) */
+	isolationLevel?: IsolationLevel;
+	/** Additional fixtures that depend on the transaction */
+	fixtures?: FixtureCreators<Transaction<Database>, Extended>;
 }
 
 // Re-export faker and FakerFactory for type portability in declaration files
@@ -94,12 +94,12 @@ export { type FakerFactory, faker } from './faker';
  * ```
  */
 export function wrapVitestKyselyTransaction<
-  Database,
-  Extended extends Record<string, unknown> = {},
+	Database,
+	Extended extends Record<string, unknown> = {},
 >(api: TestAPI, options: KyselyTransactionOptions<Database, Extended>) {
-  const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
+	const wrapper = new VitestKyselyTransactionIsolator<Database>(api);
 
-  return wrapper.wrapVitestWithTransaction(options);
+	return wrapper.wrapVitestWithTransaction(options);
 }
 
 /**
@@ -155,12 +155,12 @@ export function wrapVitestKyselyTransaction<
  * ```
  */
 export function extendWithFixtures<
-  Database,
-  Extended extends Record<string, unknown>,
-  T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+	Database,
+	Extended extends Record<string, unknown>,
+	T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
 >(wrappedTest: T, fixtures: FixtureCreators<Transaction<Database>, Extended>) {
-  return baseExtendWithFixtures<Transaction<Database>, Extended, T>(
-    wrappedTest,
-    fixtures,
-  );
+	return baseExtendWithFixtures<Transaction<Database>, Extended, T>(
+		wrappedTest,
+		fixtures,
+	);
 }

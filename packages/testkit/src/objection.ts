@@ -2,10 +2,10 @@ import type { Knex } from 'knex';
 import type { TestAPI } from 'vitest';
 import { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 import {
-  extendWithFixtures as baseExtendWithFixtures,
-  type DatabaseConnection,
-  type FixtureCreators,
-  type IsolationLevel,
+	extendWithFixtures as baseExtendWithFixtures,
+	type DatabaseConnection,
+	type FixtureCreators,
+	type IsolationLevel,
 } from './VitestTransactionIsolator';
 
 /**
@@ -19,11 +19,11 @@ export { ObjectionFactory } from './ObjectionFactory';
 export { PostgresObjectionMigrator } from './PostgresObjectionMigrator';
 export { VitestObjectionTransactionIsolator } from './VitestObjectionTransactionIsolator';
 export type {
-  DatabaseFixtures,
-  ExtendedDatabaseFixtures,
-  FixtureCreators,
-  TestWithExtendedFixtures,
-  TransactionWrapperOptions,
+	DatabaseFixtures,
+	ExtendedDatabaseFixtures,
+	FixtureCreators,
+	TestWithExtendedFixtures,
+	TransactionWrapperOptions,
 } from './VitestTransactionIsolator';
 export { IsolationLevel } from './VitestTransactionIsolator';
 
@@ -31,16 +31,16 @@ export { IsolationLevel } from './VitestTransactionIsolator';
  * Objection.js-specific options for transaction wrapping.
  */
 export interface ObjectionTransactionOptions<
-  Extended extends Record<string, unknown> = {},
+	Extended extends Record<string, unknown> = {},
 > {
-  /** Function that creates or returns a Knex database connection */
-  connection: DatabaseConnection<Knex>;
-  /** Optional setup function to run within the transaction before each test */
-  setup?: (trx: Knex.Transaction) => Promise<void>;
-  /** Transaction isolation level (defaults to REPEATABLE_READ) */
-  isolationLevel?: IsolationLevel;
-  /** Additional fixtures that depend on the transaction */
-  fixtures?: FixtureCreators<Knex.Transaction, Extended>;
+	/** Function that creates or returns a Knex database connection */
+	connection: DatabaseConnection<Knex>;
+	/** Optional setup function to run within the transaction before each test */
+	setup?: (trx: Knex.Transaction) => Promise<void>;
+	/** Transaction isolation level (defaults to REPEATABLE_READ) */
+	isolationLevel?: IsolationLevel;
+	/** Additional fixtures that depend on the transaction */
+	fixtures?: FixtureCreators<Knex.Transaction, Extended>;
 }
 
 // Re-export faker and FakerFactory for type portability in declaration files
@@ -91,11 +91,11 @@ export { type FakerFactory, faker } from './faker';
  * ```
  */
 export function wrapVitestObjectionTransaction<
-  Extended extends Record<string, unknown> = {},
+	Extended extends Record<string, unknown> = {},
 >(api: TestAPI, options: ObjectionTransactionOptions<Extended>) {
-  const wrapper = new VitestObjectionTransactionIsolator(api);
+	const wrapper = new VitestObjectionTransactionIsolator(api);
 
-  return wrapper.wrapVitestWithTransaction(options);
+	return wrapper.wrapVitestWithTransaction(options);
 }
 
 /**
@@ -147,11 +147,11 @@ export function wrapVitestObjectionTransaction<
  * ```
  */
 export function extendWithFixtures<
-  Extended extends Record<string, unknown>,
-  T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
+	Extended extends Record<string, unknown>,
+	T extends ReturnType<TestAPI['extend']> = ReturnType<TestAPI['extend']>,
 >(wrappedTest: T, fixtures: FixtureCreators<Knex.Transaction, Extended>) {
-  return baseExtendWithFixtures<Knex.Transaction, Extended, T>(
-    wrappedTest,
-    fixtures,
-  );
+	return baseExtendWithFixtures<Knex.Transaction, Extended, T>(
+		wrappedTest,
+		fixtures,
+	);
 }

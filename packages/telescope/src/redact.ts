@@ -7,53 +7,53 @@ import type { TelescopeRedactOptions } from './types';
  * These extend the base paths from @geekmidas/logger.
  */
 const TELESCOPE_SPECIFIC_PATHS: string[] = [
-  // Response headers (telescope-specific)
-  'responseHeaders.set-cookie',
-  'responseHeaders.Set-Cookie',
+	// Response headers (telescope-specific)
+	'responseHeaders.set-cookie',
+	'responseHeaders.Set-Cookie',
 
-  // Request body fields
-  'body.password',
-  'body.token',
-  'body.accessToken',
-  'body.refreshToken',
-  'body.apiKey',
-  'body.secret',
-  'body.creditCard',
-  'body.cardNumber',
-  'body.cvv',
-  'body.ssn',
+	// Request body fields
+	'body.password',
+	'body.token',
+	'body.accessToken',
+	'body.refreshToken',
+	'body.apiKey',
+	'body.secret',
+	'body.creditCard',
+	'body.cardNumber',
+	'body.cvv',
+	'body.ssn',
 
-  // Nested body patterns (wildcards)
-  'body.*.password',
-  'body.*.token',
-  'body.*.secret',
-  'body.*.apiKey',
+	// Nested body patterns (wildcards)
+	'body.*.password',
+	'body.*.token',
+	'body.*.secret',
+	'body.*.apiKey',
 
-  // Response body fields
-  'responseBody.password',
-  'responseBody.token',
-  'responseBody.accessToken',
-  'responseBody.refreshToken',
-  'responseBody.secret',
-  'responseBody.*.password',
-  'responseBody.*.token',
-  'responseBody.*.secret',
+	// Response body fields
+	'responseBody.password',
+	'responseBody.token',
+	'responseBody.accessToken',
+	'responseBody.refreshToken',
+	'responseBody.secret',
+	'responseBody.*.password',
+	'responseBody.*.token',
+	'responseBody.*.secret',
 
-  // Query parameters
-  'query.token',
-  'query.api_key',
-  'query.apiKey',
-  'query.access_token',
-  'query.secret',
+	// Query parameters
+	'query.token',
+	'query.api_key',
+	'query.apiKey',
+	'query.access_token',
+	'query.secret',
 
-  // Log context patterns
-  'context.password',
-  'context.token',
-  'context.secret',
-  'context.apiKey',
-  'context.*.password',
-  'context.*.token',
-  'context.*.secret',
+	// Log context patterns
+	'context.password',
+	'context.token',
+	'context.secret',
+	'context.apiKey',
+	'context.*.password',
+	'context.*.token',
+	'context.*.secret',
 ];
 
 /**
@@ -61,8 +61,8 @@ const TELESCOPE_SPECIFIC_PATHS: string[] = [
  * Includes base paths from @geekmidas/logger plus telescope-specific HTTP paths.
  */
 export const DEFAULT_REDACT_PATHS: string[] = [
-  ...BASE_REDACT_PATHS,
-  ...TELESCOPE_SPECIFIC_PATHS,
+	...BASE_REDACT_PATHS,
+	...TELESCOPE_SPECIFIC_PATHS,
 ];
 
 /**
@@ -82,35 +82,35 @@ export type Redactor = <T>(obj: T) => T;
  * // safe.headers.authorization === '[REDACTED]'
  */
 export function createRedactor(
-  options: TelescopeRedactOptions | undefined,
+	options: TelescopeRedactOptions | undefined,
 ): Redactor | undefined {
-  if (options === undefined || options === false) {
-    return undefined;
-  }
+	if (options === undefined || options === false) {
+		return undefined;
+	}
 
-  let paths: string[];
-  let censor: string = '[REDACTED]';
+	let paths: string[];
+	let censor: string = '[REDACTED]';
 
-  if (options === true) {
-    // Use defaults only
-    paths = DEFAULT_REDACT_PATHS;
-  } else if (Array.isArray(options)) {
-    // Merge custom paths with defaults
-    paths = [...DEFAULT_REDACT_PATHS, ...options];
-  } else {
-    // Object configuration
-    paths = [...DEFAULT_REDACT_PATHS, ...options.paths];
-    if (options.censor !== undefined) {
-      censor = options.censor;
-    }
-  }
+	if (options === true) {
+		// Use defaults only
+		paths = DEFAULT_REDACT_PATHS;
+	} else if (Array.isArray(options)) {
+		// Merge custom paths with defaults
+		paths = [...DEFAULT_REDACT_PATHS, ...options];
+	} else {
+		// Object configuration
+		paths = [...DEFAULT_REDACT_PATHS, ...options.paths];
+		if (options.censor !== undefined) {
+			censor = options.censor;
+		}
+	}
 
-  // Create the redactor with serialize: false to return objects
-  const redact = pinoRedact({
-    paths,
-    censor,
-    serialize: false,
-  });
+	// Create the redactor with serialize: false to return objects
+	const redact = pinoRedact({
+		paths,
+		censor,
+		serialize: false,
+	});
 
-  return redact as Redactor;
+	return redact as Redactor;
 }

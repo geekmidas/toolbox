@@ -1,22 +1,22 @@
 {
-  "routes": "./src/endpoints/**/*.ts",
-  "functions": "./src/functions/**/*.ts",
-  "crons": "./src/crons/**/*.ts",
-  "envParser": "./src/env.ts#envParser",
-  "logger": "./src/logger.ts#logger",
-  "providers": {
-    "aws": {
-      "apiGateway": {
-        "v1": false,
-        "v2": true
-      },
-      "lambda": {
-        "functions": true,
-        "crons": true
-      }
-    },
-    "server": {
-      "enableOpenApi": true
-    }
-  }
+	"routes": "./src/endpoints/**/*.ts",
+	"functions": "./src/functions/**/*.ts",
+	"crons": "./src/crons/**/*.ts",
+	"envParser": "./src/env.ts#envParser",
+	"logger": "./src/logger.ts#logger",
+	"providers": {
+		"aws": {
+			"apiGateway": {
+				"v1": false,
+				"v2": true
+			},
+			"lambda": {
+				"functions": true,
+				"crons": true
+			}
+		},
+		"server": {
+			"enableOpenApi": true
+		}
+	}
 }

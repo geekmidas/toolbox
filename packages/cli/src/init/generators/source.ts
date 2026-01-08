@@ -1,15 +1,15 @@
 import type {
-  GeneratedFile,
-  TemplateConfig,
-  TemplateOptions,
+	GeneratedFile,
+	TemplateConfig,
+	TemplateOptions,
 } from '../templates/index.js';
 
 /**
  * Generate source files from template
  */
 export function generateSourceFiles(
-  options: TemplateOptions,
-  template: TemplateConfig,
+	options: TemplateOptions,
+	template: TemplateConfig,
 ): GeneratedFile[] {
-  return template.files(options);
+	return template.files(options);
 }

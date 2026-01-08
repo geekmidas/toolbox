@@ -8,20 +8,20 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
  * @template TPayload - The event payload data
  */
 export type PublishableMessage<TType extends string, TPayload> = {
-  type: TType;
-  payload: TPayload;
+	type: TType;
+	payload: TPayload;
 };
 
 /**
  * Event publisher/subscriber types
  */
 export enum EventPublisherType {
-  Basic = 'basic',
-  EventBridge = 'eventbridge',
-  SQS = 'sqs',
-  SNS = 'sns',
-  Kafka = 'kafka',
-  RabbitMQ = 'rabbitmq',
+	Basic = 'basic',
+	EventBridge = 'eventbridge',
+	SQS = 'sqs',
+	SNS = 'sns',
+	Kafka = 'kafka',
+	RabbitMQ = 'rabbitmq',
 }
 
 /**
@@ -29,10 +29,10 @@ export enum EventPublisherType {
  * Connections manage the underlying transport (RabbitMQ channel, SQS client, etc.)
  */
 export interface EventConnection {
-  readonly type: EventPublisherType;
-  connect(): Promise<void>;
-  close(): Promise<void>;
-  isConnected(): boolean;
+	readonly type: EventPublisherType;
+	connect(): Promise<void>;
+	close(): Promise<void>;
+	isConnected(): boolean;
 }
 
 /**
@@ -42,7 +42,7 @@ export interface EventConnection {
  * @template TMessage - The union type of all publishable messages
  */
 export type EventPublisher<TMessage extends PublishableMessage<string, any>> = {
-  publish: (message: TMessage[]) => Promise<void>;
+	publish: (message: TMessage[]) => Promise<void>;
 };
 
 /**
@@ -51,26 +51,25 @@ export type EventPublisher<TMessage extends PublishableMessage<string, any>> = {
  * @template TMessage - The union type of all publishable messages
  */
 export type EventSubscriber<TMessage extends PublishableMessage<string, any>> =
-  {
-    subscribe: (
-      messages: TMessage['type'][],
-      listener: (payload: TMessage) => Promise<void>,
-    ) => Promise<void>;
-  };
+	{
+		subscribe: (
+			messages: TMessage['type'][],
+			listener: (payload: TMessage) => Promise<void>,
+		) => Promise<void>;
+	};
 /**
  * Utility type to extract the message from EventPublisher
  */
-export type ExtractPublisherMessage<T> = T extends EventPublisher<infer M>
-  ? M
-  : never;
+export type ExtractPublisherMessage<T> =
+	T extends EventPublisher<infer M> ? M : never;
 
 export type MappedEvent<
-  T extends EventPublisher<any> | undefined,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
+	T extends EventPublisher<any> | undefined,
+	OutSchema extends StandardSchemaV1 | undefined = undefined,
 > = {
-  type: ExtractPublisherMessage<T>['type'];
-  payload: (
-    ctx: InferStandardSchema<OutSchema>,
-  ) => ExtractPublisherMessage<T>['payload'];
-  when?: (ctx: InferStandardSchema<OutSchema>) => boolean;
+	type: ExtractPublisherMessage<T>['type'];
+	payload: (
+		ctx: InferStandardSchema<OutSchema>,
+	) => ExtractPublisherMessage<T>['payload'];
+	when?: (ctx: InferStandardSchema<OutSchema>) => boolean;
 };

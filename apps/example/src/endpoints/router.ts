@@ -37,9 +37,9 @@ import { EventsService } from '../services/EventsService';
  * ```
  */
 export const router = e
-  .logger(logger)
-  .services([DatabaseService, AuthService])
-  .database(DatabaseService)
-  .auditor(AuditStorageService)
-  .publisher(EventsService)
-  .authorizer('iam');
+	.logger(logger)
+	.services([DatabaseService, AuthService])
+	.database(DatabaseService)
+	.auditor(AuditStorageService)
+	.publisher(EventsService)
+	.authorizer('iam');

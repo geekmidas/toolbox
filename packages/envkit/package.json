@@ -1,44 +1,44 @@
 {
-  "name": "@geekmidas/envkit",
-  "version": "0.2.0",
-  "private": false,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./sst": {
-      "types": "./dist/sst.d.ts",
-      "import": "./dist/sst.mjs",
-      "require": "./dist/sst.cjs"
-    },
-    "./sniffer": {
-      "types": "./dist/SnifferEnvironmentParser.d.ts",
-      "import": "./dist/SnifferEnvironmentParser.mjs",
-      "require": "./dist/SnifferEnvironmentParser.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "lodash.set": "~4.3.2",
-    "lodash.get": "~4.4.2",
-    "lodash.snakecase": "~4.1.1"
-  },
-  "peerDependencies": {
-    "zod": "~4.1.13"
-  },
-  "devDependencies": {
-    "@types/lodash.set": "~4.3.9",
-    "@types/lodash.get": "~4.4.9",
-    "@types/lodash.snakecase": "~4.1.9"
-  }
+	"name": "@geekmidas/envkit",
+	"version": "0.2.0",
+	"private": false,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./sst": {
+			"types": "./dist/sst.d.ts",
+			"import": "./dist/sst.mjs",
+			"require": "./dist/sst.cjs"
+		},
+		"./sniffer": {
+			"types": "./dist/SnifferEnvironmentParser.d.ts",
+			"import": "./dist/SnifferEnvironmentParser.mjs",
+			"require": "./dist/SnifferEnvironmentParser.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"lodash.set": "~4.3.2",
+		"lodash.get": "~4.4.2",
+		"lodash.snakecase": "~4.1.1"
+	},
+	"peerDependencies": {
+		"zod": "~4.1.13"
+	},
+	"devDependencies": {
+		"@types/lodash.set": "~4.3.9",
+		"@types/lodash.get": "~4.4.9",
+		"@types/lodash.snakecase": "~4.1.9"
+	}
 }

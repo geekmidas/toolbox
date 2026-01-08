@@ -1,100 +1,100 @@
 {
-  "name": "@geekmidas/client",
-  "version": "0.4.0",
-  "private": false,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./fetcher": {
-      "types": "./dist/fetcher.d.ts",
-      "import": "./dist/fetcher.mjs",
-      "require": "./dist/fetcher.cjs"
-    },
-    "./infer": {
-      "types": "./dist/infer.d.ts",
-      "import": "./dist/infer.mjs",
-      "require": "./dist/infer.cjs"
-    },
-    "./react-query": {
-      "types": "./dist/react-query.d.ts",
-      "import": "./dist/react-query.mjs",
-      "require": "./dist/react-query.cjs"
-    },
-    "./openapi": {
-      "types": "./dist/openapi-hooks.d.ts",
-      "import": "./dist/openapi-hooks.mjs",
-      "require": "./dist/openapi-hooks.cjs"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.mjs",
-      "require": "./dist/types.cjs"
-    },
-    "./auth-fetcher": {
-      "types": "./dist/auth-fetcher.d.ts",
-      "import": "./dist/auth-fetcher.mjs",
-      "require": "./dist/auth-fetcher.cjs"
-    },
-    "./endpoint-hooks": {
-      "types": "./dist/endpoint-hooks.d.ts",
-      "import": "./dist/endpoint-hooks.mjs",
-      "require": "./dist/endpoint-hooks.cjs"
-    }
-  },
-  "scripts": {
-    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "@standard-schema/spec": "^1.0.0"
-  },
-  "devDependencies": {
-    "@geekmidas/constructs": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "@tanstack/react-query": "~5.90.16",
-    "@testing-library/jest-dom": "~6.6.3",
-    "@testing-library/dom": "~10.4.0",
-    "@testing-library/react": "~16.3.0",
-    "@testing-library/react-hooks": "~8.0.1",
-    "@types/react": "~19.1.8",
-    "@types/react-dom": "~19.1.6",
-    "jsdom": "~26.1.0",
-    "msw": "~2.10.3"
-  },
-  "peerDependencies": {
-    "@geekmidas/constructs": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "@tanstack/react-query": ">=5.0.0",
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0",
-    "zod": "~4.1.13"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/constructs": {
-      "optional": true
-    },
-    "@geekmidas/schema": {
-      "optional": true
-    },
-    "@tanstack/react-query": {
-      "optional": true
-    },
-    "react": {
-      "optional": true
-    },
-    "react-dom": {
-      "optional": true
-    }
-  }
+	"name": "@geekmidas/client",
+	"version": "0.4.0",
+	"private": false,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./fetcher": {
+			"types": "./dist/fetcher.d.ts",
+			"import": "./dist/fetcher.mjs",
+			"require": "./dist/fetcher.cjs"
+		},
+		"./infer": {
+			"types": "./dist/infer.d.ts",
+			"import": "./dist/infer.mjs",
+			"require": "./dist/infer.cjs"
+		},
+		"./react-query": {
+			"types": "./dist/react-query.d.ts",
+			"import": "./dist/react-query.mjs",
+			"require": "./dist/react-query.cjs"
+		},
+		"./openapi": {
+			"types": "./dist/openapi-hooks.d.ts",
+			"import": "./dist/openapi-hooks.mjs",
+			"require": "./dist/openapi-hooks.cjs"
+		},
+		"./types": {
+			"types": "./dist/types.d.ts",
+			"import": "./dist/types.mjs",
+			"require": "./dist/types.cjs"
+		},
+		"./auth-fetcher": {
+			"types": "./dist/auth-fetcher.d.ts",
+			"import": "./dist/auth-fetcher.mjs",
+			"require": "./dist/auth-fetcher.cjs"
+		},
+		"./endpoint-hooks": {
+			"types": "./dist/endpoint-hooks.d.ts",
+			"import": "./dist/endpoint-hooks.mjs",
+			"require": "./dist/endpoint-hooks.cjs"
+		}
+	},
+	"scripts": {
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"@standard-schema/spec": "^1.0.0"
+	},
+	"devDependencies": {
+		"@geekmidas/constructs": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"@tanstack/react-query": "~5.90.16",
+		"@testing-library/jest-dom": "~6.6.3",
+		"@testing-library/dom": "~10.4.0",
+		"@testing-library/react": "~16.3.0",
+		"@testing-library/react-hooks": "~8.0.1",
+		"@types/react": "~19.1.8",
+		"@types/react-dom": "~19.1.6",
+		"jsdom": "~26.1.0",
+		"msw": "~2.10.3"
+	},
+	"peerDependencies": {
+		"@geekmidas/constructs": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"@tanstack/react-query": ">=5.0.0",
+		"react": ">=18.0.0",
+		"react-dom": ">=18.0.0",
+		"zod": "~4.1.13"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/constructs": {
+			"optional": true
+		},
+		"@geekmidas/schema": {
+			"optional": true
+		},
+		"@tanstack/react-query": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		}
+	}
 }

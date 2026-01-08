@@ -1,189 +1,189 @@
 {
-  "name": "@geekmidas/telescope",
-  "version": "0.2.1",
-  "description": "Laravel Telescope-style debugging and monitoring for web applications",
-  "type": "module",
-  "scripts": {
-    "build:ui": "pnpm --filter @geekmidas/telescope-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./storage/memory": {
-      "types": "./dist/storage/memory.d.ts",
-      "import": "./dist/storage/memory.mjs",
-      "require": "./dist/storage/memory.cjs"
-    },
-    "./storage/kysely": {
-      "types": "./dist/storage/kysely.d.ts",
-      "import": "./dist/storage/kysely.mjs",
-      "require": "./dist/storage/kysely.cjs"
-    },
-    "./server/hono": {
-      "types": "./dist/server/hono.d.ts",
-      "import": "./dist/server/hono.mjs",
-      "require": "./dist/server/hono.cjs"
-    },
-    "./hono": {
-      "types": "./dist/server/hono.d.ts",
-      "import": "./dist/server/hono.mjs",
-      "require": "./dist/server/hono.cjs"
-    },
-    "./logger/pino": {
-      "types": "./dist/logger/pino.d.ts",
-      "import": "./dist/logger/pino.mjs",
-      "require": "./dist/logger/pino.cjs"
-    },
-    "./logger/console": {
-      "types": "./dist/logger/console.d.ts",
-      "import": "./dist/logger/console.mjs",
-      "require": "./dist/logger/console.cjs"
-    },
-    "./metrics": {
-      "types": "./dist/metrics/index.d.ts",
-      "import": "./dist/metrics/index.mjs",
-      "require": "./dist/metrics/index.cjs"
-    },
-    "./otlp": {
-      "types": "./dist/otlp/index.d.ts",
-      "import": "./dist/otlp/index.mjs",
-      "require": "./dist/otlp/index.cjs"
-    },
-    "./otlp/hono": {
-      "types": "./dist/otlp/hono.d.ts",
-      "import": "./dist/otlp/hono.mjs",
-      "require": "./dist/otlp/hono.cjs"
-    },
-    "./instrumentation": {
-      "types": "./dist/instrumentation/index.d.ts",
-      "import": "./dist/instrumentation/index.mjs",
-      "require": "./dist/instrumentation/index.cjs"
-    },
-    "./instrumentation/hono": {
-      "types": "./dist/instrumentation/hono.d.ts",
-      "import": "./dist/instrumentation/hono.mjs",
-      "require": "./dist/instrumentation/hono.cjs"
-    },
-    "./core": {
-      "types": "./dist/core.d.ts",
-      "import": "./dist/core.mjs",
-      "require": "./dist/core.cjs"
-    },
-    "./lambda": {
-      "types": "./dist/adapters/lambda.d.ts",
-      "import": "./dist/adapters/lambda.mjs",
-      "require": "./dist/adapters/lambda.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "@pinojs/redact": "^0.4.0",
-    "nanoid": "~5.1.5"
-  },
-  "peerDependencies": {
-    "@geekmidas/logger": "workspace:^",
-    "@middy/core": "^5.0.0 || ^6.0.0",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
-    "@opentelemetry/instrumentation-pino": "^0.44.0",
-    "@opentelemetry/resources": "^1.30.0",
-    "@opentelemetry/sdk-logs": "^0.57.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
-    "@opentelemetry/sdk-trace-base": "^1.30.0",
-    "@opentelemetry/sdk-trace-node": "^1.30.0",
-    "@opentelemetry/semantic-conventions": "^1.28.0",
-    "@types/aws-lambda": "^8.10.0",
-    "hono": "^4.0.0",
-    "kysely": "^0.28.0",
-    "pino": "^9.0.0",
-    "pino-abstract-transport": "^2.0.0 || ^3.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/logger": {
-      "optional": true
-    },
-    "@middy/core": {
-      "optional": true
-    },
-    "@opentelemetry/api": {
-      "optional": true
-    },
-    "@opentelemetry/auto-instrumentations-node": {
-      "optional": true
-    },
-    "@opentelemetry/exporter-logs-otlp-http": {
-      "optional": true
-    },
-    "@opentelemetry/exporter-trace-otlp-http": {
-      "optional": true
-    },
-    "@opentelemetry/instrumentation-pino": {
-      "optional": true
-    },
-    "@opentelemetry/resources": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-logs": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-node": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-trace-base": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-trace-node": {
-      "optional": true
-    },
-    "@types/aws-lambda": {
-      "optional": true
-    },
-    "@opentelemetry/semantic-conventions": {
-      "optional": true
-    },
-    "hono": {
-      "optional": true
-    },
-    "kysely": {
-      "optional": true
-    },
-    "pino": {
-      "optional": true
-    },
-    "pino-abstract-transport": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@geekmidas/logger": "workspace:^",
-    "@middy/core": "^6.0.0",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
-    "@opentelemetry/instrumentation-pino": "^0.44.0",
-    "@opentelemetry/resources": "^1.30.0",
-    "@opentelemetry/sdk-logs": "^0.57.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
-    "@opentelemetry/sdk-trace-base": "^1.30.0",
-    "@opentelemetry/sdk-trace-node": "^1.30.0",
-    "@opentelemetry/semantic-conventions": "^1.28.0",
-    "@types/aws-lambda": "^8.10.149",
-    "hono": "^4.7.0",
-    "kysely": "~0.28.2",
-    "pino": "^9.6.0",
-    "pino-abstract-transport": "~3.0.0"
-  }
+	"name": "@geekmidas/telescope",
+	"version": "0.2.1",
+	"description": "Laravel Telescope-style debugging and monitoring for web applications",
+	"type": "module",
+	"scripts": {
+		"build:ui": "pnpm --filter @geekmidas/telescope-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./storage/memory": {
+			"types": "./dist/storage/memory.d.ts",
+			"import": "./dist/storage/memory.mjs",
+			"require": "./dist/storage/memory.cjs"
+		},
+		"./storage/kysely": {
+			"types": "./dist/storage/kysely.d.ts",
+			"import": "./dist/storage/kysely.mjs",
+			"require": "./dist/storage/kysely.cjs"
+		},
+		"./server/hono": {
+			"types": "./dist/server/hono.d.ts",
+			"import": "./dist/server/hono.mjs",
+			"require": "./dist/server/hono.cjs"
+		},
+		"./hono": {
+			"types": "./dist/server/hono.d.ts",
+			"import": "./dist/server/hono.mjs",
+			"require": "./dist/server/hono.cjs"
+		},
+		"./logger/pino": {
+			"types": "./dist/logger/pino.d.ts",
+			"import": "./dist/logger/pino.mjs",
+			"require": "./dist/logger/pino.cjs"
+		},
+		"./logger/console": {
+			"types": "./dist/logger/console.d.ts",
+			"import": "./dist/logger/console.mjs",
+			"require": "./dist/logger/console.cjs"
+		},
+		"./metrics": {
+			"types": "./dist/metrics/index.d.ts",
+			"import": "./dist/metrics/index.mjs",
+			"require": "./dist/metrics/index.cjs"
+		},
+		"./otlp": {
+			"types": "./dist/otlp/index.d.ts",
+			"import": "./dist/otlp/index.mjs",
+			"require": "./dist/otlp/index.cjs"
+		},
+		"./otlp/hono": {
+			"types": "./dist/otlp/hono.d.ts",
+			"import": "./dist/otlp/hono.mjs",
+			"require": "./dist/otlp/hono.cjs"
+		},
+		"./instrumentation": {
+			"types": "./dist/instrumentation/index.d.ts",
+			"import": "./dist/instrumentation/index.mjs",
+			"require": "./dist/instrumentation/index.cjs"
+		},
+		"./instrumentation/hono": {
+			"types": "./dist/instrumentation/hono.d.ts",
+			"import": "./dist/instrumentation/hono.mjs",
+			"require": "./dist/instrumentation/hono.cjs"
+		},
+		"./core": {
+			"types": "./dist/core.d.ts",
+			"import": "./dist/core.mjs",
+			"require": "./dist/core.cjs"
+		},
+		"./lambda": {
+			"types": "./dist/adapters/lambda.d.ts",
+			"import": "./dist/adapters/lambda.mjs",
+			"require": "./dist/adapters/lambda.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"@pinojs/redact": "^0.4.0",
+		"nanoid": "~5.1.5"
+	},
+	"peerDependencies": {
+		"@geekmidas/logger": "workspace:^",
+		"@middy/core": "^5.0.0 || ^6.0.0",
+		"@opentelemetry/api": "^1.9.0",
+		"@opentelemetry/auto-instrumentations-node": "^0.56.0",
+		"@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+		"@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+		"@opentelemetry/instrumentation-pino": "^0.44.0",
+		"@opentelemetry/resources": "^1.30.0",
+		"@opentelemetry/sdk-logs": "^0.57.0",
+		"@opentelemetry/sdk-node": "^0.57.0",
+		"@opentelemetry/sdk-trace-base": "^1.30.0",
+		"@opentelemetry/sdk-trace-node": "^1.30.0",
+		"@opentelemetry/semantic-conventions": "^1.28.0",
+		"@types/aws-lambda": "^8.10.0",
+		"hono": "^4.0.0",
+		"kysely": "^0.28.0",
+		"pino": "^9.0.0",
+		"pino-abstract-transport": "^2.0.0 || ^3.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/logger": {
+			"optional": true
+		},
+		"@middy/core": {
+			"optional": true
+		},
+		"@opentelemetry/api": {
+			"optional": true
+		},
+		"@opentelemetry/auto-instrumentations-node": {
+			"optional": true
+		},
+		"@opentelemetry/exporter-logs-otlp-http": {
+			"optional": true
+		},
+		"@opentelemetry/exporter-trace-otlp-http": {
+			"optional": true
+		},
+		"@opentelemetry/instrumentation-pino": {
+			"optional": true
+		},
+		"@opentelemetry/resources": {
+			"optional": true
+		},
+		"@opentelemetry/sdk-logs": {
+			"optional": true
+		},
+		"@opentelemetry/sdk-node": {
+			"optional": true
+		},
+		"@opentelemetry/sdk-trace-base": {
+			"optional": true
+		},
+		"@opentelemetry/sdk-trace-node": {
+			"optional": true
+		},
+		"@types/aws-lambda": {
+			"optional": true
+		},
+		"@opentelemetry/semantic-conventions": {
+			"optional": true
+		},
+		"hono": {
+			"optional": true
+		},
+		"kysely": {
+			"optional": true
+		},
+		"pino": {
+			"optional": true
+		},
+		"pino-abstract-transport": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@geekmidas/logger": "workspace:^",
+		"@middy/core": "^6.0.0",
+		"@opentelemetry/api": "^1.9.0",
+		"@opentelemetry/auto-instrumentations-node": "^0.56.0",
+		"@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+		"@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+		"@opentelemetry/instrumentation-pino": "^0.44.0",
+		"@opentelemetry/resources": "^1.30.0",
+		"@opentelemetry/sdk-logs": "^0.57.0",
+		"@opentelemetry/sdk-node": "^0.57.0",
+		"@opentelemetry/sdk-trace-base": "^1.30.0",
+		"@opentelemetry/sdk-trace-node": "^1.30.0",
+		"@opentelemetry/semantic-conventions": "^1.28.0",
+		"@types/aws-lambda": "^8.10.149",
+		"hono": "^4.7.0",
+		"kysely": "~0.28.2",
+		"pino": "^9.6.0",
+		"pino-abstract-transport": "~3.0.0"
+	}
 }

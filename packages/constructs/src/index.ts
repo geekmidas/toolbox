@@ -5,14 +5,14 @@ export type { Service, ServiceRecord } from '@geekmidas/services';
 export { Construct, ConstructType } from './Construct';
 // Telemetry interface
 export type {
-  Telemetry,
-  TelemetryContext,
-  TelemetryRequest,
-  TelemetryResponse,
+	Telemetry,
+	TelemetryContext,
+	TelemetryRequest,
+	TelemetryResponse,
 } from './telemetry';
 // Types
 export type {
-  HttpMethod,
-  LowerHttpMethod,
-  RemoveUndefined,
+	HttpMethod,
+	LowerHttpMethod,
+	RemoveUndefined,
 } from './types';

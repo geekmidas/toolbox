@@ -1,62 +1,62 @@
 {
-  "name": "@geekmidas/audit",
-  "version": "0.1.0",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./kysely": {
-      "types": "./dist/kysely.d.ts",
-      "import": "./dist/kysely.mjs",
-      "require": "./dist/kysely.cjs"
-    },
-    "./memory": {
-      "types": "./dist/memory.d.ts",
-      "import": "./dist/memory.mjs",
-      "require": "./dist/memory.cjs"
-    },
-    "./cache": {
-      "types": "./dist/cache.d.ts",
-      "import": "./dist/cache.mjs",
-      "require": "./dist/cache.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "@standard-schema/spec": "~1.0.0",
-    "nanoid": "~5.1.5"
-  },
-  "peerDependencies": {
-    "@geekmidas/cache": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "kysely": "^0.28.0"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/cache": {
-      "optional": true
-    },
-    "@geekmidas/schema": {
-      "optional": true
-    },
-    "kysely": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@geekmidas/cache": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "kysely": "~0.28.2",
-    "pg": "~8.16.0",
-    "@types/pg": "~8.15.6"
-  }
+	"name": "@geekmidas/audit",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./kysely": {
+			"types": "./dist/kysely.d.ts",
+			"import": "./dist/kysely.mjs",
+			"require": "./dist/kysely.cjs"
+		},
+		"./memory": {
+			"types": "./dist/memory.d.ts",
+			"import": "./dist/memory.mjs",
+			"require": "./dist/memory.cjs"
+		},
+		"./cache": {
+			"types": "./dist/cache.d.ts",
+			"import": "./dist/cache.mjs",
+			"require": "./dist/cache.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"@standard-schema/spec": "~1.0.0",
+		"nanoid": "~5.1.5"
+	},
+	"peerDependencies": {
+		"@geekmidas/cache": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"kysely": "^0.28.0"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/cache": {
+			"optional": true
+		},
+		"@geekmidas/schema": {
+			"optional": true
+		},
+		"kysely": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@geekmidas/cache": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"kysely": "~0.28.2",
+		"pg": "~8.16.0",
+		"@types/pg": "~8.15.6"
+	}
 }

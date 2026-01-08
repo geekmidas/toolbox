@@ -12,21 +12,21 @@ import { telescope } from './telescope.js';
  * View logs at /telescope in your browser.
  */
 const logger = pino(
-  {
-    level: 'debug',
-    formatters: {
-      bindings() {
-        return { nodeVersion: process.version };
-      },
-      level: (label) => {
-        return { level: label.toUpperCase() };
-      },
-    },
-  },
-  pino.multistream([
-    { stream: process.stdout },
-    { stream: createPinoTransport({ telescope }) },
-  ]),
+	{
+		level: 'debug',
+		formatters: {
+			bindings() {
+				return { nodeVersion: process.version };
+			},
+			level: (label) => {
+				return { level: label.toUpperCase() };
+			},
+		},
+	},
+	pino.multistream([
+		{ stream: process.stdout },
+		{ stream: createPinoTransport({ telescope }) },
+	]),
 );
 
 export default logger;

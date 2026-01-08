@@ -2,32 +2,32 @@
 
 // Re-export types from EnvironmentBuilder
 export type {
-  EnvironmentBuilderOptions,
-  EnvRecord,
-  EnvValue,
+	EnvironmentBuilderOptions,
+	EnvRecord,
+	EnvValue,
 } from './EnvironmentBuilder';
 
 // Re-export environmentCase from EnvironmentBuilder
 export { environmentCase } from './EnvironmentBuilder';
 export {
-  type ApiGatewayV2,
-  type Bucket,
-  type Function,
-  type Postgres,
-  type ResourceProcessor,
-  ResourceType,
-  type Secret,
-  type SnsTopic,
-  SstEnvironmentBuilder,
-  type SstResource,
-  sstResolvers,
-  type Vpc,
+	type ApiGatewayV2,
+	type Bucket,
+	type Function,
+	type Postgres,
+	type ResourceProcessor,
+	ResourceType,
+	type Secret,
+	type SnsTopic,
+	SstEnvironmentBuilder,
+	type SstResource,
+	sstResolvers,
+	type Vpc,
 } from './SstEnvironmentBuilder';
 
 // Import for deprecated function
 import {
-  SstEnvironmentBuilder,
-  type SstResource,
+	SstEnvironmentBuilder,
+	type SstResource,
 } from './SstEnvironmentBuilder';
 
 /**
@@ -47,9 +47,9 @@ import {
  * new SstEnvironmentBuilder({ database: postgresResource }).build()
  */
 export function normalizeResourceEnv(
-  record: Record<string, SstResource | string>,
+	record: Record<string, SstResource | string>,
 ): Record<string, string | number | boolean | Record<string, unknown>> {
-  return new SstEnvironmentBuilder(record).build();
+	return new SstEnvironmentBuilder(record).build();
 }
 
 // Keep Resource type as deprecated alias for backwards compatibility

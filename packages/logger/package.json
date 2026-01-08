@@ -1,43 +1,43 @@
 {
-  "name": "@geekmidas/logger",
-  "version": "0.3.0",
-  "description": "A simple and flexible logging library for Node.js and the browser",
-  "private": false,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./pino": {
-      "types": "./dist/pino.d.ts",
-      "import": "./dist/pino.mjs",
-      "require": "./dist/pino.cjs"
-    },
-    "./console": {
-      "types": "./dist/console.d.ts",
-      "import": "./dist/console.mjs",
-      "require": "./dist/console.cjs"
-    },
-    "./redact": {
-      "types": "./dist/redact-paths.d.ts",
-      "import": "./dist/redact-paths.mjs",
-      "require": "./dist/redact-paths.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {},
-  "devDependencies": {},
-  "peerDependencies": {
-    "pino-pretty": "~13.1.2",
-    "pino": "~10.0.0"
-  }
+	"name": "@geekmidas/logger",
+	"version": "0.3.0",
+	"description": "A simple and flexible logging library for Node.js and the browser",
+	"private": false,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./pino": {
+			"types": "./dist/pino.d.ts",
+			"import": "./dist/pino.mjs",
+			"require": "./dist/pino.cjs"
+		},
+		"./console": {
+			"types": "./dist/console.d.ts",
+			"import": "./dist/console.mjs",
+			"require": "./dist/console.cjs"
+		},
+		"./redact": {
+			"types": "./dist/redact-paths.d.ts",
+			"import": "./dist/redact-paths.mjs",
+			"require": "./dist/redact-paths.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {},
+	"devDependencies": {},
+	"peerDependencies": {
+		"pino-pretty": "~13.1.2",
+		"pino": "~10.0.0"
+	}
 }

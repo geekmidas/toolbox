@@ -1,20 +1,20 @@
 export interface ComposeOptions {
-  imageName: string;
-  registry: string;
-  port: number;
-  healthCheckPath: string;
-  services: ('postgres' | 'redis' | 'rabbitmq')[];
+	imageName: string;
+	registry: string;
+	port: number;
+	healthCheckPath: string;
+	services: ('postgres' | 'redis' | 'rabbitmq')[];
 }
 
 /**
  * Generate docker-compose.yml for production deployment
  */
 export function generateDockerCompose(options: ComposeOptions): string {
-  const { imageName, registry, port, healthCheckPath, services } = options;
+	const { imageName, registry, port, healthCheckPath, services } = options;
 
-  const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
+	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
-  let yaml = `version: '3.8'
+	let yaml = `version: '3.8'
 
 services:
   api:
@@ -30,47 +30,47 @@ services:
       - NODE_ENV=production
 `;
 
-  // Add environment variables based on services
-  if (services.includes('postgres')) {
-    yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}
+	// Add environment variables based on services
+	if (services.includes('postgres')) {
+		yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}
 `;
-  }
+	}
 
-  if (services.includes('redis')) {
-    yaml += `      - REDIS_URL=\${REDIS_URL:-redis://redis:6379}
+	if (services.includes('redis')) {
+		yaml += `      - REDIS_URL=\${REDIS_URL:-redis://redis:6379}
 `;
-  }
+	}
 
-  if (services.includes('rabbitmq')) {
-    yaml += `      - RABBITMQ_URL=\${RABBITMQ_URL:-amqp://rabbitmq:5672}
+	if (services.includes('rabbitmq')) {
+		yaml += `      - RABBITMQ_URL=\${RABBITMQ_URL:-amqp://rabbitmq:5672}
 `;
-  }
+	}
 
-  yaml += `    healthcheck:
+	yaml += `    healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${port}${healthCheckPath}"]
       interval: 30s
       timeout: 3s
       retries: 3
 `;
 
-  // Add depends_on if there are services
-  if (services.length > 0) {
-    yaml += `    depends_on:
+	// Add depends_on if there are services
+	if (services.length > 0) {
+		yaml += `    depends_on:
 `;
-    for (const service of services) {
-      yaml += `      ${service}:
+		for (const service of services) {
+			yaml += `      ${service}:
         condition: service_healthy
 `;
-    }
-  }
+		}
+	}
 
-  yaml += `    networks:
+	yaml += `    networks:
       - app-network
 `;
 
-  // Add service definitions
-  if (services.includes('postgres')) {
-    yaml += `
+	// Add service definitions
+	if (services.includes('postgres')) {
+		yaml += `
   postgres:
     image: postgres:16-alpine
     container_name: postgres
@@ -89,10 +89,10 @@ services:
     networks:
       - app-network
 `;
-  }
+	}
 
-  if (services.includes('redis')) {
-    yaml += `
+	if (services.includes('redis')) {
+		yaml += `
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -107,10 +107,10 @@ services:
     networks:
       - app-network
 `;
-  }
+	}
 
-  if (services.includes('rabbitmq')) {
-    yaml += `
+	if (services.includes('rabbitmq')) {
+		yaml += `
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
@@ -130,49 +130,49 @@ services:
     networks:
       - app-network
 `;
-  }
+	}
 
-  // Add volumes
-  yaml += `
+	// Add volumes
+	yaml += `
 volumes:
 `;
 
-  if (services.includes('postgres')) {
-    yaml += `  postgres_data:
+	if (services.includes('postgres')) {
+		yaml += `  postgres_data:
 `;
-  }
+	}
 
-  if (services.includes('redis')) {
-    yaml += `  redis_data:
+	if (services.includes('redis')) {
+		yaml += `  redis_data:
 `;
-  }
+	}
 
-  if (services.includes('rabbitmq')) {
-    yaml += `  rabbitmq_data:
+	if (services.includes('rabbitmq')) {
+		yaml += `  rabbitmq_data:
 `;
-  }
+	}
 
-  // Add networks
-  yaml += `
+	// Add networks
+	yaml += `
 networks:
   app-network:
     driver: bridge
 `;
 
-  return yaml;
+	return yaml;
 }
 
 /**
  * Generate a minimal docker-compose.yml for API only
  */
 export function generateMinimalDockerCompose(
-  options: Omit<ComposeOptions, 'services'>,
+	options: Omit<ComposeOptions, 'services'>,
 ): string {
-  const { imageName, registry, port, healthCheckPath } = options;
+	const { imageName, registry, port, healthCheckPath } = options;
 
-  const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
+	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
-  return `version: '3.8'
+	return `version: '3.8'
 
 services:
   api:

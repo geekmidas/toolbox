@@ -11,8 +11,8 @@ import { InMemoryStorage, Telescope } from '@geekmidas/telescope';
  * Access the dashboard at /telescope in your browser.
  */
 export const telescope = new Telescope({
-  storage: new InMemoryStorage({ maxEntries: 1000 }),
-  enabled: true,
-  recordBody: true,
-  ignorePatterns: ['/telescope', '/health'],
+	storage: new InMemoryStorage({ maxEntries: 1000 }),
+	enabled: true,
+	recordBody: true,
+	ignorePatterns: ['/telescope', '/health'],
 });

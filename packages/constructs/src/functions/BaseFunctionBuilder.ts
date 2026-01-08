@@ -3,8 +3,8 @@ import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type {
-  ComposableStandardSchema,
-  InferComposableStandardSchema,
+	ComposableStandardSchema,
+	InferComposableStandardSchema,
 } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -14,188 +14,188 @@ import { ConstructType } from '../Construct';
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export abstract class BaseFunctionBuilder<
-  TInput extends ComposableStandardSchema,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TServices extends Service[] = [],
-  TLogger extends Logger = Logger,
-  TEventPublisher extends EventPublisher<any> | undefined = undefined,
-  TEventPublisherServiceName extends string = string,
-  TAuditStorage extends AuditStorage | undefined = undefined,
-  TAuditStorageServiceName extends string = string,
-  TDatabase = undefined,
-  TDatabaseServiceName extends string = string,
+	TInput extends ComposableStandardSchema,
+	OutSchema extends StandardSchemaV1 | undefined = undefined,
+	TServices extends Service[] = [],
+	TLogger extends Logger = Logger,
+	TEventPublisher extends EventPublisher<any> | undefined = undefined,
+	TEventPublisherServiceName extends string = string,
+	TAuditStorage extends AuditStorage | undefined = undefined,
+	TAuditStorageServiceName extends string = string,
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
-  protected inputSchema?: TInput;
-  protected outputSchema?: OutSchema;
-  protected _timeout?: number;
+	protected inputSchema?: TInput;
+	protected outputSchema?: OutSchema;
+	protected _timeout?: number;
 
-  public _services: TServices = [] as Service[] as TServices;
-  public _logger: TLogger = DEFAULT_LOGGER;
+	public _services: TServices = [] as Service[] as TServices;
+	public _logger: TLogger = DEFAULT_LOGGER;
 
-  protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
-  protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
-  protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
-  protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
+	protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
+	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
+	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
+	protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
-  static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
-    const schema = (s as StandardSchemaV1)['~standard'];
+	static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
+		const schema = (s as StandardSchemaV1)['~standard'];
 
-    return schema && typeof schema.validate === 'function';
-  }
+		return schema && typeof schema.validate === 'function';
+	}
 
-  static async parseComposableStandardSchema<
-    T extends ComposableStandardSchema | undefined,
-  >(data: unknown, schema: T): Promise<InferComposableStandardSchema<T>> {
-    if (BaseFunctionBuilder.isStandardSchemaV1(schema)) {
-      const validated = await schema['~standard'].validate(data);
+	static async parseComposableStandardSchema<
+		T extends ComposableStandardSchema | undefined,
+	>(data: unknown, schema: T): Promise<InferComposableStandardSchema<T>> {
+		if (BaseFunctionBuilder.isStandardSchemaV1(schema)) {
+			const validated = await schema['~standard'].validate(data);
 
-      if (validated.issues) {
-        throw validated.issues;
-      }
+			if (validated.issues) {
+				throw validated.issues;
+			}
 
-      return validated.value as InferComposableStandardSchema<T>;
-    }
+			return validated.value as InferComposableStandardSchema<T>;
+		}
 
-    const result: any = {};
-    for (const key in schema) {
-      const item = schema[key];
-      if (BaseFunctionBuilder.isStandardSchemaV1(item)) {
-        const value = get(data, key);
-        const validated = await item['~standard'].validate(value);
+		const result: any = {};
+		for (const key in schema) {
+			const item = schema[key];
+			if (BaseFunctionBuilder.isStandardSchemaV1(item)) {
+				const value = get(data, key);
+				const validated = await item['~standard'].validate(value);
 
-        if (validated.issues) {
-          throw validated.issues;
-        }
+				if (validated.issues) {
+					throw validated.issues;
+				}
 
-        result[key] = validated.value;
-      }
-    }
+				result[key] = validated.value;
+			}
+		}
 
-    return result as InferComposableStandardSchema<T>;
-  }
+		return result as InferComposableStandardSchema<T>;
+	}
 
-  constructor(public type = ConstructType.Function) {}
+	constructor(public type = ConstructType.Function) {}
 
-  abstract services<T extends Service[]>(services: T): any;
+	abstract services<T extends Service[]>(services: T): any;
 
-  abstract logger<T extends Logger>(logger: T): any;
+	abstract logger<T extends Logger>(logger: T): any;
 
-  timeout(timeout: number): this {
-    this._timeout = timeout;
-    return this;
-  }
+	timeout(timeout: number): this {
+		this._timeout = timeout;
+		return this;
+	}
 
-  abstract output<T extends StandardSchemaV1>(schema: T): any;
+	abstract output<T extends StandardSchemaV1>(schema: T): any;
 
-  abstract input<T extends ComposableStandardSchema>(schema: T): any;
+	abstract input<T extends ComposableStandardSchema>(schema: T): any;
 
-  event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
-    event: TEvent,
-  ): this {
-    this._events.push(event);
-    return this;
-  }
+	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
+		event: TEvent,
+	): this {
+		this._events.push(event);
+		return this;
+	}
 
-  publisher<T extends EventPublisher<any>, TName extends string>(
-    publisher: Service<TName, T>,
-  ): BaseFunctionBuilder<
-    TInput,
-    OutSchema,
-    TServices,
-    TLogger,
-    T,
-    TName,
-    TAuditStorage,
-    TAuditStorageServiceName,
-    TDatabase,
-    TDatabaseServiceName
-  > {
-    this._publisher = publisher as unknown as Service<
-      TEventPublisherServiceName,
-      TEventPublisher
-    >;
+	publisher<T extends EventPublisher<any>, TName extends string>(
+		publisher: Service<TName, T>,
+	): BaseFunctionBuilder<
+		TInput,
+		OutSchema,
+		TServices,
+		TLogger,
+		T,
+		TName,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		this._publisher = publisher as unknown as Service<
+			TEventPublisherServiceName,
+			TEventPublisher
+		>;
 
-    return this as unknown as BaseFunctionBuilder<
-      TInput,
-      OutSchema,
-      TServices,
-      TLogger,
-      T,
-      TName,
-      TAuditStorage,
-      TAuditStorageServiceName,
-      TDatabase,
-      TDatabaseServiceName
-    >;
-  }
+		return this as unknown as BaseFunctionBuilder<
+			TInput,
+			OutSchema,
+			TServices,
+			TLogger,
+			T,
+			TName,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			TDatabase,
+			TDatabaseServiceName
+		>;
+	}
 
-  auditor<T extends AuditStorage, TName extends string>(
-    storage: Service<TName, T>,
-  ): BaseFunctionBuilder<
-    TInput,
-    OutSchema,
-    TServices,
-    TLogger,
-    TEventPublisher,
-    TEventPublisherServiceName,
-    T,
-    TName,
-    TDatabase,
-    TDatabaseServiceName
-  > {
-    this._auditorStorage = storage as unknown as Service<
-      TAuditStorageServiceName,
-      TAuditStorage
-    >;
+	auditor<T extends AuditStorage, TName extends string>(
+		storage: Service<TName, T>,
+	): BaseFunctionBuilder<
+		TInput,
+		OutSchema,
+		TServices,
+		TLogger,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		T,
+		TName,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		this._auditorStorage = storage as unknown as Service<
+			TAuditStorageServiceName,
+			TAuditStorage
+		>;
 
-    return this as unknown as BaseFunctionBuilder<
-      TInput,
-      OutSchema,
-      TServices,
-      TLogger,
-      TEventPublisher,
-      TEventPublisherServiceName,
-      T,
-      TName,
-      TDatabase,
-      TDatabaseServiceName
-    >;
-  }
+		return this as unknown as BaseFunctionBuilder<
+			TInput,
+			OutSchema,
+			TServices,
+			TLogger,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			T,
+			TName,
+			TDatabase,
+			TDatabaseServiceName
+		>;
+	}
 
-  /**
-   * Set the database service for this function.
-   * The database will be available in the handler context as `db`.
-   */
-  database<T, TName extends string>(
-    service: Service<TName, T>,
-  ): BaseFunctionBuilder<
-    TInput,
-    OutSchema,
-    TServices,
-    TLogger,
-    TEventPublisher,
-    TEventPublisherServiceName,
-    TAuditStorage,
-    TAuditStorageServiceName,
-    T,
-    TName
-  > {
-    this._databaseService = service as unknown as Service<
-      TDatabaseServiceName,
-      TDatabase
-    >;
+	/**
+	 * Set the database service for this function.
+	 * The database will be available in the handler context as `db`.
+	 */
+	database<T, TName extends string>(
+		service: Service<TName, T>,
+	): BaseFunctionBuilder<
+		TInput,
+		OutSchema,
+		TServices,
+		TLogger,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		T,
+		TName
+	> {
+		this._databaseService = service as unknown as Service<
+			TDatabaseServiceName,
+			TDatabase
+		>;
 
-    return this as unknown as BaseFunctionBuilder<
-      TInput,
-      OutSchema,
-      TServices,
-      TLogger,
-      TEventPublisher,
-      TEventPublisherServiceName,
-      TAuditStorage,
-      TAuditStorageServiceName,
-      T,
-      TName
-    >;
-  }
+		return this as unknown as BaseFunctionBuilder<
+			TInput,
+			OutSchema,
+			TServices,
+			TLogger,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			T,
+			TName
+		>;
+	}
 }

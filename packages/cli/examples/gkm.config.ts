@@ -1,14 +1,14 @@
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
-  // Glob pattern to find endpoint files
-  routes: 'src/routes/**/*.ts',
+	// Glob pattern to find endpoint files
+	routes: 'src/routes/**/*.ts',
 
-  // Environment parser configuration
-  // Format: path#exportName (if no #exportName, treats as default import)
-  envParser: './src/env.ts#envParser',
+	// Environment parser configuration
+	// Format: path#exportName (if no #exportName, treats as default import)
+	envParser: './src/env.ts#envParser',
 
-  // Logger configuration
-  // Format: path#exportName (if no #exportName, treats as default import)
-  logger: './src/logger.ts#logger',
+	// Logger configuration
+	// Format: path#exportName (if no #exportName, treats as default import)
+	logger: './src/logger.ts#logger',
 });

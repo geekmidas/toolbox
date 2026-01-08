@@ -1,6 +1,6 @@
 import type {
-  Endpoint,
-  EndpointSchemas,
+	Endpoint,
+	EndpointSchemas,
 } from '@geekmidas/constructs/endpoints';
 import type { HttpMethod } from '@geekmidas/constructs/types';
 import type { InferStandardSchema } from '@geekmidas/schema';
@@ -11,9 +11,9 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
  * @example '/users/{id}/posts/{postId}' -> { id: string, postId: string }
  */
 type InferPathParams<TRoute extends string> =
-  TRoute extends `${string}{${infer Param}}${infer Rest}`
-    ? { [K in Param]: string } & InferPathParams<Rest>
-    : {};
+	TRoute extends `${string}{${infer Param}}${infer Rest}`
+		? { [K in Param]: string } & InferPathParams<Rest>
+		: {};
 
 /**
  * Converts an HTTP method to lowercase for TypedFetcher compatibility
@@ -24,50 +24,50 @@ type LowercaseMethod<T extends HttpMethod> = Lowercase<T>;
  * Infers route-level parameters (path params)
  */
 type InferRouteParameters<TRoute extends string> =
-  InferPathParams<TRoute> extends Record<string, never>
-    ? {}
-    : {
-        parameters: {
-          path: InferPathParams<TRoute>;
-        };
-      };
+	InferPathParams<TRoute> extends Record<string, never>
+		? {}
+		: {
+				parameters: {
+					path: InferPathParams<TRoute>;
+				};
+			};
 
 /**
  * Infers operation-level parameters (query params)
  */
 type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
-  query: infer Q;
+	query: infer Q;
 }
-  ? {
-      parameters: {
-        query: InferStandardSchema<Q>;
-      };
-    }
-  : {};
+	? {
+			parameters: {
+				query: InferStandardSchema<Q>;
+			};
+		}
+	: {};
 
 /**
  * Infers the operation object compatible with TypedFetcher
  */
 type InferOperation<
-  TInput extends EndpointSchemas,
-  TOutput extends StandardSchemaV1 | undefined,
+	TInput extends EndpointSchemas,
+	TOutput extends StandardSchemaV1 | undefined,
 > = InferOperationParameters<TInput> & {
-  requestBody?: TInput extends { body: infer B }
-    ? {
-        content: {
-          'application/json': InferStandardSchema<B>;
-        };
-      }
-    : never;
-  responses: {
-    200: {
-      content: TOutput extends StandardSchemaV1
-        ? {
-            'application/json': InferStandardSchema<TOutput>;
-          }
-        : never;
-    };
-  };
+	requestBody?: TInput extends { body: infer B }
+		? {
+				content: {
+					'application/json': InferStandardSchema<B>;
+				};
+			}
+		: never;
+	responses: {
+		200: {
+			content: TOutput extends StandardSchemaV1
+				? {
+						'application/json': InferStandardSchema<TOutput>;
+					}
+				: never;
+		};
+	};
 };
 
 /**
@@ -94,23 +94,24 @@ type InferOperation<
  * const user = await client('GET /users/{id}', { params: { id: '123' } });
  * ```
  */
-export type InferOpenApiFromEndpoint<T> = T extends Endpoint<
-  infer TRoute,
-  infer TMethod,
-  infer TInput,
-  infer TOutput,
-  any,
-  any,
-  any
->
-  ? {
-      paths: {
-        [K in TRoute]: InferRouteParameters<TRoute> & {
-          [M in LowercaseMethod<TMethod>]: InferOperation<TInput, TOutput>;
-        };
-      };
-    }
-  : never;
+export type InferOpenApiFromEndpoint<T> =
+	T extends Endpoint<
+		infer TRoute,
+		infer TMethod,
+		infer TInput,
+		infer TOutput,
+		any,
+		any,
+		any
+	>
+		? {
+				paths: {
+					[K in TRoute]: InferRouteParameters<TRoute> & {
+						[M in LowercaseMethod<TMethod>]: InferOperation<TInput, TOutput>;
+					};
+				};
+			}
+		: never;
 
 /**
  * Infers TypedFetcher-compatible paths structure from multiple endpoints
@@ -150,12 +151,12 @@ export type InferOpenApiFromEndpoint<T> = T extends Endpoint<
  * ```
  */
 export type InferOpenApi<TEndpoints extends readonly any[]> =
-  TEndpoints extends readonly [infer First, ...infer Rest]
-    ? InferOpenApiFromEndpoint<First> extends { paths: infer P1 }
-      ? Rest extends []
-        ? { paths: P1 }
-        : InferOpenApi<Rest> extends { paths: infer P2 }
-          ? { paths: P1 & P2 }
-          : { paths: P1 }
-      : InferOpenApi<Rest>
-    : { paths: {} };
+	TEndpoints extends readonly [infer First, ...infer Rest]
+		? InferOpenApiFromEndpoint<First> extends { paths: infer P1 }
+			? Rest extends []
+				? { paths: P1 }
+				: InferOpenApi<Rest> extends { paths: infer P2 }
+					? { paths: P1 & P2 }
+					: { paths: P1 }
+			: InferOpenApi<Rest>
+		: { paths: {} };

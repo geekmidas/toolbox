@@ -14,281 +14,281 @@ import type { LegacyProvider, MainProvider } from './types';
 const program = new Command();
 
 program
-  .name('gkm')
-  .description('GeekMidas backend framework CLI')
-  .version(pkg.version)
-  .option('--cwd <path>', 'Change working directory');
+	.name('gkm')
+	.description('GeekMidas backend framework CLI')
+	.version(pkg.version)
+	.option('--cwd <path>', 'Change working directory');
 
 program
-  .command('init')
-  .description('Scaffold a new project')
-  .argument('[name]', 'Project name')
-  .option(
-    '--template <template>',
-    'Project template (minimal, api, serverless, worker)',
-  )
-  .option('--skip-install', 'Skip dependency installation', false)
-  .option('-y, --yes', 'Skip prompts, use defaults', false)
-  .option('--monorepo', 'Setup as monorepo with packages/models', false)
-  .option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
-  .action(async (name: string | undefined, options: InitOptions) => {
-    try {
-      const globalOptions = program.opts();
-      if (globalOptions.cwd) {
-        process.chdir(globalOptions.cwd);
-      }
-      await initCommand(name, options);
-    } catch (error) {
-      process.exit(1);
-    }
-  });
+	.command('init')
+	.description('Scaffold a new project')
+	.argument('[name]', 'Project name')
+	.option(
+		'--template <template>',
+		'Project template (minimal, api, serverless, worker)',
+	)
+	.option('--skip-install', 'Skip dependency installation', false)
+	.option('-y, --yes', 'Skip prompts, use defaults', false)
+	.option('--monorepo', 'Setup as monorepo with packages/models', false)
+	.option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
+	.action(async (name: string | undefined, options: InitOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await initCommand(name, options);
+		} catch (error) {
+			process.exit(1);
+		}
+	});
 
 program
-  .command('build')
-  .description('Build handlers from endpoints, functions, and crons')
-  .option(
-    '--provider <provider>',
-    'Target provider for generated handlers (aws, server)',
-  )
-  .option(
-    '--providers <providers>',
-    '[DEPRECATED] Use --provider instead. Target providers for generated handlers (comma-separated)',
-  )
-  .option(
-    '--enable-openapi',
-    'Enable OpenAPI documentation generation for server builds',
-  )
-  .option('--production', 'Build for production (no dev tools, bundled output)')
-  .option('--skip-bundle', 'Skip bundling step in production build')
-  .action(
-    async (options: {
-      provider?: string;
-      providers?: string;
-      enableOpenapi?: boolean;
-      production?: boolean;
-      skipBundle?: boolean;
-    }) => {
-      try {
-        const globalOptions = program.opts();
-        if (globalOptions.cwd) {
-          process.chdir(globalOptions.cwd);
-        }
+	.command('build')
+	.description('Build handlers from endpoints, functions, and crons')
+	.option(
+		'--provider <provider>',
+		'Target provider for generated handlers (aws, server)',
+	)
+	.option(
+		'--providers <providers>',
+		'[DEPRECATED] Use --provider instead. Target providers for generated handlers (comma-separated)',
+	)
+	.option(
+		'--enable-openapi',
+		'Enable OpenAPI documentation generation for server builds',
+	)
+	.option('--production', 'Build for production (no dev tools, bundled output)')
+	.option('--skip-bundle', 'Skip bundling step in production build')
+	.action(
+		async (options: {
+			provider?: string;
+			providers?: string;
+			enableOpenapi?: boolean;
+			production?: boolean;
+			skipBundle?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
 
-        // Handle new single provider option
-        if (options.provider) {
-          if (!['aws', 'server'].includes(options.provider)) {
-            process.exit(1);
-          }
-          await buildCommand({
-            provider: options.provider as MainProvider,
-            enableOpenApi: options.enableOpenapi || false,
-            production: options.production || false,
-            skipBundle: options.skipBundle || false,
-          });
-        }
-        // Handle legacy providers option
-        else if (options.providers) {
-          const providerList = [
-            ...new Set(options.providers.split(',').map((p) => p.trim())),
-          ] as LegacyProvider[];
-          await buildCommand({
-            providers: providerList,
-            enableOpenApi: options.enableOpenapi || false,
-            production: options.production || false,
-            skipBundle: options.skipBundle || false,
-          });
-        }
-        // Default to config-driven build
-        else {
-          await buildCommand({
-            enableOpenApi: options.enableOpenapi || false,
-            production: options.production || false,
-            skipBundle: options.skipBundle || false,
-          });
-        }
-      } catch (error) {
-        process.exit(1);
-      }
-    },
-  );
-
-program
-  .command('dev')
-  .description('Start development server with automatic reload')
-  .option('-p, --port <port>', 'Port to run the development server on')
-  .option(
-    '--enable-openapi',
-    'Enable OpenAPI documentation for development server',
-    true,
-  )
-  .action(async (options: { port?: string; enableOpenapi?: boolean }) => {
-    try {
-      const globalOptions = program.opts();
-      if (globalOptions.cwd) {
-        process.chdir(globalOptions.cwd);
-      }
-
-      await devCommand({
-        port: options.port ? Number.parseInt(options.port) : 3000,
-        portExplicit: !!options.port,
-        enableOpenApi: options.enableOpenapi ?? true,
-      });
-    } catch (error) {
-      process.exit(1);
-    }
-  });
+				// Handle new single provider option
+				if (options.provider) {
+					if (!['aws', 'server'].includes(options.provider)) {
+						process.exit(1);
+					}
+					await buildCommand({
+						provider: options.provider as MainProvider,
+						enableOpenApi: options.enableOpenapi || false,
+						production: options.production || false,
+						skipBundle: options.skipBundle || false,
+					});
+				}
+				// Handle legacy providers option
+				else if (options.providers) {
+					const providerList = [
+						...new Set(options.providers.split(',').map((p) => p.trim())),
+					] as LegacyProvider[];
+					await buildCommand({
+						providers: providerList,
+						enableOpenApi: options.enableOpenapi || false,
+						production: options.production || false,
+						skipBundle: options.skipBundle || false,
+					});
+				}
+				// Default to config-driven build
+				else {
+					await buildCommand({
+						enableOpenApi: options.enableOpenapi || false,
+						production: options.production || false,
+						skipBundle: options.skipBundle || false,
+					});
+				}
+			} catch (error) {
+				process.exit(1);
+			}
+		},
+	);
 
 program
-  .command('cron')
-  .description('Manage cron jobs')
-  .action(() => {
-    const globalOptions = program.opts();
-    if (globalOptions.cwd) {
-      process.chdir(globalOptions.cwd);
-    }
-    process.stdout.write('Cron management - coming soon\n');
-  });
+	.command('dev')
+	.description('Start development server with automatic reload')
+	.option('-p, --port <port>', 'Port to run the development server on')
+	.option(
+		'--enable-openapi',
+		'Enable OpenAPI documentation for development server',
+		true,
+	)
+	.action(async (options: { port?: string; enableOpenapi?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+
+			await devCommand({
+				port: options.port ? Number.parseInt(options.port) : 3000,
+				portExplicit: !!options.port,
+				enableOpenApi: options.enableOpenapi ?? true,
+			});
+		} catch (error) {
+			process.exit(1);
+		}
+	});
 
 program
-  .command('function')
-  .description('Manage serverless functions')
-  .action(() => {
-    const globalOptions = program.opts();
-    if (globalOptions.cwd) {
-      process.chdir(globalOptions.cwd);
-    }
-    process.stdout.write('Serverless function management - coming soon\n');
-  });
+	.command('cron')
+	.description('Manage cron jobs')
+	.action(() => {
+		const globalOptions = program.opts();
+		if (globalOptions.cwd) {
+			process.chdir(globalOptions.cwd);
+		}
+		process.stdout.write('Cron management - coming soon\n');
+	});
 
 program
-  .command('api')
-  .description('Manage REST API endpoints')
-  .action(() => {
-    const globalOptions = program.opts();
-    if (globalOptions.cwd) {
-      process.chdir(globalOptions.cwd);
-    }
-    process.stdout.write('REST API management - coming soon\n');
-  });
+	.command('function')
+	.description('Manage serverless functions')
+	.action(() => {
+		const globalOptions = program.opts();
+		if (globalOptions.cwd) {
+			process.chdir(globalOptions.cwd);
+		}
+		process.stdout.write('Serverless function management - coming soon\n');
+	});
 
 program
-  .command('openapi')
-  .description('Generate OpenAPI specification from endpoints')
-  .action(async () => {
-    try {
-      const globalOptions = program.opts();
-      if (globalOptions.cwd) {
-        process.chdir(globalOptions.cwd);
-      }
-      await openapiCommand({});
-    } catch (error) {
-      process.exit(1);
-    }
-  });
+	.command('api')
+	.description('Manage REST API endpoints')
+	.action(() => {
+		const globalOptions = program.opts();
+		if (globalOptions.cwd) {
+			process.chdir(globalOptions.cwd);
+		}
+		process.stdout.write('REST API management - coming soon\n');
+	});
 
 program
-  .command('generate:react-query')
-  .description('Generate React Query hooks from OpenAPI specification')
-  .option('--input <path>', 'Input OpenAPI spec file path', 'openapi.json')
-  .option(
-    '--output <path>',
-    'Output file path for generated hooks',
-    'src/api/hooks.ts',
-  )
-  .option('--name <name>', 'API name prefix for generated code', 'API')
-  .action(
-    async (options: { input?: string; output?: string; name?: string }) => {
-      try {
-        const globalOptions = program.opts();
-        if (globalOptions.cwd) {
-          process.chdir(globalOptions.cwd);
-        }
-        await generateReactQueryCommand(options);
-      } catch (error) {
-        process.exit(1);
-      }
-    },
-  );
+	.command('openapi')
+	.description('Generate OpenAPI specification from endpoints')
+	.action(async () => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await openapiCommand({});
+		} catch (error) {
+			process.exit(1);
+		}
+	});
 
 program
-  .command('docker')
-  .description('Generate Docker deployment files')
-  .option('--build', 'Build Docker image after generating files')
-  .option('--push', 'Push image to registry after building')
-  .option('--tag <tag>', 'Image tag', 'latest')
-  .option('--registry <registry>', 'Container registry URL')
-  .option('--slim', 'Use slim Dockerfile (assumes pre-built bundle exists)')
-  .option('--turbo', 'Use turbo prune for monorepo optimization')
-  .option('--turbo-package <name>', 'Package name for turbo prune')
-  .action(async (options: DockerOptions) => {
-    try {
-      const globalOptions = program.opts();
-      if (globalOptions.cwd) {
-        process.chdir(globalOptions.cwd);
-      }
-      await dockerCommand(options);
-    } catch (error) {
-      process.exit(1);
-    }
-  });
+	.command('generate:react-query')
+	.description('Generate React Query hooks from OpenAPI specification')
+	.option('--input <path>', 'Input OpenAPI spec file path', 'openapi.json')
+	.option(
+		'--output <path>',
+		'Output file path for generated hooks',
+		'src/api/hooks.ts',
+	)
+	.option('--name <name>', 'API name prefix for generated code', 'API')
+	.action(
+		async (options: { input?: string; output?: string; name?: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await generateReactQueryCommand(options);
+			} catch (error) {
+				process.exit(1);
+			}
+		},
+	);
 
 program
-  .command('prepack')
-  .description('Generate Docker files for production deployment')
-  .option('--build', 'Build Docker image after generating files')
-  .option('--push', 'Push image to registry after building')
-  .option('--tag <tag>', 'Image tag', 'latest')
-  .option('--registry <registry>', 'Container registry URL')
-  .option('--slim', 'Build locally first, then use slim Dockerfile')
-  .option('--skip-bundle', 'Skip bundling step (only with --slim)')
-  .option('--turbo', 'Use turbo prune for monorepo optimization')
-  .option('--turbo-package <name>', 'Package name for turbo prune')
-  .action(
-    async (options: {
-      build?: boolean;
-      push?: boolean;
-      tag?: string;
-      registry?: string;
-      slim?: boolean;
-      skipBundle?: boolean;
-      turbo?: boolean;
-      turboPackage?: string;
-    }) => {
-      try {
-        const globalOptions = program.opts();
-        if (globalOptions.cwd) {
-          process.chdir(globalOptions.cwd);
-        }
+	.command('docker')
+	.description('Generate Docker deployment files')
+	.option('--build', 'Build Docker image after generating files')
+	.option('--push', 'Push image to registry after building')
+	.option('--tag <tag>', 'Image tag', 'latest')
+	.option('--registry <registry>', 'Container registry URL')
+	.option('--slim', 'Use slim Dockerfile (assumes pre-built bundle exists)')
+	.option('--turbo', 'Use turbo prune for monorepo optimization')
+	.option('--turbo-package <name>', 'Package name for turbo prune')
+	.action(async (options: DockerOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await dockerCommand(options);
+		} catch (error) {
+			process.exit(1);
+		}
+	});
 
-        if (options.slim) {
-          await buildCommand({
-            provider: 'server',
-            production: true,
-            skipBundle: options.skipBundle,
-          });
-        }
-        await dockerCommand({
-          build: options.build,
-          push: options.push,
-          tag: options.tag,
-          registry: options.registry,
-          slim: options.slim,
-          turbo: options.turbo,
-          turboPackage: options.turboPackage,
-        });
-        if (options.slim) {
-        } else {
-        }
+program
+	.command('prepack')
+	.description('Generate Docker files for production deployment')
+	.option('--build', 'Build Docker image after generating files')
+	.option('--push', 'Push image to registry after building')
+	.option('--tag <tag>', 'Image tag', 'latest')
+	.option('--registry <registry>', 'Container registry URL')
+	.option('--slim', 'Build locally first, then use slim Dockerfile')
+	.option('--skip-bundle', 'Skip bundling step (only with --slim)')
+	.option('--turbo', 'Use turbo prune for monorepo optimization')
+	.option('--turbo-package <name>', 'Package name for turbo prune')
+	.action(
+		async (options: {
+			build?: boolean;
+			push?: boolean;
+			tag?: string;
+			registry?: string;
+			slim?: boolean;
+			skipBundle?: boolean;
+			turbo?: boolean;
+			turboPackage?: string;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
 
-        if (options.build) {
-          const tag = options.tag ?? 'latest';
-          const registry = options.registry;
-          const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
-        }
-      } catch (error) {
-        process.exit(1);
-      }
-    },
-  );
+				if (options.slim) {
+					await buildCommand({
+						provider: 'server',
+						production: true,
+						skipBundle: options.skipBundle,
+					});
+				}
+				await dockerCommand({
+					build: options.build,
+					push: options.push,
+					tag: options.tag,
+					registry: options.registry,
+					slim: options.slim,
+					turbo: options.turbo,
+					turboPackage: options.turboPackage,
+				});
+				if (options.slim) {
+				} else {
+				}
+
+				if (options.build) {
+					const tag = options.tag ?? 'latest';
+					const registry = options.registry;
+					const imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
+				}
+			} catch (error) {
+				process.exit(1);
+			}
+		},
+	);
 
 program.parse();

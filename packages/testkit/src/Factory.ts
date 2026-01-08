@@ -26,68 +26,68 @@ import type { FakerFactory } from './faker';
  * ```
  */
 export abstract class Factory<
-  Builders extends Record<string, any>,
-  Seeds extends Record<string, any>,
+	Builders extends Record<string, any>,
+	Seeds extends Record<string, any>,
 > {
-  /**
-   * Creates a typed seed function with proper type inference.
-   * This is a utility method to help with TypeScript type checking when defining seeds.
-   *
-   * @template Seed - The seed function type
-   * @param seedFn - The seed function to wrap
-   * @returns The same seed function with proper typing
-   *
-   * @example
-   * ```typescript
-   * const userWithPostsSeed = Factory.createSeed(async ({ attrs, factory, db }) => {
-   *   const user = await factory.insert('user', attrs);
-   *   return user;
-   * });
-   * ```
-   */
-  static createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
-    return seedFn;
-  }
-  /**
-   * Inserts an object into the database using a builder function.
-   *
-   * @param builderName - The name of the builder to use
-   * @param attrs - The attributes to insert
-   */
-  abstract insert<K extends keyof Builders>(
-    builderName: K,
-    attrs?: Parameters<Builders[K]>[0],
-  ): Promise<Awaited<ReturnType<Builders[K]>>>;
+	/**
+	 * Creates a typed seed function with proper type inference.
+	 * This is a utility method to help with TypeScript type checking when defining seeds.
+	 *
+	 * @template Seed - The seed function type
+	 * @param seedFn - The seed function to wrap
+	 * @returns The same seed function with proper typing
+	 *
+	 * @example
+	 * ```typescript
+	 * const userWithPostsSeed = Factory.createSeed(async ({ attrs, factory, db }) => {
+	 *   const user = await factory.insert('user', attrs);
+	 *   return user;
+	 * });
+	 * ```
+	 */
+	static createSeed<Seed extends FactorySeed>(seedFn: Seed): Seed {
+		return seedFn;
+	}
+	/**
+	 * Inserts an object into the database using a builder function.
+	 *
+	 * @param builderName - The name of the builder to use
+	 * @param attrs - The attributes to insert
+	 */
+	abstract insert<K extends keyof Builders>(
+		builderName: K,
+		attrs?: Parameters<Builders[K]>[0],
+	): Promise<Awaited<ReturnType<Builders[K]>>>;
 
-  /**
-   * Inserts multiple objects into the database
-   *
-   * @param count -  Number of objects to insert
-   * @param builderName - The name of the builder to use
-   * @param attrs - The attributes to insert
-   */
-  abstract insertMany<K extends keyof Builders>(
-    count: number,
-    builderName: K,
-    attrs?:
-      | Parameters<Builders[K]>[0]
-      | ((
-          idx: number,
-          faker: FakerFactory,
-        ) => Promise<Parameters<Builders[K]>[0]>),
-  ): Promise<Awaited<ReturnType<Builders[K]>>[]>;
+	/**
+	 * Inserts multiple objects into the database
+	 *
+	 * @param count -  Number of objects to insert
+	 * @param builderName - The name of the builder to use
+	 * @param attrs - The attributes to insert
+	 */
+	abstract insertMany<K extends keyof Builders>(
+		count: number,
+		builderName: K,
+		attrs?:
+			| Parameters<Builders[K]>[0]
+			| ((
+					idx: number,
+					faker: FakerFactory,
+			  ) => Promise<Parameters<Builders[K]>[0]>),
+	): Promise<Awaited<ReturnType<Builders[K]>>[]>;
 
-  /**
-   * Seeds the database using a seed function.
-   *
-   * @param seedName - The name of the seed to use
-   * @returns The result of the seed function
-   * @param attrs - The attributes to pass to the seed function
-   */
-  abstract seed<K extends keyof Seeds>(
-    seedName: K,
-    attrs?: ExtractSeedAttrs<Seeds[K]>,
-  ): ReturnType<Seeds[K]>;
+	/**
+	 * Seeds the database using a seed function.
+	 *
+	 * @param seedName - The name of the seed to use
+	 * @returns The result of the seed function
+	 * @param attrs - The attributes to pass to the seed function
+	 */
+	abstract seed<K extends keyof Seeds>(
+		seedName: K,
+		attrs?: ExtractSeedAttrs<Seeds[K]>,
+	): ReturnType<Seeds[K]>;
 }
 
 /**
@@ -118,10 +118,10 @@ export abstract class Factory<
  * ```
  */
 export type MixedFactoryBuilder<
-  Attrs = any,
-  Factory = any,
-  Result = any,
-  DB = any,
+	Attrs = any,
+	Factory = any,
+	Result = any,
+	DB = any,
 > = (attrs: Attrs, factory: Factory, db: DB) => Result | Promise<Result>;
 
 /**
@@ -155,10 +155,10 @@ export type MixedFactoryBuilder<
  * ```
  */
 export type FactorySeed<
-  Attrs = any,
-  Factory = any,
-  Result = any,
-  DB = any,
+	Attrs = any,
+	Factory = any,
+	Result = any,
+	DB = any,
 > = (context: { attrs: Attrs; factory: Factory; db: DB }) => Promise<Result>;
 
 /**
@@ -166,9 +166,9 @@ export type FactorySeed<
  * Used internally by Factory implementations to correctly type the seed method parameters.
  */
 export type ExtractSeedAttrs<T> = T extends (context: {
-  attrs: infer A;
-  factory: any;
-  db: any;
+	attrs: infer A;
+	factory: any;
+	db: any;
 }) => any
-  ? A
-  : never;
+	? A
+	: never;

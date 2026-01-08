@@ -35,16 +35,16 @@ import type { AuditableAction } from './types';
  * ```
  */
 export class InMemoryAuditStorage<
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
 > extends CacheAuditStorage<TAuditAction> {
-  constructor() {
-    super({
-      cache: new InMemoryCache(),
-      // Use a long TTL since in-memory cache expires items
-      ttl: 86400 * 365, // 1 year
-    });
-  }
+	constructor() {
+		super({
+			cache: new InMemoryCache(),
+			// Use a long TTL since in-memory cache expires items
+			ttl: 86400 * 365, // 1 year
+		});
+	}
 }

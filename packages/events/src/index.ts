@@ -9,12 +9,12 @@ export type { EventSubscriberConnectionString } from './Subscriber';
 
 export { Subscriber } from './Subscriber';
 export type {
-  EventConnection,
-  EventPublisher,
-  EventSubscriber,
-  ExtractPublisherMessage,
-  MappedEvent,
-  PublishableMessage,
+	EventConnection,
+	EventPublisher,
+	EventSubscriber,
+	ExtractPublisherMessage,
+	MappedEvent,
+	PublishableMessage,
 } from './types';
 export { EventPublisherType } from './types';
 

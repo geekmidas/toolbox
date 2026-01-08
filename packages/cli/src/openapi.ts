@@ -8,7 +8,7 @@ import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig } from './types.js';
 
 interface OpenAPIOptions {
-  cwd?: string;
+	cwd?: string;
 }
 
 /**
@@ -20,29 +20,29 @@ export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
  * Resolve OpenAPI config from GkmConfig
  */
 export function resolveOpenApiConfig(
-  config: GkmConfig,
+	config: GkmConfig,
 ): OpenApiConfig & { enabled: boolean } {
-  if (config.openapi === false) {
-    return { enabled: false };
-  }
+	if (config.openapi === false) {
+		return { enabled: false };
+	}
 
-  if (config.openapi === true || config.openapi === undefined) {
-    return {
-      enabled: config.openapi === true,
-      title: 'API Documentation',
-      version: '1.0.0',
-      description: 'Auto-generated API documentation from endpoints',
-    };
-  }
+	if (config.openapi === true || config.openapi === undefined) {
+		return {
+			enabled: config.openapi === true,
+			title: 'API Documentation',
+			version: '1.0.0',
+			description: 'Auto-generated API documentation from endpoints',
+		};
+	}
 
-  return {
-    enabled: config.openapi.enabled !== false,
-    title: config.openapi.title || 'API Documentation',
-    version: config.openapi.version || '1.0.0',
-    description:
-      config.openapi.description ||
-      'Auto-generated API documentation from endpoints',
-  };
+	return {
+		enabled: config.openapi.enabled !== false,
+		title: config.openapi.title || 'API Documentation',
+		version: config.openapi.version || '1.0.0',
+		description:
+			config.openapi.description ||
+			'Auto-generated API documentation from endpoints',
+	};
 }
 
 /**
@@ -50,61 +50,61 @@ export function resolveOpenApiConfig(
  * @returns Object with output path and endpoint count, or null if disabled
  */
 export async function generateOpenApi(
-  config: GkmConfig,
-  options: { silent?: boolean } = {},
+	config: GkmConfig,
+	options: { silent?: boolean } = {},
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
-  const logger = options.silent ? { log: () => {} } : console;
-  const openApiConfig = resolveOpenApiConfig(config);
+	const logger = options.silent ? { log: () => {} } : console;
+	const openApiConfig = resolveOpenApiConfig(config);
 
-  if (!openApiConfig.enabled) {
-    return null;
-  }
+	if (!openApiConfig.enabled) {
+		return null;
+	}
 
-  const endpointGenerator = new EndpointGenerator();
-  const loadedEndpoints = await endpointGenerator.load(config.routes);
+	const endpointGenerator = new EndpointGenerator();
+	const loadedEndpoints = await endpointGenerator.load(config.routes);
 
-  if (loadedEndpoints.length === 0) {
-    logger.log('No valid endpoints found for OpenAPI generation');
-    return null;
-  }
+	if (loadedEndpoints.length === 0) {
+		logger.log('No valid endpoints found for OpenAPI generation');
+		return null;
+	}
 
-  const endpoints = loadedEndpoints.map(({ construct }) => construct);
-  const outputPath = join(process.cwd(), OPENAPI_OUTPUT_PATH);
+	const endpoints = loadedEndpoints.map(({ construct }) => construct);
+	const outputPath = join(process.cwd(), OPENAPI_OUTPUT_PATH);
 
-  await mkdir(dirname(outputPath), { recursive: true });
+	await mkdir(dirname(outputPath), { recursive: true });
 
-  const tsGenerator = new OpenApiTsGenerator();
-  const tsContent = await tsGenerator.generate(endpoints, {
-    title: openApiConfig.title!,
-    version: openApiConfig.version!,
-    description: openApiConfig.description!,
-  });
+	const tsGenerator = new OpenApiTsGenerator();
+	const tsContent = await tsGenerator.generate(endpoints, {
+		title: openApiConfig.title!,
+		version: openApiConfig.version!,
+		description: openApiConfig.description!,
+	});
 
-  await writeFile(outputPath, tsContent);
-  logger.log(`📄 OpenAPI client generated: ${OPENAPI_OUTPUT_PATH}`);
+	await writeFile(outputPath, tsContent);
+	logger.log(`📄 OpenAPI client generated: ${OPENAPI_OUTPUT_PATH}`);
 
-  return { outputPath, endpointCount: loadedEndpoints.length };
+	return { outputPath, endpointCount: loadedEndpoints.length };
 }
 
 export async function openapiCommand(
-  options: OpenAPIOptions = {},
+	options: OpenAPIOptions = {},
 ): Promise<void> {
-  const logger = console;
+	const logger = console;
 
-  try {
-    const config = await loadConfig(options.cwd);
+	try {
+		const config = await loadConfig(options.cwd);
 
-    // Enable openapi if not configured
-    if (!config.openapi) {
-      config.openapi = { enabled: true };
-    }
+		// Enable openapi if not configured
+		if (!config.openapi) {
+			config.openapi = { enabled: true };
+		}
 
-    const result = await generateOpenApi(config);
+		const result = await generateOpenApi(config);
 
-    if (result) {
-      logger.log(`Found ${result.endpointCount} endpoints`);
-    }
-  } catch (error) {
-    throw new Error(`OpenAPI generation failed: ${(error as Error).message}`);
-  }
+		if (result) {
+			logger.log(`Found ${result.endpointCount} endpoints`);
+		}
+	} catch (error) {
+		throw new Error(`OpenAPI generation failed: ${(error as Error).message}`);
+	}
 }

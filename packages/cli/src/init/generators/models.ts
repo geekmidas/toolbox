@@ -4,57 +4,57 @@ import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
  * Generate packages/models for shared Zod schemas (monorepo only)
  */
 export function generateModelsPackage(
-  options: TemplateOptions,
+	options: TemplateOptions,
 ): GeneratedFile[] {
-  if (!options.monorepo) {
-    return [];
-  }
+	if (!options.monorepo) {
+		return [];
+	}
 
-  // Package name based on project name
-  const packageName = `@${options.name}/models`;
+	// Package name based on project name
+	const packageName = `@${options.name}/models`;
 
-  // package.json for models
-  const packageJson = {
-    name: packageName,
-    version: '0.0.1',
-    private: true,
-    type: 'module',
-    exports: {
-      '.': {
-        types: './dist/index.d.ts',
-        import: './dist/index.js',
-      },
-      './*': {
-        types: './dist/*.d.ts',
-        import: './dist/*.js',
-      },
-    },
-    scripts: {
-      build: 'tsc',
-      'build:watch': 'tsc --watch',
-      typecheck: 'tsc --noEmit',
-    },
-    dependencies: {
-      zod: '~4.1.0',
-    },
-    devDependencies: {
-      typescript: '~5.8.2',
-    },
-  };
+	// package.json for models
+	const packageJson = {
+		name: packageName,
+		version: '0.0.1',
+		private: true,
+		type: 'module',
+		exports: {
+			'.': {
+				types: './dist/index.d.ts',
+				import: './dist/index.js',
+			},
+			'./*': {
+				types: './dist/*.d.ts',
+				import: './dist/*.js',
+			},
+		},
+		scripts: {
+			build: 'tsc',
+			'build:watch': 'tsc --watch',
+			typecheck: 'tsc --noEmit',
+		},
+		dependencies: {
+			zod: '~4.1.0',
+		},
+		devDependencies: {
+			typescript: '~5.8.2',
+		},
+	};
 
-  // tsconfig.json for models - extends root
-  const tsConfig = {
-    extends: '../../tsconfig.json',
-    compilerOptions: {
-      outDir: './dist',
-      rootDir: './src',
-    },
-    include: ['src/**/*.ts'],
-    exclude: ['node_modules', 'dist'],
-  };
+	// tsconfig.json for models - extends root
+	const tsConfig = {
+		extends: '../../tsconfig.json',
+		compilerOptions: {
+			outDir: './dist',
+			rootDir: './src',
+		},
+		include: ['src/**/*.ts'],
+		exclude: ['node_modules', 'dist'],
+	};
 
-  // Main index.ts with example schemas
-  const indexTs = `import { z } from 'zod';
+	// Main index.ts with example schemas
+	const indexTs = `import { z } from 'zod';
 
 // ============================================
 // Common Schemas
@@ -112,18 +112,18 @@ export type CreateUser = z.infer<typeof createUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 `;
 
-  return [
-    {
-      path: 'packages/models/package.json',
-      content: JSON.stringify(packageJson, null, 2) + '\n',
-    },
-    {
-      path: 'packages/models/tsconfig.json',
-      content: JSON.stringify(tsConfig, null, 2) + '\n',
-    },
-    {
-      path: 'packages/models/src/index.ts',
-      content: indexTs,
-    },
-  ];
+	return [
+		{
+			path: 'packages/models/package.json',
+			content: JSON.stringify(packageJson, null, 2) + '\n',
+		},
+		{
+			path: 'packages/models/tsconfig.json',
+			content: JSON.stringify(tsConfig, null, 2) + '\n',
+		},
+		{
+			path: 'packages/models/src/index.ts',
+			content: indexTs,
+		},
+	];
 }

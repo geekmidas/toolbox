@@ -1,55 +1,55 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import {
-  type JwtClaims,
-  type JwtConfig,
-  JwtVerifier,
-  type TokenExtractionOptions,
+	type JwtClaims,
+	type JwtConfig,
+	JwtVerifier,
+	type TokenExtractionOptions,
 } from '../jwt';
 
 export {
-  JwtVerifier,
-  type JwtClaims,
-  type JwtConfig,
-  type TokenExtractionOptions,
+	JwtVerifier,
+	type JwtClaims,
+	type JwtConfig,
+	type TokenExtractionOptions,
 };
 
 function extractToken(
-  c: Context,
-  options: TokenExtractionOptions = {},
+	c: Context,
+	options: TokenExtractionOptions = {},
 ): string | null {
-  const {
-    headerName = 'authorization',
-    cookieName,
-    tokenPrefix = 'Bearer ',
-  } = options;
+	const {
+		headerName = 'authorization',
+		cookieName,
+		tokenPrefix = 'Bearer ',
+	} = options;
 
-  const headerValue = c.req.header(headerName);
-  if (headerValue) {
-    if (tokenPrefix && headerValue.startsWith(tokenPrefix)) {
-      return headerValue.slice(tokenPrefix.length);
-    }
-    return headerValue;
-  }
+	const headerValue = c.req.header(headerName);
+	if (headerValue) {
+		if (tokenPrefix && headerValue.startsWith(tokenPrefix)) {
+			return headerValue.slice(tokenPrefix.length);
+		}
+		return headerValue;
+	}
 
-  if (cookieName) {
-    const cookieHeader = c.req.header('cookie');
-    if (cookieHeader) {
-      const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-      if (match?.[1]) {
-        return match[1];
-      }
-    }
-  }
+	if (cookieName) {
+		const cookieHeader = c.req.header('cookie');
+		if (cookieHeader) {
+			const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
+			if (match?.[1]) {
+				return match[1];
+			}
+		}
+	}
 
-  return null;
+	return null;
 }
 
 export interface JwtMiddlewareOptions<TClaims extends JwtClaims = JwtClaims> {
-  config: JwtConfig;
-  extraction?: TokenExtractionOptions;
-  contextKey?: string;
-  onError?: (c: Context, error: Error) => Response | Promise<Response>;
-  transformClaims?: (claims: JwtClaims) => TClaims;
+	config: JwtConfig;
+	extraction?: TokenExtractionOptions;
+	contextKey?: string;
+	onError?: (c: Context, error: Error) => Response | Promise<Response>;
+	transformClaims?: (claims: JwtClaims) => TClaims;
 }
 
 /**
@@ -68,75 +68,75 @@ export interface JwtMiddlewareOptions<TClaims extends JwtClaims = JwtClaims> {
  * ```
  */
 export class JwtMiddleware<TClaims extends JwtClaims = JwtClaims> {
-  private readonly verifier: JwtVerifier<TClaims>;
-  private readonly extraction: TokenExtractionOptions;
-  private readonly contextKey: string;
-  private readonly onError?: (
-    c: Context,
-    error: Error,
-  ) => Response | Promise<Response>;
-  private readonly transformClaims?: (claims: JwtClaims) => TClaims;
+	private readonly verifier: JwtVerifier<TClaims>;
+	private readonly extraction: TokenExtractionOptions;
+	private readonly contextKey: string;
+	private readonly onError?: (
+		c: Context,
+		error: Error,
+	) => Response | Promise<Response>;
+	private readonly transformClaims?: (claims: JwtClaims) => TClaims;
 
-  constructor(options: JwtMiddlewareOptions<TClaims>) {
-    this.verifier = new JwtVerifier(options.config);
-    this.extraction = options.extraction ?? {};
-    this.contextKey = options.contextKey ?? 'jwtClaims';
-    this.onError = options.onError;
-    this.transformClaims = options.transformClaims;
-  }
+	constructor(options: JwtMiddlewareOptions<TClaims>) {
+		this.verifier = new JwtVerifier(options.config);
+		this.extraction = options.extraction ?? {};
+		this.contextKey = options.contextKey ?? 'jwtClaims';
+		this.onError = options.onError;
+		this.transformClaims = options.transformClaims;
+	}
 
-  /**
-   * Returns middleware that requires valid JWT
-   */
-  handler(): MiddlewareHandler {
-    return async (c: Context, next: Next) => {
-      const token = extractToken(c, this.extraction);
+	/**
+	 * Returns middleware that requires valid JWT
+	 */
+	handler(): MiddlewareHandler {
+		return async (c: Context, next: Next) => {
+			const token = extractToken(c, this.extraction);
 
-      if (!token) {
-        if (this.onError) {
-          return this.onError(c, new Error('No token provided'));
-        }
-        return c.json({ error: 'Unauthorized' }, 401);
-      }
+			if (!token) {
+				if (this.onError) {
+					return this.onError(c, new Error('No token provided'));
+				}
+				return c.json({ error: 'Unauthorized' }, 401);
+			}
 
-      try {
-        const payload = await this.verifier.verify(token);
-        const claims = this.transformClaims
-          ? this.transformClaims(payload)
-          : payload;
+			try {
+				const payload = await this.verifier.verify(token);
+				const claims = this.transformClaims
+					? this.transformClaims(payload)
+					: payload;
 
-        c.set(this.contextKey, claims);
-        c.set('jwtToken', token);
+				c.set(this.contextKey, claims);
+				c.set('jwtToken', token);
 
-        await next();
-      } catch (error) {
-        if (this.onError) {
-          return this.onError(c, error as Error);
-        }
-        return c.json({ error: 'Invalid token' }, 401);
-      }
-    };
-  }
+				await next();
+			} catch (error) {
+				if (this.onError) {
+					return this.onError(c, error as Error);
+				}
+				return c.json({ error: 'Invalid token' }, 401);
+			}
+		};
+	}
 
-  /**
-   * Returns middleware that allows unauthenticated requests
-   */
-  optional(): MiddlewareHandler {
-    return async (c: Context, next: Next) => {
-      const token = extractToken(c, this.extraction);
+	/**
+	 * Returns middleware that allows unauthenticated requests
+	 */
+	optional(): MiddlewareHandler {
+		return async (c: Context, next: Next) => {
+			const token = extractToken(c, this.extraction);
 
-      if (token) {
-        const claims = await this.verifier.verifyOrNull(token);
-        if (claims) {
-          const transformed = this.transformClaims
-            ? this.transformClaims(claims)
-            : claims;
-          c.set(this.contextKey, transformed);
-          c.set('jwtToken', token);
-        }
-      }
+			if (token) {
+				const claims = await this.verifier.verifyOrNull(token);
+				if (claims) {
+					const transformed = this.transformClaims
+						? this.transformClaims(claims)
+						: claims;
+					c.set(this.contextKey, transformed);
+					c.set('jwtToken', token);
+				}
+			}
 
-      await next();
-    };
-  }
+			await next();
+		};
+	}
 }

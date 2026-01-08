@@ -21,27 +21,27 @@ import { Endpoint } from './Endpoint';
  * ```
  */
 export async function getProjectRoot(cwd: string): Promise<string> {
-  if (cwd === '/') {
-    return cwd;
-  }
+	if (cwd === '/') {
+		return cwd;
+	}
 
-  const stream = fg.stream(
-    ['yarn.lock', 'pnpm-lock.yaml', 'package-lock.json', 'deno.lock'],
-    { dot: true, cwd },
-  );
+	const stream = fg.stream(
+		['yarn.lock', 'pnpm-lock.yaml', 'package-lock.json', 'deno.lock'],
+		{ dot: true, cwd },
+	);
 
-  let isRoot = false;
+	let isRoot = false;
 
-  for await (const _ of stream) {
-    isRoot = true;
-    break;
-  }
+	for await (const _ of stream) {
+		isRoot = true;
+		break;
+	}
 
-  if (isRoot) {
-    return cwd;
-  }
+	if (isRoot) {
+		return cwd;
+	}
 
-  return getProjectRoot(path.resolve(cwd, '..'));
+	return getProjectRoot(path.resolve(cwd, '..'));
 }
 
 /**
@@ -73,26 +73,26 @@ export async function getProjectRoot(cwd: string): Promise<string> {
  * - The function filters out non-Endpoint exports automatically
  */
 export async function getEndpointsFromRoutes<TServices extends Service[]>(
-  routes: string[],
-  cwd: string,
+	routes: string[],
+	cwd: string,
 ): Promise<Endpoint<string, HttpMethod, any, any, TServices>[]> {
-  const stream = fg.stream(routes, { cwd });
+	const stream = fg.stream(routes, { cwd });
 
-  const endpoints: Endpoint<string, HttpMethod, any, any, TServices>[] = [];
+	const endpoints: Endpoint<string, HttpMethod, any, any, TServices>[] = [];
 
-  for await (const f of stream) {
-    // Resolve the absolute path for the route file
-    const routePath = path.resolve(cwd, f.toString());
-    // Dynamically import the route module
-    const route = await import(routePath);
+	for await (const f of stream) {
+		// Resolve the absolute path for the route file
+		const routePath = path.resolve(cwd, f.toString());
+		// Dynamically import the route module
+		const route = await import(routePath);
 
-    // Filter exported values to find only Endpoint instances
-    const handlers = Object.values(route).filter((value) => {
-      return Endpoint.isEndpoint(value);
-    }) as unknown as Endpoint<string, HttpMethod, any, any, TServices>[];
+		// Filter exported values to find only Endpoint instances
+		const handlers = Object.values(route).filter((value) => {
+			return Endpoint.isEndpoint(value);
+		}) as unknown as Endpoint<string, HttpMethod, any, any, TServices>[];
 
-    endpoints.push(...handlers);
-  }
+		endpoints.push(...handlers);
+	}
 
-  return endpoints;
+	return endpoints;
 }

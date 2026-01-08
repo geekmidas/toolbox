@@ -2,302 +2,302 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
-  analyzeEndpoint,
-  type EndpointAnalysis,
-  summarizeAnalysis,
+	analyzeEndpoint,
+	type EndpointAnalysis,
+	summarizeAnalysis,
 } from '../build/endpoint-analyzer';
 import {
-  type EndpointImportInfo,
-  generateEndpointFilesNested,
+	type EndpointImportInfo,
+	generateEndpointFilesNested,
 } from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
 import {
-  ConstructGenerator,
-  type GeneratedConstruct,
-  type GeneratorOptions,
+	ConstructGenerator,
+	type GeneratedConstruct,
+	type GeneratorOptions,
 } from './Generator';
 
 export class EndpointGenerator extends ConstructGenerator<
-  Endpoint<
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any
-  >,
-  RouteInfo[]
+	Endpoint<
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any
+	>,
+	RouteInfo[]
 > {
-  isConstruct(
-    value: any,
-  ): value is Endpoint<
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any,
-    any
-  > {
-    return Endpoint.isEndpoint(value);
-  }
+	isConstruct(
+		value: any,
+	): value is Endpoint<
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any
+	> {
+		return Endpoint.isEndpoint(value);
+	}
 
-  async build(
-    context: BuildContext,
-    constructs: GeneratedConstruct<
-      Endpoint<
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-      >
-    >[],
-    outputDir: string,
-    options?: GeneratorOptions,
-  ): Promise<RouteInfo[]> {
-    const provider = options?.provider || 'aws-apigatewayv2';
-    const enableOpenApi = options?.enableOpenApi || false;
-    const logger = console;
-    const routes: RouteInfo[] = [];
+	async build(
+		context: BuildContext,
+		constructs: GeneratedConstruct<
+			Endpoint<
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any
+			>
+		>[],
+		outputDir: string,
+		options?: GeneratorOptions,
+	): Promise<RouteInfo[]> {
+		const provider = options?.provider || 'aws-apigatewayv2';
+		const enableOpenApi = options?.enableOpenApi || false;
+		const logger = console;
+		const routes: RouteInfo[] = [];
 
-    if (constructs.length === 0) {
-      return routes;
-    }
+		if (constructs.length === 0) {
+			return routes;
+		}
 
-    if (provider === 'server') {
-      // Generate endpoints.ts and app.ts
-      await this.generateEndpointsFile(outputDir, constructs, context);
-      const appFile = await this.generateAppFile(outputDir, context);
+		if (provider === 'server') {
+			// Generate endpoints.ts and app.ts
+			await this.generateEndpointsFile(outputDir, constructs, context);
+			const appFile = await this.generateAppFile(outputDir, context);
 
-      routes.push({
-        path: '*',
-        method: 'ALL',
-        handler: relative(process.cwd(), appFile),
-        authorizer: 'none',
-      });
+			routes.push({
+				path: '*',
+				method: 'ALL',
+				handler: relative(process.cwd(), appFile),
+				authorizer: 'none',
+			});
 
-      logger.log(
-        `Generated server with ${constructs.length} endpoints${enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
-      );
-    } else if (provider === 'aws-lambda') {
-      // For aws-lambda, create routes subdirectory
-      const routesDir = join(outputDir, 'routes');
-      await mkdir(routesDir, { recursive: true });
+			logger.log(
+				`Generated server with ${constructs.length} endpoints${enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
+			);
+		} else if (provider === 'aws-lambda') {
+			// For aws-lambda, create routes subdirectory
+			const routesDir = join(outputDir, 'routes');
+			await mkdir(routesDir, { recursive: true });
 
-      // Generate individual handlers for API Gateway routes
-      for (const { key, construct, path } of constructs) {
-        const handlerFile = await this.generateHandlerFile(
-          routesDir,
-          path.relative,
-          key,
-          'aws-apigatewayv2',
-          construct,
-          context,
-        );
+			// Generate individual handlers for API Gateway routes
+			for (const { key, construct, path } of constructs) {
+				const handlerFile = await this.generateHandlerFile(
+					routesDir,
+					path.relative,
+					key,
+					'aws-apigatewayv2',
+					construct,
+					context,
+				);
 
-        const routeInfo: RouteInfo = {
-          path: construct._path,
-          method: construct.method,
-          handler: relative(process.cwd(), handlerFile).replace(
-            /\.ts$/,
-            '.handler',
-          ),
-          timeout: construct.timeout,
-          memorySize: construct.memorySize,
-          environment: await construct.getEnvironment(),
-          authorizer: construct.authorizer?.name ?? 'none',
-        };
+				const routeInfo: RouteInfo = {
+					path: construct._path,
+					method: construct.method,
+					handler: relative(process.cwd(), handlerFile).replace(
+						/\.ts$/,
+						'.handler',
+					),
+					timeout: construct.timeout,
+					memorySize: construct.memorySize,
+					environment: await construct.getEnvironment(),
+					authorizer: construct.authorizer?.name ?? 'none',
+				};
 
-        routes.push(routeInfo);
-        logger.log(
-          `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-        );
-      }
-    } else {
-      // Generate individual handler files for AWS API Gateway providers
-      for (const { key, construct, path } of constructs) {
-        const handlerFile = await this.generateHandlerFile(
-          outputDir,
-          path.relative,
-          key,
-          provider,
-          construct,
-          context,
-        );
+				routes.push(routeInfo);
+				logger.log(
+					`Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+				);
+			}
+		} else {
+			// Generate individual handler files for AWS API Gateway providers
+			for (const { key, construct, path } of constructs) {
+				const handlerFile = await this.generateHandlerFile(
+					outputDir,
+					path.relative,
+					key,
+					provider,
+					construct,
+					context,
+				);
 
-        const routeInfo: RouteInfo = {
-          path: construct._path,
-          method: construct.method,
-          handler: relative(process.cwd(), handlerFile).replace(
-            /\.ts$/,
-            '.handler',
-          ),
-          timeout: construct.timeout,
-          memorySize: construct.memorySize,
-          environment: await construct.getEnvironment(),
-          authorizer: construct.authorizer?.name ?? 'none',
-        };
+				const routeInfo: RouteInfo = {
+					path: construct._path,
+					method: construct.method,
+					handler: relative(process.cwd(), handlerFile).replace(
+						/\.ts$/,
+						'.handler',
+					),
+					timeout: construct.timeout,
+					memorySize: construct.memorySize,
+					environment: await construct.getEnvironment(),
+					authorizer: construct.authorizer?.name ?? 'none',
+				};
 
-        routes.push(routeInfo);
-        logger.log(
-          `Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-        );
-      }
-    }
+				routes.push(routeInfo);
+				logger.log(
+					`Generated handler for ${routeInfo.method} ${routeInfo.path}`,
+				);
+			}
+		}
 
-    return routes;
-  }
+		return routes;
+	}
 
-  private async generateHandlerFile(
-    outputDir: string,
-    sourceFile: string,
-    exportName: string,
-    provider: LegacyProvider,
-    _endpoint: Endpoint<
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any,
-      any
-    >,
-    context: BuildContext,
-  ): Promise<string> {
-    const handlerFileName = `${exportName}.ts`;
-    const handlerPath = join(outputDir, handlerFileName);
+	private async generateHandlerFile(
+		outputDir: string,
+		sourceFile: string,
+		exportName: string,
+		provider: LegacyProvider,
+		_endpoint: Endpoint<
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any,
+			any
+		>,
+		context: BuildContext,
+	): Promise<string> {
+		const handlerFileName = `${exportName}.ts`;
+		const handlerPath = join(outputDir, handlerFileName);
 
-    const relativePath = relative(dirname(handlerPath), sourceFile);
-    const importPath = relativePath.replace(/\.ts$/, '.js');
+		const relativePath = relative(dirname(handlerPath), sourceFile);
+		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-    const relativeEnvParserPath = relative(
-      dirname(handlerPath),
-      context.envParserPath,
-    );
+		const relativeEnvParserPath = relative(
+			dirname(handlerPath),
+			context.envParserPath,
+		);
 
-    let content: string;
+		let content: string;
 
-    switch (provider) {
-      case 'aws-apigatewayv1':
-        content = this.generateAWSApiGatewayV1Handler(
-          importPath,
-          exportName,
-          relativeEnvParserPath,
-          context.envParserImportPattern,
-        );
-        break;
-      case 'aws-apigatewayv2':
-        content = this.generateAWSApiGatewayV2Handler(
-          importPath,
-          exportName,
-          relativeEnvParserPath,
-          context.envParserImportPattern,
-        );
-        break;
-      case 'server':
-        content = this.generateServerHandler(importPath, exportName);
-        break;
-      default:
-        throw new Error(`Unsupported provider: ${provider}`);
-    }
+		switch (provider) {
+			case 'aws-apigatewayv1':
+				content = this.generateAWSApiGatewayV1Handler(
+					importPath,
+					exportName,
+					relativeEnvParserPath,
+					context.envParserImportPattern,
+				);
+				break;
+			case 'aws-apigatewayv2':
+				content = this.generateAWSApiGatewayV2Handler(
+					importPath,
+					exportName,
+					relativeEnvParserPath,
+					context.envParserImportPattern,
+				);
+				break;
+			case 'server':
+				content = this.generateServerHandler(importPath, exportName);
+				break;
+			default:
+				throw new Error(`Unsupported provider: ${provider}`);
+		}
 
-    await writeFile(handlerPath, content);
-    return handlerPath;
-  }
+		await writeFile(handlerPath, content);
+		return handlerPath;
+	}
 
-  private async generateEndpointsFile(
-    outputDir: string,
-    endpoints: GeneratedConstruct<
-      Endpoint<
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-      >
-    >[],
-    context: BuildContext,
-  ): Promise<string> {
-    const endpointsFileName = 'endpoints.ts';
-    const endpointsPath = join(outputDir, endpointsFileName);
+	private async generateEndpointsFile(
+		outputDir: string,
+		endpoints: GeneratedConstruct<
+			Endpoint<
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any
+			>
+		>[],
+		context: BuildContext,
+	): Promise<string> {
+		const endpointsFileName = 'endpoints.ts';
+		const endpointsPath = join(outputDir, endpointsFileName);
 
-    // Group imports by file
-    const importsByFile = new Map<string, string[]>();
+		// Group imports by file
+		const importsByFile = new Map<string, string[]>();
 
-    for (const { path, key } of endpoints) {
-      const relativePath = relative(dirname(endpointsPath), path.relative);
-      const importPath = relativePath.replace(/\.ts$/, '.js');
+		for (const { path, key } of endpoints) {
+			const relativePath = relative(dirname(endpointsPath), path.relative);
+			const importPath = relativePath.replace(/\.ts$/, '.js');
 
-      if (!importsByFile.has(importPath)) {
-        importsByFile.set(importPath, []);
-      }
-      importsByFile.get(importPath)!.push(key);
-    }
+			if (!importsByFile.has(importPath)) {
+				importsByFile.set(importPath, []);
+			}
+			importsByFile.get(importPath)!.push(key);
+		}
 
-    // Generate import statements for endpoints
-    const endpointImports = Array.from(importsByFile.entries())
-      .map(
-        ([importPath, exports]) =>
-          `import { ${exports.join(', ')} } from '${importPath}';`,
-      )
-      .join('\n');
+		// Generate import statements for endpoints
+		const endpointImports = Array.from(importsByFile.entries())
+			.map(
+				([importPath, exports]) =>
+					`import { ${exports.join(', ')} } from '${importPath}';`,
+			)
+			.join('\n');
 
-    const allExportNames = endpoints.map(({ key }) => key);
+		const allExportNames = endpoints.map(({ key }) => key);
 
-    // Check if we should use optimized handler generation
-    if (context.production?.enabled && context.production.optimizedHandlers) {
-      return this.generateOptimizedEndpointsFile(
-        endpointsPath,
-        endpoints,
-        endpointImports,
-        allExportNames,
-      );
-    }
+		// Check if we should use optimized handler generation
+		if (context.production?.enabled && context.production.optimizedHandlers) {
+			return this.generateOptimizedEndpointsFile(
+				endpointsPath,
+				endpoints,
+				endpointImports,
+				allExportNames,
+			);
+		}
 
-    // Standard generation (development or optimizedHandlers: false)
-    const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
+		// Standard generation (development or optimizedHandlers: false)
+		const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { HonoEndpoint } from '@geekmidas/constructs/hono';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
@@ -344,189 +344,189 @@ export async function setupEndpoints(
 }
 `;
 
-    await writeFile(endpointsPath, content);
+		await writeFile(endpointsPath, content);
 
-    return endpointsPath;
-  }
+		return endpointsPath;
+	}
 
-  /**
-   * Generate optimized endpoints files with nested folder structure (per-endpoint files)
-   */
-  private async generateOptimizedEndpointsFile(
-    endpointsPath: string,
-    endpoints: GeneratedConstruct<
-      Endpoint<
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-      >
-    >[],
-    _endpointImports: string,
-    _allExportNames: string[],
-  ): Promise<string> {
-    const logger = console;
-    const outputDir = dirname(endpointsPath);
+	/**
+	 * Generate optimized endpoints files with nested folder structure (per-endpoint files)
+	 */
+	private async generateOptimizedEndpointsFile(
+		endpointsPath: string,
+		endpoints: GeneratedConstruct<
+			Endpoint<
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any,
+				any
+			>
+		>[],
+		_endpointImports: string,
+		_allExportNames: string[],
+	): Promise<string> {
+		const logger = console;
+		const outputDir = dirname(endpointsPath);
 
-    // Create endpoints subdirectory with tier folders
-    const endpointsDir = join(outputDir, 'endpoints');
-    await mkdir(join(endpointsDir, 'minimal'), { recursive: true });
-    await mkdir(join(endpointsDir, 'standard'), { recursive: true });
-    await mkdir(join(endpointsDir, 'full'), { recursive: true });
+		// Create endpoints subdirectory with tier folders
+		const endpointsDir = join(outputDir, 'endpoints');
+		await mkdir(join(endpointsDir, 'minimal'), { recursive: true });
+		await mkdir(join(endpointsDir, 'standard'), { recursive: true });
+		await mkdir(join(endpointsDir, 'full'), { recursive: true });
 
-    // Analyze each endpoint
-    const analyses: EndpointAnalysis[] = endpoints.map(({ key, construct }) =>
-      analyzeEndpoint(construct, key),
-    );
+		// Analyze each endpoint
+		const analyses: EndpointAnalysis[] = endpoints.map(({ key, construct }) =>
+			analyzeEndpoint(construct, key),
+		);
 
-    // Build endpoint import info with correct relative paths from each tier folder
-    // Use paths relative to the tier folder (e.g., endpoints/standard/)
-    const endpointImports: EndpointImportInfo[] = endpoints.map(
-      ({ key, path }) => {
-        // Calculate relative path from tier folder (one level deeper than endpointsDir)
-        const tierDir = join(endpointsDir, 'standard'); // Use any tier as reference - same depth
-        const relativePath = relative(tierDir, path.relative);
-        const importPath = relativePath.replace(/\.ts$/, '.js');
-        return { exportName: key, importPath };
-      },
-    );
+		// Build endpoint import info with correct relative paths from each tier folder
+		// Use paths relative to the tier folder (e.g., endpoints/standard/)
+		const endpointImports: EndpointImportInfo[] = endpoints.map(
+			({ key, path }) => {
+				// Calculate relative path from tier folder (one level deeper than endpointsDir)
+				const tierDir = join(endpointsDir, 'standard'); // Use any tier as reference - same depth
+				const relativePath = relative(tierDir, path.relative);
+				const importPath = relativePath.replace(/\.ts$/, '.js');
+				return { exportName: key, importPath };
+			},
+		);
 
-    // Log analysis summary
-    const summary = summarizeAnalysis(analyses);
-    logger.log(`\n📊 Endpoint Analysis:`);
-    logger.log(`   Total: ${summary.total} endpoints`);
-    logger.log(
-      `   - Minimal (near-raw-Hono): ${summary.byTier.minimal} endpoints`,
-    );
-    logger.log(
-      `   - Standard (auth/services): ${summary.byTier.standard} endpoints`,
-    );
-    logger.log(
-      `   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
-    );
+		// Log analysis summary
+		const summary = summarizeAnalysis(analyses);
+		logger.log(`\n📊 Endpoint Analysis:`);
+		logger.log(`   Total: ${summary.total} endpoints`);
+		logger.log(
+			`   - Minimal (near-raw-Hono): ${summary.byTier.minimal} endpoints`,
+		);
+		logger.log(
+			`   - Standard (auth/services): ${summary.byTier.standard} endpoints`,
+		);
+		logger.log(
+			`   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
+		);
 
-    // Generate files with nested structure (per-endpoint files)
-    const files = generateEndpointFilesNested(analyses, endpointImports);
+		// Generate files with nested structure (per-endpoint files)
+		const files = generateEndpointFilesNested(analyses, endpointImports);
 
-    // Write each file, creating directories as needed
-    for (const [filename, content] of Object.entries(files)) {
-      const filePath = join(endpointsDir, filename);
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, content);
-    }
+		// Write each file, creating directories as needed
+		for (const [filename, content] of Object.entries(files)) {
+			const filePath = join(endpointsDir, filename);
+			await mkdir(dirname(filePath), { recursive: true });
+			await writeFile(filePath, content);
+		}
 
-    // Count files by type
-    const endpointFiles = Object.keys(files).filter(
-      (f) => !f.endsWith('index.ts') && !f.endsWith('validators.ts'),
-    ).length;
-    const indexFiles = Object.keys(files).filter((f) =>
-      f.endsWith('index.ts'),
-    ).length;
+		// Count files by type
+		const endpointFiles = Object.keys(files).filter(
+			(f) => !f.endsWith('index.ts') && !f.endsWith('validators.ts'),
+		).length;
+		const indexFiles = Object.keys(files).filter((f) =>
+			f.endsWith('index.ts'),
+		).length;
 
-    logger.log(
-      `   Generated ${endpointFiles} endpoint files + ${indexFiles} index files + validators.ts`,
-    );
+		logger.log(
+			`   Generated ${endpointFiles} endpoint files + ${indexFiles} index files + validators.ts`,
+		);
 
-    // Return path to index file
-    return join(endpointsDir, 'index.ts');
-  }
+		// Return path to index file
+		return join(endpointsDir, 'index.ts');
+	}
 
-  private async generateAppFile(
-    outputDir: string,
-    context: BuildContext,
-  ): Promise<string> {
-    // Use production generator if in production mode
-    if (context.production?.enabled) {
-      return this.generateProductionAppFile(outputDir, context);
-    }
+	private async generateAppFile(
+		outputDir: string,
+		context: BuildContext,
+	): Promise<string> {
+		// Use production generator if in production mode
+		if (context.production?.enabled) {
+			return this.generateProductionAppFile(outputDir, context);
+		}
 
-    const appFileName = 'app.ts';
-    const appPath = join(outputDir, appFileName);
+		const appFileName = 'app.ts';
+		const appPath = join(outputDir, appFileName);
 
-    const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
+		const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
 
-    const relativeEnvParserPath = relative(
-      dirname(appPath),
-      context.envParserPath,
-    );
+		const relativeEnvParserPath = relative(
+			dirname(appPath),
+			context.envParserPath,
+		);
 
-    // Generate telescope imports and setup if enabled
-    const telescopeEnabled = context.telescope?.enabled;
-    const telescopeWebSocketEnabled = context.telescope?.websocket;
-    const usesExternalTelescope = !!context.telescope?.telescopePath;
+		// Generate telescope imports and setup if enabled
+		const telescopeEnabled = context.telescope?.enabled;
+		const telescopeWebSocketEnabled = context.telescope?.websocket;
+		const usesExternalTelescope = !!context.telescope?.telescopePath;
 
-    // Generate studio imports and setup if enabled
-    const studioEnabled = context.studio?.enabled;
-    const usesExternalStudio = !!context.studio?.studioPath;
+		// Generate studio imports and setup if enabled
+		const studioEnabled = context.studio?.enabled;
+		const usesExternalStudio = !!context.studio?.studioPath;
 
-    // Generate imports based on whether telescope is external or inline
-    let telescopeImports = '';
-    if (telescopeEnabled) {
-      if (usesExternalTelescope) {
-        const relativeTelescopePath = relative(
-          dirname(appPath),
-          context.telescope!.telescopePath!,
-        );
-        telescopeImports = `import ${context.telescope!.telescopeImportPattern} from '${relativeTelescopePath}';
+		// Generate imports based on whether telescope is external or inline
+		let telescopeImports = '';
+		if (telescopeEnabled) {
+			if (usesExternalTelescope) {
+				const relativeTelescopePath = relative(
+					dirname(appPath),
+					context.telescope!.telescopePath!,
+				);
+				telescopeImports = `import ${context.telescope!.telescopeImportPattern} from '${relativeTelescopePath}';
 import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
-      } else {
-        telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+			} else {
+				telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
 import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
-      }
-    }
+			}
+		}
 
-    // Generate imports for studio
-    let studioImports = '';
-    if (studioEnabled) {
-      if (usesExternalStudio) {
-        const relativeStudioPath = relative(
-          dirname(appPath),
-          context.studio!.studioPath!,
-        );
-        studioImports = `import ${context.studio!.studioImportPattern} from '${relativeStudioPath}';
+		// Generate imports for studio
+		let studioImports = '';
+		if (studioEnabled) {
+			if (usesExternalStudio) {
+				const relativeStudioPath = relative(
+					dirname(appPath),
+					context.studio!.studioPath!,
+				);
+				studioImports = `import ${context.studio!.studioImportPattern} from '${relativeStudioPath}';
 import { createStudioApp } from '@geekmidas/studio/server/hono';`;
-      } else {
-        studioImports = `// Studio requires a configured instance - use studio config path
+			} else {
+				studioImports = `// Studio requires a configured instance - use studio config path
 // import { createStudioApp } from '@geekmidas/studio/server/hono';`;
-      }
-    }
+			}
+		}
 
-    // Generate imports for server hooks
-    let hooksImports = '';
-    let beforeSetupCall = '';
-    let afterSetupCall = '';
-    if (context.hooks?.serverHooksPath) {
-      const relativeHooksPath = relative(
-        dirname(appPath),
-        context.hooks.serverHooksPath,
-      );
-      hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
-      beforeSetupCall = `
+		// Generate imports for server hooks
+		let hooksImports = '';
+		let beforeSetupCall = '';
+		let afterSetupCall = '';
+		if (context.hooks?.serverHooksPath) {
+			const relativeHooksPath = relative(
+				dirname(appPath),
+				context.hooks.serverHooksPath,
+			);
+			hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
+			beforeSetupCall = `
   // Call beforeSetup hook if defined
   if (typeof serverHooks.beforeSetup === 'function') {
     await serverHooks.beforeSetup(honoApp, { envParser, logger });
   }
 `;
-      afterSetupCall = `
+			afterSetupCall = `
   // Call afterSetup hook if defined
   if (typeof serverHooks.afterSetup === 'function') {
     await serverHooks.afterSetup(honoApp, { envParser, logger });
   }
 `;
-    }
+		}
 
-    const telescopeWebSocketSetupCode = telescopeWebSocketEnabled
-      ? `
+		const telescopeWebSocketSetupCode = telescopeWebSocketEnabled
+			? `
   // Setup WebSocket for real-time telescope updates
   try {
     const { createNodeWebSocket } = await import('@hono/node-ws');
@@ -557,14 +557,14 @@ import { createStudioApp } from '@geekmidas/studio/server/hono';`;
     logger.warn({ error: e }, 'WebSocket support not available - install @hono/node-ws for real-time updates');
   }
 `
-      : '';
+			: '';
 
-    // Generate telescope setup - either use external instance or create inline
-    let telescopeSetup = '';
-    if (telescopeEnabled) {
-      if (usesExternalTelescope) {
-        // Use external telescope instance - no need to create one
-        telescopeSetup = `
+		// Generate telescope setup - either use external instance or create inline
+		let telescopeSetup = '';
+		if (telescopeEnabled) {
+			if (usesExternalTelescope) {
+				// Use external telescope instance - no need to create one
+				telescopeSetup = `
 ${telescopeWebSocketSetupCode}
   // Add telescope middleware (before endpoints to capture all requests)
   honoApp.use('*', createMiddleware(telescope));
@@ -573,9 +573,9 @@ ${telescopeWebSocketSetupCode}
   const telescopeUI = createUI(telescope);
   honoApp.route('${context.telescope!.path}', telescopeUI);
 `;
-      } else {
-        // Create inline telescope instance
-        telescopeSetup = `
+			} else {
+				// Create inline telescope instance
+				telescopeSetup = `
   // Setup Telescope for debugging/monitoring
   const telescopeStorage = new InMemoryStorage({ maxEntries: ${context.telescope!.maxEntries} });
   const telescope = new Telescope({
@@ -593,20 +593,20 @@ ${telescopeWebSocketSetupCode}
   const telescopeUI = createUI(telescope);
   honoApp.route('${context.telescope!.path}', telescopeUI);
 `;
-      }
-    }
+			}
+		}
 
-    // Generate studio setup - requires external instance
-    let studioSetup = '';
-    if (studioEnabled && usesExternalStudio) {
-      studioSetup = `
+		// Generate studio setup - requires external instance
+		let studioSetup = '';
+		if (studioEnabled && usesExternalStudio) {
+			studioSetup = `
   // Mount Studio data browser UI
   const studioApp = createStudioApp(studio);
   honoApp.route('${context.studio!.path}', studioApp);
 `;
-    }
+		}
 
-    const content = `/**
+		const content = `/**
  * Generated server application
  *
  * ⚠️  WARNING: This is for LOCAL DEVELOPMENT ONLY
@@ -704,18 +704,18 @@ ${afterSetupCall}
 export default createApp;
 `;
 
-    await writeFile(appPath, content);
+		await writeFile(appPath, content);
 
-    return appPath;
-  }
+		return appPath;
+	}
 
-  private generateAWSApiGatewayV1Handler(
-    importPath: string,
-    exportName: string,
-    envParserPath: string,
-    envParserImportPattern: string,
-  ): string {
-    return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
+	private generateAWSApiGatewayV1Handler(
+		importPath: string,
+		exportName: string,
+		envParserPath: string,
+		envParserImportPattern: string,
+	): string {
+		return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
 
@@ -723,15 +723,15 @@ const adapter = new AmazonApiGatewayV1Endpoint(envParser, ${exportName});
 
 export const handler = adapter.handler;
 `;
-  }
+	}
 
-  private generateAWSApiGatewayV2Handler(
-    importPath: string,
-    exportName: string,
-    envParserPath: string,
-    envParserImportPattern: string,
-  ): string {
-    return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
+	private generateAWSApiGatewayV2Handler(
+		importPath: string,
+		exportName: string,
+		envParserPath: string,
+		envParserImportPattern: string,
+	): string {
+		return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
 
@@ -739,83 +739,83 @@ const adapter = new AmazonApiGatewayV2Endpoint(envParser, ${exportName});
 
 export const handler = adapter.handler;
 `;
-  }
+	}
 
-  private generateServerHandler(
-    importPath: string,
-    exportName: string,
-  ): string {
-    return `import { ${exportName} } from '${importPath}';
+	private generateServerHandler(
+		importPath: string,
+		exportName: string,
+	): string {
+		return `import { ${exportName} } from '${importPath}';
 
 // Server handler - implement based on your server framework
 export const handler = ${exportName};
 `;
-  }
+	}
 
-  /**
-   * Generate a production-optimized app.ts file
-   * No dev tools (Telescope, Studio, WebSocket), includes health checks and graceful shutdown
-   */
-  private async generateProductionAppFile(
-    outputDir: string,
-    context: BuildContext,
-  ): Promise<string> {
-    const appFileName = 'app.ts';
-    const appPath = join(outputDir, appFileName);
+	/**
+	 * Generate a production-optimized app.ts file
+	 * No dev tools (Telescope, Studio, WebSocket), includes health checks and graceful shutdown
+	 */
+	private async generateProductionAppFile(
+		outputDir: string,
+		context: BuildContext,
+	): Promise<string> {
+		const appFileName = 'app.ts';
+		const appPath = join(outputDir, appFileName);
 
-    const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
-    const relativeEnvParserPath = relative(
-      dirname(appPath),
-      context.envParserPath,
-    );
+		const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
+		const relativeEnvParserPath = relative(
+			dirname(appPath),
+			context.envParserPath,
+		);
 
-    const production = context.production!;
-    const healthCheckPath = production.healthCheck;
-    const enableGracefulShutdown = production.gracefulShutdown;
-    const enableOpenApi = production.openapi;
-    const includeSubscribers = production.subscribers === 'include';
+		const production = context.production!;
+		const healthCheckPath = production.healthCheck;
+		const enableGracefulShutdown = production.gracefulShutdown;
+		const enableOpenApi = production.openapi;
+		const includeSubscribers = production.subscribers === 'include';
 
-    // Generate imports for server hooks
-    let hooksImports = '';
-    let beforeSetupCall = '';
-    let afterSetupCall = '';
-    if (context.hooks?.serverHooksPath) {
-      const relativeHooksPath = relative(
-        dirname(appPath),
-        context.hooks.serverHooksPath,
-      );
-      hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
-      beforeSetupCall = `
+		// Generate imports for server hooks
+		let hooksImports = '';
+		let beforeSetupCall = '';
+		let afterSetupCall = '';
+		if (context.hooks?.serverHooksPath) {
+			const relativeHooksPath = relative(
+				dirname(appPath),
+				context.hooks.serverHooksPath,
+			);
+			hooksImports = `import * as serverHooks from '${relativeHooksPath}';`;
+			beforeSetupCall = `
   // Call beforeSetup hook if defined
   if (typeof serverHooks.beforeSetup === 'function') {
     await serverHooks.beforeSetup(honoApp, { envParser, logger });
   }
 `;
-      afterSetupCall = `
+			afterSetupCall = `
   // Call afterSetup hook if defined
   if (typeof serverHooks.afterSetup === 'function') {
     await serverHooks.afterSetup(honoApp, { envParser, logger });
   }
 `;
-    }
+		}
 
-    // Subscriber setup code
-    const subscriberSetup = includeSubscribers
-      ? `
+		// Subscriber setup code
+		const subscriberSetup = includeSubscribers
+			? `
       // Start subscribers in background
       await setupSubscribers(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
       });
 `
-      : '';
+			: '';
 
-    const subscriberImport = includeSubscribers
-      ? `import { setupSubscribers } from './subscribers.js';`
-      : '';
+		const subscriberImport = includeSubscribers
+			? `import { setupSubscribers } from './subscribers.js';`
+			: '';
 
-    // Graceful shutdown code
-    const gracefulShutdownCode = enableGracefulShutdown
-      ? `
+		// Graceful shutdown code
+		const gracefulShutdownCode = enableGracefulShutdown
+			? `
   // Graceful shutdown handling
   let isShuttingDown = false;
 
@@ -830,14 +830,14 @@ export const handler = ${exportName};
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 `
-      : '';
+			: '';
 
-    // Use endpoints/index.js for optimized builds, endpoints.js otherwise
-    const endpointsImportPath = production.optimizedHandlers
-      ? './endpoints/index.js'
-      : './endpoints.js';
+		// Use endpoints/index.js for optimized builds, endpoints.js otherwise
+		const endpointsImportPath = production.optimizedHandlers
+			? './endpoints/index.js'
+			: './endpoints.js';
 
-    const content = `/**
+		const content = `/**
  * Generated production server application
  *
  * This is a production-optimized build without dev tools.
@@ -902,23 +902,23 @@ ${gracefulShutdownCode}${subscriberSetup}
 export default createApp;
 `;
 
-    await writeFile(appPath, content);
+		await writeFile(appPath, content);
 
-    // Also generate the production server entry point
-    await this.generateProductionServerEntry(outputDir);
+		// Also generate the production server entry point
+		await this.generateProductionServerEntry(outputDir);
 
-    return appPath;
-  }
+		return appPath;
+	}
 
-  /**
-   * Generate production server.ts entry point
-   */
-  private async generateProductionServerEntry(
-    outputDir: string,
-  ): Promise<void> {
-    const serverPath = join(outputDir, 'server.ts');
+	/**
+	 * Generate production server.ts entry point
+	 */
+	private async generateProductionServerEntry(
+		outputDir: string,
+	): Promise<void> {
+		const serverPath = join(outputDir, 'server.ts');
 
-    const content = `#!/usr/bin/env node
+		const content = `#!/usr/bin/env node
 /**
  * Production server entry point
  * Generated by 'gkm build --provider server --production'
@@ -936,6 +936,6 @@ await start({
 });
 `;
 
-    await writeFile(serverPath, content);
-  }
+		await writeFile(serverPath, content);
+	}
 }

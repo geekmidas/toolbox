@@ -1,9 +1,9 @@
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
 import {
-  type DatabaseConnection,
-  type TransactionSettings,
-  withTransaction,
+	type DatabaseConnection,
+	type TransactionSettings,
+	withTransaction,
 } from './kysely';
 
 /**
@@ -11,17 +11,17 @@ import {
  * Keys become `prefix.key` (e.g., `app.user_id`).
  */
 export interface RlsContext {
-  [key: string]: string | number | boolean | null | undefined;
+	[key: string]: string | number | boolean | null | undefined;
 }
 
 /**
  * Options for withRlsContext function.
  */
 export interface WithRlsContextOptions {
-  /** Prefix for PostgreSQL session variables (default: 'app') */
-  prefix?: string;
-  /** Transaction settings (isolation level) */
-  settings?: TransactionSettings;
+	/** Prefix for PostgreSQL session variables (default: 'app') */
+	prefix?: string;
+	/** Transaction settings (isolation level) */
+	settings?: TransactionSettings;
 }
 
 /**
@@ -49,34 +49,34 @@ export interface WithRlsContextOptions {
  * @param options - Optional prefix and transaction settings
  */
 export async function withRlsContext<DB, T>(
-  db: DatabaseConnection<DB>,
-  context: RlsContext,
-  callback: (trx: Transaction<DB>) => Promise<T>,
-  options?: WithRlsContextOptions,
+	db: DatabaseConnection<DB>,
+	context: RlsContext,
+	callback: (trx: Transaction<DB>) => Promise<T>,
+	options?: WithRlsContextOptions,
 ): Promise<T> {
-  const prefix = options?.prefix ?? 'app';
+	const prefix = options?.prefix ?? 'app';
 
-  return withTransaction(
-    db,
-    async (trx) => {
-      // Set each context variable using SET LOCAL (scoped to transaction)
-      for (const [key, value] of Object.entries(context)) {
-        if (value === null || value === undefined) continue;
+	return withTransaction(
+		db,
+		async (trx) => {
+			// Set each context variable using SET LOCAL (scoped to transaction)
+			for (const [key, value] of Object.entries(context)) {
+				if (value === null || value === undefined) continue;
 
-        const settingName = `${prefix}.${key}`;
-        const settingValue = String(value);
+				const settingName = `${prefix}.${key}`;
+				const settingValue = String(value);
 
-        // Use raw SQL for SET LOCAL with proper escaping
-        // The setting name is an identifier, value is a string literal
-        await sql`SELECT set_config(${settingName}, ${settingValue}, true)`.execute(
-          trx,
-        );
-      }
+				// Use raw SQL for SET LOCAL with proper escaping
+				// The setting name is an identifier, value is a string literal
+				await sql`SELECT set_config(${settingName}, ${settingValue}, true)`.execute(
+					trx,
+				);
+			}
 
-      return callback(trx);
-    },
-    options?.settings,
-  );
+			return callback(trx);
+		},
+		options?.settings,
+	);
 }
 
 /**

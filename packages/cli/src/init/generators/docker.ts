@@ -1,26 +1,26 @@
 import type {
-  GeneratedFile,
-  TemplateConfig,
-  TemplateOptions,
+	GeneratedFile,
+	TemplateConfig,
+	TemplateOptions,
 } from '../templates/index.js';
 
 /**
  * Generate docker-compose.yml based on template and options
  */
 export function generateDockerFiles(
-  options: TemplateOptions,
-  template: TemplateConfig,
+	options: TemplateOptions,
+	template: TemplateConfig,
 ): GeneratedFile[] {
-  const { database } = options;
-  const isServerless = template.name === 'serverless';
-  const hasWorker = template.name === 'worker';
+	const { database } = options;
+	const isServerless = template.name === 'serverless';
+	const hasWorker = template.name === 'worker';
 
-  const services: string[] = [];
-  const volumes: string[] = [];
+	const services: string[] = [];
+	const volumes: string[] = [];
 
-  // PostgreSQL database
-  if (database) {
-    services.push(`  postgres:
+	// PostgreSQL database
+	if (database) {
+		services.push(`  postgres:
     image: postgres:16-alpine
     container_name: ${options.name}-postgres
     restart: unless-stopped
@@ -37,13 +37,13 @@ export function generateDockerFiles(
       interval: 5s
       timeout: 5s
       retries: 5`);
-    volumes.push('  postgres_data:');
-  }
+		volumes.push('  postgres_data:');
+	}
 
-  // Redis - different setup for serverless vs standard
-  if (isServerless) {
-    // Use serverless-redis-http for Lambda compatibility
-    services.push(`  redis:
+	// Redis - different setup for serverless vs standard
+	if (isServerless) {
+		// Use serverless-redis-http for Lambda compatibility
+		services.push(`  redis:
     image: redis:7-alpine
     container_name: ${options.name}-redis
     restart: unless-stopped
@@ -70,10 +70,10 @@ export function generateDockerFiles(
     depends_on:
       redis:
         condition: service_healthy`);
-    volumes.push('  redis_data:');
-  } else {
-    // Standard Redis for non-serverless templates
-    services.push(`  redis:
+		volumes.push('  redis_data:');
+	} else {
+		// Standard Redis for non-serverless templates
+		services.push(`  redis:
     image: redis:7-alpine
     container_name: ${options.name}-redis
     restart: unless-stopped
@@ -86,12 +86,12 @@ export function generateDockerFiles(
       interval: 5s
       timeout: 5s
       retries: 5`);
-    volumes.push('  redis_data:');
-  }
+		volumes.push('  redis_data:');
+	}
 
-  // RabbitMQ for worker template
-  if (hasWorker) {
-    services.push(`  rabbitmq:
+	// RabbitMQ for worker template
+	if (hasWorker) {
+		services.push(`  rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ${options.name}-rabbitmq
     restart: unless-stopped
@@ -108,27 +108,27 @@ export function generateDockerFiles(
       interval: 10s
       timeout: 5s
       retries: 5`);
-    volumes.push('  rabbitmq_data:');
-  }
+		volumes.push('  rabbitmq_data:');
+	}
 
-  // Build docker-compose.yml
-  let dockerCompose = `version: '3.8'
+	// Build docker-compose.yml
+	let dockerCompose = `version: '3.8'
 
 services:
 ${services.join('\n\n')}
 `;
 
-  if (volumes.length > 0) {
-    dockerCompose += `
+	if (volumes.length > 0) {
+		dockerCompose += `
 volumes:
 ${volumes.join('\n')}
 `;
-  }
+	}
 
-  return [
-    {
-      path: 'docker-compose.yml',
-      content: dockerCompose,
-    },
-  ];
+	return [
+		{
+			path: 'docker-compose.yml',
+			content: dockerCompose,
+		},
+	];
 }

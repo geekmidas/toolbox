@@ -1,59 +1,59 @@
 {
-  "search.exclude": {
-    "**/.sst": true
-  },
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "biomejs.biome",
-  "editor.codeActionsOnSave": {
-    "source.fixAll.biome": "explicit",
-    "source.organizeImports.biome": "explicit"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "[javascript]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "cSpell.words": [
-    "apigatewayv",
-    "APIV",
-    "AWSS",
-    "citext",
-    "dbdata",
-    "emailkit",
-    "envkit",
-    "fuzzystrmatch",
-    "geekimdas",
-    "healthcheck",
-    "Hermod",
-    "hoverkraft",
-    "Insertable",
-    "isready",
-    "kebabcase",
-    "kysely",
-    "Millis",
-    "openauth",
-    "openauthjs",
-    "ossp",
-    "paysafe",
-    "pgcrypto",
-    "presigner",
-    "rabbitmq",
-    "snakecase",
-    "testkit",
-    "trgm",
-    "tsdown",
-    "uniqby",
-    "uuidv",
-    "valibot",
-    "vitest",
-    "wagerwars",
-    "wiseguylegion"
-  ],
-  "[json]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  }
+	"search.exclude": {
+		"**/.sst": true
+	},
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "biomejs.biome",
+	"editor.codeActionsOnSave": {
+		"source.fixAll.biome": "explicit",
+		"source.organizeImports.biome": "explicit"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[javascript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"cSpell.words": [
+		"apigatewayv",
+		"APIV",
+		"AWSS",
+		"citext",
+		"dbdata",
+		"emailkit",
+		"envkit",
+		"fuzzystrmatch",
+		"geekimdas",
+		"healthcheck",
+		"Hermod",
+		"hoverkraft",
+		"Insertable",
+		"isready",
+		"kebabcase",
+		"kysely",
+		"Millis",
+		"openauth",
+		"openauthjs",
+		"ossp",
+		"paysafe",
+		"pgcrypto",
+		"presigner",
+		"rabbitmq",
+		"snakecase",
+		"testkit",
+		"trgm",
+		"tsdown",
+		"uniqby",
+		"uuidv",
+		"valibot",
+		"vitest",
+		"wagerwars",
+		"wiseguylegion"
+	],
+	"[json]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	}
 }

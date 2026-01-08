@@ -1,8 +1,8 @@
 import type {
-  AuditActor,
-  AuditableAction,
-  Auditor,
-  AuditStorage,
+	AuditActor,
+	AuditableAction,
+	Auditor,
+	AuditStorage,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
@@ -26,176 +26,176 @@ import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
  *                          If not provided, creates a new auditor.
  */
 export async function processEndpointAudits<
-  TServices extends Service[] = [],
-  TSession = unknown,
-  TLogger extends Logger = Logger,
-  OutSchema extends StandardSchemaV1 | undefined = undefined,
-  TAuditStorage extends AuditStorage | undefined = undefined,
-  TAuditStorageServiceName extends string = string,
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
+	TServices extends Service[] = [],
+	TSession = unknown,
+	TLogger extends Logger = Logger,
+	OutSchema extends StandardSchemaV1 | undefined = undefined,
+	TAuditStorage extends AuditStorage | undefined = undefined,
+	TAuditStorageServiceName extends string = string,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
 >(
-  endpoint: Endpoint<
-    any,
-    any,
-    any,
-    OutSchema,
-    TServices,
-    TLogger,
-    TSession,
-    any,
-    any,
-    TAuditStorage,
-    TAuditStorageServiceName,
-    TAuditAction
-  >,
-  response: InferStandardSchema<OutSchema>,
-  serviceDiscovery: ServiceDiscovery<any, any>,
-  logger: TLogger,
-  ctx: {
-    session: TSession;
-    header: HeaderFn;
-    cookie: CookieFn;
-    services: Record<string, unknown>;
-  },
-  existingAuditor?: Auditor<TAuditAction>,
+	endpoint: Endpoint<
+		any,
+		any,
+		any,
+		OutSchema,
+		TServices,
+		TLogger,
+		TSession,
+		any,
+		any,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction
+	>,
+	response: InferStandardSchema<OutSchema>,
+	serviceDiscovery: ServiceDiscovery<any, any>,
+	logger: TLogger,
+	ctx: {
+		session: TSession;
+		header: HeaderFn;
+		cookie: CookieFn;
+		services: Record<string, unknown>;
+	},
+	existingAuditor?: Auditor<TAuditAction>,
 ): Promise<void> {
-  try {
-    const audits = endpoint.audits as MappedAudit<TAuditAction, OutSchema>[];
+	try {
+		const audits = endpoint.audits as MappedAudit<TAuditAction, OutSchema>[];
 
-    // If we have an existing auditor (from handler context), we need to flush
-    // any manual audits it collected, even if there are no declarative audits
-    const hasExistingRecords =
-      existingAuditor && existingAuditor.getRecords().length > 0;
+		// If we have an existing auditor (from handler context), we need to flush
+		// any manual audits it collected, even if there are no declarative audits
+		const hasExistingRecords =
+			existingAuditor && existingAuditor.getRecords().length > 0;
 
-    // Skip if no declarative audits and no existing records to flush
-    if (!audits?.length && !hasExistingRecords) {
-      logger.debug('No audits to process');
-      return;
-    }
+		// Skip if no declarative audits and no existing records to flush
+		if (!audits?.length && !hasExistingRecords) {
+			logger.debug('No audits to process');
+			return;
+		}
 
-    // If no auditor storage service and we have things to process, warn
-    if (!endpoint.auditorStorageService) {
-      if (hasExistingRecords || audits?.length) {
-        logger.warn('No auditor storage service available');
-      }
-      return;
-    }
+		// If no auditor storage service and we have things to process, warn
+		if (!endpoint.auditorStorageService) {
+			if (hasExistingRecords || audits?.length) {
+				logger.warn('No auditor storage service available');
+			}
+			return;
+		}
 
-    // Get or create auditor
-    let auditor: Auditor<TAuditAction>;
+		// Get or create auditor
+		let auditor: Auditor<TAuditAction>;
 
-    if (existingAuditor) {
-      // Use existing auditor (preserves stored transaction and manual audits)
-      auditor = existingAuditor;
-      logger.debug('Using existing auditor from handler context');
-    } else {
-      // Create new auditor (backward compatibility)
-      const services = await serviceDiscovery.register([
-        endpoint.auditorStorageService,
-      ]);
-      const storage = services[
-        endpoint.auditorStorageService.serviceName
-      ] as AuditStorage;
+		if (existingAuditor) {
+			// Use existing auditor (preserves stored transaction and manual audits)
+			auditor = existingAuditor;
+			logger.debug('Using existing auditor from handler context');
+		} else {
+			// Create new auditor (backward compatibility)
+			const services = await serviceDiscovery.register([
+				endpoint.auditorStorageService,
+			]);
+			const storage = services[
+				endpoint.auditorStorageService.serviceName
+			] as AuditStorage;
 
-      // Extract actor if configured
-      let actor: AuditActor = { id: 'system', type: 'system' };
-      if (endpoint.actorExtractor) {
-        try {
-          actor = await (
-            endpoint.actorExtractor as ActorExtractor<
-              TServices,
-              TSession,
-              TLogger
-            >
-          )({
-            services: ctx.services as any,
-            session: ctx.session,
-            header: ctx.header,
-            cookie: ctx.cookie,
-            logger,
-          });
-        } catch (error) {
-          logger.error(error as Error, 'Failed to extract actor for audits');
-          // Continue with system actor
-        }
-      }
+			// Extract actor if configured
+			let actor: AuditActor = { id: 'system', type: 'system' };
+			if (endpoint.actorExtractor) {
+				try {
+					actor = await (
+						endpoint.actorExtractor as ActorExtractor<
+							TServices,
+							TSession,
+							TLogger
+						>
+					)({
+						services: ctx.services as any,
+						session: ctx.session,
+						header: ctx.header,
+						cookie: ctx.cookie,
+						logger,
+					});
+				} catch (error) {
+					logger.error(error as Error, 'Failed to extract actor for audits');
+					// Continue with system actor
+				}
+			}
 
-      auditor = new DefaultAuditor<TAuditAction>({
-        actor,
-        storage,
-        metadata: {
-          endpoint: endpoint.route,
-          method: endpoint.method,
-        },
-      });
-    }
+			auditor = new DefaultAuditor<TAuditAction>({
+				actor,
+				storage,
+				metadata: {
+					endpoint: endpoint.route,
+					method: endpoint.method,
+				},
+			});
+		}
 
-    // Process each declarative audit
-    if (audits?.length) {
-      for (const audit of audits) {
-        logger.debug({ audit: audit.type }, 'Processing declarative audit');
+		// Process each declarative audit
+		if (audits?.length) {
+			for (const audit of audits) {
+				logger.debug({ audit: audit.type }, 'Processing declarative audit');
 
-        // Check when condition
-        if (audit.when && !audit.when(response as any)) {
-          logger.debug(
-            { audit: audit.type },
-            'Audit skipped due to when condition',
-          );
-          continue;
-        }
+				// Check when condition
+				if (audit.when && !audit.when(response as any)) {
+					logger.debug(
+						{ audit: audit.type },
+						'Audit skipped due to when condition',
+					);
+					continue;
+				}
 
-        // Extract payload
-        const payload = audit.payload(response as any);
+				// Extract payload
+				const payload = audit.payload(response as any);
 
-        // Extract entityId if configured
-        const entityId = audit.entityId?.(response as any);
+				// Extract entityId if configured
+				const entityId = audit.entityId?.(response as any);
 
-        // Record the audit
-        auditor.audit(audit.type as any, payload as any, {
-          table: audit.table,
-          entityId,
-        });
-      }
-    }
+				// Record the audit
+				auditor.audit(audit.type as any, payload as any, {
+					table: audit.table,
+					entityId,
+				});
+			}
+		}
 
-    // Flush audits to storage
-    // Note: If existingAuditor has a stored transaction (via setTransaction),
-    // flush() will use it automatically
-    const recordCount = auditor.getRecords().length;
-    if (recordCount > 0) {
-      // Check if auditor has a stored transaction (for logging purposes)
-      const trx =
-        'getTransaction' in auditor
-          ? (auditor as { getTransaction(): unknown }).getTransaction()
-          : undefined;
-      logger.debug(
-        { auditCount: recordCount, hasTransaction: !!trx },
-        'Flushing audits',
-      );
-      await auditor.flush();
-    }
-  } catch (error) {
-    logger.error(error as Error, 'Failed to process audits');
-    // Don't rethrow - audit failures shouldn't fail the request
-  }
+		// Flush audits to storage
+		// Note: If existingAuditor has a stored transaction (via setTransaction),
+		// flush() will use it automatically
+		const recordCount = auditor.getRecords().length;
+		if (recordCount > 0) {
+			// Check if auditor has a stored transaction (for logging purposes)
+			const trx =
+				'getTransaction' in auditor
+					? (auditor as { getTransaction(): unknown }).getTransaction()
+					: undefined;
+			logger.debug(
+				{ auditCount: recordCount, hasTransaction: !!trx },
+				'Flushing audits',
+			);
+			await auditor.flush();
+		}
+	} catch (error) {
+		logger.error(error as Error, 'Failed to process audits');
+		// Don't rethrow - audit failures shouldn't fail the request
+	}
 }
 
 /**
  * Context for audit-aware handler execution.
  */
 export interface AuditExecutionContext<
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
 > {
-  /** The auditor instance for recording audits */
-  auditor: Auditor<TAuditAction>;
-  /** The audit storage instance */
-  storage: AuditStorage;
+	/** The auditor instance for recording audits */
+	auditor: Auditor<TAuditAction>;
+	/** The audit storage instance */
+	storage: AuditStorage;
 }
 
 /**
@@ -209,94 +209,94 @@ export interface AuditExecutionContext<
  * @returns Audit context with auditor and storage, or undefined if not configured
  */
 export async function createAuditContext<
-  TServices extends Service[] = [],
-  TSession = unknown,
-  TLogger extends Logger = Logger,
-  TAuditStorage extends AuditStorage | undefined = undefined,
-  TAuditStorageServiceName extends string = string,
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
-  TDatabase = undefined,
-  TDatabaseServiceName extends string = string,
+	TServices extends Service[] = [],
+	TSession = unknown,
+	TLogger extends Logger = Logger,
+	TAuditStorage extends AuditStorage | undefined = undefined,
+	TAuditStorageServiceName extends string = string,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 >(
-  endpoint: Endpoint<
-    any,
-    any,
-    any,
-    any,
-    TServices,
-    TLogger,
-    TSession,
-    any,
-    any,
-    TAuditStorage,
-    TAuditStorageServiceName,
-    TAuditAction,
-    TDatabase,
-    TDatabaseServiceName
-  >,
-  serviceDiscovery: ServiceDiscovery<any, any>,
-  logger: TLogger,
-  ctx: {
-    session: TSession;
-    header: HeaderFn;
-    cookie: CookieFn;
-    services: Record<string, unknown>;
-  },
+	endpoint: Endpoint<
+		any,
+		any,
+		any,
+		any,
+		TServices,
+		TLogger,
+		TSession,
+		any,
+		any,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	>,
+	serviceDiscovery: ServiceDiscovery<any, any>,
+	logger: TLogger,
+	ctx: {
+		session: TSession;
+		header: HeaderFn;
+		cookie: CookieFn;
+		services: Record<string, unknown>;
+	},
 ): Promise<AuditExecutionContext<TAuditAction> | undefined> {
-  if (!endpoint.auditorStorageService) {
-    return undefined;
-  }
+	if (!endpoint.auditorStorageService) {
+		return undefined;
+	}
 
-  const services = await serviceDiscovery.register([
-    endpoint.auditorStorageService,
-  ]);
-  const storage = services[
-    endpoint.auditorStorageService.serviceName
-  ] as AuditStorage;
+	const services = await serviceDiscovery.register([
+		endpoint.auditorStorageService,
+	]);
+	const storage = services[
+		endpoint.auditorStorageService.serviceName
+	] as AuditStorage;
 
-  // Extract actor if configured
-  let actor: AuditActor = { id: 'system', type: 'system' };
-  if (endpoint.actorExtractor) {
-    try {
-      actor = await (
-        endpoint.actorExtractor as ActorExtractor<TServices, TSession, TLogger>
-      )({
-        services: ctx.services as any,
-        session: ctx.session,
-        header: ctx.header,
-        cookie: ctx.cookie,
-        logger,
-      });
-    } catch (error) {
-      logger.error(error as Error, 'Failed to extract actor for audits');
-    }
-  }
+	// Extract actor if configured
+	let actor: AuditActor = { id: 'system', type: 'system' };
+	if (endpoint.actorExtractor) {
+		try {
+			actor = await (
+				endpoint.actorExtractor as ActorExtractor<TServices, TSession, TLogger>
+			)({
+				services: ctx.services as any,
+				session: ctx.session,
+				header: ctx.header,
+				cookie: ctx.cookie,
+				logger,
+			});
+		} catch (error) {
+			logger.error(error as Error, 'Failed to extract actor for audits');
+		}
+	}
 
-  const auditor = new DefaultAuditor<TAuditAction>({
-    actor,
-    storage,
-    metadata: {
-      endpoint: endpoint.route,
-      method: endpoint.method,
-    },
-  });
+	const auditor = new DefaultAuditor<TAuditAction>({
+		actor,
+		storage,
+		metadata: {
+			endpoint: endpoint.route,
+			method: endpoint.method,
+		},
+	});
 
-  return { auditor, storage };
+	return { auditor, storage };
 }
 
 /**
  * Options for executeWithAuditTransaction.
  */
 export interface ExecuteWithAuditTransactionOptions {
-  /**
-   * Database connection to use for the transaction.
-   * If this is already a transaction, it will be reused instead of creating a nested one.
-   * If not provided, the storage's internal database is used.
-   */
-  db?: unknown;
+	/**
+	 * Database connection to use for the transaction.
+	 * If this is already a transaction, it will be reused instead of creating a nested one.
+	 * If not provided, the storage's internal database is used.
+	 */
+	db?: unknown;
 }
 
 /**
@@ -318,54 +318,54 @@ export interface ExecuteWithAuditTransactionOptions {
  * @returns The handler result
  */
 export async function executeWithAuditTransaction<
-  T,
-  TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
-    string,
-    unknown
-  >,
+	T,
+	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
+		string,
+		unknown
+	>,
 >(
-  auditContext: AuditExecutionContext<TAuditAction> | undefined,
-  handler: (auditor?: Auditor<TAuditAction>) => Promise<T>,
-  onComplete?: (response: T, auditor: Auditor<TAuditAction>) => Promise<void>,
-  options?: ExecuteWithAuditTransactionOptions,
+	auditContext: AuditExecutionContext<TAuditAction> | undefined,
+	handler: (auditor?: Auditor<TAuditAction>) => Promise<T>,
+	onComplete?: (response: T, auditor: Auditor<TAuditAction>) => Promise<void>,
+	options?: ExecuteWithAuditTransactionOptions,
 ): Promise<T> {
-  // No audit context - just run handler
-  if (!auditContext) {
-    return handler(undefined);
-  }
+	// No audit context - just run handler
+	if (!auditContext) {
+		return handler(undefined);
+	}
 
-  const { auditor, storage } = auditContext;
+	const { auditor, storage } = auditContext;
 
-  // Check if storage provides a transaction wrapper
-  if (storage.withTransaction) {
-    // Wrap in transaction - audits are atomic with handler operations
-    // The storage's withTransaction handles setTransaction and flush
-    // Pass db so existing transactions are reused
-    return storage.withTransaction(
-      auditor,
-      async () => {
-        const response = await handler(auditor);
+	// Check if storage provides a transaction wrapper
+	if (storage.withTransaction) {
+		// Wrap in transaction - audits are atomic with handler operations
+		// The storage's withTransaction handles setTransaction and flush
+		// Pass db so existing transactions are reused
+		return storage.withTransaction(
+			auditor,
+			async () => {
+				const response = await handler(auditor);
 
-        // Process declarative audits within the transaction
-        if (onComplete) {
-          await onComplete(response, auditor);
-        }
+				// Process declarative audits within the transaction
+				if (onComplete) {
+					await onComplete(response, auditor);
+				}
 
-        return response;
-      },
-      options?.db,
-    );
-  }
+				return response;
+			},
+			options?.db,
+		);
+	}
 
-  // No transaction support - run handler and flush audits after
-  const response = await handler(auditor);
+	// No transaction support - run handler and flush audits after
+	const response = await handler(auditor);
 
-  if (onComplete) {
-    await onComplete(response, auditor);
-  }
+	if (onComplete) {
+		await onComplete(response, auditor);
+	}
 
-  // Flush audits (no transaction)
-  await auditor.flush();
+	// Flush audits (no transaction)
+	await auditor.flush();
 
-  return response;
+	return response;
 }

@@ -19,11 +19,11 @@ import type { EndpointAnalysis, EndpointFeatures } from './endpoint-analyzer';
  * Multi-file output structure (flat by tier)
  */
 export interface GeneratedEndpointFiles {
-  'validators.ts': string;
-  'minimal.ts': string;
-  'standard.ts': string;
-  'full.ts': string;
-  'index.ts': string;
+	'validators.ts': string;
+	'minimal.ts': string;
+	'standard.ts': string;
+	'full.ts': string;
+	'index.ts': string;
 }
 
 /**
@@ -40,114 +40,114 @@ export interface GeneratedEndpointFiles {
  * - endpoints/index.ts
  */
 export interface GeneratedEndpointFilesNested {
-  'validators.ts': string;
-  'minimal/index.ts': string;
-  'standard/index.ts': string;
-  'full/index.ts': string;
-  'index.ts': string;
-  [path: string]: string; // e.g., 'minimal/healthEndpoint.ts'
+	'validators.ts': string;
+	'minimal/index.ts': string;
+	'standard/index.ts': string;
+	'full/index.ts': string;
+	'index.ts': string;
+	[path: string]: string; // e.g., 'minimal/healthEndpoint.ts'
 }
 
 /**
  * Endpoint import info for generating import statements
  */
 export interface EndpointImportInfo {
-  exportName: string;
-  importPath: string;
+	exportName: string;
+	importPath: string;
 }
 
 /**
  * Generate imports needed for optimized endpoints file
  */
 export function generateOptimizedImports(analyses: EndpointAnalysis[]): string {
-  const needsValidator = analyses.some(
-    (a) =>
-      a.features.hasBodyValidation ||
-      a.features.hasQueryValidation ||
-      a.features.hasParamValidation,
-  );
+	const needsValidator = analyses.some(
+		(a) =>
+			a.features.hasBodyValidation ||
+			a.features.hasQueryValidation ||
+			a.features.hasParamValidation,
+	);
 
-  const needsResponseBuilder = analyses.some(
-    (a) => a.tier === 'standard' || a.tier === 'full',
-  );
+	const needsResponseBuilder = analyses.some(
+		(a) => a.tier === 'standard' || a.tier === 'full',
+	);
 
-  const needsServiceDiscovery = analyses.some(
-    (a) => a.features.hasServices || a.features.hasDatabase,
-  );
+	const needsServiceDiscovery = analyses.some(
+		(a) => a.features.hasServices || a.features.hasDatabase,
+	);
 
-  const needsEvents = analyses.some((a) => a.features.hasEvents);
+	const needsEvents = analyses.some((a) => a.features.hasEvents);
 
-  const needsAudits = analyses.some((a) => a.features.hasAudits);
+	const needsAudits = analyses.some((a) => a.features.hasAudits);
 
-  const needsRateLimit = analyses.some((a) => a.features.hasRateLimit);
+	const needsRateLimit = analyses.some((a) => a.features.hasRateLimit);
 
-  const needsRls = analyses.some((a) => a.features.hasRls);
+	const needsRls = analyses.some((a) => a.features.hasRls);
 
-  const imports: string[] = [
-    `import type { EnvironmentParser } from '@geekmidas/envkit';`,
-    `import type { Logger } from '@geekmidas/logger';`,
-    `import type { Hono } from 'hono';`,
-  ];
+	const imports: string[] = [
+		`import type { EnvironmentParser } from '@geekmidas/envkit';`,
+		`import type { Logger } from '@geekmidas/logger';`,
+		`import type { Hono } from 'hono';`,
+	];
 
-  if (needsValidator) {
-    imports.push(`import { validator } from 'hono/validator';`);
-  }
+	if (needsValidator) {
+		imports.push(`import { validator } from 'hono/validator';`);
+	}
 
-  imports.push(`import { Endpoint } from '@geekmidas/constructs/endpoints';`);
+	imports.push(`import { Endpoint } from '@geekmidas/constructs/endpoints';`);
 
-  if (needsResponseBuilder) {
-    imports.push(
-      `import { ResponseBuilder } from '@geekmidas/constructs/endpoints';`,
-    );
-  }
+	if (needsResponseBuilder) {
+		imports.push(
+			`import { ResponseBuilder } from '@geekmidas/constructs/endpoints';`,
+		);
+	}
 
-  if (needsServiceDiscovery) {
-    imports.push(`import { ServiceDiscovery } from '@geekmidas/services';`);
-  }
+	if (needsServiceDiscovery) {
+		imports.push(`import { ServiceDiscovery } from '@geekmidas/services';`);
+	}
 
-  if (needsEvents) {
-    imports.push(
-      `import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`,
-    );
-  }
+	if (needsEvents) {
+		imports.push(
+			`import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`,
+		);
+	}
 
-  if (needsAudits) {
-    imports.push(
-      `import { createAuditContext, withAuditableEndpointTransaction } from '@geekmidas/constructs/endpoints';`,
-    );
-  }
+	if (needsAudits) {
+		imports.push(
+			`import { createAuditContext, withAuditableEndpointTransaction } from '@geekmidas/constructs/endpoints';`,
+		);
+	}
 
-  if (needsRateLimit) {
-    imports.push(`import { createError } from '@geekmidas/errors';`);
-  }
+	if (needsRateLimit) {
+		imports.push(`import { createError } from '@geekmidas/errors';`);
+	}
 
-  if (needsRls) {
-    imports.push(
-      `import { withRlsContext, extractRlsContext } from '@geekmidas/constructs/endpoints';`,
-    );
-  }
+	if (needsRls) {
+		imports.push(
+			`import { withRlsContext, extractRlsContext } from '@geekmidas/constructs/endpoints';`,
+		);
+	}
 
-  return imports.join('\n');
+	return imports.join('\n');
 }
 
 /**
  * Generate reusable validator middleware factories
  */
 export function generateValidatorFactories(
-  analyses: EndpointAnalysis[],
+	analyses: EndpointAnalysis[],
 ): string {
-  const needsBody = analyses.some((a) => a.features.hasBodyValidation);
-  const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
-  const needsParams = analyses.some((a) => a.features.hasParamValidation);
+	const needsBody = analyses.some((a) => a.features.hasBodyValidation);
+	const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
+	const needsParams = analyses.some((a) => a.features.hasParamValidation);
 
-  if (!needsBody && !needsQuery && !needsParams) {
-    return '';
-  }
+	if (!needsBody && !needsQuery && !needsParams) {
+		return '';
+	}
 
-  const factories: string[] = [];
+	const factories: string[] = [];
 
-  if (needsBody) {
-    factories.push(`
+	if (needsBody) {
+		factories.push(`
 const validateBody = (endpoint: any) =>
   validator('json', async (value, c) => {
     if (!endpoint.input?.body) return undefined;
@@ -155,10 +155,10 @@ const validateBody = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  if (needsQuery) {
-    factories.push(`
+	if (needsQuery) {
+		factories.push(`
 const validateQuery = (endpoint: any) =>
   validator('query', async (_, c) => {
     if (!endpoint.input?.query) return undefined;
@@ -167,10 +167,10 @@ const validateQuery = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  if (needsParams) {
-    factories.push(`
+	if (needsParams) {
+		factories.push(`
 const validateParams = (endpoint: any) =>
   validator('param', async (params, c) => {
     if (!endpoint.input?.params) return undefined;
@@ -178,36 +178,36 @@ const validateParams = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  return factories.join('\n');
+	return factories.join('\n');
 }
 
 /**
  * Generate validator references for an endpoint
  */
 function generateValidators(
-  exportName: string,
-  features: EndpointFeatures,
+	exportName: string,
+	features: EndpointFeatures,
 ): string {
-  const validators: string[] = [];
+	const validators: string[] = [];
 
-  if (features.hasBodyValidation) {
-    validators.push(`validateBody(${exportName})`);
-  }
+	if (features.hasBodyValidation) {
+		validators.push(`validateBody(${exportName})`);
+	}
 
-  if (features.hasQueryValidation) {
-    validators.push(`validateQuery(${exportName})`);
-  }
+	if (features.hasQueryValidation) {
+		validators.push(`validateQuery(${exportName})`);
+	}
 
-  if (features.hasParamValidation) {
-    validators.push(`validateParams(${exportName})`);
-  }
+	if (features.hasParamValidation) {
+		validators.push(`validateParams(${exportName})`);
+	}
 
-  // Add trailing comma if there are validators (needed before the handler function)
-  return validators.length > 0
-    ? '\n    ' + validators.join(',\n    ') + ','
-    : '';
+	// Add trailing comma if there are validators (needed before the handler function)
+	return validators.length > 0
+		? '\n    ' + validators.join(',\n    ') + ','
+		: '';
 }
 
 /**
@@ -216,15 +216,15 @@ function generateValidators(
  * Used for: Health checks, public endpoints with no services
  */
 export function generateMinimalHandler(analysis: EndpointAnalysis): string {
-  const { exportName, features } = analysis;
-  const method = analysis.method.toLowerCase();
+	const { exportName, features } = analysis;
+	const method = analysis.method.toLowerCase();
 
-  const validators = generateValidators(exportName, features);
-  const hasValidators = validators.length > 0;
+	const validators = generateValidators(exportName, features);
+	const hasValidators = validators.length > 0;
 
-  // For truly minimal endpoints (no validation), generate inline handler
-  if (!hasValidators && !features.hasOutputValidation) {
-    return `
+	// For truly minimal endpoints (no validation), generate inline handler
+	if (!hasValidators && !features.hasOutputValidation) {
+		return `
   // Minimal handler: ${analysis.route} (${analysis.method})
   app.${method}('${analysis.route}', async (c) => {
     const result = await ${exportName}.handler(
@@ -244,10 +244,10 @@ export function generateMinimalHandler(analysis: EndpointAnalysis): string {
     );
     return c.json(result, ${exportName}.status as any);
   });`;
-  }
+	}
 
-  // With validation but still minimal
-  return `
+	// With validation but still minimal
+	return `
   // Minimal handler with validation: ${analysis.route} (${analysis.method})
   app.${method}('${analysis.route}',${validators}
     async (c) => {
@@ -267,11 +267,11 @@ export function generateMinimalHandler(analysis: EndpointAnalysis): string {
         { getMetadata: () => ({}) } as any,
       );
       ${
-        features.hasOutputValidation
-          ? `const output = await ${exportName}.parseOutput(result);
+				features.hasOutputValidation
+					? `const output = await ${exportName}.parseOutput(result);
       return c.json(output, ${exportName}.status as any);`
-          : `return c.json(result, ${exportName}.status as any);`
-      }
+					: `return c.json(result, ${exportName}.status as any);`
+			}
     }
   );`;
 }
@@ -282,33 +282,33 @@ export function generateMinimalHandler(analysis: EndpointAnalysis): string {
  * Used for: Authenticated endpoints, endpoints with services
  */
 export function generateStandardHandler(analysis: EndpointAnalysis): string {
-  const { exportName, features } = analysis;
-  const method = analysis.method.toLowerCase();
+	const { exportName, features } = analysis;
+	const method = analysis.method.toLowerCase();
 
-  const validators = generateValidators(exportName, features);
+	const validators = generateValidators(exportName, features);
 
-  // Build service resolution code
-  let serviceResolution = '';
-  if (features.hasServices || features.hasDatabase) {
-    serviceResolution = `
+	// Build service resolution code
+	let serviceResolution = '';
+	if (features.hasServices || features.hasDatabase) {
+		serviceResolution = `
       const services = await serviceDiscovery.register(${exportName}.services);
       ${
-        features.hasDatabase
-          ? `const db = ${exportName}.databaseService
+				features.hasDatabase
+					? `const db = ${exportName}.databaseService
         ? (await serviceDiscovery.register([${exportName}.databaseService]) as any)[${exportName}.databaseService.serviceName]
         : undefined;`
-          : 'const db = undefined;'
-      }`;
-  } else {
-    serviceResolution = `
+					: 'const db = undefined;'
+			}`;
+	} else {
+		serviceResolution = `
       const services = {};
       const db = undefined;`;
-  }
+	}
 
-  // Build auth code
-  let authCode = '';
-  if (features.hasAuth) {
-    authCode = `
+	// Build auth code
+	let authCode = '';
+	if (features.hasAuth) {
+		authCode = `
       // Authentication
       const session = await ${exportName}.getSession({
         services,
@@ -329,12 +329,12 @@ export function generateStandardHandler(analysis: EndpointAnalysis): string {
       if (!isAuthorized) {
         return c.json({ error: 'Unauthorized' }, 401);
       }`;
-  }
+	}
 
-  // Build event publishing code
-  let eventCode = '';
-  if (features.hasEvents) {
-    eventCode = `
+	// Build event publishing code
+	let eventCode = '';
+	if (features.hasEvents) {
+		eventCode = `
       // Publish events on success
       if (Endpoint.isSuccessStatus(${exportName}.status)) {
         await (publishConstructEvents as any)(
@@ -344,9 +344,9 @@ export function generateStandardHandler(analysis: EndpointAnalysis): string {
           logger,
         );
       }`;
-  }
+	}
 
-  return `
+	return `
   // Standard handler: ${analysis.route} (${analysis.method})
   app.${method}('${analysis.route}',${validators}
     async (c) => {
@@ -382,12 +382,12 @@ ${authCode}
       }
 
       ${
-        features.hasOutputValidation
-          ? `const output = ${exportName}.outputSchema
+				features.hasOutputValidation
+					? `const output = ${exportName}.outputSchema
         ? await ${exportName}.parseOutput(data)
         : data;`
-          : 'const output = data;'
-      }
+					: 'const output = data;'
+			}
 ${eventCode}
 
       const status = (metadata.status ?? ${exportName}.status) as any;
@@ -401,43 +401,43 @@ ${eventCode}
  * but generates optimized inline handlers for minimal/standard endpoints
  */
 export function generateOptimizedSetupFunction(
-  analyses: EndpointAnalysis[],
-  _allExportNames: string[],
+	analyses: EndpointAnalysis[],
+	_allExportNames: string[],
 ): string {
-  const minimalEndpoints = analyses.filter((a) => a.tier === 'minimal');
-  const standardEndpoints = analyses.filter((a) => a.tier === 'standard');
-  const fullEndpoints = analyses.filter((a) => a.tier === 'full');
+	const minimalEndpoints = analyses.filter((a) => a.tier === 'minimal');
+	const standardEndpoints = analyses.filter((a) => a.tier === 'standard');
+	const fullEndpoints = analyses.filter((a) => a.tier === 'full');
 
-  // Generate inline handlers for minimal and standard endpoints
-  const minimalHandlers = minimalEndpoints
-    .map((a) => generateMinimalHandler(a))
-    .join('\n');
+	// Generate inline handlers for minimal and standard endpoints
+	const minimalHandlers = minimalEndpoints
+		.map((a) => generateMinimalHandler(a))
+		.join('\n');
 
-  const standardHandlers = standardEndpoints
-    .map((a) => generateStandardHandler(a))
-    .join('\n');
+	const standardHandlers = standardEndpoints
+		.map((a) => generateStandardHandler(a))
+		.join('\n');
 
-  // Full endpoints use HonoEndpoint.addRoutes
-  const fullEndpointNames = fullEndpoints.map((a) => a.exportName);
+	// Full endpoints use HonoEndpoint.addRoutes
+	const fullEndpointNames = fullEndpoints.map((a) => a.exportName);
 
-  const fullEndpointsSetup =
-    fullEndpointNames.length > 0
-      ? `
+	const fullEndpointsSetup =
+		fullEndpointNames.length > 0
+			? `
   // Full-featured endpoints use HonoEndpoint.addRoutes
   const fullEndpoints = [${fullEndpointNames.join(', ')}];
   HonoEndpoint.addRoutes(fullEndpoints, serviceDiscovery, app, openApiOptions);`
-      : '';
+			: '';
 
-  // Add HonoEndpoint import only if needed
-  const honoEndpointImport =
-    fullEndpointNames.length > 0
-      ? `import { HonoEndpoint } from '@geekmidas/constructs/hono';`
-      : '';
+	// Add HonoEndpoint import only if needed
+	const honoEndpointImport =
+		fullEndpointNames.length > 0
+			? `import { HonoEndpoint } from '@geekmidas/constructs/hono';`
+			: '';
 
-  // Only generate openApiOptions if we have full endpoints that need it
-  const openApiOptionsDecl =
-    fullEndpointNames.length > 0
-      ? `
+	// Only generate openApiOptions if we have full endpoints that need it
+	const openApiOptionsDecl =
+		fullEndpointNames.length > 0
+			? `
   const openApiOptions: any = enableOpenApi ? {
     docsPath: '/__docs',
     openApiOptions: {
@@ -446,9 +446,9 @@ export function generateOptimizedSetupFunction(
       description: 'Generated API documentation'
     }
   } : { docsPath: false };`
-      : '';
+			: '';
 
-  return `${honoEndpointImport}
+	return `${honoEndpointImport}
 
 export async function setupEndpoints(
   app: Hono,
@@ -488,18 +488,18 @@ ${fullEndpointsSetup}
  * Generate complete optimized endpoints file
  */
 export function generateOptimizedEndpointsFile(
-  analyses: EndpointAnalysis[],
-  endpointImports: string,
-  allExportNames: string[],
+	analyses: EndpointAnalysis[],
+	endpointImports: string,
+	allExportNames: string[],
 ): string {
-  const imports = generateOptimizedImports(analyses);
-  const validatorFactories = generateValidatorFactories(analyses);
-  const setupFunction = generateOptimizedSetupFunction(
-    analyses,
-    allExportNames,
-  );
+	const imports = generateOptimizedImports(analyses);
+	const validatorFactories = generateValidatorFactories(analyses);
+	const setupFunction = generateOptimizedSetupFunction(
+		analyses,
+		allExportNames,
+	);
 
-  return `/**
+	return `/**
  * Generated optimized endpoints file
  *
  * Build-time optimization tiers:
@@ -523,20 +523,20 @@ ${setupFunction}
  * Generate validators.ts - Shared validator middleware factories
  */
 function generateValidatorsFile(analyses: EndpointAnalysis[]): string {
-  const needsBody = analyses.some((a) => a.features.hasBodyValidation);
-  const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
-  const needsParams = analyses.some((a) => a.features.hasParamValidation);
+	const needsBody = analyses.some((a) => a.features.hasBodyValidation);
+	const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
+	const needsParams = analyses.some((a) => a.features.hasParamValidation);
 
-  if (!needsBody && !needsQuery && !needsParams) {
-    return `// No validators needed for this build\nexport {};\n`;
-  }
+	if (!needsBody && !needsQuery && !needsParams) {
+		return `// No validators needed for this build\nexport {};\n`;
+	}
 
-  const exports: string[] = [];
-  const factories: string[] = [];
+	const exports: string[] = [];
+	const factories: string[] = [];
 
-  if (needsBody) {
-    exports.push('validateBody');
-    factories.push(`
+	if (needsBody) {
+		exports.push('validateBody');
+		factories.push(`
 export const validateBody = (endpoint: any) =>
   validator('json', async (value, c) => {
     if (!endpoint.input?.body) return undefined;
@@ -544,11 +544,11 @@ export const validateBody = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  if (needsQuery) {
-    exports.push('validateQuery');
-    factories.push(`
+	if (needsQuery) {
+		exports.push('validateQuery');
+		factories.push(`
 export const validateQuery = (endpoint: any) =>
   validator('query', async (_, c) => {
     if (!endpoint.input?.query) return undefined;
@@ -557,11 +557,11 @@ export const validateQuery = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  if (needsParams) {
-    exports.push('validateParams');
-    factories.push(`
+	if (needsParams) {
+		exports.push('validateParams');
+		factories.push(`
 export const validateParams = (endpoint: any) =>
   validator('param', async (params, c) => {
     if (!endpoint.input?.params) return undefined;
@@ -569,9 +569,9 @@ export const validateParams = (endpoint: any) =>
     if (parsed.issues) return c.json(parsed.issues, 422);
     return parsed.value;
   });`);
-  }
+	}
 
-  return `/**
+	return `/**
  * Generated validator middleware factories
  * Shared across all endpoint tiers that need validation
  */
@@ -585,13 +585,13 @@ ${factories.join('\n')}
  * Generate minimal.ts - Minimal tier handlers
  */
 function generateMinimalFile(
-  analyses: EndpointAnalysis[],
-  endpointImports: EndpointImportInfo[],
+	analyses: EndpointAnalysis[],
+	endpointImports: EndpointImportInfo[],
 ): string {
-  const minimalEndpoints = analyses.filter((a) => a.tier === 'minimal');
+	const minimalEndpoints = analyses.filter((a) => a.tier === 'minimal');
 
-  if (minimalEndpoints.length === 0) {
-    return `// No minimal-tier endpoints in this build
+	if (minimalEndpoints.length === 0) {
+		return `// No minimal-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { Logger } from '@geekmidas/logger';
 
@@ -602,33 +602,33 @@ export function setupMinimalEndpoints(
   // No minimal endpoints
 }
 `;
-  }
+	}
 
-  const minimalExportNames = minimalEndpoints.map((a) => a.exportName);
-  const relevantImports = endpointImports.filter((i) =>
-    minimalExportNames.includes(i.exportName),
-  );
+	const minimalExportNames = minimalEndpoints.map((a) => a.exportName);
+	const relevantImports = endpointImports.filter((i) =>
+		minimalExportNames.includes(i.exportName),
+	);
 
-  const importStatements = relevantImports
-    .map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
-    .join('\n');
+	const importStatements = relevantImports
+		.map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
+		.join('\n');
 
-  const needsValidators = minimalEndpoints.some(
-    (a) =>
-      a.features.hasBodyValidation ||
-      a.features.hasQueryValidation ||
-      a.features.hasParamValidation,
-  );
+	const needsValidators = minimalEndpoints.some(
+		(a) =>
+			a.features.hasBodyValidation ||
+			a.features.hasQueryValidation ||
+			a.features.hasParamValidation,
+	);
 
-  const validatorImport = needsValidators
-    ? generateValidatorImports(minimalEndpoints)
-    : '';
+	const validatorImport = needsValidators
+		? generateValidatorImports(minimalEndpoints)
+		: '';
 
-  const handlers = minimalEndpoints
-    .map((a) => generateMinimalHandler(a))
-    .join('\n');
+	const handlers = minimalEndpoints
+		.map((a) => generateMinimalHandler(a))
+		.join('\n');
 
-  return `/**
+	return `/**
  * Minimal-tier endpoint handlers (${minimalEndpoints.length} endpoints)
  * Near-raw-Hono performance - no auth, no services, no complex features
  */
@@ -651,13 +651,13 @@ ${handlers}
  * Generate standard.ts - Standard tier handlers
  */
 function generateStandardFile(
-  analyses: EndpointAnalysis[],
-  endpointImports: EndpointImportInfo[],
+	analyses: EndpointAnalysis[],
+	endpointImports: EndpointImportInfo[],
 ): string {
-  const standardEndpoints = analyses.filter((a) => a.tier === 'standard');
+	const standardEndpoints = analyses.filter((a) => a.tier === 'standard');
 
-  if (standardEndpoints.length === 0) {
-    return `// No standard-tier endpoints in this build
+	if (standardEndpoints.length === 0) {
+		return `// No standard-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { Logger } from '@geekmidas/logger';
 import type { ServiceDiscovery } from '@geekmidas/services';
@@ -670,38 +670,38 @@ export function setupStandardEndpoints(
   // No standard endpoints
 }
 `;
-  }
+	}
 
-  const standardExportNames = standardEndpoints.map((a) => a.exportName);
-  const relevantImports = endpointImports.filter((i) =>
-    standardExportNames.includes(i.exportName),
-  );
+	const standardExportNames = standardEndpoints.map((a) => a.exportName);
+	const relevantImports = endpointImports.filter((i) =>
+		standardExportNames.includes(i.exportName),
+	);
 
-  const importStatements = relevantImports
-    .map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
-    .join('\n');
+	const importStatements = relevantImports
+		.map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
+		.join('\n');
 
-  const needsValidators = standardEndpoints.some(
-    (a) =>
-      a.features.hasBodyValidation ||
-      a.features.hasQueryValidation ||
-      a.features.hasParamValidation,
-  );
+	const needsValidators = standardEndpoints.some(
+		(a) =>
+			a.features.hasBodyValidation ||
+			a.features.hasQueryValidation ||
+			a.features.hasParamValidation,
+	);
 
-  const validatorImport = needsValidators
-    ? generateValidatorImports(standardEndpoints)
-    : '';
+	const validatorImport = needsValidators
+		? generateValidatorImports(standardEndpoints)
+		: '';
 
-  const needsEvents = standardEndpoints.some((a) => a.features.hasEvents);
-  const eventsImport = needsEvents
-    ? `import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`
-    : '';
+	const needsEvents = standardEndpoints.some((a) => a.features.hasEvents);
+	const eventsImport = needsEvents
+		? `import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`
+		: '';
 
-  const handlers = standardEndpoints
-    .map((a) => generateStandardHandler(a))
-    .join('\n');
+	const handlers = standardEndpoints
+		.map((a) => generateStandardHandler(a))
+		.join('\n');
 
-  return `/**
+	return `/**
  * Standard-tier endpoint handlers (${standardEndpoints.length} endpoints)
  * Auth and/or services enabled, but no complex features like audits/RLS
  */
@@ -727,13 +727,13 @@ ${handlers}
  * Generate full.ts - Full tier handlers (uses HonoEndpoint.addRoutes)
  */
 function generateFullFile(
-  analyses: EndpointAnalysis[],
-  endpointImports: EndpointImportInfo[],
+	analyses: EndpointAnalysis[],
+	endpointImports: EndpointImportInfo[],
 ): string {
-  const fullEndpoints = analyses.filter((a) => a.tier === 'full');
+	const fullEndpoints = analyses.filter((a) => a.tier === 'full');
 
-  if (fullEndpoints.length === 0) {
-    return `// No full-tier endpoints in this build
+	if (fullEndpoints.length === 0) {
+		return `// No full-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { ServiceDiscovery } from '@geekmidas/services';
 
@@ -745,18 +745,18 @@ export function setupFullEndpoints(
   // No full endpoints
 }
 `;
-  }
+	}
 
-  const fullExportNames = fullEndpoints.map((a) => a.exportName);
-  const relevantImports = endpointImports.filter((i) =>
-    fullExportNames.includes(i.exportName),
-  );
+	const fullExportNames = fullEndpoints.map((a) => a.exportName);
+	const relevantImports = endpointImports.filter((i) =>
+		fullExportNames.includes(i.exportName),
+	);
 
-  const importStatements = relevantImports
-    .map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
-    .join('\n');
+	const importStatements = relevantImports
+		.map((i) => `import { ${i.exportName} } from '${i.importPath}';`)
+		.join('\n');
 
-  return `/**
+	return `/**
  * Full-tier endpoint handlers (${fullEndpoints.length} endpoints)
  * Complex features: audits, RLS, rate limiting
  * Uses HonoEndpoint.addRoutes for full feature support
@@ -791,11 +791,11 @@ export function setupFullEndpoints(
  * Generate index.ts - Main entry point
  */
 function generateIndexFile(analyses: EndpointAnalysis[]): string {
-  const minimalCount = analyses.filter((a) => a.tier === 'minimal').length;
-  const standardCount = analyses.filter((a) => a.tier === 'standard').length;
-  const fullCount = analyses.filter((a) => a.tier === 'full').length;
+	const minimalCount = analyses.filter((a) => a.tier === 'minimal').length;
+	const standardCount = analyses.filter((a) => a.tier === 'standard').length;
+	const fullCount = analyses.filter((a) => a.tier === 'full').length;
 
-  return `/**
+	return `/**
  * Generated optimized endpoints
  *
  * Build-time optimization tiers:
@@ -845,33 +845,33 @@ export async function setupEndpoints(
  * Generate validator imports based on what's needed
  */
 function generateValidatorImports(analyses: EndpointAnalysis[]): string {
-  const needsBody = analyses.some((a) => a.features.hasBodyValidation);
-  const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
-  const needsParams = analyses.some((a) => a.features.hasParamValidation);
+	const needsBody = analyses.some((a) => a.features.hasBodyValidation);
+	const needsQuery = analyses.some((a) => a.features.hasQueryValidation);
+	const needsParams = analyses.some((a) => a.features.hasParamValidation);
 
-  const imports: string[] = [];
-  if (needsBody) imports.push('validateBody');
-  if (needsQuery) imports.push('validateQuery');
-  if (needsParams) imports.push('validateParams');
+	const imports: string[] = [];
+	if (needsBody) imports.push('validateBody');
+	if (needsQuery) imports.push('validateQuery');
+	if (needsParams) imports.push('validateParams');
 
-  if (imports.length === 0) return '';
-  return `import { ${imports.join(', ')} } from './validators.js';`;
+	if (imports.length === 0) return '';
+	return `import { ${imports.join(', ')} } from './validators.js';`;
 }
 
 /**
  * Generate all endpoint files split by tier (flat structure)
  */
 export function generateEndpointFilesByTier(
-  analyses: EndpointAnalysis[],
-  endpointImports: EndpointImportInfo[],
+	analyses: EndpointAnalysis[],
+	endpointImports: EndpointImportInfo[],
 ): GeneratedEndpointFiles {
-  return {
-    'validators.ts': generateValidatorsFile(analyses),
-    'minimal.ts': generateMinimalFile(analyses, endpointImports),
-    'standard.ts': generateStandardFile(analyses, endpointImports),
-    'full.ts': generateFullFile(analyses, endpointImports),
-    'index.ts': generateIndexFile(analyses),
-  };
+	return {
+		'validators.ts': generateValidatorsFile(analyses),
+		'minimal.ts': generateMinimalFile(analyses, endpointImports),
+		'standard.ts': generateStandardFile(analyses, endpointImports),
+		'full.ts': generateFullFile(analyses, endpointImports),
+		'index.ts': generateIndexFile(analyses),
+	};
 }
 
 // ============================================================================
@@ -882,23 +882,23 @@ export function generateEndpointFilesByTier(
  * Generate a standalone minimal endpoint file
  */
 function generateMinimalEndpointFile(
-  analysis: EndpointAnalysis,
-  endpointImport: EndpointImportInfo,
+	analysis: EndpointAnalysis,
+	endpointImport: EndpointImportInfo,
 ): string {
-  const { exportName, features } = analysis;
+	const { exportName, features } = analysis;
 
-  const needsValidators =
-    features.hasBodyValidation ||
-    features.hasQueryValidation ||
-    features.hasParamValidation;
+	const needsValidators =
+		features.hasBodyValidation ||
+		features.hasQueryValidation ||
+		features.hasParamValidation;
 
-  const validatorImport = needsValidators
-    ? generateValidatorImportsForEndpoint(analysis)
-    : '';
+	const validatorImport = needsValidators
+		? generateValidatorImportsForEndpoint(analysis)
+		: '';
 
-  const handler = generateMinimalHandler(analysis);
+	const handler = generateMinimalHandler(analysis);
 
-  return `/**
+	return `/**
  * Minimal endpoint: ${analysis.route} (${analysis.method})
  * Near-raw-Hono performance
  */
@@ -921,27 +921,27 @@ ${handler}
  * Generate a standalone standard endpoint file
  */
 function generateStandardEndpointFile(
-  analysis: EndpointAnalysis,
-  endpointImport: EndpointImportInfo,
+	analysis: EndpointAnalysis,
+	endpointImport: EndpointImportInfo,
 ): string {
-  const { exportName, features } = analysis;
+	const { exportName, features } = analysis;
 
-  const needsValidators =
-    features.hasBodyValidation ||
-    features.hasQueryValidation ||
-    features.hasParamValidation;
+	const needsValidators =
+		features.hasBodyValidation ||
+		features.hasQueryValidation ||
+		features.hasParamValidation;
 
-  const validatorImport = needsValidators
-    ? generateValidatorImportsForEndpoint(analysis)
-    : '';
+	const validatorImport = needsValidators
+		? generateValidatorImportsForEndpoint(analysis)
+		: '';
 
-  const eventsImport = features.hasEvents
-    ? `import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`
-    : '';
+	const eventsImport = features.hasEvents
+		? `import { publishConstructEvents } from '@geekmidas/constructs/endpoints';`
+		: '';
 
-  const handler = generateStandardHandler(analysis);
+	const handler = generateStandardHandler(analysis);
 
-  return `/**
+	return `/**
  * Standard endpoint: ${analysis.route} (${analysis.method})
  * Auth and/or services enabled
  */
@@ -967,12 +967,12 @@ ${handler}
  * Generate a standalone full endpoint file
  */
 function generateFullEndpointFile(
-  analysis: EndpointAnalysis,
-  endpointImport: EndpointImportInfo,
+	analysis: EndpointAnalysis,
+	endpointImport: EndpointImportInfo,
 ): string {
-  const { exportName } = analysis;
+	const { exportName } = analysis;
 
-  return `/**
+	return `/**
  * Full endpoint: ${analysis.route} (${analysis.method})
  * Complex features: audits, RLS, rate limiting
  */
@@ -995,14 +995,14 @@ export function setup${capitalize(exportName)}(
  * Generate tier index file that imports and calls all endpoint setup functions
  */
 function generateTierIndexFile(
-  tier: 'minimal' | 'standard' | 'full',
-  analyses: EndpointAnalysis[],
+	tier: 'minimal' | 'standard' | 'full',
+	analyses: EndpointAnalysis[],
 ): string {
-  const tierEndpoints = analyses.filter((a) => a.tier === tier);
+	const tierEndpoints = analyses.filter((a) => a.tier === tier);
 
-  if (tierEndpoints.length === 0) {
-    if (tier === 'minimal') {
-      return `// No minimal-tier endpoints in this build
+	if (tierEndpoints.length === 0) {
+		if (tier === 'minimal') {
+			return `// No minimal-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { Logger } from '@geekmidas/logger';
 
@@ -1013,9 +1013,9 @@ export function setupMinimalEndpoints(
   // No minimal endpoints
 }
 `;
-    }
-    if (tier === 'standard') {
-      return `// No standard-tier endpoints in this build
+		}
+		if (tier === 'standard') {
+			return `// No standard-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { Logger } from '@geekmidas/logger';
 import type { ServiceDiscovery } from '@geekmidas/services';
@@ -1028,9 +1028,9 @@ export function setupStandardEndpoints(
   // No standard endpoints
 }
 `;
-    }
-    // full
-    return `// No full-tier endpoints in this build
+		}
+		// full
+		return `// No full-tier endpoints in this build
 import type { Hono } from 'hono';
 import type { ServiceDiscovery } from '@geekmidas/services';
 
@@ -1042,21 +1042,21 @@ export function setupFullEndpoints(
   // No full endpoints
 }
 `;
-  }
+	}
 
-  const imports = tierEndpoints
-    .map(
-      (a) =>
-        `import { setup${capitalize(a.exportName)} } from './${a.exportName}.js';`,
-    )
-    .join('\n');
+	const imports = tierEndpoints
+		.map(
+			(a) =>
+				`import { setup${capitalize(a.exportName)} } from './${a.exportName}.js';`,
+		)
+		.join('\n');
 
-  if (tier === 'minimal') {
-    const calls = tierEndpoints
-      .map((a) => `  setup${capitalize(a.exportName)}(app, logger);`)
-      .join('\n');
+	if (tier === 'minimal') {
+		const calls = tierEndpoints
+			.map((a) => `  setup${capitalize(a.exportName)}(app, logger);`)
+			.join('\n');
 
-    return `/**
+		return `/**
  * Minimal-tier endpoint index (${tierEndpoints.length} endpoints)
  * Near-raw-Hono performance
  */
@@ -1071,17 +1071,17 @@ export function setupMinimalEndpoints(
 ${calls}
 }
 `;
-  }
+	}
 
-  if (tier === 'standard') {
-    const calls = tierEndpoints
-      .map(
-        (a) =>
-          `  setup${capitalize(a.exportName)}(app, serviceDiscovery, logger);`,
-      )
-      .join('\n');
+	if (tier === 'standard') {
+		const calls = tierEndpoints
+			.map(
+				(a) =>
+					`  setup${capitalize(a.exportName)}(app, serviceDiscovery, logger);`,
+			)
+			.join('\n');
 
-    return `/**
+		return `/**
  * Standard-tier endpoint index (${tierEndpoints.length} endpoints)
  * Auth and/or services enabled
  */
@@ -1098,17 +1098,17 @@ export function setupStandardEndpoints(
 ${calls}
 }
 `;
-  }
+	}
 
-  // full
-  const calls = tierEndpoints
-    .map(
-      (a) =>
-        `  setup${capitalize(a.exportName)}(app, serviceDiscovery, openApiOptions);`,
-    )
-    .join('\n');
+	// full
+	const calls = tierEndpoints
+		.map(
+			(a) =>
+				`  setup${capitalize(a.exportName)}(app, serviceDiscovery, openApiOptions);`,
+		)
+		.join('\n');
 
-  return `/**
+	return `/**
  * Full-tier endpoint index (${tierEndpoints.length} endpoints)
  * Complex features: audits, RLS, rate limiting
  */
@@ -1139,76 +1139,76 @@ ${calls}
  * Generate validator imports for a single endpoint
  */
 function generateValidatorImportsForEndpoint(
-  analysis: EndpointAnalysis,
+	analysis: EndpointAnalysis,
 ): string {
-  const imports: string[] = [];
-  if (analysis.features.hasBodyValidation) imports.push('validateBody');
-  if (analysis.features.hasQueryValidation) imports.push('validateQuery');
-  if (analysis.features.hasParamValidation) imports.push('validateParams');
+	const imports: string[] = [];
+	if (analysis.features.hasBodyValidation) imports.push('validateBody');
+	if (analysis.features.hasQueryValidation) imports.push('validateQuery');
+	if (analysis.features.hasParamValidation) imports.push('validateParams');
 
-  if (imports.length === 0) return '';
-  return `import { ${imports.join(', ')} } from '../validators.js';`;
+	if (imports.length === 0) return '';
+	return `import { ${imports.join(', ')} } from '../validators.js';`;
 }
 
 /**
  * Capitalize first letter
  */
 function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+	return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /**
  * Generate all endpoint files with nested folder structure (per-endpoint files)
  */
 export function generateEndpointFilesNested(
-  analyses: EndpointAnalysis[],
-  endpointImports: EndpointImportInfo[],
+	analyses: EndpointAnalysis[],
+	endpointImports: EndpointImportInfo[],
 ): GeneratedEndpointFilesNested {
-  const files: GeneratedEndpointFilesNested = {
-    'validators.ts': generateValidatorsFile(analyses),
-    'minimal/index.ts': generateTierIndexFile('minimal', analyses),
-    'standard/index.ts': generateTierIndexFile('standard', analyses),
-    'full/index.ts': generateTierIndexFile('full', analyses),
-    'index.ts': generateNestedIndexFile(analyses),
-  };
+	const files: GeneratedEndpointFilesNested = {
+		'validators.ts': generateValidatorsFile(analyses),
+		'minimal/index.ts': generateTierIndexFile('minimal', analyses),
+		'standard/index.ts': generateTierIndexFile('standard', analyses),
+		'full/index.ts': generateTierIndexFile('full', analyses),
+		'index.ts': generateNestedIndexFile(analyses),
+	};
 
-  // Generate individual endpoint files
-  for (const analysis of analyses) {
-    const endpointImport = endpointImports.find(
-      (i) => i.exportName === analysis.exportName,
-    );
-    if (!endpointImport) continue;
+	// Generate individual endpoint files
+	for (const analysis of analyses) {
+		const endpointImport = endpointImports.find(
+			(i) => i.exportName === analysis.exportName,
+		);
+		if (!endpointImport) continue;
 
-    const fileName = `${analysis.tier}/${analysis.exportName}.ts`;
+		const fileName = `${analysis.tier}/${analysis.exportName}.ts`;
 
-    switch (analysis.tier) {
-      case 'minimal':
-        files[fileName] = generateMinimalEndpointFile(analysis, endpointImport);
-        break;
-      case 'standard':
-        files[fileName] = generateStandardEndpointFile(
-          analysis,
-          endpointImport,
-        );
-        break;
-      case 'full':
-        files[fileName] = generateFullEndpointFile(analysis, endpointImport);
-        break;
-    }
-  }
+		switch (analysis.tier) {
+			case 'minimal':
+				files[fileName] = generateMinimalEndpointFile(analysis, endpointImport);
+				break;
+			case 'standard':
+				files[fileName] = generateStandardEndpointFile(
+					analysis,
+					endpointImport,
+				);
+				break;
+			case 'full':
+				files[fileName] = generateFullEndpointFile(analysis, endpointImport);
+				break;
+		}
+	}
 
-  return files;
+	return files;
 }
 
 /**
  * Generate index.ts for nested structure
  */
 function generateNestedIndexFile(analyses: EndpointAnalysis[]): string {
-  const minimalCount = analyses.filter((a) => a.tier === 'minimal').length;
-  const standardCount = analyses.filter((a) => a.tier === 'standard').length;
-  const fullCount = analyses.filter((a) => a.tier === 'full').length;
+	const minimalCount = analyses.filter((a) => a.tier === 'minimal').length;
+	const standardCount = analyses.filter((a) => a.tier === 'standard').length;
+	const fullCount = analyses.filter((a) => a.tier === 'full').length;
 
-  return `/**
+	return `/**
  * Generated optimized endpoints
  *
  * Build-time optimization tiers:

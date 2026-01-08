@@ -1,42 +1,42 @@
 {
-  "name": "@geekmidas/toolbox",
-  "private": true,
-  "scripts": {
-    "build": "tsdown",
-    "dev": "turbo run dev",
-    "docs:dev": "pnpm --filter @geekmidas/docs dev",
-    "docs:build": "pnpm --filter @geekmidas/docs build",
-    "docs:preview": "pnpm --filter @geekmidas/docs preview",
-    "lint": "biome check .",
-    "fmt": "biome format . --write",
-    "ts:check": "tsc --build",
-    "test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
-    "test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage",
-    "bench": "NODE_OPTIONS=\"--import tsx\" vitest bench",
-    "bench:ci": "NODE_OPTIONS=\"--import tsx\" vitest bench --run"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "~2.0.6",
-    "@changesets/changelog-github": "~0.5.1",
-    "@changesets/cli": "~2.29.4",
-    "@tsconfig/node22": "~22.0.2",
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "~3.2.4",
-    "@vitest/ui": "~3.2.4",
-    "jsdom": "~26.1.0",
-    "msw": "~2.10.3",
-    "tsdown": "~0.12.8",
-    "tsx": "~4.20.3",
-    "turbo": "^2.5.4",
-    "typescript": "5.8.2",
-    "vitest": "~3.2.4"
-  },
-  "dependencies": {
-    "@standard-schema/spec": "~1.0.0"
-  },
-  "packageManager": "pnpm@10.25.0+sha512.5e82639027af37cf832061bcc6d639c219634488e0f2baebe785028a793de7b525ffcd3f7ff574f5e9860654e098fe852ba8ac5dd5cefe1767d23a020a92f501",
-  "engines": {
-    "node": ">=22"
-  },
-  "version": "0.0.2"
+	"name": "@geekmidas/toolbox",
+	"private": true,
+	"scripts": {
+		"build": "tsdown",
+		"dev": "turbo run dev",
+		"docs:dev": "pnpm --filter @geekmidas/docs dev",
+		"docs:build": "pnpm --filter @geekmidas/docs build",
+		"docs:preview": "pnpm --filter @geekmidas/docs preview",
+		"lint": "biome check .",
+		"fmt": "biome format . --write",
+		"ts:check": "tsc --build",
+		"test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
+		"test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage",
+		"bench": "NODE_OPTIONS=\"--import tsx\" vitest bench",
+		"bench:ci": "NODE_OPTIONS=\"--import tsx\" vitest bench --run"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "~2.3.11",
+		"@changesets/changelog-github": "~0.5.1",
+		"@changesets/cli": "~2.29.4",
+		"@tsconfig/node22": "~22.0.2",
+		"@types/node": "^22.0.0",
+		"@vitest/coverage-v8": "~3.2.4",
+		"@vitest/ui": "~3.2.4",
+		"jsdom": "~26.1.0",
+		"msw": "~2.10.3",
+		"tsdown": "~0.12.8",
+		"tsx": "~4.20.3",
+		"turbo": "^2.5.4",
+		"typescript": "5.8.2",
+		"vitest": "~3.2.4"
+	},
+	"dependencies": {
+		"@standard-schema/spec": "~1.0.0"
+	},
+	"packageManager": "pnpm@10.25.0+sha512.5e82639027af37cf832061bcc6d639c219634488e0f2baebe785028a793de7b525ffcd3f7ff574f5e9860654e098fe852ba8ac5dd5cefe1767d23a020a92f501",
+	"engines": {
+		"node": ">=22"
+	},
+	"version": "0.0.2"
 }

@@ -1,144 +1,144 @@
 import type {
-  GeneratedFile,
-  TemplateConfig,
-  TemplateOptions,
+	GeneratedFile,
+	TemplateConfig,
+	TemplateOptions,
 } from '../templates/index.js';
 
 /**
  * Generate environment files (.env, .env.example, .env.development, .env.test, .gitignore)
  */
 export function generateEnvFiles(
-  options: TemplateOptions,
-  template: TemplateConfig,
+	options: TemplateOptions,
+	template: TemplateConfig,
 ): GeneratedFile[] {
-  const { database } = options;
-  const isServerless = template.name === 'serverless';
-  const hasWorker = template.name === 'worker';
+	const { database } = options;
+	const isServerless = template.name === 'serverless';
+	const hasWorker = template.name === 'worker';
 
-  // Build base env content
-  let baseEnv = `# Application
+	// Build base env content
+	let baseEnv = `# Application
 NODE_ENV=development
 PORT=3000
 LOG_LEVEL=info
 `;
 
-  if (isServerless) {
-    baseEnv = `# AWS
+	if (isServerless) {
+		baseEnv = `# AWS
 STAGE=dev
 AWS_REGION=us-east-1
 LOG_LEVEL=info
 `;
-  }
+	}
 
-  if (database) {
-    baseEnv += `
+	if (database) {
+		baseEnv += `
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/mydb
 `;
-  }
+	}
 
-  if (hasWorker) {
-    baseEnv += `
+	if (hasWorker) {
+		baseEnv += `
 # Message Queue
 RABBITMQ_URL=amqp://localhost:5672
 `;
-  }
+	}
 
-  baseEnv += `
+	baseEnv += `
 # Authentication
 JWT_SECRET=your-secret-key-change-in-production
 `;
 
-  // Development env
-  let devEnv = `# Development Environment
+	// Development env
+	let devEnv = `# Development Environment
 NODE_ENV=development
 PORT=3000
 LOG_LEVEL=debug
 `;
 
-  if (isServerless) {
-    devEnv = `# Development Environment
+	if (isServerless) {
+		devEnv = `# Development Environment
 STAGE=dev
 AWS_REGION=us-east-1
 LOG_LEVEL=debug
 `;
-  }
+	}
 
-  if (database) {
-    devEnv += `
+	if (database) {
+		devEnv += `
 # Database
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mydb_dev
 `;
-  }
+	}
 
-  if (hasWorker) {
-    devEnv += `
+	if (hasWorker) {
+		devEnv += `
 # Message Queue
 RABBITMQ_URL=amqp://localhost:5672
 `;
-  }
+	}
 
-  devEnv += `
+	devEnv += `
 # Authentication
 JWT_SECRET=dev-secret-not-for-production
 `;
 
-  // Test env
-  let testEnv = `# Test Environment
+	// Test env
+	let testEnv = `# Test Environment
 NODE_ENV=test
 PORT=3001
 LOG_LEVEL=error
 `;
 
-  if (isServerless) {
-    testEnv = `# Test Environment
+	if (isServerless) {
+		testEnv = `# Test Environment
 STAGE=test
 AWS_REGION=us-east-1
 LOG_LEVEL=error
 `;
-  }
+	}
 
-  if (database) {
-    testEnv += `
+	if (database) {
+		testEnv += `
 # Database
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mydb_test
 `;
-  }
+	}
 
-  if (hasWorker) {
-    testEnv += `
+	if (hasWorker) {
+		testEnv += `
 # Message Queue
 RABBITMQ_URL=amqp://localhost:5672
 `;
-  }
+	}
 
-  testEnv += `
+	testEnv += `
 # Authentication
 JWT_SECRET=test-secret-not-for-production
 `;
 
-  const files: GeneratedFile[] = [
-    {
-      path: '.env.example',
-      content: baseEnv,
-    },
-    {
-      path: '.env',
-      content: baseEnv,
-    },
-    {
-      path: '.env.development',
-      content: devEnv,
-    },
-    {
-      path: '.env.test',
-      content: testEnv,
-    },
-  ];
+	const files: GeneratedFile[] = [
+		{
+			path: '.env.example',
+			content: baseEnv,
+		},
+		{
+			path: '.env',
+			content: baseEnv,
+		},
+		{
+			path: '.env.development',
+			content: devEnv,
+		},
+		{
+			path: '.env.test',
+			content: testEnv,
+		},
+	];
 
-  // Only add .gitignore for non-monorepo (monorepo has it at root)
-  if (!options.monorepo) {
-    const gitignore = `# Dependencies
+	// Only add .gitignore for non-monorepo (monorepo has it at root)
+	if (!options.monorepo) {
+		const gitignore = `# Dependencies
 node_modules/
 
 # Build output
@@ -172,11 +172,11 @@ coverage/
 # TypeScript cache
 *.tsbuildinfo
 `;
-    files.push({
-      path: '.gitignore',
-      content: gitignore,
-    });
-  }
+		files.push({
+			path: '.gitignore',
+			content: gitignore,
+		});
+	}
 
-  return files;
+	return files;
 }

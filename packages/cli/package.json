@@ -1,73 +1,73 @@
 {
-  "name": "@geekmidas/cli",
-  "version": "0.10.0",
-  "description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
-  "private": false,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./config": {
-      "types": "./dist/config.d.ts",
-      "import": "./dist/config.mjs",
-      "require": "./dist/config.cjs"
-    },
-    "./openapi": {
-      "types": "./dist/openapi.d.ts",
-      "import": "./dist/openapi.mjs",
-      "require": "./dist/openapi.cjs"
-    },
-    "./openapi-react-query": {
-      "types": "./dist/openapi-react-query.d.ts",
-      "import": "./dist/openapi-react-query.mjs",
-      "require": "./dist/openapi-react-query.cjs"
-    }
-  },
-  "bin": {
-    "gkm": "./dist/index.cjs"
-  },
-  "scripts": {
-    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
-    "test": "vitest",
-    "test:once": "vitest run",
-    "test:coverage": "vitest run --coverage"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "dependencies": {
-    "@apidevtools/swagger-parser": "^10.1.0",
-    "chokidar": "~4.0.3",
-    "commander": "^12.1.0",
-    "dotenv": "~17.2.3",
-    "fast-glob": "^3.3.2",
-    "lodash.kebabcase": "^4.1.1",
-    "openapi-typescript": "^7.4.2",
-    "prompts": "~2.4.2"
-  },
-  "devDependencies": {
-    "@geekmidas/testkit": "workspace:*",
-    "@types/lodash.kebabcase": "^4.1.9",
-    "@types/node": "~24.9.1",
-    "@types/prompts": "~2.4.9",
-    "typescript": "^5.8.2",
-    "vitest": "^3.2.4",
-    "zod": "~4.1.13"
-  },
-  "peerDependencies": {
-    "@geekmidas/constructs": "workspace:~",
-    "@geekmidas/envkit": "workspace:~",
-    "@geekmidas/logger": "workspace:~",
-    "@geekmidas/schema": "workspace:~",
-    "@geekmidas/telescope": "workspace:~"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/telescope": {
-      "optional": true
-    }
-  }
+	"name": "@geekmidas/cli",
+	"version": "0.10.0",
+	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
+	"private": false,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./config": {
+			"types": "./dist/config.d.ts",
+			"import": "./dist/config.mjs",
+			"require": "./dist/config.cjs"
+		},
+		"./openapi": {
+			"types": "./dist/openapi.d.ts",
+			"import": "./dist/openapi.mjs",
+			"require": "./dist/openapi.cjs"
+		},
+		"./openapi-react-query": {
+			"types": "./dist/openapi-react-query.d.ts",
+			"import": "./dist/openapi-react-query.mjs",
+			"require": "./dist/openapi-react-query.cjs"
+		}
+	},
+	"bin": {
+		"gkm": "./dist/index.cjs"
+	},
+	"scripts": {
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
+		"test": "vitest",
+		"test:once": "vitest run",
+		"test:coverage": "vitest run --coverage"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"dependencies": {
+		"@apidevtools/swagger-parser": "^10.1.0",
+		"chokidar": "~4.0.3",
+		"commander": "^12.1.0",
+		"dotenv": "~17.2.3",
+		"fast-glob": "^3.3.2",
+		"lodash.kebabcase": "^4.1.1",
+		"openapi-typescript": "^7.4.2",
+		"prompts": "~2.4.2"
+	},
+	"devDependencies": {
+		"@geekmidas/testkit": "workspace:*",
+		"@types/lodash.kebabcase": "^4.1.9",
+		"@types/node": "~24.9.1",
+		"@types/prompts": "~2.4.9",
+		"typescript": "^5.8.2",
+		"vitest": "^3.2.4",
+		"zod": "~4.1.13"
+	},
+	"peerDependencies": {
+		"@geekmidas/constructs": "workspace:~",
+		"@geekmidas/envkit": "workspace:~",
+		"@geekmidas/logger": "workspace:~",
+		"@geekmidas/schema": "workspace:~",
+		"@geekmidas/telescope": "workspace:~"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/telescope": {
+			"optional": true
+		}
+	}
 }

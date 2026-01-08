@@ -1,7 +1,7 @@
 import type { Knex } from 'knex';
 import {
-  type IsolationLevel,
-  VitestPostgresTransactionIsolator,
+	type IsolationLevel,
+	VitestPostgresTransactionIsolator,
 } from './VitestTransactionIsolator';
 
 /**
@@ -33,43 +33,43 @@ import {
  * ```
  */
 export class VitestObjectionTransactionIsolator extends VitestPostgresTransactionIsolator<
-  Knex,
-  Knex.Transaction
+	Knex,
+	Knex.Transaction
 > {
-  async destroy(conn: Knex<any, any[]>): Promise<void> {}
-  /**
-   * Creates a Knex transaction with the specified isolation level.
-   * Implements the abstract transact method from VitestPostgresTransactionIsolator.
-   * This transaction can be used with Objection.js models via Model.query(trx).
-   *
-   * @param conn - The Knex database connection
-   * @param level - The transaction isolation level
-   * @param fn - The function to execute within the transaction
-   * @returns Promise that resolves when the transaction completes
-   *
-   * @example
-   * ```typescript
-   * await isolator.transact(knex, IsolationLevel.REPEATABLE_READ, async (trx) => {
-   *   // Use transaction with Objection models
-   *   await User.query(trx).insert({ name: 'Test' });
-   *   await Post.query(trx).where('userId', user.id).delete();
-   * });
-   * ```
-   */
-  async transact(
-    connection: Knex,
-    level: IsolationLevel,
-    fn: (trx: Knex.Transaction) => Promise<void>,
-  ): Promise<void> {
-    const isolationLevel = level.toLowerCase() as Lowercase<IsolationLevel>;
+	async destroy(conn: Knex<any, any[]>): Promise<void> {}
+	/**
+	 * Creates a Knex transaction with the specified isolation level.
+	 * Implements the abstract transact method from VitestPostgresTransactionIsolator.
+	 * This transaction can be used with Objection.js models via Model.query(trx).
+	 *
+	 * @param conn - The Knex database connection
+	 * @param level - The transaction isolation level
+	 * @param fn - The function to execute within the transaction
+	 * @returns Promise that resolves when the transaction completes
+	 *
+	 * @example
+	 * ```typescript
+	 * await isolator.transact(knex, IsolationLevel.REPEATABLE_READ, async (trx) => {
+	 *   // Use transaction with Objection models
+	 *   await User.query(trx).insert({ name: 'Test' });
+	 *   await Post.query(trx).where('userId', user.id).delete();
+	 * });
+	 * ```
+	 */
+	async transact(
+		connection: Knex,
+		level: IsolationLevel,
+		fn: (trx: Knex.Transaction) => Promise<void>,
+	): Promise<void> {
+		const isolationLevel = level.toLowerCase() as Lowercase<IsolationLevel>;
 
-    await connection.transaction(
-      async (trx) => {
-        await fn(trx);
-      },
-      {
-        isolationLevel,
-      },
-    );
-  }
+		await connection.transaction(
+			async (trx) => {
+				await fn(trx);
+			},
+			{
+				isolationLevel,
+			},
+		);
+	}
 }

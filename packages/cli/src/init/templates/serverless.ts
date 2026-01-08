@@ -1,69 +1,69 @@
 import type {
-  GeneratedFile,
-  TemplateConfig,
-  TemplateOptions,
+	GeneratedFile,
+	TemplateConfig,
+	TemplateOptions,
 } from './index.js';
 
 export const serverlessTemplate: TemplateConfig = {
-  name: 'serverless',
-  description: 'AWS Lambda handlers',
+	name: 'serverless',
+	description: 'AWS Lambda handlers',
 
-  dependencies: {
-    '@geekmidas/constructs': 'workspace:*',
-    '@geekmidas/envkit': 'workspace:*',
-    '@geekmidas/logger': 'workspace:*',
-    '@geekmidas/cloud': 'workspace:*',
-    hono: '~4.8.2',
-    pino: '~9.6.0',
-  },
+	dependencies: {
+		'@geekmidas/constructs': 'workspace:*',
+		'@geekmidas/envkit': 'workspace:*',
+		'@geekmidas/logger': 'workspace:*',
+		'@geekmidas/cloud': 'workspace:*',
+		hono: '~4.8.2',
+		pino: '~9.6.0',
+	},
 
-  devDependencies: {
-    '@biomejs/biome': '~1.9.4',
-    '@geekmidas/cli': 'workspace:*',
-    '@types/aws-lambda': '~8.10.92',
-    '@types/node': '~22.0.0',
-    tsx: '~4.20.0',
-    turbo: '~2.3.0',
-    typescript: '~5.8.2',
-    vitest: '~4.0.0',
-  },
+	devDependencies: {
+		'@biomejs/biome': '~1.9.4',
+		'@geekmidas/cli': 'workspace:*',
+		'@types/aws-lambda': '~8.10.92',
+		'@types/node': '~22.0.0',
+		tsx: '~4.20.0',
+		turbo: '~2.3.0',
+		typescript: '~5.8.2',
+		vitest: '~4.0.0',
+	},
 
-  scripts: {
-    dev: 'gkm dev',
-    build: 'gkm build --provider aws-apigatewayv2',
-    test: 'vitest',
-    'test:once': 'vitest run',
-    typecheck: 'tsc --noEmit',
-    lint: 'biome lint .',
-    fmt: 'biome format . --write',
-    'fmt:check': 'biome format .',
-  },
+	scripts: {
+		dev: 'gkm dev',
+		build: 'gkm build --provider aws-apigatewayv2',
+		test: 'vitest',
+		'test:once': 'vitest run',
+		typecheck: 'tsc --noEmit',
+		lint: 'biome lint .',
+		fmt: 'biome format . --write',
+		'fmt:check': 'biome format .',
+	},
 
-  files: (options: TemplateOptions): GeneratedFile[] => {
-    const { loggerType, routesStructure } = options;
+	files: (options: TemplateOptions): GeneratedFile[] => {
+		const { loggerType, routesStructure } = options;
 
-    const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
+		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
 export const logger = createLogger();
 `;
 
-    // Get route path based on structure
-    const getRoutePath = (file: string) => {
-      switch (routesStructure) {
-        case 'centralized-endpoints':
-          return `src/endpoints/${file}`;
-        case 'centralized-routes':
-          return `src/routes/${file}`;
-        case 'domain-based':
-          return `src/${file.replace('.ts', '')}/routes/index.ts`;
-      }
-    };
+		// Get route path based on structure
+		const getRoutePath = (file: string) => {
+			switch (routesStructure) {
+				case 'centralized-endpoints':
+					return `src/endpoints/${file}`;
+				case 'centralized-routes':
+					return `src/routes/${file}`;
+				case 'domain-based':
+					return `src/${file.replace('.ts', '')}/routes/index.ts`;
+			}
+		};
 
-    const files: GeneratedFile[] = [
-      // src/config/env.ts
-      {
-        path: 'src/config/env.ts',
-        content: `import { EnvironmentParser } from '@geekmidas/envkit';
+		const files: GeneratedFile[] = [
+			// src/config/env.ts
+			{
+				path: 'src/config/env.ts',
+				content: `import { EnvironmentParser } from '@geekmidas/envkit';
 
 export const envParser = new EnvironmentParser(process.env);
 
@@ -71,28 +71,28 @@ export const config = envParser
   .create((get) => ({
     stage: get('STAGE').string().default('dev'),
     region: get('AWS_REGION').string().default('us-east-1'),${
-      options.database
-        ? `
+			options.database
+				? `
     database: {
       url: get('DATABASE_URL').string(),
     },`
-        : ''
-    }
+				: ''
+		}
   }))
   .parse();
 `,
-      },
+			},
 
-      // src/config/logger.ts
-      {
-        path: 'src/config/logger.ts',
-        content: loggerContent,
-      },
+			// src/config/logger.ts
+			{
+				path: 'src/config/logger.ts',
+				content: loggerContent,
+			},
 
-      // health endpoint
-      {
-        path: getRoutePath('health.ts'),
-        content: `import { e } from '@geekmidas/constructs/endpoints';
+			// health endpoint
+			{
+				path: getRoutePath('health.ts'),
+				content: `import { e } from '@geekmidas/constructs/endpoints';
 
 export default e
   .get('/health')
@@ -102,12 +102,12 @@ export default e
     region: process.env.AWS_REGION || 'local',
   }));
 `,
-      },
+			},
 
-      // src/functions/hello.ts
-      {
-        path: 'src/functions/hello.ts',
-        content: `import { f } from '@geekmidas/constructs/functions';
+			// src/functions/hello.ts
+			{
+				path: 'src/functions/hello.ts',
+				content: `import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 
 export default f
@@ -117,14 +117,14 @@ export default f
     message: \`Hello, \${input.name}!\`,
   }));
 `,
-      },
-    ];
+			},
+		];
 
-    // Add Telescope config if enabled
-    if (options.telescope) {
-      files.push({
-        path: 'src/config/telescope.ts',
-        content: `import { Telescope } from '@geekmidas/telescope';
+		// Add Telescope config if enabled
+		if (options.telescope) {
+			files.push({
+				path: 'src/config/telescope.ts',
+				content: `import { Telescope } from '@geekmidas/telescope';
 import { InMemoryStorage } from '@geekmidas/telescope/storage/memory';
 
 // Note: For production Lambda, consider using a persistent storage
@@ -133,9 +133,9 @@ export const telescope = new Telescope({
   enabled: process.env.STAGE === 'dev',
 });
 `,
-      });
-    }
+			});
+		}
 
-    return files;
-  },
+		return files;
+	},
 };

@@ -2,104 +2,104 @@
 @import "@geekmidas/ui/styles";
 
 @theme {
-  /* Dev Studio theme - extends @geekmidas/ui theme */
-  --color-studio-bg: var(--color-background);
-  --color-studio-surface: var(--color-surface);
-  --color-studio-border: var(--color-border);
-  --color-studio-hover: var(--color-surface-hover);
-  --color-studio-active: #333333;
-  --color-studio-accent: var(--color-accent);
-  --color-studio-accent-hover: #4ade94;
+	/* Dev Studio theme - extends @geekmidas/ui theme */
+	--color-studio-bg: var(--color-background);
+	--color-studio-surface: var(--color-surface);
+	--color-studio-border: var(--color-border);
+	--color-studio-hover: var(--color-surface-hover);
+	--color-studio-active: #333333;
+	--color-studio-accent: var(--color-accent);
+	--color-studio-accent-hover: #4ade94;
 
-  /* Legacy colors for compatibility */
-  --color-bg-primary: var(--color-background);
-  --color-bg-secondary: var(--color-surface);
-  --color-bg-tertiary: var(--color-surface-hover);
+	/* Legacy colors for compatibility */
+	--color-bg-primary: var(--color-background);
+	--color-bg-secondary: var(--color-surface);
+	--color-bg-tertiary: var(--color-surface-hover);
 }
 
 * {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  padding: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: var(--color-background);
+	margin: 0;
+	padding: 0;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+		Arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	background: var(--color-background);
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+	width: 8px;
+	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+	background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #404040;
-  border-radius: 4px;
+	background: #404040;
+	border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+	background: #525252;
 }
 
 /* Table styles */
 .data-grid {
-  border-collapse: collapse;
-  width: 100%;
+	border-collapse: collapse;
+	width: 100%;
 }
 
 .data-grid th {
-  position: sticky;
-  top: 0;
-  background: var(--color-surface);
-  z-index: 10;
+	position: sticky;
+	top: 0;
+	background: var(--color-surface);
+	z-index: 10;
 }
 
 .data-grid th,
 .data-grid td {
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
+	border-bottom: 1px solid var(--color-border);
+	text-align: left;
 }
 
 .data-grid tbody tr:hover {
-  background: var(--color-surface-hover);
+	background: var(--color-surface-hover);
 }
 
 /* Row number column */
 .row-number {
-  color: #525252;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
+	color: #525252;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	user-select: none;
 }
 
 /* NULL value styling */
 .cell-null {
-  color: #525252;
-  font-style: italic;
+	color: #525252;
+	font-style: italic;
 }
 
 /* Filter panel animation */
 .filter-panel {
-  animation: slideDown 0.15s ease-out;
+	animation: slideDown 0.15s ease-out;
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }

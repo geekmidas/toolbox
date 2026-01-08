@@ -1,110 +1,110 @@
 import type {
-  QueryClient,
-  UseMutationOptions,
-  UseQueryOptions,
+	QueryClient,
+	UseMutationOptions,
+	UseQueryOptions,
 } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type {
-  ExtractEndpointResponse,
-  FilteredRequestConfig,
-  IsConfigRequired,
-  MutationEndpoint,
-  QueryEndpoint,
-  TypedApiFunction,
+	ExtractEndpointResponse,
+	FilteredRequestConfig,
+	IsConfigRequired,
+	MutationEndpoint,
+	QueryEndpoint,
+	TypedApiFunction,
 } from './types';
 
 /**
  * Build query key from endpoint and config
  */
 function buildQueryKey<Paths, T extends QueryEndpoint<Paths>>(
-  endpoint: T,
-  config?: FilteredRequestConfig<Paths, T>,
+	endpoint: T,
+	config?: FilteredRequestConfig<Paths, T>,
 ): unknown[] {
-  const key: unknown[] = [endpoint];
+	const key: unknown[] = [endpoint];
 
-  if (config && 'params' in config && config.params) {
-    key.push({ params: config.params });
-  }
+	if (config && 'params' in config && config.params) {
+		key.push({ params: config.params });
+	}
 
-  if (config && 'query' in config && config.query) {
-    key.push({ query: config.query });
-  }
+	if (config && 'query' in config && config.query) {
+		key.push({ query: config.query });
+	}
 
-  return key;
+	return key;
 }
 
 /**
  * Options for creating endpoint-based hooks
  */
 export interface CreateEndpointHooksOptions {
-  queryClient?: QueryClient;
+	queryClient?: QueryClient;
 }
 
 /**
  * Hook options type that conditionally requires config
  */
 type UseQueryArgs<Paths, T extends QueryEndpoint<Paths>> = IsConfigRequired<
-  Paths,
-  T
+	Paths,
+	T
 > extends true
-  ? [
-      config: FilteredRequestConfig<Paths, T>,
-      options?: Omit<
-        UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-        'queryKey' | 'queryFn'
-      >,
-    ]
-  : [
-      config?: FilteredRequestConfig<Paths, T>,
-      options?: Omit<
-        UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-        'queryKey' | 'queryFn'
-      >,
-    ];
+	? [
+			config: FilteredRequestConfig<Paths, T>,
+			options?: Omit<
+				UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+				'queryKey' | 'queryFn'
+			>,
+		]
+	: [
+			config?: FilteredRequestConfig<Paths, T>,
+			options?: Omit<
+				UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+				'queryKey' | 'queryFn'
+			>,
+		];
 
 /**
  * Endpoint-based React Query hooks
  */
 export interface EndpointHooks<Paths> {
-  /**
-   * Use query hook for GET endpoints.
-   * Config is required when endpoint has path params.
-   */
-  useQuery: <T extends QueryEndpoint<Paths>>(
-    endpoint: T,
-    ...args: UseQueryArgs<Paths, T>
-  ) => ReturnType<typeof useQuery<ExtractEndpointResponse<Paths, T>, Error>>;
+	/**
+	 * Use query hook for GET endpoints.
+	 * Config is required when endpoint has path params.
+	 */
+	useQuery: <T extends QueryEndpoint<Paths>>(
+		endpoint: T,
+		...args: UseQueryArgs<Paths, T>
+	) => ReturnType<typeof useQuery<ExtractEndpointResponse<Paths, T>, Error>>;
 
-  /**
-   * Use mutation hook for POST, PUT, PATCH, DELETE endpoints.
-   * Config with params/body is passed to mutate().
-   */
-  useMutation: <T extends MutationEndpoint<Paths>>(
-    endpoint: T,
-    options?: Omit<
-      UseMutationOptions<
-        ExtractEndpointResponse<Paths, T>,
-        Error,
-        FilteredRequestConfig<Paths, T>
-      >,
-      'mutationFn'
-    >,
-  ) => ReturnType<
-    typeof useMutation<
-      ExtractEndpointResponse<Paths, T>,
-      Error,
-      FilteredRequestConfig<Paths, T>
-    >
-  >;
+	/**
+	 * Use mutation hook for POST, PUT, PATCH, DELETE endpoints.
+	 * Config with params/body is passed to mutate().
+	 */
+	useMutation: <T extends MutationEndpoint<Paths>>(
+		endpoint: T,
+		options?: Omit<
+			UseMutationOptions<
+				ExtractEndpointResponse<Paths, T>,
+				Error,
+				FilteredRequestConfig<Paths, T>
+			>,
+			'mutationFn'
+		>,
+	) => ReturnType<
+		typeof useMutation<
+			ExtractEndpointResponse<Paths, T>,
+			Error,
+			FilteredRequestConfig<Paths, T>
+		>
+	>;
 
-  /**
-   * Build a query key for manual cache operations
-   */
-  buildQueryKey: <T extends QueryEndpoint<Paths>>(
-    endpoint: T,
-    config?: FilteredRequestConfig<Paths, T>,
-  ) => unknown[];
+	/**
+	 * Build a query key for manual cache operations
+	 */
+	buildQueryKey: <T extends QueryEndpoint<Paths>>(
+		endpoint: T,
+		config?: FilteredRequestConfig<Paths, T>,
+	) => unknown[];
 }
 
 /**
@@ -123,87 +123,87 @@ export interface EndpointHooks<Paths> {
  * ```
  */
 export function createEndpointHooks<Paths>(
-  fetcher: TypedApiFunction<Paths>,
-  options: CreateEndpointHooksOptions = {},
+	fetcher: TypedApiFunction<Paths>,
+	options: CreateEndpointHooksOptions = {},
 ): EndpointHooks<Paths> {
-  return {
-    useQuery: <T extends QueryEndpoint<Paths>>(
-      endpoint: T,
-      ...args: UseQueryArgs<Paths, T>
-    ) => {
-      // Parse args - config is first, options is second
-      const [config, queryOptions] = args as [
-        FilteredRequestConfig<Paths, T> | undefined,
-        (
-          | Omit<
-              UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
-              'queryKey' | 'queryFn'
-            >
-          | undefined
-        ),
-      ];
+	return {
+		useQuery: <T extends QueryEndpoint<Paths>>(
+			endpoint: T,
+			...args: UseQueryArgs<Paths, T>
+		) => {
+			// Parse args - config is first, options is second
+			const [config, queryOptions] = args as [
+				FilteredRequestConfig<Paths, T> | undefined,
+				(
+					| Omit<
+							UseQueryOptions<ExtractEndpointResponse<Paths, T>, Error>,
+							'queryKey' | 'queryFn'
+					  >
+					| undefined
+				),
+			];
 
-      const queryKey = buildQueryKey(endpoint, config);
+			const queryKey = buildQueryKey(endpoint, config);
 
-      const memoizedOptions = useMemo(
-        () => ({
-          queryKey,
-          queryFn: () =>
-            // Type assertion needed due to complex conditional types
-            (
-              fetcher as (
-                endpoint: T,
-                config?: unknown,
-              ) => Promise<ExtractEndpointResponse<Paths, T>>
-            )(endpoint, config),
-          ...queryOptions,
-        }),
-        [
-          queryKey.join(','),
-          endpoint,
-          JSON.stringify(config),
-          JSON.stringify(queryOptions),
-        ],
-      );
+			const memoizedOptions = useMemo(
+				() => ({
+					queryKey,
+					queryFn: () =>
+						// Type assertion needed due to complex conditional types
+						(
+							fetcher as (
+								endpoint: T,
+								config?: unknown,
+							) => Promise<ExtractEndpointResponse<Paths, T>>
+						)(endpoint, config),
+					...queryOptions,
+				}),
+				[
+					queryKey.join(','),
+					endpoint,
+					JSON.stringify(config),
+					JSON.stringify(queryOptions),
+				],
+			);
 
-      return useQuery<ExtractEndpointResponse<Paths, T>, Error>(
-        memoizedOptions,
-      );
-    },
+			return useQuery<ExtractEndpointResponse<Paths, T>, Error>(
+				memoizedOptions,
+			);
+		},
 
-    useMutation: <T extends MutationEndpoint<Paths>>(
-      endpoint: T,
-      mutationOptions?: Omit<
-        UseMutationOptions<
-          ExtractEndpointResponse<Paths, T>,
-          Error,
-          FilteredRequestConfig<Paths, T>
-        >,
-        'mutationFn'
-      >,
-    ) => {
-      const memoizedOptions = useMemo(
-        () => ({
-          mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
-            // Type assertion needed due to complex conditional types
-            (
-              fetcher as (
-                endpoint: T,
-                config?: unknown,
-              ) => Promise<ExtractEndpointResponse<Paths, T>>
-            )(endpoint, config),
-          ...mutationOptions,
-        }),
-        [endpoint, JSON.stringify(mutationOptions)],
-      );
+		useMutation: <T extends MutationEndpoint<Paths>>(
+			endpoint: T,
+			mutationOptions?: Omit<
+				UseMutationOptions<
+					ExtractEndpointResponse<Paths, T>,
+					Error,
+					FilteredRequestConfig<Paths, T>
+				>,
+				'mutationFn'
+			>,
+		) => {
+			const memoizedOptions = useMemo(
+				() => ({
+					mutationFn: (config: FilteredRequestConfig<Paths, T>) =>
+						// Type assertion needed due to complex conditional types
+						(
+							fetcher as (
+								endpoint: T,
+								config?: unknown,
+							) => Promise<ExtractEndpointResponse<Paths, T>>
+						)(endpoint, config),
+					...mutationOptions,
+				}),
+				[endpoint, JSON.stringify(mutationOptions)],
+			);
 
-      return useMutation<
-        ExtractEndpointResponse<Paths, T>,
-        Error,
-        FilteredRequestConfig<Paths, T>
-      >(memoizedOptions);
-    },
+			return useMutation<
+				ExtractEndpointResponse<Paths, T>,
+				Error,
+				FilteredRequestConfig<Paths, T>
+			>(memoizedOptions);
+		},
 
-    buildQueryKey,
-  };
+		buildQueryKey,
+	};
 }

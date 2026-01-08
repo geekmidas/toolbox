@@ -1,7 +1,7 @@
 import type { Kysely, Transaction } from 'kysely';
 import {
-  type IsolationLevel,
-  VitestPostgresTransactionIsolator,
+	type IsolationLevel,
+	VitestPostgresTransactionIsolator,
 } from './VitestTransactionIsolator';
 
 /**
@@ -42,31 +42,31 @@ import {
  * ```
  */
 export class VitestKyselyTransactionIsolator<
-  Database,
+	Database,
 > extends VitestPostgresTransactionIsolator<
-  Kysely<Database>,
-  Transaction<Database>
+	Kysely<Database>,
+	Transaction<Database>
 > {
-  async destroy(conn: Kysely<Database>): Promise<void> {
-    // return conn.destroy();
-  }
-  /**
-   * Creates a Kysely transaction with the specified isolation level.
-   * Implements the abstract transact method from VitestPostgresTransactionIsolator.
-   *
-   * @param conn - The Kysely database connection
-   * @param level - The transaction isolation level
-   * @param fn - The function to execute within the transaction
-   * @returns Promise that resolves when the transaction completes
-   */
-  async transact(
-    conn: Kysely<Database>,
-    level: IsolationLevel,
-    fn: (trx: Transaction<Database>) => Promise<void>,
-  ): Promise<void> {
-    const isolationLevel =
-      level.toLocaleLowerCase() as Lowercase<IsolationLevel>;
-    await conn.transaction().setIsolationLevel(isolationLevel).execute(fn);
-  }
-  // Implement any Kysely-specific transaction logic here
+	async destroy(conn: Kysely<Database>): Promise<void> {
+		// return conn.destroy();
+	}
+	/**
+	 * Creates a Kysely transaction with the specified isolation level.
+	 * Implements the abstract transact method from VitestPostgresTransactionIsolator.
+	 *
+	 * @param conn - The Kysely database connection
+	 * @param level - The transaction isolation level
+	 * @param fn - The function to execute within the transaction
+	 * @returns Promise that resolves when the transaction completes
+	 */
+	async transact(
+		conn: Kysely<Database>,
+		level: IsolationLevel,
+		fn: (trx: Transaction<Database>) => Promise<void>,
+	): Promise<void> {
+		const isolationLevel =
+			level.toLocaleLowerCase() as Lowercase<IsolationLevel>;
+		await conn.transaction().setIsolationLevel(isolationLevel).execute(fn);
+	}
+	// Implement any Kysely-specific transaction logic here
 }

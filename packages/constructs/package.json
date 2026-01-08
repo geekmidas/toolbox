@@ -1,151 +1,151 @@
 {
-  "name": "@geekmidas/constructs",
-  "version": "0.3.2",
-  "private": false,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./endpoints": {
-      "types": "./dist/endpoints/index.d.ts",
-      "import": "./dist/endpoints/index.mjs",
-      "require": "./dist/endpoints/index.cjs"
-    },
-    "./functions": {
-      "types": "./dist/functions/index.d.ts",
-      "import": "./dist/functions/index.mjs",
-      "require": "./dist/functions/index.cjs"
-    },
-    "./crons": {
-      "types": "./dist/crons/index.d.ts",
-      "import": "./dist/crons/index.mjs",
-      "require": "./dist/crons/index.cjs"
-    },
-    "./subscribers": {
-      "types": "./dist/subscribers/index.d.ts",
-      "import": "./dist/subscribers/index.mjs",
-      "require": "./dist/subscribers/index.cjs"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.mjs",
-      "require": "./dist/types.cjs"
-    },
-    "./hono": {
-      "types": "./dist/adaptors/hono.d.ts",
-      "import": "./dist/adaptors/hono.mjs",
-      "require": "./dist/adaptors/hono.cjs"
-    },
-    "./aws": {
-      "types": "./dist/adaptors/aws.d.ts",
-      "import": "./dist/adaptors/aws.mjs",
-      "require": "./dist/adaptors/aws.cjs"
-    },
-    "./testing": {
-      "types": "./dist/adaptors/testing.d.ts",
-      "import": "./dist/adaptors/testing.mjs",
-      "require": "./dist/adaptors/testing.cjs"
-    }
-  },
-  "scripts": {
-    "ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "fast-glob": "~3.3.3",
-    "lodash.compact": "~3.0.1",
-    "lodash.get": "~4.4.2",
-    "lodash.pick": "~4.4.0",
-    "lodash.set": "~4.3.2",
-    "lodash.uniqby": "~4.7.0",
-    "openapi-types": "~12.1.3"
-  },
-  "devDependencies": {
-    "@geekmidas/audit": "workspace:^",
-    "@geekmidas/cache": "workspace:^",
-    "@geekmidas/db": "workspace:^",
-    "@geekmidas/envkit": "workspace:^",
-    "@geekmidas/errors": "workspace:^",
-    "@geekmidas/events": "workspace:^",
-    "@geekmidas/logger": "workspace:^",
-    "@geekmidas/rate-limit": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "@geekmidas/services": "workspace:^",
-    "@geekmidas/testkit": "workspace:^",
-    "@types/lodash.compact": "~3.0.9",
-    "@types/lodash.get": "~4.4.9",
-    "@types/lodash.pick": "~4.4.9",
-    "@types/lodash.set": "~4.3.9",
-    "@types/lodash.uniqby": "~4.7.9",
-    "@types/pg": "~8.15.6",
-    "kysely": "~0.28.8",
-    "pg": "~8.16.3",
-    "zod": "~4.1.13"
-  },
-  "peerDependencies": {
-    "@geekmidas/audit": "workspace:^",
-    "@geekmidas/cache": "workspace:^",
-    "@geekmidas/db": "workspace:^",
-    "@geekmidas/envkit": "workspace:^",
-    "@geekmidas/errors": "workspace:^",
-    "@geekmidas/events": "workspace:^",
-    "@geekmidas/logger": "workspace:^",
-    "@geekmidas/rate-limit": "workspace:^",
-    "@geekmidas/schema": "workspace:^",
-    "@geekmidas/services": "workspace:^",
-    "@middy/core": ">=6.3.1",
-    "@types/aws-lambda": ">=8.10.92",
-    "hono": ">=4.8.2"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/audit": {
-      "optional": true
-    },
-    "@geekmidas/cache": {
-      "optional": true
-    },
-    "@geekmidas/db": {
-      "optional": true
-    },
-    "@geekmidas/envkit": {
-      "optional": true
-    },
-    "@geekmidas/errors": {
-      "optional": true
-    },
-    "@geekmidas/events": {
-      "optional": true
-    },
-    "@geekmidas/logger": {
-      "optional": true
-    },
-    "@geekmidas/rate-limit": {
-      "optional": true
-    },
-    "@geekmidas/schema": {
-      "optional": true
-    },
-    "@geekmidas/services": {
-      "optional": true
-    },
-    "@middy/core": {
-      "optional": true
-    },
-    "@types/aws-lambda": {
-      "optional": true
-    },
-    "hono": {
-      "optional": true
-    }
-  }
+	"name": "@geekmidas/constructs",
+	"version": "0.3.2",
+	"private": false,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./endpoints": {
+			"types": "./dist/endpoints/index.d.ts",
+			"import": "./dist/endpoints/index.mjs",
+			"require": "./dist/endpoints/index.cjs"
+		},
+		"./functions": {
+			"types": "./dist/functions/index.d.ts",
+			"import": "./dist/functions/index.mjs",
+			"require": "./dist/functions/index.cjs"
+		},
+		"./crons": {
+			"types": "./dist/crons/index.d.ts",
+			"import": "./dist/crons/index.mjs",
+			"require": "./dist/crons/index.cjs"
+		},
+		"./subscribers": {
+			"types": "./dist/subscribers/index.d.ts",
+			"import": "./dist/subscribers/index.mjs",
+			"require": "./dist/subscribers/index.cjs"
+		},
+		"./types": {
+			"types": "./dist/types.d.ts",
+			"import": "./dist/types.mjs",
+			"require": "./dist/types.cjs"
+		},
+		"./hono": {
+			"types": "./dist/adaptors/hono.d.ts",
+			"import": "./dist/adaptors/hono.mjs",
+			"require": "./dist/adaptors/hono.cjs"
+		},
+		"./aws": {
+			"types": "./dist/adaptors/aws.d.ts",
+			"import": "./dist/adaptors/aws.mjs",
+			"require": "./dist/adaptors/aws.cjs"
+		},
+		"./testing": {
+			"types": "./dist/adaptors/testing.d.ts",
+			"import": "./dist/adaptors/testing.mjs",
+			"require": "./dist/adaptors/testing.cjs"
+		}
+	},
+	"scripts": {
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"fast-glob": "~3.3.3",
+		"lodash.compact": "~3.0.1",
+		"lodash.get": "~4.4.2",
+		"lodash.pick": "~4.4.0",
+		"lodash.set": "~4.3.2",
+		"lodash.uniqby": "~4.7.0",
+		"openapi-types": "~12.1.3"
+	},
+	"devDependencies": {
+		"@geekmidas/audit": "workspace:^",
+		"@geekmidas/cache": "workspace:^",
+		"@geekmidas/db": "workspace:^",
+		"@geekmidas/envkit": "workspace:^",
+		"@geekmidas/errors": "workspace:^",
+		"@geekmidas/events": "workspace:^",
+		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/rate-limit": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"@geekmidas/services": "workspace:^",
+		"@geekmidas/testkit": "workspace:^",
+		"@types/lodash.compact": "~3.0.9",
+		"@types/lodash.get": "~4.4.9",
+		"@types/lodash.pick": "~4.4.9",
+		"@types/lodash.set": "~4.3.9",
+		"@types/lodash.uniqby": "~4.7.9",
+		"@types/pg": "~8.15.6",
+		"kysely": "~0.28.8",
+		"pg": "~8.16.3",
+		"zod": "~4.1.13"
+	},
+	"peerDependencies": {
+		"@geekmidas/audit": "workspace:^",
+		"@geekmidas/cache": "workspace:^",
+		"@geekmidas/db": "workspace:^",
+		"@geekmidas/envkit": "workspace:^",
+		"@geekmidas/errors": "workspace:^",
+		"@geekmidas/events": "workspace:^",
+		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/rate-limit": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"@geekmidas/services": "workspace:^",
+		"@middy/core": ">=6.3.1",
+		"@types/aws-lambda": ">=8.10.92",
+		"hono": ">=4.8.2"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/audit": {
+			"optional": true
+		},
+		"@geekmidas/cache": {
+			"optional": true
+		},
+		"@geekmidas/db": {
+			"optional": true
+		},
+		"@geekmidas/envkit": {
+			"optional": true
+		},
+		"@geekmidas/errors": {
+			"optional": true
+		},
+		"@geekmidas/events": {
+			"optional": true
+		},
+		"@geekmidas/logger": {
+			"optional": true
+		},
+		"@geekmidas/rate-limit": {
+			"optional": true
+		},
+		"@geekmidas/schema": {
+			"optional": true
+		},
+		"@geekmidas/services": {
+			"optional": true
+		},
+		"@middy/core": {
+			"optional": true
+		},
+		"@types/aws-lambda": {
+			"optional": true
+		},
+		"hono": {
+			"optional": true
+		}
+	}
 }

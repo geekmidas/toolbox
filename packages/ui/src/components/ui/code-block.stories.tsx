@@ -2,29 +2,29 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { CodeBlock } from './code-block';
 
 const meta: Meta<typeof CodeBlock> = {
-  title: 'Components/CodeBlock',
-  component: CodeBlock,
-  tags: ['autodocs'],
-  parameters: {
-    layout: 'centered',
-  },
-  argTypes: {
-    language: {
-      control: 'select',
-      options: [
-        'typescript',
-        'javascript',
-        'json',
-        'bash',
-        'sql',
-        'jsx',
-        'tsx',
-      ],
-    },
-    showLineNumbers: {
-      control: 'boolean',
-    },
-  },
+	title: 'Components/CodeBlock',
+	component: CodeBlock,
+	tags: ['autodocs'],
+	parameters: {
+		layout: 'centered',
+	},
+	argTypes: {
+		language: {
+			control: 'select',
+			options: [
+				'typescript',
+				'javascript',
+				'json',
+				'bash',
+				'sql',
+				'jsx',
+				'tsx',
+			],
+		},
+		showLineNumbers: {
+			control: 'boolean',
+		},
+	},
 };
 
 export default meta;
@@ -49,18 +49,18 @@ app.route('/__studio', createStudioApp(studio));
 export default app;`;
 
 export const TypeScript: Story = {
-  args: {
-    code: typescriptCode,
-    language: 'typescript',
-  },
+	args: {
+		code: typescriptCode,
+		language: 'typescript',
+	},
 };
 
 export const WithLineNumbers: Story = {
-  args: {
-    code: typescriptCode,
-    language: 'typescript',
-    showLineNumbers: true,
-  },
+	args: {
+		code: typescriptCode,
+		language: 'typescript',
+		showLineNumbers: true,
+	},
 };
 
 const jsonCode = `{
@@ -86,10 +86,10 @@ const jsonCode = `{
 }`;
 
 export const JSON: Story = {
-  args: {
-    code: jsonCode,
-    language: 'json',
-  },
+	args: {
+		code: jsonCode,
+		language: 'json',
+	},
 };
 
 const jsxCode = `function UserCard({ user }) {
@@ -113,10 +113,10 @@ const jsxCode = `function UserCard({ user }) {
 }`;
 
 export const JSX: Story = {
-  args: {
-    code: jsxCode,
-    language: 'jsx',
-  },
+	args: {
+		code: jsxCode,
+		language: 'jsx',
+	},
 };
 
 const bashCode = `# Install dependencies
@@ -129,10 +129,10 @@ pnpm dev --port 3000
 pnpm build --provider aws-apigatewayv1`;
 
 export const Bash: Story = {
-  args: {
-    code: bashCode,
-    language: 'bash',
-  },
+	args: {
+		code: bashCode,
+		language: 'bash',
+	},
 };
 
 const sqlCode = `SELECT
@@ -149,10 +149,10 @@ ORDER BY total_spent DESC
 LIMIT 10;`;
 
 export const SQL: Story = {
-  args: {
-    code: sqlCode,
-    language: 'sql',
-  },
+	args: {
+		code: sqlCode,
+		language: 'sql',
+	},
 };
 
 const endpointCode = `import { e } from '@geekmidas/constructs/endpoints';
@@ -183,16 +183,16 @@ export const createUser = e
   });`;
 
 export const EndpointExample: Story = {
-  args: {
-    code: endpointCode,
-    language: 'typescript',
-    showLineNumbers: true,
-  },
+	args: {
+		code: endpointCode,
+		language: 'typescript',
+		showLineNumbers: true,
+	},
 };
 
 export const Compact: Story = {
-  args: {
-    code: 'const greeting = "Hello, World!";',
-    language: 'typescript',
-  },
+	args: {
+		code: 'const greeting = "Hello, World!";',
+		language: 'typescript',
+	},
 };

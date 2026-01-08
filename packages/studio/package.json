@@ -1,62 +1,62 @@
 {
-  "name": "@geekmidas/studio",
-  "version": "0.2.0",
-  "description": "Unified development tools dashboard with database browser and request monitoring",
-  "type": "module",
-  "scripts": {
-    "build:ui": "pnpm --filter @geekmidas/studio-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./data": {
-      "types": "./dist/data/index.d.ts",
-      "import": "./dist/data/index.mjs",
-      "require": "./dist/data/index.cjs"
-    },
-    "./server/hono": {
-      "types": "./dist/server/hono.d.ts",
-      "import": "./dist/server/hono.mjs",
-      "require": "./dist/server/hono.cjs"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/geekmidas/toolbox"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
-    "access": "public"
-  },
-  "dependencies": {
-    "nanoid": "~5.1.5"
-  },
-  "peerDependencies": {
-    "@geekmidas/db": "workspace:^",
-    "@geekmidas/telescope": "workspace:^",
-    "hono": "^4.0.0",
-    "kysely": "^0.28.0"
-  },
-  "peerDependenciesMeta": {
-    "@geekmidas/db": {
-      "optional": true
-    },
-    "@geekmidas/telescope": {
-      "optional": true
-    },
-    "hono": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@geekmidas/db": "workspace:^",
-    "@geekmidas/telescope": "workspace:^",
-    "@types/pg": "~8.16.0",
-    "hono": "^4.7.0",
-    "kysely": "~0.28.2",
-    "pg": "~8.16.3"
-  }
+	"name": "@geekmidas/studio",
+	"version": "0.2.0",
+	"description": "Unified development tools dashboard with database browser and request monitoring",
+	"type": "module",
+	"scripts": {
+		"build:ui": "pnpm --filter @geekmidas/studio-ui build && tsx ../ui/scripts/embed-ui.ts dist/ui src/ui-assets.ts"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		},
+		"./data": {
+			"types": "./dist/data/index.d.ts",
+			"import": "./dist/data/index.mjs",
+			"require": "./dist/data/index.cjs"
+		},
+		"./server/hono": {
+			"types": "./dist/server/hono.d.ts",
+			"import": "./dist/server/hono.mjs",
+			"require": "./dist/server/hono.cjs"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"nanoid": "~5.1.5"
+	},
+	"peerDependencies": {
+		"@geekmidas/db": "workspace:^",
+		"@geekmidas/telescope": "workspace:^",
+		"hono": "^4.0.0",
+		"kysely": "^0.28.0"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/db": {
+			"optional": true
+		},
+		"@geekmidas/telescope": {
+			"optional": true
+		},
+		"hono": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@geekmidas/db": "workspace:^",
+		"@geekmidas/telescope": "workspace:^",
+		"@types/pg": "~8.16.0",
+		"hono": "^4.7.0",
+		"kysely": "~0.28.2",
+		"pg": "~8.16.3"
+	}
 }

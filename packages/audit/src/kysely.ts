@@ -1,8 +1,8 @@
 import type {
-  ControlledTransaction,
-  IsolationLevel,
-  Kysely,
-  Transaction,
+	ControlledTransaction,
+	IsolationLevel,
+	Kysely,
+	Transaction,
 } from 'kysely';
 import { nanoid } from 'nanoid';
 import type { AuditQueryOptions, AuditStorage } from './storage';
@@ -30,20 +30,20 @@ import type { AuditRecord } from './types';
  * ```
  */
 export interface TransactionAwareAuditor<TTransaction = unknown> {
-  /** Register the transaction with the auditor for use during flush */
-  setTransaction(trx: TTransaction): void;
-  /** Flush all pending audits, optionally within a transaction */
-  flush(trx?: TTransaction): Promise<void>;
+	/** Register the transaction with the auditor for use during flush */
+	setTransaction(trx: TTransaction): void;
+	/** Flush all pending audits, optionally within a transaction */
+	flush(trx?: TTransaction): Promise<void>;
 }
 
 export interface TransactionSettings {
-  isolationLevel?: IsolationLevel;
+	isolationLevel?: IsolationLevel;
 }
 
 export type DatabaseConnection<T> =
-  | ControlledTransaction<T>
-  | Kysely<T>
-  | Transaction<T>;
+	| ControlledTransaction<T>
+	| Kysely<T>
+	| Transaction<T>;
 
 /**
  * Execute a callback within a database transaction with automatic audit handling.
@@ -89,37 +89,37 @@ export type DatabaseConnection<T> =
  * ```
  */
 export async function withAuditableTransaction<DB, T>(
-  db: DatabaseConnection<DB>,
-  auditor: TransactionAwareAuditor<Transaction<DB>>,
-  cb: (trx: Transaction<DB>) => Promise<T>,
-  settings?: TransactionSettings,
+	db: DatabaseConnection<DB>,
+	auditor: TransactionAwareAuditor<Transaction<DB>>,
+	cb: (trx: Transaction<DB>) => Promise<T>,
+	settings?: TransactionSettings,
 ): Promise<T> {
-  const execute = async (trx: Transaction<DB>): Promise<T> => {
-    // Register transaction with auditor
-    auditor.setTransaction(trx);
+	const execute = async (trx: Transaction<DB>): Promise<T> => {
+		// Register transaction with auditor
+		auditor.setTransaction(trx);
 
-    // Execute the callback
-    const result = await cb(trx);
+		// Execute the callback
+		const result = await cb(trx);
 
-    // Flush audits BEFORE transaction commits
-    // If this fails, the transaction will roll back
-    await auditor.flush(trx);
+		// Flush audits BEFORE transaction commits
+		// If this fails, the transaction will roll back
+		await auditor.flush(trx);
 
-    return result;
-  };
+		return result;
+	};
 
-  // If already in a transaction, just run with it
-  if (db.isTransaction) {
-    return execute(db as Transaction<DB>);
-  }
+	// If already in a transaction, just run with it
+	if (db.isTransaction) {
+		return execute(db as Transaction<DB>);
+	}
 
-  const builder = db.transaction();
+	const builder = db.transaction();
 
-  if (settings?.isolationLevel) {
-    return builder.setIsolationLevel(settings.isolationLevel).execute(execute);
-  }
+	if (settings?.isolationLevel) {
+		return builder.setIsolationLevel(settings.isolationLevel).execute(execute);
+	}
 
-  return builder.execute(execute);
+	return builder.execute(execute);
 }
 
 /**
@@ -137,19 +137,19 @@ export async function withAuditableTransaction<DB, T>(
  * ```
  */
 export interface AuditLogTable {
-  id: string;
-  type: string;
-  operation: string;
-  table: string | null;
-  entityId: string | null;
-  oldValues: unknown | null;
-  newValues: unknown | null;
-  payload: unknown | null;
-  timestamp: Date;
-  actorId: string | null;
-  actorType: string | null;
-  actorData: unknown | null;
-  metadata: unknown | null;
+	id: string;
+	type: string;
+	operation: string;
+	table: string | null;
+	entityId: string | null;
+	oldValues: unknown | null;
+	newValues: unknown | null;
+	payload: unknown | null;
+	timestamp: Date;
+	actorId: string | null;
+	actorType: string | null;
+	actorData: unknown | null;
+	metadata: unknown | null;
 }
 
 /**
@@ -167,30 +167,30 @@ export interface AuditLogTable {
  * ```
  */
 export type InsertableAuditLogTable = Omit<AuditLogTable, 'id'> & {
-  id?: string;
+	id?: string;
 };
 
 /**
  * Configuration for KyselyAuditStorage.
  */
 export interface KyselyAuditStorageConfig<DB> {
-  /** Kysely database instance */
-  db: Kysely<DB>;
-  /** Table name for audit logs (must be a key in DB that extends AuditLogTable) */
-  tableName: keyof DB & string;
-  /**
-   * Service name of the database service.
-   * When set, endpoint adaptors will automatically use the audit transaction as `db`
-   * in the handler context if the endpoint's database service has the same name.
-   */
-  databaseServiceName?: string;
-  /**
-   * Let the database auto-generate IDs (e.g., via DEFAULT gen_random_uuid()).
-   * When true, the ID field is omitted from inserts if not provided.
-   * When false (default), IDs are generated using nanoid if not provided.
-   * @default false
-   */
-  autoId?: boolean;
+	/** Kysely database instance */
+	db: Kysely<DB>;
+	/** Table name for audit logs (must be a key in DB that extends AuditLogTable) */
+	tableName: keyof DB & string;
+	/**
+	 * Service name of the database service.
+	 * When set, endpoint adaptors will automatically use the audit transaction as `db`
+	 * in the handler context if the endpoint's database service has the same name.
+	 */
+	databaseServiceName?: string;
+	/**
+	 * Let the database auto-generate IDs (e.g., via DEFAULT gen_random_uuid()).
+	 * When true, the ID field is omitted from inserts if not provided.
+	 * When false (default), IDs are generated using nanoid if not provided.
+	 * @default false
+	 */
+	autoId?: boolean;
 }
 
 /**
@@ -217,230 +217,230 @@ export interface KyselyAuditStorageConfig<DB> {
  * ```
  */
 export class KyselyAuditStorage<DB> implements AuditStorage {
-  private readonly db: Kysely<DB>;
-  private readonly tableName: keyof DB & string;
-  private readonly autoId: boolean;
-  readonly databaseServiceName?: string;
+	private readonly db: Kysely<DB>;
+	private readonly tableName: keyof DB & string;
+	private readonly autoId: boolean;
+	readonly databaseServiceName?: string;
 
-  constructor(config: KyselyAuditStorageConfig<DB>) {
-    this.db = config.db;
-    this.tableName = config.tableName;
-    this.databaseServiceName = config.databaseServiceName;
-    this.autoId = config.autoId ?? false;
-  }
+	constructor(config: KyselyAuditStorageConfig<DB>) {
+		this.db = config.db;
+		this.tableName = config.tableName;
+		this.databaseServiceName = config.databaseServiceName;
+		this.autoId = config.autoId ?? false;
+	}
 
-  async write(records: AuditRecord[], trx?: unknown): Promise<void> {
-    if (records.length === 0) {
-      return;
-    }
+	async write(records: AuditRecord[], trx?: unknown): Promise<void> {
+		if (records.length === 0) {
+			return;
+		}
 
-    const db = (trx as Transaction<DB>) ?? this.db;
-    const rows = records.map((record) => this.toRow(record));
+		const db = (trx as Transaction<DB>) ?? this.db;
+		const rows = records.map((record) => this.toRow(record));
 
-    await (db as any).insertInto(this.tableName).values(rows).execute();
-  }
+		await (db as any).insertInto(this.tableName).values(rows).execute();
+	}
 
-  async query(options: AuditQueryOptions): Promise<AuditRecord[]> {
-    let query = (this.db as any).selectFrom(this.tableName).selectAll();
+	async query(options: AuditQueryOptions): Promise<AuditRecord[]> {
+		let query = (this.db as any).selectFrom(this.tableName).selectAll();
 
-    query = this.applyFilters(query, options);
+		query = this.applyFilters(query, options);
 
-    // Ordering
-    const orderBy = options.orderBy ?? 'timestamp';
-    const orderDirection = options.orderDirection ?? 'desc';
-    query = query.orderBy(
-      orderBy === 'timestamp' ? 'timestamp' : 'type',
-      orderDirection,
-    );
+		// Ordering
+		const orderBy = options.orderBy ?? 'timestamp';
+		const orderDirection = options.orderDirection ?? 'desc';
+		query = query.orderBy(
+			orderBy === 'timestamp' ? 'timestamp' : 'type',
+			orderDirection,
+		);
 
-    // Pagination
-    if (options.limit !== undefined) {
-      query = query.limit(options.limit);
-    }
-    if (options.offset !== undefined) {
-      query = query.offset(options.offset);
-    }
+		// Pagination
+		if (options.limit !== undefined) {
+			query = query.limit(options.limit);
+		}
+		if (options.offset !== undefined) {
+			query = query.offset(options.offset);
+		}
 
-    const rows = await query.execute();
-    return rows.map((row: AuditLogTable) => this.fromRow(row));
-  }
+		const rows = await query.execute();
+		return rows.map((row: AuditLogTable) => this.fromRow(row));
+	}
 
-  async count(
-    options: Omit<AuditQueryOptions, 'limit' | 'offset'>,
-  ): Promise<number> {
-    let query = (this.db as any)
-      .selectFrom(this.tableName)
-      .select((eb: any) => eb.fn.count('id').as('count'));
+	async count(
+		options: Omit<AuditQueryOptions, 'limit' | 'offset'>,
+	): Promise<number> {
+		let query = (this.db as any)
+			.selectFrom(this.tableName)
+			.select((eb: any) => eb.fn.count('id').as('count'));
 
-    query = this.applyFilters(query, options);
+		query = this.applyFilters(query, options);
 
-    const result = await query.executeTakeFirst();
-    return Number(result?.count ?? 0);
-  }
+		const result = await query.executeTakeFirst();
+		return Number(result?.count ?? 0);
+	}
 
-  /**
-   * Get the Kysely database instance for transactional operations.
-   * Used by endpoint adaptors to automatically wrap handlers in transactions.
-   */
-  getDatabase(): Kysely<DB> {
-    return this.db;
-  }
+	/**
+	 * Get the Kysely database instance for transactional operations.
+	 * Used by endpoint adaptors to automatically wrap handlers in transactions.
+	 */
+	getDatabase(): Kysely<DB> {
+		return this.db;
+	}
 
-  /**
-   * Execute a callback within a Kysely transaction with automatic audit handling.
-   * The auditor is registered with the transaction and audits are flushed
-   * before the transaction commits.
-   *
-   * If the provided db connection is already a transaction, it will be reused
-   * instead of creating a nested transaction.
-   */
-  async withTransaction<T>(
-    auditor: TransactionAwareAuditor<Transaction<DB>>,
-    callback: () => Promise<T>,
-    db?: DatabaseConnection<DB>,
-  ): Promise<T> {
-    const connection = db ?? this.db;
+	/**
+	 * Execute a callback within a Kysely transaction with automatic audit handling.
+	 * The auditor is registered with the transaction and audits are flushed
+	 * before the transaction commits.
+	 *
+	 * If the provided db connection is already a transaction, it will be reused
+	 * instead of creating a nested transaction.
+	 */
+	async withTransaction<T>(
+		auditor: TransactionAwareAuditor<Transaction<DB>>,
+		callback: () => Promise<T>,
+		db?: DatabaseConnection<DB>,
+	): Promise<T> {
+		const connection = db ?? this.db;
 
-    // If already in a transaction, reuse it
-    if (connection.isTransaction) {
-      const trx = connection as Transaction<DB>;
-      auditor.setTransaction(trx);
-      const result = await callback();
-      await auditor.flush(trx);
-      return result;
-    }
+		// If already in a transaction, reuse it
+		if (connection.isTransaction) {
+			const trx = connection as Transaction<DB>;
+			auditor.setTransaction(trx);
+			const result = await callback();
+			await auditor.flush(trx);
+			return result;
+		}
 
-    // Create new transaction
-    return connection.transaction().execute(async (trx) => {
-      auditor.setTransaction(trx);
-      const result = await callback();
-      await auditor.flush(trx);
-      return result;
-    });
-  }
+		// Create new transaction
+		return connection.transaction().execute(async (trx) => {
+			auditor.setTransaction(trx);
+			const result = await callback();
+			await auditor.flush(trx);
+			return result;
+		});
+	}
 
-  private applyFilters(query: any, options: AuditQueryOptions): any {
-    // Type filter
-    if (options.type !== undefined) {
-      if (Array.isArray(options.type)) {
-        query = query.where('type', 'in', options.type);
-      } else {
-        query = query.where('type', '=', options.type);
-      }
-    }
+	private applyFilters(query: any, options: AuditQueryOptions): any {
+		// Type filter
+		if (options.type !== undefined) {
+			if (Array.isArray(options.type)) {
+				query = query.where('type', 'in', options.type);
+			} else {
+				query = query.where('type', '=', options.type);
+			}
+		}
 
-    // Entity ID filter
-    if (options.entityId !== undefined) {
-      const entityId =
-        typeof options.entityId === 'string'
-          ? options.entityId
-          : JSON.stringify(options.entityId);
-      query = query.where('entityId', '=', entityId);
-    }
+		// Entity ID filter
+		if (options.entityId !== undefined) {
+			const entityId =
+				typeof options.entityId === 'string'
+					? options.entityId
+					: JSON.stringify(options.entityId);
+			query = query.where('entityId', '=', entityId);
+		}
 
-    // Table filter
-    if (options.table !== undefined) {
-      query = query.where('table', '=', options.table);
-    }
+		// Table filter
+		if (options.table !== undefined) {
+			query = query.where('table', '=', options.table);
+		}
 
-    // Actor ID filter
-    if (options.actorId !== undefined) {
-      query = query.where('actorId', '=', options.actorId);
-    }
+		// Actor ID filter
+		if (options.actorId !== undefined) {
+			query = query.where('actorId', '=', options.actorId);
+		}
 
-    // Date range filters
-    if (options.from !== undefined) {
-      query = query.where('timestamp', '>=', options.from);
-    }
-    if (options.to !== undefined) {
-      query = query.where('timestamp', '<=', options.to);
-    }
+		// Date range filters
+		if (options.from !== undefined) {
+			query = query.where('timestamp', '>=', options.from);
+		}
+		if (options.to !== undefined) {
+			query = query.where('timestamp', '<=', options.to);
+		}
 
-    return query;
-  }
+		return query;
+	}
 
-  private toRow(record: AuditRecord): AuditLogTable {
-    // If autoId is true, let database generate ID (ignore record.id)
-    // If autoId is false (default), use record.id or generate with nanoid
-    const id = this.autoId ? undefined : record.id || nanoid();
+	private toRow(record: AuditRecord): AuditLogTable {
+		// If autoId is true, let database generate ID (ignore record.id)
+		// If autoId is false (default), use record.id or generate with nanoid
+		const id = this.autoId ? undefined : record.id || nanoid();
 
-    return {
-      ...(id && { id }),
-      type: record.type,
-      operation: record.operation,
-      table: record.table ?? null,
-      entityId:
-        record.entityId === undefined
-          ? null
-          : typeof record.entityId === 'string'
-            ? record.entityId
-            : JSON.stringify(record.entityId),
-      oldValues: record.oldValues ?? null,
-      newValues: record.newValues ?? null,
-      payload: record.payload ?? null,
-      timestamp: record.timestamp,
-      actorId: record.actor?.id ?? null,
-      actorType: record.actor?.type ?? null,
-      actorData:
-        record.actor !== undefined ? this.getActorData(record.actor) : null,
-      metadata: record.metadata ?? null,
-    } as AuditLogTable;
-  }
+		return {
+			...(id && { id }),
+			type: record.type,
+			operation: record.operation,
+			table: record.table ?? null,
+			entityId:
+				record.entityId === undefined
+					? null
+					: typeof record.entityId === 'string'
+						? record.entityId
+						: JSON.stringify(record.entityId),
+			oldValues: record.oldValues ?? null,
+			newValues: record.newValues ?? null,
+			payload: record.payload ?? null,
+			timestamp: record.timestamp,
+			actorId: record.actor?.id ?? null,
+			actorType: record.actor?.type ?? null,
+			actorData:
+				record.actor !== undefined ? this.getActorData(record.actor) : null,
+			metadata: record.metadata ?? null,
+		} as AuditLogTable;
+	}
 
-  private fromRow(row: AuditLogTable): AuditRecord {
-    const actor =
-      row.actorId !== null || row.actorType !== null
-        ? {
-            id: row.actorId ?? undefined,
-            type: row.actorType ?? undefined,
-            ...(row.actorData ? this.parseJson(row.actorData) : {}),
-          }
-        : undefined;
+	private fromRow(row: AuditLogTable): AuditRecord {
+		const actor =
+			row.actorId !== null || row.actorType !== null
+				? {
+						id: row.actorId ?? undefined,
+						type: row.actorType ?? undefined,
+						...(row.actorData ? this.parseJson(row.actorData) : {}),
+					}
+				: undefined;
 
-    return {
-      id: row.id,
-      type: row.type,
-      operation: row.operation as AuditRecord['operation'],
-      table: row.table ?? undefined,
-      entityId: row.entityId ? this.parseEntityId(row.entityId) : undefined,
-      oldValues: row.oldValues ? this.parseJson(row.oldValues) : undefined,
-      newValues: row.newValues ? this.parseJson(row.newValues) : undefined,
-      payload: row.payload ? this.parseJson(row.payload) : undefined,
-      timestamp: row.timestamp,
-      actor,
-      metadata: row.metadata ? this.parseJson(row.metadata) : undefined,
-    };
-  }
+		return {
+			id: row.id,
+			type: row.type,
+			operation: row.operation as AuditRecord['operation'],
+			table: row.table ?? undefined,
+			entityId: row.entityId ? this.parseEntityId(row.entityId) : undefined,
+			oldValues: row.oldValues ? this.parseJson(row.oldValues) : undefined,
+			newValues: row.newValues ? this.parseJson(row.newValues) : undefined,
+			payload: row.payload ? this.parseJson(row.payload) : undefined,
+			timestamp: row.timestamp,
+			actor,
+			metadata: row.metadata ? this.parseJson(row.metadata) : undefined,
+		};
+	}
 
-  /**
-   * Parse a JSON value that may already be parsed (e.g., from jsonb columns).
-   */
-  private parseJson(value: unknown): Record<string, unknown> {
-    if (typeof value === 'object' && value !== null) {
-      return value as Record<string, unknown>;
-    }
-    if (typeof value === 'string') {
-      return JSON.parse(value);
-    }
-    return {};
-  }
+	/**
+	 * Parse a JSON value that may already be parsed (e.g., from jsonb columns).
+	 */
+	private parseJson(value: unknown): Record<string, unknown> {
+		if (typeof value === 'object' && value !== null) {
+			return value as Record<string, unknown>;
+		}
+		if (typeof value === 'string') {
+			return JSON.parse(value);
+		}
+		return {};
+	}
 
-  private getActorData(
-    actor: NonNullable<AuditRecord['actor']>,
-  ): Record<string, unknown> {
-    const { id, type, ...rest } = actor;
-    return rest;
-  }
+	private getActorData(
+		actor: NonNullable<AuditRecord['actor']>,
+	): Record<string, unknown> {
+		const { id, type, ...rest } = actor;
+		return rest;
+	}
 
-  private parseEntityId(entityId: string): string | Record<string, unknown> {
-    try {
-      const parsed = JSON.parse(entityId);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return parsed;
-      }
-      return entityId;
-    } catch {
-      return entityId;
-    }
-  }
+	private parseEntityId(entityId: string): string | Record<string, unknown> {
+		try {
+			const parsed = JSON.parse(entityId);
+			if (typeof parsed === 'object' && parsed !== null) {
+				return parsed;
+			}
+			return entityId;
+		} catch {
+			return entityId;
+		}
+	}
 }

@@ -1,42 +1,42 @@
 {
-  "name": "@geekmidas/example",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "gkm dev",
-    "build": "gkm build --providers server,aws-apigatewayv2",
-    "out": "gkm prepack --build",
-    "openapi": "gkm openapi",
-    "start": "node .gkm/server/app.js",
-    "migrate": "tsx src/migrate.ts"
-  },
-  "dependencies": {
-    "@geekmidas/audit": "workspace:*",
-    "@tanstack/react-query": "~5.90.16",
-    "@geekmidas/cli": "workspace:*",
-    "@geekmidas/constructs": "workspace:*",
-    "@geekmidas/db": "workspace:*",
-    "@geekmidas/envkit": "workspace:*",
-    "@geekmidas/events": "workspace:*",
-    "@geekmidas/logger": "workspace:*",
-    "@geekmidas/services": "workspace:*",
-    "@geekmidas/studio": "workspace:*",
-    "@geekmidas/telescope": "workspace:*",
-    "@hono/node-server": "~1.19.5",
-    "@hono/node-ws": "^1.0.0",
-    "@hono/swagger-ui": "~0.5.2",
-    "hono": "^4.7.15",
-    "kysely": "~0.28.2",
-    "pg": "~8.16.0",
-    "pino": "^9.6.0",
-    "pino-abstract-transport": "~3.0.0",
-    "zod": "~4.1.13"
-  },
-  "devDependencies": {
-    "@geekmidas/client": "workspace:*",
-    "@types/node": "^22.10.2",
-    "@types/pg": "~8.15.0",
-    "tsx": "~4.20.6"
-  }
+	"name": "@geekmidas/example",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "gkm dev",
+		"build": "gkm build --providers server,aws-apigatewayv2",
+		"out": "gkm prepack --build",
+		"openapi": "gkm openapi",
+		"start": "node .gkm/server/app.js",
+		"migrate": "tsx src/migrate.ts"
+	},
+	"dependencies": {
+		"@geekmidas/audit": "workspace:*",
+		"@tanstack/react-query": "~5.90.16",
+		"@geekmidas/cli": "workspace:*",
+		"@geekmidas/constructs": "workspace:*",
+		"@geekmidas/db": "workspace:*",
+		"@geekmidas/envkit": "workspace:*",
+		"@geekmidas/events": "workspace:*",
+		"@geekmidas/logger": "workspace:*",
+		"@geekmidas/services": "workspace:*",
+		"@geekmidas/studio": "workspace:*",
+		"@geekmidas/telescope": "workspace:*",
+		"@hono/node-server": "~1.19.5",
+		"@hono/node-ws": "^1.0.0",
+		"@hono/swagger-ui": "~0.5.2",
+		"hono": "^4.7.15",
+		"kysely": "~0.28.2",
+		"pg": "~8.16.0",
+		"pino": "^9.6.0",
+		"pino-abstract-transport": "~3.0.0",
+		"zod": "~4.1.13"
+	},
+	"devDependencies": {
+		"@geekmidas/client": "workspace:*",
+		"@types/node": "^22.10.2",
+		"@types/pg": "~8.15.0",
+		"tsx": "~4.20.6"
+	}
 }

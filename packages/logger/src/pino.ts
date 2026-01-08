@@ -37,12 +37,12 @@ export { DEFAULT_REDACT_PATHS } from './redact-paths';
  * Type for the resolved pino redact config (without our custom resolution field).
  */
 type PinoRedactConfig =
-  | string[]
-  | {
-      paths: string[];
-      censor?: string | ((value: unknown, path: string[]) => unknown);
-      remove?: boolean;
-    };
+	| string[]
+	| {
+			paths: string[];
+			censor?: string | ((value: unknown, path: string[]) => unknown);
+			remove?: boolean;
+	  };
 
 /**
  * Resolves redaction configuration from options.
@@ -52,33 +52,33 @@ type PinoRedactConfig =
  * With resolution: 'override', only the custom paths are used.
  */
 function resolveRedactConfig(
-  redact: boolean | RedactOptions | undefined,
+	redact: boolean | RedactOptions | undefined,
 ): PinoRedactConfig | undefined {
-  if (redact === undefined || redact === false) {
-    return undefined;
-  }
+	if (redact === undefined || redact === false) {
+		return undefined;
+	}
 
-  if (redact === true) {
-    return DEFAULT_REDACT_PATHS;
-  }
+	if (redact === true) {
+		return DEFAULT_REDACT_PATHS;
+	}
 
-  // Array syntax - merge with defaults
-  if (Array.isArray(redact)) {
-    return [...DEFAULT_REDACT_PATHS, ...redact];
-  }
+	// Array syntax - merge with defaults
+	if (Array.isArray(redact)) {
+		return [...DEFAULT_REDACT_PATHS, ...redact];
+	}
 
-  // Object syntax - check resolution mode
-  const { resolution = 'merge', paths, censor, remove } = redact;
+	// Object syntax - check resolution mode
+	const { resolution = 'merge', paths, censor, remove } = redact;
 
-  const resolvedPaths =
-    resolution === 'override' ? paths : [...DEFAULT_REDACT_PATHS, ...paths];
+	const resolvedPaths =
+		resolution === 'override' ? paths : [...DEFAULT_REDACT_PATHS, ...paths];
 
-  // Return clean pino config without our resolution field
-  const config: PinoRedactConfig = { paths: resolvedPaths };
-  if (censor !== undefined) config.censor = censor;
-  if (remove !== undefined) config.remove = remove;
+	// Return clean pino config without our resolution field
+	const config: PinoRedactConfig = { paths: resolvedPaths };
+	if (censor !== undefined) config.censor = censor;
+	if (remove !== undefined) config.remove = remove;
 
-  return config;
+	return config;
 }
 
 /**
@@ -100,30 +100,30 @@ function resolveRedactConfig(
  * ```
  */
 export function createLogger(options: CreateLoggerOptions = {}) {
-  // @ts-ignore
-  const pretty = options?.pretty && process.NODE_ENV !== 'production';
-  const baseOptions = pretty
-    ? {
-        transport: {
-          target: 'pino-pretty',
-          options: { colorize: true },
-        },
-      }
-    : {};
+	// @ts-ignore
+	const pretty = options?.pretty && process.NODE_ENV !== 'production';
+	const baseOptions = pretty
+		? {
+				transport: {
+					target: 'pino-pretty',
+					options: { colorize: true },
+				},
+			}
+		: {};
 
-  const redact = resolveRedactConfig(options.redact);
+	const redact = resolveRedactConfig(options.redact);
 
-  return pino({
-    ...baseOptions,
-    ...(options.level && { level: options.level }),
-    ...(redact && { redact }),
-    formatters: {
-      bindings() {
-        return { nodeVersion: process.version };
-      },
-      level: (label) => {
-        return { level: label.toUpperCase() };
-      },
-    },
-  });
+	return pino({
+		...baseOptions,
+		...(options.level && { level: options.level }),
+		...(redact && { redact }),
+		formatters: {
+			bindings() {
+				return { nodeVersion: process.version };
+			},
+			level: (label) => {
+				return { level: label.toUpperCase() };
+			},
+		},
+	});
 }

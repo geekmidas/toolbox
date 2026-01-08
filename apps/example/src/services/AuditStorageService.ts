@@ -23,18 +23,18 @@ import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
 
 // Define your audit actions for type safety
 export type AppAuditAction =
-  | AuditableAction<'user.created', { userId: string; email: string }>
-  | AuditableAction<'user.updated', { userId: string; changes: string[] }>
-  | AuditableAction<'user.deleted', { userId: string }>;
+	| AuditableAction<'user.created', { userId: string; email: string }>
+	| AuditableAction<'user.updated', { userId: string; changes: string[] }>
+	| AuditableAction<'user.deleted', { userId: string }>;
 
 let instance: AuditStorage<AppAuditAction> | null = null;
 
 export const AuditStorageService = {
-  serviceName: 'auditStorage' as const,
-  async register(): Promise<AuditStorage<AppAuditAction>> {
-    if (!instance) {
-      instance = new InMemoryAuditStorage<AppAuditAction>();
-    }
-    return instance;
-  },
+	serviceName: 'auditStorage' as const,
+	async register(): Promise<AuditStorage<AppAuditAction>> {
+		if (!instance) {
+			instance = new InMemoryAuditStorage<AppAuditAction>();
+		}
+		return instance;
+	},
 };

@@ -18,46 +18,46 @@ import { faker as baseFaker } from '@faker-js/faker';
  * ```
  */
 class AtomicCounter {
-  /**
-   * The current counter value.
-   * @private
-   */
-  private value: number;
+	/**
+	 * The current counter value.
+	 * @private
+	 */
+	private value: number;
 
-  /**
-   * Creates a new atomic counter.
-   * @param initialValue - The starting value (default: 0)
-   */
-  constructor(initialValue = 0) {
-    this.value = initialValue;
-  }
+	/**
+	 * Creates a new atomic counter.
+	 * @param initialValue - The starting value (default: 0)
+	 */
+	constructor(initialValue = 0) {
+		this.value = initialValue;
+	}
 
-  /**
-   * Increments the counter and returns the new value.
-   * @returns The incremented value
-   */
-  increment(): number {
-    // In Node.js, JavaScript is single-threaded within the event loop,
-    // so this operation is already atomic. However, this class provides
-    // a cleaner abstraction and makes the intent explicit.
-    return ++this.value;
-  }
+	/**
+	 * Increments the counter and returns the new value.
+	 * @returns The incremented value
+	 */
+	increment(): number {
+		// In Node.js, JavaScript is single-threaded within the event loop,
+		// so this operation is already atomic. However, this class provides
+		// a cleaner abstraction and makes the intent explicit.
+		return ++this.value;
+	}
 
-  /**
-   * Gets the current counter value without incrementing.
-   * @returns The current value
-   */
-  get(): number {
-    return this.value;
-  }
+	/**
+	 * Gets the current counter value without incrementing.
+	 * @returns The current value
+	 */
+	get(): number {
+		return this.value;
+	}
 
-  /**
-   * Resets the counter to a specific value.
-   * @param value - The new value (default: 0)
-   */
-  reset(value = 0): void {
-    this.value = value;
-  }
+	/**
+	 * Resets the counter to a specific value.
+	 * @param value - The new value (default: 0)
+	 */
+	reset(value = 0): void {
+		this.value = value;
+	}
 }
 
 /**
@@ -81,16 +81,16 @@ class AtomicCounter {
  * ```
  */
 export function timestamps(): Timestamps {
-  const createdAt = faker.date.past();
-  const updatedAt = faker.date.between({
-    from: createdAt,
-    to: new Date(),
-  });
+	const createdAt = faker.date.past();
+	const updatedAt = faker.date.between({
+		from: createdAt,
+		to: new Date(),
+	});
 
-  createdAt.setMilliseconds(0);
-  updatedAt.setMilliseconds(0);
+	createdAt.setMilliseconds(0);
+	updatedAt.setMilliseconds(0);
 
-  return { createdAt, updatedAt };
+	return { createdAt, updatedAt };
 }
 
 /**
@@ -108,11 +108,11 @@ export function timestamps(): Timestamps {
  * ```
  */
 export function identifier(suffix?: string): string {
-  return [
-    faker.internet.domainSuffix(),
-    faker.internet.domainWord(),
-    suffix ? suffix : faker.internet.domainWord() + sequence('identifier'),
-  ].join('.');
+	return [
+		faker.internet.domainSuffix(),
+		faker.internet.domainWord(),
+		suffix ? suffix : faker.internet.domainWord() + sequence('identifier'),
+	].join('.');
 }
 
 /**
@@ -143,12 +143,12 @@ const sequences = new Map<string, AtomicCounter>();
  * ```
  */
 export function sequence(name = 'default'): number {
-  if (!sequences.has(name)) {
-    sequences.set(name, new AtomicCounter());
-  }
+	if (!sequences.has(name)) {
+		sequences.set(name, new AtomicCounter());
+	}
 
-  const counter = sequences.get(name) as AtomicCounter;
-  return counter.increment();
+	const counter = sequences.get(name) as AtomicCounter;
+	return counter.increment();
 }
 
 /**
@@ -170,12 +170,12 @@ export function sequence(name = 'default'): number {
  * ```
  */
 export function resetSequence(name = 'default', value = 0): void {
-  if (sequences.has(name)) {
-    const counter = sequences.get(name) as AtomicCounter;
-    counter.reset(value);
-  } else {
-    sequences.set(name, new AtomicCounter(value));
-  }
+	if (sequences.has(name)) {
+		const counter = sequences.get(name) as AtomicCounter;
+		counter.reset(value);
+	} else {
+		sequences.set(name, new AtomicCounter(value));
+	}
 }
 
 /**
@@ -196,7 +196,7 @@ export function resetSequence(name = 'default', value = 0): void {
  * ```
  */
 export function resetAllSequences(): void {
-  sequences.clear();
+	sequences.clear();
 }
 
 /**
@@ -212,89 +212,89 @@ export function resetAllSequences(): void {
  * ```
  */
 function price(): number {
-  return +faker.commerce.price();
+	return +faker.commerce.price();
 }
 
 type Coordinate = {
-  lat: number;
-  lng: number;
+	lat: number;
+	lng: number;
 };
 
 export function coordinateInRadius(
-  center: Coordinate,
-  radius: number,
+	center: Coordinate,
+	radius: number,
 ): Coordinate {
-  // Earth's radius in meters
-  const earth = 6378137;
-  // Convert radius from meters to degrees
-  const d = radius / earth;
+	// Earth's radius in meters
+	const earth = 6378137;
+	// Convert radius from meters to degrees
+	const d = radius / earth;
 
-  // Random bearing and distance
-  const theta = 2 * Math.PI * Math.random();
-  const r = d * Math.sqrt(Math.random());
+	// Random bearing and distance
+	const theta = 2 * Math.PI * Math.random();
+	const r = d * Math.sqrt(Math.random());
 
-  const lat1 = (center.lat * Math.PI) / 180;
-  const lng1 = (center.lng * Math.PI) / 180;
+	const lat1 = (center.lat * Math.PI) / 180;
+	const lng1 = (center.lng * Math.PI) / 180;
 
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(r) +
-      Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
-  );
-  const lng2 =
-    lng1 +
-    Math.atan2(
-      Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
-      Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
-    );
+	const lat2 = Math.asin(
+		Math.sin(lat1) * Math.cos(r) +
+			Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
+	);
+	const lng2 =
+		lng1 +
+		Math.atan2(
+			Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
+			Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
+		);
 
-  return {
-    lat: (lat2 * 180) / Math.PI,
-    lng: (lng2 * 180) / Math.PI,
-  };
+	return {
+		lat: (lat2 * 180) / Math.PI,
+		lng: (lng2 * 180) / Math.PI,
+	};
 }
 
 function coordinateOutsideRadius(
-  center: Coordinate,
-  minRadiusMeters: number,
-  maxRadiusMeters: number,
+	center: Coordinate,
+	minRadiusMeters: number,
+	maxRadiusMeters: number,
 ): Coordinate {
-  // Earth's radius in meters
-  const earth = 6378137;
+	// Earth's radius in meters
+	const earth = 6378137;
 
-  // Convert radii from meters to radians
-  const minD = minRadiusMeters / earth;
-  const maxD = maxRadiusMeters / earth;
+	// Convert radii from meters to radians
+	const minD = minRadiusMeters / earth;
+	const maxD = maxRadiusMeters / earth;
 
-  // Random bearing
-  const theta = 2 * Math.PI * Math.random();
+	// Random bearing
+	const theta = 2 * Math.PI * Math.random();
 
-  // Random distance in annular ring (uniform distribution by area)
-  // For uniform distribution in annulus: r = sqrt(r_min² + (r_max² - r_min²) * random)
-  const r = Math.sqrt(
-    minD * minD + (maxD * maxD - minD * minD) * Math.random(),
-  );
+	// Random distance in annular ring (uniform distribution by area)
+	// For uniform distribution in annulus: r = sqrt(r_min² + (r_max² - r_min²) * random)
+	const r = Math.sqrt(
+		minD * minD + (maxD * maxD - minD * minD) * Math.random(),
+	);
 
-  const lat1 = (center.lat * Math.PI) / 180;
-  const lng1 = (center.lng * Math.PI) / 180;
+	const lat1 = (center.lat * Math.PI) / 180;
+	const lng1 = (center.lng * Math.PI) / 180;
 
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(r) +
-      Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
-  );
-  const lng2 =
-    lng1 +
-    Math.atan2(
-      Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
-      Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
-    );
+	const lat2 = Math.asin(
+		Math.sin(lat1) * Math.cos(r) +
+			Math.cos(lat1) * Math.sin(r) * Math.cos(theta),
+	);
+	const lng2 =
+		lng1 +
+		Math.atan2(
+			Math.sin(theta) * Math.sin(r) * Math.cos(lat1),
+			Math.cos(r) - Math.sin(lat1) * Math.sin(lat2),
+		);
 
-  // Normalize longitude to [-180, 180]
-  const normalizedLng = (((lng2 * 180) / Math.PI + 540) % 360) - 180;
+	// Normalize longitude to [-180, 180]
+	const normalizedLng = (((lng2 * 180) / Math.PI + 540) % 360) - 180;
 
-  return {
-    lat: (lat2 * 180) / Math.PI,
-    lng: normalizedLng,
-  };
+	return {
+		lat: (lat2 * 180) / Math.PI,
+		lng: normalizedLng,
+	};
 }
 
 /**
@@ -317,18 +317,18 @@ function coordinateOutsideRadius(
  * ```
  */
 export const faker = Object.freeze(
-  Object.assign({}, baseFaker, {
-    timestamps,
-    identifier,
-    sequence,
-    resetSequence,
-    resetAllSequences,
-    price,
-    coordinates: {
-      within: coordinateInRadius,
-      outside: coordinateOutsideRadius,
-    },
-  }),
+	Object.assign({}, baseFaker, {
+		timestamps,
+		identifier,
+		sequence,
+		resetSequence,
+		resetAllSequences,
+		price,
+		coordinates: {
+			within: coordinateInRadius,
+			outside: coordinateOutsideRadius,
+		},
+	}),
 );
 
 /**
@@ -336,10 +336,10 @@ export const faker = Object.freeze(
  * Used by the timestamps() function to generate date fields.
  */
 export type Timestamps = {
-  /** The creation date */
-  createdAt: Date;
-  /** The last update date */
-  updatedAt: Date;
+	/** The creation date */
+	createdAt: Date;
+	/** The last update date */
+	updatedAt: Date;
 };
 
 /**

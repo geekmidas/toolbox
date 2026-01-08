@@ -5,21 +5,21 @@ import type { DockerConfig, GkmConfig } from '../types';
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 
 export interface DockerTemplateOptions {
-  imageName: string;
-  baseImage: string;
-  port: number;
-  healthCheckPath: string;
-  /** Whether the build is pre-built (slim Dockerfile) or needs building */
-  prebuilt: boolean;
-  /** Detected package manager */
-  packageManager: PackageManager;
+	imageName: string;
+	baseImage: string;
+	port: number;
+	healthCheckPath: string;
+	/** Whether the build is pre-built (slim Dockerfile) or needs building */
+	prebuilt: boolean;
+	/** Detected package manager */
+	packageManager: PackageManager;
 }
 
 export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
-  /** Enable turbo prune for monorepo optimization */
-  turbo?: boolean;
-  /** Package name for turbo prune (defaults to current directory name) */
-  turboPackage?: string;
+	/** Enable turbo prune for monorepo optimization */
+	turbo?: boolean;
+	/** Package name for turbo prune (defaults to current directory name) */
+	turboPackage?: string;
 }
 
 /**
@@ -27,85 +27,85 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
  * Walks up the directory tree to find lockfile (for monorepos)
  */
 export function detectPackageManager(
-  cwd: string = process.cwd(),
+	cwd: string = process.cwd(),
 ): PackageManager {
-  const lockfiles: [string, PackageManager][] = [
-    ['pnpm-lock.yaml', 'pnpm'],
-    ['bun.lockb', 'bun'],
-    ['yarn.lock', 'yarn'],
-    ['package-lock.json', 'npm'],
-  ];
+	const lockfiles: [string, PackageManager][] = [
+		['pnpm-lock.yaml', 'pnpm'],
+		['bun.lockb', 'bun'],
+		['yarn.lock', 'yarn'],
+		['package-lock.json', 'npm'],
+	];
 
-  let dir = cwd;
-  const root = parse(dir).root;
+	let dir = cwd;
+	const root = parse(dir).root;
 
-  // Walk up the directory tree
-  while (dir !== root) {
-    for (const [lockfile, pm] of lockfiles) {
-      if (existsSync(join(dir, lockfile))) {
-        return pm;
-      }
-    }
-    dir = dirname(dir);
-  }
+	// Walk up the directory tree
+	while (dir !== root) {
+		for (const [lockfile, pm] of lockfiles) {
+			if (existsSync(join(dir, lockfile))) {
+				return pm;
+			}
+		}
+		dir = dirname(dir);
+	}
 
-  // Check root directory
-  for (const [lockfile, pm] of lockfiles) {
-    if (existsSync(join(root, lockfile))) {
-      return pm;
-    }
-  }
+	// Check root directory
+	for (const [lockfile, pm] of lockfiles) {
+		if (existsSync(join(root, lockfile))) {
+			return pm;
+		}
+	}
 
-  return 'pnpm'; // default
+	return 'pnpm'; // default
 }
 
 /**
  * Get package manager specific commands and paths
  */
 function getPmConfig(pm: PackageManager) {
-  const configs = {
-    pnpm: {
-      install: 'corepack enable && corepack prepare pnpm@latest --activate',
-      lockfile: 'pnpm-lock.yaml',
-      fetch: 'pnpm fetch',
-      installCmd: 'pnpm install --frozen-lockfile --offline',
-      cacheTarget: '/root/.local/share/pnpm/store',
-      cacheId: 'pnpm',
-      run: 'pnpm',
-      addGlobal: 'pnpm add -g',
-    },
-    npm: {
-      install: '', // npm comes with node
-      lockfile: 'package-lock.json',
-      fetch: '', // npm doesn't have fetch
-      installCmd: 'npm ci',
-      cacheTarget: '/root/.npm',
-      cacheId: 'npm',
-      run: 'npm run',
-      addGlobal: 'npm install -g',
-    },
-    yarn: {
-      install: 'corepack enable && corepack prepare yarn@stable --activate',
-      lockfile: 'yarn.lock',
-      fetch: '', // yarn doesn't have fetch
-      installCmd: 'yarn install --frozen-lockfile',
-      cacheTarget: '/root/.yarn/cache',
-      cacheId: 'yarn',
-      run: 'yarn',
-      addGlobal: 'yarn global add',
-    },
-    bun: {
-      install: 'npm install -g bun',
-      lockfile: 'bun.lockb',
-      fetch: '', // bun doesn't have fetch
-      installCmd: 'bun install --frozen-lockfile',
-      cacheTarget: '/root/.bun/install/cache',
-      cacheId: 'bun',
-      run: 'bun run',
-      addGlobal: 'bun add -g',
-    },
-  };
-  return configs[pm];
+	const configs = {
+		pnpm: {
+			install: 'corepack enable && corepack prepare pnpm@latest --activate',
+			lockfile: 'pnpm-lock.yaml',
+			fetch: 'pnpm fetch',
+			installCmd: 'pnpm install --frozen-lockfile --offline',
+			cacheTarget: '/root/.local/share/pnpm/store',
+			cacheId: 'pnpm',
+			run: 'pnpm',
+			addGlobal: 'pnpm add -g',
+		},
+		npm: {
+			install: '', // npm comes with node
+			lockfile: 'package-lock.json',
+			fetch: '', // npm doesn't have fetch
+			installCmd: 'npm ci',
+			cacheTarget: '/root/.npm',
+			cacheId: 'npm',
+			run: 'npm run',
+			addGlobal: 'npm install -g',
+		},
+		yarn: {
+			install: 'corepack enable && corepack prepare yarn@stable --activate',
+			lockfile: 'yarn.lock',
+			fetch: '', // yarn doesn't have fetch
+			installCmd: 'yarn install --frozen-lockfile',
+			cacheTarget: '/root/.yarn/cache',
+			cacheId: 'yarn',
+			run: 'yarn',
+			addGlobal: 'yarn global add',
+		},
+		bun: {
+			install: 'npm install -g bun',
+			lockfile: 'bun.lockb',
+			fetch: '', // bun doesn't have fetch
+			installCmd: 'bun install --frozen-lockfile',
+			cacheTarget: '/root/.bun/install/cache',
+			cacheId: 'bun',
+			run: 'bun run',
+			addGlobal: 'bun add -g',
+		},
+	};
+	return configs[pm];
 }
 
 /**
@@ -116,33 +116,33 @@ function getPmConfig(pm: PackageManager) {
  * - Optional turbo prune for monorepos
  */
 export function generateMultiStageDockerfile(
-  options: MultiStageDockerfileOptions,
+	options: MultiStageDockerfileOptions,
 ): string {
-  const {
-    baseImage,
-    port,
-    healthCheckPath,
-    turbo,
-    turboPackage,
-    packageManager,
-  } = options;
+	const {
+		baseImage,
+		port,
+		healthCheckPath,
+		turbo,
+		turboPackage,
+		packageManager,
+	} = options;
 
-  if (turbo) {
-    return generateTurboDockerfile({
-      ...options,
-      turboPackage: turboPackage ?? 'api',
-    });
-  }
+	if (turbo) {
+		return generateTurboDockerfile({
+			...options,
+			turboPackage: turboPackage ?? 'api',
+		});
+	}
 
-  const pm = getPmConfig(packageManager);
-  const installPm = pm.install
-    ? `\n# Install ${packageManager}\nRUN ${pm.install}\n`
-    : '';
-  const hasFetch = packageManager === 'pnpm';
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install
+		? `\n# Install ${packageManager}\nRUN ${pm.install}\n`
+		: '';
+	const hasFetch = packageManager === 'pnpm';
 
-  // pnpm has fetch which allows better caching
-  const depsStage = hasFetch
-    ? `# Copy lockfile first for better caching
+	// pnpm has fetch which allows better caching
+	const depsStage = hasFetch
+		? `# Copy lockfile first for better caching
 COPY ${pm.lockfile} ./
 
 # Fetch dependencies (downloads to virtual store, cached separately)
@@ -155,14 +155,14 @@ COPY package.json ./
 # Install from cache (fast - no network needed)
 RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
     ${pm.installCmd}`
-    : `# Copy package files
+		: `# Copy package files
 COPY package.json ${pm.lockfile} ./
 
 # Install dependencies with cache
 RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
     ${pm.installCmd}`;
 
-  return `# syntax=docker/dockerfile:1
+	return `# syntax=docker/dockerfile:1
 # Stage 1: Dependencies
 FROM ${baseImage} AS deps
 
@@ -220,26 +220,26 @@ CMD ["node", "server.mjs"]
  * Uses turbo prune to create minimal Docker context
  */
 function generateTurboDockerfile(options: MultiStageDockerfileOptions): string {
-  const { baseImage, port, healthCheckPath, turboPackage, packageManager } =
-    options;
+	const { baseImage, port, healthCheckPath, turboPackage, packageManager } =
+		options;
 
-  const pm = getPmConfig(packageManager);
-  const installPm = pm.install ? `RUN ${pm.install}` : '';
-  const hasFetch = packageManager === 'pnpm';
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+	const hasFetch = packageManager === 'pnpm';
 
-  // pnpm has fetch which allows better caching
-  const depsInstall = hasFetch
-    ? `# Fetch and install from cache
+	// pnpm has fetch which allows better caching
+	const depsInstall = hasFetch
+		? `# Fetch and install from cache
 RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
     ${pm.fetch}
 
 RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
     ${pm.installCmd}`
-    : `# Install dependencies with cache
+		: `# Install dependencies with cache
 RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
     ${pm.installCmd}`;
 
-  return `# syntax=docker/dockerfile:1
+	return `# syntax=docker/dockerfile:1
 # Stage 1: Prune monorepo
 FROM ${baseImage} AS pruner
 
@@ -308,9 +308,9 @@ CMD ["node", "server.mjs"]
  * Generate a slim Dockerfile for pre-built bundles
  */
 export function generateSlimDockerfile(options: DockerTemplateOptions): string {
-  const { baseImage, port, healthCheckPath } = options;
+	const { baseImage, port, healthCheckPath } = options;
 
-  return `# Slim Dockerfile for pre-built production bundle
+	return `# Slim Dockerfile for pre-built production bundle
 FROM ${baseImage}
 
 WORKDIR /app
@@ -349,7 +349,7 @@ CMD ["node", "server.mjs"]
  * Generate .dockerignore file
  */
 export function generateDockerignore(): string {
-  return `# Dependencies
+	return `# Dependencies
 node_modules
 .pnpm-store
 
@@ -400,7 +400,7 @@ docker-compose*
  * Generate docker-entrypoint.sh for custom startup logic
  */
 export function generateDockerEntrypoint(): string {
-  return `#!/bin/sh
+	return `#!/bin/sh
 set -e
 
 # Run any custom startup scripts here
@@ -419,28 +419,28 @@ exec "$@"
  * Resolve Docker configuration from GkmConfig with defaults
  */
 export function resolveDockerConfig(
-  config: GkmConfig,
+	config: GkmConfig,
 ): Required<Omit<DockerConfig, 'compose'>> & Pick<DockerConfig, 'compose'> {
-  const docker = config.docker ?? {};
+	const docker = config.docker ?? {};
 
-  // Try to get image name from package.json name
-  let defaultImageName = 'api';
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pkg = require(`${process.cwd()}/package.json`);
-    if (pkg.name) {
-      // Remove scope and use just the package name
-      defaultImageName = pkg.name.replace(/^@[^/]+\//, '');
-    }
-  } catch {
-    // Ignore if package.json doesn't exist
-  }
+	// Try to get image name from package.json name
+	let defaultImageName = 'api';
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const pkg = require(`${process.cwd()}/package.json`);
+		if (pkg.name) {
+			// Remove scope and use just the package name
+			defaultImageName = pkg.name.replace(/^@[^/]+\//, '');
+		}
+	} catch {
+		// Ignore if package.json doesn't exist
+	}
 
-  return {
-    registry: docker.registry ?? '',
-    imageName: docker.imageName ?? defaultImageName,
-    baseImage: docker.baseImage ?? 'node:22-alpine',
-    port: docker.port ?? 3000,
-    compose: docker.compose,
-  };
+	return {
+		registry: docker.registry ?? '',
+		imageName: docker.imageName ?? defaultImageName,
+		baseImage: docker.baseImage ?? 'node:22-alpine',
+		port: docker.port ?? 3000,
+		compose: docker.compose,
+	};
 }

@@ -21,12 +21,12 @@ export type { GkmConfig } from './types.ts';
  * ```
  */
 export function defineConfig(config: GkmConfig): GkmConfig {
-  return config;
+	return config;
 }
 
 export interface ParsedModuleConfig {
-  path: string;
-  importPattern: string;
+	path: string;
+	importPattern: string;
 }
 
 /**
@@ -47,47 +47,47 @@ export interface ParsedModuleConfig {
  * // { path: './src/config/env', importPattern: '{ myEnv as envParser }' }
  */
 export function parseModuleConfig(
-  configString: string,
-  defaultAlias: string,
+	configString: string,
+	defaultAlias: string,
 ): ParsedModuleConfig {
-  const parts = configString.split('#');
-  const path = parts[0] ?? configString;
-  const exportName = parts[1];
-  const importPattern = !exportName
-    ? defaultAlias
-    : exportName === defaultAlias
-      ? `{ ${defaultAlias} }`
-      : `{ ${exportName} as ${defaultAlias} }`;
+	const parts = configString.split('#');
+	const path = parts[0] ?? configString;
+	const exportName = parts[1];
+	const importPattern = !exportName
+		? defaultAlias
+		: exportName === defaultAlias
+			? `{ ${defaultAlias} }`
+			: `{ ${exportName} as ${defaultAlias} }`;
 
-  return { path, importPattern };
+	return { path, importPattern };
 }
 
 export async function loadConfig(
-  cwd: string = process.cwd(),
+	cwd: string = process.cwd(),
 ): Promise<GkmConfig> {
-  const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
-  let configPath = '';
+	const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
+	let configPath = '';
 
-  for (const file of files) {
-    const path = join(cwd, file);
-    if (existsSync(path)) {
-      configPath = path;
-      break;
-    }
-  }
+	for (const file of files) {
+		const path = join(cwd, file);
+		if (existsSync(path)) {
+			configPath = path;
+			break;
+		}
+	}
 
-  if (!configPath) {
-    throw new Error(
-      'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
-    );
-  }
+	if (!configPath) {
+		throw new Error(
+			'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
+		);
+	}
 
-  try {
-    const config = await import(configPath);
-    return config.default;
-  } catch (error) {
-    throw new Error(
-      `Failed to load gkm.config.json: ${(error as Error).message}`,
-    );
-  }
+	try {
+		const config = await import(configPath);
+		return config.default;
+	} catch (error) {
+		throw new Error(
+			`Failed to load gkm.config.json: ${(error as Error).message}`,
+		);
+	}
 }

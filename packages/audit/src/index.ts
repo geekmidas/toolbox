@@ -9,15 +9,15 @@ export { DefaultAuditor } from './DefaultAuditor';
 // Storage interface
 export type { AuditQueryOptions, AuditStorage } from './storage';
 export type {
-  AuditActor,
-  AuditableAction,
-  AuditMetadata,
-  AuditOperation,
-  AuditOptions,
-  AuditRecord,
-  ExtractAuditorAction,
-  ExtractAuditPayload,
-  ExtractAuditType,
-  ExtractStorageAuditAction,
-  MappedAudit,
+	AuditActor,
+	AuditableAction,
+	AuditMetadata,
+	AuditOperation,
+	AuditOptions,
+	AuditRecord,
+	ExtractAuditorAction,
+	ExtractAuditPayload,
+	ExtractAuditType,
+	ExtractStorageAuditAction,
+	MappedAudit,
 } from './types';

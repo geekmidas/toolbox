@@ -5,38 +5,38 @@ import { join } from 'node:path';
 import { loadConfig } from '../config';
 import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
 import {
-  detectPackageManager,
-  generateDockerEntrypoint,
-  generateDockerignore,
-  generateMultiStageDockerfile,
-  generateSlimDockerfile,
-  resolveDockerConfig,
+	detectPackageManager,
+	generateDockerEntrypoint,
+	generateDockerignore,
+	generateMultiStageDockerfile,
+	generateSlimDockerfile,
+	resolveDockerConfig,
 } from './templates';
 
 const logger = console;
 
 export interface DockerOptions {
-  /** Build Docker image after generating files */
-  build?: boolean;
-  /** Push image to registry after building */
-  push?: boolean;
-  /** Image tag (default: 'latest') */
-  tag?: string;
-  /** Container registry URL */
-  registry?: string;
-  /** Use slim Dockerfile (requires pre-built bundle from `gkm build --production`) */
-  slim?: boolean;
-  /** Enable turbo prune for monorepo optimization */
-  turbo?: boolean;
-  /** Package name for turbo prune (defaults to package.json name) */
-  turboPackage?: string;
+	/** Build Docker image after generating files */
+	build?: boolean;
+	/** Push image to registry after building */
+	push?: boolean;
+	/** Image tag (default: 'latest') */
+	tag?: string;
+	/** Container registry URL */
+	registry?: string;
+	/** Use slim Dockerfile (requires pre-built bundle from `gkm build --production`) */
+	slim?: boolean;
+	/** Enable turbo prune for monorepo optimization */
+	turbo?: boolean;
+	/** Package name for turbo prune (defaults to package.json name) */
+	turboPackage?: string;
 }
 
 export interface DockerGeneratedFiles {
-  dockerfile: string;
-  dockerCompose: string;
-  dockerignore: string;
-  entrypoint: string;
+	dockerfile: string;
+	dockerCompose: string;
+	dockerignore: string;
+	entrypoint: string;
 }
 
 /**
@@ -47,114 +47,114 @@ export interface DockerGeneratedFiles {
  * --slim: Slim Dockerfile that copies pre-built bundle (requires prior build)
  */
 export async function dockerCommand(
-  options: DockerOptions,
+	options: DockerOptions,
 ): Promise<DockerGeneratedFiles> {
-  const config = await loadConfig();
-  const dockerConfig = resolveDockerConfig(config);
+	const config = await loadConfig();
+	const dockerConfig = resolveDockerConfig(config);
 
-  // Get health check path from production config
-  const serverConfig =
-    typeof config.providers?.server === 'object'
-      ? config.providers.server
-      : undefined;
-  const healthCheckPath = serverConfig?.production?.healthCheck ?? '/health';
+	// Get health check path from production config
+	const serverConfig =
+		typeof config.providers?.server === 'object'
+			? config.providers.server
+			: undefined;
+	const healthCheckPath = serverConfig?.production?.healthCheck ?? '/health';
 
-  // Determine Dockerfile type
-  // Default: Multi-stage (builds inside Docker for reproducibility)
-  // --slim: Requires pre-built bundle
-  const useSlim = options.slim === true;
+	// Determine Dockerfile type
+	// Default: Multi-stage (builds inside Docker for reproducibility)
+	// --slim: Requires pre-built bundle
+	const useSlim = options.slim === true;
 
-  if (useSlim) {
-    // Verify pre-built bundle exists for slim mode
-    const distDir = join(process.cwd(), '.gkm', 'server', 'dist');
-    const hasBuild = existsSync(join(distDir, 'server.mjs'));
+	if (useSlim) {
+		// Verify pre-built bundle exists for slim mode
+		const distDir = join(process.cwd(), '.gkm', 'server', 'dist');
+		const hasBuild = existsSync(join(distDir, 'server.mjs'));
 
-    if (!hasBuild) {
-      throw new Error(
-        'Slim Dockerfile requires a pre-built bundle. Run `gkm build --provider server --production` first, or omit --slim to use multi-stage build.',
-      );
-    }
-  }
+		if (!hasBuild) {
+			throw new Error(
+				'Slim Dockerfile requires a pre-built bundle. Run `gkm build --provider server --production` first, or omit --slim to use multi-stage build.',
+			);
+		}
+	}
 
-  // Generate Docker files
-  const dockerDir = join(process.cwd(), '.gkm', 'docker');
-  await mkdir(dockerDir, { recursive: true });
+	// Generate Docker files
+	const dockerDir = join(process.cwd(), '.gkm', 'docker');
+	await mkdir(dockerDir, { recursive: true });
 
-  // Detect package manager from lockfiles
-  const packageManager = detectPackageManager();
+	// Detect package manager from lockfiles
+	const packageManager = detectPackageManager();
 
-  const templateOptions = {
-    imageName: dockerConfig.imageName,
-    baseImage: dockerConfig.baseImage,
-    port: dockerConfig.port,
-    healthCheckPath,
-    prebuilt: useSlim,
-    turbo: options.turbo,
-    turboPackage: options.turboPackage ?? dockerConfig.imageName,
-    packageManager,
-  };
+	const templateOptions = {
+		imageName: dockerConfig.imageName,
+		baseImage: dockerConfig.baseImage,
+		port: dockerConfig.port,
+		healthCheckPath,
+		prebuilt: useSlim,
+		turbo: options.turbo,
+		turboPackage: options.turboPackage ?? dockerConfig.imageName,
+		packageManager,
+	};
 
-  // Generate Dockerfile
-  const dockerfile = useSlim
-    ? generateSlimDockerfile(templateOptions)
-    : generateMultiStageDockerfile(templateOptions);
+	// Generate Dockerfile
+	const dockerfile = useSlim
+		? generateSlimDockerfile(templateOptions)
+		: generateMultiStageDockerfile(templateOptions);
 
-  const dockerMode = useSlim ? 'slim' : options.turbo ? 'turbo' : 'multi-stage';
+	const dockerMode = useSlim ? 'slim' : options.turbo ? 'turbo' : 'multi-stage';
 
-  const dockerfilePath = join(dockerDir, 'Dockerfile');
-  await writeFile(dockerfilePath, dockerfile);
-  logger.log(
-    `Generated: .gkm/docker/Dockerfile (${dockerMode}, ${packageManager})`,
-  );
+	const dockerfilePath = join(dockerDir, 'Dockerfile');
+	await writeFile(dockerfilePath, dockerfile);
+	logger.log(
+		`Generated: .gkm/docker/Dockerfile (${dockerMode}, ${packageManager})`,
+	);
 
-  // Generate docker-compose.yml
-  const composeOptions = {
-    imageName: dockerConfig.imageName,
-    registry: options.registry ?? dockerConfig.registry,
-    port: dockerConfig.port,
-    healthCheckPath,
-    services: dockerConfig.compose?.services ?? [],
-  };
+	// Generate docker-compose.yml
+	const composeOptions = {
+		imageName: dockerConfig.imageName,
+		registry: options.registry ?? dockerConfig.registry,
+		port: dockerConfig.port,
+		healthCheckPath,
+		services: dockerConfig.compose?.services ?? [],
+	};
 
-  const dockerCompose =
-    composeOptions.services.length > 0
-      ? generateDockerCompose(composeOptions)
-      : generateMinimalDockerCompose(composeOptions);
+	const dockerCompose =
+		composeOptions.services.length > 0
+			? generateDockerCompose(composeOptions)
+			: generateMinimalDockerCompose(composeOptions);
 
-  const composePath = join(dockerDir, 'docker-compose.yml');
-  await writeFile(composePath, dockerCompose);
-  logger.log('Generated: .gkm/docker/docker-compose.yml');
+	const composePath = join(dockerDir, 'docker-compose.yml');
+	await writeFile(composePath, dockerCompose);
+	logger.log('Generated: .gkm/docker/docker-compose.yml');
 
-  // Generate .dockerignore in project root (Docker looks for it there)
-  const dockerignore = generateDockerignore();
-  const dockerignorePath = join(process.cwd(), '.dockerignore');
-  await writeFile(dockerignorePath, dockerignore);
-  logger.log('Generated: .dockerignore (project root)');
+	// Generate .dockerignore in project root (Docker looks for it there)
+	const dockerignore = generateDockerignore();
+	const dockerignorePath = join(process.cwd(), '.dockerignore');
+	await writeFile(dockerignorePath, dockerignore);
+	logger.log('Generated: .dockerignore (project root)');
 
-  // Generate docker-entrypoint.sh
-  const entrypoint = generateDockerEntrypoint();
-  const entrypointPath = join(dockerDir, 'docker-entrypoint.sh');
-  await writeFile(entrypointPath, entrypoint);
-  logger.log('Generated: .gkm/docker/docker-entrypoint.sh');
+	// Generate docker-entrypoint.sh
+	const entrypoint = generateDockerEntrypoint();
+	const entrypointPath = join(dockerDir, 'docker-entrypoint.sh');
+	await writeFile(entrypointPath, entrypoint);
+	logger.log('Generated: .gkm/docker/docker-entrypoint.sh');
 
-  const result: DockerGeneratedFiles = {
-    dockerfile: dockerfilePath,
-    dockerCompose: composePath,
-    dockerignore: dockerignorePath,
-    entrypoint: entrypointPath,
-  };
+	const result: DockerGeneratedFiles = {
+		dockerfile: dockerfilePath,
+		dockerCompose: composePath,
+		dockerignore: dockerignorePath,
+		entrypoint: entrypointPath,
+	};
 
-  // Build Docker image if requested
-  if (options.build) {
-    await buildDockerImage(dockerConfig.imageName, options);
-  }
+	// Build Docker image if requested
+	if (options.build) {
+		await buildDockerImage(dockerConfig.imageName, options);
+	}
 
-  // Push Docker image if requested
-  if (options.push) {
-    await pushDockerImage(dockerConfig.imageName, options);
-  }
+	// Push Docker image if requested
+	if (options.push) {
+		await pushDockerImage(dockerConfig.imageName, options);
+	}
 
-  return result;
+	return result;
 }
 
 /**
@@ -162,65 +162,65 @@ export async function dockerCommand(
  * Uses BuildKit for cache mount support
  */
 async function buildDockerImage(
-  imageName: string,
-  options: DockerOptions,
+	imageName: string,
+	options: DockerOptions,
 ): Promise<void> {
-  const tag = options.tag ?? 'latest';
-  const registry = options.registry;
+	const tag = options.tag ?? 'latest';
+	const registry = options.registry;
 
-  const fullImageName = registry
-    ? `${registry}/${imageName}:${tag}`
-    : `${imageName}:${tag}`;
+	const fullImageName = registry
+		? `${registry}/${imageName}:${tag}`
+		: `${imageName}:${tag}`;
 
-  logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
+	logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
 
-  try {
-    // Use BuildKit for cache mount support (required for --mount=type=cache)
-    execSync(
-      `DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`,
-      {
-        cwd: process.cwd(),
-        stdio: 'inherit',
-        env: { ...process.env, DOCKER_BUILDKIT: '1' },
-      },
-    );
-    logger.log(`✅ Docker image built: ${fullImageName}`);
-  } catch (error) {
-    throw new Error(
-      `Failed to build Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    );
-  }
+	try {
+		// Use BuildKit for cache mount support (required for --mount=type=cache)
+		execSync(
+			`DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`,
+			{
+				cwd: process.cwd(),
+				stdio: 'inherit',
+				env: { ...process.env, DOCKER_BUILDKIT: '1' },
+			},
+		);
+		logger.log(`✅ Docker image built: ${fullImageName}`);
+	} catch (error) {
+		throw new Error(
+			`Failed to build Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+		);
+	}
 }
 
 /**
  * Push Docker image to registry
  */
 async function pushDockerImage(
-  imageName: string,
-  options: DockerOptions,
+	imageName: string,
+	options: DockerOptions,
 ): Promise<void> {
-  const tag = options.tag ?? 'latest';
-  const registry = options.registry;
+	const tag = options.tag ?? 'latest';
+	const registry = options.registry;
 
-  if (!registry) {
-    throw new Error(
-      'Registry is required to push Docker image. Use --registry or configure docker.registry in gkm.config.ts',
-    );
-  }
+	if (!registry) {
+		throw new Error(
+			'Registry is required to push Docker image. Use --registry or configure docker.registry in gkm.config.ts',
+		);
+	}
 
-  const fullImageName = `${registry}/${imageName}:${tag}`;
+	const fullImageName = `${registry}/${imageName}:${tag}`;
 
-  logger.log(`\n🚀 Pushing Docker image: ${fullImageName}`);
+	logger.log(`\n🚀 Pushing Docker image: ${fullImageName}`);
 
-  try {
-    execSync(`docker push ${fullImageName}`, {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-    });
-    logger.log(`✅ Docker image pushed: ${fullImageName}`);
-  } catch (error) {
-    throw new Error(
-      `Failed to push Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    );
-  }
+	try {
+		execSync(`docker push ${fullImageName}`, {
+			cwd: process.cwd(),
+			stdio: 'inherit',
+		});
+		logger.log(`✅ Docker image pushed: ${fullImageName}`);
+	} catch (error) {
+		throw new Error(
+			`Failed to push Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+		);
+	}
 }

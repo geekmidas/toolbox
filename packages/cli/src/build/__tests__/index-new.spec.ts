@@ -3,50 +3,50 @@ import { join } from 'node:path';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { describe, expect, vi } from 'vitest';
 import {
-  createMockCronFile,
-  createMockEndpointFile,
-  createMockFunctionFile,
-  createTestFile,
+	createMockCronFile,
+	createMockEndpointFile,
+	createMockFunctionFile,
+	createTestFile,
 } from '../../__tests__/test-helpers';
 import { buildCommand } from '../index';
 
 describe('buildCommand', () => {
-  itWithDir(
-    'should build endpoints, functions, and crons for multiple providers',
-    async ({ dir }) => {
-      // Create test files that will be discovered
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/users.ts',
-        'getUsersEndpoint',
-        '/users',
-        'GET',
-      );
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/posts.ts',
-        'getPostsEndpoint',
-        '/posts',
-        'GET',
-      );
-      await createMockFunctionFile(
-        dir,
-        'src/functions/process.ts',
-        'processDataFunction',
-        60,
-      );
-      await createMockCronFile(
-        dir,
-        'src/crons/cleanup.ts',
-        'cleanupCron',
-        'rate(1 day)',
-      );
+	itWithDir(
+		'should build endpoints, functions, and crons for multiple providers',
+		async ({ dir }) => {
+			// Create test files that will be discovered
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/users.ts',
+				'getUsersEndpoint',
+				'/users',
+				'GET',
+			);
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/posts.ts',
+				'getPostsEndpoint',
+				'/posts',
+				'GET',
+			);
+			await createMockFunctionFile(
+				dir,
+				'src/functions/process.ts',
+				'processDataFunction',
+				60,
+			);
+			await createMockCronFile(
+				dir,
+				'src/crons/cleanup.ts',
+				'cleanupCron',
+				'rate(1 day)',
+			);
 
-      // Create a basic config file
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+			// Create a basic config file
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: './src/functions/**/*.ts',
@@ -55,101 +55,101 @@ export default {
   logger: './config/logger',
 };
 `,
-      );
+			);
 
-      // Create env and logger files
-      await createTestFile(dir, 'config/env.ts', 'export default {}');
-      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			// Create env and logger files
+			await createTestFile(dir, 'config/env.ts', 'export default {}');
+			await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        await buildCommand({ provider: 'server' });
+			try {
+				await buildCommand({ provider: 'server' });
 
-        // Check that output directories were created
-        const serverDir = join(dir, '.gkm', 'server');
+				// Check that output directories were created
+				const serverDir = join(dir, '.gkm', 'server');
 
-        // Check app.ts has the createApp function with new API
-        const appContent = await readFile(join(serverDir, 'app.ts'), 'utf-8');
-        expect(appContent).toContain('function createApp');
-        expect(appContent).toContain('interface ServerApp');
-        expect(appContent).toContain('async start(options');
+				// Check app.ts has the createApp function with new API
+				const appContent = await readFile(join(serverDir, 'app.ts'), 'utf-8');
+				expect(appContent).toContain('function createApp');
+				expect(appContent).toContain('interface ServerApp');
+				expect(appContent).toContain('async start(options');
 
-        // Check endpoints.ts has the HonoEndpoint setup
-        const endpointsContent = await readFile(
-          join(serverDir, 'endpoints.ts'),
-          'utf-8',
-        );
-        expect(endpointsContent).toContain('HonoEndpoint');
+				// Check endpoints.ts has the HonoEndpoint setup
+				const endpointsContent = await readFile(
+					join(serverDir, 'endpoints.ts'),
+					'utf-8',
+				);
+				expect(endpointsContent).toContain('HonoEndpoint');
 
-        // Verify server manifest was created at .gkm/manifest/server.ts
-        const manifestPath = join(dir, '.gkm', 'manifest', 'server.ts');
-        const manifestContent = await readFile(manifestPath, 'utf-8');
+				// Verify server manifest was created at .gkm/manifest/server.ts
+				const manifestPath = join(dir, '.gkm', 'manifest', 'server.ts');
+				const manifestContent = await readFile(manifestPath, 'utf-8');
 
-        // Verify manifest structure
-        expect(manifestContent).toContain('export const manifest = {');
-        expect(manifestContent).toContain('} as const;');
-        expect(manifestContent).toContain('app:');
-        expect(manifestContent).toContain('routes:');
+				// Verify manifest structure
+				expect(manifestContent).toContain('export const manifest = {');
+				expect(manifestContent).toContain('} as const;');
+				expect(manifestContent).toContain('app:');
+				expect(manifestContent).toContain('routes:');
 
-        // Verify derived types are exported
-        expect(manifestContent).toContain('export type Route =');
-        expect(manifestContent).toContain('export type Authorizer =');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				// Verify derived types are exported
+				expect(manifestContent).toContain('export type Route =');
+				expect(manifestContent).toContain('export type Authorizer =');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 
-  itWithDir(
-    'should perform complete build with all construct types for AWS Lambda',
-    async ({ dir }) => {
-      // Create comprehensive test setup with all construct types
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/users.ts',
-        'getUsersEndpoint',
-        '/users',
-        'GET',
-      );
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/posts.ts',
-        'getPostsEndpoint',
-        '/posts',
-        'POST',
-      );
-      await createMockFunctionFile(
-        dir,
-        'src/functions/processData.ts',
-        'processDataFunction',
-        300,
-      );
-      await createMockFunctionFile(
-        dir,
-        'src/functions/sendEmail.ts',
-        'sendEmailFunction',
-        30,
-      );
-      await createMockCronFile(
-        dir,
-        'src/crons/dailyCleanup.ts',
-        'dailyCleanupCron',
-        'rate(1 day)',
-      );
-      await createMockCronFile(
-        dir,
-        'src/crons/hourlyReport.ts',
-        'hourlyReportCron',
-        'cron(0 * * * ? *)',
-      );
+	itWithDir(
+		'should perform complete build with all construct types for AWS Lambda',
+		async ({ dir }) => {
+			// Create comprehensive test setup with all construct types
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/users.ts',
+				'getUsersEndpoint',
+				'/users',
+				'GET',
+			);
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/posts.ts',
+				'getPostsEndpoint',
+				'/posts',
+				'POST',
+			);
+			await createMockFunctionFile(
+				dir,
+				'src/functions/processData.ts',
+				'processDataFunction',
+				300,
+			);
+			await createMockFunctionFile(
+				dir,
+				'src/functions/sendEmail.ts',
+				'sendEmailFunction',
+				30,
+			);
+			await createMockCronFile(
+				dir,
+				'src/crons/dailyCleanup.ts',
+				'dailyCleanupCron',
+				'rate(1 day)',
+			);
+			await createMockCronFile(
+				dir,
+				'src/crons/hourlyReport.ts',
+				'hourlyReportCron',
+				'cron(0 * * * ? *)',
+			);
 
-      // Create config
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+			// Create config
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: './src/functions/**/*.ts',
@@ -158,105 +158,105 @@ export default {
   logger: './config/logger',
 };
 `,
-      );
+			);
 
-      // Create env and logger files
-      await createTestFile(dir, 'config/env.ts', 'export default {}');
-      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			// Create env and logger files
+			await createTestFile(dir, 'config/env.ts', 'export default {}');
+			await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        // Build for AWS Lambda
-        await buildCommand({ provider: 'aws' });
+			try {
+				// Build for AWS Lambda
+				await buildCommand({ provider: 'aws' });
 
-        const awsLambdaDir = join(dir, '.gkm', 'aws-lambda');
-        const awsApiGatewayV2Dir = join(dir, '.gkm', 'aws-apigatewayv2');
+				const awsLambdaDir = join(dir, '.gkm', 'aws-lambda');
+				const awsApiGatewayV2Dir = join(dir, '.gkm', 'aws-apigatewayv2');
 
-        // Verify Lambda handlers were created
-        expect(
-          await readFile(
-            join(awsLambdaDir, 'functions', 'processDataFunction.ts'),
-            'utf-8',
-          ),
-        ).toContain('AWSLambdaFunction');
-        expect(
-          await readFile(
-            join(awsLambdaDir, 'functions', 'sendEmailFunction.ts'),
-            'utf-8',
-          ),
-        ).toContain('AWSLambdaFunction');
+				// Verify Lambda handlers were created
+				expect(
+					await readFile(
+						join(awsLambdaDir, 'functions', 'processDataFunction.ts'),
+						'utf-8',
+					),
+				).toContain('AWSLambdaFunction');
+				expect(
+					await readFile(
+						join(awsLambdaDir, 'functions', 'sendEmailFunction.ts'),
+						'utf-8',
+					),
+				).toContain('AWSLambdaFunction');
 
-        // Verify Cron handlers were created
-        expect(
-          await readFile(
-            join(awsLambdaDir, 'crons', 'dailyCleanupCron.ts'),
-            'utf-8',
-          ),
-        ).toContain('AWSScheduledFunction');
-        expect(
-          await readFile(
-            join(awsLambdaDir, 'crons', 'hourlyReportCron.ts'),
-            'utf-8',
-          ),
-        ).toContain('AWSScheduledFunction');
+				// Verify Cron handlers were created
+				expect(
+					await readFile(
+						join(awsLambdaDir, 'crons', 'dailyCleanupCron.ts'),
+						'utf-8',
+					),
+				).toContain('AWSScheduledFunction');
+				expect(
+					await readFile(
+						join(awsLambdaDir, 'crons', 'hourlyReportCron.ts'),
+						'utf-8',
+					),
+				).toContain('AWSScheduledFunction');
 
-        // Verify API Gateway handlers were created
-        expect(
-          await readFile(
-            join(awsApiGatewayV2Dir, 'getUsersEndpoint.ts'),
-            'utf-8',
-          ),
-        ).toContain('AmazonApiGatewayV2Endpoint');
-        expect(
-          await readFile(
-            join(awsApiGatewayV2Dir, 'getPostsEndpoint.ts'),
-            'utf-8',
-          ),
-        ).toContain('AmazonApiGatewayV2Endpoint');
+				// Verify API Gateway handlers were created
+				expect(
+					await readFile(
+						join(awsApiGatewayV2Dir, 'getUsersEndpoint.ts'),
+						'utf-8',
+					),
+				).toContain('AmazonApiGatewayV2Endpoint');
+				expect(
+					await readFile(
+						join(awsApiGatewayV2Dir, 'getPostsEndpoint.ts'),
+						'utf-8',
+					),
+				).toContain('AmazonApiGatewayV2Endpoint');
 
-        // Verify AWS manifest was created at .gkm/manifest/aws.ts
-        const manifestPath = join(dir, '.gkm', 'manifest', 'aws.ts');
-        const manifestContent = await readFile(manifestPath, 'utf-8');
+				// Verify AWS manifest was created at .gkm/manifest/aws.ts
+				const manifestPath = join(dir, '.gkm', 'manifest', 'aws.ts');
+				const manifestContent = await readFile(manifestPath, 'utf-8');
 
-        // Verify manifest is TypeScript with as const
-        expect(manifestContent).toContain('export const manifest = {');
-        expect(manifestContent).toContain('} as const;');
+				// Verify manifest is TypeScript with as const
+				expect(manifestContent).toContain('export const manifest = {');
+				expect(manifestContent).toContain('} as const;');
 
-        // Verify derived types are exported
-        expect(manifestContent).toContain('export type Route =');
-        expect(manifestContent).toContain('export type Function =');
-        expect(manifestContent).toContain('export type Cron =');
-        expect(manifestContent).toContain('export type Authorizer =');
+				// Verify derived types are exported
+				expect(manifestContent).toContain('export type Route =');
+				expect(manifestContent).toContain('export type Function =');
+				expect(manifestContent).toContain('export type Cron =');
+				expect(manifestContent).toContain('export type Authorizer =');
 
-        // Verify routes are included (JSON.stringify output uses quoted keys/values)
-        expect(manifestContent).toContain('/users');
-        expect(manifestContent).toContain('/posts');
-        expect(manifestContent).toContain('GET');
-        expect(manifestContent).toContain('POST');
+				// Verify routes are included (JSON.stringify output uses quoted keys/values)
+				expect(manifestContent).toContain('/users');
+				expect(manifestContent).toContain('/posts');
+				expect(manifestContent).toContain('GET');
+				expect(manifestContent).toContain('POST');
 
-        // Verify functions are included
-        expect(manifestContent).toContain('processDataFunction');
-        expect(manifestContent).toContain('sendEmailFunction');
+				// Verify functions are included
+				expect(manifestContent).toContain('processDataFunction');
+				expect(manifestContent).toContain('sendEmailFunction');
 
-        // Verify crons are included
-        expect(manifestContent).toContain('dailyCleanupCron');
-        expect(manifestContent).toContain('hourlyReportCron');
-        expect(manifestContent).toContain('rate(1 day)');
-        expect(manifestContent).toContain('cron(0 * * * ? *)');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				// Verify crons are included
+				expect(manifestContent).toContain('dailyCleanupCron');
+				expect(manifestContent).toContain('hourlyReportCron');
+				expect(manifestContent).toContain('rate(1 day)');
+				expect(manifestContent).toContain('cron(0 * * * ? *)');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 
-  itWithDir('should handle case with no constructs found', async ({ dir }) => {
-    // Create a basic config file with no actual construct files
-    await createTestFile(
-      dir,
-      'gkm.config.ts',
-      `
+	itWithDir('should handle case with no constructs found', async ({ dir }) => {
+		// Create a basic config file with no actual construct files
+		await createTestFile(
+			dir,
+			'gkm.config.ts',
+			`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: './src/functions/**/*.ts',
@@ -265,41 +265,41 @@ export default {
   logger: './config/logger',
 };
 `,
-    );
+		);
 
-    // Create env and logger files
-    await createTestFile(dir, 'config/env.ts', 'export default {}');
-    await createTestFile(dir, 'config/logger.ts', 'export default {}');
+		// Create env and logger files
+		await createTestFile(dir, 'config/env.ts', 'export default {}');
+		await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-    const originalCwd = process.cwd();
-    process.chdir(dir);
+		const originalCwd = process.cwd();
+		process.chdir(dir);
 
-    const logSpy = vi.spyOn(console, 'log');
+		const logSpy = vi.spyOn(console, 'log');
 
-    try {
-      await buildCommand({ provider: 'server' });
+		try {
+			await buildCommand({ provider: 'server' });
 
-      expect(logSpy).toHaveBeenCalledWith('Found 0 endpoints');
-      expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
-      expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
-      expect(logSpy).toHaveBeenCalledWith('Found 0 subscribers');
-      expect(logSpy).toHaveBeenCalledWith(
-        'No endpoints, functions, crons, or subscribers found to process',
-      );
-    } finally {
-      process.chdir(originalCwd);
-      logSpy.mockRestore();
-    }
-  });
+			expect(logSpy).toHaveBeenCalledWith('Found 0 endpoints');
+			expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
+			expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
+			expect(logSpy).toHaveBeenCalledWith('Found 0 subscribers');
+			expect(logSpy).toHaveBeenCalledWith(
+				'No endpoints, functions, crons, or subscribers found to process',
+			);
+		} finally {
+			process.chdir(originalCwd);
+			logSpy.mockRestore();
+		}
+	});
 
-  itWithDir(
-    'should handle optional functions and crons config',
-    async ({ dir }) => {
-      // Create config with undefined functions and crons
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+	itWithDir(
+		'should handle optional functions and crons config',
+		async ({ dir }) => {
+			// Create config with undefined functions and crons
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: undefined,
@@ -308,54 +308,54 @@ export default {
   logger: './config/logger',
 };
 `,
-      );
+			);
 
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/test.ts',
-        'testEndpoint',
-        '/test',
-        'GET',
-      );
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
-      // Create env and logger files
-      await createTestFile(dir, 'config/env.ts', 'export default {}');
-      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			// Create env and logger files
+			await createTestFile(dir, 'config/env.ts', 'export default {}');
+			await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      const logSpy = vi.spyOn(console, 'log');
+			const logSpy = vi.spyOn(console, 'log');
 
-      try {
-        await buildCommand({ provider: 'server' });
+			try {
+				await buildCommand({ provider: 'server' });
 
-        expect(logSpy).toHaveBeenCalledWith('Found 1 endpoints');
-        expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
-        expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
+				expect(logSpy).toHaveBeenCalledWith('Found 1 endpoints');
+				expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
+				expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
 
-        // Should not log functions or crons loading messages
-        expect(logSpy).not.toHaveBeenCalledWith(
-          expect.stringContaining('Loading functions'),
-        );
-        expect(logSpy).not.toHaveBeenCalledWith(
-          expect.stringContaining('Loading crons'),
-        );
-      } finally {
-        process.chdir(originalCwd);
-        logSpy.mockRestore();
-      }
-    },
-  );
+				// Should not log functions or crons loading messages
+				expect(logSpy).not.toHaveBeenCalledWith(
+					expect.stringContaining('Loading functions'),
+				);
+				expect(logSpy).not.toHaveBeenCalledWith(
+					expect.stringContaining('Loading crons'),
+				);
+			} finally {
+				process.chdir(originalCwd);
+				logSpy.mockRestore();
+			}
+		},
+	);
 
-  itWithDir(
-    'should parse envParser configuration correctly',
-    async ({ dir }) => {
-      // Create config with custom named exports
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+	itWithDir(
+		'should parse envParser configuration correctly',
+		async ({ dir }) => {
+			// Create config with custom named exports
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: undefined,
@@ -364,52 +364,52 @@ export default {
   logger: './config/logger#customLogger',
 };
 `,
-      );
+			);
 
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/test.ts',
-        'testEndpoint',
-        '/test',
-        'GET',
-      );
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
-      // Create env and logger files with named exports
-      await createTestFile(
-        dir,
-        'config/env.ts',
-        'export const customEnvParser = {}',
-      );
-      await createTestFile(
-        dir,
-        'config/logger.ts',
-        'export const customLogger = {}',
-      );
+			// Create env and logger files with named exports
+			await createTestFile(
+				dir,
+				'config/env.ts',
+				'export const customEnvParser = {}',
+			);
+			await createTestFile(
+				dir,
+				'config/logger.ts',
+				'export const customLogger = {}',
+			);
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        await buildCommand({ provider: 'aws' });
+			try {
+				await buildCommand({ provider: 'aws' });
 
-        // Verify that a handler file was generated with correct imports
-        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-        const handlerContent = await readFile(handlerFile, 'utf-8');
-        expect(handlerContent).toContain('{ customEnvParser as envParser }');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				// Verify that a handler file was generated with correct imports
+				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+				const handlerContent = await readFile(handlerFile, 'utf-8');
+				expect(handlerContent).toContain('{ customEnvParser as envParser }');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 
-  itWithDir(
-    'should create output directories for each provider',
-    async ({ dir }) => {
-      // Create config with multiple providers
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+	itWithDir(
+		'should create output directories for each provider',
+		async ({ dir }) => {
+			// Create config with multiple providers
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: undefined,
@@ -418,48 +418,48 @@ export default {
   logger: './config/logger',
 };
 `,
-      );
+			);
 
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/test.ts',
-        'testEndpoint',
-        '/test',
-        'GET',
-      );
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
-      // Create env and logger files
-      await createTestFile(dir, 'config/env.ts', 'export default {}');
-      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			// Create env and logger files
+			await createTestFile(dir, 'config/env.ts', 'export default {}');
+			await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        await buildCommand({ provider: 'aws' });
+			try {
+				await buildCommand({ provider: 'aws' });
 
-        const v2HandlerFile = join(
-          dir,
-          '.gkm/aws-apigatewayv2/testEndpoint.ts',
-        );
+				const v2HandlerFile = join(
+					dir,
+					'.gkm/aws-apigatewayv2/testEndpoint.ts',
+				);
 
-        const v2Content = await readFile(v2HandlerFile, 'utf-8');
+				const v2Content = await readFile(v2HandlerFile, 'utf-8');
 
-        expect(v2Content).toContain('AmazonApiGatewayV2Endpoint');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				expect(v2Content).toContain('AmazonApiGatewayV2Endpoint');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 
-  itWithDir(
-    'should handle default import patterns for envParser and logger',
-    async ({ dir }) => {
-      // Create config with default import patterns
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+	itWithDir(
+		'should handle default import patterns for envParser and logger',
+		async ({ dir }) => {
+			// Create config with default import patterns
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: undefined,
@@ -468,45 +468,45 @@ export default {
   logger: './config/logger',
 };
 `,
-      );
+			);
 
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/test.ts',
-        'testEndpoint',
-        '/test',
-        'GET',
-      );
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
-      // Create env and logger files with default exports
-      await createTestFile(dir, 'config/env.ts', 'export default {}');
-      await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			// Create env and logger files with default exports
+			await createTestFile(dir, 'config/env.ts', 'export default {}');
+			await createTestFile(dir, 'config/logger.ts', 'export default {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        await buildCommand({ provider: 'aws' });
+			try {
+				await buildCommand({ provider: 'aws' });
 
-        // Verify that a handler file was generated with default imports
-        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-        const handlerContent = await readFile(handlerFile, 'utf-8');
-        expect(handlerContent).toContain('import envParser');
-        expect(handlerContent).not.toContain('{ envParser }');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				// Verify that a handler file was generated with default imports
+				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+				const handlerContent = await readFile(handlerFile, 'utf-8');
+				expect(handlerContent).toContain('import envParser');
+				expect(handlerContent).not.toContain('{ envParser }');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 
-  itWithDir(
-    'should handle envParser pattern with same name as expected',
-    async ({ dir }) => {
-      // Create config with named exports that match expected names
-      await createTestFile(
-        dir,
-        'gkm.config.ts',
-        `
+	itWithDir(
+		'should handle envParser pattern with same name as expected',
+		async ({ dir }) => {
+			// Create config with named exports that match expected names
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
 export default {
   routes: './src/endpoints/**/*.ts',
   functions: undefined,
@@ -515,34 +515,34 @@ export default {
   logger: './config/logger#logger',
 };
 `,
-      );
+			);
 
-      await createMockEndpointFile(
-        dir,
-        'src/endpoints/test.ts',
-        'testEndpoint',
-        '/test',
-        'GET',
-      );
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
-      // Create env and logger files with named exports
-      await createTestFile(dir, 'config/env.ts', 'export const envParser = {}');
-      await createTestFile(dir, 'config/logger.ts', 'export const logger = {}');
+			// Create env and logger files with named exports
+			await createTestFile(dir, 'config/env.ts', 'export const envParser = {}');
+			await createTestFile(dir, 'config/logger.ts', 'export const logger = {}');
 
-      const originalCwd = process.cwd();
-      process.chdir(dir);
+			const originalCwd = process.cwd();
+			process.chdir(dir);
 
-      try {
-        await buildCommand({ provider: 'aws' });
+			try {
+				await buildCommand({ provider: 'aws' });
 
-        // Verify that a handler file was generated with named imports
-        const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-        const handlerContent = await readFile(handlerFile, 'utf-8');
+				// Verify that a handler file was generated with named imports
+				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+				const handlerContent = await readFile(handlerFile, 'utf-8');
 
-        expect(handlerContent).toContain('{ envParser }');
-      } finally {
-        process.chdir(originalCwd);
-      }
-    },
-  );
+				expect(handlerContent).toContain('{ envParser }');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
 });

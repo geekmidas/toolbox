@@ -43,45 +43,45 @@ const logger = console;
  * ```
  */
 export class PostgresKyselyMigrator extends PostgresMigrator {
-  /**
-   * Creates a new PostgresKyselyMigrator instance.
-   *
-   * @param options - Configuration options
-   * @param options.uri - PostgreSQL connection URI
-   * @param options.db - Kysely database instance
-   * @param options.provider - Migration provider for locating migration files
-   */
-  constructor(
-    private options: {
-      uri: string;
-      db: Kysely<any>;
-      provider: MigrationProvider;
-    },
-  ) {
-    super(options.uri);
-  }
+	/**
+	 * Creates a new PostgresKyselyMigrator instance.
+	 *
+	 * @param options - Configuration options
+	 * @param options.uri - PostgreSQL connection URI
+	 * @param options.db - Kysely database instance
+	 * @param options.provider - Migration provider for locating migration files
+	 */
+	constructor(
+		private options: {
+			uri: string;
+			db: Kysely<any>;
+			provider: MigrationProvider;
+		},
+	) {
+		super(options.uri);
+	}
 
-  /**
-   * Executes Kysely migrations to the latest version.
-   * Implements the abstract migrate() method from PostgresMigrator.
-   *
-   * @throws Error if migrations fail to apply
-   * @returns Promise that resolves when all migrations are applied
-   */
-  async migrate(): Promise<void> {
-    const migrator = new Migrator({
-      db: this.options.db,
-      provider: this.options.provider,
-    });
-    const migrations = await migrator.migrateToLatest();
+	/**
+	 * Executes Kysely migrations to the latest version.
+	 * Implements the abstract migrate() method from PostgresMigrator.
+	 *
+	 * @throws Error if migrations fail to apply
+	 * @returns Promise that resolves when all migrations are applied
+	 */
+	async migrate(): Promise<void> {
+		const migrator = new Migrator({
+			db: this.options.db,
+			provider: this.options.provider,
+		});
+		const migrations = await migrator.migrateToLatest();
 
-    if (migrations.error) {
-      logger.error(migrations.error, `Failed to apply migrations`);
-      throw migrations.error;
-    }
+		if (migrations.error) {
+			logger.error(migrations.error, `Failed to apply migrations`);
+			throw migrations.error;
+		}
 
-    await this.options.db.destroy();
+		await this.options.db.destroy();
 
-    logger.log(`Applied ${migrations.results?.length} migrations successfully`);
-  }
+		logger.log(`Applied ${migrations.results?.length} migrations successfully`);
+	}
 }

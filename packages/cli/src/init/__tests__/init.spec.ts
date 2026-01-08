@@ -6,336 +6,336 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initCommand } from '../index.js';
 
 describe('initCommand', () => {
-  let tempDir: string;
-  let originalCwd: string;
+	let tempDir: string;
+	let originalCwd: string;
 
-  beforeEach(async () => {
-    tempDir = join(tmpdir(), `cli-init-test-${Date.now()}`);
-    await mkdir(tempDir, { recursive: true });
-    originalCwd = process.cwd();
-    process.chdir(tempDir);
-  });
+	beforeEach(async () => {
+		tempDir = join(tmpdir(), `cli-init-test-${Date.now()}`);
+		await mkdir(tempDir, { recursive: true });
+		originalCwd = process.cwd();
+		process.chdir(tempDir);
+	});
 
-  afterEach(async () => {
-    process.chdir(originalCwd);
-    await rm(tempDir, { recursive: true, force: true });
-  });
+	afterEach(async () => {
+		process.chdir(originalCwd);
+		await rm(tempDir, { recursive: true, force: true });
+	});
 
-  describe('non-monorepo', () => {
-    it('should create project with minimal template', async () => {
-      await initCommand('my-api', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-      });
+	describe('non-monorepo', () => {
+		it('should create project with minimal template', async () => {
+			await initCommand('my-api', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const projectDir = join(tempDir, 'my-api');
-      expect(existsSync(projectDir)).toBe(true);
-      expect(existsSync(join(projectDir, 'package.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'gkm.config.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(true);
-      expect(existsSync(join(projectDir, '.env'))).toBe(true);
-      expect(existsSync(join(projectDir, '.env.development'))).toBe(true);
-      expect(existsSync(join(projectDir, '.env.test'))).toBe(true);
-      expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'src/endpoints/health.ts'))).toBe(
-        true,
-      );
-    });
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(projectDir)).toBe(true);
+			expect(existsSync(join(projectDir, 'package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'gkm.config.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(true);
+			expect(existsSync(join(projectDir, '.env'))).toBe(true);
+			expect(existsSync(join(projectDir, '.env.development'))).toBe(true);
+			expect(existsSync(join(projectDir, '.env.test'))).toBe(true);
+			expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
+			expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'src/endpoints/health.ts'))).toBe(
+				true,
+			);
+		});
 
-    it('should create package.json with correct content', async () => {
-      await initCommand('my-api', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should create package.json with correct content', async () => {
+			await initCommand('my-api', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const pkgPath = join(tempDir, 'my-api', 'package.json');
-      const content = await readFile(pkgPath, 'utf-8');
-      const pkg = JSON.parse(content);
+			const pkgPath = join(tempDir, 'my-api', 'package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
 
-      expect(pkg.name).toBe('my-api');
-      expect(pkg.type).toBe('module');
-      expect(pkg.dependencies['@geekmidas/constructs']).toBe('workspace:*');
-      expect(pkg.dependencies['@geekmidas/telescope']).toBe('workspace:*');
-      expect(pkg.dependencies['zod']).toMatch(/^~/);
-      expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
-      expect(pkg.devDependencies['turbo']).toBeDefined();
-      expect(pkg.scripts.dev).toBe('gkm dev');
-      expect(pkg.scripts.lint).toBe('biome lint .');
-    });
+			expect(pkg.name).toBe('my-api');
+			expect(pkg.type).toBe('module');
+			expect(pkg.dependencies['@geekmidas/constructs']).toBe('workspace:*');
+			expect(pkg.dependencies['@geekmidas/telescope']).toBe('workspace:*');
+			expect(pkg.dependencies['zod']).toMatch(/^~/);
+			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
+			expect(pkg.devDependencies['turbo']).toBeDefined();
+			expect(pkg.scripts.dev).toBe('gkm dev');
+			expect(pkg.scripts.lint).toBe('biome lint .');
+		});
 
-    it('should create gkm.config.ts with telescope when enabled', async () => {
-      await initCommand('my-api', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should create gkm.config.ts with telescope when enabled', async () => {
+			await initCommand('my-api', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const configPath = join(tempDir, 'my-api', 'gkm.config.ts');
-      const content = await readFile(configPath, 'utf-8');
+			const configPath = join(tempDir, 'my-api', 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
 
-      expect(content).toContain("routes: './src/endpoints/**/*.ts'");
-      expect(content).toContain('telescope');
-      expect(content).toContain('/__telescope');
-    });
+			expect(content).toContain("routes: './src/endpoints/**/*.ts'");
+			expect(content).toContain('telescope');
+			expect(content).toContain('/__telescope');
+		});
 
-    it('should create api template with user endpoints', async () => {
-      await initCommand('my-api', {
-        template: 'api',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should create api template with user endpoints', async () => {
+			await initCommand('my-api', {
+				template: 'api',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const projectDir = join(tempDir, 'my-api');
-      expect(existsSync(join(projectDir, 'src/endpoints/users/list.ts'))).toBe(
-        true,
-      );
-      expect(existsSync(join(projectDir, 'src/endpoints/users/get.ts'))).toBe(
-        true,
-      );
-      expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(
-        true,
-      );
-    });
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(join(projectDir, 'src/endpoints/users/list.ts'))).toBe(
+				true,
+			);
+			expect(existsSync(join(projectDir, 'src/endpoints/users/get.ts'))).toBe(
+				true,
+			);
+			expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(
+				true,
+			);
+		});
 
-    it('should create serverless template with functions', async () => {
-      await initCommand('my-api', {
-        template: 'serverless',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should create serverless template with functions', async () => {
+			await initCommand('my-api', {
+				template: 'serverless',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const projectDir = join(tempDir, 'my-api');
-      expect(existsSync(join(projectDir, 'src/functions/hello.ts'))).toBe(true);
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(join(projectDir, 'src/functions/hello.ts'))).toBe(true);
 
-      const configPath = join(projectDir, 'gkm.config.ts');
-      const content = await readFile(configPath, 'utf-8');
-      expect(content).toContain('functions');
-    });
+			const configPath = join(projectDir, 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
+			expect(content).toContain('functions');
+		});
 
-    it('should create worker template with crons and subscribers', async () => {
-      await initCommand('my-api', {
-        template: 'worker',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should create worker template with crons and subscribers', async () => {
+			await initCommand('my-api', {
+				template: 'worker',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const projectDir = join(tempDir, 'my-api');
-      expect(existsSync(join(projectDir, 'src/crons/cleanup.ts'))).toBe(true);
-      expect(
-        existsSync(join(projectDir, 'src/subscribers/user-events.ts')),
-      ).toBe(true);
-      expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(join(projectDir, 'src/crons/cleanup.ts'))).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'src/subscribers/user-events.ts')),
+			).toBe(true);
+			expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
 
-      const configPath = join(projectDir, 'gkm.config.ts');
-      const content = await readFile(configPath, 'utf-8');
-      expect(content).toContain('crons');
-      expect(content).toContain('subscribers');
-    });
-  });
+			const configPath = join(projectDir, 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
+			expect(content).toContain('crons');
+			expect(content).toContain('subscribers');
+		});
+	});
 
-  describe('monorepo', () => {
-    it('should create monorepo structure', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'apps/api',
-      });
+	describe('monorepo', () => {
+		it('should create monorepo structure', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'apps/api',
+			});
 
-      const projectDir = join(tempDir, 'my-monorepo');
+			const projectDir = join(tempDir, 'my-monorepo');
 
-      // Root files
-      expect(existsSync(join(projectDir, 'package.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'pnpm-workspace.yaml'))).toBe(true);
-      expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
-      expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
+			// Root files
+			expect(existsSync(join(projectDir, 'package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'pnpm-workspace.yaml'))).toBe(true);
+			expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
+			expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
 
-      // API app files
-      expect(existsSync(join(projectDir, 'apps/api/package.json'))).toBe(true);
-      expect(existsSync(join(projectDir, 'apps/api/gkm.config.ts'))).toBe(true);
-      expect(existsSync(join(projectDir, 'apps/api/tsconfig.json'))).toBe(true);
-      expect(
-        existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts')),
-      ).toBe(true);
+			// API app files
+			expect(existsSync(join(projectDir, 'apps/api/package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/api/gkm.config.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/api/tsconfig.json'))).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts')),
+			).toBe(true);
 
-      // Models package
-      expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
-        true,
-      );
-      expect(
-        existsSync(join(projectDir, 'packages/models/tsconfig.json')),
-      ).toBe(true);
-      expect(existsSync(join(projectDir, 'packages/models/src/index.ts'))).toBe(
-        true,
-      );
-    });
+			// Models package
+			expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
+				true,
+			);
+			expect(
+				existsSync(join(projectDir, 'packages/models/tsconfig.json')),
+			).toBe(true);
+			expect(existsSync(join(projectDir, 'packages/models/src/index.ts'))).toBe(
+				true,
+			);
+		});
 
-    it('should create root package.json with turbo scripts', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'apps/api',
-      });
+		it('should create root package.json with turbo scripts', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'apps/api',
+			});
 
-      const pkgPath = join(tempDir, 'my-monorepo', 'package.json');
-      const content = await readFile(pkgPath, 'utf-8');
-      const pkg = JSON.parse(content);
+			const pkgPath = join(tempDir, 'my-monorepo', 'package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
 
-      expect(pkg.name).toBe('my-monorepo');
-      expect(pkg.scripts.dev).toBe('turbo dev');
-      expect(pkg.scripts.build).toBe('turbo build');
-      expect(pkg.scripts.lint).toBe('biome lint .');
-      expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
-      expect(pkg.devDependencies['turbo']).toBeDefined();
-    });
+			expect(pkg.name).toBe('my-monorepo');
+			expect(pkg.scripts.dev).toBe('turbo dev');
+			expect(pkg.scripts.build).toBe('turbo build');
+			expect(pkg.scripts.lint).toBe('biome lint .');
+			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
+			expect(pkg.devDependencies['turbo']).toBeDefined();
+		});
 
-    it('should create API package.json with models dependency', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'apps/api',
-      });
+		it('should create API package.json with models dependency', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'apps/api',
+			});
 
-      const pkgPath = join(tempDir, 'my-monorepo', 'apps/api/package.json');
-      const content = await readFile(pkgPath, 'utf-8');
-      const pkg = JSON.parse(content);
+			const pkgPath = join(tempDir, 'my-monorepo', 'apps/api/package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
 
-      expect(pkg.name).toBe('@my-monorepo/api');
-      expect(pkg.dependencies['@my-monorepo/models']).toBe('workspace:*');
-      expect(pkg.dependencies['zod']).toBeUndefined(); // zod is in models
-      expect(pkg.devDependencies['@biomejs/biome']).toBeUndefined(); // at root
-      expect(pkg.devDependencies['turbo']).toBeUndefined(); // at root
-    });
+			expect(pkg.name).toBe('@my-monorepo/api');
+			expect(pkg.dependencies['@my-monorepo/models']).toBe('workspace:*');
+			expect(pkg.dependencies['zod']).toBeUndefined(); // zod is in models
+			expect(pkg.devDependencies['@biomejs/biome']).toBeUndefined(); // at root
+			expect(pkg.devDependencies['turbo']).toBeUndefined(); // at root
+		});
 
-    it('should create API tsconfig with paths', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'apps/api',
-      });
+		it('should create API tsconfig with paths', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'apps/api',
+			});
 
-      const tsConfigPath = join(
-        tempDir,
-        'my-monorepo',
-        'apps/api/tsconfig.json',
-      );
-      const content = await readFile(tsConfigPath, 'utf-8');
-      const config = JSON.parse(content);
+			const tsConfigPath = join(
+				tempDir,
+				'my-monorepo',
+				'apps/api/tsconfig.json',
+			);
+			const content = await readFile(tsConfigPath, 'utf-8');
+			const config = JSON.parse(content);
 
-      expect(config.extends).toBe('../../tsconfig.json');
-      expect(config.compilerOptions.paths['@my-monorepo/*']).toEqual([
-        '../../packages/*/src',
-      ]);
-    });
+			expect(config.extends).toBe('../../tsconfig.json');
+			expect(config.compilerOptions.paths['@my-monorepo/*']).toEqual([
+				'../../packages/*/src',
+			]);
+		});
 
-    it('should create models package with zod schemas', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'apps/api',
-      });
+		it('should create models package with zod schemas', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'apps/api',
+			});
 
-      const pkgPath = join(
-        tempDir,
-        'my-monorepo',
-        'packages/models/package.json',
-      );
-      const content = await readFile(pkgPath, 'utf-8');
-      const pkg = JSON.parse(content);
+			const pkgPath = join(
+				tempDir,
+				'my-monorepo',
+				'packages/models/package.json',
+			);
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
 
-      expect(pkg.name).toBe('@my-monorepo/models');
-      expect(pkg.dependencies.zod).toBeDefined();
+			expect(pkg.name).toBe('@my-monorepo/models');
+			expect(pkg.dependencies.zod).toBeDefined();
 
-      const indexPath = join(
-        tempDir,
-        'my-monorepo',
-        'packages/models/src/index.ts',
-      );
-      const indexContent = await readFile(indexPath, 'utf-8');
-      expect(indexContent).toContain('userSchema');
-      expect(indexContent).toContain('paginationSchema');
-    });
+			const indexPath = join(
+				tempDir,
+				'my-monorepo',
+				'packages/models/src/index.ts',
+			);
+			const indexContent = await readFile(indexPath, 'utf-8');
+			expect(indexContent).toContain('userSchema');
+			expect(indexContent).toContain('paginationSchema');
+		});
 
-    it('should support custom API path', async () => {
-      await initCommand('my-monorepo', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-        monorepo: true,
-        apiPath: 'services/backend',
-      });
+		it('should support custom API path', async () => {
+			await initCommand('my-monorepo', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+				monorepo: true,
+				apiPath: 'services/backend',
+			});
 
-      const projectDir = join(tempDir, 'my-monorepo');
-      expect(
-        existsSync(join(projectDir, 'services/backend/package.json')),
-      ).toBe(true);
-      expect(
-        existsSync(join(projectDir, 'services/backend/gkm.config.ts')),
-      ).toBe(true);
+			const projectDir = join(tempDir, 'my-monorepo');
+			expect(
+				existsSync(join(projectDir, 'services/backend/package.json')),
+			).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'services/backend/gkm.config.ts')),
+			).toBe(true);
 
-      const pkgPath = join(projectDir, 'services/backend/package.json');
-      const content = await readFile(pkgPath, 'utf-8');
-      const pkg = JSON.parse(content);
-      expect(pkg.name).toBe('@my-monorepo/backend');
-    });
-  });
+			const pkgPath = join(projectDir, 'services/backend/package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
+			expect(pkg.name).toBe('@my-monorepo/backend');
+		});
+	});
 
-  describe('docker-compose', () => {
-    it('should include postgres for database-enabled projects', async () => {
-      await initCommand('my-api', {
-        template: 'minimal',
-        yes: true,
-        skipInstall: true,
-      });
+	describe('docker-compose', () => {
+		it('should include postgres for database-enabled projects', async () => {
+			await initCommand('my-api', {
+				template: 'minimal',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-      const content = await readFile(dockerPath, 'utf-8');
-      expect(content).toContain('postgres:16-alpine');
-      expect(content).toContain('5432:5432');
-    });
+			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
+			const content = await readFile(dockerPath, 'utf-8');
+			expect(content).toContain('postgres:16-alpine');
+			expect(content).toContain('5432:5432');
+		});
 
-    it('should include serverless-redis-http for serverless template', async () => {
-      await initCommand('my-api', {
-        template: 'serverless',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should include serverless-redis-http for serverless template', async () => {
+			await initCommand('my-api', {
+				template: 'serverless',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-      const content = await readFile(dockerPath, 'utf-8');
-      expect(content).toContain('hiett/serverless-redis-http');
-    });
+			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
+			const content = await readFile(dockerPath, 'utf-8');
+			expect(content).toContain('hiett/serverless-redis-http');
+		});
 
-    it('should include rabbitmq for worker template', async () => {
-      await initCommand('my-api', {
-        template: 'worker',
-        yes: true,
-        skipInstall: true,
-      });
+		it('should include rabbitmq for worker template', async () => {
+			await initCommand('my-api', {
+				template: 'worker',
+				yes: true,
+				skipInstall: true,
+			});
 
-      const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-      const content = await readFile(dockerPath, 'utf-8');
-      expect(content).toContain('rabbitmq:3-management-alpine');
-      expect(content).toContain('5672:5672');
-      expect(content).toContain('15672:15672');
-    });
-  });
+			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
+			const content = await readFile(dockerPath, 'utf-8');
+			expect(content).toContain('rabbitmq:3-management-alpine');
+			expect(content).toContain('5672:5672');
+			expect(content).toContain('15672:15672');
+		});
+	});
 });

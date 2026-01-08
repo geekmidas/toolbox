@@ -12,11 +12,11 @@ import snakecase from 'lodash.snakecase';
  * environmentCase('apiV2') // 'APIV2'
  */
 export function environmentCase(name: string): string {
-  return snakecase(name)
-    .toUpperCase()
-    .replace(/_\d+/g, (r) => {
-      return r.replace('_', '');
-    });
+	return snakecase(name)
+		.toUpperCase()
+		.replace(/_\d+/g, (r) => {
+			return r.replace('_', '');
+		});
 }
 
 /**
@@ -24,7 +24,7 @@ export function environmentCase(name: string): string {
  * Values can be primitives or nested records.
  */
 export interface EnvRecord {
-  [key: string]: EnvValue;
+	[key: string]: EnvValue;
 }
 
 /**
@@ -52,11 +52,11 @@ export type Resolvers = Record<string, EnvironmentResolver<any>>;
  * Options for configuring the EnvironmentBuilder.
  */
 export interface EnvironmentBuilderOptions {
-  /**
-   * Handler called when a value's type doesn't match any registered resolver.
-   * Defaults to console.warn.
-   */
-  onUnmatchedValue?: (key: string, value: unknown) => void;
+	/**
+	 * Handler called when a value's type doesn't match any registered resolver.
+	 * Defaults to console.warn.
+	 */
+	onUnmatchedValue?: (key: string, value: unknown) => void;
 }
 
 /**
@@ -68,8 +68,8 @@ export type InputValue = string | { type: string; [key: string]: unknown };
  * Base type for typed input values with a specific type discriminator.
  */
 export type TypedInputValue<TType extends string = string> = {
-  type: TType;
-  [key: string]: unknown;
+	type: TType;
+	[key: string]: unknown;
 };
 
 /**
@@ -86,19 +86,19 @@ type OmitType<T> = T extends { type: string } ? Omit<T, 'type'> : never;
  * Extracts all unique `type` values from a record (excluding plain strings).
  */
 type AllTypeValues<TRecord extends Record<string, InputValue>> = {
-  [K in keyof TRecord]: ExtractType<TRecord[K]>;
+	[K in keyof TRecord]: ExtractType<TRecord[K]>;
 }[keyof TRecord];
 
 /**
  * For a given type value, finds the corresponding value type (without `type` key).
  */
 type ValueForType<
-  TRecord extends Record<string, InputValue>,
-  TType extends string,
+	TRecord extends Record<string, InputValue>,
+	TType extends string,
 > = {
-  [K in keyof TRecord]: TRecord[K] extends { type: TType }
-    ? OmitType<TRecord[K]>
-    : never;
+	[K in keyof TRecord]: TRecord[K] extends { type: TType }
+		? OmitType<TRecord[K]>
+		: never;
 }[keyof TRecord];
 
 /**
@@ -106,9 +106,9 @@ type ValueForType<
  * Keys are the `type` values, values are resolver functions receiving the value without `type`.
  */
 export type TypedResolvers<TRecord extends Record<string, InputValue>> = {
-  [TType in AllTypeValues<TRecord>]: EnvironmentResolver<
-    ValueForType<TRecord, TType>
-  >;
+	[TType in AllTypeValues<TRecord>]: EnvironmentResolver<
+		ValueForType<TRecord, TType>
+	>;
 };
 
 /**
@@ -134,59 +134,59 @@ export type TypedResolvers<TRecord extends Record<string, InputValue>> = {
  * ```
  */
 export class EnvironmentBuilder<
-  TRecord extends Record<string, InputValue> = Record<string, InputValue>,
-  TResolvers extends Resolvers = TypedResolvers<TRecord>,
+	TRecord extends Record<string, InputValue> = Record<string, InputValue>,
+	TResolvers extends Resolvers = TypedResolvers<TRecord>,
 > {
-  private readonly record: TRecord;
-  private readonly resolvers: TResolvers;
-  private readonly options: Required<EnvironmentBuilderOptions>;
+	private readonly record: TRecord;
+	private readonly resolvers: TResolvers;
+	private readonly options: Required<EnvironmentBuilderOptions>;
 
-  constructor(
-    record: TRecord,
-    resolvers: TResolvers,
-    options: EnvironmentBuilderOptions = {},
-  ) {
-    this.record = record;
-    this.resolvers = resolvers;
-    this.options = {
-      onUnmatchedValue: options.onUnmatchedValue ?? ((key, value) => {}),
-    };
-  }
+	constructor(
+		record: TRecord,
+		resolvers: TResolvers,
+		options: EnvironmentBuilderOptions = {},
+	) {
+		this.record = record;
+		this.resolvers = resolvers;
+		this.options = {
+			onUnmatchedValue: options.onUnmatchedValue ?? ((key, value) => {}),
+		};
+	}
 
-  /**
-   * Build environment variables from the input record.
-   *
-   * - Plain string values are passed through with key transformation
-   * - Object values with a `type` property are matched against resolvers
-   * - Resolvers receive values without the `type` key
-   * - Only root-level keys are transformed to UPPER_SNAKE_CASE
-   *
-   * @returns A record of environment variables
-   */
-  build(): EnvRecord {
-    const env: EnvRecord = {};
+	/**
+	 * Build environment variables from the input record.
+	 *
+	 * - Plain string values are passed through with key transformation
+	 * - Object values with a `type` property are matched against resolvers
+	 * - Resolvers receive values without the `type` key
+	 * - Only root-level keys are transformed to UPPER_SNAKE_CASE
+	 *
+	 * @returns A record of environment variables
+	 */
+	build(): EnvRecord {
+		const env: EnvRecord = {};
 
-    for (const [key, value] of Object.entries(this.record)) {
-      // Handle plain string values
-      if (typeof value === 'string') {
-        env[environmentCase(key)] = value;
-        continue;
-      }
+		for (const [key, value] of Object.entries(this.record)) {
+			// Handle plain string values
+			if (typeof value === 'string') {
+				env[environmentCase(key)] = value;
+				continue;
+			}
 
-      // Handle objects with type discriminator
-      const { type, ...rest } = value;
-      const resolver = this.resolvers[type];
-      if (resolver) {
-        const resolved = resolver(key, rest);
-        // Transform only root-level keys from resolver output
-        for (const [resolvedKey, resolvedValue] of Object.entries(resolved)) {
-          env[environmentCase(resolvedKey)] = resolvedValue;
-        }
-      } else {
-        this.options.onUnmatchedValue(key, value);
-      }
-    }
+			// Handle objects with type discriminator
+			const { type, ...rest } = value;
+			const resolver = this.resolvers[type];
+			if (resolver) {
+				const resolved = resolver(key, rest);
+				// Transform only root-level keys from resolver output
+				for (const [resolvedKey, resolvedValue] of Object.entries(resolved)) {
+					env[environmentCase(resolvedKey)] = resolvedValue;
+				}
+			} else {
+				this.options.onUnmatchedValue(key, value);
+			}
+		}
 
-    return env;
-  }
+		return env;
+	}
 }
