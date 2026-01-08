@@ -1,8 +1,8 @@
 import type {
 	AuditableAction,
+	Auditor,
 	AuditRecord,
 	AuditStorage,
-	Auditor,
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { ConsoleLogger } from '@geekmidas/logger/console';

@@ -1,10 +1,24 @@
 import { InMemoryStorage } from '@geekmidas/telescope';
-import { CamelCasePlugin, type Generated, Kysely, PostgresDialect } from 'kysely';
+import {
+	CamelCasePlugin,
+	type Generated,
+	Kysely,
+	PostgresDialect,
+} from 'kysely';
 import pg from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
-import { Direction } from '../types';
 import { Studio } from '../Studio';
+import { Direction } from '../types';
 
 interface TestDatabase {
 	studioTestUsers: {

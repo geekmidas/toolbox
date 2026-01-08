@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BasicConnection, BasicPublisher } from '../basic';
 import { Publisher } from '../Publisher';
 import { SNSPublisher } from '../sns/SNSPublisher';
-import { SQSPublisher } from '../sqs/SQSPublisher';
 import { SQSConnection } from '../sqs/SQSConnection';
+import { SQSPublisher } from '../sqs/SQSPublisher';
 import type { PublishableMessage } from '../types';
 
 type TestMessage = PublishableMessage<'test.event', { data: string }>;
