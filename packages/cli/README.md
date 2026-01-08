@@ -9,6 +9,7 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 - **Development Server**: Hot-reload development server with file watching
 - **Telescope Integration**: Laravel-style debugging dashboard for inspecting requests, logs, and exceptions
 - **OpenAPI Generation**: Auto-generate OpenAPI 3.0 specifications from your endpoints
+- **Docker Support**: Generate optimized Dockerfiles with multi-stage builds, turbo prune for monorepos
 - **Type-Safe Configuration**: Configuration with TypeScript support and validation
 - **Endpoint Auto-Discovery**: Automatically find and load endpoints from your codebase
 - **Flexible Routing**: Support for glob patterns to discover route files
@@ -408,6 +409,103 @@ const users = await api('GET /users');
 const { data } = api.useQuery('GET /users');
 const mutation = api.useMutation('POST /users');
 ```
+
+### `gkm docker`
+
+Generate Docker configuration files for containerized deployment.
+
+```bash
+gkm docker [options]
+```
+
+**Options:**
+- `--build`: Build Docker image after generating files
+- `--push`: Push image to registry after building
+- `--tag <tag>`: Image tag (default: `latest`)
+- `--registry <url>`: Container registry URL
+- `--slim`: Use slim Dockerfile (requires pre-built bundle from `gkm build --production`)
+- `--turbo`: Enable turbo prune for monorepo optimization
+- `--turbo-package <name>`: Package name for turbo prune (defaults to package.json name)
+
+**Generated Files:**
+- `.gkm/docker/Dockerfile` - Multi-stage or slim Dockerfile
+- `.gkm/docker/docker-compose.yml` - Docker Compose configuration
+- `.gkm/docker/docker-entrypoint.sh` - Entrypoint script
+- `.dockerignore` - Docker ignore file (project root)
+
+**Dockerfile Types:**
+
+| Type | Flag | Description |
+|------|------|-------------|
+| Multi-stage | (default) | Builds from source inside Docker, most reproducible |
+| Turbo | `--turbo` | Optimized for monorepos with turbo prune |
+| Slim | `--slim` | Uses pre-built bundle, requires prior `gkm build --production` |
+
+**Example:**
+```bash
+# Generate multi-stage Dockerfile (default, recommended)
+gkm docker
+
+# Generate and build image
+gkm docker --build --tag v1.0.0
+
+# Build and push to registry
+gkm docker --build --push --registry ghcr.io/myorg --tag v1.0.0
+
+# Use turbo prune for monorepo
+gkm docker --turbo --turbo-package my-api
+
+# Use slim Dockerfile (after running gkm build --production)
+gkm build --provider server --production
+gkm docker --slim
+```
+
+**Package Manager Support:**
+
+The CLI auto-detects your package manager from lockfiles and generates optimized Dockerfiles:
+- **pnpm**: Uses `pnpm fetch` for better layer caching
+- **npm**: Uses `npm ci` with cache mounts
+- **yarn**: Uses `yarn install --frozen-lockfile`
+- **bun**: Uses `bun install --frozen-lockfile`
+
+**Configuration:**
+
+Configure Docker settings in `gkm.config.ts`:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: 'src/routes/**/*.ts',
+  envParser: './src/env.ts',
+  logger: './src/logger.ts',
+
+  docker: {
+    // Container registry
+    registry: 'ghcr.io/myorg',
+    // Image name (defaults to package.json name)
+    imageName: 'my-api',
+    // Base image (default: node:22-alpine)
+    baseImage: 'node:22-alpine',
+    // Port to expose (default: 3000)
+    port: 3000,
+    // Docker Compose services
+    compose: {
+      services: ['postgres', 'redis', 'rabbitmq'],
+    },
+  },
+});
+```
+
+**Docker Compose Services:**
+
+When configured, `docker-compose.yml` includes service definitions:
+
+| Service | Image | Environment Variables |
+|---------|-------|----------------------|
+| `postgres` | postgres:16-alpine | `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
+| `redis` | redis:7-alpine | `REDIS_URL` |
+| `rabbitmq` | rabbitmq:3-management-alpine | `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` |
 
 ### `gkm dev`
 
@@ -1259,6 +1357,18 @@ interface GkmConfig {
   subscribers?: string | string[];
   runtime?: Runtime;
   telescope?: boolean | TelescopeConfig;
+  docker?: DockerConfig;
+}
+
+// Docker configuration
+interface DockerConfig {
+  registry?: string;        // Container registry URL
+  imageName?: string;       // Image name (defaults to package.json name)
+  baseImage?: string;       // Base image (default: node:22-alpine)
+  port?: number;            // Port to expose (default: 3000)
+  compose?: {
+    services?: ('postgres' | 'redis' | 'rabbitmq')[];
+  };
 }
 
 // Telescope configuration
