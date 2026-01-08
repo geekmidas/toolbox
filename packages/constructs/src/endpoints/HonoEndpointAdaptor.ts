@@ -364,29 +364,27 @@ export class HonoEndpoint<
 							)
 					: undefined;
 
-				// Only check authorization if endpoint has auth configured
-				let session: TSession | undefined;
-				if (features.hasAuth) {
-					session = await endpoint.getSession({
-						services,
-						logger,
-						header,
-						cookie,
-						...(rawDb !== undefined && { db: rawDb }),
-					} as any);
+				// Extract session (defaults to empty object)
+				const session = await endpoint.getSession({
+					services,
+					logger,
+					header,
+					cookie,
+					...(rawDb !== undefined && { db: rawDb }),
+				} as any);
 
-					const isAuthorized = await endpoint.authorize({
-						header,
-						cookie,
-						services,
-						logger,
-						session,
-					});
+				// Check authorization (defaults to true)
+				const isAuthorized = await endpoint.authorize({
+					header,
+					cookie,
+					services,
+					logger,
+					session,
+				});
 
-					if (!isAuthorized) {
-						logger.warn('Unauthorized access attempt');
-						return c.json({ error: 'Unauthorized' }, 401);
-					}
+				if (!isAuthorized) {
+					logger.warn('Unauthorized access attempt');
+					return c.json({ error: 'Unauthorized' }, 401);
 				}
 
 				// Check rate limit only if configured
