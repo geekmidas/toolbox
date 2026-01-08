@@ -95,6 +95,7 @@ const DEFAULT_LAMBDA_CONFIG: LambdaAdapterConfig = {
  */
 export class LambdaAdapter implements TelescopeAdapter<LambdaAdapterConfig> {
 	readonly config: LambdaAdapterConfig;
+	readonly telescope: Telescope;
 	private resourceAttributes: LambdaResourceAttributes | null = null;
 
 	constructor(telescope: Telescope, config: Partial<LambdaAdapterConfig> = {}) {
