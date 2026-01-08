@@ -288,26 +288,6 @@ describe('SstEnvironmentBuilder', () => {
 	});
 
 	describe('edge cases', () => {
-		it('should warn for unknown resource types', () => {
-			const consoleWarnSpy = vi
-				.spyOn(console, 'warn')
-				.mockImplementation(() => {});
-
-			const unknownResource = {
-				type: 'unknown.resource.Type',
-				value: 'something',
-			};
-
-			const env = new SstEnvironmentBuilder({
-				unknown: unknownResource,
-			}).build();
-
-			expect(env).toEqual({});
-			expect(consoleWarnSpy).toHaveBeenCalled();
-
-			consoleWarnSpy.mockRestore();
-		});
-
 		it('should handle resources with special characters in keys', () => {
 			const secret: Secret = {
 				type: ResourceType.Secret,

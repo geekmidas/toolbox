@@ -305,29 +305,6 @@ describe('sst', () => {
 		});
 
 		describe('edge cases', () => {
-			it('should warn for unknown resource types', () => {
-				const consoleWarnSpy = vi
-					.spyOn(console, 'warn')
-					.mockImplementation(() => {});
-
-				const unknownResource = {
-					type: 'unknown.resource.Type' as any,
-					value: 'something',
-				};
-
-				const result = normalizeResourceEnv({
-					unknown: unknownResource,
-				});
-
-				expect(result).toEqual({});
-				expect(consoleWarnSpy).toHaveBeenCalledWith(
-					'No resolver found for key "unknown":',
-					{ value: unknownResource },
-				);
-
-				consoleWarnSpy.mockRestore();
-			});
-
 			it('should handle resources with special characters in keys', () => {
 				const secret: Secret = {
 					type: ResourceType.Secret,

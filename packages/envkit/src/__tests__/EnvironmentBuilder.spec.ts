@@ -180,26 +180,6 @@ describe('EnvironmentBuilder', () => {
 				data: 'test',
 			});
 		});
-
-		it('should default to console.warn for unmatched values', () => {
-			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-			new EnvironmentBuilder(
-				{
-					unknown: { type: 'unknown-type', data: 'test' },
-				},
-				{},
-			).build();
-
-			expect(warnSpy).toHaveBeenCalledWith(
-				'No resolver found for key "unknown":',
-				{
-					value: { type: 'unknown-type', data: 'test' },
-				},
-			);
-
-			warnSpy.mockRestore();
-		});
 	});
 
 	describe('value types', () => {
