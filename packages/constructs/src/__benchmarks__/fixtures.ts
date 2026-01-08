@@ -21,7 +21,7 @@ export const mockLogger: Logger = {
 };
 
 export const mockDatabase = {
-	selectFrom: () => ({
+	selectFrom: (_table: string) => ({
 		selectAll: () => ({
 			execute: async () => [
 				{ id: '1', name: 'User 1', email: 'user1@example.com' },
@@ -29,9 +29,9 @@ export const mockDatabase = {
 			],
 		}),
 	}),
-	insertInto: () => ({
-		values: () => ({
-			returning: () => ({
+	insertInto: (_table: string) => ({
+		values: (_values: unknown) => ({
+			returning: (_columns: string[]) => ({
 				executeTakeFirstOrThrow: async () => ({
 					id: 'new-id',
 					name: 'New User',
