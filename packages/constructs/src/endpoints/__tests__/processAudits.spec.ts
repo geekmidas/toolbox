@@ -581,7 +581,7 @@ describe('processAudits', () => {
 			const context = { auditor, storage };
 			const onComplete = vi.fn();
 
-			const result = await executeWithAuditTransaction(
+			const _result = await executeWithAuditTransaction(
 				context,
 				async () => ({ id: '123' }),
 				onComplete,
