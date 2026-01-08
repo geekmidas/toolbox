@@ -83,6 +83,7 @@ try {
 - **Real-time Updates**: WebSocket-powered live dashboard
 - **Storage Agnostic**: Use in-memory for dev, database for production
 - **Hono Integration**: First-class middleware and route mounting
+- **Lambda Integration**: Wrapper and Middy middleware for AWS Lambda with auto-flush
 
 ## Configuration
 
@@ -374,6 +375,102 @@ app.get('/api/data', (c) => {
   telescope.log('info', 'Processing request', { data: 'value' }, requestId);
   return c.json({ success: true });
 });
+```
+
+### Lambda Adapter
+
+Import from `@geekmidas/telescope/adapters/lambda`:
+
+```typescript
+import { wrapLambdaHandler, LambdaAdapter } from '@geekmidas/telescope/adapters/lambda';
+```
+
+#### `wrapLambdaHandler(telescope, handler, options?)`
+
+Wrap a Lambda handler to automatically record requests and flush telemetry before the Lambda context freezes.
+
+```typescript
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { wrapLambdaHandler } from '@geekmidas/telescope/adapters/lambda';
+
+const telescope = new Telescope({ storage: new InMemoryStorage() });
+
+export const handler = wrapLambdaHandler(telescope, async (event, context) => {
+  // Your Lambda logic here
+  return { statusCode: 200, body: JSON.stringify({ success: true }) };
+});
+```
+
+Supports API Gateway v1 (REST API), API Gateway v2 (HTTP API), and ALB events. For non-HTTP invocations, records the event as the request body.
+
+#### Options
+
+```typescript
+wrapLambdaHandler(telescope, handler, {
+  // Auto-flush telemetry before Lambda freezes (default: true)
+  autoFlush: true,
+
+  // Detect Lambda resource attributes from environment (default: true)
+  detectResource: true,
+});
+```
+
+#### `LambdaAdapter` Class
+
+For more control, use the `LambdaAdapter` class directly:
+
+```typescript
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { LambdaAdapter } from '@geekmidas/telescope/adapters/lambda';
+
+const telescope = new Telescope({ storage: new InMemoryStorage() });
+const adapter = new LambdaAdapter(telescope);
+
+export const handler = async (event, context) => {
+  const requestContext = adapter.extractRequestContext(event);
+
+  try {
+    const result = await processEvent(event);
+
+    const responseContext = adapter.extractResponseContext(result, requestContext.startTime);
+    await telescope.recordRequest({
+      method: requestContext.method,
+      path: requestContext.path,
+      url: requestContext.url,
+      headers: requestContext.headers,
+      query: requestContext.query,
+      body: requestContext.body,
+      ip: requestContext.ip,
+      status: responseContext.status,
+      responseHeaders: responseContext.headers,
+      responseBody: responseContext.body,
+      duration: responseContext.duration,
+    });
+
+    return result;
+  } catch (error) {
+    await telescope.exception(error, requestContext.id);
+    throw error;
+  } finally {
+    await adapter.flush();
+  }
+};
+```
+
+#### Middy Middleware
+
+For use with the Middy middleware framework:
+
+```typescript
+import middy from '@middy/core';
+import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { telescopeMiddleware } from '@geekmidas/telescope/adapters/lambda';
+
+const telescope = new Telescope({ storage: new InMemoryStorage() });
+
+export const handler = middy(async (event, context) => {
+  return { statusCode: 200, body: JSON.stringify({ success: true }) };
+}).use(telescopeMiddleware({ telescope }));
 ```
 
 ### Logger Integrations
