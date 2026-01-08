@@ -132,7 +132,9 @@ describe('processAudits', () => {
 				},
 			);
 
-			expect(warnSpy).toHaveBeenCalledWith('No auditor storage service available');
+			expect(warnSpy).toHaveBeenCalledWith(
+				'No auditor storage service available',
+			);
 		});
 
 		it('should process declarative audits', async () => {
