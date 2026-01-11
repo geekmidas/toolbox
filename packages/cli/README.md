@@ -10,6 +10,8 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 - **Telescope Integration**: Laravel-style debugging dashboard for inspecting requests, logs, and exceptions
 - **OpenAPI Generation**: Auto-generate OpenAPI 3.0 specifications from your endpoints
 - **Docker Support**: Generate optimized Dockerfiles with multi-stage builds, turbo prune for monorepos
+- **Secrets Management**: Secure credential generation, encryption, and stage-based secrets storage
+- **Deploy Commands**: One-command deployment to Docker registries and Dokploy with encrypted secrets
 - **Type-Safe Configuration**: Configuration with TypeScript support and validation
 - **Endpoint Auto-Discovery**: Automatically find and load endpoints from your codebase
 - **Flexible Routing**: Support for glob patterns to discover route files
@@ -502,7 +504,11 @@ export default defineConfig({
     port: 3000,
     // Docker Compose services
     compose: {
-      services: ['postgres', 'redis', 'rabbitmq'],
+      services: {
+        postgres: { image: 'postgis/postgis:16-3.4-alpine' },  // Custom image
+        redis: true,                                            // Default version
+        rabbitmq: { version: '3.12-management-alpine' },        // Custom version
+      },
     },
   },
 });
@@ -510,13 +516,41 @@ export default defineConfig({
 
 **Docker Compose Services:**
 
-When configured, `docker-compose.yml` includes service definitions:
+Services can be configured with custom versions, custom images, or use defaults:
 
-| Service | Image | Environment Variables |
-|---------|-------|----------------------|
-| `postgres` | postgres:16-alpine | `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
-| `redis` | redis:7-alpine | `REDIS_URL` |
-| `rabbitmq` | rabbitmq:3-management-alpine | `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` |
+```typescript
+// Object format (recommended)
+services: {
+  postgres: { version: '15-alpine' },              // Custom version
+  redis: true,                                      // Default: redis:7-alpine
+  rabbitmq: { version: '3.12-management-alpine' },
+}
+
+// Custom images (e.g., PostGIS, Redis Stack)
+services: {
+  postgres: { image: 'postgis/postgis:16-3.4-alpine' },  // Full image reference
+  redis: { image: 'redis/redis-stack:latest' },
+}
+
+// Legacy array format - uses default versions
+services: ['postgres', 'redis', 'rabbitmq']
+```
+
+**Service Configuration Options:**
+
+| Property | Description |
+|----------|-------------|
+| `true` | Use default image and version |
+| `{ version: string }` | Use default image with custom version/tag |
+| `{ image: string }` | Use completely custom image reference |
+
+**Default Images:**
+
+| Service | Default Image | Environment Variables |
+|---------|---------------|----------------------|
+| `postgres` | `postgres:16-alpine` | `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
+| `redis` | `redis:7-alpine` | `REDIS_URL` |
+| `rabbitmq` | `rabbitmq:3-management-alpine` | `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` |
 
 ### `gkm dev`
 
@@ -567,6 +601,227 @@ When files change, the server automatically rebuilds and restarts:
 🔄 Rebuilding...
 ✅ Rebuild complete, restarting server...
 ```
+
+### `gkm secrets:init`
+
+Initialize secrets for a deployment stage. Generates secure random passwords for configured Docker Compose services.
+
+```bash
+gkm secrets:init --stage <stage> [options]
+```
+
+**Options:**
+- `--stage <stage>`: Stage name (e.g., `production`, `staging`)
+- `--force`: Overwrite existing secrets
+
+**Example:**
+```bash
+# Initialize production secrets
+gkm secrets:init --stage production
+
+# Overwrite existing secrets
+gkm secrets:init --stage production --force
+```
+
+**Generated:**
+- Secure passwords for postgres, redis, rabbitmq (based on `docker.compose.services` config)
+- Connection URLs (`DATABASE_URL`, `REDIS_URL`, `RABBITMQ_URL`)
+- Stored in `.gkm/secrets/<stage>.json` (gitignored)
+
+### `gkm secrets:set`
+
+Set a custom secret for a stage.
+
+```bash
+gkm secrets:set <key> [value] --stage <stage>
+```
+
+**Arguments:**
+- `<key>`: Secret key (e.g., `API_KEY`, `STRIPE_SECRET`)
+- `[value]`: Secret value (optional - reads from stdin if omitted)
+
+**Options:**
+- `--stage <stage>`: Stage name
+
+**Examples:**
+```bash
+# Direct value
+gkm secrets:set API_KEY sk_live_xxx --stage production
+
+# From stdin (pipe)
+echo "sk_live_xxx" | gkm secrets:set API_KEY --stage production
+
+# From file (for multiline secrets like private keys)
+gkm secrets:set PRIVATE_KEY --stage production < private_key.pem
+
+# From command output
+openssl rand -base64 32 | gkm secrets:set JWT_SECRET --stage production
+```
+
+### `gkm secrets:import`
+
+Import multiple secrets from a JSON file.
+
+```bash
+gkm secrets:import <file> --stage <stage> [options]
+```
+
+**Arguments:**
+- `<file>`: Path to JSON file with key-value pairs
+
+**Options:**
+- `--stage <stage>`: Stage name
+- `--no-merge`: Replace all custom secrets instead of merging
+
+**JSON Format:**
+```json
+{
+  "API_KEY": "sk_live_xxx",
+  "STRIPE_WEBHOOK_SECRET": "whsec_xxx",
+  "SENDGRID_API_KEY": "SG.xxx"
+}
+```
+
+**Examples:**
+```bash
+# Import and merge with existing secrets (default)
+gkm secrets:import secrets.json --stage production
+
+# Replace all custom secrets
+gkm secrets:import secrets.json --stage production --no-merge
+```
+
+### `gkm secrets:show`
+
+Display secrets for a stage (passwords masked by default).
+
+```bash
+gkm secrets:show --stage <stage> [options]
+```
+
+**Options:**
+- `--stage <stage>`: Stage name
+- `--reveal`: Show actual secret values (not masked)
+
+**Example:**
+```bash
+# Show masked secrets
+gkm secrets:show --stage production
+
+# Show actual values
+gkm secrets:show --stage production --reveal
+```
+
+### `gkm secrets:rotate`
+
+Rotate passwords for services.
+
+```bash
+gkm secrets:rotate --stage <stage> [options]
+```
+
+**Options:**
+- `--stage <stage>`: Stage name
+- `--service <service>`: Specific service to rotate (`postgres`, `redis`, `rabbitmq`)
+
+**Examples:**
+```bash
+# Rotate all service passwords
+gkm secrets:rotate --stage production
+
+# Rotate only postgres password
+gkm secrets:rotate --stage production --service postgres
+```
+
+### `gkm deploy`
+
+Deploy application to a provider. Builds for production, injects encrypted secrets, and deploys.
+
+```bash
+gkm deploy --provider <provider> --stage <stage> [options]
+```
+
+**Options:**
+- `--provider <provider>`: Deploy provider (`docker`, `dokploy`, `aws-lambda`)
+- `--stage <stage>`: Deployment stage
+- `--tag <tag>`: Image tag (default: `stage-timestamp`)
+- `--skip-push`: Skip pushing image to registry
+- `--skip-build`: Skip build step (use existing build)
+
+**Examples:**
+```bash
+# Docker: build and push image
+gkm deploy --provider docker --stage production
+
+# Dokploy: build, push, and trigger deployment
+DOKPLOY_API_TOKEN=xxx gkm deploy --provider dokploy --stage production
+
+# Custom tag
+gkm deploy --provider docker --stage production --tag v1.0.0
+```
+
+**Workflow:**
+1. Builds production bundle with `gkm build --provider server --production --stage <stage>`
+2. Encrypts secrets from `.gkm/secrets/<stage>.json` into the bundle
+3. Generates Docker files with `gkm docker`
+4. Builds and pushes Docker image
+5. (Dokploy) Triggers deployment via API with `GKM_MASTER_KEY`
+
+**Configuration:**
+
+```typescript
+// gkm.config.ts
+export default defineConfig({
+  routes: 'src/endpoints/**/*.ts',
+  envParser: './src/env.ts',
+  logger: './src/logger.ts',
+
+  docker: {
+    registry: 'ghcr.io/myorg',
+    imageName: 'my-api',
+  },
+
+  // For Dokploy deployments
+  providers: {
+    dokploy: {
+      endpoint: 'https://dokploy.example.com',
+      projectId: 'proj_xxx',
+      applicationId: 'app_xxx',
+    },
+  },
+});
+```
+
+**Environment Variables:**
+- `DOKPLOY_API_TOKEN`: API token for Dokploy (required for dokploy provider)
+- `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments
+
+### Using Encrypted Credentials
+
+After deploying with secrets, your application decrypts credentials at runtime:
+
+```typescript
+// src/env.ts
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { Credentials } from '@geekmidas/envkit/credentials';
+
+export const envParser = new EnvironmentParser({...process.env, ...Credentials})
+  .create((get) => ({
+    database: {
+      url: get('DATABASE_URL').string(),
+    },
+    stripe: {
+      key: get('STRIPE_KEY').string(),
+    },
+  }))
+  .parse();
+```
+
+**How it works:**
+- At build time, secrets are encrypted with AES-256-GCM and embedded in the bundle
+- An ephemeral master key is generated per build
+- At runtime, `Credentials` decrypts using `GKM_MASTER_KEY` environment variable
+- In development (no embedded secrets), `Credentials` returns `{}`
 
 ### Future Commands
 
@@ -1378,9 +1633,15 @@ interface DockerConfig {
   baseImage?: string;       // Base image (default: node:22-alpine)
   port?: number;            // Port to expose (default: 3000)
   compose?: {
-    services?: ('postgres' | 'redis' | 'rabbitmq')[];
+    services?: ComposeServicesConfig | ComposeServiceName[];
   };
 }
+
+// Service configuration for docker-compose
+type ComposeServiceName = 'postgres' | 'redis' | 'rabbitmq';
+type ComposeServicesConfig = {
+  [K in ComposeServiceName]?: boolean | { version?: string };
+};
 
 // Telescope configuration
 interface TelescopeConfig {
