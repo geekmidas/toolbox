@@ -118,17 +118,46 @@ export async function secretsInitCommand(
 }
 
 /**
+ * Read all data from stdin.
+ */
+async function readStdin(): Promise<string> {
+	const chunks: Buffer[] = [];
+
+	for await (const chunk of process.stdin) {
+		chunks.push(chunk);
+	}
+
+	return Buffer.concat(chunks).toString('utf-8').trim();
+}
+
+/**
  * Set a custom secret.
+ * If value is not provided, reads from stdin.
  */
 export async function secretsSetCommand(
 	key: string,
-	value: string,
+	value: string | undefined,
 	options: SecretsSetOptions,
 ): Promise<void> {
 	const { stage } = options;
 
+	// Read from stdin if value not provided
+	let secretValue = value;
+	if (!secretValue) {
+		if (process.stdin.isTTY) {
+			logger.error('No value provided. Use: gkm secrets:set KEY VALUE --stage <stage>');
+			logger.error('Or pipe from stdin: echo "value" | gkm secrets:set KEY --stage <stage>');
+			process.exit(1);
+		}
+		secretValue = await readStdin();
+		if (!secretValue) {
+			logger.error('No value received from stdin');
+			process.exit(1);
+		}
+	}
+
 	try {
-		await setCustomSecret(stage, key, value);
+		await setCustomSecret(stage, key, secretValue);
 		logger.log(`\n✓ Secret "${key}" set for stage "${stage}"`);
 	} catch (error) {
 		logger.error(

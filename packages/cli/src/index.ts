@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json';
 
 import { buildCommand } from './build/index';
-import { deployCommand, type DeployProvider } from './deploy/index';
+import { type DeployProvider, deployCommand } from './deploy/index';
 import { devCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
@@ -326,9 +326,9 @@ program
 	.command('secrets:set')
 	.description('Set a custom secret for a stage')
 	.argument('<key>', 'Secret key (e.g., API_KEY)')
-	.argument('<value>', 'Secret value')
+	.argument('[value]', 'Secret value (reads from stdin if omitted)')
 	.requiredOption('--stage <stage>', 'Stage name')
-	.action(async (key: string, value: string, options: { stage: string }) => {
+	.action(async (key: string, value: string | undefined, options: { stage: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -365,19 +365,17 @@ program
 		'--service <service>',
 		'Specific service to rotate (postgres, redis, rabbitmq)',
 	)
-	.action(
-		async (options: { stage: string; service?: ComposeServiceName }) => {
-			try {
-				const globalOptions = program.opts();
-				if (globalOptions.cwd) {
-					process.chdir(globalOptions.cwd);
-				}
-				await secretsRotateCommand(options);
-			} catch (_error) {
-				process.exit(1);
+	.action(async (options: { stage: string; service?: ComposeServiceName }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
 			}
-		},
-	);
+			await secretsRotateCommand(options);
+		} catch (_error) {
+			process.exit(1);
+		}
+	});
 
 program
 	.command('secrets:import')
@@ -385,19 +383,17 @@ program
 	.argument('<file>', 'JSON file path (e.g., secrets.json)')
 	.requiredOption('--stage <stage>', 'Stage name')
 	.option('--no-merge', 'Replace all custom secrets instead of merging')
-	.action(
-		async (file: string, options: { stage: string; merge?: boolean }) => {
-			try {
-				const globalOptions = program.opts();
-				if (globalOptions.cwd) {
-					process.chdir(globalOptions.cwd);
-				}
-				await secretsImportCommand(file, options);
-			} catch (_error) {
-				process.exit(1);
+	.action(async (file: string, options: { stage: string; merge?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
 			}
-		},
-	);
+			await secretsImportCommand(file, options);
+		} catch (_error) {
+			process.exit(1);
+		}
+	});
 
 // Deploy command
 program
@@ -407,7 +403,10 @@ program
 		'--provider <provider>',
 		'Deploy provider (docker, dokploy, aws-lambda)',
 	)
-	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
 	.option('--tag <tag>', 'Image tag (default: stage-timestamp)')
 	.option('--skip-push', 'Skip pushing image to registry')
 	.option('--skip-build', 'Skip build step (use existing build)')
