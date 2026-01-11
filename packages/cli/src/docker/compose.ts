@@ -1,9 +1,75 @@
+import type {
+	ComposeServiceName,
+	ComposeServicesConfig,
+	ServiceConfig,
+} from '../types';
+
+/** Default Docker images for services */
+export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
+	postgres: 'postgres',
+	redis: 'redis',
+	rabbitmq: 'rabbitmq',
+};
+
+/** Default Docker image versions for services */
+export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
+	postgres: '16-alpine',
+	redis: '7-alpine',
+	rabbitmq: '3-management-alpine',
+};
+
 export interface ComposeOptions {
 	imageName: string;
 	registry: string;
 	port: number;
 	healthCheckPath: string;
-	services: ('postgres' | 'redis' | 'rabbitmq')[];
+	/** Services config - object format or legacy array format */
+	services: ComposeServicesConfig | ComposeServiceName[];
+}
+
+/** Get the default full image reference for a service */
+function getDefaultImage(serviceName: ComposeServiceName): string {
+	return `${DEFAULT_SERVICE_IMAGES[serviceName]}:${DEFAULT_SERVICE_VERSIONS[serviceName]}`;
+}
+
+/** Normalize services config to a consistent format - returns Map of service name to full image reference */
+function normalizeServices(
+	services: ComposeServicesConfig | ComposeServiceName[],
+): Map<ComposeServiceName, string> {
+	const result = new Map<ComposeServiceName, string>();
+
+	if (Array.isArray(services)) {
+		// Legacy array format - use default images
+		for (const name of services) {
+			result.set(name, getDefaultImage(name));
+		}
+	} else {
+		// Object format
+		for (const [name, config] of Object.entries(services)) {
+			const serviceName = name as ComposeServiceName;
+			if (config === true) {
+				// boolean true - use default image
+				result.set(serviceName, getDefaultImage(serviceName));
+			} else if (config && typeof config === 'object') {
+				const serviceConfig = config as ServiceConfig;
+				if (serviceConfig.image) {
+					// Full image reference provided
+					result.set(serviceName, serviceConfig.image);
+				} else {
+					// Version only - use default image name with custom version
+					const version =
+						serviceConfig.version ?? DEFAULT_SERVICE_VERSIONS[serviceName];
+					result.set(
+						serviceName,
+						`${DEFAULT_SERVICE_IMAGES[serviceName]}:${version}`,
+					);
+				}
+			}
+			// false or undefined - skip
+		}
+	}
+
+	return result;
 }
 
 /**
@@ -11,6 +77,9 @@ export interface ComposeOptions {
  */
 export function generateDockerCompose(options: ComposeOptions): string {
 	const { imageName, registry, port, healthCheckPath, services } = options;
+
+	// Normalize services to Map<name, version>
+	const serviceMap = normalizeServices(services);
 
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
@@ -31,17 +100,17 @@ services:
 `;
 
 	// Add environment variables based on services
-	if (services.includes('postgres')) {
+	if (serviceMap.has('postgres')) {
 		yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}
 `;
 	}
 
-	if (services.includes('redis')) {
+	if (serviceMap.has('redis')) {
 		yaml += `      - REDIS_URL=\${REDIS_URL:-redis://redis:6379}
 `;
 	}
 
-	if (services.includes('rabbitmq')) {
+	if (serviceMap.has('rabbitmq')) {
 		yaml += `      - RABBITMQ_URL=\${RABBITMQ_URL:-amqp://rabbitmq:5672}
 `;
 	}
@@ -54,11 +123,11 @@ services:
 `;
 
 	// Add depends_on if there are services
-	if (services.length > 0) {
+	if (serviceMap.size > 0) {
 		yaml += `    depends_on:
 `;
-		for (const service of services) {
-			yaml += `      ${service}:
+		for (const serviceName of serviceMap.keys()) {
+			yaml += `      ${serviceName}:
         condition: service_healthy
 `;
 		}
@@ -68,11 +137,12 @@ services:
       - app-network
 `;
 
-	// Add service definitions
-	if (services.includes('postgres')) {
+	// Add service definitions with images
+	const postgresImage = serviceMap.get('postgres');
+	if (postgresImage) {
 		yaml += `
   postgres:
-    image: postgres:16-alpine
+    image: ${postgresImage}
     container_name: postgres
     restart: unless-stopped
     environment:
@@ -91,10 +161,11 @@ services:
 `;
 	}
 
-	if (services.includes('redis')) {
+	const redisImage = serviceMap.get('redis');
+	if (redisImage) {
 		yaml += `
   redis:
-    image: redis:7-alpine
+    image: ${redisImage}
     container_name: redis
     restart: unless-stopped
     volumes:
@@ -109,10 +180,11 @@ services:
 `;
 	}
 
-	if (services.includes('rabbitmq')) {
+	const rabbitmqImage = serviceMap.get('rabbitmq');
+	if (rabbitmqImage) {
 		yaml += `
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    image: ${rabbitmqImage}
     container_name: rabbitmq
     restart: unless-stopped
     environment:
@@ -137,17 +209,17 @@ services:
 volumes:
 `;
 
-	if (services.includes('postgres')) {
+	if (serviceMap.has('postgres')) {
 		yaml += `  postgres_data:
 `;
 	}
 
-	if (services.includes('redis')) {
+	if (serviceMap.has('redis')) {
 		yaml += `  redis_data:
 `;
 	}
 
-	if (services.includes('rabbitmq')) {
+	if (serviceMap.has('rabbitmq')) {
 		yaml += `  rabbitmq_data:
 `;
 	}

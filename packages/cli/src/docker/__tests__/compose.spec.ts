@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
 	type ComposeOptions,
+	DEFAULT_SERVICE_IMAGES,
+	DEFAULT_SERVICE_VERSIONS,
 	generateDockerCompose,
 	generateMinimalDockerCompose,
 } from '../compose';
+
+/** Helper to get full default image reference */
+function getDefaultImage(service: 'postgres' | 'redis' | 'rabbitmq'): string {
+	return `${DEFAULT_SERVICE_IMAGES[service]}:${DEFAULT_SERVICE_VERSIONS[service]}`;
+}
 
 describe('generateDockerCompose', () => {
 	const baseOptions: ComposeOptions = {
@@ -11,7 +18,7 @@ describe('generateDockerCompose', () => {
 		registry: 'ghcr.io/myorg',
 		port: 3000,
 		healthCheckPath: '/health',
-		services: [],
+		services: {},
 	};
 
 	describe('api service', () => {
@@ -116,7 +123,7 @@ describe('generateDockerCompose', () => {
 		it('should add DATABASE_URL environment variable', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain(
@@ -124,21 +131,39 @@ describe('generateDockerCompose', () => {
 			);
 		});
 
-		it('should add postgres service definition', () => {
+		it('should add postgres service definition with default version', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain('postgres:');
-			expect(yaml).toContain('image: postgres:16-alpine');
+			expect(yaml).toContain(`image: ${getDefaultImage('postgres')}`);
 			expect(yaml).toContain('container_name: postgres');
+		});
+
+		it('should use custom postgres version', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { postgres: { version: '15-alpine' } },
+			});
+
+			expect(yaml).toContain('image: postgres:15-alpine');
+		});
+
+		it('should use custom postgres image (e.g., PostGIS)', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { postgres: { image: 'postgis/postgis:16-3.4-alpine' } },
+			});
+
+			expect(yaml).toContain('image: postgis/postgis:16-3.4-alpine');
 		});
 
 		it('should configure postgres environment variables', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain('POSTGRES_USER: ${POSTGRES_USER:-postgres}');
@@ -151,7 +176,7 @@ describe('generateDockerCompose', () => {
 		it('should add postgres volume', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain('- postgres_data:/var/lib/postgresql/data');
@@ -161,7 +186,7 @@ describe('generateDockerCompose', () => {
 		it('should include postgres healthcheck', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain('test: ["CMD-SHELL", "pg_isready -U postgres"]');
@@ -170,7 +195,7 @@ describe('generateDockerCompose', () => {
 		it('should add depends_on for postgres', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres'],
+				services: { postgres: true },
 			});
 
 			expect(yaml).toContain('depends_on:');
@@ -183,27 +208,45 @@ describe('generateDockerCompose', () => {
 		it('should add REDIS_URL environment variable', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['redis'],
+				services: { redis: true },
 			});
 
 			expect(yaml).toContain('- REDIS_URL=${REDIS_URL:-redis://redis:6379}');
 		});
 
-		it('should add redis service definition', () => {
+		it('should add redis service definition with default version', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['redis'],
+				services: { redis: true },
 			});
 
 			expect(yaml).toContain('redis:');
-			expect(yaml).toContain('image: redis:7-alpine');
+			expect(yaml).toContain(`image: ${getDefaultImage('redis')}`);
 			expect(yaml).toContain('container_name: redis');
+		});
+
+		it('should use custom redis version', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { redis: { version: '6-alpine' } },
+			});
+
+			expect(yaml).toContain('image: redis:6-alpine');
+		});
+
+		it('should use custom redis image (e.g., Redis Stack)', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { redis: { image: 'redis/redis-stack:latest' } },
+			});
+
+			expect(yaml).toContain('image: redis/redis-stack:latest');
 		});
 
 		it('should add redis volume', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['redis'],
+				services: { redis: true },
 			});
 
 			expect(yaml).toContain('- redis_data:/data');
@@ -213,7 +256,7 @@ describe('generateDockerCompose', () => {
 		it('should include redis healthcheck', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['redis'],
+				services: { redis: true },
 			});
 
 			expect(yaml).toContain('test: ["CMD", "redis-cli", "ping"]');
@@ -224,7 +267,7 @@ describe('generateDockerCompose', () => {
 		it('should add RABBITMQ_URL environment variable', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain(
@@ -232,21 +275,32 @@ describe('generateDockerCompose', () => {
 			);
 		});
 
-		it('should add rabbitmq service definition', () => {
+		it('should add rabbitmq service definition with default version', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain('rabbitmq:');
-			expect(yaml).toContain('image: rabbitmq:3-management-alpine');
+			expect(yaml).toContain(
+				`image: rabbitmq:${DEFAULT_SERVICE_VERSIONS.rabbitmq}`,
+			);
 			expect(yaml).toContain('container_name: rabbitmq');
+		});
+
+		it('should use custom rabbitmq version', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { rabbitmq: { version: '3.12-management-alpine' } },
+			});
+
+			expect(yaml).toContain('image: rabbitmq:3.12-management-alpine');
 		});
 
 		it('should configure rabbitmq credentials', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain('RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}');
@@ -258,7 +312,7 @@ describe('generateDockerCompose', () => {
 		it('should expose management UI port', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain('- "15672:15672"');
@@ -267,7 +321,7 @@ describe('generateDockerCompose', () => {
 		it('should add rabbitmq volume', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain('- rabbitmq_data:/var/lib/rabbitmq');
@@ -277,7 +331,7 @@ describe('generateDockerCompose', () => {
 		it('should include rabbitmq healthcheck', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['rabbitmq'],
+				services: { rabbitmq: true },
 			});
 
 			expect(yaml).toContain(
@@ -290,7 +344,7 @@ describe('generateDockerCompose', () => {
 		it('should include all services when all specified', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres', 'redis', 'rabbitmq'],
+				services: { postgres: true, redis: true, rabbitmq: true },
 			});
 
 			expect(yaml).toContain('postgres:');
@@ -301,7 +355,7 @@ describe('generateDockerCompose', () => {
 		it('should add all environment variables', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres', 'redis', 'rabbitmq'],
+				services: { postgres: true, redis: true, rabbitmq: true },
 			});
 
 			expect(yaml).toContain('DATABASE_URL=');
@@ -312,7 +366,7 @@ describe('generateDockerCompose', () => {
 		it('should add all volumes', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres', 'redis', 'rabbitmq'],
+				services: { postgres: true, redis: true, rabbitmq: true },
 			});
 
 			expect(yaml).toContain('postgres_data:');
@@ -323,12 +377,43 @@ describe('generateDockerCompose', () => {
 		it('should add depends_on for all services', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres', 'redis', 'rabbitmq'],
+				services: { postgres: true, redis: true, rabbitmq: true },
 			});
 
 			// Count occurrences of 'condition: service_healthy'
 			const matches = yaml.match(/condition: service_healthy/g);
 			expect(matches?.length).toBe(3);
+		});
+
+		it('should support mixed custom and default versions', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: {
+					postgres: { version: '15-alpine' },
+					redis: true,
+					rabbitmq: { version: '3.12-management-alpine' },
+				},
+			});
+
+			expect(yaml).toContain('image: postgres:15-alpine');
+			expect(yaml).toContain(`image: redis:${DEFAULT_SERVICE_VERSIONS.redis}`);
+			expect(yaml).toContain('image: rabbitmq:3.12-management-alpine');
+		});
+	});
+
+	describe('legacy array format', () => {
+		it('should support legacy array format with default versions', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: ['postgres', 'redis'],
+			});
+
+			expect(yaml).toContain('postgres:');
+			expect(yaml).toContain('redis:');
+			expect(yaml).toContain(
+				`image: postgres:${DEFAULT_SERVICE_VERSIONS.postgres}`,
+			);
+			expect(yaml).toContain(`image: redis:${DEFAULT_SERVICE_VERSIONS.redis}`);
 		});
 	});
 
@@ -344,12 +429,24 @@ describe('generateDockerCompose', () => {
 		it('should attach all services to app-network', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
-				services: ['postgres', 'redis'],
+				services: { postgres: true, redis: true },
 			});
 
 			// Should appear multiple times (api + postgres + redis)
 			const networkMatches = yaml.match(/- app-network/g);
 			expect(networkMatches?.length).toBeGreaterThanOrEqual(1);
+		});
+	});
+
+	describe('service exclusion', () => {
+		it('should not include services set to false', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { postgres: true, redis: false },
+			});
+
+			expect(yaml).toContain('postgres:');
+			expect(yaml).not.toContain('image: redis:');
 		});
 	});
 });

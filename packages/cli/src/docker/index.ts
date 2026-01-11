@@ -113,13 +113,17 @@ export async function dockerCommand(
 		registry: options.registry ?? dockerConfig.registry,
 		port: dockerConfig.port,
 		healthCheckPath,
-		services: dockerConfig.compose?.services ?? [],
+		services: dockerConfig.compose?.services ?? {},
 	};
 
-	const dockerCompose =
-		composeOptions.services.length > 0
-			? generateDockerCompose(composeOptions)
-			: generateMinimalDockerCompose(composeOptions);
+	// Check if there are any services configured
+	const hasServices = Array.isArray(composeOptions.services)
+		? composeOptions.services.length > 0
+		: Object.keys(composeOptions.services).length > 0;
+
+	const dockerCompose = hasServices
+		? generateDockerCompose(composeOptions)
+		: generateMinimalDockerCompose(composeOptions);
 
 	const composePath = join(dockerDir, 'docker-compose.yml');
 	await writeFile(composePath, dockerCompose);
