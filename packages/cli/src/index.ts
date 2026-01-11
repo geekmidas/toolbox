@@ -4,12 +4,19 @@ import { Command } from 'commander';
 import pkg from '../package.json';
 
 import { buildCommand } from './build/index';
+import { deployCommand, type DeployProvider } from './deploy/index';
 import { devCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
 import { openapiCommand } from './openapi';
 import { generateReactQueryCommand } from './openapi-react-query';
-import type { LegacyProvider, MainProvider } from './types';
+import {
+	secretsInitCommand,
+	secretsRotateCommand,
+	secretsSetCommand,
+	secretsShowCommand,
+} from './secrets';
+import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 
 const program = new Command();
 
@@ -60,6 +67,7 @@ program
 	)
 	.option('--production', 'Build for production (no dev tools, bundled output)')
 	.option('--skip-bundle', 'Skip bundling step in production build')
+	.option('--stage <stage>', 'Inject encrypted secrets for deployment stage')
 	.action(
 		async (options: {
 			provider?: string;
@@ -67,6 +75,7 @@ program
 			enableOpenapi?: boolean;
 			production?: boolean;
 			skipBundle?: boolean;
+			stage?: string;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -84,6 +93,7 @@ program
 						enableOpenApi: options.enableOpenapi || false,
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
+						stage: options.stage,
 					});
 				}
 				// Handle legacy providers option
@@ -96,6 +106,7 @@ program
 						enableOpenApi: options.enableOpenapi || false,
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
+						stage: options.stage,
 					});
 				}
 				// Default to config-driven build
@@ -104,6 +115,7 @@ program
 						enableOpenApi: options.enableOpenapi || false,
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
+						stage: options.stage,
 					});
 				}
 			} catch (_error) {
@@ -285,6 +297,129 @@ program
 					const registry = options.registry;
 					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
 				}
+			} catch (_error) {
+				process.exit(1);
+			}
+		},
+	);
+
+// Secrets management commands
+program
+	.command('secrets:init')
+	.description('Initialize secrets for a deployment stage')
+	.requiredOption('--stage <stage>', 'Stage name (e.g., production, staging)')
+	.option('--force', 'Overwrite existing secrets')
+	.action(async (options: { stage: string; force?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await secretsInitCommand(options);
+		} catch (_error) {
+			process.exit(1);
+		}
+	});
+
+program
+	.command('secrets:set')
+	.description('Set a custom secret for a stage')
+	.argument('<key>', 'Secret key (e.g., API_KEY)')
+	.argument('<value>', 'Secret value')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.action(async (key: string, value: string, options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await secretsSetCommand(key, value, options);
+		} catch (_error) {
+			process.exit(1);
+		}
+	});
+
+program
+	.command('secrets:show')
+	.description('Show secrets for a stage')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.option('--reveal', 'Show actual secret values (not masked)')
+	.action(async (options: { stage: string; reveal?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await secretsShowCommand(options);
+		} catch (_error) {
+			process.exit(1);
+		}
+	});
+
+program
+	.command('secrets:rotate')
+	.description('Rotate service passwords')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.option(
+		'--service <service>',
+		'Specific service to rotate (postgres, redis, rabbitmq)',
+	)
+	.action(
+		async (options: { stage: string; service?: ComposeServiceName }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsRotateCommand(options);
+			} catch (_error) {
+				process.exit(1);
+			}
+		},
+	);
+
+// Deploy command
+program
+	.command('deploy')
+	.description('Deploy application to a provider')
+	.requiredOption(
+		'--provider <provider>',
+		'Deploy provider (docker, dokploy, aws-lambda)',
+	)
+	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.option('--tag <tag>', 'Image tag (default: stage-timestamp)')
+	.option('--skip-push', 'Skip pushing image to registry')
+	.option('--skip-build', 'Skip build step (use existing build)')
+	.action(
+		async (options: {
+			provider: string;
+			stage: string;
+			tag?: string;
+			skipPush?: boolean;
+			skipBuild?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+
+				const validProviders = ['docker', 'dokploy', 'aws-lambda'];
+				if (!validProviders.includes(options.provider)) {
+					console.error(
+						`Invalid provider: ${options.provider}\n` +
+							`Valid providers: ${validProviders.join(', ')}`,
+					);
+					process.exit(1);
+				}
+
+				await deployCommand({
+					provider: options.provider as DeployProvider,
+					stage: options.stage,
+					tag: options.tag,
+					skipPush: options.skipPush,
+					skipBuild: options.skipBuild,
+				});
 			} catch (_error) {
 				process.exit(1);
 			}

@@ -18,6 +18,11 @@
 			"types": "./dist/SnifferEnvironmentParser.d.ts",
 			"import": "./dist/SnifferEnvironmentParser.mjs",
 			"require": "./dist/SnifferEnvironmentParser.cjs"
+		},
+		"./credentials": {
+			"types": "./dist/credentials.d.ts",
+			"import": "./dist/credentials.mjs",
+			"require": "./dist/credentials.cjs"
 		}
 	},
 	"repository": {

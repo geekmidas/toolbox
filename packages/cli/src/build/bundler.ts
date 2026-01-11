@@ -14,15 +14,25 @@ export interface BundleOptions {
 	sourcemap: boolean;
 	/** Packages to exclude from bundling */
 	external: string[];
+	/** Stage for secrets injection (optional) */
+	stage?: string;
+}
+
+export interface BundleResult {
+	/** Path to the bundled output */
+	outputPath: string;
+	/** Ephemeral master key for deployment (only if stage was provided) */
+	masterKey?: string;
 }
 
 /**
  * Bundle the server application using tsdown
  *
  * @param options - Bundle configuration options
+ * @returns Bundle result with output path and optional master key
  */
-export async function bundleServer(options: BundleOptions): Promise<void> {
-	const { entryPoint, outputDir, minify, sourcemap, external } = options;
+export async function bundleServer(options: BundleOptions): Promise<BundleResult> {
+	const { entryPoint, outputDir, minify, sourcemap, external, stage } = options;
 
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
@@ -60,6 +70,41 @@ export async function bundleServer(options: BundleOptions): Promise<void> {
 	// Always exclude node: builtins
 	args.push('--external', 'node:*');
 
+	// Handle secrets injection if stage is provided
+	let masterKey: string | undefined;
+
+	if (stage) {
+		const { readStageSecrets, toEmbeddableSecrets } = await import(
+			'../secrets/storage'
+		);
+		const { encryptSecrets, generateDefineOptions } = await import(
+			'../secrets/encryption'
+		);
+
+		const secrets = await readStageSecrets(stage);
+
+		if (!secrets) {
+			throw new Error(
+				`No secrets found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
+			);
+		}
+
+		// Convert to embeddable format and encrypt
+		const embeddable = toEmbeddableSecrets(secrets);
+		const encrypted = encryptSecrets(embeddable);
+		masterKey = encrypted.masterKey;
+
+		// Add define options for build-time injection
+		const defines = generateDefineOptions(encrypted);
+		for (const [key, value] of Object.entries(defines)) {
+			args.push('--define', `${key}=${value}`);
+		}
+
+		console.log(`  Secrets encrypted for stage "${stage}"`);
+	}
+
+	const mjsOutput = join(outputDir, 'server.mjs');
+
 	try {
 		// Run tsdown with command-line arguments
 		execSync(args.join(' '), {
@@ -70,7 +115,6 @@ export async function bundleServer(options: BundleOptions): Promise<void> {
 		// Rename output to .mjs for explicit ESM
 		// tsdown outputs as server.js for ESM format
 		const jsOutput = join(outputDir, 'server.js');
-		const mjsOutput = join(outputDir, 'server.mjs');
 
 		if (existsSync(jsOutput)) {
 			await rename(jsOutput, mjsOutput);
@@ -87,4 +131,9 @@ export async function bundleServer(options: BundleOptions): Promise<void> {
 			`Failed to bundle server: ${error instanceof Error ? error.message : 'Unknown error'}`,
 		);
 	}
+
+	return {
+		outputPath: mjsOutput,
+		masterKey,
+	};
 }

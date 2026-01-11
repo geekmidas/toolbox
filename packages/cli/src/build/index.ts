@@ -19,7 +19,7 @@ import {
 	type GeneratedConstruct,
 	SubscriberGenerator,
 } from '../generators';
-import type { BuildOptions, LegacyProvider, RouteInfo } from '../types';
+import type { BuildOptions, BuildResult, LegacyProvider, RouteInfo } from '../types';
 import {
 	generateAwsManifest,
 	generateServerManifest,
@@ -30,7 +30,7 @@ import type { BuildContext } from './types';
 
 const logger = console;
 
-export async function buildCommand(options: BuildOptions): Promise<void> {
+export async function buildCommand(options: BuildOptions): Promise<BuildResult> {
 	const config = await loadConfig();
 
 	// Resolve providers from new config format
@@ -126,7 +126,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 		logger.log(
 			'No endpoints, functions, crons, or subscribers found to process',
 		);
-		return;
+		return {};
 	}
 
 	// Ensure .gkm directory exists
@@ -134,8 +134,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 	await mkdir(rootOutputDir, { recursive: true });
 
 	// Build for each provider and generate per-provider manifests
+	let result: BuildResult = {};
 	for (const provider of resolved.providers) {
-		await buildForProvider(
+		const providerResult = await buildForProvider(
 			provider,
 			buildContext,
 			rootOutputDir,
@@ -149,8 +150,14 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 			allSubscribers,
 			resolved.enableOpenApi,
 			options.skipBundle ?? false,
+			options.stage,
 		);
+		// Keep the master key from the server provider
+		if (providerResult.masterKey) {
+			result = providerResult;
+		}
 	}
+	return result;
 }
 
 async function buildForProvider(
@@ -167,7 +174,8 @@ async function buildForProvider(
 	subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
 	enableOpenApi: boolean,
 	skipBundle: boolean,
-): Promise<void> {
+	stage?: string,
+): Promise<BuildResult> {
 	const outputDir = join(process.cwd(), '.gkm', provider);
 
 	// Ensure output directory exists
@@ -217,18 +225,29 @@ async function buildForProvider(
 		);
 
 		// Bundle for production if enabled
+		let masterKey: string | undefined;
 		if (context.production?.bundle && !skipBundle) {
 			logger.log(`\n📦 Bundling production server...`);
 			const { bundleServer } = await import('./bundler');
-			await bundleServer({
+			const bundleResult = await bundleServer({
 				entryPoint: join(outputDir, 'server.ts'),
 				outputDir: join(outputDir, 'dist'),
 				minify: context.production.minify,
 				sourcemap: false,
 				external: context.production.external,
+				stage,
 			});
+			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+
+			// Display master key if secrets were injected
+			if (masterKey) {
+				logger.log(`\n🔐 Secrets encrypted for deployment`);
+				logger.log(`   Deploy with: GKM_MASTER_KEY=${masterKey}`);
+			}
 		}
+
+		return { masterKey };
 	} else {
 		// For AWS providers, generate AWS manifest
 		await generateAwsManifest(
@@ -239,4 +258,6 @@ async function buildForProvider(
 			subscriberInfos,
 		);
 	}
+
+	return {};
 }

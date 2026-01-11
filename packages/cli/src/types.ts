@@ -47,6 +47,28 @@ export interface ProductionConfig {
 	optimizedHandlers?: boolean;
 }
 
+/** Service-specific configuration for docker-compose */
+export interface ServiceConfig {
+	/**
+	 * Full Docker image reference (e.g., 'postgis/postgis:16-3.4-alpine').
+	 * When specified, overrides the default image entirely.
+	 */
+	image?: string;
+	/**
+	 * Docker image version/tag (e.g., '15-alpine' for postgres).
+	 * Only used when `image` is not specified.
+	 */
+	version?: string;
+}
+
+/** Supported docker-compose service names */
+export type ComposeServiceName = 'postgres' | 'redis' | 'rabbitmq';
+
+/** Services configuration - can be boolean (use defaults) or object with version */
+export type ComposeServicesConfig = {
+	[K in ComposeServiceName]?: boolean | ServiceConfig;
+};
+
 export interface DockerConfig {
 	/** Container registry URL (e.g., 'ghcr.io/myorg') */
 	registry?: string;
@@ -58,8 +80,20 @@ export interface DockerConfig {
 	port?: number;
 	/** docker-compose services to include */
 	compose?: {
-		/** Additional services like postgres, redis */
-		services?: ('postgres' | 'redis' | 'rabbitmq')[];
+		/**
+		 * Services to include in docker-compose.
+		 * Can be an object with service configs or an array of service names (legacy).
+		 *
+		 * @example Object format (recommended)
+		 * services: {
+		 *   postgres: { version: '15-alpine' },
+		 *   redis: true,  // use default version
+		 * }
+		 *
+		 * @example Array format (legacy, uses default versions)
+		 * services: ['postgres', 'redis']
+		 */
+		services?: ComposeServicesConfig | ComposeServiceName[];
 	};
 }
 
@@ -137,6 +171,18 @@ export interface HooksConfig {
 	server?: string;
 }
 
+/** Dokploy deployment configuration */
+export interface DokployProviderConfig {
+	/** Dokploy API endpoint (e.g., 'https://dokploy.example.com') */
+	endpoint: string;
+	/** Project ID in Dokploy */
+	projectId: string;
+	/** Application ID in Dokploy */
+	applicationId: string;
+	/** Container registry (overrides docker.registry if set) */
+	registry?: string;
+}
+
 export interface ProvidersConfig {
 	aws?: {
 		apiGateway?: {
@@ -149,6 +195,8 @@ export interface ProvidersConfig {
 		};
 	};
 	server?: boolean | ServerConfig;
+	/** Dokploy deployment configuration */
+	dokploy?: boolean | DokployProviderConfig;
 }
 
 export interface GkmConfig {
@@ -247,6 +295,14 @@ export interface BuildOptions {
 	production?: boolean;
 	/** Skip bundling step in production build */
 	skipBundle?: boolean;
+	/** Stage for secrets injection (e.g., 'production', 'staging') */
+	stage?: string;
+}
+
+/** Result from build command when secrets are injected */
+export interface BuildResult {
+	/** Ephemeral master key for deployment (only if stage was provided) */
+	masterKey?: string;
 }
 
 export interface RouteInfo {
