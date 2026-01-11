@@ -11,6 +11,7 @@ import { type InitOptions, initCommand } from './init/index';
 import { openapiCommand } from './openapi';
 import { generateReactQueryCommand } from './openapi-react-query';
 import {
+	secretsImportCommand,
 	secretsInitCommand,
 	secretsRotateCommand,
 	secretsSetCommand,
@@ -372,6 +373,26 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 				await secretsRotateCommand(options);
+			} catch (_error) {
+				process.exit(1);
+			}
+		},
+	);
+
+program
+	.command('secrets:import')
+	.description('Import secrets from a JSON file')
+	.argument('<file>', 'JSON file path (e.g., secrets.json)')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.option('--no-merge', 'Replace all custom secrets instead of merging')
+	.action(
+		async (file: string, options: { stage: string; merge?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsImportCommand(file, options);
 			} catch (_error) {
 				process.exit(1);
 			}

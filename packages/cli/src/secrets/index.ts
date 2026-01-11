@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { loadConfig } from '../config';
 import type { ComposeServiceName, ComposeServicesConfig } from '../types';
 import { createStageSecrets, rotateServicePassword } from './generator';
@@ -28,6 +30,12 @@ export interface SecretsShowOptions {
 export interface SecretsRotateOptions {
 	stage: string;
 	service?: ComposeServiceName;
+}
+
+export interface SecretsImportOptions {
+	stage: string;
+	/** Merge with existing secrets (default: true) */
+	merge?: boolean;
 }
 
 /**
@@ -246,6 +254,82 @@ export async function secretsRotateCommand(
 	}
 
 	logger.log('\nUse "gkm secrets:show --stage ' + stage + '" to view new values');
+}
+
+/**
+ * Import secrets from a JSON file.
+ */
+export async function secretsImportCommand(
+	file: string,
+	options: SecretsImportOptions,
+): Promise<void> {
+	const { stage, merge = true } = options;
+
+	// Check if file exists
+	if (!existsSync(file)) {
+		logger.error(`File not found: ${file}`);
+		process.exit(1);
+	}
+
+	// Read and parse JSON file
+	let importedSecrets: Record<string, string>;
+	try {
+		const content = await readFile(file, 'utf-8');
+		importedSecrets = JSON.parse(content);
+
+		// Validate it's a flat object with string values
+		if (typeof importedSecrets !== 'object' || importedSecrets === null) {
+			throw new Error('JSON must be an object');
+		}
+
+		for (const [key, value] of Object.entries(importedSecrets)) {
+			if (typeof value !== 'string') {
+				throw new Error(`Value for "${key}" must be a string, got ${typeof value}`);
+			}
+		}
+	} catch (error) {
+		logger.error(
+			`Failed to parse JSON file: ${error instanceof Error ? error.message : 'Invalid JSON'}`,
+		);
+		process.exit(1);
+	}
+
+	// Check if secrets exist for stage
+	const secrets = await readStageSecrets(stage);
+
+	if (!secrets) {
+		logger.error(
+			`No secrets found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
+		);
+		process.exit(1);
+	}
+
+	// Merge or replace custom secrets
+	const updatedCustom = merge
+		? { ...secrets.custom, ...importedSecrets }
+		: importedSecrets;
+
+	const updated = {
+		...secrets,
+		updatedAt: new Date().toISOString(),
+		custom: updatedCustom,
+	};
+
+	await writeStageSecrets(updated);
+
+	const importedCount = Object.keys(importedSecrets).length;
+	const totalCount = Object.keys(updatedCustom).length;
+
+	logger.log(`\n✓ Imported ${importedCount} secrets for stage "${stage}"`);
+
+	if (merge && totalCount > importedCount) {
+		logger.log(`  Total custom secrets: ${totalCount}`);
+	}
+
+	logger.log('\n  Imported keys:');
+	for (const key of Object.keys(importedSecrets)) {
+		logger.log(`    - ${key}`);
+	}
 }
 
 /**
