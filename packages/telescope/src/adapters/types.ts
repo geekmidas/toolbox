@@ -27,6 +27,8 @@ export interface AdapterRequestContext {
 	ip?: string;
 	/** Request start time */
 	startTime: number;
+	/** Request body size in bytes */
+	requestSize?: number;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface AdapterResponseContext {
 	body?: unknown;
 	/** Request duration in milliseconds */
 	duration: number;
+	/** Response body size in bytes */
+	responseSize?: number;
 }
 
 /**

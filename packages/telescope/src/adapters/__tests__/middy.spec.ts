@@ -517,6 +517,124 @@ describe('Telescope Middy Middleware', () => {
 			expect(requests[0].responseBody).toBe('<html>Hello</html>');
 		});
 	});
+
+	describe('size tracking', () => {
+		it('should capture request size from Content-Length header', async () => {
+			const middleware = telescopeMiddleware(telescope);
+			const body = JSON.stringify({ name: 'John', data: 'test payload' });
+			const event = createV2Event({
+				method: 'POST',
+				path: '/api/data',
+				body,
+				headers: { 'content-length': String(Buffer.byteLength(body)) },
+			});
+			const request = {
+				event,
+				context: mockContext,
+				response: { statusCode: 200, body: '{"ok":true}' },
+				error: null,
+				internal: {},
+				__telescopeStartTime: Date.now(),
+			};
+
+			await middleware.after?.(request as any);
+
+			const requests = await storage.getRequests();
+			expect(requests[0].requestSize).toBe(Buffer.byteLength(body));
+		});
+
+		it('should capture response size from Content-Length header', async () => {
+			const middleware = telescopeMiddleware(telescope);
+			const responseBody = JSON.stringify({ users: ['alice', 'bob'] });
+			const event = createV2Event({ method: 'GET', path: '/api/users' });
+			const request = {
+				event,
+				context: mockContext,
+				response: {
+					statusCode: 200,
+					headers: { 'Content-Length': String(Buffer.byteLength(responseBody)) },
+					body: responseBody,
+				},
+				error: null,
+				internal: {},
+				__telescopeStartTime: Date.now(),
+			};
+
+			await middleware.after?.(request as any);
+
+			const requests = await storage.getRequests();
+			expect(requests[0].responseSize).toBe(Buffer.byteLength(responseBody));
+		});
+
+		it('should calculate response size from body when Content-Length not set', async () => {
+			const middleware = telescopeMiddleware(telescope);
+			const responseBody = JSON.stringify({ items: [1, 2, 3, 4, 5] });
+			const event = createV2Event({ method: 'GET', path: '/api/items' });
+			const request = {
+				event,
+				context: mockContext,
+				response: {
+					statusCode: 200,
+					body: responseBody,
+				},
+				error: null,
+				internal: {},
+				__telescopeStartTime: Date.now(),
+			};
+
+			await middleware.after?.(request as any);
+
+			const requests = await storage.getRequests();
+			expect(requests[0].responseSize).toBe(Buffer.byteLength(responseBody));
+		});
+
+		it('should handle multi-byte characters in response size', async () => {
+			const middleware = telescopeMiddleware(telescope);
+			const responseBody = JSON.stringify({ message: '你好世界' });
+			const event = createV2Event({ method: 'GET', path: '/api/unicode' });
+			const request = {
+				event,
+				context: mockContext,
+				response: {
+					statusCode: 200,
+					body: responseBody,
+				},
+				error: null,
+				internal: {},
+				__telescopeStartTime: Date.now(),
+			};
+
+			await middleware.after?.(request as any);
+
+			const requests = await storage.getRequests();
+			// UTF-8 bytes for Chinese characters are more than string length
+			expect(requests[0].responseSize).toBe(Buffer.byteLength(responseBody, 'utf8'));
+		});
+
+		it('should track request size for v1 events', async () => {
+			const middleware = telescopeMiddleware(telescope);
+			const body = JSON.stringify({ data: 'v1 payload' });
+			const event = createV1Event({
+				method: 'POST',
+				path: '/api/v1/data',
+				body,
+				headers: { 'content-length': String(Buffer.byteLength(body)) },
+			});
+			const request = {
+				event,
+				context: mockContext,
+				response: { statusCode: 201, body: '{"id":"123"}' },
+				error: null,
+				internal: {},
+				__telescopeStartTime: Date.now(),
+			};
+
+			await middleware.after?.(request as any);
+
+			const requests = await storage.getRequests();
+			expect(requests[0].requestSize).toBe(Buffer.byteLength(body));
+		});
+	});
 });
 
 // Helper functions to create mock events
@@ -529,6 +647,7 @@ function createV2Event(
 		query?: Record<string, string>;
 		queryString?: string;
 		ip?: string;
+		headers?: Record<string, string>;
 	} = {},
 ): APIGatewayProxyEventV2 {
 	return {
@@ -536,7 +655,7 @@ function createV2Event(
 		routeKey: `${options.method || 'GET'} ${options.path || '/'}`,
 		rawPath: options.path || '/',
 		rawQueryString: options.queryString || '',
-		headers: {},
+		headers: options.headers || {},
 		queryStringParameters: options.query || {},
 		body: options.body ?? null,
 		isBase64Encoded: false,
@@ -568,12 +687,13 @@ function createV1Event(
 		body?: string | null;
 		query?: Record<string, string>;
 		ip?: string;
+		headers?: Record<string, string>;
 	} = {},
 ): APIGatewayProxyEvent {
 	return {
 		httpMethod: options.method || 'GET',
 		path: options.path || '/',
-		headers: {},
+		headers: options.headers || {},
 		multiValueHeaders: {},
 		queryStringParameters: options.query || null,
 		multiValueQueryStringParameters: null,

@@ -65,6 +65,7 @@ function extractRequestData(
 	body: unknown;
 	ip?: string;
 	requestId?: string;
+	requestSize?: number;
 } {
 	const headers: Record<string, string> = {};
 	if (event.headers) {
@@ -72,6 +73,10 @@ function extractRequestData(
 			if (value) headers[key.toLowerCase()] = value;
 		}
 	}
+
+	// Get request size from Content-Length header
+	const contentLength = headers['content-length'];
+	const requestSize = contentLength ? parseInt(contentLength, 10) : undefined;
 
 	// API Gateway v2 (HTTP API)
 	if ('rawPath' in event && event.requestContext?.http) {
@@ -98,6 +103,7 @@ function extractRequestData(
 			body: parseBody(v2Event.body, v2Event.isBase64Encoded),
 			ip: v2Event.requestContext.http.sourceIp,
 			requestId: v2Event.requestContext.requestId,
+			requestSize,
 		};
 	}
 
@@ -118,6 +124,7 @@ function extractRequestData(
 		body: parseBody(v1Event.body, v1Event.isBase64Encoded),
 		ip: v1Event.requestContext?.identity?.sourceIp,
 		requestId: v1Event.requestContext?.requestId,
+		requestSize,
 	};
 }
 
@@ -147,6 +154,7 @@ function extractResponseData(response: unknown): {
 	status: number;
 	headers: Record<string, string>;
 	body: unknown;
+	responseSize?: number;
 } {
 	if (response && typeof response === 'object' && 'statusCode' in response) {
 		const res = response as {
@@ -154,10 +162,25 @@ function extractResponseData(response: unknown): {
 			headers?: Record<string, string>;
 			body?: string;
 		};
+		const headers = res.headers || {};
+		// Get response size from Content-Length header (case-insensitive)
+		const contentLengthKey = Object.keys(headers).find(
+			(k) => k.toLowerCase() === 'content-length',
+		);
+		const contentLengthValue = contentLengthKey
+			? headers[contentLengthKey]
+			: undefined;
+		// Prefer Content-Length header, fallback to body size
+		const responseSize = contentLengthValue
+			? parseInt(contentLengthValue, 10)
+			: res.body
+				? Buffer.byteLength(res.body, 'utf8')
+				: undefined;
 		return {
 			status: res.statusCode || 200,
-			headers: res.headers || {},
+			headers,
 			body: res.body ? tryParseJson(res.body) : undefined,
+			responseSize,
 		};
 	}
 
@@ -237,6 +260,8 @@ export function telescopeMiddleware(
 					responseHeaders: resData.headers,
 					responseBody: recordBody ? resData.body : undefined,
 					duration,
+					requestSize: reqData.requestSize,
+					responseSize: resData.responseSize,
 				});
 			} catch {
 				// Don't let telescope errors break the response
@@ -270,6 +295,7 @@ export function telescopeMiddleware(
 					responseHeaders: {},
 					responseBody: { error: request.error?.message },
 					duration,
+					requestSize: reqData.requestSize,
 				});
 			} catch {
 				// Don't let telescope errors mask the original error
@@ -354,6 +380,8 @@ export function createTelescopeHandler<TEvent, TResult>(
 					responseHeaders: resData.headers,
 					responseBody: recordBody ? resData.body : undefined,
 					duration,
+					requestSize: reqData.requestSize,
+					responseSize: resData.responseSize,
 				});
 			} catch {
 				// Ignore telescope errors

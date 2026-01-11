@@ -120,50 +120,65 @@ export class LambdaAdapter implements TelescopeAdapter<LambdaAdapterConfig> {
 	extractRequestContext(event: unknown): AdapterRequestContext {
 		// Handle API Gateway v1 (REST API)
 		if (isApiGatewayV1Event(event)) {
+			const headers = normalizeHeaders(event.headers || {});
+			const requestSize = headers['content-length']
+				? parseInt(headers['content-length'], 10)
+				: undefined;
 			return {
 				id: event.requestContext?.requestId || nanoid(),
 				method: event.httpMethod || 'UNKNOWN',
 				path: event.path || '/',
 				url: event.path || '/',
-				headers: normalizeHeaders(event.headers || {}),
+				headers,
 				query: event.queryStringParameters || {},
 				body: parseBody(event.body, event.isBase64Encoded),
 				ip:
 					event.requestContext?.identity?.sourceIp ||
 					event.headers?.['X-Forwarded-For']?.split(',')[0],
 				startTime: Date.now(),
+				requestSize,
 			};
 		}
 
 		// Handle API Gateway v2 (HTTP API)
 		if (isApiGatewayV2Event(event)) {
+			const headers = normalizeHeaders(event.headers || {});
+			const requestSize = headers['content-length']
+				? parseInt(headers['content-length'], 10)
+				: undefined;
 			return {
 				id: event.requestContext?.requestId || nanoid(),
 				method: event.requestContext?.http?.method || 'UNKNOWN',
 				path: event.rawPath || '/',
 				url: event.rawPath || '/',
-				headers: normalizeHeaders(event.headers || {}),
+				headers,
 				query: event.queryStringParameters || {},
 				body: parseBody(event.body, event.isBase64Encoded),
 				ip:
 					event.requestContext?.http?.sourceIp ||
 					event.headers?.['x-forwarded-for']?.split(',')[0],
 				startTime: Date.now(),
+				requestSize,
 			};
 		}
 
 		// Handle ALB event
 		if (isAlbEvent(event)) {
+			const headers = normalizeHeaders(event.headers || {});
+			const requestSize = headers['content-length']
+				? parseInt(headers['content-length'], 10)
+				: undefined;
 			return {
 				id: nanoid(),
 				method: event.httpMethod || 'UNKNOWN',
 				path: event.path || '/',
 				url: event.path || '/',
-				headers: normalizeHeaders(event.headers || {}),
+				headers,
 				query: event.queryStringParameters || {},
 				body: parseBody(event.body, event.isBase64Encoded),
 				ip: event.headers?.['x-forwarded-for']?.split(',')[0],
 				startTime: Date.now(),
+				requestSize,
 			};
 		}
 
@@ -191,11 +206,19 @@ export class LambdaAdapter implements TelescopeAdapter<LambdaAdapterConfig> {
 
 		// API Gateway response format
 		if (isApiGatewayResponse(response)) {
+			const headers = normalizeHeaders(response.headers || {});
+			// Prefer Content-Length header, fallback to body size
+			const responseSize = headers['content-length']
+				? parseInt(headers['content-length'], 10)
+				: typeof response.body === 'string'
+					? Buffer.byteLength(response.body, 'utf8')
+					: undefined;
 			return {
 				status: response.statusCode || 200,
-				headers: normalizeHeaders(response.headers || {}),
+				headers,
 				body: response.body,
 				duration,
+				responseSize,
 			};
 		}
 
@@ -269,6 +292,8 @@ export function wrapLambdaHandler<TEvent, TResult>(
 				responseHeaders: responseContext.headers,
 				responseBody: responseContext.body,
 				duration: responseContext.duration,
+				requestSize: requestContext.requestSize,
+				responseSize: responseContext.responseSize,
 			});
 
 			return result;

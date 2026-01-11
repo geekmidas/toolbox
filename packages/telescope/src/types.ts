@@ -39,6 +39,10 @@ export interface RequestEntry {
 	ip?: string;
 	userId?: string;
 	tags?: string[];
+	/** Request body size in bytes */
+	requestSize?: number;
+	/** Response body size in bytes */
+	responseSize?: number;
 }
 
 /**

@@ -61,6 +61,14 @@ export function createMiddleware(
 		});
 
 		let body: unknown;
+		let requestSize: number | undefined;
+
+		// Get request size from Content-Length header
+		const contentLength = c.req.header('content-length');
+		if (contentLength) {
+			requestSize = parseInt(contentLength, 10);
+		}
+
 		if (
 			telescope.recordBody &&
 			['POST', 'PUT', 'PATCH'].includes(c.req.method)
@@ -95,12 +103,26 @@ export function createMiddleware(
 			});
 
 			let responseBody: unknown;
+			let responseSize: number | undefined;
+
+			// Get response size - prefer Content-Length header, fallback to body size
+			const responseContentLength = c.res.headers.get('content-length');
+			if (responseContentLength) {
+				responseSize = parseInt(responseContentLength, 10);
+			}
+
 			if (telescope.recordBody) {
 				try {
 					const contentType = c.res.headers.get('content-type') || '';
 					if (contentType.includes('application/json')) {
 						const cloned = c.res.clone();
-						responseBody = await cloned.json();
+						const text = await cloned.text();
+						responseSize ??= Buffer.byteLength(text, 'utf8');
+						try {
+							responseBody = JSON.parse(text);
+						} catch {
+							responseBody = text;
+						}
 					}
 				} catch {
 					// Ignore body parsing errors
@@ -119,6 +141,8 @@ export function createMiddleware(
 				responseBody,
 				duration,
 				ip,
+				requestSize,
+				responseSize,
 			});
 
 			// Store context for access by other middleware

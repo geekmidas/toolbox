@@ -177,6 +177,56 @@ describe('Hono Adapter', () => {
 
 			noBody.destroy();
 		});
+
+		it('should capture request size from Content-Length header', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.post('/api/data', async (c) => {
+				await c.req.json();
+				return c.json({ ok: true });
+			});
+
+			const body = JSON.stringify({ name: 'John', data: 'test' });
+			await app.request('/api/data', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': String(Buffer.byteLength(body)),
+				},
+				body,
+			});
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].requestSize).toBe(Buffer.byteLength(body));
+		});
+
+		it('should capture response size from body when Content-Length not set', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.get('/api/data', (c) => c.json({ users: ['alice', 'bob', 'charlie'] }));
+
+			await app.request('/api/data');
+
+			const requests = await telescope.getRequests();
+			expect(requests[0].responseSize).toBeGreaterThan(0);
+			// The response body is '{"users":["alice","bob","charlie"]}'
+			expect(requests[0].responseSize).toBe(
+				Buffer.byteLength(JSON.stringify({ users: ['alice', 'bob', 'charlie'] })),
+			);
+		});
+
+		it('should handle multi-byte characters in size calculation', async () => {
+			const app = new Hono();
+			app.use('*', createMiddleware(telescope));
+			app.get('/api/unicode', (c) => c.json({ message: '你好世界' }));
+
+			await app.request('/api/unicode');
+
+			const requests = await telescope.getRequests();
+			// UTF-8 bytes for Chinese characters are more than string length
+			const expectedBody = JSON.stringify({ message: '你好世界' });
+			expect(requests[0].responseSize).toBe(Buffer.byteLength(expectedBody, 'utf8'));
+		});
 	});
 
 	describe('createUI', () => {
