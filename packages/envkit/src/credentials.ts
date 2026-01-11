@@ -12,8 +12,9 @@ const AUTH_TAG_LENGTH = 16;
 
 /**
  * Decrypt credentials from encrypted payload.
+ * Exported for testing purposes.
  */
-function decryptCredentials(
+export function decryptCredentials(
 	encrypted: string,
 	iv: string,
 	masterKey: string,
