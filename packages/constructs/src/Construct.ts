@@ -75,7 +75,7 @@ export abstract class Construct<
 				// Sniff the service for env vars
 				const sniffer = new SnifferEnvironmentParser();
 				try {
-					const result = service.register({ envParser: sniffer as any });
+					const result = service.register(sniffer as any);
 
 					// Await if it's a Promise (async services)
 					if (result && typeof result === 'object' && 'then' in result) {
