@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getDokployCredentials, getDokployToken } from '../auth';
+import {
+	getDokployCredentials,
+	getDokployRegistryId,
+	getDokployToken,
+	storeDokployRegistryId,
+} from '../auth';
 import { DokployApi } from './dokploy-api';
 import type { DokployDeployConfig } from './types';
 
@@ -16,8 +21,23 @@ export interface DeployInitOptions {
 	appName: string;
 	/** Use existing project ID instead of creating/finding */
 	projectId?: string;
-	/** Registry ID in Dokploy (optional) */
+	/** Registry ID in Dokploy (optional, uses stored if available) */
 	registryId?: string;
+}
+
+export interface RegistrySetupOptions {
+	/** Dokploy endpoint URL (optional if logged in) */
+	endpoint?: string;
+	/** Registry name (for display in Dokploy) */
+	registryName: string;
+	/** Registry URL (e.g., ghcr.io, docker.io) */
+	registryUrl: string;
+	/** Registry username */
+	username: string;
+	/** Registry password or token */
+	password: string;
+	/** Image prefix (optional, e.g., org-name) */
+	imagePrefix?: string;
 }
 
 /**
@@ -284,12 +304,18 @@ export async function deployListCommand(options: {
 
 		if (registries.length === 0) {
 			logger.log('   No registries configured');
-			logger.log('   Add a registry in Dokploy: Settings > Docker Registry');
+			logger.log('   Run "gkm registry:setup" to configure a registry');
 			return;
 		}
 
+		const storedRegistryId = await getDokployRegistryId();
+
 		for (const registry of registries) {
-			logger.log(`\n   ${registry.registryName} (${registry.registryId})`);
+			const isDefault = registry.registryId === storedRegistryId;
+			const marker = isDefault ? ' (default)' : '';
+			logger.log(
+				`\n   ${registry.registryName}${marker} (${registry.registryId})`,
+			);
 			logger.log(`     URL: ${registry.registryUrl}`);
 			logger.log(`     Username: ${registry.username}`);
 			if (registry.imagePrefix) {
@@ -297,4 +323,109 @@ export async function deployListCommand(options: {
 			}
 		}
 	}
+}
+
+/**
+ * Setup a Docker registry in Dokploy
+ */
+export async function registrySetupCommand(
+	options: RegistrySetupOptions,
+): Promise<string> {
+	const { registryName, registryUrl, username, password, imagePrefix } =
+		options;
+
+	const endpoint = await getEndpoint(options.endpoint);
+	const api = await createApi(endpoint);
+
+	logger.log(`\n🐳 Setting up Docker registry in Dokploy...`);
+	logger.log(`   Endpoint: ${endpoint}`);
+
+	// Check if registry with same URL already exists
+	const existingRegistries = await api.listRegistries();
+	const existing = existingRegistries.find(
+		(r) =>
+			r.registryUrl === registryUrl ||
+			r.registryName.toLowerCase() === registryName.toLowerCase(),
+	);
+
+	let registryId: string;
+
+	if (existing) {
+		logger.log(`\n📋 Found existing registry: ${existing.registryName}`);
+		logger.log(`   Updating credentials...`);
+
+		await api.updateRegistry(existing.registryId, {
+			registryName,
+			username,
+			password,
+			imagePrefix,
+		});
+
+		registryId = existing.registryId;
+		logger.log(`   ✓ Registry updated: ${registryId}`);
+	} else {
+		logger.log(`\n📦 Creating registry: ${registryName}`);
+
+		const registry = await api.createRegistry(
+			registryName,
+			registryUrl,
+			username,
+			password,
+			{ imagePrefix },
+		);
+
+		registryId = registry.registryId;
+		logger.log(`   ✓ Registry created: ${registryId}`);
+	}
+
+	// Store registry ID in credentials
+	await storeDokployRegistryId(registryId);
+	logger.log(`\n💾 Saved registry ID to ~/.gkm/credentials.json`);
+
+	logger.log(`\n✅ Registry setup complete!`);
+	logger.log(`\n📋 Registry Details:`);
+	logger.log(`   ID: ${registryId}`);
+	logger.log(`   Name: ${registryName}`);
+	logger.log(`   URL: ${registryUrl}`);
+	logger.log(`   Username: ${username}`);
+	if (imagePrefix) {
+		logger.log(`   Prefix: ${imagePrefix}`);
+	}
+
+	logger.log(`\n📝 The registry ID is now stored and will be used automatically`);
+	logger.log(`   when deploying with "gkm deploy --provider dokploy"`);
+
+	return registryId;
+}
+
+/**
+ * Use an existing registry (set as default)
+ */
+export async function registryUseCommand(options: {
+	endpoint?: string;
+	registryId: string;
+}): Promise<void> {
+	const { registryId } = options;
+
+	const endpoint = await getEndpoint(options.endpoint);
+	const api = await createApi(endpoint);
+
+	logger.log(`\n🔧 Setting default registry...`);
+
+	// Verify the registry exists
+	try {
+		const registry = await api.getRegistry(registryId);
+		logger.log(`   Found registry: ${registry.registryName}`);
+	} catch {
+		throw new Error(
+			`Registry not found: ${registryId}\n` +
+				'Run "gkm deploy:list registries" to see available registries.',
+		);
+	}
+
+	// Store registry ID in credentials
+	await storeDokployRegistryId(registryId);
+
+	logger.log(`\n✅ Default registry set: ${registryId}`);
+	logger.log(`   This registry will be used for future deployments.`);
 }
