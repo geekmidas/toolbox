@@ -373,6 +373,21 @@ describe('SubscriberGenerator', () => {
 			);
 		});
 
+		it('should return empty array for unsupported provider', async () => {
+			const constructs = [
+				createSubscriberConstruct('testSubscriber', ['test.event']),
+			];
+
+			const subscriberInfos = await generator.build(
+				context,
+				constructs,
+				outputDir,
+				{ provider: 'unsupported' as any },
+			);
+
+			expect(subscriberInfos).toEqual([]);
+		});
+
 		it('should generate handler files that can be imported', async () => {
 			const constructs = [
 				createSubscriberConstruct('validSubscriber', ['valid.event']),
