@@ -390,4 +390,149 @@ describe('EndpointGenerator', () => {
 
 		logSpy.mockRestore();
 	});
+
+	itWithDir(
+		'should generate production app file when production mode is enabled',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			const productionContext = {
+				...context,
+				production: {
+					enabled: true,
+					healthCheck: '/health',
+					gracefulShutdown: true,
+					openapi: false,
+					subscribers: 'exclude' as const,
+					optimizedHandlers: false,
+				},
+			};
+
+			await generator.build(productionContext, constructs, outputDir, {
+				provider: 'server',
+			});
+
+			const appPath = join(outputDir, 'app.ts');
+			const appContent = await readFile(appPath, 'utf-8');
+
+			expect(appContent).toContain('Generated production server application');
+			expect(appContent).toContain("honoApp.get('/health'");
+			expect(appContent).toContain("honoApp.get('/ready'");
+			expect(appContent).toContain('Graceful shutdown initiated');
+
+			// Check server.ts entry point was generated
+			const serverPath = join(outputDir, 'server.ts');
+			const serverContent = await readFile(serverPath, 'utf-8');
+			expect(serverContent).toContain('Production server entry point');
+			expect(serverContent).toContain("import { serve } from '@hono/node-server'");
+		},
+	);
+
+	itWithDir(
+		'should generate production app with subscribers when include option is set',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			const productionContext = {
+				...context,
+				production: {
+					enabled: true,
+					healthCheck: '/health',
+					gracefulShutdown: false,
+					openapi: true,
+					subscribers: 'include' as const,
+					optimizedHandlers: false,
+				},
+			};
+
+			await generator.build(productionContext, constructs, outputDir, {
+				provider: 'server',
+			});
+
+			const appPath = join(outputDir, 'app.ts');
+			const appContent = await readFile(appPath, 'utf-8');
+
+			expect(appContent).toContain("import { setupSubscribers }");
+			expect(appContent).toContain('Start subscribers in background');
+			expect(appContent).toContain('setupEndpoints(honoApp, envParser, logger, true)');
+		},
+	);
+
+	itWithDir(
+		'should log aws-lambda handler generation for each route',
+		async ({ dir }) => {
+			const logSpy = vi.spyOn(console, 'log');
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(context, constructs, outputDir, {
+				provider: 'aws-lambda',
+			});
+
+			expect(logSpy).toHaveBeenCalledWith('Generated handler for GET /test');
+			logSpy.mockRestore();
+		},
+	);
+
+	itWithDir(
+		'should log apigatewayv2 handler generation for each route',
+		async ({ dir }) => {
+			const logSpy = vi.spyOn(console, 'log');
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/api/users',
+				'POST',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(context, constructs, outputDir, {
+				provider: 'aws-apigatewayv2',
+			});
+
+			expect(logSpy).toHaveBeenCalledWith('Generated handler for POST /api/users');
+			logSpy.mockRestore();
+		},
+	);
 });
