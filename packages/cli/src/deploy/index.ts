@@ -80,8 +80,10 @@ async function ensureDokploySetup(
 	let creds = await getDokployCredentials();
 
 	if (!creds) {
-		logger.log('\n📋 Dokploy credentials not found. Let\'s set them up.');
-		const endpoint = await prompt('Dokploy URL (e.g., https://dokploy.example.com): ');
+		logger.log("\n📋 Dokploy credentials not found. Let's set them up.");
+		const endpoint = await prompt(
+			'Dokploy URL (e.g., https://dokploy.example.com): ',
+		);
 		const normalizedEndpoint = endpoint.replace(/\/$/, '');
 
 		try {
@@ -90,7 +92,9 @@ async function ensureDokploySetup(
 			throw new Error('Invalid URL format');
 		}
 
-		logger.log(`\nGenerate a token at: ${normalizedEndpoint}/settings/profile\n`);
+		logger.log(
+			`\nGenerate a token at: ${normalizedEndpoint}/settings/profile\n`,
+		);
 		const token = await prompt('API Token: ', true);
 
 		logger.log('\nValidating credentials...');
@@ -145,7 +149,9 @@ async function ensureDokploySetup(
 	);
 
 	if (project) {
-		logger.log(`   Found existing project: ${project.name} (${project.projectId})`);
+		logger.log(
+			`   Found existing project: ${project.name} (${project.projectId})`,
+		);
 	} else {
 		logger.log(`   Creating project: ${projectName}`);
 		project = await api.createProject(projectName);
@@ -220,7 +226,9 @@ async function ensureDokploySetup(
 			await storeDokployRegistryId(registryId);
 			logger.log(`   ✓ Registry created: ${registryId}`);
 		} else {
-			logger.log('   ⚠ No registry configured. Set docker.registry in gkm.config.ts');
+			logger.log(
+				'   ⚠ No registry configured. Set docker.registry in gkm.config.ts',
+			);
 		}
 	} else {
 		logger.log(`   Using stored registry: ${registryId}`);

@@ -392,7 +392,9 @@ export async function registrySetupCommand(
 		logger.log(`   Prefix: ${imagePrefix}`);
 	}
 
-	logger.log(`\n📝 The registry ID is now stored and will be used automatically`);
+	logger.log(
+		`\n📝 The registry ID is now stored and will be used automatically`,
+	);
 	logger.log(`   when deploying with "gkm deploy --provider dokploy"`);
 
 	return registryId;

@@ -79,7 +79,9 @@ export async function deployDokploy(
 			registryOptions.username = config.registryCredentials.username;
 			registryOptions.password = config.registryCredentials.password;
 			registryOptions.registryUrl = config.registryCredentials.registryUrl;
-			logger.log(`  Using registry credentials for: ${config.registryCredentials.registryUrl}`);
+			logger.log(
+				`  Using registry credentials for: ${config.registryCredentials.registryUrl}`,
+			);
 		} else {
 			// Try environment variables
 			const username = process.env.DOCKER_REGISTRY_USERNAME;
