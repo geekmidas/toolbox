@@ -26,7 +26,7 @@ export interface LogoutOptions {
 /**
  * Validate Dokploy token by making a test API call
  */
-async function validateDokployToken(
+export async function validateDokployToken(
 	endpoint: string,
 	token: string,
 ): Promise<boolean> {
@@ -203,7 +203,7 @@ export async function whoamiCommand(): Promise<void> {
 /**
  * Mask a token for display
  */
-function maskToken(token: string): string {
+export function maskToken(token: string): string {
 	if (token.length <= 8) {
 		return '****';
 	}
