@@ -139,8 +139,11 @@ export class DokployApi {
 	async createProject(
 		name: string,
 		description?: string,
-	): Promise<DokployProject> {
-		return this.post<DokployProject>('project.create', {
+	): Promise<{ project: DokployProject; environment: DokployEnvironment }> {
+		return this.post<{
+			project: DokployProject;
+			environment: DokployEnvironment;
+		}>('project.create', {
 			name,
 			description: description ?? `Created by gkm CLI`,
 		});
