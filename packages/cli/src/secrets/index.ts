@@ -41,7 +41,7 @@ export interface SecretsImportOptions {
 /**
  * Extract service names from compose config.
  */
-function getServicesFromConfig(
+export function getServicesFromConfig(
 	services: ComposeServicesConfig | ComposeServiceName[] | undefined,
 ): ComposeServiceName[] {
 	if (!services) {
@@ -364,7 +364,7 @@ export async function secretsImportCommand(
 /**
  * Mask password in a URL for display.
  */
-function maskUrl(url: string): string {
+export function maskUrl(url: string): string {
 	try {
 		const parsed = new URL(url);
 		if (parsed.password) {
