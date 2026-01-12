@@ -122,7 +122,9 @@ program
 					});
 				}
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Command failed');
+				console.error(
+					error instanceof Error ? error.message : 'Command failed',
+				);
 				process.exit(1);
 			}
 		},
@@ -223,7 +225,9 @@ program
 				}
 				await generateReactQueryCommand(options);
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Command failed');
+				console.error(
+					error instanceof Error ? error.message : 'Command failed',
+				);
 				process.exit(1);
 			}
 		},
@@ -306,7 +310,9 @@ program
 					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
 				}
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Command failed');
+				console.error(
+					error instanceof Error ? error.message : 'Command failed',
+				);
 				process.exit(1);
 			}
 		},
@@ -350,7 +356,9 @@ program
 				}
 				await secretsSetCommand(key, value, options);
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Command failed');
+				console.error(
+					error instanceof Error ? error.message : 'Command failed',
+				);
 				process.exit(1);
 			}
 		},
@@ -460,9 +468,7 @@ program
 					skipBuild: options.skipBuild,
 				});
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Deploy failed',
-				);
+				console.error(error instanceof Error ? error.message : 'Deploy failed');
 				process.exit(1);
 			}
 		},

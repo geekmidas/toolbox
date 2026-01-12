@@ -190,7 +190,11 @@ async function ensureDokploySetup(
 	} else {
 		// Create new application
 		logger.log(`   Creating application: ${appName}`);
-		const app = await api.createApplication(appName, project.projectId, environmentId);
+		const app = await api.createApplication(
+			appName,
+			project.projectId,
+			environmentId,
+		);
 		applicationId = app.applicationId;
 		logger.log(`   ✓ Created application: ${applicationId}`);
 	}
