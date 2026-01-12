@@ -14,6 +14,11 @@ export default defineConfig({
 	env: ['.env', '.env.example'],
 	openapi: true,
 	providers: {
+		dokploy: {
+			endpoint: 'https://prod.traflabs.io',
+			projectId: '_ojtF2yy4hNMH11Y3hasi',
+			applicationId: '5sEnezwz_AXyMEKXSYFUn',
+		},
 		aws: {
 			apiGateway: {
 				v2: true,
