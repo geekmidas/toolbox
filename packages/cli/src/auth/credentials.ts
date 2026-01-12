@@ -12,6 +12,8 @@ export interface StoredCredentials {
 		token: string;
 		/** Dokploy endpoint URL */
 		endpoint: string;
+		/** Registry ID in Dokploy (for Docker image pulls) */
+		registryId?: string;
 		/** When the credentials were stored */
 		storedAt: string;
 	};
@@ -112,6 +114,7 @@ export async function getDokployCredentials(
 ): Promise<{
 	token: string;
 	endpoint: string;
+	registryId?: string;
 } | null> {
 	const credentials = await readCredentials(options);
 
@@ -122,6 +125,7 @@ export async function getDokployCredentials(
 	return {
 		token: credentials.dokploy.token,
 		endpoint: credentials.dokploy.endpoint,
+		registryId: credentials.dokploy.registryId,
 	};
 }
 
@@ -184,4 +188,33 @@ export async function getDokployEndpoint(
 ): Promise<string | null> {
 	const stored = await getDokployCredentials(options);
 	return stored?.endpoint ?? null;
+}
+
+/**
+ * Store Dokploy registry ID
+ */
+export async function storeDokployRegistryId(
+	registryId: string,
+	options?: CredentialOptions,
+): Promise<void> {
+	const credentials = await readCredentials(options);
+
+	if (!credentials.dokploy) {
+		throw new Error(
+			'Dokploy credentials not found. Run "gkm login --service dokploy" first.',
+		);
+	}
+
+	credentials.dokploy.registryId = registryId;
+	await writeCredentials(credentials, options);
+}
+
+/**
+ * Get Dokploy registry ID from stored credentials
+ */
+export async function getDokployRegistryId(
+	options?: CredentialOptions,
+): Promise<string | null> {
+	const stored = await getDokployCredentials(options);
+	return stored?.registryId ?? null;
 }

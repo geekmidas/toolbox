@@ -226,5 +226,8 @@ export function maskToken(token: string): string {
 export {
 	getDokployCredentials,
 	getDokployEndpoint,
+	getDokployRegistryId,
 	getDokployToken,
+	storeDokployCredentials,
+	storeDokployRegistryId,
 } from './credentials';
