@@ -128,7 +128,9 @@ export class DokployApi {
 	 * Get a single project by ID
 	 */
 	async getProject(projectId: string): Promise<DokployProjectDetails> {
-		return this.get<DokployProjectDetails>(`project.one?projectId=${projectId}`);
+		return this.get<DokployProjectDetails>(
+			`project.one?projectId=${projectId}`,
+		);
 	}
 
 	/**
@@ -199,10 +201,7 @@ export class DokployApi {
 	/**
 	 * Save environment variables for an application
 	 */
-	async saveApplicationEnv(
-		applicationId: string,
-		env: string,
-	): Promise<void> {
+	async saveApplicationEnv(applicationId: string, env: string): Promise<void> {
 		await this.post('application.saveEnvironment', {
 			applicationId,
 			env,
@@ -330,7 +329,8 @@ export class DokployApi {
 			name,
 			projectId,
 			environmentId,
-			appName: options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+			appName:
+				options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
 			databaseName: options?.databaseName ?? 'app',
 			databaseUser: options?.databaseUser ?? 'postgres',
 			databasePassword: options?.databasePassword,
@@ -402,7 +402,8 @@ export class DokployApi {
 			name,
 			projectId,
 			environmentId,
-			appName: options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+			appName:
+				options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
 			databasePassword: options?.databasePassword,
 			dockerImage: options?.dockerImage ?? 'redis:7-alpine',
 			description: options?.description ?? `Redis instance for ${name}`,
