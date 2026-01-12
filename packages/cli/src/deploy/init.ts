@@ -197,8 +197,8 @@ export async function deployInitCommand(
 			logger.log(`   Found existing project: ${projectId}`);
 		} else {
 			logger.log(`   Creating new project...`);
-			const project = await api.createProject(projectName);
-			projectId = project.projectId;
+			const result = await api.createProject(projectName);
+			projectId = result.project.projectId;
 			logger.log(`   ✓ Created project: ${projectId}`);
 		}
 	}
