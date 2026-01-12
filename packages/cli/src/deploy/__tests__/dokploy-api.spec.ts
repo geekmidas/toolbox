@@ -67,7 +67,10 @@ describe('DokployApi', () => {
 		it('should throw DokployApiError on non-ok response', async () => {
 			server.use(
 				http.get(`${BASE_URL}/api/project.all`, () => {
-					return HttpResponse.json({ message: 'Unauthorized' }, { status: 401 });
+					return HttpResponse.json(
+						{ message: 'Unauthorized' },
+						{ status: 401 },
+					);
 				}),
 			);
 
@@ -136,7 +139,10 @@ describe('DokployApi', () => {
 		it('should return false for invalid token', async () => {
 			server.use(
 				http.get(`${BASE_URL}/api/project.all`, () => {
-					return HttpResponse.json({ message: 'Unauthorized' }, { status: 401 });
+					return HttpResponse.json(
+						{ message: 'Unauthorized' },
+						{ status: 401 },
+					);
 				}),
 			);
 
@@ -196,7 +202,10 @@ describe('DokployApi', () => {
 				}),
 			);
 
-			const result = await api.createProject('New Project', 'Custom description');
+			const result = await api.createProject(
+				'New Project',
+				'Custom description',
+			);
 
 			expect(result.projectId).toBe('proj_new');
 			expect(capturedBody).toMatchObject({
