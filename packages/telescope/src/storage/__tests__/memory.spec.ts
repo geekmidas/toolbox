@@ -408,4 +408,282 @@ describe('InMemoryStorage', () => {
 			expect(stats.logs).toBe(0);
 		});
 	});
+
+	describe('bulk operations', () => {
+		it('should save multiple requests at once', async () => {
+			await storage.saveRequests([
+				{
+					id: 'req-1',
+					method: 'GET',
+					path: '/api/a',
+					url: 'http://localhost/api/a',
+					headers: {},
+					query: {},
+					status: 200,
+					responseHeaders: {},
+					duration: 10,
+					timestamp: new Date(),
+				},
+				{
+					id: 'req-2',
+					method: 'POST',
+					path: '/api/b',
+					url: 'http://localhost/api/b',
+					headers: {},
+					query: {},
+					status: 201,
+					responseHeaders: {},
+					duration: 20,
+					timestamp: new Date(),
+				},
+			]);
+
+			const requests = await storage.getRequests();
+			expect(requests).toHaveLength(2);
+		});
+
+		it('should save multiple exceptions at once', async () => {
+			await storage.saveExceptions([
+				{
+					id: 'exc-1',
+					name: 'Error',
+					message: 'First',
+					stack: [],
+					timestamp: new Date(),
+					handled: false,
+				},
+				{
+					id: 'exc-2',
+					name: 'Error',
+					message: 'Second',
+					stack: [],
+					timestamp: new Date(),
+					handled: true,
+				},
+			]);
+
+			const exceptions = await storage.getExceptions();
+			expect(exceptions).toHaveLength(2);
+		});
+
+		it('should save multiple logs at once', async () => {
+			await storage.saveLogs([
+				{ id: 'log-1', level: 'info', message: 'First', timestamp: new Date() },
+				{ id: 'log-2', level: 'error', message: 'Second', timestamp: new Date() },
+			]);
+
+			const logs = await storage.getLogs();
+			expect(logs).toHaveLength(2);
+		});
+	});
+
+	describe('request filters', () => {
+		it('should filter by HTTP method', async () => {
+			await storage.saveRequest({
+				id: 'req-1',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-2',
+				method: 'POST',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 201,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+
+			const getRequests = await storage.getRequests({ method: 'GET' });
+			expect(getRequests).toHaveLength(1);
+			expect(getRequests[0].id).toBe('req-1');
+		});
+
+		it('should filter by exact status code', async () => {
+			await storage.saveRequest({
+				id: 'req-1',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-2',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 404,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+
+			const notFoundRequests = await storage.getRequests({ status: '404' });
+			expect(notFoundRequests).toHaveLength(1);
+			expect(notFoundRequests[0].id).toBe('req-2');
+		});
+
+		it('should filter by status category (2xx)', async () => {
+			await storage.saveRequest({
+				id: 'req-1',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-2',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 201,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-3',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 500,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+
+			const successRequests = await storage.getRequests({ status: '2xx' });
+			expect(successRequests).toHaveLength(2);
+		});
+
+		it('should filter by status category (5xx)', async () => {
+			await storage.saveRequest({
+				id: 'req-1',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-2',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 500,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+			await storage.saveRequest({
+				id: 'req-3',
+				method: 'GET',
+				path: '/api',
+				url: 'http://localhost/api',
+				headers: {},
+				query: {},
+				status: 503,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+
+			const errorRequests = await storage.getRequests({ status: '5xx' });
+			expect(errorRequests).toHaveLength(2);
+		});
+	});
+
+	describe('log filters', () => {
+		it('should filter logs by level', async () => {
+			await storage.saveLog({
+				id: 'log-1',
+				level: 'info',
+				message: 'Info message',
+				timestamp: new Date(),
+			});
+			await storage.saveLog({
+				id: 'log-2',
+				level: 'error',
+				message: 'Error message',
+				timestamp: new Date(),
+			});
+			await storage.saveLog({
+				id: 'log-3',
+				level: 'error',
+				message: 'Another error',
+				timestamp: new Date(),
+			});
+
+			const errorLogs = await storage.getLogs({ level: 'error' });
+			expect(errorLogs).toHaveLength(2);
+		});
+	});
+
+	describe('enforceLimit', () => {
+		it('should enforce limit on exceptions', async () => {
+			const smallStorage = new InMemoryStorage({ maxEntries: 3 });
+
+			for (let i = 0; i < 5; i++) {
+				await smallStorage.saveException({
+					id: `exc-${i}`,
+					name: 'Error',
+					message: `Error ${i}`,
+					stack: [],
+					timestamp: new Date(Date.now() + i * 1000),
+					handled: false,
+				});
+			}
+
+			const exceptions = await smallStorage.getExceptions();
+			expect(exceptions).toHaveLength(3);
+		});
+
+		it('should enforce limit on logs', async () => {
+			const smallStorage = new InMemoryStorage({ maxEntries: 3 });
+
+			for (let i = 0; i < 5; i++) {
+				await smallStorage.saveLog({
+					id: `log-${i}`,
+					level: 'info',
+					message: `Log ${i}`,
+					timestamp: new Date(Date.now() + i * 1000),
+				});
+			}
+
+			const logs = await smallStorage.getLogs();
+			expect(logs).toHaveLength(3);
+		});
+	});
 });
