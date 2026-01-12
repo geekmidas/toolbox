@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getDokployCredentials, getDokployToken } from '../auth';
+import { DokployApi } from './dokploy-api';
 import type { DokployDeployConfig } from './types';
 
 const logger = console;
@@ -19,35 +20,6 @@ export interface DeployInitOptions {
 	registryId?: string;
 }
 
-interface DokployProject {
-	projectId: string;
-	name: string;
-	description: string | null;
-	createdAt: string;
-	adminId: string;
-	environments?: Array<{
-		environmentId: string;
-		name: string;
-		description: string | null;
-	}>;
-}
-
-interface DokployApplication {
-	applicationId: string;
-	name: string;
-	appName: string;
-	projectId: string;
-	environmentId?: string;
-}
-
-interface DokployRegistry {
-	registryId: string;
-	registryName: string;
-	registryUrl: string;
-	username: string;
-	imagePrefix: string | null;
-}
-
 /**
  * Get the Dokploy API token from stored credentials or environment
  */
@@ -63,169 +35,30 @@ async function getApiToken(): Promise<string> {
 }
 
 /**
- * Make a request to the Dokploy API
+ * Get Dokploy endpoint from options or stored credentials
  */
-async function dokployRequest<T>(
-	method: 'GET' | 'POST',
-	endpoint: string,
-	baseUrl: string,
-	token: string,
-	body?: Record<string, unknown>,
-): Promise<T> {
-	const url = `${baseUrl}/api/${endpoint}`;
-
-	const response = await fetch(url, {
-		method,
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
-		body: body ? JSON.stringify(body) : undefined,
-	});
-
-	if (!response.ok) {
-		let errorMessage = `Dokploy API error: ${response.status} ${response.statusText}`;
-
-		try {
-			const errorBody = (await response.json()) as { message?: string };
-			if (errorBody.message) {
-				errorMessage = `Dokploy API error: ${errorBody.message}`;
-			}
-		} catch {
-			// Ignore JSON parse errors
-		}
-
-		throw new Error(errorMessage);
+async function getEndpoint(providedEndpoint?: string): Promise<string> {
+	if (providedEndpoint) {
+		return providedEndpoint;
 	}
 
-	// Handle empty responses
-	const text = await response.text();
-	if (!text) {
-		return {} as T;
+	const stored = await getDokployCredentials();
+	if (stored) {
+		return stored.endpoint;
 	}
 
-	return JSON.parse(text) as T;
-}
-
-/**
- * Get all projects from Dokploy
- */
-async function getProjects(
-	baseUrl: string,
-	token: string,
-): Promise<DokployProject[]> {
-	return dokployRequest<DokployProject[]>('GET', 'project.all', baseUrl, token);
-}
-
-/**
- * Create a new project in Dokploy
- */
-async function createProject(
-	baseUrl: string,
-	token: string,
-	name: string,
-	description?: string,
-): Promise<DokployProject> {
-	return dokployRequest<DokployProject>(
-		'POST',
-		'project.create',
-		baseUrl,
-		token,
-		{
-			name,
-			description: description || `Created by gkm CLI`,
-		},
+	throw new Error(
+		'Dokploy endpoint not specified.\n' +
+			'Either run "gkm login --service dokploy" first, or provide --endpoint.',
 	);
 }
 
 /**
- * Get project by ID to get environment info
+ * Create a Dokploy API client
  */
-async function getProject(
-	baseUrl: string,
-	token: string,
-	projectId: string,
-): Promise<DokployProject> {
-	return dokployRequest<DokployProject>('POST', 'project.one', baseUrl, token, {
-		projectId,
-	});
-}
-
-/**
- * Create a new application in Dokploy
- */
-async function createApplication(
-	baseUrl: string,
-	token: string,
-	name: string,
-	projectId: string,
-): Promise<DokployApplication> {
-	// First get the project to find its environment ID
-	const project = await getProject(baseUrl, token, projectId);
-
-	// Use the first environment or create one
-	let environmentId: string;
-
-	const firstEnv = project.environments?.[0];
-	if (firstEnv) {
-		environmentId = firstEnv.environmentId;
-	} else {
-		// Create a default environment
-		const env = await dokployRequest<{ environmentId: string }>(
-			'POST',
-			'environment.create',
-			baseUrl,
-			token,
-			{
-				projectId,
-				name: 'production',
-				description: 'Production environment',
-			},
-		);
-		environmentId = env.environmentId;
-	}
-
-	return dokployRequest<DokployApplication>(
-		'POST',
-		'application.create',
-		baseUrl,
-		token,
-		{
-			name,
-			projectId,
-			environmentId,
-		},
-	);
-}
-
-/**
- * Configure application for Docker registry deployment
- */
-async function configureApplicationRegistry(
-	baseUrl: string,
-	token: string,
-	applicationId: string,
-	registryId: string,
-): Promise<void> {
-	await dokployRequest('POST', 'application.update', baseUrl, token, {
-		applicationId,
-		registryId,
-	});
-}
-
-/**
- * Get available registries
- */
-async function getRegistries(
-	baseUrl: string,
-	token: string,
-): Promise<DokployRegistry[]> {
-	return dokployRequest<DokployRegistry[]>(
-		'GET',
-		'registry.all',
-		baseUrl,
-		token,
-	);
+async function createApi(endpoint: string): Promise<DokployApi> {
+	const token = await getApiToken();
+	return new DokployApi({ baseUrl: endpoint, token });
 }
 
 /**
@@ -319,24 +152,11 @@ export async function deployInitCommand(
 		registryId,
 	} = options;
 
-	// Get endpoint from options or stored credentials
-	let endpoint = options.endpoint;
-	if (!endpoint) {
-		const stored = await getDokployCredentials();
-		if (stored) {
-			endpoint = stored.endpoint;
-		} else {
-			throw new Error(
-				'Dokploy endpoint not specified.\n' +
-					'Either run "gkm login --service dokploy" first, or provide --endpoint.',
-			);
-		}
-	}
+	const endpoint = await getEndpoint(options.endpoint);
+	const api = await createApi(endpoint);
 
 	logger.log(`\n🚀 Initializing Dokploy deployment...`);
 	logger.log(`   Endpoint: ${endpoint}`);
-
-	const token = await getApiToken();
 
 	// Step 1: Find or create project
 	let projectId: string;
@@ -347,7 +167,7 @@ export async function deployInitCommand(
 	} else {
 		logger.log(`\n📁 Looking for project: ${projectName}`);
 
-		const projects = await getProjects(endpoint, token);
+		const projects = await api.listProjects();
 		const existingProject = projects.find(
 			(p) => p.name.toLowerCase() === projectName.toLowerCase(),
 		);
@@ -357,36 +177,44 @@ export async function deployInitCommand(
 			logger.log(`   Found existing project: ${projectId}`);
 		} else {
 			logger.log(`   Creating new project...`);
-			const project = await createProject(endpoint, token, projectName);
+			const project = await api.createProject(projectName);
 			projectId = project.projectId;
 			logger.log(`   ✓ Created project: ${projectId}`);
 		}
 	}
 
-	// Step 2: Create application
+	// Step 2: Get project to find environment
+	const project = await api.getProject(projectId);
+	let environmentId: string;
+
+	const firstEnv = project.environments?.[0];
+	if (firstEnv) {
+		environmentId = firstEnv.environmentId;
+	} else {
+		// Create a default environment
+		logger.log(`   Creating production environment...`);
+		const env = await api.createEnvironment(projectId, 'production');
+		environmentId = env.environmentId;
+	}
+
+	// Step 3: Create application
 	logger.log(`\n📦 Creating application: ${appName}`);
-	const application = await createApplication(
-		endpoint,
-		token,
+	const application = await api.createApplication(
 		appName,
 		projectId,
+		environmentId,
 	);
 	logger.log(`   ✓ Created application: ${application.applicationId}`);
 
-	// Step 3: Configure registry if provided
+	// Step 4: Configure registry if provided
 	if (registryId) {
 		logger.log(`\n🔧 Configuring registry: ${registryId}`);
-		await configureApplicationRegistry(
-			endpoint,
-			token,
-			application.applicationId,
-			registryId,
-		);
+		await api.updateApplication(application.applicationId, { registryId });
 		logger.log(`   ✓ Registry configured`);
 	} else {
 		// List available registries
 		try {
-			const registries = await getRegistries(endpoint, token);
+			const registries = await api.listRegistries();
 			if (registries.length > 0) {
 				logger.log(`\n📋 Available registries:`);
 				for (const reg of registries) {
@@ -401,14 +229,14 @@ export async function deployInitCommand(
 		}
 	}
 
-	// Step 4: Build config
+	// Step 5: Build config
 	const config: DokployDeployConfig = {
 		endpoint,
 		projectId,
 		applicationId: application.applicationId,
 	};
 
-	// Step 5: Update gkm.config.ts
+	// Step 6: Update gkm.config.ts
 	await updateConfig(config);
 
 	logger.log(`\n✅ Dokploy deployment initialized!`);
@@ -430,26 +258,14 @@ export async function deployListCommand(options: {
 	endpoint?: string;
 	resource: 'projects' | 'registries';
 }): Promise<void> {
-	// Get endpoint from options or stored credentials
-	let endpoint = options.endpoint;
-	if (!endpoint) {
-		const stored = await getDokployCredentials();
-		if (stored) {
-			endpoint = stored.endpoint;
-		} else {
-			throw new Error(
-				'Dokploy endpoint not specified.\n' +
-					'Either run "gkm login --service dokploy" first, or provide --endpoint.',
-			);
-		}
-	}
+	const endpoint = await getEndpoint(options.endpoint);
+	const api = await createApi(endpoint);
 
 	const { resource } = options;
-	const token = await getApiToken();
 
 	if (resource === 'projects') {
 		logger.log(`\n📁 Projects in ${endpoint}:`);
-		const projects = await getProjects(endpoint, token);
+		const projects = await api.listProjects();
 
 		if (projects.length === 0) {
 			logger.log('   No projects found');
@@ -464,7 +280,7 @@ export async function deployListCommand(options: {
 		}
 	} else if (resource === 'registries') {
 		logger.log(`\n🐳 Registries in ${endpoint}:`);
-		const registries = await getRegistries(endpoint, token);
+		const registries = await api.listRegistries();
 
 		if (registries.length === 0) {
 			logger.log('   No registries configured');
