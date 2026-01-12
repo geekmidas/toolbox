@@ -30,19 +30,9 @@ export async function validateDokployToken(
 	endpoint: string,
 	token: string,
 ): Promise<boolean> {
-	try {
-		const response = await fetch(`${endpoint}/api/project.all`, {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
-			},
-		});
-
-		return response.ok;
-	} catch {
-		return false;
-	}
+	const { DokployApi } = await import('../deploy/dokploy-api');
+	const api = new DokployApi({ baseUrl: endpoint, token });
+	return api.validateToken();
 }
 
 /**
