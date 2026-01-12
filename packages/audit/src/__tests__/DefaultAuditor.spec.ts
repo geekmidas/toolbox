@@ -353,6 +353,61 @@ describe('DefaultAuditor', () => {
 		});
 	});
 
+	describe('setTransaction and getTransaction', () => {
+		it('should set and get transaction', () => {
+			const auditor = new DefaultAuditor<TestAuditAction>({
+				actor: { id: 'user-123', type: 'user' },
+				storage,
+			});
+
+			expect(auditor.getTransaction()).toBeUndefined();
+
+			const mockTrx = { isTrx: true };
+			auditor.setTransaction(mockTrx);
+
+			expect(auditor.getTransaction()).toBe(mockTrx);
+		});
+
+		it('should use stored transaction in flush when no explicit transaction', async () => {
+			const auditor = new DefaultAuditor<TestAuditAction>({
+				actor: { id: 'user-123', type: 'user' },
+				storage,
+			});
+
+			auditor.audit('user.created', {
+				userId: '456',
+				email: 'test@example.com',
+			});
+
+			const mockTrx = { isTrx: true };
+			auditor.setTransaction(mockTrx);
+
+			await auditor.flush();
+
+			expect(storage.write).toHaveBeenCalledWith(expect.any(Array), mockTrx);
+		});
+
+		it('should override stored transaction with explicit transaction in flush', async () => {
+			const auditor = new DefaultAuditor<TestAuditAction>({
+				actor: { id: 'user-123', type: 'user' },
+				storage,
+			});
+
+			auditor.audit('user.created', {
+				userId: '456',
+				email: 'test@example.com',
+			});
+
+			const storedTrx = { stored: true };
+			const explicitTrx = { explicit: true };
+
+			auditor.setTransaction(storedTrx);
+			await auditor.flush(explicitTrx);
+
+			expect(storage.write).toHaveBeenCalledWith(expect.any(Array), explicitTrx);
+		});
+	});
+
 	describe('addMetadata', () => {
 		it('should add metadata when none exists', () => {
 			const auditor = new DefaultAuditor<TestAuditAction>({
