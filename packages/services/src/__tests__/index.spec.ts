@@ -1,6 +1,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { serviceContext } from '../context';
 import type { Service } from '../index';
 import { ServiceDiscovery } from '../index';
 
@@ -22,29 +23,23 @@ describe('ServiceDiscovery', () => {
 
 	describe('Singleton Pattern', () => {
 		it('should return same instance on multiple calls', () => {
-			const instance1 = ServiceDiscovery.getInstance(logger, envParser);
-			const instance2 = ServiceDiscovery.getInstance(logger, envParser);
+			const instance1 = ServiceDiscovery.getInstance(envParser);
+			const instance2 = ServiceDiscovery.getInstance(envParser);
 
 			expect(instance1).toBe(instance2);
 		});
 
 		it('should create instance only once', () => {
-			const instance1 = ServiceDiscovery.getInstance(logger, envParser);
-			const instance2 = ServiceDiscovery.getInstance(logger, envParser);
-			const instance3 = ServiceDiscovery.getInstance(logger, envParser);
+			const instance1 = ServiceDiscovery.getInstance(envParser);
+			const instance2 = ServiceDiscovery.getInstance(envParser);
+			const instance3 = ServiceDiscovery.getInstance(envParser);
 
 			expect(instance1).toBe(instance2);
 			expect(instance2).toBe(instance3);
 		});
 
-		it('should provide access to logger', () => {
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
-
-			expect(discovery.logger).toBe(logger);
-		});
-
 		it('should provide access to envParser', () => {
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			expect(discovery.envParser).toBe(envParser);
 		});
@@ -59,7 +54,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'database', { connected: boolean }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([mockService]);
 
 			expect(services).toHaveProperty('database');
@@ -81,7 +76,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'cache', { ready: boolean }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([
 				databaseService,
 				cacheService,
@@ -93,7 +88,7 @@ describe('ServiceDiscovery', () => {
 			expect(services.cache).toEqual({ ready: true });
 		});
 
-		it('should call register method with envParser', async () => {
+		it('should call register method with envParser and context', async () => {
 			const registerSpy = vi.fn().mockResolvedValue({ data: 'test' });
 
 			const mockService = {
@@ -101,10 +96,13 @@ describe('ServiceDiscovery', () => {
 				register: registerSpy,
 			} satisfies Service<'test', { data: string }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([mockService]);
 
-			expect(registerSpy).toHaveBeenCalledWith(envParser);
+			expect(registerSpy).toHaveBeenCalledWith({
+				envParser,
+				context: serviceContext,
+			});
 			expect(registerSpy).toHaveBeenCalledTimes(1);
 		});
 
@@ -116,7 +114,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'sync', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([mockService]);
 
 			expect(services.sync).toEqual({ value: 42 });
@@ -132,7 +130,7 @@ describe('ServiceDiscovery', () => {
 				register: registerSpy,
 			} satisfies Service<'cached', { instance: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			const services1 = await discovery.register([mockService]);
 			const services2 = await discovery.register([mockService]);
@@ -153,7 +151,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'persistent', { id: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			const services1 = await discovery.register([mockService]);
 			const firstId = services1.persistent.id;
@@ -180,7 +178,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'service2', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			const result = await discovery.register([service1, service2]);
 
@@ -192,7 +190,7 @@ describe('ServiceDiscovery', () => {
 
 	describe('get() method', () => {
 		it('should throw error for non-existent service', () => {
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			// Note: get() throws synchronously, not as a rejected Promise
 			// Also relies on services Map which is not populated by register()
@@ -211,7 +209,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'test', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([mockService]);
 
 			// This would fail because services Map is not populated
@@ -238,7 +236,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'cache', { ready: boolean }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([service1, service2]);
 
 			// This would fail because services Map is not populated
@@ -246,7 +244,7 @@ describe('ServiceDiscovery', () => {
 		});
 
 		it('should return empty object for empty array', async () => {
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			const result = await discovery.getMany([]);
 
@@ -262,7 +260,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'exists', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([service1]);
 
 			// Would fail because services Map not populated
@@ -282,7 +280,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'test', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([mockService]);
 
 			// Would return false because services Map is not populated
@@ -290,7 +288,7 @@ describe('ServiceDiscovery', () => {
 		});
 
 		it('should return false for non-registered service by name', () => {
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			expect(discovery.has('nonexistent')).toBe(false);
 		});
@@ -304,7 +302,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'test', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([mockService]);
 
 			// Would return false because services Map is not populated
@@ -319,7 +317,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'test', { value: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			expect(discovery.has(mockService)).toBe(false);
 		});
@@ -334,7 +332,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'failing', never>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			await expect(discovery.register([errorService])).rejects.toThrow(
 				'Registration failed',
@@ -349,7 +347,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'custom-error', never>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			await expect(discovery.register([errorService])).rejects.toThrow(
 				'Custom error message',
@@ -364,7 +362,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'sync-error', never>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 
 			await expect(discovery.register([errorService])).rejects.toThrow(
 				'Synchronous error',
@@ -391,7 +389,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'database', DatabaseService>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([databaseService]);
 
 			expect(services.database).toBeInstanceOf(DatabaseService);
@@ -416,7 +414,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'cache', ReturnType<typeof createCache>>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([cacheService]);
 
 			services.cache.set('key', 'value');
@@ -439,7 +437,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'database', { connected: boolean; logger: string }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([
 				loggerService,
 				databaseService,
@@ -486,7 +484,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'database', Database>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([databaseService]);
 
 			expect(services.database.connected).toBe(true);
@@ -520,7 +518,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'cache', Cache>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			const services = await discovery.register([cacheService]);
 
 			await services.cache.set('test', 'value');
@@ -557,7 +555,7 @@ describe('ServiceDiscovery', () => {
 				},
 			} satisfies Service<'third', { order: number }>;
 
-			const discovery = ServiceDiscovery.getInstance(logger, envParser);
+			const discovery = ServiceDiscovery.getInstance(envParser);
 			await discovery.register([service1, service2, service3]);
 
 			expect(initOrder).toEqual(['first', 'second', 'third']);
