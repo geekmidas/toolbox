@@ -11,6 +11,7 @@ import {
 	secretsExist,
 	setCustomSecret,
 	toEmbeddableSecrets,
+	validateEnvironmentVariables,
 	writeStageSecrets,
 } from '../storage';
 import type { StageSecrets } from '../types';
@@ -399,5 +400,212 @@ describe('maskPassword', () => {
 	it('should handle exactly 9 character password', () => {
 		const masked = maskPassword('123456789');
 		expect(masked).toBe('1234***89');
+	});
+});
+
+describe('validateEnvironmentVariables', () => {
+	const baseSecrets: StageSecrets = {
+		stage: 'production',
+		createdAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+		services: {},
+		urls: {},
+		custom: {},
+	};
+
+	it('should return valid when no variables are required', () => {
+		const result = validateEnvironmentVariables([], baseSecrets);
+
+		expect(result.valid).toBe(true);
+		expect(result.missing).toEqual([]);
+		expect(result.provided).toEqual([]);
+		expect(result.required).toEqual([]);
+	});
+
+	it('should return valid when all required variables are present', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			urls: {
+				DATABASE_URL: 'postgresql://...',
+			},
+			custom: {
+				API_KEY: 'sk_test_123',
+			},
+		};
+
+		const result = validateEnvironmentVariables(
+			['DATABASE_URL', 'API_KEY'],
+			secrets,
+		);
+
+		expect(result.valid).toBe(true);
+		expect(result.missing).toEqual([]);
+		expect(result.provided).toEqual(['API_KEY', 'DATABASE_URL']);
+		expect(result.required).toEqual(['API_KEY', 'DATABASE_URL']);
+	});
+
+	it('should return invalid when some variables are missing', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			urls: {
+				DATABASE_URL: 'postgresql://...',
+			},
+			custom: {},
+		};
+
+		const result = validateEnvironmentVariables(
+			['DATABASE_URL', 'API_KEY', 'JWT_SECRET'],
+			secrets,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.missing).toEqual(['API_KEY', 'JWT_SECRET']);
+		expect(result.provided).toEqual(['DATABASE_URL']);
+		expect(result.required).toEqual(['API_KEY', 'DATABASE_URL', 'JWT_SECRET']);
+	});
+
+	it('should return invalid when all variables are missing', () => {
+		const result = validateEnvironmentVariables(
+			['API_KEY', 'JWT_SECRET'],
+			baseSecrets,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.missing).toEqual(['API_KEY', 'JWT_SECRET']);
+		expect(result.provided).toEqual([]);
+	});
+
+	it('should recognize service credentials as provided', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			services: {
+				postgres: {
+					host: 'postgres',
+					port: 5432,
+					username: 'app',
+					password: 'secret',
+					database: 'app',
+				},
+				redis: {
+					host: 'redis',
+					port: 6379,
+					username: 'default',
+					password: 'redis-pass',
+				},
+			},
+			urls: {},
+			custom: {},
+		};
+
+		const result = validateEnvironmentVariables(
+			['POSTGRES_PASSWORD', 'REDIS_HOST', 'POSTGRES_DB'],
+			secrets,
+		);
+
+		expect(result.valid).toBe(true);
+		expect(result.missing).toEqual([]);
+		expect(result.provided).toEqual([
+			'POSTGRES_DB',
+			'POSTGRES_PASSWORD',
+			'REDIS_HOST',
+		]);
+	});
+
+	it('should sort missing and provided arrays alphabetically', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			custom: {
+				ZEBRA: 'value',
+				ALPHA: 'value',
+			},
+		};
+
+		const result = validateEnvironmentVariables(
+			['ZEBRA', 'ALPHA', 'YELLOW', 'BETA'],
+			secrets,
+		);
+
+		expect(result.missing).toEqual(['BETA', 'YELLOW']);
+		expect(result.provided).toEqual(['ALPHA', 'ZEBRA']);
+		expect(result.required).toEqual(['ALPHA', 'BETA', 'YELLOW', 'ZEBRA']);
+	});
+
+	it('should handle duplicate required variables', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			custom: {
+				API_KEY: 'value',
+			},
+		};
+
+		const result = validateEnvironmentVariables(
+			['API_KEY', 'API_KEY', 'MISSING'],
+			secrets,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.missing).toEqual(['MISSING']);
+		// Note: duplicates in input are preserved in required list
+		expect(result.required).toEqual(['API_KEY', 'API_KEY', 'MISSING']);
+	});
+
+	it('should work with complex service configurations', () => {
+		const secrets: StageSecrets = {
+			...baseSecrets,
+			services: {
+				postgres: {
+					host: 'postgres',
+					port: 5432,
+					username: 'app',
+					password: 'pg-secret',
+					database: 'mydb',
+				},
+				redis: {
+					host: 'redis',
+					port: 6379,
+					username: 'default',
+					password: 'redis-secret',
+				},
+				rabbitmq: {
+					host: 'rabbitmq',
+					port: 5672,
+					username: 'guest',
+					password: 'guest',
+					vhost: '/',
+				},
+			},
+			urls: {
+				DATABASE_URL: 'postgresql://...',
+				REDIS_URL: 'redis://...',
+				RABBITMQ_URL: 'amqp://...',
+			},
+			custom: {
+				JWT_SECRET: 'jwt-secret-value',
+			},
+		};
+
+		const result = validateEnvironmentVariables(
+			[
+				'DATABASE_URL',
+				'REDIS_URL',
+				'RABBITMQ_URL',
+				'JWT_SECRET',
+				'POSTGRES_PASSWORD',
+				'REDIS_PASSWORD',
+				'RABBITMQ_USER',
+				'MISSING_VAR',
+			],
+			secrets,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.missing).toEqual(['MISSING_VAR']);
+		expect(result.provided).toContain('DATABASE_URL');
+		expect(result.provided).toContain('REDIS_URL');
+		expect(result.provided).toContain('RABBITMQ_URL');
+		expect(result.provided).toContain('JWT_SECRET');
+		expect(result.provided).toContain('POSTGRES_PASSWORD');
+		expect(result.provided).toContain('REDIS_PASSWORD');
+		expect(result.provided).toContain('RABBITMQ_USER');
 	});
 });
