@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -165,10 +165,10 @@ export async function bundleServer(
 		const encrypted = encryptSecrets(embeddable);
 		masterKey = encrypted.masterKey;
 
-		// Add define options for build-time injection
+		// Add define options for build-time injection using tsdown's --env.* format
 		const defines = generateDefineOptions(encrypted);
 		for (const [key, value] of Object.entries(defines)) {
-			args.push('--define', `${key}=${value}`);
+			args.push(`--env.${key}`, value);
 		}
 
 		console.log(`  Secrets encrypted for stage "${stage}"`);
@@ -178,10 +178,20 @@ export async function bundleServer(
 
 	try {
 		// Run tsdown with command-line arguments
-		execSync(args.join(' '), {
+		// Use spawnSync with args array to avoid shell escaping issues with --define values
+		const [cmd, ...cmdArgs] = args;
+		const result = spawnSync(cmd, cmdArgs, {
 			cwd: process.cwd(),
 			stdio: 'inherit',
+			shell: process.platform === 'win32', // Only use shell on Windows for npx resolution
 		});
+
+		if (result.error) {
+			throw result.error;
+		}
+		if (result.status !== 0) {
+			throw new Error(`tsdown exited with code ${result.status}`);
+		}
 
 		// Rename output to .mjs for explicit ESM
 		// tsdown outputs as server.js for ESM format

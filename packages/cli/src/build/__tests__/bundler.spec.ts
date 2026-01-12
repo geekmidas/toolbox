@@ -8,7 +8,7 @@ import { bundleServer } from '../bundler';
 
 // Mock child_process to avoid actually running tsdown
 vi.mock('node:child_process', () => ({
-	execSync: vi.fn(),
+	spawnSync: vi.fn().mockReturnValue({ status: 0, error: null }),
 }));
 
 // Mock construct that returns specific environment variables
