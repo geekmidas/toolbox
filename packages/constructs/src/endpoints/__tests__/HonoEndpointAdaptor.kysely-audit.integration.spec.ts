@@ -69,10 +69,10 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		}),
 	});
 
-	const createServiceDiscovery = (logger: Logger) => {
+	const createServiceDiscovery = () => {
 		const envParser = new EnvironmentParser({});
 		ServiceDiscovery.reset();
-		return ServiceDiscovery.getInstance(logger, envParser);
+		return ServiceDiscovery.getInstance(envParser);
 	};
 
 	beforeAll(async () => {
@@ -139,7 +139,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
 	describe('declarative audits with real database', () => {
 		it('should write declarative audit to database on successful request', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -208,7 +208,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should not write audit when handler fails', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -274,7 +274,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
 	describe('manual audits with real database', () => {
 		it('should write manual audits from handler to database', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -349,7 +349,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should not write manual audit when handler fails after audit call', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -422,7 +422,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
 	describe('transactional consistency with real database', () => {
 		it('should commit both user insert and audit on success', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const databaseService: Service<'database', Kysely<TestDatabase>> = {
 				serviceName: 'database' as const,
@@ -515,7 +515,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should handle combined declarative and manual audits', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -601,7 +601,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
 	describe('actor extraction with real database', () => {
 		it('should include actor information in audit records', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -679,7 +679,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 
 	describe('database service name matching', () => {
 		it('should use audit transaction as db when databaseServiceName matches', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			// Create audit storage WITH databaseServiceName
 			const auditStorageWithServiceName = new KyselyAuditStorage({
@@ -779,7 +779,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should use raw db when databaseServiceName does not match', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			// Create audit storage with DIFFERENT databaseServiceName
 			const auditStorageWithDifferentServiceName = new KyselyAuditStorage({
@@ -880,7 +880,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should use raw db when databaseServiceName is not set on audit storage', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			// Create audit storage WITHOUT databaseServiceName (uses default auditStorage from beforeAll)
 			const databaseService: Service<'database', Kysely<TestDatabase>> = {
@@ -972,7 +972,7 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 		});
 
 		it('should rollback both user insert and audit when handler fails with matching databaseServiceName', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			// Create audit storage WITH databaseServiceName
 			const auditStorageWithServiceName = new KyselyAuditStorage({

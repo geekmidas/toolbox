@@ -451,10 +451,7 @@ describe('Endpoint', () => {
 			child: vi.fn(() => mockLogger),
 		};
 
-		const services = ServiceDiscovery.getInstance(
-			mockLogger,
-			new EnvironmentParser({}),
-		);
+		const services = ServiceDiscovery.getInstance(new EnvironmentParser({}));
 
 		it('should have default authorize function that returns true', async () => {
 			const endpoint = new Endpoint({

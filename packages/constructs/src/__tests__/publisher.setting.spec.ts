@@ -25,7 +25,6 @@ describe('publisher service setting combinations', () => {
 	};
 
 	const serviceDiscovery = ServiceDiscovery.getInstance(
-		mockLogger,
 		new EnvironmentParser({}),
 	);
 

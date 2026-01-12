@@ -18,7 +18,7 @@ describe('HonoEndpointAdaptor', () => {
 		child: vi.fn(() => mockLogger),
 	};
 	const envParser = new EnvironmentParser({});
-	const serviceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
+	const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
 	describe('addRoute', () => {
 		it('should register a GET endpoint', async () => {

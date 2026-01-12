@@ -28,7 +28,6 @@ describe('publishEndpointEvents', () => {
 	const errorSpy = mockLogger.error as any;
 
 	const serviceDiscovery = ServiceDiscovery.getInstance(
-		mockLogger,
 		new EnvironmentParser({}),
 	);
 

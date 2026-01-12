@@ -29,7 +29,7 @@ describe('HonoEndpoint Events', () => {
 		child: vi.fn(() => mockLogger),
 	};
 	const envParser = new EnvironmentParser({});
-	const serviceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
+	const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
 	it('should publish events after successful endpoint execution', async () => {
 		const mockPublisher: EventPublisher<TestEvent> = {

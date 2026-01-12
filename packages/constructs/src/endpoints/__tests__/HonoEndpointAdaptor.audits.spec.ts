@@ -50,16 +50,16 @@ describe('HonoEndpoint Audits', () => {
 		}),
 	});
 
-	const createServiceDiscovery = (logger: Logger) => {
+	const createServiceDiscovery = () => {
 		const envParser = new EnvironmentParser({});
 		// Create a fresh instance by clearing the singleton
 		ServiceDiscovery.reset();
-		return ServiceDiscovery.getInstance(logger, envParser);
+		return ServiceDiscovery.getInstance(envParser);
 	};
 
 	it('should process audits after successful endpoint execution', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -125,7 +125,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should process multiple audits after successful endpoint execution', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -199,7 +199,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should respect when conditions for audits', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -271,7 +271,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should extract actor from request context', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -344,7 +344,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should not process audits when no auditor storage is configured', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
 		const audits: MappedAudit<TestAuditAction, typeof outputSchema>[] = [
@@ -400,7 +400,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should not process audits when no audits are configured', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -450,7 +450,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should not process audits when endpoint throws an error', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -510,7 +510,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should include entityId in audit record when configured', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {
@@ -571,7 +571,7 @@ describe('HonoEndpoint Audits', () => {
 
 	it('should include endpoint metadata in audit records', async () => {
 		const mockLogger = createMockLogger();
-		const serviceDiscovery = createServiceDiscovery(mockLogger);
+		const serviceDiscovery = createServiceDiscovery();
 		const auditStorage = new InMemoryAuditStorage();
 
 		const auditStorageService: Service<'auditStorage', InMemoryAuditStorage> = {

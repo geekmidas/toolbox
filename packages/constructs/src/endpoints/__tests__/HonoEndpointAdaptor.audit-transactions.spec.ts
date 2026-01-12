@@ -149,10 +149,10 @@ describe('HonoEndpoint Audit Transactions', () => {
 		}),
 	});
 
-	const createServiceDiscovery = (logger: Logger) => {
+	const createServiceDiscovery = () => {
 		const envParser = new EnvironmentParser({});
 		ServiceDiscovery.reset();
-		return ServiceDiscovery.getInstance(logger, envParser);
+		return ServiceDiscovery.getInstance(envParser);
 	};
 
 	beforeEach(() => {
@@ -163,7 +163,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 	describe('successful transactions', () => {
 		it('should commit both handler operations and audits on success', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -230,7 +230,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 	describe('handler failure rollback', () => {
 		it('should not write audits when handler throws an error', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -298,7 +298,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 		});
 
 		it('should not write audits when handler validation fails', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -368,7 +368,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 	describe('audit failure rollback', () => {
 		it('should rollback handler operations when audit write fails', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			// Configure audit storage to fail
 			auditStorage.shouldFailOnWrite = true;
@@ -444,7 +444,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 	describe('manual audits in handler', () => {
 		it('should include manual audits from handler in transaction', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const registerFn = vi.fn().mockResolvedValue(auditStorage);
 			const auditStorageService: Service<
@@ -540,7 +540,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 		});
 
 		it('should rollback manual audits when handler fails after audit call', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
@@ -616,7 +616,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 	describe('combined declarative and manual audits', () => {
 		it('should process both declarative and manual audits in same transaction', async () => {
-			const serviceDiscovery = createServiceDiscovery(mockLogger);
+			const serviceDiscovery = createServiceDiscovery();
 
 			const auditStorageService: Service<
 				'auditStorage',
