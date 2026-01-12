@@ -298,6 +298,98 @@ describe('Telescope', () => {
 		});
 	});
 
+	describe('getRequestId option', () => {
+		it('should use custom getRequestId function when provided', async () => {
+			const customTelescope = new Telescope({
+				storage,
+				getRequestId: () => 'custom-request-id-123',
+			});
+
+			const requestId = await customTelescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			expect(requestId).toBe('custom-request-id-123');
+
+			const request = await customTelescope.getRequest('custom-request-id-123');
+			expect(request).not.toBeNull();
+			expect(request?.id).toBe('custom-request-id-123');
+
+			customTelescope.destroy();
+		});
+
+		it('should fallback to nanoid when getRequestId returns undefined', async () => {
+			const customTelescope = new Telescope({
+				storage,
+				getRequestId: () => undefined,
+			});
+
+			const requestId = await customTelescope.recordRequest({
+				method: 'GET',
+				path: '/api/test',
+				url: 'http://localhost/api/test',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+
+			// Should fall back to nanoid (21 chars)
+			expect(requestId).toBeDefined();
+			expect(requestId.length).toBe(21);
+			expect(requestId).not.toBe('');
+
+			customTelescope.destroy();
+		});
+
+		it('should work with dynamic request ID getter', async () => {
+			let currentRequestId: string | undefined;
+
+			const customTelescope = new Telescope({
+				storage,
+				getRequestId: () => currentRequestId,
+			});
+
+			// First request - no context
+			currentRequestId = undefined;
+			const id1 = await customTelescope.recordRequest({
+				method: 'GET',
+				path: '/api/test1',
+				url: 'http://localhost/api/test1',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+			expect(id1.length).toBe(21); // nanoid fallback
+
+			// Second request - with context
+			currentRequestId = 'context-id-456';
+			const id2 = await customTelescope.recordRequest({
+				method: 'GET',
+				path: '/api/test2',
+				url: 'http://localhost/api/test2',
+				headers: {},
+				query: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+			});
+			expect(id2).toBe('context-id-456');
+
+			customTelescope.destroy();
+		});
+	});
+
 	describe('WebSocket clients', () => {
 		it('should manage WebSocket client connections', () => {
 			const mockWs = {

@@ -64,7 +64,8 @@ export class Telescope {
 	): Promise<string> {
 		if (!this.options.enabled) return '';
 
-		const id = nanoid();
+		// Use injected request ID from context if available, otherwise generate one
+		const id = this.options.getRequestId?.() ?? nanoid();
 		let fullEntry: RequestEntry = {
 			...entry,
 			id,
@@ -502,6 +503,7 @@ export class Telescope {
 			maxBodySize: options.maxBodySize ?? 64 * 1024, // 64KB
 			ignorePatterns: options.ignorePatterns ?? [],
 			pruneAfterHours: options.pruneAfterHours,
+			getRequestId: options.getRequestId,
 		};
 	}
 

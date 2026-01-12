@@ -182,6 +182,23 @@ export interface TelescopeOptions {
 	 * redact: { paths: ['headers.authorization'], censor: '***' }
 	 */
 	redact?: TelescopeRedactOptions;
+	/**
+	 * Custom request ID getter for correlation with request context.
+	 * If provided and returns a string, uses that ID instead of generating one.
+	 * Useful for integrating with ServiceContext.getRequestId() from @geekmidas/services.
+	 *
+	 * @example
+	 * // Integration with request context
+	 * import { serviceContext } from '@geekmidas/services';
+	 *
+	 * const telescope = new Telescope({
+	 *   storage: new InMemoryStorage(),
+	 *   getRequestId: () => serviceContext.hasContext()
+	 *     ? serviceContext.getRequestId()
+	 *     : undefined,
+	 * });
+	 */
+	getRequestId?: () => string | undefined;
 }
 
 /**
@@ -195,6 +212,7 @@ export interface NormalizedTelescopeOptions {
 	maxBodySize: number;
 	ignorePatterns: string[];
 	pruneAfterHours?: number;
+	getRequestId?: () => string | undefined;
 }
 
 /**
