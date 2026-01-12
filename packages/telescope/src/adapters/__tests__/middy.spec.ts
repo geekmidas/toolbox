@@ -552,7 +552,9 @@ describe('Telescope Middy Middleware', () => {
 				context: mockContext,
 				response: {
 					statusCode: 200,
-					headers: { 'Content-Length': String(Buffer.byteLength(responseBody)) },
+					headers: {
+						'Content-Length': String(Buffer.byteLength(responseBody)),
+					},
 					body: responseBody,
 				},
 				error: null,
@@ -608,7 +610,9 @@ describe('Telescope Middy Middleware', () => {
 
 			const requests = await storage.getRequests();
 			// UTF-8 bytes for Chinese characters are more than string length
-			expect(requests[0].responseSize).toBe(Buffer.byteLength(responseBody, 'utf8'));
+			expect(requests[0].responseSize).toBe(
+				Buffer.byteLength(responseBody, 'utf8'),
+			);
 		});
 
 		it('should track request size for v1 events', async () => {

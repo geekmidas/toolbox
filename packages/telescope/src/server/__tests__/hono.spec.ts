@@ -203,7 +203,9 @@ describe('Hono Adapter', () => {
 		it('should capture response size from body when Content-Length not set', async () => {
 			const app = new Hono();
 			app.use('*', createMiddleware(telescope));
-			app.get('/api/data', (c) => c.json({ users: ['alice', 'bob', 'charlie'] }));
+			app.get('/api/data', (c) =>
+				c.json({ users: ['alice', 'bob', 'charlie'] }),
+			);
 
 			await app.request('/api/data');
 
@@ -211,7 +213,9 @@ describe('Hono Adapter', () => {
 			expect(requests[0].responseSize).toBeGreaterThan(0);
 			// The response body is '{"users":["alice","bob","charlie"]}'
 			expect(requests[0].responseSize).toBe(
-				Buffer.byteLength(JSON.stringify({ users: ['alice', 'bob', 'charlie'] })),
+				Buffer.byteLength(
+					JSON.stringify({ users: ['alice', 'bob', 'charlie'] }),
+				),
 			);
 		});
 
@@ -225,7 +229,9 @@ describe('Hono Adapter', () => {
 			const requests = await telescope.getRequests();
 			// UTF-8 bytes for Chinese characters are more than string length
 			const expectedBody = JSON.stringify({ message: '你好世界' });
-			expect(requests[0].responseSize).toBe(Buffer.byteLength(expectedBody, 'utf8'));
+			expect(requests[0].responseSize).toBe(
+				Buffer.byteLength(expectedBody, 'utf8'),
+			);
 		});
 	});
 

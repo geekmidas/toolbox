@@ -469,7 +469,12 @@ describe('InMemoryStorage', () => {
 		it('should save multiple logs at once', async () => {
 			await storage.saveLogs([
 				{ id: 'log-1', level: 'info', message: 'First', timestamp: new Date() },
-				{ id: 'log-2', level: 'error', message: 'Second', timestamp: new Date() },
+				{
+					id: 'log-2',
+					level: 'error',
+					message: 'Second',
+					timestamp: new Date(),
+				},
 			]);
 
 			const logs = await storage.getLogs();

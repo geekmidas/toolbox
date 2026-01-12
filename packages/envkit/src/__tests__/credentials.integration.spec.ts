@@ -169,7 +169,8 @@ describe('Credentials runtime integration', () => {
 
 	it('should handle complex secrets with special characters', () => {
 		const secrets = {
-			PRIVATE_KEY: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----',
+			PRIVATE_KEY:
+				'-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----',
 			JSON_CONFIG: '{"key": "value", "nested": {"a": 1}}',
 			UNICODE: '你好世界 🔐',
 		};

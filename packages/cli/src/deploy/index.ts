@@ -17,7 +17,9 @@ function generateTag(stage: string): string {
 /**
  * Main deploy command
  */
-export async function deployCommand(options: DeployOptions): Promise<DeployResult> {
+export async function deployCommand(
+	options: DeployOptions,
+): Promise<DeployResult> {
 	const { provider, stage, tag, skipPush, skipBuild } = options;
 
 	logger.log(`\n🚀 Deploying to ${provider}...`);
@@ -48,7 +50,9 @@ export async function deployCommand(options: DeployOptions): Promise<DeployResul
 	const dockerConfig = resolveDockerConfig(config);
 	const imageName = dockerConfig.imageName ?? 'app';
 	const registry = dockerConfig.registry;
-	const imageRef = registry ? `${registry}/${imageName}:${imageTag}` : `${imageName}:${imageTag}`;
+	const imageRef = registry
+		? `${registry}/${imageName}:${imageTag}`
+		: `${imageName}:${imageTag}`;
 
 	// Deploy based on provider
 	let result: DeployResult;

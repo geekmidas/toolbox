@@ -109,7 +109,7 @@ export async function secretsInitCommand(
 		logger.log(`  RABBITMQ_URL: ${maskUrl(secrets.urls.RABBITMQ_URL)}`);
 	}
 
-	logger.log('\n  Use "gkm secrets:show --stage ' + stage + '" to view secrets');
+	logger.log(`\n  Use "gkm secrets:show --stage ${stage}" to view secrets`);
 	logger.log(
 		'  Use "gkm secrets:set <KEY> <VALUE> --stage ' +
 			stage +
@@ -145,8 +145,12 @@ export async function secretsSetCommand(
 	let secretValue = value;
 	if (!secretValue) {
 		if (process.stdin.isTTY) {
-			logger.error('No value provided. Use: gkm secrets:set KEY VALUE --stage <stage>');
-			logger.error('Or pipe from stdin: echo "value" | gkm secrets:set KEY --stage <stage>');
+			logger.error(
+				'No value provided. Use: gkm secrets:set KEY VALUE --stage <stage>',
+			);
+			logger.error(
+				'Or pipe from stdin: echo "value" | gkm secrets:set KEY --stage <stage>',
+			);
 			process.exit(1);
 		}
 		secretValue = await readStdin();
@@ -282,7 +286,7 @@ export async function secretsRotateCommand(
 		);
 	}
 
-	logger.log('\nUse "gkm secrets:show --stage ' + stage + '" to view new values');
+	logger.log(`\nUse "gkm secrets:show --stage ${stage}" to view new values`);
 }
 
 /**
@@ -313,7 +317,9 @@ export async function secretsImportCommand(
 
 		for (const [key, value] of Object.entries(importedSecrets)) {
 			if (typeof value !== 'string') {
-				throw new Error(`Value for "${key}" must be a string, got ${typeof value}`);
+				throw new Error(
+					`Value for "${key}" must be a string, got ${typeof value}`,
+				);
 			}
 		}
 	} catch (error) {

@@ -31,7 +31,9 @@ export interface BundleResult {
  * @param options - Bundle configuration options
  * @returns Bundle result with output path and optional master key
  */
-export async function bundleServer(options: BundleOptions): Promise<BundleResult> {
+export async function bundleServer(
+	options: BundleOptions,
+): Promise<BundleResult> {
 	const { entryPoint, outputDir, minify, sourcemap, external, stage } = options;
 
 	// Ensure output directory exists

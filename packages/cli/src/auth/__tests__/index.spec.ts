@@ -121,11 +121,9 @@ describe('auth commands', () => {
 
 	describe('credentials flow', () => {
 		it('should store and retrieve credentials', async () => {
-			await storeDokployCredentials(
-				'my-token',
-				'https://dokploy.example.com',
-				{ root: tempDir },
-			);
+			await storeDokployCredentials('my-token', 'https://dokploy.example.com', {
+				root: tempDir,
+			});
 
 			const creds = await getDokployCredentials({ root: tempDir });
 			expect(creds).not.toBeNull();
@@ -134,11 +132,9 @@ describe('auth commands', () => {
 		});
 
 		it('should remove credentials', async () => {
-			await storeDokployCredentials(
-				'my-token',
-				'https://dokploy.example.com',
-				{ root: tempDir },
-			);
+			await storeDokployCredentials('my-token', 'https://dokploy.example.com', {
+				root: tempDir,
+			});
 
 			const removed = await removeDokployCredentials({ root: tempDir });
 			expect(removed).toBe(true);

@@ -50,7 +50,9 @@ export async function validateDokployToken(
  */
 async function prompt(message: string, hidden = false): Promise<string> {
 	if (!process.stdin.isTTY) {
-		throw new Error('Interactive input required. Please provide --token option.');
+		throw new Error(
+			'Interactive input required. Please provide --token option.',
+		);
 	}
 
 	const rl = readline.createInterface({ input, output });
@@ -108,7 +110,9 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		// Get endpoint
 		let endpoint = providedEndpoint;
 		if (!endpoint) {
-			endpoint = await prompt('Dokploy URL (e.g., https://dokploy.example.com): ');
+			endpoint = await prompt(
+				'Dokploy URL (e.g., https://dokploy.example.com): ',
+			);
 		}
 
 		// Normalize endpoint (remove trailing slash)
@@ -139,7 +143,9 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		const isValid = await validateDokployToken(endpoint, token);
 
 		if (!isValid) {
-			logger.error('\n✗ Invalid credentials. Please check your token and try again.');
+			logger.error(
+				'\n✗ Invalid credentials. Please check your token and try again.',
+			);
 			process.exit(1);
 		}
 
@@ -149,7 +155,9 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		logger.log('\n✓ Successfully logged in to Dokploy!');
 		logger.log(`  Endpoint: ${endpoint}`);
 		logger.log(`  Credentials stored in: ${getCredentialsPath()}`);
-		logger.log('\nYou can now use deploy commands without setting DOKPLOY_API_TOKEN.');
+		logger.log(
+			'\nYou can now use deploy commands without setting DOKPLOY_API_TOKEN.',
+		);
 	}
 }
 

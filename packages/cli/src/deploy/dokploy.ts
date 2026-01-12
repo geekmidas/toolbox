@@ -93,15 +93,10 @@ async function updateEnvironment(
 		.map(([key, value]) => `${key}=${value}`)
 		.join('\n');
 
-	await dokployRequest(
-		'application.update',
-		baseUrl,
-		token,
-		{
-			applicationId,
-			env: envString,
-		},
-	);
+	await dokployRequest('application.update', baseUrl, token, {
+		applicationId,
+		env: envString,
+	});
 
 	logger.log('  ✓ Environment variables updated');
 }

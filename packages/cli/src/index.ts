@@ -329,17 +329,23 @@ program
 	.argument('<key>', 'Secret key (e.g., API_KEY)')
 	.argument('[value]', 'Secret value (reads from stdin if omitted)')
 	.requiredOption('--stage <stage>', 'Stage name')
-	.action(async (key: string, value: string | undefined, options: { stage: string }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.action(
+		async (
+			key: string,
+			value: string | undefined,
+			options: { stage: string },
+		) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsSetCommand(key, value, options);
+			} catch (_error) {
+				process.exit(1);
 			}
-			await secretsSetCommand(key, value, options);
-		} catch (_error) {
-			process.exit(1);
-		}
-	});
+		},
+	);
 
 program
 	.command('secrets:show')
@@ -451,7 +457,10 @@ program
 program
 	.command('deploy:init')
 	.description('Initialize Dokploy deployment (create project and application)')
-	.option('--endpoint <url>', 'Dokploy server URL (uses stored credentials if logged in)')
+	.option(
+		'--endpoint <url>',
+		'Dokploy server URL (uses stored credentials if logged in)',
+	)
 	.requiredOption('--project <name>', 'Project name (creates if not exists)')
 	.requiredOption('--app <name>', 'Application name')
 	.option('--project-id <id>', 'Use existing project ID instead of creating')
@@ -478,7 +487,11 @@ program
 					registryId: options.registryId,
 				});
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Failed to initialize deployment');
+				console.error(
+					error instanceof Error
+						? error.message
+						: 'Failed to initialize deployment',
+				);
 				process.exit(1);
 			}
 		},
@@ -488,7 +501,10 @@ program
 program
 	.command('deploy:list')
 	.description('List Dokploy resources (projects, registries)')
-	.option('--endpoint <url>', 'Dokploy server URL (uses stored credentials if logged in)')
+	.option(
+		'--endpoint <url>',
+		'Dokploy server URL (uses stored credentials if logged in)',
+	)
 	.option('--projects', 'List projects')
 	.option('--registries', 'List registries')
 	.action(
@@ -504,18 +520,32 @@ program
 				}
 
 				if (options.projects) {
-					await deployListCommand({ endpoint: options.endpoint, resource: 'projects' });
+					await deployListCommand({
+						endpoint: options.endpoint,
+						resource: 'projects',
+					});
 				}
 				if (options.registries) {
-					await deployListCommand({ endpoint: options.endpoint, resource: 'registries' });
+					await deployListCommand({
+						endpoint: options.endpoint,
+						resource: 'registries',
+					});
 				}
 				if (!options.projects && !options.registries) {
 					// Default to listing both
-					await deployListCommand({ endpoint: options.endpoint, resource: 'projects' });
-					await deployListCommand({ endpoint: options.endpoint, resource: 'registries' });
+					await deployListCommand({
+						endpoint: options.endpoint,
+						resource: 'projects',
+					});
+					await deployListCommand({
+						endpoint: options.endpoint,
+						resource: 'registries',
+					});
 				}
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Failed to list resources');
+				console.error(
+					error instanceof Error ? error.message : 'Failed to list resources',
+				);
 				process.exit(1);
 			}
 		},
@@ -529,11 +559,7 @@ program
 	.option('--token <token>', 'API token (will prompt if not provided)')
 	.option('--endpoint <url>', 'Service endpoint URL')
 	.action(
-		async (options: {
-			service: string;
-			token?: string;
-			endpoint?: string;
-		}) => {
+		async (options: { service: string; token?: string; endpoint?: string }) => {
 			try {
 				const globalOptions = program.opts();
 				if (globalOptions.cwd) {
@@ -541,7 +567,9 @@ program
 				}
 
 				if (options.service !== 'dokploy') {
-					console.error(`Unknown service: ${options.service}. Supported: dokploy`);
+					console.error(
+						`Unknown service: ${options.service}. Supported: dokploy`,
+					);
 					process.exit(1);
 				}
 
@@ -551,7 +579,9 @@ program
 					endpoint: options.endpoint,
 				});
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Failed to login');
+				console.error(
+					error instanceof Error ? error.message : 'Failed to login',
+				);
 				process.exit(1);
 			}
 		},
@@ -561,24 +591,28 @@ program
 program
 	.command('logout')
 	.description('Remove stored credentials')
-	.option('--service <service>', 'Service to logout from (dokploy, all)', 'dokploy')
-	.action(
-		async (options: { service: string }) => {
-			try {
-				const globalOptions = program.opts();
-				if (globalOptions.cwd) {
-					process.chdir(globalOptions.cwd);
-				}
-
-				await logoutCommand({
-					service: options.service as 'dokploy' | 'all',
-				});
-			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Failed to logout');
-				process.exit(1);
+	.option(
+		'--service <service>',
+		'Service to logout from (dokploy, all)',
+		'dokploy',
+	)
+	.action(async (options: { service: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
 			}
-		},
-	);
+
+			await logoutCommand({
+				service: options.service as 'dokploy' | 'all',
+			});
+		} catch (error) {
+			console.error(
+				error instanceof Error ? error.message : 'Failed to logout',
+			);
+			process.exit(1);
+		}
+	});
 
 // Whoami command
 program
@@ -593,7 +627,9 @@ program
 
 			await whoamiCommand();
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Failed to get status');
+			console.error(
+				error instanceof Error ? error.message : 'Failed to get status',
+			);
 			process.exit(1);
 		}
 	});

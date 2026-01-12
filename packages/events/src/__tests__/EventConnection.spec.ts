@@ -4,9 +4,8 @@ import { EventConnectionFactory, EventPublisherType } from '../EventConnection';
 describe('EventConnectionFactory', () => {
 	describe('fromConnectionString', () => {
 		it('should create BasicConnection for basic:// protocol', async () => {
-			const connection = await EventConnectionFactory.fromConnectionString(
-				'basic://memory',
-			);
+			const connection =
+				await EventConnectionFactory.fromConnectionString('basic://memory');
 			expect(connection).toBeDefined();
 		});
 

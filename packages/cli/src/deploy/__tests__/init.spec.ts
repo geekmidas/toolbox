@@ -26,18 +26,25 @@ describe('Dokploy API interactions', () => {
 				http.get('https://dokploy.example.com/api/project.all', () => {
 					return HttpResponse.json([
 						{ projectId: 'proj_1', name: 'Project 1', description: null },
-						{ projectId: 'proj_2', name: 'Project 2', description: 'Test project' },
+						{
+							projectId: 'proj_2',
+							name: 'Project 2',
+							description: 'Test project',
+						},
 					]);
 				}),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/project.all', {
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/project.all',
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
 				},
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const projects = await response.json();
@@ -47,26 +54,38 @@ describe('Dokploy API interactions', () => {
 
 		it('should create a project', async () => {
 			server.use(
-				http.post('https://dokploy.example.com/api/project.create', async ({ request }) => {
-					const body = await request.json() as { name: string; description?: string };
-					return HttpResponse.json({
-						projectId: 'proj_new',
-						name: body.name,
-						description: body.description || null,
-						createdAt: new Date().toISOString(),
-						adminId: 'admin_1',
-					});
-				}),
+				http.post(
+					'https://dokploy.example.com/api/project.create',
+					async ({ request }) => {
+						const body = (await request.json()) as {
+							name: string;
+							description?: string;
+						};
+						return HttpResponse.json({
+							projectId: 'proj_new',
+							name: body.name,
+							description: body.description || null,
+							createdAt: new Date().toISOString(),
+							adminId: 'admin_1',
+						});
+					},
+				),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/project.create', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/project.create',
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
+					body: JSON.stringify({
+						name: 'New Project',
+						description: 'Created by gkm',
+					}),
 				},
-				body: JSON.stringify({ name: 'New Project', description: 'Created by gkm' }),
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const project = await response.json();
@@ -76,26 +95,36 @@ describe('Dokploy API interactions', () => {
 
 		it('should get a single project', async () => {
 			server.use(
-				http.post('https://dokploy.example.com/api/project.one', async ({ request }) => {
-					const body = await request.json() as { projectId: string };
-					return HttpResponse.json({
-						projectId: body.projectId,
-						name: 'Test Project',
-						environments: [
-							{ environmentId: 'env_1', name: 'production', description: null },
-						],
-					});
-				}),
+				http.post(
+					'https://dokploy.example.com/api/project.one',
+					async ({ request }) => {
+						const body = (await request.json()) as { projectId: string };
+						return HttpResponse.json({
+							projectId: body.projectId,
+							name: 'Test Project',
+							environments: [
+								{
+									environmentId: 'env_1',
+									name: 'production',
+									description: null,
+								},
+							],
+						});
+					},
+				),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/project.one', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/project.one',
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
+					body: JSON.stringify({ projectId: 'proj_1' }),
 				},
-				body: JSON.stringify({ projectId: 'proj_1' }),
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const project = await response.json();
@@ -106,29 +135,39 @@ describe('Dokploy API interactions', () => {
 	describe('application operations', () => {
 		it('should create an application', async () => {
 			server.use(
-				http.post('https://dokploy.example.com/api/application.create', async ({ request }) => {
-					const body = await request.json() as { name: string; projectId: string; environmentId: string };
-					return HttpResponse.json({
-						applicationId: 'app_new',
-						name: body.name,
-						projectId: body.projectId,
-						environmentId: body.environmentId,
-					});
-				}),
+				http.post(
+					'https://dokploy.example.com/api/application.create',
+					async ({ request }) => {
+						const body = (await request.json()) as {
+							name: string;
+							projectId: string;
+							environmentId: string;
+						};
+						return HttpResponse.json({
+							applicationId: 'app_new',
+							name: body.name,
+							projectId: body.projectId,
+							environmentId: body.environmentId,
+						});
+					},
+				),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/application.create', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/application.create',
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
+					body: JSON.stringify({
+						name: 'api',
+						projectId: 'proj_1',
+						environmentId: 'env_1',
+					}),
 				},
-				body: JSON.stringify({
-					name: 'api',
-					projectId: 'proj_1',
-					environmentId: 'env_1',
-				}),
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const app = await response.json();
@@ -137,23 +176,32 @@ describe('Dokploy API interactions', () => {
 
 		it('should update application with registry', async () => {
 			server.use(
-				http.post('https://dokploy.example.com/api/application.update', async ({ request }) => {
-					const body = await request.json() as { applicationId: string; registryId: string };
-					return HttpResponse.json({ success: true });
-				}),
+				http.post(
+					'https://dokploy.example.com/api/application.update',
+					async ({ request }) => {
+						const _body = (await request.json()) as {
+							applicationId: string;
+							registryId: string;
+						};
+						return HttpResponse.json({ success: true });
+					},
+				),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/application.update', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/application.update',
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
+					body: JSON.stringify({
+						applicationId: 'app_1',
+						registryId: 'reg_1',
+					}),
 				},
-				body: JSON.stringify({
-					applicationId: 'app_1',
-					registryId: 'reg_1',
-				}),
-			});
+			);
 
 			expect(response.ok).toBe(true);
 		});
@@ -175,13 +223,16 @@ describe('Dokploy API interactions', () => {
 				}),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/registry.all', {
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/registry.all',
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
 				},
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const registries = await response.json();
@@ -193,27 +244,36 @@ describe('Dokploy API interactions', () => {
 	describe('environment operations', () => {
 		it('should create an environment', async () => {
 			server.use(
-				http.post('https://dokploy.example.com/api/environment.create', async ({ request }) => {
-					const body = await request.json() as { projectId: string; name: string };
-					return HttpResponse.json({
-						environmentId: 'env_new',
-						name: body.name,
-					});
-				}),
+				http.post(
+					'https://dokploy.example.com/api/environment.create',
+					async ({ request }) => {
+						const body = (await request.json()) as {
+							projectId: string;
+							name: string;
+						};
+						return HttpResponse.json({
+							environmentId: 'env_new',
+							name: body.name,
+						});
+					},
+				),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/environment.create', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/environment.create',
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer test-token',
+					},
+					body: JSON.stringify({
+						projectId: 'proj_1',
+						name: 'production',
+						description: 'Production environment',
+					}),
 				},
-				body: JSON.stringify({
-					projectId: 'proj_1',
-					name: 'production',
-					description: 'Production environment',
-				}),
-			});
+			);
 
 			expect(response.ok).toBe(true);
 			const env = await response.json();
@@ -232,13 +292,16 @@ describe('Dokploy API interactions', () => {
 				}),
 			);
 
-			const response = await fetch('https://dokploy.example.com/api/project.all', {
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer invalid-token',
+			const response = await fetch(
+				'https://dokploy.example.com/api/project.all',
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: 'Bearer invalid-token',
+					},
 				},
-			});
+			);
 
 			expect(response.ok).toBe(false);
 			expect(response.status).toBe(401);

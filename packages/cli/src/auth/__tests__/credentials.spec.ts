@@ -99,11 +99,9 @@ describe('credentials storage', () => {
 
 	describe('storeDokployCredentials', () => {
 		it('should store dokploy credentials', async () => {
-			await storeDokployCredentials(
-				'my-token',
-				'https://dokploy.example.com',
-				{ root: tempDir },
-			);
+			await storeDokployCredentials('my-token', 'https://dokploy.example.com', {
+				root: tempDir,
+			});
 
 			const creds = await readCredentials({ root: tempDir });
 			expect(creds.dokploy).toBeDefined();

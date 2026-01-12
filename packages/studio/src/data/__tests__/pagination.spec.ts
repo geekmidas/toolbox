@@ -87,7 +87,12 @@ describe('decodeCursor', () => {
 
 describe('encodeCursor and decodeCursor roundtrip', () => {
 	it('should roundtrip string values', () => {
-		const values = ['hello', '', 'special chars: !@#$%', 'unicode: \u00e9\u00e8'];
+		const values = [
+			'hello',
+			'',
+			'special chars: !@#$%',
+			'unicode: \u00e9\u00e8',
+		];
 
 		for (const value of values) {
 			expect(decodeCursor(encodeCursor(value))).toBe(value);

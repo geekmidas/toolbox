@@ -404,7 +404,10 @@ describe('DefaultAuditor', () => {
 			auditor.setTransaction(storedTrx);
 			await auditor.flush(explicitTrx);
 
-			expect(storage.write).toHaveBeenCalledWith(expect.any(Array), explicitTrx);
+			expect(storage.write).toHaveBeenCalledWith(
+				expect.any(Array),
+				explicitTrx,
+			);
 		});
 	});
 

@@ -112,9 +112,7 @@ describe('generatePostgresUrl', () => {
 		};
 
 		const url = generatePostgresUrl(creds);
-		expect(url).toBe(
-			'postgresql://app:pass%40word%2Ftest@postgres:5432/mydb',
-		);
+		expect(url).toBe('postgresql://app:pass%40word%2Ftest@postgres:5432/mydb');
 	});
 });
 
@@ -184,9 +182,7 @@ describe('generateConnectionUrls', () => {
 			},
 		});
 
-		expect(urls.DATABASE_URL).toBe(
-			'postgresql://app:secret@postgres:5432/app',
-		);
+		expect(urls.DATABASE_URL).toBe('postgresql://app:secret@postgres:5432/app');
 		expect(urls.REDIS_URL).toBeUndefined();
 		expect(urls.RABBITMQ_URL).toBeUndefined();
 	});

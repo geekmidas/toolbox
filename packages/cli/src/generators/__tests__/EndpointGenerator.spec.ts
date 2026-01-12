@@ -436,7 +436,9 @@ describe('EndpointGenerator', () => {
 			const serverPath = join(outputDir, 'server.ts');
 			const serverContent = await readFile(serverPath, 'utf-8');
 			expect(serverContent).toContain('Production server entry point');
-			expect(serverContent).toContain("import { serve } from '@hono/node-server'");
+			expect(serverContent).toContain(
+				"import { serve } from '@hono/node-server'",
+			);
 		},
 	);
 
@@ -476,9 +478,11 @@ describe('EndpointGenerator', () => {
 			const appPath = join(outputDir, 'app.ts');
 			const appContent = await readFile(appPath, 'utf-8');
 
-			expect(appContent).toContain("import { setupSubscribers }");
+			expect(appContent).toContain('import { setupSubscribers }');
 			expect(appContent).toContain('Start subscribers in background');
-			expect(appContent).toContain('setupEndpoints(honoApp, envParser, logger, true)');
+			expect(appContent).toContain(
+				'setupEndpoints(honoApp, envParser, logger, true)',
+			);
 		},
 	);
 
@@ -531,7 +535,9 @@ describe('EndpointGenerator', () => {
 				provider: 'aws-apigatewayv2',
 			});
 
-			expect(logSpy).toHaveBeenCalledWith('Generated handler for POST /api/users');
+			expect(logSpy).toHaveBeenCalledWith(
+				'Generated handler for POST /api/users',
+			);
 			logSpy.mockRestore();
 		},
 	);

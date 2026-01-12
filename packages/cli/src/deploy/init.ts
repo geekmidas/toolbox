@@ -126,10 +126,16 @@ async function createProject(
 	name: string,
 	description?: string,
 ): Promise<DokployProject> {
-	return dokployRequest<DokployProject>('POST', 'project.create', baseUrl, token, {
-		name,
-		description: description || `Created by gkm CLI`,
-	});
+	return dokployRequest<DokployProject>(
+		'POST',
+		'project.create',
+		baseUrl,
+		token,
+		{
+			name,
+			description: description || `Created by gkm CLI`,
+		},
+	);
 }
 
 /**
@@ -214,7 +220,12 @@ async function getRegistries(
 	baseUrl: string,
 	token: string,
 ): Promise<DokployRegistry[]> {
-	return dokployRequest<DokployRegistry[]>('GET', 'registry.all', baseUrl, token);
+	return dokployRequest<DokployRegistry[]>(
+		'GET',
+		'registry.all',
+		baseUrl,
+		token,
+	);
 }
 
 /**
@@ -301,7 +312,12 @@ export async function updateConfig(
 export async function deployInitCommand(
 	options: DeployInitOptions,
 ): Promise<DokployDeployConfig> {
-	const { projectName, appName, projectId: existingProjectId, registryId } = options;
+	const {
+		projectName,
+		appName,
+		projectId: existingProjectId,
+		registryId,
+	} = options;
 
 	// Get endpoint from options or stored credentials
 	let endpoint = options.endpoint;
@@ -349,13 +365,23 @@ export async function deployInitCommand(
 
 	// Step 2: Create application
 	logger.log(`\n📦 Creating application: ${appName}`);
-	const application = await createApplication(endpoint, token, appName, projectId);
+	const application = await createApplication(
+		endpoint,
+		token,
+		appName,
+		projectId,
+	);
 	logger.log(`   ✓ Created application: ${application.applicationId}`);
 
 	// Step 3: Configure registry if provided
 	if (registryId) {
 		logger.log(`\n🔧 Configuring registry: ${registryId}`);
-		await configureApplicationRegistry(endpoint, token, application.applicationId, registryId);
+		await configureApplicationRegistry(
+			endpoint,
+			token,
+			application.applicationId,
+			registryId,
+		);
 		logger.log(`   ✓ Registry configured`);
 	} else {
 		// List available registries
@@ -364,7 +390,9 @@ export async function deployInitCommand(
 			if (registries.length > 0) {
 				logger.log(`\n📋 Available registries:`);
 				for (const reg of registries) {
-					logger.log(`   - ${reg.registryName}: ${reg.registryUrl} (${reg.registryId})`);
+					logger.log(
+						`   - ${reg.registryName}: ${reg.registryUrl} (${reg.registryId})`,
+					);
 				}
 				logger.log(`\n   To use a registry, run with --registry-id <id>`);
 			}

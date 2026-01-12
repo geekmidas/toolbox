@@ -114,7 +114,8 @@ describe('decryptCredentials', () => {
 
 	it('should handle secrets with newlines', () => {
 		const secrets = {
-			PRIVATE_KEY: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----',
+			PRIVATE_KEY:
+				'-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----',
 			MULTILINE: 'line1\nline2\nline3',
 		};
 

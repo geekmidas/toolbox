@@ -19,7 +19,12 @@ import {
 	type GeneratedConstruct,
 	SubscriberGenerator,
 } from '../generators';
-import type { BuildOptions, BuildResult, LegacyProvider, RouteInfo } from '../types';
+import type {
+	BuildOptions,
+	BuildResult,
+	LegacyProvider,
+	RouteInfo,
+} from '../types';
 import {
 	generateAwsManifest,
 	generateServerManifest,
@@ -30,7 +35,9 @@ import type { BuildContext } from './types';
 
 const logger = console;
 
-export async function buildCommand(options: BuildOptions): Promise<BuildResult> {
+export async function buildCommand(
+	options: BuildOptions,
+): Promise<BuildResult> {
 	const config = await loadConfig();
 
 	// Resolve providers from new config format
