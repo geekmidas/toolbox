@@ -2,11 +2,13 @@ import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deployDokploy, validateDokployConfig } from '../dokploy';
+import { generateTag } from '../index';
 import type { DokployDeployConfig } from '../types';
 
-// Mock getDokployToken to return a test token
+// Mock auth functions
 vi.mock('../../auth', () => ({
 	getDokployToken: vi.fn().mockResolvedValue('test-api-token'),
+	getDokployRegistryId: vi.fn().mockResolvedValue(null),
 }));
 
 // MSW server for mocking Dokploy API
@@ -112,7 +114,17 @@ describe('deployDokploy', () => {
 	});
 
 	it('should deploy successfully without master key', async () => {
+		const saveDockerCalls: unknown[] = [];
+
 		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				async ({ request }) => {
+					const body = await request.json();
+					saveDockerCalls.push(body);
+					return HttpResponse.json({ success: true });
+				},
+			),
 			http.post('https://dokploy.example.com/api/application.deploy', () => {
 				return HttpResponse.json({ success: true });
 			}),
@@ -132,17 +144,28 @@ describe('deployDokploy', () => {
 		expect(result.imageRef).toBe('ghcr.io/myorg/app:v1.0.0');
 		expect(result.masterKey).toBeUndefined();
 		expect(result.url).toBe('https://dokploy.example.com/project/proj_123');
+		expect(saveDockerCalls).toHaveLength(1);
+		expect(saveDockerCalls[0]).toMatchObject({
+			applicationId: 'app_456',
+			dockerImage: 'ghcr.io/myorg/app:v1.0.0',
+		});
 	});
 
 	it('should deploy with master key and update environment', async () => {
-		const updateCalls: unknown[] = [];
+		const envCalls: unknown[] = [];
 
 		server.use(
 			http.post(
-				'https://dokploy.example.com/api/application.update',
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				() => {
+					return HttpResponse.json({ success: true });
+				},
+			),
+			http.post(
+				'https://dokploy.example.com/api/application.saveEnvironment',
 				async ({ request }) => {
 					const body = await request.json();
-					updateCalls.push(body);
+					envCalls.push(body);
 					return HttpResponse.json({ success: true });
 				},
 			),
@@ -164,8 +187,8 @@ describe('deployDokploy', () => {
 		});
 
 		expect(result.masterKey).toBe('secret-master-key');
-		expect(updateCalls).toHaveLength(1);
-		expect(updateCalls[0]).toMatchObject({
+		expect(envCalls).toHaveLength(1);
+		expect(envCalls[0]).toMatchObject({
 			applicationId: 'app_456',
 			env: 'GKM_MASTER_KEY=secret-master-key',
 		});
@@ -173,6 +196,12 @@ describe('deployDokploy', () => {
 
 	it('should handle API error with message', async () => {
 		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				() => {
+					return HttpResponse.json({ success: true });
+				},
+			),
 			http.post('https://dokploy.example.com/api/application.deploy', () => {
 				return HttpResponse.json(
 					{ message: 'Application not found' },
@@ -197,6 +226,12 @@ describe('deployDokploy', () => {
 
 	it('should handle API error with issues', async () => {
 		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				() => {
+					return HttpResponse.json({ success: true });
+				},
+			),
 			http.post('https://dokploy.example.com/api/application.deploy', () => {
 				return HttpResponse.json(
 					{
@@ -224,6 +259,12 @@ describe('deployDokploy', () => {
 
 	it('should handle API error without JSON body', async () => {
 		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				() => {
+					return HttpResponse.json({ success: true });
+				},
+			),
 			http.post('https://dokploy.example.com/api/application.deploy', () => {
 				return new HttpResponse('Internal Server Error', { status: 500 });
 			}),
@@ -241,5 +282,154 @@ describe('deployDokploy', () => {
 				},
 			}),
 		).rejects.toThrow('Dokploy API error: 500');
+	});
+
+	it('should use registryId from config', async () => {
+		const saveDockerCalls: unknown[] = [];
+
+		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				async ({ request }) => {
+					const body = await request.json();
+					saveDockerCalls.push(body);
+					return HttpResponse.json({ success: true });
+				},
+			),
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		await deployDokploy({
+			stage: 'production',
+			tag: 'v1.0.0',
+			imageRef: 'ghcr.io/myorg/app:v1.0.0',
+			config: {
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+				registryId: 'reg_789',
+			},
+		});
+
+		expect(saveDockerCalls).toHaveLength(1);
+		expect(saveDockerCalls[0]).toMatchObject({
+			applicationId: 'app_456',
+			dockerImage: 'ghcr.io/myorg/app:v1.0.0',
+			registryId: 'reg_789',
+		});
+	});
+
+	it('should use stored registryId when not in config', async () => {
+		const { getDokployRegistryId } = await import('../../auth');
+		vi.mocked(getDokployRegistryId).mockResolvedValueOnce('stored_reg_123');
+
+		const saveDockerCalls: unknown[] = [];
+
+		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				async ({ request }) => {
+					const body = await request.json();
+					saveDockerCalls.push(body);
+					return HttpResponse.json({ success: true });
+				},
+			),
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		await deployDokploy({
+			stage: 'production',
+			tag: 'v1.0.0',
+			imageRef: 'ghcr.io/myorg/app:v1.0.0',
+			config: {
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+			},
+		});
+
+		expect(saveDockerCalls).toHaveLength(1);
+		expect(saveDockerCalls[0]).toMatchObject({
+			applicationId: 'app_456',
+			dockerImage: 'ghcr.io/myorg/app:v1.0.0',
+			registryId: 'stored_reg_123',
+		});
+	});
+
+	it('should use registryCredentials from config', async () => {
+		const saveDockerCalls: unknown[] = [];
+
+		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.saveDockerProvider',
+				async ({ request }) => {
+					const body = await request.json();
+					saveDockerCalls.push(body);
+					return HttpResponse.json({ success: true });
+				},
+			),
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		await deployDokploy({
+			stage: 'production',
+			tag: 'v1.0.0',
+			imageRef: 'ghcr.io/myorg/app:v1.0.0',
+			config: {
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+				registryCredentials: {
+					registryUrl: 'ghcr.io',
+					username: 'myuser',
+					password: 'mytoken',
+				},
+			},
+		});
+
+		expect(saveDockerCalls).toHaveLength(1);
+		expect(saveDockerCalls[0]).toMatchObject({
+			applicationId: 'app_456',
+			dockerImage: 'ghcr.io/myorg/app:v1.0.0',
+			username: 'myuser',
+			password: 'mytoken',
+			registryUrl: 'ghcr.io',
+		});
+	});
+});
+
+describe('generateTag', () => {
+	it('should generate tag with stage and timestamp', () => {
+		const tag = generateTag('production');
+
+		expect(tag).toMatch(/^production-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
+	});
+
+	it('should use stage prefix', () => {
+		const tag = generateTag('staging');
+
+		expect(tag.startsWith('staging-')).toBe(true);
+	});
+
+	it('should generate unique tags', () => {
+		const tag1 = generateTag('dev');
+		const tag2 = generateTag('dev');
+
+		// Tags generated at the same second should be equal
+		// But the format should be consistent
+		expect(tag1).toMatch(/^dev-/);
+		expect(tag2).toMatch(/^dev-/);
+	});
+
+	it('should handle different stage names', () => {
+		expect(generateTag('prod')).toMatch(/^prod-/);
+		expect(generateTag('development')).toMatch(/^development-/);
+		expect(generateTag('test-env')).toMatch(/^test-env-/);
 	});
 });
