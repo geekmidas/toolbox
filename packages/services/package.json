@@ -8,6 +8,11 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs"
+		},
+		"./context": {
+			"types": "./dist/context.d.ts",
+			"import": "./dist/context.mjs",
+			"require": "./dist/context.cjs"
 		}
 	},
 	"scripts": {
