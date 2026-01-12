@@ -1,6 +1,5 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { PublishableMessage } from '@geekmidas/events';
-import type { Service } from '@geekmidas/services';
+import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { c } from '../crons';
@@ -19,7 +18,7 @@ describe('Construct environment getter', () => {
 		it('should detect environment variables from a single service', async () => {
 			const databaseService = {
 				serviceName: 'database' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						url: get('DATABASE_URL').string(),
 						port: get('DATABASE_PORT').string().transform(Number).default(5432),
@@ -39,7 +38,7 @@ describe('Construct environment getter', () => {
 		it('should detect environment variables from multiple services', async () => {
 			const databaseService = {
 				serviceName: 'database' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						url: get('DATABASE_URL').string(),
 					}));
@@ -48,7 +47,7 @@ describe('Construct environment getter', () => {
 
 			const redisService = {
 				serviceName: 'redis' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						url: get('REDIS_URL').string(),
 						ttl: get('REDIS_TTL').string().transform(Number).default(3600),
@@ -68,7 +67,7 @@ describe('Construct environment getter', () => {
 		it('should deduplicate environment variables across services', async () => {
 			const service1 = {
 				serviceName: 'service1' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						apiKey: get('SHARED_API_KEY').string(),
 					}));
@@ -77,7 +76,7 @@ describe('Construct environment getter', () => {
 
 			const service2 = {
 				serviceName: 'service2' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						apiKey: get('SHARED_API_KEY').string(),
 					}));
@@ -97,7 +96,7 @@ describe('Construct environment getter', () => {
 		it('should handle services with nested configuration', async () => {
 			const configService = {
 				serviceName: 'config' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						database: {
 							host: get('DB_HOST').string(),
@@ -123,7 +122,7 @@ describe('Construct environment getter', () => {
 		it('should handle services that return non-ConfigParser values', async () => {
 			const simpleService = {
 				serviceName: 'simple' as const,
-				register(_envParser: EnvironmentParser<{}>) {
+				register(_options: ServiceRegisterOptions) {
 					// This service doesn't use envParser - just returns a plain object
 					return { value: 'test' };
 				},
@@ -131,7 +130,7 @@ describe('Construct environment getter', () => {
 
 			const databaseService = {
 				serviceName: 'database' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						url: get('DATABASE_URL').string(),
 					}));
@@ -153,7 +152,7 @@ describe('Construct environment getter', () => {
 		it('should detect environment variables from endpoint services', async () => {
 			const authService = {
 				serviceName: 'auth' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						secret: get('JWT_SECRET').string(),
 						expiresIn: get('JWT_EXPIRES_IN').string().default('15m'),
@@ -174,7 +173,7 @@ describe('Construct environment getter', () => {
 		it('should work with different HTTP methods', async () => {
 			const storageService = {
 				serviceName: 'storage' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						bucket: get('S3_BUCKET').string(),
 						region: get('AWS_REGION').string().default('us-east-1'),
@@ -207,7 +206,7 @@ describe('Construct environment getter', () => {
 		it('should detect environment variables from cron services', async () => {
 			const emailService = {
 				serviceName: 'email' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						smtpHost: get('SMTP_HOST').string(),
 						smtpPort: get('SMTP_PORT').string().transform(Number).default(587),
@@ -243,7 +242,7 @@ describe('Construct environment getter', () => {
 
 			const notificationService = {
 				serviceName: 'notification' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						apiKey: get('NOTIFICATION_API_KEY').string(),
 						endpoint: get('NOTIFICATION_ENDPOINT')
@@ -280,7 +279,7 @@ describe('Construct environment getter', () => {
 		it('should handle service with optional environment variables', async () => {
 			const optionalConfigService = {
 				serviceName: 'optionalConfig' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						required: get('REQUIRED_VAR').string(),
 						optional1: get('OPTIONAL_VAR_1').string().optional(),
@@ -306,7 +305,7 @@ describe('Construct environment getter', () => {
 		it('should be callable multiple times with consistent results', async () => {
 			const service = {
 				serviceName: 'testService' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						var1: get('VAR_1').string(),
 						var2: get('VAR_2').string(),
@@ -328,7 +327,7 @@ describe('Construct environment getter', () => {
 		it('should handle services with complex transformations', async () => {
 			const complexService = {
 				serviceName: 'complex' as const,
-				register(envParser) {
+				register({ envParser }) {
 					return envParser.create((get) => ({
 						origins: get('ALLOWED_ORIGINS')
 							.string()
