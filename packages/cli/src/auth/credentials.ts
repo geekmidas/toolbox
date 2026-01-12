@@ -18,24 +18,33 @@ export interface StoredCredentials {
 }
 
 /**
+ * Options for credential operations
+ */
+export interface CredentialOptions {
+	/** Root directory for credentials storage (default: user home directory) */
+	root?: string;
+}
+
+/**
  * Get the path to the credentials directory
  */
-export function getCredentialsDir(): string {
-	return join(homedir(), '.gkm');
+export function getCredentialsDir(options?: CredentialOptions): string {
+	const root = options?.root ?? homedir();
+	return join(root, '.gkm');
 }
 
 /**
  * Get the path to the credentials file
  */
-export function getCredentialsPath(): string {
-	return join(getCredentialsDir(), 'credentials.json');
+export function getCredentialsPath(options?: CredentialOptions): string {
+	return join(getCredentialsDir(options), 'credentials.json');
 }
 
 /**
  * Ensure the credentials directory exists
  */
-function ensureCredentialsDir(): void {
-	const dir = getCredentialsDir();
+function ensureCredentialsDir(options?: CredentialOptions): void {
+	const dir = getCredentialsDir(options);
 	if (!existsSync(dir)) {
 		mkdirSync(dir, { recursive: true, mode: 0o700 });
 	}
@@ -44,8 +53,10 @@ function ensureCredentialsDir(): void {
 /**
  * Read stored credentials from disk
  */
-export async function readCredentials(): Promise<StoredCredentials> {
-	const path = getCredentialsPath();
+export async function readCredentials(
+	options?: CredentialOptions,
+): Promise<StoredCredentials> {
+	const path = getCredentialsPath(options);
 
 	if (!existsSync(path)) {
 		return {};
@@ -64,9 +75,10 @@ export async function readCredentials(): Promise<StoredCredentials> {
  */
 export async function writeCredentials(
 	credentials: StoredCredentials,
+	options?: CredentialOptions,
 ): Promise<void> {
-	ensureCredentialsDir();
-	const path = getCredentialsPath();
+	ensureCredentialsDir(options);
+	const path = getCredentialsPath(options);
 
 	await writeFile(path, JSON.stringify(credentials, null, 2), {
 		mode: 0o600, // Owner read/write only
@@ -79,8 +91,9 @@ export async function writeCredentials(
 export async function storeDokployCredentials(
 	token: string,
 	endpoint: string,
+	options?: CredentialOptions,
 ): Promise<void> {
-	const credentials = await readCredentials();
+	const credentials = await readCredentials(options);
 
 	credentials.dokploy = {
 		token,
@@ -88,17 +101,19 @@ export async function storeDokployCredentials(
 		storedAt: new Date().toISOString(),
 	};
 
-	await writeCredentials(credentials);
+	await writeCredentials(credentials, options);
 }
 
 /**
  * Get stored Dokploy credentials
  */
-export async function getDokployCredentials(): Promise<{
+export async function getDokployCredentials(
+	options?: CredentialOptions,
+): Promise<{
 	token: string;
 	endpoint: string;
 } | null> {
-	const credentials = await readCredentials();
+	const credentials = await readCredentials(options);
 
 	if (!credentials.dokploy) {
 		return null;
@@ -113,23 +128,27 @@ export async function getDokployCredentials(): Promise<{
 /**
  * Remove Dokploy credentials
  */
-export async function removeDokployCredentials(): Promise<boolean> {
-	const credentials = await readCredentials();
+export async function removeDokployCredentials(
+	options?: CredentialOptions,
+): Promise<boolean> {
+	const credentials = await readCredentials(options);
 
 	if (!credentials.dokploy) {
 		return false;
 	}
 
 	delete credentials.dokploy;
-	await writeCredentials(credentials);
+	await writeCredentials(credentials, options);
 	return true;
 }
 
 /**
  * Remove all stored credentials
  */
-export async function removeAllCredentials(): Promise<void> {
-	const path = getCredentialsPath();
+export async function removeAllCredentials(
+	options?: CredentialOptions,
+): Promise<void> {
+	const path = getCredentialsPath(options);
 
 	if (existsSync(path)) {
 		await unlink(path);
@@ -139,7 +158,9 @@ export async function removeAllCredentials(): Promise<void> {
 /**
  * Get Dokploy API token, checking stored credentials first, then environment
  */
-export async function getDokployToken(): Promise<string | null> {
+export async function getDokployToken(
+	options?: CredentialOptions,
+): Promise<string | null> {
 	// First check environment variable (takes precedence)
 	const envToken = process.env.DOKPLOY_API_TOKEN;
 	if (envToken) {
@@ -147,7 +168,7 @@ export async function getDokployToken(): Promise<string | null> {
 	}
 
 	// Then check stored credentials
-	const stored = await getDokployCredentials();
+	const stored = await getDokployCredentials(options);
 	if (stored) {
 		return stored.token;
 	}
@@ -158,7 +179,9 @@ export async function getDokployToken(): Promise<string | null> {
 /**
  * Get Dokploy endpoint from stored credentials
  */
-export async function getDokployEndpoint(): Promise<string | null> {
-	const stored = await getDokployCredentials();
+export async function getDokployEndpoint(
+	options?: CredentialOptions,
+): Promise<string | null> {
+	const stored = await getDokployCredentials(options);
 	return stored?.endpoint ?? null;
 }
