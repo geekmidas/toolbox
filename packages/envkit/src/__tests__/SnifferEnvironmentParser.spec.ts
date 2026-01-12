@@ -145,6 +145,60 @@ describe('SnifferEnvironmentParser', () => {
 			expect(config.value).toBeUndefined();
 		});
 
+		it('should return null for nullable schemas', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			const config = sniffer
+				.create((get) => ({
+					value: get('NULLABLE_VAR').string().nullable(),
+				}))
+				.parse();
+
+			expect(config.value).toBeNull();
+		});
+
+		it('should handle object schemas with default values', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			const objectSchema = z.object({
+				name: z.string(),
+				count: z.number(),
+			});
+
+			const config = sniffer
+				.create((_get) => ({
+					value: objectSchema,
+				}))
+				.parse();
+
+			expect(config.value).toEqual({
+				name: '',
+				count: 0,
+			});
+		});
+
+		it('should handle nested object schemas', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			const nestedSchema = z.object({
+				outer: z.object({
+					inner: z.string(),
+				}),
+			});
+
+			const config = sniffer
+				.create((_get) => ({
+					nested: nestedSchema,
+				}))
+				.parse();
+
+			expect(config.nested).toEqual({
+				outer: {
+					inner: '',
+				},
+			});
+		});
+
 		it('should handle nested configurations', () => {
 			const sniffer = new SnifferEnvironmentParser();
 
