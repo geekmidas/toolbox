@@ -337,8 +337,7 @@ export class HonoEndpoint<
 		const handler = async (c: Context) => {
 			// Request context setup
 			const startTime = Date.now();
-			const requestId =
-				c.req.header('X-Request-ID') ?? crypto.randomUUID();
+			const requestId = c.req.header('X-Request-ID') ?? crypto.randomUUID();
 
 			const logger = endpoint.logger.child({
 				requestId,
@@ -357,238 +356,251 @@ export class HonoEndpoint<
 				{ logger, requestId, startTime },
 				async () => {
 					try {
-				// Lazy accessors - no upfront parsing, use native Hono methods
-				const header = createHonoHeaders(c);
-				const cookie = createHonoCookies(c);
+						// Lazy accessors - no upfront parsing, use native Hono methods
+						const header = createHonoHeaders(c);
+						const cookie = createHonoCookies(c);
 
-				// Only register services if endpoint has any
-				const services = features.hasServices
-					? await serviceDiscovery.register(endpoint.services)
-					: ({} as ServiceRecord<TServices>);
+						// Only register services if endpoint has any
+						const services = features.hasServices
+							? await serviceDiscovery.register(endpoint.services)
+							: ({} as ServiceRecord<TServices>);
 
-				// Resolve database service only if configured
-				const rawDb = features.hasDatabase
-					? await serviceDiscovery
-							.register([endpoint.databaseService!])
-							.then(
-								(s) =>
-									s[endpoint.databaseService?.serviceName as keyof typeof s],
-							)
-					: undefined;
+						// Resolve database service only if configured
+						const rawDb = features.hasDatabase
+							? await serviceDiscovery
+									.register([endpoint.databaseService!])
+									.then(
+										(s) =>
+											s[
+												endpoint.databaseService?.serviceName as keyof typeof s
+											],
+									)
+							: undefined;
 
-				// Extract session (defaults to empty object)
-				const session = await endpoint.getSession({
-					services,
-					logger,
-					header,
-					cookie,
-					...(rawDb !== undefined && { db: rawDb }),
-				} as any);
-
-				// Check authorization (defaults to true)
-				const isAuthorized = await endpoint.authorize({
-					header,
-					cookie,
-					services,
-					logger,
-					session,
-				});
-
-				if (!isAuthorized) {
-					logger.warn('Unauthorized access attempt');
-					return c.json({ error: 'Unauthorized' }, 401);
-				}
-
-				// Check rate limit only if configured
-				if (features.hasRateLimit) {
-					const rateLimitInfo = await checkRateLimit(endpoint.rateLimit!, {
-						header,
-						services,
-						logger,
-						session,
-						path: c.req.path,
-						method: endpoint.method,
-					});
-
-					const rateLimitHeaders = getRateLimitHeaders(
-						rateLimitInfo,
-						endpoint.rateLimit!,
-					);
-					for (const [key, value] of Object.entries(rateLimitHeaders)) {
-						if (value) {
-							c.header(key, value);
-						}
-					}
-				}
-
-				// Create audit context only if audits are configured
-				const auditContext = features.hasAudits
-					? await createAuditContext(
-							endpoint as any,
-							serviceDiscovery,
+						// Extract session (defaults to empty object)
+						const session = await endpoint.getSession({
+							services,
 							logger,
-							{
-								session,
+							header,
+							cookie,
+							...(rawDb !== undefined && { db: rawDb }),
+						} as any);
+
+						// Check authorization (defaults to true)
+						const isAuthorized = await endpoint.authorize({
+							header,
+							cookie,
+							services,
+							logger,
+							session,
+						});
+
+						if (!isAuthorized) {
+							logger.warn('Unauthorized access attempt');
+							return c.json({ error: 'Unauthorized' }, 401);
+						}
+
+						// Check rate limit only if configured
+						if (features.hasRateLimit) {
+							const rateLimitInfo = await checkRateLimit(endpoint.rateLimit!, {
 								header,
-								cookie,
-								services: services as Record<string, unknown>,
-							},
-						)
-					: undefined;
-
-				const audits = features.hasAudits
-					? (endpoint.audits as MappedAudit<TAuditAction, TOutSchema>[])
-					: [];
-
-				// Warn if declarative audits are configured but no audit storage
-				if (features.hasAudits && !auditContext) {
-					logger.warn('No auditor storage service available');
-				}
-
-				// Extract RLS context only if configured and not bypassed
-				const rlsContext =
-					features.hasRls && rawDb !== undefined
-						? await endpoint.rlsConfig?.extractor({
 								services,
-								session: session as TSession,
-								header,
-								cookie,
 								logger,
-							})
-						: undefined;
+								session,
+								path: c.req.path,
+								method: endpoint.method,
+							});
 
-				// Execute handler with automatic audit transaction support
-				const result = await executeWithAuditTransaction(
-					auditContext,
-					async (auditor) => {
-						const sameDatabase =
-							auditContext?.storage?.databaseServiceName &&
-							auditContext.storage.databaseServiceName ===
-								endpoint.databaseService?.serviceName;
-						const baseDb = sameDatabase
-							? (auditor?.getTransaction?.() ?? rawDb)
-							: rawDb;
-
-						const executeHandler = async (db: TDatabase | undefined) => {
-							const responseBuilder = new ResponseBuilder();
-							const response = await endpoint.handler(
-								{
-									services,
-									logger,
-									body: features.hasBodyValidation
-										? (c.req.valid as any)('json')
-										: undefined,
-									query: features.hasQueryValidation
-										? (c.req.valid as any)('query')
-										: undefined,
-									params: features.hasParamValidation
-										? (c.req.valid as any)('param')
-										: undefined,
-									session,
-									header,
-									cookie,
-									auditor,
-									db,
-								} as unknown as EndpointContext<
-									TInput,
-									TServices,
-									TLogger,
-									TSession,
-									TAuditAction,
-									TDatabase,
-									TAuditStorage
-								>,
-								responseBuilder,
+							const rateLimitHeaders = getRateLimitHeaders(
+								rateLimitInfo,
+								endpoint.rateLimit!,
 							);
-
-							let data = response;
-							let metadata = responseBuilder.getMetadata();
-
-							if (Endpoint.hasMetadata(response)) {
-								data = response.data;
-								metadata = response.metadata;
+							for (const [key, value] of Object.entries(rateLimitHeaders)) {
+								if (value) {
+									c.header(key, value);
+								}
 							}
+						}
 
-							const output = endpoint.outputSchema
-								? await endpoint.parseOutput(data)
+						// Create audit context only if audits are configured
+						const auditContext = features.hasAudits
+							? await createAuditContext(
+									endpoint as any,
+									serviceDiscovery,
+									logger,
+									{
+										session,
+										header,
+										cookie,
+										services: services as Record<string, unknown>,
+									},
+								)
+							: undefined;
+
+						const audits = features.hasAudits
+							? (endpoint.audits as MappedAudit<TAuditAction, TOutSchema>[])
+							: [];
+
+						// Warn if declarative audits are configured but no audit storage
+						if (features.hasAudits && !auditContext) {
+							logger.warn('No auditor storage service available');
+						}
+
+						// Extract RLS context only if configured and not bypassed
+						const rlsContext =
+							features.hasRls && rawDb !== undefined
+								? await endpoint.rlsConfig?.extractor({
+										services,
+										session: session as TSession,
+										header,
+										cookie,
+										logger,
+									})
 								: undefined;
 
-							return { output, metadata, responseBuilder };
-						};
+						// Execute handler with automatic audit transaction support
+						const result = await executeWithAuditTransaction(
+							auditContext,
+							async (auditor) => {
+								const sameDatabase =
+									auditContext?.storage?.databaseServiceName &&
+									auditContext.storage.databaseServiceName ===
+										endpoint.databaseService?.serviceName;
+								const baseDb = sameDatabase
+									? (auditor?.getTransaction?.() ?? rawDb)
+									: rawDb;
 
-						if (features.hasRls && rlsContext && baseDb) {
-							return withRlsContext(
-								baseDb as any,
-								rlsContext,
-								async (trx) => executeHandler(trx as TDatabase),
-								{ prefix: endpoint.rlsConfig?.prefix },
-							);
-						}
+								const executeHandler = async (db: TDatabase | undefined) => {
+									const responseBuilder = new ResponseBuilder();
+									const response = await endpoint.handler(
+										{
+											services,
+											logger,
+											body: features.hasBodyValidation
+												? (c.req.valid as any)('json')
+												: undefined,
+											query: features.hasQueryValidation
+												? (c.req.valid as any)('query')
+												: undefined,
+											params: features.hasParamValidation
+												? (c.req.valid as any)('param')
+												: undefined,
+											session,
+											header,
+											cookie,
+											auditor,
+											db,
+										} as unknown as EndpointContext<
+											TInput,
+											TServices,
+											TLogger,
+											TSession,
+											TAuditAction,
+											TDatabase,
+											TAuditStorage
+										>,
+										responseBuilder,
+									);
 
-						return executeHandler(baseDb as TDatabase | undefined);
-					},
-					async (result, auditor) => {
-						if (!audits?.length) return;
+									let data = response;
+									let metadata = responseBuilder.getMetadata();
 
-						for (const audit of audits) {
-							if (audit.when && !audit.when(result.output as any)) {
-								continue;
+									if (Endpoint.hasMetadata(response)) {
+										data = response.data;
+										metadata = response.metadata;
+									}
+
+									const output = endpoint.outputSchema
+										? await endpoint.parseOutput(data)
+										: undefined;
+
+									return { output, metadata, responseBuilder };
+								};
+
+								if (features.hasRls && rlsContext && baseDb) {
+									return withRlsContext(
+										baseDb as any,
+										rlsContext,
+										async (trx) => executeHandler(trx as TDatabase),
+										{ prefix: endpoint.rlsConfig?.prefix },
+									);
+								}
+
+								return executeHandler(baseDb as TDatabase | undefined);
+							},
+							async (result, auditor) => {
+								if (!audits?.length) return;
+
+								for (const audit of audits) {
+									if (audit.when && !audit.when(result.output as any)) {
+										continue;
+									}
+									const payload = audit.payload(result.output as any);
+									const entityId = audit.entityId?.(result.output as any);
+									auditor.audit(audit.type as any, payload as any, {
+										table: audit.table,
+										entityId,
+									});
+								}
+							},
+							{ db: rawDb },
+						);
+
+						const { output, metadata } = result;
+
+						try {
+							let status = endpoint.status as ContentfulStatusCode;
+
+							if (metadata.status) {
+								status = metadata.status as ContentfulStatusCode;
 							}
-							const payload = audit.payload(result.output as any);
-							const entityId = audit.entityId?.(result.output as any);
-							auditor.audit(audit.type as any, payload as any, {
-								table: audit.table,
-								entityId,
-							});
+
+							if (metadata.headers) {
+								for (const [key, value] of Object.entries(metadata.headers)) {
+									c.header(key, value);
+								}
+							}
+
+							if (metadata.cookies) {
+								for (const [name, { value, options }] of metadata.cookies) {
+									setCookie(c, name, value, options);
+								}
+							}
+
+							// Only publish events if configured (no global middleware overhead)
+							if (features.hasEvents && Endpoint.isSuccessStatus(status)) {
+								await publishConstructEvents<any, any>(
+									endpoint as any,
+									output,
+									serviceDiscovery,
+									logger,
+								);
+							}
+
+							if (HonoEndpoint.isDev) {
+								logger.info({ status, body: output }, 'Outgoing response');
+							}
+
+							// @ts-expect-error
+							return c.json(output, status);
+						} catch (validationError: any) {
+							logger.error(validationError, 'Output validation failed');
+							const error = wrapError(
+								validationError,
+								422,
+								'Response validation failed',
+							);
+							if (HonoEndpoint.isDev) {
+								logger.info(
+									{ status: error.statusCode, body: error },
+									'Outgoing response',
+								);
+							}
+							return c.json(error, error.statusCode as ContentfulStatusCode);
 						}
-					},
-					{ db: rawDb },
-				);
-
-				const { output, metadata } = result;
-
-				try {
-					let status = endpoint.status as ContentfulStatusCode;
-
-					if (metadata.status) {
-						status = metadata.status as ContentfulStatusCode;
-					}
-
-					if (metadata.headers) {
-						for (const [key, value] of Object.entries(metadata.headers)) {
-							c.header(key, value);
-						}
-					}
-
-					if (metadata.cookies) {
-						for (const [name, { value, options }] of metadata.cookies) {
-							setCookie(c, name, value, options);
-						}
-					}
-
-					// Only publish events if configured (no global middleware overhead)
-					if (features.hasEvents && Endpoint.isSuccessStatus(status)) {
-						await publishConstructEvents<any, any>(
-							endpoint as any,
-							output,
-							serviceDiscovery,
-							logger,
-						);
-					}
-
-					if (HonoEndpoint.isDev) {
-						logger.info({ status, body: output }, 'Outgoing response');
-					}
-
-					// @ts-expect-error
-					return c.json(output, status);
-					} catch (validationError: any) {
-						logger.error(validationError, 'Output validation failed');
-						const error = wrapError(
-							validationError,
-							422,
-							'Response validation failed',
-						);
+					} catch (e: any) {
+						logger.error(e, 'Error processing endpoint request');
+						const error = wrapError(e, 500, 'Internal Server Error');
 						if (HonoEndpoint.isDev) {
 							logger.info(
 								{ status: error.statusCode, body: error },
@@ -597,20 +609,9 @@ export class HonoEndpoint<
 						}
 						return c.json(error, error.statusCode as ContentfulStatusCode);
 					}
-				} catch (e: any) {
-					logger.error(e, 'Error processing endpoint request');
-					const error = wrapError(e, 500, 'Internal Server Error');
-					if (HonoEndpoint.isDev) {
-						logger.info(
-							{ status: error.statusCode, body: error },
-							'Outgoing response',
-						);
-					}
-					return c.json(error, error.statusCode as ContentfulStatusCode);
-				}
-			},
-		);
-	};
+				},
+			);
+		};
 
 		// Register route with conditional validators
 		app[method](route, ...validators, handler);

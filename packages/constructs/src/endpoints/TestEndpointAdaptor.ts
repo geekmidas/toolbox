@@ -186,7 +186,9 @@ export class TestEndpointAdaptor<
 		// Request context setup
 		const startTime = Date.now();
 		const requestId =
-			(ctx as any).requestId ?? ctx.headers['x-request-id'] ?? crypto.randomUUID();
+			(ctx as any).requestId ??
+			ctx.headers['x-request-id'] ??
+			crypto.randomUUID();
 
 		const logger = this.endpoint.logger.child({
 			requestId,
@@ -200,160 +202,163 @@ export class TestEndpointAdaptor<
 
 		// Wrap handler execution in request context
 		return runWithRequestContext({ logger, requestId, startTime }, async () => {
+			const session = await this.endpoint.getSession({
+				logger,
+				services: ctx.services,
+				header,
+				cookie,
+				...(rawDb !== undefined && { db: rawDb }),
+			} as any);
 
-		const session = await this.endpoint.getSession({
-			logger,
-			services: ctx.services,
-			header,
-			cookie,
-			...(rawDb !== undefined && { db: rawDb }),
-		} as any);
-
-		// Check authorization
-		const isAuthorized = await this.endpoint.authorize({
-			header,
-			cookie,
-			services: ctx.services,
-			logger,
-			session,
-		});
-
-		if (!isAuthorized) {
-			logger.warn('Unauthorized access attempt');
-			throw new UnauthorizedError(
-				'Unauthorized access to the endpoint',
-				'You do not have permission to access this resource.',
-			);
-		}
-
-		// Create audit context if audit storage is provided
-		// The auditorStorage instance is required when endpoint uses .auditor()
-		const auditorStorage = (ctx as any).auditorStorage as TAuditStorage;
-		let auditContext: AuditExecutionContext<TAuditAction> | undefined;
-
-		if (auditorStorage) {
-			// Extract actor if configured
-			let actor: AuditActor = { id: 'system', type: 'system' };
-			if (this.endpoint.actorExtractor) {
-				try {
-					actor = await this.endpoint.actorExtractor({
-						services: ctx.services as any,
-						session,
-						header,
-						cookie,
-						logger,
-					});
-				} catch (error) {
-					logger.error(error as Error, 'Failed to extract actor for audits');
-				}
-			}
-
-			const auditor = new DefaultAuditor<TAuditAction>({
-				actor,
-				storage: auditorStorage as AuditStorage,
-				metadata: {
-					endpoint: this.endpoint.route,
-					method: this.endpoint.method,
-				},
+			// Check authorization
+			const isAuthorized = await this.endpoint.authorize({
+				header,
+				cookie,
+				services: ctx.services,
+				logger,
+				session,
 			});
 
-			auditContext = { auditor, storage: auditorStorage as AuditStorage };
-		}
-
-		// Warn if declarative audits are configured but no audit storage
-		const audits = this.endpoint.audits as MappedAudit<
-			TAuditAction,
-			TOutSchema
-		>[];
-		if (!auditContext && audits?.length) {
-			logger.warn('No auditor storage service available');
-		}
-
-		// Execute handler with automatic audit transaction support
-		const result = await executeWithAuditTransaction(
-			auditContext,
-			async (auditor) => {
-				// Use audit transaction as db if available (when storage has same database)
-				// For testing, the tester controls whether to use transactional auditing
-				const trx = auditor?.getTransaction?.();
-				const db = trx ?? rawDb;
-
-				const responseBuilder = new ResponseBuilder();
-				const response = await this.endpoint.handler(
-					{
-						body,
-						query,
-						params,
-						session,
-						services: ctx.services,
-						logger,
-						header,
-						cookie,
-						auditor,
-						db,
-					} as any,
-					responseBuilder,
-				);
-
-				// Check if response has metadata
-				let data = response;
-				let metadata = responseBuilder.getMetadata();
-
-				if (Endpoint.hasMetadata(response)) {
-					data = response.data;
-					metadata = response.metadata;
-				}
-
-				const output = await this.endpoint.parseOutput(data);
-
-				return { output, metadata, responseBuilder };
-			},
-			// Process declarative audits after handler (inside transaction)
-			async (result, auditor) => {
-				if (!audits?.length) return;
-
-				for (const audit of audits) {
-					if (audit.when && !audit.when(result.output as any)) {
-						continue;
-					}
-					const payload = audit.payload(result.output as any);
-					const entityId = audit.entityId?.(result.output as any);
-					auditor.audit(audit.type as any, payload as any, {
-						table: audit.table,
-						entityId,
-					});
-				}
-			},
-			// Pass rawDb so storage can reuse existing transactions
-			{ db: rawDb },
-		);
-
-		const { output, metadata } = result;
-
-		ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
-		await publishConstructEvents(this.endpoint, output, this.serviceDiscovery);
-
-		// Convert cookies to Set-Cookie headers
-		const headers: Record<string, string | string[]> = {
-			...(metadata.headers || {}),
-		};
-
-		if (metadata.cookies && metadata.cookies.size > 0) {
-			const setCookieValues: string[] = [];
-			for (const [name, cookie] of metadata.cookies.entries()) {
-				setCookieValues.push(
-					serializeCookie(name, cookie.value, cookie.options),
+			if (!isAuthorized) {
+				logger.warn('Unauthorized access attempt');
+				throw new UnauthorizedError(
+					'Unauthorized access to the endpoint',
+					'You do not have permission to access this resource.',
 				);
 			}
-			headers['set-cookie'] = setCookieValues;
-		}
 
-		// Return HTTP response format
-		return {
-			body: output,
-			status: metadata.status || 200,
-			headers,
-		};
+			// Create audit context if audit storage is provided
+			// The auditorStorage instance is required when endpoint uses .auditor()
+			const auditorStorage = (ctx as any).auditorStorage as TAuditStorage;
+			let auditContext: AuditExecutionContext<TAuditAction> | undefined;
+
+			if (auditorStorage) {
+				// Extract actor if configured
+				let actor: AuditActor = { id: 'system', type: 'system' };
+				if (this.endpoint.actorExtractor) {
+					try {
+						actor = await this.endpoint.actorExtractor({
+							services: ctx.services as any,
+							session,
+							header,
+							cookie,
+							logger,
+						});
+					} catch (error) {
+						logger.error(error as Error, 'Failed to extract actor for audits');
+					}
+				}
+
+				const auditor = new DefaultAuditor<TAuditAction>({
+					actor,
+					storage: auditorStorage as AuditStorage,
+					metadata: {
+						endpoint: this.endpoint.route,
+						method: this.endpoint.method,
+					},
+				});
+
+				auditContext = { auditor, storage: auditorStorage as AuditStorage };
+			}
+
+			// Warn if declarative audits are configured but no audit storage
+			const audits = this.endpoint.audits as MappedAudit<
+				TAuditAction,
+				TOutSchema
+			>[];
+			if (!auditContext && audits?.length) {
+				logger.warn('No auditor storage service available');
+			}
+
+			// Execute handler with automatic audit transaction support
+			const result = await executeWithAuditTransaction(
+				auditContext,
+				async (auditor) => {
+					// Use audit transaction as db if available (when storage has same database)
+					// For testing, the tester controls whether to use transactional auditing
+					const trx = auditor?.getTransaction?.();
+					const db = trx ?? rawDb;
+
+					const responseBuilder = new ResponseBuilder();
+					const response = await this.endpoint.handler(
+						{
+							body,
+							query,
+							params,
+							session,
+							services: ctx.services,
+							logger,
+							header,
+							cookie,
+							auditor,
+							db,
+						} as any,
+						responseBuilder,
+					);
+
+					// Check if response has metadata
+					let data = response;
+					let metadata = responseBuilder.getMetadata();
+
+					if (Endpoint.hasMetadata(response)) {
+						data = response.data;
+						metadata = response.metadata;
+					}
+
+					const output = await this.endpoint.parseOutput(data);
+
+					return { output, metadata, responseBuilder };
+				},
+				// Process declarative audits after handler (inside transaction)
+				async (result, auditor) => {
+					if (!audits?.length) return;
+
+					for (const audit of audits) {
+						if (audit.when && !audit.when(result.output as any)) {
+							continue;
+						}
+						const payload = audit.payload(result.output as any);
+						const entityId = audit.entityId?.(result.output as any);
+						auditor.audit(audit.type as any, payload as any, {
+							table: audit.table,
+							entityId,
+						});
+					}
+				},
+				// Pass rawDb so storage can reuse existing transactions
+				{ db: rawDb },
+			);
+
+			const { output, metadata } = result;
+
+			ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
+			await publishConstructEvents(
+				this.endpoint,
+				output,
+				this.serviceDiscovery,
+			);
+
+			// Convert cookies to Set-Cookie headers
+			const headers: Record<string, string | string[]> = {
+				...(metadata.headers || {}),
+			};
+
+			if (metadata.cookies && metadata.cookies.size > 0) {
+				const setCookieValues: string[] = [];
+				for (const [name, cookie] of metadata.cookies.entries()) {
+					setCookieValues.push(
+						serializeCookie(name, cookie.value, cookie.options),
+					);
+				}
+				headers['set-cookie'] = setCookieValues;
+			}
+
+			// Return HTTP response format
+			return {
+				body: output,
+				status: metadata.status || 200,
+				headers,
+			};
 		});
 	}
 
