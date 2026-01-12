@@ -220,7 +220,7 @@ async function getRegistries(
 /**
  * Update gkm.config.ts with Dokploy configuration
  */
-async function updateConfig(
+export async function updateConfig(
 	config: DokployDeployConfig,
 	cwd: string = process.cwd(),
 ): Promise<void> {

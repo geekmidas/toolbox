@@ -20,7 +20,7 @@ export interface DockerDeployOptions {
 /**
  * Get the full image reference
  */
-function getImageRef(
+export function getImageRef(
 	registry: string | undefined,
 	imageName: string,
 	tag: string,
