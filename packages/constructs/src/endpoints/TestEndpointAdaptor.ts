@@ -13,6 +13,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import {
+	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
 	type ServiceRecord,
@@ -134,10 +135,7 @@ export class TestEndpointAdaptor<
 			TDatabaseServiceName
 		>,
 	) {
-		return ServiceDiscovery.getInstance(
-			endpoint.logger,
-			new EnvironmentParser({}),
-		);
+		return ServiceDiscovery.getInstance(new EnvironmentParser({}));
 	}
 	constructor(
 		private readonly endpoint: Endpoint<
@@ -184,7 +182,14 @@ export class TestEndpointAdaptor<
 		// Lazy accessors - defer parsing until needed
 		const header = createObjectHeaders(ctx.headers);
 		const cookie = createCookieHeaderAccessor(ctx.headers.cookie);
+
+		// Request context setup
+		const startTime = Date.now();
+		const requestId =
+			(ctx as any).requestId ?? ctx.headers['x-request-id'] ?? crypto.randomUUID();
+
 		const logger = this.endpoint.logger.child({
+			requestId,
 			route: this.endpoint.route,
 			host: ctx.headers.host,
 			method: this.endpoint.method,
@@ -192,6 +197,9 @@ export class TestEndpointAdaptor<
 
 		// Get database from context for session extraction
 		const rawDb = (ctx as any).database as TDatabase;
+
+		// Wrap handler execution in request context
+		return runWithRequestContext({ logger, requestId, startTime }, async () => {
 
 		const session = await this.endpoint.getSession({
 			logger,
@@ -346,6 +354,7 @@ export class TestEndpointAdaptor<
 			status: metadata.status || 200,
 			headers,
 		};
+		});
 	}
 
 	async request(
