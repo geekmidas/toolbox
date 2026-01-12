@@ -136,6 +136,106 @@ describe('TelescopeLogger', () => {
 			expect(logs[0].level).toBe('debug');
 			expect(logs[0].context).toEqual({ level: 'trace' });
 		});
+
+		it('should handle fatal with string-only and underlying logger', async () => {
+			const mockLogger: Logger = {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				fatal: vi.fn(),
+				trace: vi.fn(),
+				child: vi.fn(() => mockLogger),
+			};
+
+			const logger = new TelescopeLogger({ telescope, logger: mockLogger });
+
+			logger.fatal('Fatal string message');
+
+			expect(mockLogger.fatal).toHaveBeenCalledWith('Fatal string message');
+
+			await new Promise((r) => setTimeout(r, 10));
+
+			const logs = await telescope.getLogs();
+			expect(logs[0].level).toBe('error');
+			expect(logs[0].message).toBe('Fatal string message');
+		});
+
+		it('should handle trace with string-only and underlying logger', async () => {
+			const mockLogger: Logger = {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				fatal: vi.fn(),
+				trace: vi.fn(),
+				child: vi.fn(() => mockLogger),
+			};
+
+			const logger = new TelescopeLogger({ telescope, logger: mockLogger });
+
+			logger.trace('Trace string message');
+
+			expect(mockLogger.trace).toHaveBeenCalledWith('Trace string message');
+
+			await new Promise((r) => setTimeout(r, 10));
+
+			const logs = await telescope.getLogs();
+			expect(logs[0].level).toBe('debug');
+			expect(logs[0].message).toBe('Trace string message');
+		});
+
+		it('should handle fatal with object and underlying logger', async () => {
+			const mockLogger: Logger = {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				fatal: vi.fn(),
+				trace: vi.fn(),
+				child: vi.fn(() => mockLogger),
+			};
+
+			const logger = new TelescopeLogger({ telescope, logger: mockLogger });
+
+			logger.fatal({ errorCode: 500 }, 'Fatal error message');
+
+			expect(mockLogger.fatal).toHaveBeenCalledWith(
+				{ errorCode: 500 },
+				'Fatal error message',
+			);
+
+			await new Promise((r) => setTimeout(r, 10));
+
+			const logs = await telescope.getLogs();
+			expect(logs[0].context).toEqual({ errorCode: 500, level: 'fatal' });
+		});
+
+		it('should handle trace with object and underlying logger', async () => {
+			const mockLogger: Logger = {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				fatal: vi.fn(),
+				trace: vi.fn(),
+				child: vi.fn(() => mockLogger),
+			};
+
+			const logger = new TelescopeLogger({ telescope, logger: mockLogger });
+
+			logger.trace({ traceId: 'abc123' }, 'Trace event');
+
+			expect(mockLogger.trace).toHaveBeenCalledWith(
+				{ traceId: 'abc123' },
+				'Trace event',
+			);
+
+			await new Promise((r) => setTimeout(r, 10));
+
+			const logs = await telescope.getLogs();
+			expect(logs[0].context).toEqual({ traceId: 'abc123', level: 'trace' });
+		});
 	});
 
 	describe('child loggers', () => {
