@@ -33,6 +33,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import {
+	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
 	type ServiceRecord,
@@ -197,9 +198,8 @@ export abstract class AmazonApiGatewayEndpoint<
 			before: async (req) => {
 				const logger = req.event.logger as TLogger;
 				const serviceDiscovery = ServiceDiscovery.getInstance<
-					ServiceRecord<TServices>,
-					TLogger
-				>(logger, this.envParser);
+					ServiceRecord<TServices>
+				>(this.envParser);
 
 				const services = await serviceDiscovery.register(
 					this.endpoint.services,
@@ -247,9 +247,8 @@ export abstract class AmazonApiGatewayEndpoint<
 
 				const logger = req.event.logger as TLogger;
 				const serviceDiscovery = ServiceDiscovery.getInstance<
-					ServiceRecord<TServices>,
-					TLogger
-				>(logger, this.envParser);
+					ServiceRecord<TServices>
+				>(this.envParser);
 
 				const db = await serviceDiscovery
 					.register([this.endpoint.databaseService])
@@ -315,9 +314,8 @@ export abstract class AmazonApiGatewayEndpoint<
 		const input = this.endpoint.refineInput(event);
 		const logger = event.logger as TLogger;
 		const serviceDiscovery = ServiceDiscovery.getInstance<
-			ServiceRecord<TServices>,
-			TLogger
-		>(logger, this.envParser);
+			ServiceRecord<TServices>
+		>(this.envParser);
 
 		// Create audit context if audit storage is configured
 		const auditContext = await createAuditContext(
@@ -537,7 +535,18 @@ export abstract class AmazonApiGatewayEndpoint<
 			chain = chain.use(this.options.telescope.middleware);
 		}
 
-		return chain as unknown as THandler;
+		// Wrap entire Middy chain in request context for service access
+		const wrappedHandler = async (event: TEvent, context: Context) => {
+			const startTime = Date.now();
+			const requestId = context.awsRequestId;
+			const logger = this.endpoint.logger.child({ requestId }) as TLogger;
+
+			return runWithRequestContext({ logger, requestId, startTime }, () =>
+				chain(event, context),
+			);
+		};
+
+		return wrappedHandler as unknown as THandler;
 	}
 }
 
