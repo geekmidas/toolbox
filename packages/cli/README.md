@@ -796,6 +796,75 @@ export default defineConfig({
 - `DOKPLOY_API_TOKEN`: API token for Dokploy (required for dokploy provider)
 - `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments
 
+### `gkm deploy:init`
+
+Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Automatically updates `gkm.config.ts` with the configuration.
+
+```bash
+gkm deploy:init --endpoint <url> --project <name> --app <name> [options]
+```
+
+**Options:**
+- `--endpoint <url>`: Dokploy server URL (e.g., `https://dokploy.example.com`)
+- `--project <name>`: Project name (creates if not exists)
+- `--app <name>`: Application name to create
+- `--project-id <id>`: Use existing project ID instead of finding/creating
+- `--registry-id <id>`: Configure a registry for the application
+
+**Examples:**
+```bash
+# Create new project and application
+DOKPLOY_API_TOKEN=xxx gkm deploy:init \
+  --endpoint https://dokploy.example.com \
+  --project my-project \
+  --app api
+
+# Use existing project
+DOKPLOY_API_TOKEN=xxx gkm deploy:init \
+  --endpoint https://dokploy.example.com \
+  --project-id proj_abc123 \
+  --app api
+
+# With registry configuration
+DOKPLOY_API_TOKEN=xxx gkm deploy:init \
+  --endpoint https://dokploy.example.com \
+  --project my-project \
+  --app api \
+  --registry-id reg_xyz789
+```
+
+**What it does:**
+1. Searches for existing project by name, or creates a new one
+2. Creates a new application in the project
+3. Configures registry if `--registry-id` is provided
+4. Updates `gkm.config.ts` with the Dokploy configuration
+5. Shows next steps for secrets and deployment
+
+### `gkm deploy:list`
+
+List available Dokploy resources (projects and registries).
+
+```bash
+gkm deploy:list --endpoint <url> [options]
+```
+
+**Options:**
+- `--endpoint <url>`: Dokploy server URL
+- `--projects`: List projects only
+- `--registries`: List registries only
+
+**Examples:**
+```bash
+# List all resources
+DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com
+
+# List only projects
+DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com --projects
+
+# List only registries
+DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com --registries
+```
+
 ### Using Encrypted Credentials
 
 After deploying with secrets, your application decrypts credentials at runtime:

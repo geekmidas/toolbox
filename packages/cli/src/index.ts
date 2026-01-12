@@ -5,6 +5,7 @@ import pkg from '../package.json';
 
 import { buildCommand } from './build/index';
 import { type DeployProvider, deployCommand } from './deploy/index';
+import { deployInitCommand, deployListCommand } from './deploy/init';
 import { devCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
@@ -441,6 +442,80 @@ program
 					skipBuild: options.skipBuild,
 				});
 			} catch (_error) {
+				process.exit(1);
+			}
+		},
+	);
+
+// Deploy init command - Initialize Dokploy project and application
+program
+	.command('deploy:init')
+	.description('Initialize Dokploy deployment (create project and application)')
+	.requiredOption('--endpoint <url>', 'Dokploy server URL (e.g., https://dokploy.example.com)')
+	.requiredOption('--project <name>', 'Project name (creates if not exists)')
+	.requiredOption('--app <name>', 'Application name')
+	.option('--project-id <id>', 'Use existing project ID instead of creating')
+	.option('--registry-id <id>', 'Configure registry for the application')
+	.action(
+		async (options: {
+			endpoint: string;
+			project: string;
+			app: string;
+			projectId?: string;
+			registryId?: string;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+
+				await deployInitCommand({
+					endpoint: options.endpoint,
+					projectName: options.project,
+					appName: options.app,
+					projectId: options.projectId,
+					registryId: options.registryId,
+				});
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Failed to initialize deployment');
+				process.exit(1);
+			}
+		},
+	);
+
+// Deploy list command - List Dokploy resources
+program
+	.command('deploy:list')
+	.description('List Dokploy resources (projects, registries)')
+	.requiredOption('--endpoint <url>', 'Dokploy server URL')
+	.option('--projects', 'List projects')
+	.option('--registries', 'List registries')
+	.action(
+		async (options: {
+			endpoint: string;
+			projects?: boolean;
+			registries?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+
+				if (options.projects) {
+					await deployListCommand({ endpoint: options.endpoint, resource: 'projects' });
+				}
+				if (options.registries) {
+					await deployListCommand({ endpoint: options.endpoint, resource: 'registries' });
+				}
+				if (!options.projects && !options.registries) {
+					// Default to listing both
+					await deployListCommand({ endpoint: options.endpoint, resource: 'projects' });
+					await deployListCommand({ endpoint: options.endpoint, resource: 'registries' });
+				}
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Failed to list resources');
 				process.exit(1);
 			}
 		},
