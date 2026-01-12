@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BasicConnection, BasicSubscriber } from '../basic';
 import { Subscriber } from '../Subscriber';
+import { SNSConnection } from '../sns/SNSConnection';
 import { SNSSubscriber } from '../sns/SNSSubscriber';
 import { SQSConnection } from '../sqs/SQSConnection';
 import { SQSSubscriber } from '../sqs/SQSSubscriber';
@@ -80,6 +81,19 @@ describe('Subscriber', () => {
 				await Subscriber.fromConnection<TestMessage>(connection);
 
 			expect(subscriber).toBeInstanceOf(SQSSubscriber);
+		});
+
+		it('should create SNS subscriber from SNS connection', async () => {
+			const connection = await SNSConnection.fromConnectionString(
+				'sns://?topicArn=arn:aws:sns:us-east-1:123456789:test-topic&region=us-east-1&endpoint=http://localhost:4566&accessKeyId=test&secretAccessKey=test',
+			);
+
+			const subscriber =
+				await Subscriber.fromConnection<TestMessage>(connection);
+
+			expect(subscriber).toBeInstanceOf(SNSSubscriber);
+
+			await connection.close();
 		});
 
 		it('should throw error for unsupported connection type', async () => {
