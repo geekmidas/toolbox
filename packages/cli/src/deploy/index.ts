@@ -1,8 +1,8 @@
 import { buildCommand } from '../build/index';
 import { loadConfig } from '../config';
-import type { DeployOptions, DeployProvider, DeployResult } from './types';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy, validateDokployConfig } from './dokploy';
+import type { DeployOptions, DeployProvider, DeployResult } from './types';
 
 const logger = console;
 

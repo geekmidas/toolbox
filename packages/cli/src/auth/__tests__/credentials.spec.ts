@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rm, readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,12 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	getCredentialsDir,
 	getCredentialsPath,
-	readCredentials,
-	writeCredentials,
-	storeDokployCredentials,
 	getDokployCredentials,
-	removeDokployCredentials,
 	getDokployToken,
+	readCredentials,
+	removeDokployCredentials,
+	storeDokployCredentials,
+	writeCredentials,
 } from '../credentials';
 
 describe('credentials storage', () => {

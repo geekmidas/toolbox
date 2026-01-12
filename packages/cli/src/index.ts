@@ -2,9 +2,8 @@
 
 import { Command } from 'commander';
 import pkg from '../package.json';
-
-import { buildCommand } from './build/index';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
+import { buildCommand } from './build/index';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import { devCommand } from './dev/index';

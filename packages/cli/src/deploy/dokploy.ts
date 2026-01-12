@@ -1,5 +1,5 @@
 import { getDokployToken } from '../auth';
-import type { DokployDeployConfig, DeployResult } from './types';
+import type { DeployResult, DokployDeployConfig } from './types';
 
 const logger = console;
 

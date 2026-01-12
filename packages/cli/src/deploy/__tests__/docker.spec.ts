@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getImageRef, resolveDockerConfig } from '../docker';
 import type { GkmConfig } from '../../types';
+import { getImageRef, resolveDockerConfig } from '../docker';
 
 describe('getImageRef', () => {
 	it('should return image with registry prefix', () => {

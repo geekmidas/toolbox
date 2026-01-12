@@ -1,10 +1,10 @@
-import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import * as readline from 'node:readline/promises';
 import {
-	storeDokployCredentials,
+	getCredentialsPath,
 	getDokployCredentials,
 	removeDokployCredentials,
-	getCredentialsPath,
+	storeDokployCredentials,
 } from './credentials';
 
 const logger = console;
@@ -212,7 +212,7 @@ export function maskToken(token: string): string {
 
 // Re-export credentials utilities for use in other modules
 export {
-	getDokployToken,
-	getDokployEndpoint,
 	getDokployCredentials,
+	getDokployEndpoint,
+	getDokployToken,
 } from './credentials';

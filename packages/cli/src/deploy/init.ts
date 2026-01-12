@@ -1,5 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getDokployCredentials, getDokployToken } from '../auth';
 import type { DokployDeployConfig } from './types';
