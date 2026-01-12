@@ -8,10 +8,12 @@ import {
 	getCredentialsDir,
 	getCredentialsPath,
 	getDokployCredentials,
+	getDokployRegistryId,
 	getDokployToken,
 	readCredentials,
 	removeDokployCredentials,
 	storeDokployCredentials,
+	storeDokployRegistryId,
 	writeCredentials,
 } from '../credentials';
 
@@ -199,6 +201,87 @@ describe('credentials storage', () => {
 
 			const token = await getDokployToken({ root: tempDir });
 			expect(token).toBe('stored-token');
+		});
+	});
+
+	describe('storeDokployRegistryId', () => {
+		it('should throw error when no dokploy credentials exist', async () => {
+			await expect(
+				storeDokployRegistryId('reg_123', { root: tempDir }),
+			).rejects.toThrow('Dokploy credentials not found');
+		});
+
+		it('should store registryId with existing credentials', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+
+			await storeDokployRegistryId('reg_123', { root: tempDir });
+
+			const creds = await readCredentials({ root: tempDir });
+			expect(creds.dokploy?.registryId).toBe('reg_123');
+		});
+
+		it('should overwrite existing registryId', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+			await storeDokployRegistryId('old_reg', { root: tempDir });
+			await storeDokployRegistryId('new_reg', { root: tempDir });
+
+			const creds = await readCredentials({ root: tempDir });
+			expect(creds.dokploy?.registryId).toBe('new_reg');
+		});
+	});
+
+	describe('getDokployRegistryId', () => {
+		it('should return null when no credentials exist', async () => {
+			const registryId = await getDokployRegistryId({ root: tempDir });
+			expect(registryId).toBeNull();
+		});
+
+		it('should return null when credentials exist but no registryId', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+
+			const registryId = await getDokployRegistryId({ root: tempDir });
+			expect(registryId).toBeNull();
+		});
+
+		it('should return stored registryId', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+			await storeDokployRegistryId('reg_456', { root: tempDir });
+
+			const registryId = await getDokployRegistryId({ root: tempDir });
+			expect(registryId).toBe('reg_456');
+		});
+	});
+
+	describe('getDokployCredentials with registryId', () => {
+		it('should return registryId when stored', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+			await storeDokployRegistryId('reg_789', { root: tempDir });
+
+			const creds = await getDokployCredentials({ root: tempDir });
+			expect(creds).toEqual({
+				token: 'token',
+				endpoint: 'https://test.com',
+				registryId: 'reg_789',
+			});
+		});
+
+		it('should return undefined registryId when not stored', async () => {
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+
+			const creds = await getDokployCredentials({ root: tempDir });
+			expect(creds?.registryId).toBeUndefined();
 		});
 	});
 });
