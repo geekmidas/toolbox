@@ -47,7 +47,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -120,7 +121,8 @@ program
 						stage: options.stage,
 					});
 				}
-			} catch (_error) {
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Command failed');
 				process.exit(1);
 			}
 		},
@@ -147,7 +149,8 @@ program
 				portExplicit: !!options.port,
 				enableOpenApi: options.enableOpenapi ?? true,
 			});
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -195,7 +198,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await openapiCommand({});
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -218,7 +222,8 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 				await generateReactQueryCommand(options);
-			} catch (_error) {
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Command failed');
 				process.exit(1);
 			}
 		},
@@ -241,7 +246,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await dockerCommand(options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -299,7 +305,8 @@ program
 					const registry = options.registry;
 					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
 				}
-			} catch (_error) {
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Command failed');
 				process.exit(1);
 			}
 		},
@@ -318,7 +325,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await secretsInitCommand(options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -341,7 +349,8 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 				await secretsSetCommand(key, value, options);
-			} catch (_error) {
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Command failed');
 				process.exit(1);
 			}
 		},
@@ -359,7 +368,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await secretsShowCommand(options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -379,7 +389,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await secretsRotateCommand(options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -397,7 +408,8 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await secretsImportCommand(file, options);
-		} catch (_error) {
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
@@ -447,7 +459,10 @@ program
 					skipPush: options.skipPush,
 					skipBuild: options.skipBuild,
 				});
-			} catch (_error) {
+			} catch (error) {
+				console.error(
+					error instanceof Error ? error.message : 'Deploy failed',
+				);
 				process.exit(1);
 			}
 		},
