@@ -194,7 +194,7 @@ export async function setupSubscribers(
     return;
   }
 
-  const serviceDiscovery = ServiceDiscovery.getInstance(logger, envParser);
+  const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
   // Create connection once, outside the loop (more efficient)
   // EventConnectionFactory automatically determines the right connection type

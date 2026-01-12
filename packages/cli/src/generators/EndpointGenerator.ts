@@ -315,10 +315,7 @@ export async function setupEndpoints(
   logger: Logger,
   enableOpenApi: boolean = true,
 ): Promise<void> {
-  const serviceDiscovery = ServiceDiscovery.getInstance(
-    logger,
-    envParser
-  );
+  const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
   // Configure OpenAPI options based on enableOpenApi flag
   const openApiOptions: any = enableOpenApi ? {

@@ -454,7 +454,7 @@ export async function setupEndpoints(
   logger: Logger,
   enableOpenApi: boolean = false,
 ): Promise<void> {
-  const serviceDiscovery = ServiceDiscovery.getInstance(logger, envParser);
+  const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 ${openApiOptionsDecl}
 
   // ============================================
@@ -815,7 +815,7 @@ export async function setupEndpoints(
   logger: Logger,
   enableOpenApi: boolean = false,
 ): Promise<void> {
-  const serviceDiscovery = ServiceDiscovery.getInstance(logger, envParser);
+  const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
   // Minimal handlers (${minimalCount} endpoints) - near-raw-Hono performance
   setupMinimalEndpoints(app, logger);
@@ -1228,7 +1228,7 @@ export async function setupEndpoints(
   logger: Logger,
   enableOpenApi: boolean = false,
 ): Promise<void> {
-  const serviceDiscovery = ServiceDiscovery.getInstance(logger, envParser);
+  const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
   // Minimal handlers (${minimalCount} endpoints) - near-raw-Hono performance
   setupMinimalEndpoints(app, logger);
