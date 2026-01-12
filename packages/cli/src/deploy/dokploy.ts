@@ -1,3 +1,4 @@
+import { getDokployToken } from '../auth';
 import type { DokployDeployConfig, DeployResult } from './types';
 
 const logger = console;
@@ -22,14 +23,14 @@ interface DokployErrorResponse {
 }
 
 /**
- * Get the Dokploy API token from environment
+ * Get the Dokploy API token from stored credentials or environment
  */
-function getApiToken(): string {
-	const token = process.env.DOKPLOY_API_TOKEN;
+async function getApiToken(): Promise<string> {
+	const token = await getDokployToken();
 	if (!token) {
 		throw new Error(
-			'DOKPLOY_API_TOKEN environment variable is required for Dokploy deployment.\n' +
-				'Generate a token at: <your-dokploy-url>/settings/profile',
+			'Dokploy credentials not found.\n' +
+				'Run "gkm login --service dokploy" to authenticate, or set DOKPLOY_API_TOKEN.',
 		);
 	}
 	return token;
@@ -134,7 +135,7 @@ export async function deployDokploy(
 	logger.log(`   Endpoint: ${config.endpoint}`);
 	logger.log(`   Application: ${config.applicationId}`);
 
-	const token = getApiToken();
+	const token = await getApiToken();
 
 	// Prepare environment variables
 	const envVars: Record<string, string> = {};

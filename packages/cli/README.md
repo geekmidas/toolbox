@@ -12,6 +12,7 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 - **Docker Support**: Generate optimized Dockerfiles with multi-stage builds, turbo prune for monorepos
 - **Secrets Management**: Secure credential generation, encryption, and stage-based secrets storage
 - **Deploy Commands**: One-command deployment to Docker registries and Dokploy with encrypted secrets
+- **Authentication**: Store credentials locally for seamless deployment without environment variables
 - **Type-Safe Configuration**: Configuration with TypeScript support and validation
 - **Endpoint Auto-Discovery**: Automatically find and load endpoints from your codebase
 - **Flexible Routing**: Support for glob patterns to discover route files
@@ -733,6 +734,84 @@ gkm secrets:rotate --stage production
 gkm secrets:rotate --stage production --service postgres
 ```
 
+## Authentication
+
+Store credentials locally to avoid setting environment variables for every command.
+
+### `gkm login`
+
+Authenticate with a deployment service. Credentials are stored in `~/.gkm/credentials.json`.
+
+```bash
+gkm login [options]
+```
+
+**Options:**
+- `--service <service>`: Service to login to (`dokploy`) - default: `dokploy`
+- `--token <token>`: API token (will prompt interactively if not provided)
+- `--endpoint <url>`: Service endpoint URL (will prompt if not provided)
+
+**Examples:**
+```bash
+# Interactive login (prompts for endpoint and token)
+gkm login
+
+# Non-interactive login
+gkm login --endpoint https://dokploy.example.com --token your-api-token
+
+# Login with just endpoint (prompts for token)
+gkm login --endpoint https://dokploy.example.com
+```
+
+**After logging in:**
+```bash
+# These commands no longer need DOKPLOY_API_TOKEN
+gkm deploy:list
+gkm deploy:init --project my-project --app api
+gkm deploy --provider dokploy --stage production
+```
+
+### `gkm logout`
+
+Remove stored credentials.
+
+```bash
+gkm logout [options]
+```
+
+**Options:**
+- `--service <service>`: Service to logout from (`dokploy`, `all`) - default: `dokploy`
+
+**Examples:**
+```bash
+# Logout from Dokploy
+gkm logout
+
+# Logout from all services
+gkm logout --service all
+```
+
+### `gkm whoami`
+
+Show current authentication status.
+
+```bash
+gkm whoami
+```
+
+**Example output:**
+```
+📋 Current credentials:
+
+  Dokploy:
+    Endpoint: https://dokploy.example.com
+    Token: abc1...xyz9
+
+  Credentials file: /Users/you/.gkm/credentials.json
+```
+
+## Deployment
+
 ### `gkm deploy`
 
 Deploy application to a provider. Builds for production, injects encrypted secrets, and deploys.
@@ -793,7 +872,7 @@ export default defineConfig({
 ```
 
 **Environment Variables:**
-- `DOKPLOY_API_TOKEN`: API token for Dokploy (required for dokploy provider)
+- `DOKPLOY_API_TOKEN`: API token for Dokploy (not needed if logged in via `gkm login`)
 - `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments
 
 ### `gkm deploy:init`
@@ -801,11 +880,11 @@ export default defineConfig({
 Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Automatically updates `gkm.config.ts` with the configuration.
 
 ```bash
-gkm deploy:init --endpoint <url> --project <name> --app <name> [options]
+gkm deploy:init --project <name> --app <name> [options]
 ```
 
 **Options:**
-- `--endpoint <url>`: Dokploy server URL (e.g., `https://dokploy.example.com`)
+- `--endpoint <url>`: Dokploy server URL (uses stored credentials if logged in)
 - `--project <name>`: Project name (creates if not exists)
 - `--app <name>`: Application name to create
 - `--project-id <id>`: Use existing project ID instead of finding/creating
@@ -813,21 +892,17 @@ gkm deploy:init --endpoint <url> --project <name> --app <name> [options]
 
 **Examples:**
 ```bash
-# Create new project and application
-DOKPLOY_API_TOKEN=xxx gkm deploy:init \
+# After gkm login (no endpoint needed)
+gkm deploy:init --project my-project --app api
+
+# With explicit endpoint (or if not logged in)
+gkm deploy:init \
   --endpoint https://dokploy.example.com \
   --project my-project \
   --app api
 
-# Use existing project
-DOKPLOY_API_TOKEN=xxx gkm deploy:init \
-  --endpoint https://dokploy.example.com \
-  --project-id proj_abc123 \
-  --app api
-
 # With registry configuration
-DOKPLOY_API_TOKEN=xxx gkm deploy:init \
-  --endpoint https://dokploy.example.com \
+gkm deploy:init \
   --project my-project \
   --app api \
   --registry-id reg_xyz789
@@ -845,24 +920,23 @@ DOKPLOY_API_TOKEN=xxx gkm deploy:init \
 List available Dokploy resources (projects and registries).
 
 ```bash
-gkm deploy:list --endpoint <url> [options]
+gkm deploy:list [options]
 ```
 
 **Options:**
-- `--endpoint <url>`: Dokploy server URL
+- `--endpoint <url>`: Dokploy server URL (uses stored credentials if logged in)
 - `--projects`: List projects only
 - `--registries`: List registries only
 
 **Examples:**
 ```bash
-# List all resources
-DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com
+# After gkm login (no endpoint needed)
+gkm deploy:list
+gkm deploy:list --projects
+gkm deploy:list --registries
 
-# List only projects
-DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com --projects
-
-# List only registries
-DOKPLOY_API_TOKEN=xxx gkm deploy:list --endpoint https://dokploy.example.com --registries
+# With explicit endpoint
+gkm deploy:list --endpoint https://dokploy.example.com
 ```
 
 ### Using Encrypted Credentials

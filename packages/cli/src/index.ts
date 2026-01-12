@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json';
 
 import { buildCommand } from './build/index';
+import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import { devCommand } from './dev/index';
@@ -451,14 +452,14 @@ program
 program
 	.command('deploy:init')
 	.description('Initialize Dokploy deployment (create project and application)')
-	.requiredOption('--endpoint <url>', 'Dokploy server URL (e.g., https://dokploy.example.com)')
+	.option('--endpoint <url>', 'Dokploy server URL (uses stored credentials if logged in)')
 	.requiredOption('--project <name>', 'Project name (creates if not exists)')
 	.requiredOption('--app <name>', 'Application name')
 	.option('--project-id <id>', 'Use existing project ID instead of creating')
 	.option('--registry-id <id>', 'Configure registry for the application')
 	.action(
 		async (options: {
-			endpoint: string;
+			endpoint?: string;
 			project: string;
 			app: string;
 			projectId?: string;
@@ -488,12 +489,12 @@ program
 program
 	.command('deploy:list')
 	.description('List Dokploy resources (projects, registries)')
-	.requiredOption('--endpoint <url>', 'Dokploy server URL')
+	.option('--endpoint <url>', 'Dokploy server URL (uses stored credentials if logged in)')
 	.option('--projects', 'List projects')
 	.option('--registries', 'List registries')
 	.action(
 		async (options: {
-			endpoint: string;
+			endpoint?: string;
 			projects?: boolean;
 			registries?: boolean;
 		}) => {
@@ -520,5 +521,82 @@ program
 			}
 		},
 	);
+
+// Login command
+program
+	.command('login')
+	.description('Authenticate with a deployment service')
+	.option('--service <service>', 'Service to login to (dokploy)', 'dokploy')
+	.option('--token <token>', 'API token (will prompt if not provided)')
+	.option('--endpoint <url>', 'Service endpoint URL')
+	.action(
+		async (options: {
+			service: string;
+			token?: string;
+			endpoint?: string;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+
+				if (options.service !== 'dokploy') {
+					console.error(`Unknown service: ${options.service}. Supported: dokploy`);
+					process.exit(1);
+				}
+
+				await loginCommand({
+					service: options.service as 'dokploy',
+					token: options.token,
+					endpoint: options.endpoint,
+				});
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Failed to login');
+				process.exit(1);
+			}
+		},
+	);
+
+// Logout command
+program
+	.command('logout')
+	.description('Remove stored credentials')
+	.option('--service <service>', 'Service to logout from (dokploy, all)', 'dokploy')
+	.action(
+		async (options: { service: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+
+				await logoutCommand({
+					service: options.service as 'dokploy' | 'all',
+				});
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : 'Failed to logout');
+				process.exit(1);
+			}
+		},
+	);
+
+// Whoami command
+program
+	.command('whoami')
+	.description('Show current authentication status')
+	.action(async () => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+
+			await whoamiCommand();
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Failed to get status');
+			process.exit(1);
+		}
+	});
 
 program.parse();

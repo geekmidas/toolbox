@@ -1,13 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { getDokployCredentials, getDokployToken } from '../auth';
 import type { DokployDeployConfig } from './types';
 
 const logger = console;
 
 export interface DeployInitOptions {
-	/** Dokploy endpoint URL */
-	endpoint: string;
+	/** Dokploy endpoint URL (optional if logged in) */
+	endpoint?: string;
 	/** Project name (creates new or uses existing) */
 	projectName: string;
 	/** Application name */
@@ -48,14 +49,14 @@ interface DokployRegistry {
 }
 
 /**
- * Get the Dokploy API token from environment
+ * Get the Dokploy API token from stored credentials or environment
  */
-function getApiToken(): string {
-	const token = process.env.DOKPLOY_API_TOKEN;
+async function getApiToken(): Promise<string> {
+	const token = await getDokployToken();
 	if (!token) {
 		throw new Error(
-			'DOKPLOY_API_TOKEN environment variable is required.\n' +
-				'Generate a token at: <your-dokploy-url>/settings/profile',
+			'Dokploy credentials not found.\n' +
+				'Run "gkm login --service dokploy" to authenticate, or set DOKPLOY_API_TOKEN.',
 		);
 	}
 	return token;
@@ -300,12 +301,26 @@ async function updateConfig(
 export async function deployInitCommand(
 	options: DeployInitOptions,
 ): Promise<DokployDeployConfig> {
-	const { endpoint, projectName, appName, projectId: existingProjectId, registryId } = options;
+	const { projectName, appName, projectId: existingProjectId, registryId } = options;
+
+	// Get endpoint from options or stored credentials
+	let endpoint = options.endpoint;
+	if (!endpoint) {
+		const stored = await getDokployCredentials();
+		if (stored) {
+			endpoint = stored.endpoint;
+		} else {
+			throw new Error(
+				'Dokploy endpoint not specified.\n' +
+					'Either run "gkm login --service dokploy" first, or provide --endpoint.',
+			);
+		}
+	}
 
 	logger.log(`\n🚀 Initializing Dokploy deployment...`);
 	logger.log(`   Endpoint: ${endpoint}`);
 
-	const token = getApiToken();
+	const token = await getApiToken();
 
 	// Step 1: Find or create project
 	let projectId: string;
@@ -384,11 +399,25 @@ export async function deployInitCommand(
  * List available Dokploy resources
  */
 export async function deployListCommand(options: {
-	endpoint: string;
+	endpoint?: string;
 	resource: 'projects' | 'registries';
 }): Promise<void> {
-	const { endpoint, resource } = options;
-	const token = getApiToken();
+	// Get endpoint from options or stored credentials
+	let endpoint = options.endpoint;
+	if (!endpoint) {
+		const stored = await getDokployCredentials();
+		if (stored) {
+			endpoint = stored.endpoint;
+		} else {
+			throw new Error(
+				'Dokploy endpoint not specified.\n' +
+					'Either run "gkm login --service dokploy" first, or provide --endpoint.',
+			);
+		}
+	}
+
+	const { resource } = options;
+	const token = await getApiToken();
 
 	if (resource === 'projects') {
 		logger.log(`\n📁 Projects in ${endpoint}:`);
