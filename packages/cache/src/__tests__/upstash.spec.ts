@@ -198,6 +198,35 @@ describe('UpstashCache', () => {
 		});
 	});
 
+	describe('ttl', () => {
+		it('should return 0 for non-existent key', async () => {
+			const key = getTestKey('ttl-non-existent');
+			const result = await cache.ttl(key);
+
+			expect(result).toBe(0);
+		});
+
+		it('should return positive TTL for existing key with expiry', async () => {
+			const key = getTestKey('ttl-with-expiry');
+
+			await cache.set(key, 'test-value', 3600);
+			const result = await cache.ttl(key);
+
+			expect(result).toBeGreaterThan(0);
+			expect(result).toBeLessThanOrEqual(3600);
+		});
+
+		it('should return TTL in seconds', async () => {
+			const key = getTestKey('ttl-seconds');
+
+			await cache.set(key, 'test-value', 60); // 60 seconds
+			const result = await cache.ttl(key);
+
+			expect(result).toBeGreaterThan(0);
+			expect(result).toBeLessThanOrEqual(60);
+		});
+	});
+
 	describe('integration scenarios', () => {
 		it('should handle round-trip operations', async () => {
 			const key = getTestKey('user-session');
