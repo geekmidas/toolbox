@@ -8,10 +8,10 @@ import {
 } from '../auth';
 import { storeDokployRegistryId } from '../auth/credentials';
 import { buildCommand } from '../build/index';
-import { loadConfig, type GkmConfig } from '../config';
+import { type GkmConfig, loadConfig } from '../config';
 import { deployDocker, resolveDockerConfig } from './docker';
+import { deployDokploy } from './dokploy';
 import { DokployApi } from './dokploy-api';
-import { deployDokploy, validateDokployConfig } from './dokploy';
 import { updateConfig } from './init';
 import type {
 	DeployOptions,
@@ -210,7 +210,7 @@ async function ensureDokploySetup(
 			logger.log(`   Using existing registry: ${firstRegistry.registryName}`);
 		} else if (dockerConfig.registry) {
 			// Need to create a registry
-			logger.log('   No registry found. Let\'s set one up.');
+			logger.log("   No registry found. Let's set one up.");
 			logger.log(`   Registry URL will be: ${dockerConfig.registry}`);
 
 			const username = await prompt('Registry username: ');
