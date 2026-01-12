@@ -1,4 +1,5 @@
 import { getDokployToken } from '../auth';
+import { DokployApi } from './dokploy-api';
 import type { DeployResult, DokployDeployConfig } from './types';
 
 const logger = console;
@@ -16,12 +17,6 @@ export interface DokployDeployOptions {
 	config: DokployDeployConfig;
 }
 
-interface DokployErrorResponse {
-	message: string;
-	code?: string;
-	issues?: Array<{ message: string }>;
-}
-
 /**
  * Get the Dokploy API token from stored credentials or environment
  */
@@ -37,85 +32,11 @@ async function getApiToken(): Promise<string> {
 }
 
 /**
- * Make a request to the Dokploy API
+ * Create a Dokploy API client
  */
-async function dokployRequest<T>(
-	endpoint: string,
-	baseUrl: string,
-	token: string,
-	body: Record<string, unknown>,
-): Promise<T> {
-	const url = `${baseUrl}/api/${endpoint}`;
-
-	const response = await fetch(url, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
-		body: JSON.stringify(body),
-	});
-
-	if (!response.ok) {
-		let errorMessage = `Dokploy API error: ${response.status} ${response.statusText}`;
-
-		try {
-			const errorBody = (await response.json()) as DokployErrorResponse;
-			if (errorBody.message) {
-				errorMessage = `Dokploy API error: ${errorBody.message}`;
-			}
-			if (errorBody.issues?.length) {
-				errorMessage += `\n  Issues: ${errorBody.issues.map((i) => i.message).join(', ')}`;
-			}
-		} catch {
-			// Ignore JSON parse errors
-		}
-
-		throw new Error(errorMessage);
-	}
-
-	return response.json() as Promise<T>;
-}
-
-/**
- * Update application environment variables
- */
-async function updateEnvironment(
-	baseUrl: string,
-	token: string,
-	applicationId: string,
-	envVars: Record<string, string>,
-): Promise<void> {
-	logger.log('  Updating environment variables...');
-
-	// Convert env vars to the format Dokploy expects (KEY=VALUE per line)
-	const envString = Object.entries(envVars)
-		.map(([key, value]) => `${key}=${value}`)
-		.join('\n');
-
-	await dokployRequest('application.update', baseUrl, token, {
-		applicationId,
-		env: envString,
-	});
-
-	logger.log('  ✓ Environment variables updated');
-}
-
-/**
- * Trigger application deployment
- */
-async function triggerDeploy(
-	baseUrl: string,
-	token: string,
-	applicationId: string,
-): Promise<void> {
-	logger.log('  Triggering deployment...');
-
-	await dokployRequest('application.deploy', baseUrl, token, {
-		applicationId,
-	});
-
-	logger.log('  ✓ Deployment triggered');
+async function createApi(endpoint: string): Promise<DokployApi> {
+	const token = await getApiToken();
+	return new DokployApi({ baseUrl: endpoint, token });
 }
 
 /**
@@ -130,7 +51,7 @@ export async function deployDokploy(
 	logger.log(`   Endpoint: ${config.endpoint}`);
 	logger.log(`   Application: ${config.applicationId}`);
 
-	const token = await getApiToken();
+	const api = await createApi(config.endpoint);
 
 	// Prepare environment variables
 	const envVars: Record<string, string> = {};
@@ -141,16 +62,21 @@ export async function deployDokploy(
 
 	// Update environment if we have variables to set
 	if (Object.keys(envVars).length > 0) {
-		await updateEnvironment(
-			config.endpoint,
-			token,
-			config.applicationId,
-			envVars,
-		);
+		logger.log('  Updating environment variables...');
+
+		// Convert env vars to the format Dokploy expects (KEY=VALUE per line)
+		const envString = Object.entries(envVars)
+			.map(([key, value]) => `${key}=${value}`)
+			.join('\n');
+
+		await api.saveApplicationEnv(config.applicationId, envString);
+		logger.log('  ✓ Environment variables updated');
 	}
 
 	// Trigger deployment
-	await triggerDeploy(config.endpoint, token, config.applicationId);
+	logger.log('  Triggering deployment...');
+	await api.deployApplication(config.applicationId);
+	logger.log('  ✓ Deployment triggered');
 
 	logger.log('\n✅ Dokploy deployment initiated!');
 	logger.log(`\n📋 Deployment details:`);
