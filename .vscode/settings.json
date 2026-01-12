@@ -23,6 +23,7 @@
 		"AWSS",
 		"citext",
 		"dbdata",
+		"Dokploy",
 		"emailkit",
 		"envkit",
 		"fuzzystrmatch",
