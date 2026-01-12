@@ -132,3 +132,61 @@ export function maskPassword(password: string): string {
 	}
 	return `${password.slice(0, 4)}${'*'.repeat(password.length - 6)}${password.slice(-2)}`;
 }
+
+/**
+ * Result of environment variable validation.
+ */
+export interface EnvValidationResult {
+	/** Whether all required environment variables are present */
+	valid: boolean;
+	/** List of missing environment variable names */
+	missing: string[];
+	/** List of environment variables that are provided */
+	provided: string[];
+	/** List of environment variables that were required */
+	required: string[];
+}
+
+/**
+ * Validate that all required environment variables are present in secrets.
+ *
+ * @param requiredVars - Array of environment variable names required by the application
+ * @param secrets - Stage secrets to validate against
+ * @returns Validation result with missing and provided variables
+ *
+ * @example
+ * ```typescript
+ * const required = ['DATABASE_URL', 'API_KEY', 'JWT_SECRET'];
+ * const secrets = await readStageSecrets('production');
+ * const result = validateEnvironmentVariables(required, secrets);
+ *
+ * if (!result.valid) {
+ *   console.error(`Missing environment variables: ${result.missing.join(', ')}`);
+ * }
+ * ```
+ */
+export function validateEnvironmentVariables(
+	requiredVars: string[],
+	secrets: StageSecrets,
+): EnvValidationResult {
+	const embeddable = toEmbeddableSecrets(secrets);
+	const availableVars = new Set(Object.keys(embeddable));
+
+	const missing: string[] = [];
+	const provided: string[] = [];
+
+	for (const varName of requiredVars) {
+		if (availableVars.has(varName)) {
+			provided.push(varName);
+		} else {
+			missing.push(varName);
+		}
+	}
+
+	return {
+		valid: missing.length === 0,
+		missing: missing.sort(),
+		provided: provided.sort(),
+		required: [...requiredVars].sort(),
+	};
+}
