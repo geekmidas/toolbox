@@ -72,10 +72,7 @@ export class AWSLambdaSubscriber<
 			return this._services;
 		}
 
-		const serviceDiscovery = ServiceDiscovery.getInstance(
-			this.logger,
-			this.envParser,
-		);
+		const serviceDiscovery = ServiceDiscovery.getInstance(this.envParser);
 
 		if (this.subscriber.services.length > 0) {
 			const registered = await serviceDiscovery.register(
