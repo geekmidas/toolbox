@@ -45,46 +45,60 @@ async function prompt(message: string, hidden = false): Promise<string> {
 		);
 	}
 
-	const rl = readline.createInterface({ input, output });
+	if (hidden) {
+		// For hidden input, use raw mode directly without readline
+		process.stdout.write(message);
 
-	try {
-		if (hidden) {
-			// For hidden input, we need to handle it differently
-			process.stdout.write(message);
+		return new Promise((resolve, reject) => {
+			let value = '';
 
-			return new Promise((resolve) => {
-				let value = '';
+			const cleanup = () => {
+				process.stdin.setRawMode(false);
+				process.stdin.pause();
+				process.stdin.removeListener('data', onData);
+				process.stdin.removeListener('error', onError);
+			};
 
-				const onData = (char: Buffer) => {
-					const c = char.toString();
+			const onError = (err: Error) => {
+				cleanup();
+				reject(err);
+			};
 
-					if (c === '\n' || c === '\r') {
-						process.stdin.removeListener('data', onData);
-						process.stdin.setRawMode(false);
-						process.stdout.write('\n');
-						resolve(value);
-					} else if (c === '\u0003') {
-						// Ctrl+C
-						process.exit(1);
-					} else if (c === '\u007F' || c === '\b') {
-						// Backspace
-						if (value.length > 0) {
-							value = value.slice(0, -1);
-						}
-					} else {
-						value += c;
+			const onData = (char: Buffer) => {
+				const c = char.toString();
+
+				if (c === '\n' || c === '\r') {
+					cleanup();
+					process.stdout.write('\n');
+					resolve(value);
+				} else if (c === '\u0003') {
+					// Ctrl+C
+					cleanup();
+					process.stdout.write('\n');
+					process.exit(1);
+				} else if (c === '\u007F' || c === '\b') {
+					// Backspace
+					if (value.length > 0) {
+						value = value.slice(0, -1);
 					}
-				};
+				} else {
+					value += c;
+				}
+			};
 
-				process.stdin.setRawMode(true);
-				process.stdin.resume();
-				process.stdin.on('data', onData);
-			});
-		} else {
+			process.stdin.setRawMode(true);
+			process.stdin.resume();
+			process.stdin.on('data', onData);
+			process.stdin.on('error', onError);
+		});
+	} else {
+		// For visible input, use readline
+		const rl = readline.createInterface({ input, output });
+		try {
 			return await rl.question(message);
+		} finally {
+			rl.close();
 		}
-	} finally {
-		rl.close();
 	}
 }
 
