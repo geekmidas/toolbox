@@ -43,6 +43,24 @@ export interface DokployDeployConfig {
 	projectId: string;
 	/** Application ID in Dokploy */
 	applicationId: string;
-	/** Container registry (inherits from docker if not set) */
+	/** Container registry URL (inherits from docker if not set) */
 	registry?: string;
+	/**
+	 * Registry ID in Dokploy (recommended for private registries).
+	 * Configure your registry in Dokploy Settings > Docker Registry first.
+	 */
+	registryId?: string;
+	/**
+	 * Docker registry credentials (alternative to registryId).
+	 * Only needed if not using Dokploy's registry feature.
+	 * Can also use env vars: DOCKER_REGISTRY_USERNAME, DOCKER_REGISTRY_PASSWORD
+	 */
+	registryCredentials?: {
+		/** Registry URL (e.g., ghcr.io, docker.io) */
+		registryUrl: string;
+		/** Registry username */
+		username: string;
+		/** Registry password or token */
+		password: string;
+	};
 }
