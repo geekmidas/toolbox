@@ -148,29 +148,32 @@ async function ensureDokploySetup(
 		(p) => p.name.toLowerCase() === projectName.toLowerCase(),
 	);
 
+	let environmentId: string;
+
 	if (project) {
 		logger.log(
 			`   Found existing project: ${project.name} (${project.projectId})`,
 		);
+
+		// Step 4: Get or create environment for existing project
+		const projectDetails = await api.getProject(project.projectId);
+		const environments = projectDetails.environments ?? [];
+		const firstEnv = environments[0];
+		if (firstEnv) {
+			environmentId = firstEnv.environmentId;
+			logger.log(`   Using environment: ${firstEnv.name}`);
+		} else {
+			logger.log('   Creating production environment...');
+			const env = await api.createEnvironment(project.projectId, 'production');
+			environmentId = env.environmentId;
+		}
 	} else {
 		logger.log(`   Creating project: ${projectName}`);
-		project = await api.createProject(projectName);
+		const result = await api.createProject(projectName);
+		project = result.project;
+		environmentId = result.environment.environmentId;
 		logger.log(`   ✓ Created project: ${project.projectId}`);
-	}
-
-	// Step 4: Get or create environment
-	const projectDetails = await api.getProject(project.projectId);
-	let environmentId: string;
-
-	const environments = projectDetails.environments ?? [];
-	const firstEnv = environments[0];
-	if (firstEnv) {
-		environmentId = firstEnv.environmentId;
-		logger.log(`   Using environment: ${firstEnv.name}`);
-	} else {
-		logger.log('   Creating production environment...');
-		const env = await api.createEnvironment(project.projectId, 'production');
-		environmentId = env.environmentId;
+		logger.log(`   ✓ Created environment: ${result.environment.name}`);
 	}
 
 	// Step 5: Find or create application
