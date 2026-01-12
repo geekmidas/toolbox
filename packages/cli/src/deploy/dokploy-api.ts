@@ -128,7 +128,7 @@ export class DokployApi {
 	 * Get a single project by ID
 	 */
 	async getProject(projectId: string): Promise<DokployProjectDetails> {
-		return this.post<DokployProjectDetails>('project.one', { projectId });
+		return this.get<DokployProjectDetails>(`project.one?projectId=${projectId}`);
 	}
 
 	/**
@@ -210,6 +210,34 @@ export class DokployApi {
 	}
 
 	/**
+	 * Configure application to use Docker provider (pull from registry)
+	 *
+	 * For private registries, either:
+	 * - Use `registryId` if the registry is configured in Dokploy
+	 * - Or provide `username`, `password`, and `registryUrl` directly
+	 */
+	async saveDockerProvider(
+		applicationId: string,
+		dockerImage: string,
+		options?: {
+			/** Registry ID in Dokploy (for pre-configured registries) */
+			registryId?: string;
+			/** Registry username (for direct auth) */
+			username?: string;
+			/** Registry password (for direct auth) */
+			password?: string;
+			/** Registry URL (for direct auth, e.g., ghcr.io) */
+			registryUrl?: string;
+		},
+	): Promise<void> {
+		await this.post('application.saveDockerProvider', {
+			applicationId,
+			dockerImage,
+			...options,
+		});
+	}
+
+	/**
 	 * Deploy an application
 	 */
 	async deployApplication(applicationId: string): Promise<void> {
@@ -225,6 +253,201 @@ export class DokployApi {
 	 */
 	async listRegistries(): Promise<DokployRegistry[]> {
 		return this.get<DokployRegistry[]>('registry.all');
+	}
+
+	/**
+	 * Create a new registry
+	 */
+	async createRegistry(
+		registryName: string,
+		registryUrl: string,
+		username: string,
+		password: string,
+		options?: {
+			imagePrefix?: string;
+		},
+	): Promise<DokployRegistry> {
+		return this.post<DokployRegistry>('registry.create', {
+			registryName,
+			registryUrl,
+			username,
+			password,
+			imagePrefix: options?.imagePrefix,
+		});
+	}
+
+	/**
+	 * Get a registry by ID
+	 */
+	async getRegistry(registryId: string): Promise<DokployRegistry> {
+		return this.get<DokployRegistry>(`registry.one?registryId=${registryId}`);
+	}
+
+	/**
+	 * Update a registry
+	 */
+	async updateRegistry(
+		registryId: string,
+		updates: Partial<{
+			registryName: string;
+			registryUrl: string;
+			username: string;
+			password: string;
+			imagePrefix: string;
+		}>,
+	): Promise<void> {
+		await this.post('registry.update', { registryId, ...updates });
+	}
+
+	/**
+	 * Delete a registry
+	 */
+	async deleteRegistry(registryId: string): Promise<void> {
+		await this.post('registry.remove', { registryId });
+	}
+
+	// ============================================
+	// Postgres endpoints
+	// ============================================
+
+	/**
+	 * Create a new Postgres database
+	 */
+	async createPostgres(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		options?: {
+			appName?: string;
+			databaseName?: string;
+			databaseUser?: string;
+			databasePassword?: string;
+			dockerImage?: string;
+			description?: string;
+		},
+	): Promise<DokployPostgres> {
+		return this.post<DokployPostgres>('postgres.create', {
+			name,
+			projectId,
+			environmentId,
+			appName: options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+			databaseName: options?.databaseName ?? 'app',
+			databaseUser: options?.databaseUser ?? 'postgres',
+			databasePassword: options?.databasePassword,
+			dockerImage: options?.dockerImage ?? 'postgres:16-alpine',
+			description: options?.description ?? `Postgres database for ${name}`,
+		});
+	}
+
+	/**
+	 * Get a Postgres database by ID
+	 */
+	async getPostgres(postgresId: string): Promise<DokployPostgres> {
+		return this.get<DokployPostgres>(`postgres.one?postgresId=${postgresId}`);
+	}
+
+	/**
+	 * Deploy a Postgres database
+	 */
+	async deployPostgres(postgresId: string): Promise<void> {
+		await this.post('postgres.deploy', { postgresId });
+	}
+
+	/**
+	 * Save environment variables for Postgres
+	 */
+	async savePostgresEnv(postgresId: string, env: string): Promise<void> {
+		await this.post('postgres.saveEnvironment', { postgresId, env });
+	}
+
+	/**
+	 * Set external port for Postgres (for external access)
+	 */
+	async savePostgresExternalPort(
+		postgresId: string,
+		externalPort: number | null,
+	): Promise<void> {
+		await this.post('postgres.saveExternalPort', { postgresId, externalPort });
+	}
+
+	/**
+	 * Update Postgres configuration
+	 */
+	async updatePostgres(
+		postgresId: string,
+		updates: Partial<DokployPostgresUpdate>,
+	): Promise<void> {
+		await this.post('postgres.update', { postgresId, ...updates });
+	}
+
+	// ============================================
+	// Redis endpoints
+	// ============================================
+
+	/**
+	 * Create a new Redis instance
+	 */
+	async createRedis(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		options?: {
+			appName?: string;
+			databasePassword?: string;
+			dockerImage?: string;
+			description?: string;
+		},
+	): Promise<DokployRedis> {
+		return this.post<DokployRedis>('redis.create', {
+			name,
+			projectId,
+			environmentId,
+			appName: options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+			databasePassword: options?.databasePassword,
+			dockerImage: options?.dockerImage ?? 'redis:7-alpine',
+			description: options?.description ?? `Redis instance for ${name}`,
+		});
+	}
+
+	/**
+	 * Get a Redis instance by ID
+	 */
+	async getRedis(redisId: string): Promise<DokployRedis> {
+		return this.get<DokployRedis>(`redis.one?redisId=${redisId}`);
+	}
+
+	/**
+	 * Deploy a Redis instance
+	 */
+	async deployRedis(redisId: string): Promise<void> {
+		await this.post('redis.deploy', { redisId });
+	}
+
+	/**
+	 * Save environment variables for Redis
+	 */
+	async saveRedisEnv(redisId: string, env: string): Promise<void> {
+		await this.post('redis.saveEnvironment', { redisId, env });
+	}
+
+	/**
+	 * Set external port for Redis (for external access)
+	 */
+	async saveRedisExternalPort(
+		redisId: string,
+		externalPort: number | null,
+	): Promise<void> {
+		await this.post('redis.saveExternalPort', { redisId, externalPort });
+	}
+
+	/**
+	 * Update Redis configuration
+	 */
+	async updateRedis(
+		redisId: string,
+		updates: Partial<DokployRedisUpdate>,
+	): Promise<void> {
+		await this.post('redis.update', { redisId, ...updates });
 	}
 }
 
@@ -270,6 +493,54 @@ export interface DokployRegistry {
 	registryUrl: string;
 	username: string;
 	imagePrefix: string | null;
+}
+
+export interface DokployPostgres {
+	postgresId: string;
+	name: string;
+	appName: string;
+	databaseName: string;
+	databaseUser: string;
+	databasePassword: string;
+	dockerImage: string;
+	description: string | null;
+	projectId: string;
+	environmentId: string;
+	applicationStatus: 'idle' | 'running' | 'done' | 'error';
+	externalPort: number | null;
+	createdAt?: string;
+}
+
+export interface DokployPostgresUpdate {
+	name: string;
+	appName: string;
+	databaseName: string;
+	databaseUser: string;
+	databasePassword: string;
+	dockerImage: string;
+	description: string;
+}
+
+export interface DokployRedis {
+	redisId: string;
+	name: string;
+	appName: string;
+	databasePassword: string;
+	dockerImage: string;
+	description: string | null;
+	projectId: string;
+	environmentId: string;
+	applicationStatus: 'idle' | 'running' | 'done' | 'error';
+	externalPort: number | null;
+	createdAt?: string;
+}
+
+export interface DokployRedisUpdate {
+	name: string;
+	appName: string;
+	databasePassword: string;
+	dockerImage: string;
+	description: string;
 }
 
 /**
