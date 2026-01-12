@@ -38,7 +38,7 @@ function createTestApp(
 	adaptor: typeof HonoEndpoint = HonoEndpoint,
 ) {
 	const app = new Hono();
-	const serviceDiscovery = ServiceDiscovery.getInstance(mockLogger, envParser);
+	const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 	adaptor.addRoutes(endpoints as any, serviceDiscovery as any, app);
 	return app;
 }

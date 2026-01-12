@@ -59,10 +59,7 @@ rawHonoApp.get('/health', (c) =>
 // ============================================================================
 
 const runtimeApp = new Hono();
-const runtimeServiceDiscovery = ServiceDiscovery.getInstance(
-	mockLogger,
-	envParser,
-);
+const runtimeServiceDiscovery = ServiceDiscovery.getInstance(envParser);
 HonoEndpoint.addRoutes(
 	[simpleEndpoint] as any,
 	runtimeServiceDiscovery as any,
@@ -99,10 +96,7 @@ buildTimeMinimalApp.get('/health', async (c) => {
 // ============================================================================
 
 const buildTimeStandardApp = new Hono();
-const standardServiceDiscovery = ServiceDiscovery.getInstance(
-	mockLogger,
-	envParser,
-);
+const standardServiceDiscovery = ServiceDiscovery.getInstance(envParser);
 
 // Simulates generated code for standard-tier endpoint (auth + services)
 buildTimeStandardApp.get('/profile', async (c) => {
@@ -169,10 +163,7 @@ HonoEndpoint.addRoutes(
 // ============================================================================
 
 const buildTimeBodyApp = new Hono();
-const bodyServiceDiscovery = ServiceDiscovery.getInstance(
-	mockLogger,
-	envParser,
-);
+const bodyServiceDiscovery = ServiceDiscovery.getInstance(envParser);
 
 // Simulates generated code with body validation
 buildTimeBodyApp.post('/users', validateBody(postEndpoint), async (c) => {
