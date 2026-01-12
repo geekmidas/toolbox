@@ -378,9 +378,9 @@ export default defineConfig({
 
 			expect(newContent).toContain('providers:');
 			expect(newContent).toContain('dokploy:');
-			expect(newContent).toContain('endpoint: \'https://dokploy.example.com\'');
-			expect(newContent).toContain('projectId: \'proj_123\'');
-			expect(newContent).toContain('applicationId: \'app_456\'');
+			expect(newContent).toContain("endpoint: 'https://dokploy.example.com'");
+			expect(newContent).toContain("projectId: 'proj_123'");
+			expect(newContent).toContain("applicationId: 'app_456'");
 		});
 
 		it('should handle config with existing providers section', async () => {
