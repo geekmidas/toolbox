@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Construct } from '@geekmidas/constructs';
 
 export interface BundleOptions {
 	/** Entry point file (e.g., .gkm/server/server.ts) */
@@ -16,6 +17,8 @@ export interface BundleOptions {
 	external: string[];
 	/** Stage for secrets injection (optional) */
 	stage?: string;
+	/** Constructs to validate environment variables for */
+	constructs?: Construct[];
 }
 
 export interface BundleResult {
@@ -23,6 +26,26 @@ export interface BundleResult {
 	outputPath: string;
 	/** Ephemeral master key for deployment (only if stage was provided) */
 	masterKey?: string;
+}
+
+/**
+ * Collect all required environment variables from constructs.
+ * Uses the SnifferEnvironmentParser to detect which env vars each service needs.
+ *
+ * @param constructs - Array of constructs to analyze
+ * @returns Deduplicated array of required environment variable names
+ */
+async function collectRequiredEnvVars(
+	constructs: Construct[],
+): Promise<string[]> {
+	const allEnvVars = new Set<string>();
+
+	for (const construct of constructs) {
+		const envVars = await construct.getEnvironment();
+		envVars.forEach((v) => allEnvVars.add(v));
+	}
+
+	return Array.from(allEnvVars).sort();
 }
 
 /**
@@ -34,7 +57,15 @@ export interface BundleResult {
 export async function bundleServer(
 	options: BundleOptions,
 ): Promise<BundleResult> {
-	const { entryPoint, outputDir, minify, sourcemap, external, stage } = options;
+	const {
+		entryPoint,
+		outputDir,
+		minify,
+		sourcemap,
+		external,
+		stage,
+		constructs,
+	} = options;
 
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
