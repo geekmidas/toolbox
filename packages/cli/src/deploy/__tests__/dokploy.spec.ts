@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { validateDokployConfig } from '../dokploy';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import { deployDokploy, validateDokployConfig } from '../dokploy';
 import type { DokployDeployConfig } from '../types';
+
+// Mock getDokployToken to return a test token
+vi.mock('../../auth', () => ({
+	getDokployToken: vi.fn().mockResolvedValue('test-api-token'),
+}));
+
+// MSW server for mocking Dokploy API
+const server = setupServer();
 
 describe('validateDokployConfig', () => {
 	it('should return true for valid complete config', () => {
@@ -88,5 +98,148 @@ describe('validateDokployConfig', () => {
 		expect(() => validateDokployConfig(config)).toThrow(
 			'Configure in gkm.config.ts:',
 		);
+	});
+});
+
+describe('deployDokploy', () => {
+	beforeEach(() => {
+		server.listen({ onUnhandledRequest: 'bypass' });
+	});
+
+	afterEach(() => {
+		server.resetHandlers();
+		server.close();
+	});
+
+	it('should deploy successfully without master key', async () => {
+		server.use(
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		const result = await deployDokploy({
+			stage: 'production',
+			tag: 'v1.0.0',
+			imageRef: 'ghcr.io/myorg/app:v1.0.0',
+			config: {
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+			},
+		});
+
+		expect(result.imageRef).toBe('ghcr.io/myorg/app:v1.0.0');
+		expect(result.masterKey).toBeUndefined();
+		expect(result.url).toBe('https://dokploy.example.com/project/proj_123');
+	});
+
+	it('should deploy with master key and update environment', async () => {
+		const updateCalls: unknown[] = [];
+
+		server.use(
+			http.post(
+				'https://dokploy.example.com/api/application.update',
+				async ({ request }) => {
+					const body = await request.json();
+					updateCalls.push(body);
+					return HttpResponse.json({ success: true });
+				},
+			),
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		const result = await deployDokploy({
+			stage: 'production',
+			tag: 'v1.0.0',
+			imageRef: 'ghcr.io/myorg/app:v1.0.0',
+			masterKey: 'secret-master-key',
+			config: {
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+			},
+		});
+
+		expect(result.masterKey).toBe('secret-master-key');
+		expect(updateCalls).toHaveLength(1);
+		expect(updateCalls[0]).toMatchObject({
+			applicationId: 'app_456',
+			env: 'GKM_MASTER_KEY=secret-master-key',
+		});
+	});
+
+	it('should handle API error with message', async () => {
+		server.use(
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json(
+					{ message: 'Application not found' },
+					{ status: 404 },
+				);
+			}),
+		);
+
+		await expect(
+			deployDokploy({
+				stage: 'production',
+				tag: 'v1.0.0',
+				imageRef: 'ghcr.io/myorg/app:v1.0.0',
+				config: {
+					endpoint: 'https://dokploy.example.com',
+					projectId: 'proj_123',
+					applicationId: 'app_456',
+				},
+			}),
+		).rejects.toThrow('Dokploy API error: Application not found');
+	});
+
+	it('should handle API error with issues', async () => {
+		server.use(
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return HttpResponse.json(
+					{
+						message: 'Validation failed',
+						issues: [{ message: 'Invalid field' }, { message: 'Missing data' }],
+					},
+					{ status: 400 },
+				);
+			}),
+		);
+
+		await expect(
+			deployDokploy({
+				stage: 'production',
+				tag: 'v1.0.0',
+				imageRef: 'ghcr.io/myorg/app:v1.0.0',
+				config: {
+					endpoint: 'https://dokploy.example.com',
+					projectId: 'proj_123',
+					applicationId: 'app_456',
+				},
+			}),
+		).rejects.toThrow('Issues: Invalid field, Missing data');
+	});
+
+	it('should handle API error without JSON body', async () => {
+		server.use(
+			http.post('https://dokploy.example.com/api/application.deploy', () => {
+				return new HttpResponse('Internal Server Error', { status: 500 });
+			}),
+		);
+
+		await expect(
+			deployDokploy({
+				stage: 'production',
+				tag: 'v1.0.0',
+				imageRef: 'ghcr.io/myorg/app:v1.0.0',
+				config: {
+					endpoint: 'https://dokploy.example.com',
+					projectId: 'proj_123',
+					applicationId: 'app_456',
+				},
+			}),
+		).rejects.toThrow('Dokploy API error: 500');
 	});
 });
