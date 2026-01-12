@@ -6,6 +6,7 @@ import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { checkRateLimit, getRateLimitHeaders } from '@geekmidas/rate-limit';
 import {
+	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
 	type ServiceRecord,
@@ -190,9 +191,8 @@ export class HonoEndpoint<
 	): Promise<Hono> {
 		const endpoints = await getEndpointsFromRoutes<TServices>(routes, cwd);
 		const serviceDiscovery = ServiceDiscovery.getInstance<
-			ServiceRecord<TServices>,
-			TLogger
-		>(logger, envParser);
+			ServiceRecord<TServices>
+		>(envParser);
 
 		HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 
@@ -336,7 +336,13 @@ export class HonoEndpoint<
 
 		// Main handler
 		const handler = async (c: Context) => {
+			// Request context setup
+			const startTime = Date.now();
+			const requestId =
+				c.req.header('X-Request-ID') ?? crypto.randomUUID();
+
 			const logger = endpoint.logger.child({
+				requestId,
 				endpoint: endpoint.fullPath,
 				route: endpoint.route,
 				host: c.req.header('host'),
@@ -344,7 +350,14 @@ export class HonoEndpoint<
 				path: c.req.path,
 			}) as TLogger;
 
-			try {
+			// Set response header
+			c.header('X-Request-ID', requestId);
+
+			// Wrap entire handler in request context for services to access
+			return runWithRequestContext(
+				{ logger, requestId, startTime },
+				async () => {
+					try {
 				// Lazy accessors - no upfront parsing, use native Hono methods
 				const header = createHonoHeaders(c);
 				const cookie = createHonoCookies(c);
@@ -570,13 +583,24 @@ export class HonoEndpoint<
 
 					// @ts-expect-error
 					return c.json(output, status);
-				} catch (validationError: any) {
-					logger.error(validationError, 'Output validation failed');
-					const error = wrapError(
-						validationError,
-						422,
-						'Response validation failed',
-					);
+					} catch (validationError: any) {
+						logger.error(validationError, 'Output validation failed');
+						const error = wrapError(
+							validationError,
+							422,
+							'Response validation failed',
+						);
+						if (HonoEndpoint.isDev) {
+							logger.info(
+								{ status: error.statusCode, body: error },
+								'Outgoing response',
+							);
+						}
+						return c.json(error, error.statusCode as ContentfulStatusCode);
+					}
+				} catch (e: any) {
+					logger.error(e, 'Error processing endpoint request');
+					const error = wrapError(e, 500, 'Internal Server Error');
 					if (HonoEndpoint.isDev) {
 						logger.info(
 							{ status: error.statusCode, body: error },
@@ -585,18 +609,9 @@ export class HonoEndpoint<
 					}
 					return c.json(error, error.statusCode as ContentfulStatusCode);
 				}
-			} catch (e: any) {
-				logger.error(e, 'Error processing endpoint request');
-				const error = wrapError(e, 500, 'Internal Server Error');
-				if (HonoEndpoint.isDev) {
-					logger.info(
-						{ status: error.statusCode, body: error },
-						'Outgoing response',
-					);
-				}
-				return c.json(error, error.statusCode as ContentfulStatusCode);
-			}
-		};
+			},
+		);
+	};
 
 		// Register route with conditional validators
 		app[method](route, ...validators, handler);
