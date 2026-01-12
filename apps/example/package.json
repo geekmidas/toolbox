@@ -5,6 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "gkm dev",
+		"dokploy": "gkm deploy --provider dokploy --stage production",
+		"init": "gkm secrets:init --stage production",
 		"build": "gkm build --providers server,aws-apigatewayv2",
 		"out": "gkm prepack --build",
 		"openapi": "gkm openapi",
