@@ -236,6 +236,15 @@ async function buildForProvider(
 		if (context.production?.bundle && !skipBundle) {
 			logger.log(`\n📦 Bundling production server...`);
 			const { bundleServer } = await import('./bundler');
+
+			// Collect all constructs for environment variable validation
+			const allConstructs = [
+				...endpoints.map((e) => e.construct),
+				...functions.map((f) => f.construct),
+				...crons.map((c) => c.construct),
+				...subscribers.map((s) => s.construct),
+			];
+
 			const bundleResult = await bundleServer({
 				entryPoint: join(outputDir, 'server.ts'),
 				outputDir: join(outputDir, 'dist'),
@@ -243,6 +252,7 @@ async function buildForProvider(
 				sourcemap: false,
 				external: context.production.external,
 				stage,
+				constructs: allConstructs,
 			});
 			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
