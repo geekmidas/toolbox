@@ -2,13 +2,41 @@ import type { AuditStorage } from '@geekmidas/audit';
 import { SnifferEnvironmentParser } from '@geekmidas/envkit/sniffer';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import type { Service } from '@geekmidas/services';
+import type { Service, ServiceContext } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
 
 // Cache for service environment variables to handle singleton services
 // Key: service class/constructor, Value: array of env var names
 const serviceEnvCache = new Map<Service, string[]>();
+
+/**
+ * Noop context for environment sniffing.
+ * Used when calling service.register() to detect env vars without a real request.
+ * Returns dummy values since services should only use context in instance methods,
+ * not during registration.
+ */
+const snifferContext: ServiceContext = {
+	getLogger() {
+		// Return a noop logger for sniffing - services shouldn't log during registration
+		return {
+			debug: () => {},
+			info: () => {},
+			warn: () => {},
+			error: () => {},
+			child: () => snifferContext.getLogger(),
+		} as unknown as Logger;
+	},
+	getRequestId() {
+		return 'sniffer-context';
+	},
+	getRequestStartTime() {
+		return Date.now();
+	},
+	hasContext() {
+		return false;
+	},
+};
 
 export abstract class Construct<
 	TLogger extends Logger = Logger,
@@ -75,7 +103,10 @@ export abstract class Construct<
 				// Sniff the service for env vars
 				const sniffer = new SnifferEnvironmentParser();
 				try {
-					const result = service.register(sniffer as any);
+					const result = service.register({
+						envParser: sniffer as any,
+						context: snifferContext,
+					});
 
 					// Await if it's a Promise (async services)
 					if (result && typeof result === 'object' && 'then' in result) {
