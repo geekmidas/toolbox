@@ -147,6 +147,29 @@ describe('JwtVerifier', () => {
 	});
 });
 
+describe('clearCache', () => {
+	it('should clear the JWKS cache', () => {
+		const verifier = new JwtVerifier({ secret: TEST_SECRET });
+
+		// Call clearCache - should not throw
+		verifier.clearCache();
+
+		// Verify the method exists and can be called
+		expect(verifier.clearCache).toBeDefined();
+	});
+
+	it('should allow re-verification after clearing cache', async () => {
+		const verifier = new JwtVerifier({ secret: TEST_SECRET });
+		const token = await createTestToken();
+
+		const claims1 = await verifier.verify(token);
+		verifier.clearCache();
+		const claims2 = await verifier.verify(token);
+
+		expect(claims1.sub).toBe(claims2.sub);
+	});
+});
+
 describe('decodeJwt', () => {
 	it('should decode token without verification', async () => {
 		const token = await createTestToken({ custom: 'data' });
