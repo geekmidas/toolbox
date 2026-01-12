@@ -195,9 +195,15 @@ describe('DokployApi', () => {
 				http.post(`${BASE_URL}/api/project.create`, async ({ request }) => {
 					capturedBody = await request.json();
 					return HttpResponse.json({
-						projectId: 'proj_new',
-						name: 'New Project',
-						description: 'Custom description',
+						project: {
+							projectId: 'proj_new',
+							name: 'New Project',
+							description: 'Custom description',
+						},
+						environment: {
+							environmentId: 'env_default',
+							name: 'production',
+						},
 					});
 				}),
 			);
@@ -207,7 +213,8 @@ describe('DokployApi', () => {
 				'Custom description',
 			);
 
-			expect(result.projectId).toBe('proj_new');
+			expect(result.project.projectId).toBe('proj_new');
+			expect(result.environment.environmentId).toBe('env_default');
 			expect(capturedBody).toMatchObject({
 				name: 'New Project',
 				description: 'Custom description',
@@ -220,7 +227,10 @@ describe('DokployApi', () => {
 			server.use(
 				http.post(`${BASE_URL}/api/project.create`, async ({ request }) => {
 					capturedBody = await request.json();
-					return HttpResponse.json({ projectId: 'proj_new', name: 'Test' });
+					return HttpResponse.json({
+						project: { projectId: 'proj_new', name: 'Test' },
+						environment: { environmentId: 'env_default', name: 'production' },
+					});
 				}),
 			);
 
