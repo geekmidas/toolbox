@@ -65,7 +65,7 @@ export class TestFunctionAdaptor<
 			any
 		>,
 	) {
-		return ServiceDiscovery.getInstance(fn.logger, new EnvironmentParser({}));
+		return ServiceDiscovery.getInstance(new EnvironmentParser({}));
 	}
 
 	constructor(

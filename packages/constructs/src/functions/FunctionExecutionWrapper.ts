@@ -67,11 +67,10 @@ export abstract class FunctionExecutionWrapper<
 		return this._logger || this.fn.logger;
 	}
 
-	get serviceDiscovery(): ServiceDiscovery<ServiceRecord<TServices>, Logger> {
+	get serviceDiscovery(): ServiceDiscovery<ServiceRecord<TServices>> {
 		const serviceDiscovery = ServiceDiscovery.getInstance<
-			ServiceRecord<TServices>,
-			TLogger
-		>(this.logger, this.envParser);
+			ServiceRecord<TServices>
+		>(this.envParser);
 
 		return serviceDiscovery;
 	}
