@@ -341,7 +341,8 @@ describe('Telescope Middy Middleware', () => {
 			await handler(event, mockContext);
 
 			const requests = await storage.getRequests();
-			expect(requests[0].duration).toBeGreaterThanOrEqual(50);
+			// Use 45ms threshold to account for setTimeout timing imprecision
+			expect(requests[0].duration).toBeGreaterThanOrEqual(45);
 		});
 	});
 

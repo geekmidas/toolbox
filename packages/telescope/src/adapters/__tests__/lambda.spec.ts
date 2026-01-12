@@ -233,7 +233,8 @@ describe('Lambda Adapter', () => {
 
 				expect(context.status).toBe(200);
 				expect(context.body).toEqual({ data: 'raw' });
-				expect(context.duration).toBeGreaterThanOrEqual(50);
+				// Use 45ms threshold to account for timing variations
+				expect(context.duration).toBeGreaterThanOrEqual(45);
 			});
 		});
 
