@@ -41,7 +41,7 @@ describe('Dokploy API interactions', () => {
 					method: 'GET',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 				},
 			);
@@ -78,7 +78,7 @@ describe('Dokploy API interactions', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 					body: JSON.stringify({
 						name: 'New Project',
@@ -120,7 +120,7 @@ describe('Dokploy API interactions', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 					body: JSON.stringify({ projectId: 'proj_1' }),
 				},
@@ -159,7 +159,7 @@ describe('Dokploy API interactions', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 					body: JSON.stringify({
 						name: 'api',
@@ -194,7 +194,7 @@ describe('Dokploy API interactions', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 					body: JSON.stringify({
 						applicationId: 'app_1',
@@ -229,7 +229,7 @@ describe('Dokploy API interactions', () => {
 					method: 'GET',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 				},
 			);
@@ -265,7 +265,7 @@ describe('Dokploy API interactions', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						'x-api-key': 'test-token',
 					},
 					body: JSON.stringify({
 						projectId: 'proj_1',
@@ -298,7 +298,7 @@ describe('Dokploy API interactions', () => {
 					method: 'GET',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer invalid-token',
+						'x-api-key': 'invalid-token',
 					},
 				},
 			);
