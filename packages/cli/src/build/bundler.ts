@@ -107,9 +107,11 @@ export async function bundleServer(
 	let masterKey: string | undefined;
 
 	if (stage) {
-		const { readStageSecrets, toEmbeddableSecrets } = await import(
-			'../secrets/storage'
-		);
+		const {
+			readStageSecrets,
+			toEmbeddableSecrets,
+			validateEnvironmentVariables,
+		} = await import('../secrets/storage');
 		const { encryptSecrets, generateDefineOptions } = await import(
 			'../secrets/encryption'
 		);
@@ -120,6 +122,42 @@ export async function bundleServer(
 			throw new Error(
 				`No secrets found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
 			);
+		}
+
+		// Validate environment variables if constructs are provided
+		if (constructs && constructs.length > 0) {
+			console.log('  Analyzing environment variable requirements...');
+			const requiredVars = await collectRequiredEnvVars(constructs);
+
+			if (requiredVars.length > 0) {
+				const validation = validateEnvironmentVariables(requiredVars, secrets);
+
+				if (!validation.valid) {
+					const errorMessage = [
+						`Missing environment variables for stage "${stage}":`,
+						'',
+						...validation.missing.map((v) => `  ❌ ${v}`),
+						'',
+						'To fix this, either:',
+						`  1. Add the missing variables to .gkm/secrets/${stage}.json using:`,
+						`     gkm secrets:set <KEY> <VALUE> --stage ${stage}`,
+						'',
+						`  2. Or import from a JSON file:`,
+						`     gkm secrets:import secrets.json --stage ${stage}`,
+						'',
+						'Required variables:',
+						...validation.required.map((v) =>
+							validation.missing.includes(v) ? `  ❌ ${v}` : `  ✓ ${v}`,
+						),
+					].join('\n');
+
+					throw new Error(errorMessage);
+				}
+
+				console.log(
+					`  ✓ All ${requiredVars.length} required environment variables found`,
+				);
+			}
 		}
 
 		// Convert to embeddable format and encrypt
