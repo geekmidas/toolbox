@@ -118,7 +118,7 @@ export class TestEndpointAdaptor<
 		TDatabase = undefined,
 		TDatabaseServiceName extends string = string,
 	>(
-		endpoint: Endpoint<
+		_endpoint: Endpoint<
 			TRoute,
 			TMethod,
 			TInput,

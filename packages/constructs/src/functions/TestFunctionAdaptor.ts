@@ -50,7 +50,7 @@ export class TestFunctionAdaptor<
 			unknown
 		>,
 	>(
-		fn: Function<
+		_fn: Function<
 			TInput,
 			TServices,
 			TLogger,

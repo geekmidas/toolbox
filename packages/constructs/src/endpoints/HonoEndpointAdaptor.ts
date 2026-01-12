@@ -185,14 +185,13 @@ export class HonoEndpoint<
 		routes: string[],
 		envParser: EnvironmentParser<{}>,
 		app = new Hono(),
-		logger: TLogger,
+		_logger: TLogger,
 		cwd = process.cwd(),
 		options?: HonoEndpointOptions,
 	): Promise<Hono> {
 		const endpoints = await getEndpointsFromRoutes<TServices>(routes, cwd);
-		const serviceDiscovery = ServiceDiscovery.getInstance<
-			ServiceRecord<TServices>
-		>(envParser);
+		const serviceDiscovery =
+			ServiceDiscovery.getInstance<ServiceRecord<TServices>>(envParser);
 
 		HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, options);
 

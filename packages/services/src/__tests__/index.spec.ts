@@ -6,11 +6,11 @@ import type { Service } from '../index';
 import { ServiceDiscovery } from '../index';
 
 describe('ServiceDiscovery', () => {
-	let logger: ConsoleLogger;
+	let _logger: ConsoleLogger;
 	let envParser: EnvironmentParser<{}>;
 
 	beforeEach(() => {
-		logger = new ConsoleLogger({ app: 'test' });
+		_logger = new ConsoleLogger({ app: 'test' });
 		envParser = new EnvironmentParser({ ...process.env });
 
 		// Reset singleton between tests

@@ -196,7 +196,7 @@ export abstract class AmazonApiGatewayEndpoint<
 	private services(): Middleware<TEvent, TInput, TServices, TLogger> {
 		return {
 			before: async (req) => {
-				const logger = req.event.logger as TLogger;
+				const _logger = req.event.logger as TLogger;
 				const serviceDiscovery = ServiceDiscovery.getInstance<
 					ServiceRecord<TServices>
 				>(this.envParser);
@@ -245,7 +245,7 @@ export abstract class AmazonApiGatewayEndpoint<
 					return;
 				}
 
-				const logger = req.event.logger as TLogger;
+				const _logger = req.event.logger as TLogger;
 				const serviceDiscovery = ServiceDiscovery.getInstance<
 					ServiceRecord<TServices>
 				>(this.envParser);
