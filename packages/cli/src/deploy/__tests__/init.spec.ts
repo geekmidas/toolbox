@@ -62,11 +62,18 @@ describe('Dokploy API interactions', () => {
 							description?: string;
 						};
 						return HttpResponse.json({
-							projectId: 'proj_new',
-							name: body.name,
-							description: body.description || null,
-							createdAt: new Date().toISOString(),
-							adminId: 'admin_1',
+							project: {
+								projectId: 'proj_new',
+								name: body.name,
+								description: body.description || null,
+								createdAt: new Date().toISOString(),
+								adminId: 'admin_1',
+							},
+							environment: {
+								environmentId: 'env_default',
+								name: 'production',
+								description: 'Production environment',
+							},
 						});
 					},
 				),
@@ -88,9 +95,10 @@ describe('Dokploy API interactions', () => {
 			);
 
 			expect(response.ok).toBe(true);
-			const project = await response.json();
-			expect(project.projectId).toBe('proj_new');
-			expect(project.name).toBe('New Project');
+			const result = await response.json();
+			expect(result.project.projectId).toBe('proj_new');
+			expect(result.project.name).toBe('New Project');
+			expect(result.environment.environmentId).toBe('env_default');
 		});
 
 		it('should get a single project', async () => {
