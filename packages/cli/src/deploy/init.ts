@@ -112,31 +112,32 @@ export async function updateConfig(
 		logger.log('  Updating with new values...');
 	}
 
+	// Build the dokploy config string
+	const registryLine = config.registryId
+		? `\n\t\t\tregistryId: '${config.registryId}',`
+		: '';
+	const dokployConfigStr = `dokploy: {
+			endpoint: '${config.endpoint}',
+			projectId: '${config.projectId}',
+			applicationId: '${config.applicationId}',${registryLine}
+		}`;
+
 	// Try to add or update the dokploy config
 	let newContent: string;
 
 	if (content.includes('providers:')) {
 		// Add dokploy to existing providers
 		if (content.includes('dokploy:')) {
-			// Update existing dokploy config
+			// Update existing dokploy config (handle multi-line with registryId)
 			newContent = content.replace(
-				/dokploy:\s*\{[^}]*\}/,
-				`dokploy: {
-			endpoint: '${config.endpoint}',
-			projectId: '${config.projectId}',
-			applicationId: '${config.applicationId}',
-		}`,
+				/dokploy:\s*\{[^}]*\}/s,
+				dokployConfigStr,
 			);
 		} else {
 			// Add dokploy to providers
 			newContent = content.replace(
 				/providers:\s*\{/,
-				`providers: {
-		dokploy: {
-			endpoint: '${config.endpoint}',
-			projectId: '${config.projectId}',
-			applicationId: '${config.applicationId}',
-		},`,
+				`providers: {\n\t\t${dokployConfigStr},`,
 			);
 		}
 	} else {
@@ -145,11 +146,7 @@ export async function updateConfig(
 			/}\s*\)\s*;?\s*$/,
 			`
 	providers: {
-		dokploy: {
-			endpoint: '${config.endpoint}',
-			projectId: '${config.projectId}',
-			applicationId: '${config.applicationId}',
-		},
+		${dokployConfigStr},
 	},
 });`,
 		);
