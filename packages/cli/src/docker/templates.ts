@@ -210,8 +210,14 @@ function getPmConfig(pm: PackageManager) {
 export function generateMultiStageDockerfile(
 	options: MultiStageDockerfileOptions,
 ): string {
-	const { baseImage, port, healthCheckPath, turbo, turboPackage, packageManager } =
-		options;
+	const {
+		baseImage,
+		port,
+		healthCheckPath,
+		turbo,
+		turboPackage,
+		packageManager,
+	} = options;
 
 	if (turbo) {
 		return generateTurboDockerfile({
