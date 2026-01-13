@@ -98,7 +98,12 @@ export class DokployApi {
 			);
 		}
 
-		return response.json() as Promise<T>;
+		// Handle empty responses (204 No Content or empty body)
+		const text = await response.text();
+		if (!text || text.trim() === '') {
+			return undefined as T;
+		}
+		return JSON.parse(text) as T;
 	}
 
 	/**
