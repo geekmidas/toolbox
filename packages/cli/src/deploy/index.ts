@@ -68,13 +68,158 @@ async function prompt(message: string, hidden = false): Promise<string> {
 }
 
 /**
+ * Docker compose services that can be provisioned
+ */
+interface DockerComposeServices {
+	postgres?: boolean;
+	redis?: boolean;
+	rabbitmq?: boolean;
+}
+
+/**
+ * Result of Dokploy setup including provisioned service URLs
+ */
+interface DokploySetupResult {
+	config: DokployDeployConfig;
+	serviceUrls?: {
+		DATABASE_URL?: string;
+		REDIS_URL?: string;
+	};
+}
+
+/**
+ * Provision docker compose services in Dokploy
+ */
+async function provisionServices(
+	api: DokployApi,
+	projectId: string,
+	environmentId: string | undefined,
+	appName: string,
+	services?: DockerComposeServices,
+	existingUrls?: { DATABASE_URL?: string; REDIS_URL?: string },
+): Promise<{ DATABASE_URL?: string; REDIS_URL?: string } | undefined> {
+	logger.log(
+		`\n🔍 provisionServices called: services=${JSON.stringify(services)}, envId=${environmentId}`,
+	);
+	if (!services || !environmentId) {
+		logger.log('   Skipping: no services or no environmentId');
+		return undefined;
+	}
+
+	const serviceUrls: { DATABASE_URL?: string; REDIS_URL?: string } = {};
+
+	if (services.postgres) {
+		// Skip if DATABASE_URL already exists in secrets
+		if (existingUrls?.DATABASE_URL) {
+			logger.log('\n🐘 PostgreSQL: Already configured (skipping)');
+		} else {
+			logger.log('\n🐘 Provisioning PostgreSQL...');
+			const postgresName = `${appName}-db`;
+
+			try {
+				// Generate a random password for the database
+				const { randomBytes } = await import('node:crypto');
+				const databasePassword = randomBytes(16).toString('hex');
+
+				const postgres = await api.createPostgres(
+					postgresName,
+					projectId,
+					environmentId,
+					{ databasePassword },
+				);
+				logger.log(`   ✓ Created PostgreSQL: ${postgres.postgresId}`);
+
+				// Deploy the database
+				await api.deployPostgres(postgres.postgresId);
+				logger.log('   ✓ PostgreSQL deployed');
+
+				// Construct connection URL using internal docker network hostname
+				serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
+				logger.log(`   ✓ DATABASE_URL configured`);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : 'Unknown error';
+				if (
+					message.includes('already exists') ||
+					message.includes('duplicate')
+				) {
+					logger.log(`   ℹ PostgreSQL already exists`);
+				} else {
+					logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
+				}
+			}
+		}
+	}
+
+	if (services.redis) {
+		// Skip if REDIS_URL already exists in secrets
+		if (existingUrls?.REDIS_URL) {
+			logger.log('\n🔴 Redis: Already configured (skipping)');
+		} else {
+			logger.log('\n🔴 Provisioning Redis...');
+			const redisName = `${appName}-cache`;
+
+			try {
+				// Generate a random password for Redis
+				const { randomBytes } = await import('node:crypto');
+				const databasePassword = randomBytes(16).toString('hex');
+
+				const redis = await api.createRedis(
+					redisName,
+					projectId,
+					environmentId,
+					{
+						databasePassword,
+					},
+				);
+				logger.log(`   ✓ Created Redis: ${redis.redisId}`);
+
+				// Deploy the redis instance
+				await api.deployRedis(redis.redisId);
+				logger.log('   ✓ Redis deployed');
+
+				// Construct connection URL
+				const password = redis.databasePassword
+					? `:${redis.databasePassword}@`
+					: '';
+				serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
+				logger.log(`   ✓ REDIS_URL configured`);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : 'Unknown error';
+				if (
+					message.includes('already exists') ||
+					message.includes('duplicate')
+				) {
+					logger.log(`   ℹ Redis already exists`);
+				} else {
+					logger.log(`   ⚠ Failed to provision Redis: ${message}`);
+				}
+			}
+		}
+	}
+
+	return Object.keys(serviceUrls).length > 0 ? serviceUrls : undefined;
+}
+
+/**
  * Ensure Dokploy is fully configured, recovering/creating resources as needed
  */
 async function ensureDokploySetup(
 	config: GkmConfig,
 	dockerConfig: { registry?: string; imageName?: string },
-): Promise<DokployDeployConfig> {
+	stage: string,
+	services?: DockerComposeServices,
+): Promise<DokploySetupResult> {
 	logger.log('\n🔧 Checking Dokploy setup...');
+
+	// Read existing secrets to check if services are already configured
+	const { readStageSecrets } = await import('../secrets/storage');
+	const existingSecrets = await readStageSecrets(stage);
+	const existingUrls: { DATABASE_URL?: string; REDIS_URL?: string } = {
+		DATABASE_URL: existingSecrets?.urls?.DATABASE_URL,
+		REDIS_URL: existingSecrets?.urls?.REDIS_URL,
+	};
 
 	// Step 1: Ensure we have Dokploy credentials
 	let creds = await getDokployCredentials();
@@ -122,18 +267,53 @@ async function ensureDokploySetup(
 
 		// Verify the application still exists
 		try {
-			await api.getProject(existingConfig.projectId);
+			const projectDetails = await api.getProject(existingConfig.projectId);
 			logger.log('✓ Project verified');
 
-			// Get stored registry ID
-			const storedRegistryId = await getDokployRegistryId();
+			// Get registry ID from config first, then from local storage
+			const storedRegistryId =
+				existingConfig.registryId ?? (await getDokployRegistryId());
+
+			// Get environment ID for service provisioning (match by stage name)
+			const environments = projectDetails.environments ?? [];
+			let environment = environments.find(
+				(e) => e.name.toLowerCase() === stage.toLowerCase(),
+			);
+
+			// Create environment if it doesn't exist for this stage
+			if (!environment) {
+				logger.log(`   Creating "${stage}" environment...`);
+				environment = await api.createEnvironment(
+					existingConfig.projectId,
+					stage,
+				);
+				logger.log(`   ✓ Created environment: ${environment.environmentId}`);
+			}
+
+			const environmentId = environment.environmentId;
+
+			// Provision services if configured
+			logger.log(
+				`   Services config: ${JSON.stringify(services)}, envId: ${environmentId}`,
+			);
+			const serviceUrls = await provisionServices(
+				api,
+				existingConfig.projectId,
+				environmentId,
+				dockerConfig.imageName || 'app',
+				services,
+				existingUrls,
+			);
 
 			return {
-				endpoint: existingConfig.endpoint,
-				projectId: existingConfig.projectId,
-				applicationId: existingConfig.applicationId,
-				registry: existingConfig.registry,
-				registryId: storedRegistryId ?? undefined,
+				config: {
+					endpoint: existingConfig.endpoint,
+					projectId: existingConfig.projectId,
+					applicationId: existingConfig.applicationId,
+					registry: existingConfig.registry,
+					registryId: storedRegistryId ?? undefined,
+				},
+				serviceUrls,
 			};
 		} catch {
 			logger.log('⚠ Project not found, will recover...');
@@ -155,25 +335,35 @@ async function ensureDokploySetup(
 			`   Found existing project: ${project.name} (${project.projectId})`,
 		);
 
-		// Step 4: Get or create environment for existing project
+		// Step 4: Get or create environment for existing project (match by stage)
 		const projectDetails = await api.getProject(project.projectId);
 		const environments = projectDetails.environments ?? [];
-		const firstEnv = environments[0];
-		if (firstEnv) {
-			environmentId = firstEnv.environmentId;
-			logger.log(`   Using environment: ${firstEnv.name}`);
+		const matchingEnv = environments.find(
+			(e) => e.name.toLowerCase() === stage.toLowerCase(),
+		);
+		if (matchingEnv) {
+			environmentId = matchingEnv.environmentId;
+			logger.log(`   Using environment: ${matchingEnv.name}`);
 		} else {
-			logger.log('   Creating production environment...');
-			const env = await api.createEnvironment(project.projectId, 'production');
+			logger.log(`   Creating "${stage}" environment...`);
+			const env = await api.createEnvironment(project.projectId, stage);
 			environmentId = env.environmentId;
+			logger.log(`   ✓ Created environment: ${stage}`);
 		}
 	} else {
 		logger.log(`   Creating project: ${projectName}`);
 		const result = await api.createProject(projectName);
 		project = result.project;
-		environmentId = result.environment.environmentId;
+		// Rename the default environment to match stage if different
+		if (result.environment.name.toLowerCase() !== stage.toLowerCase()) {
+			logger.log(`   Creating "${stage}" environment...`);
+			const env = await api.createEnvironment(project.projectId, stage);
+			environmentId = env.environmentId;
+		} else {
+			environmentId = result.environment.environmentId;
+		}
 		logger.log(`   ✓ Created project: ${project.projectId}`);
-		logger.log(`   ✓ Created environment: ${result.environment.name}`);
+		logger.log(`   ✓ Using environment: ${stage}`);
 	}
 
 	// Step 5: Find or create application
@@ -206,39 +396,89 @@ async function ensureDokploySetup(
 	logger.log('\n🐳 Checking registry...');
 	let registryId = await getDokployRegistryId();
 
+	if (registryId) {
+		// Verify stored registry still exists
+		try {
+			const registry = await api.getRegistry(registryId);
+			logger.log(`   Using registry: ${registry.registryName}`);
+		} catch {
+			logger.log('   ⚠ Stored registry not found, clearing...');
+			registryId = undefined;
+			await storeDokployRegistryId('');
+		}
+	}
+
 	if (!registryId) {
 		const registries = await api.listRegistries();
-		const firstRegistry = registries[0];
 
-		if (firstRegistry) {
-			// Use first available registry
-			registryId = firstRegistry.registryId;
-			await storeDokployRegistryId(registryId);
-			logger.log(`   Using existing registry: ${firstRegistry.registryName}`);
-		} else if (dockerConfig.registry) {
-			// Need to create a registry
-			logger.log("   No registry found. Let's set one up.");
-			logger.log(`   Registry URL will be: ${dockerConfig.registry}`);
+		if (registries.length === 0) {
+			// No registries exist
+			if (dockerConfig.registry) {
+				logger.log("   No registries found in Dokploy. Let's create one.");
+				logger.log(`   Registry URL: ${dockerConfig.registry}`);
 
-			const username = await prompt('Registry username: ');
-			const password = await prompt('Registry password/token: ', true);
+				const username = await prompt('Registry username: ');
+				const password = await prompt('Registry password/token: ', true);
 
-			const registry = await api.createRegistry(
-				'Default Registry',
-				dockerConfig.registry,
-				username,
-				password,
-			);
-			registryId = registry.registryId;
-			await storeDokployRegistryId(registryId);
-			logger.log(`   ✓ Registry created: ${registryId}`);
+				const registry = await api.createRegistry(
+					'Default Registry',
+					dockerConfig.registry,
+					username,
+					password,
+				);
+				registryId = registry.registryId;
+				await storeDokployRegistryId(registryId);
+				logger.log(`   ✓ Registry created: ${registryId}`);
+			} else {
+				logger.log(
+					'   ⚠ No registry configured. Set docker.registry in gkm.config.ts',
+				);
+			}
 		} else {
-			logger.log(
-				'   ⚠ No registry configured. Set docker.registry in gkm.config.ts',
-			);
+			// Show available registries and let user select or create new
+			logger.log('   Available registries:');
+			registries.forEach((reg, i) => {
+				logger.log(`     ${i + 1}. ${reg.registryName} (${reg.registryUrl})`);
+			});
+			if (dockerConfig.registry) {
+				logger.log(`     ${registries.length + 1}. Create new registry`);
+			}
+
+			const maxOption = dockerConfig.registry
+				? registries.length + 1
+				: registries.length;
+			const selection = await prompt(`   Select registry (1-${maxOption}): `);
+			const index = parseInt(selection, 10) - 1;
+
+			if (index >= 0 && index < registries.length) {
+				// Selected existing registry
+				registryId = registries[index].registryId;
+				await storeDokployRegistryId(registryId);
+				logger.log(`   ✓ Selected: ${registries[index].registryName}`);
+			} else if (
+				dockerConfig.registry &&
+				index === registries.length
+			) {
+				// Create new registry
+				logger.log(`\n   Creating new registry...`);
+				logger.log(`   Registry URL: ${dockerConfig.registry}`);
+
+				const username = await prompt('   Registry username: ');
+				const password = await prompt('   Registry password/token: ', true);
+
+				const registry = await api.createRegistry(
+					dockerConfig.registry.replace(/^https?:\/\//, ''),
+					dockerConfig.registry,
+					username,
+					password,
+				);
+				registryId = registry.registryId;
+				await storeDokployRegistryId(registryId);
+				logger.log(`   ✓ Registry created: ${registryId}`);
+			} else {
+				logger.log('   ⚠ Invalid selection, skipping registry setup');
+			}
 		}
-	} else {
-		logger.log(`   Using stored registry: ${registryId}`);
 	}
 
 	// Step 7: Build and save config
@@ -259,7 +499,20 @@ async function ensureDokploySetup(
 		logger.log(`   Registry: ${registryId}`);
 	}
 
-	return dokployConfig;
+	// Step 8: Provision docker compose services if configured
+	const serviceUrls = await provisionServices(
+		api,
+		project.projectId,
+		environmentId,
+		dockerConfig.imageName || 'app',
+		services,
+		existingUrls,
+	);
+
+	return {
+		config: dokployConfig,
+		serviceUrls,
+	};
 }
 
 /**
