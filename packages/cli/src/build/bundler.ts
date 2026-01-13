@@ -19,6 +19,12 @@ export interface BundleOptions {
 	stage?: string;
 	/** Constructs to validate environment variables for */
 	constructs?: Construct[];
+	/** Docker compose services configured (for auto-populating env vars) */
+	dockerServices?: {
+		postgres?: boolean;
+		redis?: boolean;
+		rabbitmq?: boolean;
+	};
 }
 
 export interface BundleResult {
@@ -54,6 +60,19 @@ async function collectRequiredEnvVars(
  * @param options - Bundle configuration options
  * @returns Bundle result with output path and optional master key
  */
+/** Default env var values for docker compose services */
+const DOCKER_SERVICE_ENV_VARS: Record<string, Record<string, string>> = {
+	postgres: {
+		DATABASE_URL: 'postgresql://postgres:postgres@postgres:5432/app',
+	},
+	redis: {
+		REDIS_URL: 'redis://redis:6379',
+	},
+	rabbitmq: {
+		RABBITMQ_URL: 'amqp://rabbitmq:5672',
+	},
+};
+
 export async function bundleServer(
 	options: BundleOptions,
 ): Promise<BundleResult> {
@@ -65,6 +84,7 @@ export async function bundleServer(
 		external,
 		stage,
 		constructs,
+		dockerServices,
 	} = options;
 
 	// Ensure output directory exists
@@ -124,6 +144,24 @@ export async function bundleServer(
 			);
 		}
 
+		// Auto-populate env vars from docker compose services
+		if (dockerServices) {
+			for (const [service, enabled] of Object.entries(dockerServices)) {
+				if (enabled && DOCKER_SERVICE_ENV_VARS[service]) {
+					for (const [envVar, defaultValue] of Object.entries(
+						DOCKER_SERVICE_ENV_VARS[service],
+					)) {
+						// Check if not already in urls or custom
+						const urlKey = envVar as keyof typeof secrets.urls;
+						if (!secrets.urls[urlKey] && !secrets.custom[envVar]) {
+							secrets.urls[urlKey] = defaultValue;
+							console.log(`  Auto-populated ${envVar} from docker compose`);
+						}
+					}
+				}
+			}
+		}
+
 		// Validate environment variables if constructs are provided
 		if (constructs && constructs.length > 0) {
 			console.log('  Analyzing environment variable requirements...');
@@ -179,7 +217,8 @@ export async function bundleServer(
 	try {
 		// Run tsdown with command-line arguments
 		// Use spawnSync with args array to avoid shell escaping issues with --define values
-		const [cmd, ...cmdArgs] = args;
+		// args is always populated with ['npx', 'tsdown', ...] so cmd is never undefined
+		const [cmd, ...cmdArgs] = args as [string, ...string[]];
 		const result = spawnSync(cmd, cmdArgs, {
 			cwd: process.cwd(),
 			stdio: 'inherit',
