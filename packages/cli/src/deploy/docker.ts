@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import type { GkmConfig } from '../types';
+import { dockerCommand } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
 
 const logger = console;
@@ -37,11 +37,21 @@ export function getImageRef(
 async function buildImage(imageRef: string): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
+	const cwd = process.cwd();
+
+	// Use slim Dockerfile since we've already built the bundle before Docker
+	// This avoids issues with turbo prune not including built CLI binaries
+	logger.log('   Generating slim Dockerfile (pre-built bundle)...');
+	await dockerCommand({ slim: true });
+
+	const dockerfilePath = '.gkm/docker/Dockerfile';
+
 	try {
+		// Build for linux/amd64 to ensure compatibility with most cloud servers
 		execSync(
-			`DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${imageRef} .`,
+			`DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f ${dockerfilePath} -t ${imageRef} .`,
 			{
-				cwd: process.cwd(),
+				cwd,
 				stdio: 'inherit',
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 			},
