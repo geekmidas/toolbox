@@ -22,6 +22,7 @@
 		"@geekmidas/envkit": "workspace:*",
 		"@geekmidas/events": "workspace:*",
 		"@geekmidas/logger": "workspace:*",
+		"@geekmidas/errors": "workspace:*",
 		"@geekmidas/services": "workspace:*",
 		"@geekmidas/studio": "workspace:*",
 		"@geekmidas/telescope": "workspace:*",

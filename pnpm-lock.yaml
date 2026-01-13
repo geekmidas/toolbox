@@ -81,6 +81,9 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../../packages/envkit
+      '@geekmidas/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
       '@geekmidas/events':
         specifier: workspace:*
         version: link:../../packages/events
