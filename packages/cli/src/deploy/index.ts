@@ -541,6 +541,75 @@ export async function deployCommand(
 	const imageTag = tag ?? generateTag(stage);
 	logger.log(`   Tag: ${imageTag}`);
 
+	// Resolve docker config for image reference
+	const dockerConfig = resolveDockerConfig(config);
+	const imageName = dockerConfig.imageName ?? 'app';
+	const registry = dockerConfig.registry;
+	const imageRef = registry
+		? `${registry}/${imageName}:${imageTag}`
+		: `${imageName}:${imageTag}`;
+
+	// For Dokploy, set up services BEFORE build so URLs are available
+	let dokployConfig: DokployDeployConfig | undefined;
+	let finalRegistry = registry;
+
+	if (provider === 'dokploy') {
+		// Extract docker compose services config
+		const composeServices = config.docker?.compose?.services;
+		logger.log(
+			`\n🔍 Docker compose config: ${JSON.stringify(config.docker?.compose)}`,
+		);
+		const dockerServices: DockerComposeServices | undefined = composeServices
+			? Array.isArray(composeServices)
+				? {
+						postgres: composeServices.includes('postgres'),
+						redis: composeServices.includes('redis'),
+						rabbitmq: composeServices.includes('rabbitmq'),
+					}
+				: {
+						postgres: Boolean(composeServices.postgres),
+						redis: Boolean(composeServices.redis),
+						rabbitmq: Boolean(composeServices.rabbitmq),
+					}
+			: undefined;
+
+		// Ensure Dokploy is fully set up (credentials, project, app, registry, services)
+		const setupResult = await ensureDokploySetup(
+			config,
+			dockerConfig,
+			stage,
+			dockerServices,
+		);
+		dokployConfig = setupResult.config;
+		finalRegistry = dokployConfig.registry ?? dockerConfig.registry;
+
+		// Save provisioned service URLs to secrets before build
+		if (setupResult.serviceUrls) {
+			const { readStageSecrets, writeStageSecrets, initStageSecrets } =
+				await import('../secrets/storage');
+			let secrets = await readStageSecrets(stage);
+
+			// Create secrets file if it doesn't exist
+			if (!secrets) {
+				logger.log(`   Creating secrets file for stage "${stage}"...`);
+				secrets = initStageSecrets(stage);
+			}
+
+			let updated = false;
+			for (const [key, value] of Object.entries(setupResult.serviceUrls)) {
+				const urlKey = key as keyof typeof secrets.urls;
+				if (value && !secrets.urls[urlKey] && !secrets.custom[key]) {
+					secrets.urls[urlKey] = value;
+					logger.log(`   Saved ${key} to secrets`);
+					updated = true;
+				}
+			}
+			if (updated) {
+				await writeStageSecrets(secrets);
+			}
+		}
+	}
+
 	// Build for production with secrets injection (unless skipped)
 	let masterKey: string | undefined;
 	if (!skipBuild) {
@@ -554,14 +623,6 @@ export async function deployCommand(
 	} else {
 		logger.log(`\n⏭️  Skipping build (--skip-build)`);
 	}
-
-	// Resolve docker config for image reference
-	const dockerConfig = resolveDockerConfig(config);
-	const imageName = dockerConfig.imageName ?? 'app';
-	const registry = dockerConfig.registry;
-	const imageRef = registry
-		? `${registry}/${imageName}:${imageTag}`
-		: `${imageName}:${imageTag}`;
 
 	// Deploy based on provider
 	let result: DeployResult;
@@ -579,11 +640,9 @@ export async function deployCommand(
 		}
 
 		case 'dokploy': {
-			// Ensure Dokploy is fully set up (credentials, project, app, registry)
-			const dokployConfig = await ensureDokploySetup(config, dockerConfig);
-
-			// Update imageRef with correct registry
-			const finalRegistry = dokployConfig.registry ?? dockerConfig.registry;
+			if (!dokployConfig) {
+				throw new Error('Dokploy config not initialized');
+			}
 			const finalImageRef = finalRegistry
 				? `${finalRegistry}/${imageName}:${imageTag}`
 				: `${imageName}:${imageTag}`;
