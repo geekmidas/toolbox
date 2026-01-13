@@ -1,16 +1,26 @@
 import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { loadConfig } from '../config';
 import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
 import {
 	detectPackageManager,
+	findLockfilePath,
 	generateDockerEntrypoint,
 	generateDockerignore,
 	generateMultiStageDockerfile,
 	generateSlimDockerfile,
+	hasTurboConfig,
+	isMonorepo,
 	resolveDockerConfig,
+} from './templates';
+
+export {
+	detectPackageManager,
+	findLockfilePath,
+	hasTurboConfig,
+	isMonorepo,
 } from './templates';
 
 const logger = console;
@@ -82,6 +92,42 @@ export async function dockerCommand(
 
 	// Detect package manager from lockfiles
 	const packageManager = detectPackageManager();
+	const inMonorepo = isMonorepo();
+	const hasTurbo = hasTurboConfig();
+
+	// Auto-enable turbo for monorepos with turbo.json
+	let useTurbo = options.turbo ?? false;
+	if (inMonorepo && !useSlim) {
+		if (hasTurbo) {
+			useTurbo = true;
+			logger.log('   Detected monorepo with turbo.json - using turbo prune');
+		} else {
+			throw new Error(
+				'Monorepo detected but turbo.json not found.\n\n' +
+					'Docker builds in monorepos require Turborepo for proper dependency isolation.\n\n' +
+					'To fix this:\n' +
+					'  1. Install turbo: pnpm add -Dw turbo\n' +
+					'  2. Create turbo.json in your monorepo root\n' +
+					'  3. Run this command again\n\n' +
+					'See: https://turbo.build/repo/docs/guides/tools/docker',
+			);
+		}
+	}
+
+	// Get the actual package name from package.json for turbo prune
+	let turboPackage = options.turboPackage ?? dockerConfig.imageName;
+	if (useTurbo && !options.turboPackage) {
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const pkg = require(`${process.cwd()}/package.json`);
+			if (pkg.name) {
+				turboPackage = pkg.name;
+				logger.log(`   Turbo package: ${turboPackage}`);
+			}
+		} catch {
+			// Fall back to imageName
+		}
+	}
 
 	const templateOptions = {
 		imageName: dockerConfig.imageName,
@@ -89,8 +135,8 @@ export async function dockerCommand(
 		port: dockerConfig.port,
 		healthCheckPath,
 		prebuilt: useSlim,
-		turbo: options.turbo,
-		turboPackage: options.turboPackage ?? dockerConfig.imageName,
+		turbo: useTurbo,
+		turboPackage,
 		packageManager,
 	};
 
@@ -99,7 +145,7 @@ export async function dockerCommand(
 		? generateSlimDockerfile(templateOptions)
 		: generateMultiStageDockerfile(templateOptions);
 
-	const dockerMode = useSlim ? 'slim' : options.turbo ? 'turbo' : 'multi-stage';
+	const dockerMode = useSlim ? 'slim' : useTurbo ? 'turbo' : 'multi-stage';
 
 	const dockerfilePath = join(dockerDir, 'Dockerfile');
 	await writeFile(dockerfilePath, dockerfile);
