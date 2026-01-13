@@ -14,7 +14,7 @@ import type {
 	NormalizedStudioConfig,
 	NormalizedTelescopeConfig,
 } from '../build/types';
-import { loadConfig, parseModuleConfig } from '../config';
+import { loadConfig, loadWorkspaceConfig, parseModuleConfig } from '../config';
 import {
 	CronGenerator,
 	EndpointGenerator,
@@ -35,6 +35,16 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types';
+import {
+	readStageSecrets,
+	secretsExist,
+	toEmbeddableSecrets,
+} from '../secrets/storage.js';
+import {
+	type NormalizedWorkspace,
+	getDependencyEnvVars,
+	getAppBuildOrder,
+} from '../workspace/index.js';
 
 const logger = console;
 
@@ -278,6 +288,10 @@ export interface DevOptions {
 	port?: number;
 	portExplicit?: boolean;
 	enableOpenApi?: boolean;
+	/** Specific app to run in workspace mode (default: all apps) */
+	app?: string;
+	/** Filter apps by pattern (passed to turbo --filter) */
+	filter?: string;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
@@ -288,7 +302,17 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	const config = await loadConfig();
+	// Try to load workspace config first
+	const loadedConfig = await loadWorkspaceConfig();
+
+	// Route to workspace dev mode for multi-app workspaces
+	if (loadedConfig.type === 'workspace') {
+		logger.log('📦 Detected workspace configuration');
+		return workspaceDevCommand(loadedConfig.workspace, options);
+	}
+
+	// Single-app mode - use existing logic
+	const config = loadedConfig.raw as GkmConfig;
 
 	// Load any additional env files specified in config
 	if (config.env) {
@@ -508,6 +532,286 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	process.on('SIGINT', shutdown);
 	process.on('SIGTERM', shutdown);
+}
+
+/**
+ * Generate all dependency environment variables for all apps.
+ * Returns a flat object with all {APP_NAME}_URL variables.
+ * @internal Exported for testing
+ */
+export function generateAllDependencyEnvVars(
+	workspace: NormalizedWorkspace,
+	urlPrefix = 'http://localhost',
+): Record<string, string> {
+	const env: Record<string, string> = {};
+
+	for (const appName of Object.keys(workspace.apps)) {
+		const appEnv = getDependencyEnvVars(workspace, appName, urlPrefix);
+		Object.assign(env, appEnv);
+	}
+
+	return env;
+}
+
+/**
+ * Check for port conflicts across all apps.
+ * Returns list of conflicts if any ports are duplicated.
+ * @internal Exported for testing
+ */
+export function checkPortConflicts(
+	workspace: NormalizedWorkspace,
+): { app1: string; app2: string; port: number }[] {
+	const conflicts: { app1: string; app2: string; port: number }[] = [];
+	const portToApp = new Map<number, string>();
+
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		const existingApp = portToApp.get(app.port);
+		if (existingApp) {
+			conflicts.push({ app1: existingApp, app2: appName, port: app.port });
+		} else {
+			portToApp.set(app.port, appName);
+		}
+	}
+
+	return conflicts;
+}
+
+/**
+ * Load secrets for development stage.
+ * Returns env vars to inject, or empty object if secrets not configured/found.
+ * @internal Exported for testing
+ */
+export async function loadDevSecrets(
+	workspace: NormalizedWorkspace,
+): Promise<Record<string, string>> {
+	// Check if secrets are enabled in workspace config
+	if (!workspace.secrets.enabled) {
+		return {};
+	}
+
+	// Try 'dev' stage first, then 'development'
+	const stages = ['dev', 'development'];
+
+	for (const stage of stages) {
+		if (secretsExist(stage, workspace.root)) {
+			const secrets = await readStageSecrets(stage, workspace.root);
+			if (secrets) {
+				logger.log(`🔐 Loading secrets from stage: ${stage}`);
+				return toEmbeddableSecrets(secrets);
+			}
+		}
+	}
+
+	logger.warn(
+		'⚠️  Secrets enabled but no dev/development secrets found. Run "gkm secrets:init --stage dev"',
+	);
+	return {};
+}
+
+/**
+ * Start docker-compose services for the workspace.
+ * @internal Exported for testing
+ */
+export async function startWorkspaceServices(
+	workspace: NormalizedWorkspace,
+): Promise<void> {
+	const services = workspace.services;
+	if (!services.db && !services.cache && !services.mail) {
+		return;
+	}
+
+	const servicesToStart: string[] = [];
+
+	if (services.db) {
+		servicesToStart.push('postgres');
+	}
+	if (services.cache) {
+		servicesToStart.push('redis');
+	}
+	if (services.mail) {
+		servicesToStart.push('mailpit');
+	}
+
+	if (servicesToStart.length === 0) {
+		return;
+	}
+
+	logger.log(`🐳 Starting services: ${servicesToStart.join(', ')}`);
+
+	try {
+		// Check if docker-compose.yml exists
+		const composeFile = join(workspace.root, 'docker-compose.yml');
+		if (!existsSync(composeFile)) {
+			logger.warn(
+				'⚠️  No docker-compose.yml found. Services will not be started.',
+			);
+			return;
+		}
+
+		// Start services with docker-compose
+		execSync(`docker-compose up -d ${servicesToStart.join(' ')}`, {
+			cwd: workspace.root,
+			stdio: 'inherit',
+		});
+
+		logger.log('✅ Services started');
+	} catch (error) {
+		logger.error('❌ Failed to start services:', (error as Error).message);
+		throw error;
+	}
+}
+
+/**
+ * Workspace dev command - orchestrates multi-app development using Turbo.
+ *
+ * Flow:
+ * 1. Check for port conflicts
+ * 2. Start docker-compose services (db, cache, mail)
+ * 3. Generate dependency URLs ({APP_NAME}_URL)
+ * 4. Spawn turbo run dev with injected env vars
+ */
+async function workspaceDevCommand(
+	workspace: NormalizedWorkspace,
+	options: DevOptions,
+): Promise<void> {
+	const appCount = Object.keys(workspace.apps).length;
+	const backendApps = Object.entries(workspace.apps).filter(
+		([_, app]) => app.type === 'backend',
+	);
+	const frontendApps = Object.entries(workspace.apps).filter(
+		([_, app]) => app.type === 'frontend',
+	);
+
+	logger.log(`\n🚀 Starting workspace: ${workspace.name}`);
+	logger.log(`   ${backendApps.length} backend app(s), ${frontendApps.length} frontend app(s)`);
+
+	// Check for port conflicts
+	const conflicts = checkPortConflicts(workspace);
+	if (conflicts.length > 0) {
+		for (const conflict of conflicts) {
+			logger.error(
+				`❌ Port conflict: Apps "${conflict.app1}" and "${conflict.app2}" both use port ${conflict.port}`,
+			);
+		}
+		throw new Error('Port conflicts detected. Please assign unique ports to each app.');
+	}
+
+	// Start docker-compose services
+	await startWorkspaceServices(workspace);
+
+	// Load secrets if enabled
+	const secretsEnv = await loadDevSecrets(workspace);
+	if (Object.keys(secretsEnv).length > 0) {
+		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
+	}
+
+	// Generate dependency URLs
+	const dependencyEnv = generateAllDependencyEnvVars(workspace);
+	if (Object.keys(dependencyEnv).length > 0) {
+		logger.log('📡 Dependency URLs:');
+		for (const [key, value] of Object.entries(dependencyEnv)) {
+			logger.log(`   ${key}=${value}`);
+		}
+	}
+
+	// Build turbo filter
+	let turboFilter: string[] = [];
+	if (options.app) {
+		// Run specific app
+		if (!workspace.apps[options.app]) {
+			const appNames = Object.keys(workspace.apps).join(', ');
+			throw new Error(
+				`App "${options.app}" not found. Available apps: ${appNames}`,
+			);
+		}
+		turboFilter = ['--filter', options.app];
+		logger.log(`\n🎯 Running single app: ${options.app}`);
+	} else if (options.filter) {
+		// Use custom filter
+		turboFilter = ['--filter', options.filter];
+		logger.log(`\n🔍 Using filter: ${options.filter}`);
+	} else {
+		// Run all apps
+		logger.log(`\n🎯 Running all ${appCount} apps`);
+	}
+
+	// List apps and their ports
+	const buildOrder = getAppBuildOrder(workspace);
+	logger.log('\n📋 Apps (in dependency order):');
+	for (const appName of buildOrder) {
+		const app = workspace.apps[appName];
+		if (!app) continue;
+		const deps = app.dependencies.length > 0
+			? ` (depends on: ${app.dependencies.join(', ')})`
+			: '';
+		logger.log(`   ${app.type === 'backend' ? '🔧' : '🌐'} ${appName} → http://localhost:${app.port}${deps}`);
+	}
+
+	// Prepare environment variables
+	// Order matters: secrets first, then dependencies (dependencies can override)
+	const turboEnv: Record<string, string> = {
+		...process.env,
+		...secretsEnv,
+		...dependencyEnv,
+		NODE_ENV: 'development',
+	};
+
+	// Spawn turbo run dev
+	logger.log('\n🏃 Starting turbo run dev...\n');
+
+	const turboProcess = spawn(
+		'pnpm',
+		['turbo', 'run', 'dev', ...turboFilter],
+		{
+			cwd: workspace.root,
+			stdio: 'inherit',
+			env: turboEnv,
+		},
+	);
+
+	// Handle graceful shutdown
+	let isShuttingDown = false;
+	const shutdown = () => {
+		if (isShuttingDown) return;
+		isShuttingDown = true;
+
+		logger.log('\n🛑 Shutting down workspace...');
+
+		// Kill turbo process
+		if (turboProcess.pid) {
+			try {
+				// Try to kill the process group
+				process.kill(-turboProcess.pid, 'SIGTERM');
+			} catch {
+				// Fall back to killing just the process
+				turboProcess.kill('SIGTERM');
+			}
+		}
+
+		// Give processes time to clean up
+		setTimeout(() => {
+			process.exit(0);
+		}, 2000);
+	};
+
+	process.on('SIGINT', shutdown);
+	process.on('SIGTERM', shutdown);
+
+	// Wait for turbo to exit
+	return new Promise((resolve, reject) => {
+		turboProcess.on('error', (error) => {
+			logger.error('❌ Turbo error:', error);
+			reject(error);
+		});
+
+		turboProcess.on('exit', (code) => {
+			if (code !== null && code !== 0) {
+				reject(new Error(`Turbo exited with code ${code}`));
+			} else {
+				resolve();
+			}
+		});
+	});
 }
 
 async function buildServer(

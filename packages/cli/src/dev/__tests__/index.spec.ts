@@ -1,8 +1,11 @@
 import type { AddressInfo } from 'node:net';
 import { createServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { NormalizedWorkspace } from '../../workspace/index.js';
 import {
+	checkPortConflicts,
 	findAvailablePort,
+	generateAllDependencyEnvVars,
 	isPortAvailable,
 	normalizeHooksConfig,
 	normalizeProductionConfig,
@@ -394,5 +397,268 @@ describe('normalizeProductionConfig', () => {
 		expect(result).toBeDefined();
 		expect(result?.enabled).toBe(true);
 		expect(result?.bundle).toBe(false);
+	});
+});
+
+describe('Workspace Dev Server', () => {
+	/**
+	 * Helper to create a test workspace configuration.
+	 */
+	function createTestWorkspace(
+		apps: NormalizedWorkspace['apps'],
+		overrides: Partial<NormalizedWorkspace> = {},
+	): NormalizedWorkspace {
+		return {
+			name: 'test-workspace',
+			root: '/test/workspace',
+			apps,
+			services: {},
+			deploy: { default: 'dokploy' },
+			shared: { packages: ['packages/*'] },
+			secrets: {},
+			...overrides,
+		};
+	}
+
+	describe('checkPortConflicts', () => {
+		it('should return empty array when no conflicts', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3001,
+					dependencies: [],
+				},
+				admin: {
+					type: 'frontend',
+					path: 'apps/admin',
+					port: 3002,
+					dependencies: [],
+				},
+			});
+
+			const conflicts = checkPortConflicts(workspace);
+			expect(conflicts).toEqual([]);
+		});
+
+		it('should detect port conflicts between two apps', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3000, // Same port as api!
+					dependencies: [],
+				},
+			});
+
+			const conflicts = checkPortConflicts(workspace);
+			expect(conflicts).toHaveLength(1);
+			expect(conflicts[0]).toEqual({
+				app1: 'api',
+				app2: 'web',
+				port: 3000,
+			});
+		});
+
+		it('should detect multiple port conflicts', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				auth: {
+					type: 'backend',
+					path: 'apps/auth',
+					port: 3000, // Conflicts with api
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3001,
+					dependencies: [],
+				},
+				admin: {
+					type: 'frontend',
+					path: 'apps/admin',
+					port: 3001, // Conflicts with web
+					dependencies: [],
+				},
+			});
+
+			const conflicts = checkPortConflicts(workspace);
+			expect(conflicts).toHaveLength(2);
+		});
+
+		it('should handle single app workspace', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+			});
+
+			const conflicts = checkPortConflicts(workspace);
+			expect(conflicts).toEqual([]);
+		});
+	});
+
+	describe('generateAllDependencyEnvVars', () => {
+		it('should generate empty object for apps with no dependencies', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3001,
+					dependencies: [],
+				},
+			});
+
+			const env = generateAllDependencyEnvVars(workspace);
+			expect(env).toEqual({});
+		});
+
+		it('should generate URL env vars for dependencies', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				auth: {
+					type: 'backend',
+					path: 'apps/auth',
+					port: 3001,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3002,
+					dependencies: ['api', 'auth'],
+				},
+			});
+
+			const env = generateAllDependencyEnvVars(workspace);
+			expect(env).toEqual({
+				API_URL: 'http://localhost:3000',
+				AUTH_URL: 'http://localhost:3001',
+			});
+		});
+
+		it('should handle cross-dependencies between backend apps', () => {
+			const workspace = createTestWorkspace({
+				'api-gateway': {
+					type: 'backend',
+					path: 'apps/api-gateway',
+					port: 3000,
+					dependencies: [],
+				},
+				'user-service': {
+					type: 'backend',
+					path: 'apps/user-service',
+					port: 3001,
+					dependencies: [],
+				},
+				'order-service': {
+					type: 'backend',
+					path: 'apps/order-service',
+					port: 3002,
+					dependencies: ['user-service'],
+				},
+			});
+
+			const env = generateAllDependencyEnvVars(workspace);
+			expect(env).toEqual({
+				'USER-SERVICE_URL': 'http://localhost:3001',
+			});
+		});
+
+		it('should use custom URL prefix', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3001,
+					dependencies: ['api'],
+				},
+			});
+
+			const env = generateAllDependencyEnvVars(workspace, 'http://127.0.0.1');
+			expect(env).toEqual({
+				API_URL: 'http://127.0.0.1:3000',
+			});
+		});
+
+		it('should handle complex dependency graph', () => {
+			const workspace = createTestWorkspace({
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				auth: {
+					type: 'backend',
+					path: 'apps/auth',
+					port: 3001,
+					dependencies: [],
+				},
+				payments: {
+					type: 'backend',
+					path: 'apps/payments',
+					port: 3002,
+					dependencies: ['auth'], // Payments depends on auth
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3003,
+					dependencies: ['api', 'auth'], // Web depends on api and auth
+				},
+				admin: {
+					type: 'frontend',
+					path: 'apps/admin',
+					port: 3004,
+					dependencies: ['api', 'payments'], // Admin depends on api and payments
+				},
+			});
+
+			const env = generateAllDependencyEnvVars(workspace);
+			expect(env).toEqual({
+				AUTH_URL: 'http://localhost:3001',
+				API_URL: 'http://localhost:3000',
+				PAYMENTS_URL: 'http://localhost:3002',
+			});
+		});
 	});
 });
