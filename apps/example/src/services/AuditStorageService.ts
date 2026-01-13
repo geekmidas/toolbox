@@ -1,5 +1,6 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { InMemoryAuditStorage } from '@geekmidas/audit/memory';
+import type { Service } from '@geekmidas/services';
 
 /**
  * Example audit storage service using InMemoryAuditStorage.
@@ -37,4 +38,4 @@ export const AuditStorageService = {
 		}
 		return instance;
 	},
-};
+} satisfies Service<'auditStorage', AuditStorage<AppAuditAction>>;
