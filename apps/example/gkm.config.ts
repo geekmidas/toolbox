@@ -13,6 +13,15 @@ export default defineConfig({
 	runtime: 'node',
 	env: ['.env', '.env.example'],
 	openapi: true,
+	docker: {
+		registry: 'ghcr.io/technanimals',
+		imageName: 'example-api',
+		compose: {
+			services: {
+				postgres: true,
+			},
+		},
+	},
 	providers: {
 		dokploy: {
 			endpoint: 'https://prod.traflabs.io',
