@@ -89,8 +89,9 @@ interface DokploySetupResult {
 
 /**
  * Provision docker compose services in Dokploy
+ * @internal Exported for testing
  */
-async function provisionServices(
+export async function provisionServices(
 	api: DokployApi,
 	projectId: string,
 	environmentId: string | undefined,
