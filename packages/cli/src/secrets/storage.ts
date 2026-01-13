@@ -28,6 +28,21 @@ export function secretsExist(stage: string, cwd = process.cwd()): boolean {
 }
 
 /**
+ * Initialize an empty StageSecrets object for a stage.
+ */
+export function initStageSecrets(stage: string): StageSecrets {
+	const now = new Date().toISOString();
+	return {
+		stage,
+		createdAt: now,
+		updatedAt: now,
+		services: {},
+		urls: {},
+		custom: {},
+	};
+}
+
+/**
  * Read secrets for a stage.
  * @returns StageSecrets or null if not found
  */
