@@ -45,10 +45,10 @@ describe('handler-templates', () => {
 		it('should always include base imports', () => {
 			const result = generateOptimizedImports([]);
 
-			expect(result).toContain("import type { EnvironmentParser }");
-			expect(result).toContain("import type { Logger }");
-			expect(result).toContain("import type { Hono }");
-			expect(result).toContain("import { Endpoint }");
+			expect(result).toContain('import type { EnvironmentParser }');
+			expect(result).toContain('import type { Logger }');
+			expect(result).toContain('import type { Hono }');
+			expect(result).toContain('import { Endpoint }');
 		});
 
 		it('should include validator import when body validation needed', () => {
@@ -59,7 +59,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { validator }");
+			expect(result).toContain('import { validator }');
 		});
 
 		it('should include validator import when query validation needed', () => {
@@ -70,7 +70,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { validator }");
+			expect(result).toContain('import { validator }');
 		});
 
 		it('should include validator import when param validation needed', () => {
@@ -81,7 +81,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { validator }");
+			expect(result).toContain('import { validator }');
 		});
 
 		it('should include ResponseBuilder for standard tier', () => {
@@ -93,7 +93,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { ResponseBuilder }");
+			expect(result).toContain('import { ResponseBuilder }');
 		});
 
 		it('should include ResponseBuilder for full tier', () => {
@@ -105,7 +105,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { ResponseBuilder }");
+			expect(result).toContain('import { ResponseBuilder }');
 		});
 
 		it('should include ServiceDiscovery when services are used', () => {
@@ -116,7 +116,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { ServiceDiscovery }");
+			expect(result).toContain('import { ServiceDiscovery }');
 		});
 
 		it('should include ServiceDiscovery when database is used', () => {
@@ -127,7 +127,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { ServiceDiscovery }");
+			expect(result).toContain('import { ServiceDiscovery }');
 		});
 
 		it('should include events import when events are used', () => {
@@ -138,7 +138,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { publishConstructEvents }");
+			expect(result).toContain('import { publishConstructEvents }');
 		});
 
 		it('should include audit imports when audits are used', () => {
@@ -149,8 +149,8 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("createAuditContext");
-			expect(result).toContain("withAuditableEndpointTransaction");
+			expect(result).toContain('createAuditContext');
+			expect(result).toContain('withAuditableEndpointTransaction');
 		});
 
 		it('should include createError when rate limiting is used', () => {
@@ -161,7 +161,7 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("import { createError }");
+			expect(result).toContain('import { createError }');
 		});
 
 		it('should include RLS imports when RLS is used', () => {
@@ -172,20 +172,20 @@ describe('handler-templates', () => {
 			];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).toContain("withRlsContext");
-			expect(result).toContain("extractRlsContext");
+			expect(result).toContain('withRlsContext');
+			expect(result).toContain('extractRlsContext');
 		});
 
 		it('should not include optional imports when not needed', () => {
 			const analyses = [createAnalysis()];
 
 			const result = generateOptimizedImports(analyses);
-			expect(result).not.toContain("import { validator }");
-			expect(result).not.toContain("ServiceDiscovery");
-			expect(result).not.toContain("publishConstructEvents");
-			expect(result).not.toContain("createAuditContext");
-			expect(result).not.toContain("createError");
-			expect(result).not.toContain("withRlsContext");
+			expect(result).not.toContain('import { validator }');
+			expect(result).not.toContain('ServiceDiscovery');
+			expect(result).not.toContain('publishConstructEvents');
+			expect(result).not.toContain('createAuditContext');
+			expect(result).not.toContain('createError');
+			expect(result).not.toContain('withRlsContext');
 		});
 	});
 
