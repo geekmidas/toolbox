@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GkmConfig } from '../../types';
-import { getImageRef, resolveDockerConfig } from '../docker';
+import {
+	getAppNameFromCwd,
+	getAppNameFromPackageJson,
+	getImageRef,
+	resolveDockerConfig,
+} from '../docker';
 
 describe('getImageRef', () => {
 	it('should return image with registry prefix', () => {
@@ -36,8 +41,26 @@ describe('getImageRef', () => {
 	});
 });
 
+describe('getAppNameFromCwd', () => {
+	it('should return app name from package.json in current directory', () => {
+		// Tests run from the monorepo root, so cwd is the root directory
+		const appName = getAppNameFromCwd();
+		// The root package.json has name "@geekmidas/toolbox", so it should strip the scope
+		expect(appName).toBe('toolbox');
+	});
+});
+
+describe('getAppNameFromPackageJson', () => {
+	it('should return app name from package.json adjacent to lockfile', () => {
+		// This test runs in the toolbox monorepo, so it should find the root package.json
+		const appName = getAppNameFromPackageJson();
+		// The root package.json has name "@geekmidas/toolbox", so it should strip the scope
+		expect(appName).toBe('toolbox');
+	});
+});
+
 describe('resolveDockerConfig', () => {
-	it('should return empty config when docker not configured', () => {
+	it('should fallback to package.json name when docker not configured', () => {
 		const config: GkmConfig = {
 			routes: './src/endpoints',
 			envParser: './src/env',
@@ -47,7 +70,8 @@ describe('resolveDockerConfig', () => {
 		const dockerConfig = resolveDockerConfig(config);
 
 		expect(dockerConfig.registry).toBeUndefined();
-		expect(dockerConfig.imageName).toBeUndefined();
+		// Should fallback to package.json name or 'app'
+		expect(dockerConfig.imageName).toBeDefined();
 	});
 
 	it('should return registry from docker config', () => {
@@ -97,7 +121,7 @@ describe('resolveDockerConfig', () => {
 		expect(dockerConfig.imageName).toBe('backend-api');
 	});
 
-	it('should handle empty docker object', () => {
+	it('should fallback to package.json name when docker object is empty', () => {
 		const config: GkmConfig = {
 			routes: './src/endpoints',
 			docker: {},
@@ -106,6 +130,20 @@ describe('resolveDockerConfig', () => {
 		const dockerConfig = resolveDockerConfig(config);
 
 		expect(dockerConfig.registry).toBeUndefined();
-		expect(dockerConfig.imageName).toBeUndefined();
+		// Should fallback to package.json name or 'app'
+		expect(dockerConfig.imageName).toBeDefined();
+	});
+
+	it('should prefer explicit imageName over package.json', () => {
+		const config: GkmConfig = {
+			routes: './src/endpoints',
+			docker: {
+				imageName: 'explicit-name',
+			},
+		};
+
+		const dockerConfig = resolveDockerConfig(config);
+
+		expect(dockerConfig.imageName).toBe('explicit-name');
 	});
 });
