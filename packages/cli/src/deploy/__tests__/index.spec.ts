@@ -64,13 +64,9 @@ describe('provisionServices', () => {
 	it('should return undefined when no environmentId', async () => {
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			undefined,
-			'myapp',
-			{ postgres: true },
-		);
+		const result = await provisionServices(api, 'proj_1', undefined, 'myapp', {
+			postgres: true,
+		});
 
 		expect(result).toBeUndefined();
 	});
@@ -127,13 +123,9 @@ describe('provisionServices', () => {
 
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ postgres: true },
-		);
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			postgres: true,
+		});
 
 		expect(result).toBeDefined();
 		expect(result?.DATABASE_URL).toMatch(
@@ -160,13 +152,9 @@ describe('provisionServices', () => {
 
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ redis: true },
-		);
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			redis: true,
+		});
 
 		expect(result).toBeDefined();
 		expect(result?.REDIS_URL).toMatch(
@@ -206,13 +194,10 @@ describe('provisionServices', () => {
 
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ postgres: true, redis: true },
-		);
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			postgres: true,
+			redis: true,
+		});
 
 		expect(result).toBeDefined();
 		expect(result?.DATABASE_URL).toBeDefined();
@@ -232,13 +217,9 @@ describe('provisionServices', () => {
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
 		// Should not throw, just return undefined for that service
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ postgres: true },
-		);
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			postgres: true,
+		});
 
 		expect(result).toBeUndefined();
 	});
@@ -255,13 +236,9 @@ describe('provisionServices', () => {
 
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ redis: true },
-		);
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			redis: true,
+		});
 
 		expect(result).toBeUndefined();
 	});
