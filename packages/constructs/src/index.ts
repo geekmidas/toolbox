@@ -2,7 +2,12 @@
 
 // Re-export from services for convenience
 export type { Service, ServiceRecord } from '@geekmidas/services';
-export { Construct, ConstructType } from './Construct';
+export {
+	Construct,
+	ConstructType,
+	snifferContext,
+	sniffService,
+} from './Construct';
 // Telemetry interface
 export type {
 	Telemetry,

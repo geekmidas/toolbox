@@ -151,3 +151,57 @@ export enum ConstructType {
 	Function = 'dev.geekmidas.function.function',
 	Subscriber = 'dev.geekmidas.function.subscriber',
 }
+
+/**
+ * Utility to test sniffing a service for environment variables.
+ * Useful for debugging services that throw errors during sniffing.
+ *
+ * @example
+ * ```typescript
+ * import { sniffService } from '@geekmidas/constructs';
+ * import { authService } from './services/AuthService';
+ *
+ * const result = await sniffService(authService);
+ * console.log('Env vars:', result.envVars);
+ * console.log('Error:', result.error);
+ * ```
+ */
+export async function sniffService(service: Service): Promise<{
+	envVars: string[];
+	error?: Error;
+}> {
+	const sniffer = new SnifferEnvironmentParser();
+
+	// Suppress unhandled rejections during sniffing
+	const suppressRejection = () => {};
+	process.on('unhandledRejection', suppressRejection);
+
+	let error: Error | undefined;
+
+	try {
+		const result = service.register({
+			envParser: sniffer as any,
+			context: snifferContext,
+		});
+
+		if (result && typeof result === 'object' && 'then' in result) {
+			await Promise.resolve(result).catch((e) => {
+				error = e;
+			});
+		}
+	} catch (e) {
+		error = e as Error;
+	} finally {
+		// Wait for next event loop tick so fire-and-forget rejections are suppressed
+		await new Promise((resolve) => setImmediate(resolve));
+		process.off('unhandledRejection', suppressRejection);
+	}
+
+	return {
+		envVars: sniffer.getEnvironmentVariables(),
+		error,
+	};
+}
+
+// Export for testing
+export { snifferContext };
