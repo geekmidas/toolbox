@@ -31,8 +31,12 @@ export interface DeployResult {
 export interface DockerDeployConfig {
 	/** Container registry URL */
 	registry?: string;
-	/** Image name (default: from package.json) */
+	/** Image name for Docker (default: from root package.json) */
 	imageName?: string;
+	/** Project name for Dokploy (default: from root package.json) */
+	projectName?: string;
+	/** App name within Dokploy project (default: from cwd package.json) */
+	appName?: string;
 }
 
 /** Dokploy provider configuration */

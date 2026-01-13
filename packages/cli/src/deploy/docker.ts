@@ -1,7 +1,67 @@
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import type { GkmConfig } from '../config';
 import { dockerCommand, findLockfilePath, isMonorepo } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
+
+/**
+ * Get app name from package.json in the current working directory
+ * Used for Dokploy app/project naming
+ */
+export function getAppNameFromCwd(): string | undefined {
+	const packageJsonPath = join(process.cwd(), 'package.json');
+
+	if (!existsSync(packageJsonPath)) {
+		return undefined;
+	}
+
+	try {
+		const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+		if (pkg.name) {
+			// Strip org scope if present (e.g., @myorg/app -> app)
+			return pkg.name.replace(/^@[^/]+\//, '');
+		}
+	} catch {
+		// Ignore parse errors
+	}
+
+	return undefined;
+}
+
+/**
+ * Get app name from package.json adjacent to the lockfile (project root)
+ * Used for Docker image naming
+ */
+export function getAppNameFromPackageJson(): string | undefined {
+	const cwd = process.cwd();
+
+	// Find the lockfile to determine the project root
+	const lockfilePath = findLockfilePath(cwd);
+	if (!lockfilePath) {
+		return undefined;
+	}
+
+	// Use the package.json adjacent to the lockfile
+	const projectRoot = dirname(lockfilePath);
+	const packageJsonPath = join(projectRoot, 'package.json');
+
+	if (!existsSync(packageJsonPath)) {
+		return undefined;
+	}
+
+	try {
+		const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+		if (pkg.name) {
+			// Strip org scope if present (e.g., @myorg/app -> app)
+			return pkg.name.replace(/^@[^/]+\//, '');
+		}
+	} catch {
+		// Ignore parse errors
+	}
+
+	return undefined;
+}
 
 const logger = console;
 
@@ -110,7 +170,8 @@ export async function deployDocker(
 ): Promise<DeployResult> {
 	const { stage, tag, skipPush, masterKey, config } = options;
 
-	const imageName = config.imageName ?? 'app';
+	// imageName should always be set by resolveDockerConfig
+	const imageName = config.imageName!;
 	const imageRef = getImageRef(config.registry, imageName, tag);
 
 	// Build image
@@ -148,10 +209,24 @@ export async function deployDocker(
 
 /**
  * Resolve Docker deploy config from gkm config
+ * - imageName: from config, or cwd package.json, or 'app' (for Docker image)
+ * - projectName: from root package.json, or 'app' (for Dokploy project)
+ * - appName: from cwd package.json, or projectName (for Dokploy app within project)
  */
 export function resolveDockerConfig(config: GkmConfig): DockerDeployConfig {
+	// projectName comes from root package.json (monorepo name)
+	const projectName = getAppNameFromPackageJson() ?? 'app';
+
+	// appName comes from cwd package.json (the app being deployed)
+	const appName = getAppNameFromCwd() ?? projectName;
+
+	// imageName defaults to appName (cwd package.json)
+	const imageName = config.docker?.imageName ?? appName;
+
 	return {
 		registry: config.docker?.registry,
-		imageName: config.docker?.imageName,
+		imageName,
+		projectName,
+		appName,
 	};
 }
