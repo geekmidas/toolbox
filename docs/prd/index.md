@@ -33,6 +33,7 @@
     - [Story 1.8: Docker Compose Generation](./epic-1-workspace-first-full-stack-framework.md#story-18-docker-compose-generation)
     - [Story 1.9: Multi-App Dokploy Deployment](./epic-1-workspace-first-full-stack-framework.md#story-19-multi-app-dokploy-deployment)
     - [Story 1.10: Per-App Deploy Targets](./epic-1-workspace-first-full-stack-framework.md#story-110-per-app-deploy-targets)
+    - [Story 1.11: Project Initialization](./epic-1-workspace-first-full-stack-framework.md#story-111-project-initialization)
   - [5. Configuration Reference](./5-configuration-reference.md)
     - [5.1 Workspace Configuration Example](./5-configuration-reference.md#51-workspace-configuration-example)
     - [5.2 URL Injection](./5-configuration-reference.md#52-url-injection)

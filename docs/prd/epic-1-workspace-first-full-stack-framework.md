@@ -215,3 +215,29 @@
 - IV3: Clear error message for Phase 2 targets
 
 ---
+
+## Story 1.11: Project Initialization
+
+> As a developer,
+> I want to scaffold a new project with `gkm init`,
+> so that I can quickly start building with best-practice structure and configuration.
+
+**Acceptance Criteria:**
+1. `gkm init` runs interactive prompts for project setup
+2. Two templates available: `api` (single backend) and `fullstack` (monorepo with api + web + models)
+3. Fullstack template creates `packages/models` with example Zod schemas
+4. Services selection: db (PostgreSQL), cache (Redis), mail (Mailpit)
+5. Package manager selection: pnpm, npm, yarn, bun
+6. Deployment target selection: Dokploy or configure later
+7. `--name` and `--template` flags skip respective prompts
+8. Generated `gkm.config.ts` matches selected options
+9. Generated `turbo.json` for fullstack template
+10. Success message with next steps printed
+
+**Integration Verification:**
+- IV1: `gkm init --template api` creates working single-app project
+- IV2: `gkm init --template fullstack` creates working monorepo
+- IV3: `gkm dev` works immediately after init (with dependencies installed)
+- IV4: Models package exports are importable from api and web apps
+
+---
