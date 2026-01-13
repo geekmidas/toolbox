@@ -214,7 +214,7 @@ export async function storeDokployRegistryId(
  */
 export async function getDokployRegistryId(
 	options?: CredentialOptions,
-): Promise<string | null> {
+): Promise<string | undefined> {
 	const stored = await getDokployCredentials(options);
-	return stored?.registryId ?? null;
+	return stored?.registryId ?? undefined;
 }
