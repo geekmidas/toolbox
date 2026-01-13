@@ -160,6 +160,7 @@ function getPmConfig(pm: PackageManager) {
 			cacheTarget: '/root/.local/share/pnpm/store',
 			cacheId: 'pnpm',
 			run: 'pnpm',
+			dlx: 'pnpm dlx',
 			addGlobal: 'pnpm add -g',
 		},
 		npm: {
@@ -170,6 +171,7 @@ function getPmConfig(pm: PackageManager) {
 			cacheTarget: '/root/.npm',
 			cacheId: 'npm',
 			run: 'npm run',
+			dlx: 'npx',
 			addGlobal: 'npm install -g',
 		},
 		yarn: {
@@ -180,6 +182,7 @@ function getPmConfig(pm: PackageManager) {
 			cacheTarget: '/root/.yarn/cache',
 			cacheId: 'yarn',
 			run: 'yarn',
+			dlx: 'yarn dlx',
 			addGlobal: 'yarn global add',
 		},
 		bun: {
@@ -190,6 +193,7 @@ function getPmConfig(pm: PackageManager) {
 			cacheTarget: '/root/.bun/install/cache',
 			cacheId: 'bun',
 			run: 'bun run',
+			dlx: 'bunx',
 			addGlobal: 'bun add -g',
 		},
 	};
