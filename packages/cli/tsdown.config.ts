@@ -4,6 +4,7 @@ export default defineConfig({
 	entry: [
 		'src/index.ts',
 		'src/config.ts',
+		'src/workspace/index.ts',
 		'src/openapi.ts',
 		'src/openapi-react-query.ts',
 	],

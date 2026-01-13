@@ -1,8 +1,16 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { GkmConfig } from './types.ts';
+import type { GkmConfig } from './types.js';
+import {
+	type LoadedConfig,
+	type WorkspaceConfig,
+	isWorkspaceConfig,
+	processConfig,
+} from './workspace/index.js';
 
-export type { GkmConfig } from './types.ts';
+export type { GkmConfig } from './types.js';
+export type { LoadedConfig, WorkspaceConfig } from './workspace/index.js';
+export { defineWorkspace } from './workspace/index.js';
 /**
  * Define GKM configuration with full TypeScript support.
  * This is an identity function that provides type safety and autocomplete.
@@ -62,32 +70,83 @@ export function parseModuleConfig(
 	return { path, importPattern };
 }
 
-export async function loadConfig(
-	cwd: string = process.cwd(),
-): Promise<GkmConfig> {
+/**
+ * Find and return the path to the config file.
+ */
+function findConfigPath(cwd: string): string {
 	const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
-	let configPath = '';
 
 	for (const file of files) {
 		const path = join(cwd, file);
 		if (existsSync(path)) {
-			configPath = path;
-			break;
+			return path;
 		}
 	}
 
-	if (!configPath) {
-		throw new Error(
-			'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
-		);
-	}
+	throw new Error(
+		'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
+	);
+}
+
+/**
+ * Load raw configuration from file.
+ */
+async function loadRawConfig(
+	cwd: string,
+): Promise<GkmConfig | WorkspaceConfig> {
+	const configPath = findConfigPath(cwd);
 
 	try {
 		const config = await import(configPath);
 		return config.default;
 	} catch (error) {
 		throw new Error(
-			`Failed to load gkm.config.json: ${(error as Error).message}`,
+			`Failed to load config: ${(error as Error).message}`,
 		);
 	}
+}
+
+/**
+ * Load configuration file (single-app format).
+ * For backwards compatibility with existing code.
+ *
+ * @deprecated Use loadWorkspaceConfig for new code
+ */
+export async function loadConfig(
+	cwd: string = process.cwd(),
+): Promise<GkmConfig> {
+	const config = await loadRawConfig(cwd);
+
+	// If it's a workspace config, throw an error
+	if (isWorkspaceConfig(config)) {
+		throw new Error(
+			'Workspace configuration detected. Use loadWorkspaceConfig() instead.',
+		);
+	}
+
+	return config;
+}
+
+/**
+ * Load configuration file and process it as a workspace.
+ * Works with both single-app and workspace configurations.
+ *
+ * Single-app configs are automatically wrapped as a workspace with one app.
+ *
+ * @example
+ * ```ts
+ * const { type, workspace } = await loadWorkspaceConfig();
+ *
+ * if (type === 'workspace') {
+ *   console.log('Multi-app workspace:', workspace.apps);
+ * } else {
+ *   console.log('Single app wrapped as workspace');
+ * }
+ * ```
+ */
+export async function loadWorkspaceConfig(
+	cwd: string = process.cwd(),
+): Promise<LoadedConfig> {
+	const config = await loadRawConfig(cwd);
+	return processConfig(config, cwd);
 }
