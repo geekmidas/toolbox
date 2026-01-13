@@ -131,17 +131,21 @@ export async function bundleServer(
 			readStageSecrets,
 			toEmbeddableSecrets,
 			validateEnvironmentVariables,
+			initStageSecrets,
+			writeStageSecrets,
 		} = await import('../secrets/storage');
 		const { encryptSecrets, generateDefineOptions } = await import(
 			'../secrets/encryption'
 		);
 
-		const secrets = await readStageSecrets(stage);
+		let secrets = await readStageSecrets(stage);
 
 		if (!secrets) {
-			throw new Error(
-				`No secrets found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
-			);
+			// Auto-initialize secrets for the stage
+			console.log(`  Initializing secrets for stage "${stage}"...`);
+			secrets = initStageSecrets(stage);
+			await writeStageSecrets(secrets);
+			console.log(`  ✓ Created .gkm/secrets/${stage}.json`);
 		}
 
 		// Auto-populate env vars from docker compose services

@@ -371,10 +371,10 @@ describe('bundleServer environment validation', () => {
 	);
 
 	itWithDir(
-		'should throw when secrets file does not exist',
+		'should auto-initialize secrets and throw for missing env vars',
 		async ({ dir }) => {
 			const entryPoint = await createEntryPoint(dir);
-			// Don't create secrets file
+			// Don't create secrets file - it should be auto-initialized
 
 			const constructs = [createMockConstruct(['DATABASE_URL'])];
 
@@ -382,6 +382,7 @@ describe('bundleServer environment validation', () => {
 			process.chdir(dir);
 
 			try {
+				// Should auto-initialize secrets but then fail because DATABASE_URL is required
 				await expect(
 					bundleServer({
 						entryPoint,
@@ -392,7 +393,7 @@ describe('bundleServer environment validation', () => {
 						stage: 'production',
 						constructs,
 					}),
-				).rejects.toThrow('No secrets found for stage "production"');
+				).rejects.toThrow('Missing environment variables');
 			} finally {
 				process.chdir(originalCwd);
 			}
