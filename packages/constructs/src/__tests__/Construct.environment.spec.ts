@@ -371,9 +371,9 @@ describe('Construct environment getter', () => {
 			]);
 		});
 
-		it('should capture env vars from services that parse config', async () => {
-			const service = {
-				serviceName: 'example' as const,
+		it('should handle services that throw synchronous errors during registration', async () => {
+			const throwingService = {
+				serviceName: 'throwing' as const,
 				register({ envParser }) {
 					const config = envParser
 						.create((get) => ({
@@ -381,19 +381,25 @@ describe('Construct environment getter', () => {
 						}))
 						.parse();
 
+					// Simulate a library that validates config immediately
+					// Sniffer returns '' for strings, so this will throw
+					if (!config.url || config.url === '') {
+						throw new Error('Invalid URL provided');
+					}
+
 					return { url: config.url };
 				},
-			} satisfies Service<'example', any>;
+			} satisfies Service<'throwing', any>;
 
-			// Verify env vars are captured using sniffService
-			const result = await sniffService(service);
+			// Verify env vars are captured even when service throws
+			const result = await sniffService(throwingService);
 			expect(result.envVars).toEqual(['SERVICE_URL']);
-			// Sniffer returns mock values, so no error expected
-			expect(result.error).toBeUndefined();
+			expect(result.error).toBeDefined();
+			expect(result.error?.message).toBe('Invalid URL provided');
 
-			// Also verify it works with multiple services
-			const anotherService = {
-				serviceName: 'another' as const,
+			// Also verify it works in a construct context with multiple services
+			const workingService = {
+				serviceName: 'working' as const,
 				register({ envParser }) {
 					return envParser
 						.create((get) => ({
@@ -401,19 +407,19 @@ describe('Construct environment getter', () => {
 						}))
 						.parse();
 				},
-			} satisfies Service<'another', any>;
+			} satisfies Service<'working', any>;
 
 			const fn = f
-				.services([service, anotherService])
+				.services([throwingService, workingService])
 				.handle(async () => ({ success: true }));
 
 			const envVars = await fn.getEnvironment();
 			expect(envVars).toEqual(['API_KEY', 'SERVICE_URL']);
 		});
 
-		it('should capture env vars from async services', async () => {
-			const asyncService = {
-				serviceName: 'asyncService' as const,
+		it('should handle services that return rejecting promises', async () => {
+			const asyncThrowingService = {
+				serviceName: 'asyncThrowing' as const,
 				async register({ envParser }) {
 					const config = envParser
 						.create((get) => ({
@@ -422,65 +428,96 @@ describe('Construct environment getter', () => {
 						}))
 						.parse();
 
-					// Simulate an async operation
+					// Simulate an async library that validates config
 					await Promise.resolve();
+					if (!config.frontendUrl) {
+						throw new Error('Frontend URL is required');
+					}
 
 					return { config };
 				},
-			} satisfies Service<'asyncService', any>;
+			} satisfies Service<'asyncThrowing', any>;
 
-			// Verify env vars are captured using sniffService
-			const result = await sniffService(asyncService);
+			// Verify env vars are captured even when service rejects
+			const result = await sniffService(asyncThrowingService);
 			expect(result.envVars).toEqual(['AUTH_SECRET', 'FRONTEND_URL']);
-			expect(result.error).toBeUndefined();
+			expect(result.error).toBeDefined();
+			expect(result.error?.message).toBe('Frontend URL is required');
 
 			// Also verify via construct
 			const fn = f
-				.services([asyncService])
+				.services([asyncThrowingService])
 				.handle(async () => ({ success: true }));
 
 			const envVars = await fn.getEnvironment();
 			expect(envVars).toEqual(['AUTH_SECRET', 'FRONTEND_URL']);
 		});
 
-		it('should capture env vars from services with multiple config fields', async () => {
-			const authService = {
+		it('should handle services that create fire-and-forget rejecting promises (BetterAuth scenario)', async () => {
+			// This test uses the REAL better-auth library to verify that
+			// the sniffer gracefully handles libraries that create internal
+			// fire-and-forget promises which reject on invalid config
+			const { betterAuth } = await import('better-auth');
+
+			const betterAuthService = {
 				serviceName: 'auth' as const,
 				register({ envParser }) {
 					const config = envParser
 						.create((get) => ({
-							secret: get('AUTH_SECRET').string(),
-							frontendUrl: get('FRONTEND_URL').string(),
-							trustedOrigins: get('TRUSTED_ORIGINS').string(),
+							secret: get('BETTER_AUTH_SECRET').string(),
+							baseURL: get('BETTER_AUTH_URL').string(),
+							trustedOrigins: get('BETTER_AUTH_TRUSTED_ORIGINS').string(),
 						}))
 						.parse();
 
-					return {
+					// When sniffer runs, config values are empty strings
+					// BetterAuth will create fire-and-forget promises that reject
+					// when it tries to validate trustedOrigins with new URL('')
+					const auth = betterAuth({
 						secret: config.secret,
-						verify: () => true,
-					};
+						baseURL: config.baseURL,
+						trustedOrigins: config.trustedOrigins
+							? config.trustedOrigins.split(',')
+							: [],
+						database: {
+							// Use memory adapter to avoid DB setup
+							type: 'sqlite',
+							url: ':memory:',
+						},
+					});
+
+					return auth;
 				},
 			} satisfies Service<'auth', any>;
 
-			// Verify env vars are captured
-			const result = await sniffService(authService);
+			// Verify env vars are captured even though BetterAuth's internal
+			// fire-and-forget promise will reject on invalid trustedOrigins
+			const result = await sniffService(betterAuthService);
 			expect(result.envVars).toEqual([
-				'AUTH_SECRET',
-				'FRONTEND_URL',
-				'TRUSTED_ORIGINS',
+				'BETTER_AUTH_SECRET',
+				'BETTER_AUTH_TRUSTED_ORIGINS',
+				'BETTER_AUTH_URL',
 			]);
+			// Synchronous registration succeeds
 			expect(result.error).toBeUndefined();
+			// But fire-and-forget rejections are captured from better-auth
+			expect(result.unhandledRejections.length).toBeGreaterThan(0);
+			// Log the actual errors for debugging visibility
+			console.log(
+				'Captured better-auth unhandled rejections:',
+				result.unhandledRejections.map((e) => e.message),
+			);
 
-			// Verify via construct
+			// Most importantly: the process should NOT crash from unhandled rejection
 			const fn = f
-				.services([authService])
+				.services([betterAuthService])
 				.handle(async () => ({ success: true }));
 
 			const envVars = await fn.getEnvironment();
 			expect(envVars).toEqual([
-				'AUTH_SECRET',
-				'FRONTEND_URL',
-				'TRUSTED_ORIGINS',
+				'BETTER_AUTH_SECRET',
+				'BETTER_AUTH_TRUSTED_ORIGINS',
+				'BETTER_AUTH_URL',
 			]);
 		});
 
