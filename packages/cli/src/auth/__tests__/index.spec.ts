@@ -166,3 +166,72 @@ describe('URL normalization', () => {
 		expect(() => new URL('invalid-url')).toThrow();
 	});
 });
+
+describe('logoutCommand', () => {
+	let tempDir: string;
+
+	beforeEach(async () => {
+		tempDir = join(tmpdir(), `gkm-logout-test-${Date.now()}`);
+		await mkdir(tempDir, { recursive: true });
+	});
+
+	afterEach(async () => {
+		if (existsSync(tempDir)) {
+			await rm(tempDir, { recursive: true });
+		}
+	});
+
+	it('should remove dokploy credentials', async () => {
+		// First store credentials
+		await storeDokployCredentials('my-token', 'https://dokploy.example.com', {
+			root: tempDir,
+		});
+
+		// Verify they exist
+		let creds = await getDokployCredentials({ root: tempDir });
+		expect(creds).not.toBeNull();
+
+		// Remove credentials
+		const removed = await removeDokployCredentials({ root: tempDir });
+		expect(removed).toBe(true);
+
+		// Verify they're gone
+		creds = await getDokployCredentials({ root: tempDir });
+		expect(creds).toBeNull();
+	});
+
+	it('should return false when no credentials to remove', async () => {
+		const removed = await removeDokployCredentials({ root: tempDir });
+		expect(removed).toBe(false);
+	});
+});
+
+describe('whoamiCommand helpers', () => {
+	let tempDir: string;
+
+	beforeEach(async () => {
+		tempDir = join(tmpdir(), `gkm-whoami-test-${Date.now()}`);
+		await mkdir(tempDir, { recursive: true });
+	});
+
+	afterEach(async () => {
+		if (existsSync(tempDir)) {
+			await rm(tempDir, { recursive: true });
+		}
+	});
+
+	it('should return null when no credentials stored', async () => {
+		const creds = await getDokployCredentials({ root: tempDir });
+		expect(creds).toBeNull();
+	});
+
+	it('should return credentials when stored', async () => {
+		await storeDokployCredentials('test-token', 'https://test.example.com', {
+			root: tempDir,
+		});
+
+		const creds = await getDokployCredentials({ root: tempDir });
+		expect(creds).not.toBeNull();
+		expect(creds!.endpoint).toBe('https://test.example.com');
+	});
+});
