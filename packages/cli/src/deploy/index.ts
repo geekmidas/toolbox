@@ -17,6 +17,7 @@ import type {
 	DeployOptions,
 	DeployProvider,
 	DeployResult,
+	DockerDeployConfig,
 	DokployDeployConfig,
 } from './types';
 
@@ -235,7 +236,7 @@ export async function provisionServices(
  */
 async function ensureDokploySetup(
 	config: GkmConfig,
-	dockerConfig: { registry?: string; imageName?: string },
+	dockerConfig: DockerDeployConfig,
 	stage: string,
 	services?: DockerComposeServices,
 ): Promise<DokploySetupResult> {
@@ -328,7 +329,7 @@ async function ensureDokploySetup(
 				api,
 				existingConfig.projectId,
 				environmentId,
-				dockerConfig.imageName || 'app',
+				dockerConfig.appName!,
 				services,
 				existingUrls,
 			);
@@ -350,7 +351,7 @@ async function ensureDokploySetup(
 
 	// Step 3: Find or create project
 	logger.log('\n📁 Looking for project...');
-	const projectName = dockerConfig.imageName || 'app';
+	const projectName = dockerConfig.projectName!;
 	const projects = await api.listProjects();
 	let project = projects.find(
 		(p) => p.name.toLowerCase() === projectName.toLowerCase(),
@@ -396,7 +397,7 @@ async function ensureDokploySetup(
 
 	// Step 5: Find or create application
 	logger.log('\n📦 Looking for application...');
-	const appName = dockerConfig.imageName || projectName;
+	const appName = dockerConfig.appName!;
 
 	let applicationId: string;
 
@@ -529,7 +530,7 @@ async function ensureDokploySetup(
 		api,
 		project.projectId,
 		environmentId,
-		dockerConfig.imageName || 'app',
+		dockerConfig.appName!,
 		services,
 		existingUrls,
 	);
@@ -568,7 +569,7 @@ export async function deployCommand(
 
 	// Resolve docker config for image reference
 	const dockerConfig = resolveDockerConfig(config);
-	const imageName = dockerConfig.imageName ?? 'app';
+	const imageName = dockerConfig.imageName!;
 	const registry = dockerConfig.registry;
 	const imageRef = registry
 		? `${registry}/${imageName}:${imageTag}`
@@ -621,12 +622,27 @@ export async function deployCommand(
 			}
 
 			let updated = false;
+			// URL fields go to secrets.urls, individual params go to secrets.custom
+			const urlFields = ['DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL'] as const;
+
 			for (const [key, value] of Object.entries(setupResult.serviceUrls)) {
-				const urlKey = key as keyof typeof secrets.urls;
-				if (value && !secrets.urls[urlKey] && !secrets.custom[key]) {
-					secrets.urls[urlKey] = value;
-					logger.log(`   Saved ${key} to secrets`);
-					updated = true;
+				if (!value) continue;
+
+				if (urlFields.includes(key as (typeof urlFields)[number])) {
+					// URL fields
+					const urlKey = key as keyof typeof secrets.urls;
+					if (!secrets.urls[urlKey]) {
+						secrets.urls[urlKey] = value;
+						logger.log(`   Saved ${key} to secrets.urls`);
+						updated = true;
+					}
+				} else {
+					// Individual parameters (HOST, PORT, NAME, USER, PASSWORD)
+					if (!secrets.custom[key]) {
+						secrets.custom[key] = value;
+						logger.log(`   Saved ${key} to secrets.custom`);
+						updated = true;
+					}
 				}
 			}
 			if (updated) {
