@@ -91,11 +91,6 @@ export abstract class Construct<
 			this.auditorStorageService,
 		]);
 
-		// Suppress unhandled rejections during sniffing - some libraries create
-		// fire-and-forget promises that reject when given dummy config values
-		const suppressRejection = () => {};
-		process.on('unhandledRejection', suppressRejection);
-
 		try {
 			for (const service of services) {
 				// Check cache first - handles singleton services that short-circuit
@@ -105,28 +100,29 @@ export abstract class Construct<
 					continue;
 				}
 
-				// Sniff the service for env vars
-				const sniffer = new SnifferEnvironmentParser();
-				try {
-					const result = service.register({
-						envParser: sniffer as any,
-						context: snifferContext,
-					});
+				// Use sniffService to properly handle all error scenarios
+				const result = await sniffService(service);
 
-					// Await if it's a Promise (async services)
-					if (result && typeof result === 'object' && 'then' in result) {
-						await Promise.resolve(result).catch(() => {
-							// Ignore async errors during sniffing
-						});
-					}
-				} catch {
-					// Service registration may fail but env vars are still tracked
+				// Log any issues for debugging
+				if (result.error) {
+					this.logger.warn(
+						{ error: result.error.message, service: service.serviceName },
+						'Service threw error during env sniffing (env vars still captured)',
+					);
+				}
+				if (result.unhandledRejections.length > 0) {
+					this.logger.warn(
+						{
+							errors: result.unhandledRejections.map((e) => e.message),
+							service: service.serviceName,
+						},
+						'Fire-and-forget rejections during env sniffing (suppressed)',
+					);
 				}
 
 				// Cache and collect the env vars
-				const serviceEnvVars: string[] = sniffer.getEnvironmentVariables();
-				serviceEnvCache.set(service, serviceEnvVars);
-				serviceEnvVars.forEach((v) => envVars.add(v));
+				serviceEnvCache.set(service, result.envVars);
+				result.envVars.forEach((v) => envVars.add(v));
 			}
 
 			return Array.from(envVars).sort();
@@ -137,10 +133,6 @@ export abstract class Construct<
 			);
 
 			return [];
-		} finally {
-			// Wait for next event loop tick so fire-and-forget rejections are suppressed
-			await new Promise((resolve) => setImmediate(resolve));
-			process.off('unhandledRejection', suppressRejection);
 		}
 	}
 }
@@ -169,12 +161,17 @@ export enum ConstructType {
 export async function sniffService(service: Service): Promise<{
 	envVars: string[];
 	error?: Error;
+	unhandledRejections: Error[];
 }> {
 	const sniffer = new SnifferEnvironmentParser();
+	const unhandledRejections: Error[] = [];
 
-	// Suppress unhandled rejections during sniffing
-	const suppressRejection = () => {};
-	process.on('unhandledRejection', suppressRejection);
+	// Capture unhandled rejections during sniffing (fire-and-forget promises)
+	const captureRejection = (reason: unknown) => {
+		const err = reason instanceof Error ? reason : new Error(String(reason));
+		unhandledRejections.push(err);
+	};
+	process.on('unhandledRejection', captureRejection);
 
 	let error: Error | undefined;
 
@@ -192,14 +189,16 @@ export async function sniffService(service: Service): Promise<{
 	} catch (e) {
 		error = e as Error;
 	} finally {
-		// Wait for next event loop tick so fire-and-forget rejections are suppressed
-		await new Promise((resolve) => setImmediate(resolve));
-		process.off('unhandledRejection', suppressRejection);
+		// Wait for fire-and-forget promises to settle - some libraries like better-auth
+		// create async operations that may reject after the initial event loop tick
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		process.off('unhandledRejection', captureRejection);
 	}
 
 	return {
 		envVars: sniffer.getEnvironmentVariables(),
 		error,
+		unhandledRejections,
 	};
 }
 
