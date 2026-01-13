@@ -1,4 +1,3 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Service } from '@geekmidas/services';
 
 /**
