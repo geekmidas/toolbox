@@ -1,4 +1,5 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Service } from '@geekmidas/services';
 
 /**
  * Example auth service demonstrating the Service pattern.
@@ -15,7 +16,7 @@ let instance: AuthClient | null = null;
 
 export const AuthService = {
 	serviceName: 'auth' as const,
-	register(envParser: EnvironmentParser<{}>): any {
+	register({ envParser }): any {
 		// Create the config parser - this tracks environment variables
 		const configParser = envParser.create((get) => ({
 			jwtSecret: get('JWT_SECRET').string(),
@@ -51,4 +52,4 @@ export const AuthService = {
 			return instance;
 		})();
 	},
-} as const;
+} satisfies Service<'auth', AuthClient>;
