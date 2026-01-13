@@ -284,4 +284,48 @@ describe('credentials storage', () => {
 			expect(creds?.registryId).toBeUndefined();
 		});
 	});
+
+	describe('getDokployEndpoint', () => {
+		it('should return null when no credentials exist', async () => {
+			const { getDokployEndpoint } = await import('../credentials');
+			const endpoint = await getDokployEndpoint({ root: tempDir });
+			expect(endpoint).toBeNull();
+		});
+
+		it('should return stored endpoint', async () => {
+			const { getDokployEndpoint } = await import('../credentials');
+			await storeDokployCredentials('token', 'https://my-dokploy.com', {
+				root: tempDir,
+			});
+
+			const endpoint = await getDokployEndpoint({ root: tempDir });
+			expect(endpoint).toBe('https://my-dokploy.com');
+		});
+	});
+
+	describe('removeAllCredentials', () => {
+		it('should remove credentials file', async () => {
+			const { removeAllCredentials } = await import('../credentials');
+			await storeDokployCredentials('token', 'https://test.com', {
+				root: tempDir,
+			});
+
+			// Verify file exists
+			const pathBefore = getCredentialsPath({ root: tempDir });
+			expect(existsSync(pathBefore)).toBe(true);
+
+			await removeAllCredentials({ root: tempDir });
+
+			// Verify file is removed
+			expect(existsSync(pathBefore)).toBe(false);
+		});
+
+		it('should not throw when credentials file does not exist', async () => {
+			const { removeAllCredentials } = await import('../credentials');
+			// Should not throw
+			await expect(
+				removeAllCredentials({ root: tempDir }),
+			).resolves.toBeUndefined();
+		});
+	});
 });
