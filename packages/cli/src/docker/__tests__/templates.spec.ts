@@ -1,12 +1,17 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GkmConfig } from '../../types';
 import {
 	detectPackageManager,
+	findLockfilePath,
 	generateDockerEntrypoint,
 	generateDockerignore,
 	generateMultiStageDockerfile,
 	generateSlimDockerfile,
+	getLockfileName,
+	hasTurboConfig,
+	isMonorepo,
 	resolveDockerConfig,
 } from '../templates';
 
@@ -275,6 +280,145 @@ describe('docker templates', () => {
 			expect(result.imageName).toBe('partial-app');
 			expect(result.baseImage).toBe('node:22-alpine'); // default
 			expect(result.port).toBe(3000); // default
+		});
+	});
+
+	describe('findLockfilePath', () => {
+		it('should find pnpm-lock.yaml in current directory', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'pnpm-lock.yaml');
+			});
+
+			expect(findLockfilePath('/test/project')).toBe(
+				join('/test/project', 'pnpm-lock.yaml'),
+			);
+		});
+
+		it('should find lockfile in parent directory (monorepo)', () => {
+			mockExistsSync.mockImplementation((path) => {
+				// Lockfile only exists at monorepo root
+				return path === join('/test', 'pnpm-lock.yaml');
+			});
+
+			expect(findLockfilePath('/test/project/apps/api')).toBe(
+				join('/test', 'pnpm-lock.yaml'),
+			);
+		});
+
+		it('should find yarn.lock when present', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'yarn.lock');
+			});
+
+			expect(findLockfilePath('/test/project')).toBe(
+				join('/test/project', 'yarn.lock'),
+			);
+		});
+
+		it('should find package-lock.json when present', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'package-lock.json');
+			});
+
+			expect(findLockfilePath('/test/project')).toBe(
+				join('/test/project', 'package-lock.json'),
+			);
+		});
+
+		it('should find bun.lockb when present', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'bun.lockb');
+			});
+
+			expect(findLockfilePath('/test/project')).toBe(
+				join('/test/project', 'bun.lockb'),
+			);
+		});
+
+		it('should return null when no lockfile found', () => {
+			mockExistsSync.mockReturnValue(false);
+
+			expect(findLockfilePath('/test/project')).toBeNull();
+		});
+
+		it('should prioritize lockfiles in order: pnpm, bun, yarn, npm', () => {
+			// If multiple lockfiles exist, pnpm should be found first
+			mockExistsSync.mockImplementation((path) => {
+				const pathStr = String(path);
+				return (
+					pathStr.endsWith('pnpm-lock.yaml') ||
+					pathStr.endsWith('package-lock.json')
+				);
+			});
+
+			const result = findLockfilePath('/test/project');
+			expect(result).toContain('pnpm-lock.yaml');
+		});
+	});
+
+	describe('getLockfileName', () => {
+		it('should return pnpm-lock.yaml for pnpm', () => {
+			expect(getLockfileName('pnpm')).toBe('pnpm-lock.yaml');
+		});
+
+		it('should return package-lock.json for npm', () => {
+			expect(getLockfileName('npm')).toBe('package-lock.json');
+		});
+
+		it('should return yarn.lock for yarn', () => {
+			expect(getLockfileName('yarn')).toBe('yarn.lock');
+		});
+
+		it('should return bun.lockb for bun', () => {
+			expect(getLockfileName('bun')).toBe('bun.lockb');
+		});
+	});
+
+	describe('isMonorepo', () => {
+		it('should return false when lockfile is in current directory', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'pnpm-lock.yaml');
+			});
+
+			expect(isMonorepo('/test/project')).toBe(false);
+		});
+
+		it('should return true when lockfile is in parent directory', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test', 'pnpm-lock.yaml');
+			});
+
+			expect(isMonorepo('/test/project/apps/api')).toBe(true);
+		});
+
+		it('should return false when no lockfile found', () => {
+			mockExistsSync.mockReturnValue(false);
+
+			expect(isMonorepo('/test/project')).toBe(false);
+		});
+	});
+
+	describe('hasTurboConfig', () => {
+		it('should return true when turbo.json exists in current directory', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test/project', 'turbo.json');
+			});
+
+			expect(hasTurboConfig('/test/project')).toBe(true);
+		});
+
+		it('should return true when turbo.json exists in parent directory', () => {
+			mockExistsSync.mockImplementation((path) => {
+				return path === join('/test', 'turbo.json');
+			});
+
+			expect(hasTurboConfig('/test/project/apps/api')).toBe(true);
+		});
+
+		it('should return false when turbo.json not found', () => {
+			mockExistsSync.mockReturnValue(false);
+
+			expect(hasTurboConfig('/test/project')).toBe(false);
 		});
 	});
 });
