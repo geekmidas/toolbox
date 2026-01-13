@@ -91,6 +91,11 @@ export abstract class Construct<
 			this.auditorStorageService,
 		]);
 
+		// Suppress unhandled rejections during sniffing - some libraries create
+		// fire-and-forget promises that reject when given dummy config values
+		const suppressRejection = () => {};
+		process.on('unhandledRejection', suppressRejection);
+
 		try {
 			for (const service of services) {
 				// Check cache first - handles singleton services that short-circuit
@@ -110,14 +115,16 @@ export abstract class Construct<
 
 					// Await if it's a Promise (async services)
 					if (result && typeof result === 'object' && 'then' in result) {
-						await Promise.resolve(result);
+						await Promise.resolve(result).catch(() => {
+							// Ignore async errors during sniffing
+						});
 					}
 				} catch {
 					// Service registration may fail but env vars are still tracked
 				}
 
 				// Cache and collect the env vars
-				const serviceEnvVars = sniffer.getEnvironmentVariables();
+				const serviceEnvVars: string[] = sniffer.getEnvironmentVariables();
 				serviceEnvCache.set(service, serviceEnvVars);
 				serviceEnvVars.forEach((v) => envVars.add(v));
 			}
@@ -130,6 +137,10 @@ export abstract class Construct<
 			);
 
 			return [];
+		} finally {
+			// Wait for next event loop tick so fire-and-forget rejections are suppressed
+			await new Promise((resolve) => setImmediate(resolve));
+			process.off('unhandledRejection', suppressRejection);
 		}
 	}
 }
