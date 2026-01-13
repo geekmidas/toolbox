@@ -1,10 +1,10 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	EventConnectionFactory,
 	type EventPublisher,
 	type PublishableMessage,
 	Publisher,
 } from '@geekmidas/events';
+import type { Service } from '@geekmidas/services';
 
 type UserEvents =
 	| PublishableMessage<'user.created', { userId: string; email: string }>
@@ -20,7 +20,7 @@ let instance: EventsServicePublisher | null = null;
 
 export const EventsService = {
 	serviceName: 'events' as const,
-	register(envParser: EnvironmentParser<{}>): any {
+	register({ envParser }): any {
 		// Create the config parser - this tracks environment variables
 		const configParser = envParser.create((get) => ({
 			connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string(),
@@ -46,4 +46,4 @@ export const EventsService = {
 			return instance;
 		})();
 	},
-} as const;
+} satisfies Service<'events', EventsServicePublisher>;
