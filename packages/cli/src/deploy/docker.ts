@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
-import { dockerCommand } from '../docker';
+import { dirname, join, relative } from 'node:path';
+import { dockerCommand, findLockfilePath, isMonorepo } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
 
 const logger = console;
@@ -38,20 +39,38 @@ async function buildImage(imageRef: string): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
 	const cwd = process.cwd();
+	const inMonorepo = isMonorepo(cwd);
 
-	// Use slim Dockerfile since we've already built the bundle before Docker
-	// This avoids issues with turbo prune not including built CLI binaries
-	logger.log('   Generating slim Dockerfile (pre-built bundle)...');
-	await dockerCommand({ slim: true });
+	// Generate appropriate Dockerfile
+	if (inMonorepo) {
+		logger.log('   Generating Dockerfile for monorepo (turbo prune)...');
+	} else {
+		logger.log('   Generating Dockerfile...');
+	}
+	await dockerCommand({});
 
-	const dockerfilePath = '.gkm/docker/Dockerfile';
+	// Determine build context and Dockerfile path
+	let buildCwd = cwd;
+	let dockerfilePath = '.gkm/docker/Dockerfile';
+
+	if (inMonorepo) {
+		// For monorepos, build from root so turbo prune can access all packages
+		const lockfilePath = findLockfilePath(cwd);
+		if (lockfilePath) {
+			const monorepoRoot = dirname(lockfilePath);
+			const appRelPath = relative(monorepoRoot, cwd);
+			dockerfilePath = join(appRelPath, '.gkm/docker/Dockerfile');
+			buildCwd = monorepoRoot;
+			logger.log(`   Building from monorepo root: ${monorepoRoot}`);
+		}
+	}
 
 	try {
 		// Build for linux/amd64 to ensure compatibility with most cloud servers
 		execSync(
 			`DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f ${dockerfilePath} -t ${imageRef} .`,
 			{
-				cwd,
+				cwd: buildCwd,
 				stdio: 'inherit',
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 			},
