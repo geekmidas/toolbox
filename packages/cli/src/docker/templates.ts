@@ -274,8 +274,14 @@ WORKDIR /app
 # Copy source (deps already installed)
 COPY . .
 
-# Build production server using CLI from npm
-RUN ${pm.dlx} @geekmidas/cli build --provider server --production
+# Debug: Show node_modules/.bin contents and build production server
+RUN echo "=== node_modules/.bin contents ===" && \
+    ls -la node_modules/.bin/ 2>/dev/null || echo "node_modules/.bin not found" && \
+    echo "=== Checking for gkm ===" && \
+    which gkm 2>/dev/null || echo "gkm not in PATH" && \
+    ls -la node_modules/.bin/gkm 2>/dev/null || echo "gkm binary not found in node_modules/.bin" && \
+    echo "=== Running build ===" && \
+    ./node_modules/.bin/gkm build --provider server --production
 
 # Stage 3: Production
 FROM ${baseImage} AS runner
@@ -365,8 +371,14 @@ WORKDIR /app
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
-# Build production server using CLI from npm
-RUN ${pm.dlx} @geekmidas/cli build --provider server --production
+# Debug: Show node_modules/.bin contents and build production server
+RUN echo "=== node_modules/.bin contents ===" && \
+    ls -la node_modules/.bin/ 2>/dev/null || echo "node_modules/.bin not found" && \
+    echo "=== Checking for gkm ===" && \
+    which gkm 2>/dev/null || echo "gkm not in PATH" && \
+    ls -la node_modules/.bin/gkm 2>/dev/null || echo "gkm binary not found in node_modules/.bin" && \
+    echo "=== Running build ===" && \
+    ./node_modules/.bin/gkm build --provider server --production
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
