@@ -18,7 +18,7 @@ export interface Database {
 
 export const DatabaseService = {
 	serviceName: 'database' as const,
-	async register(envParser) {
+	async register({ envParser }) {
 		const config = envParser
 			.create((get) => ({
 				url: get('DATABASE_URL').string(),
