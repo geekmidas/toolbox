@@ -1,8 +1,50 @@
-import { spawnSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
+
+const MIN_TSDOWN_VERSION = '0.11.0';
+
+/**
+ * Check if tsdown is installed and meets minimum version requirement
+ */
+function checkTsdownVersion(): void {
+	try {
+		const result = execSync('npx tsdown --version', {
+			encoding: 'utf-8',
+			stdio: ['pipe', 'pipe', 'pipe'],
+		});
+		// Output format: "tsdown/0.12.8 darwin-arm64 node-v22.21.1"
+		const match = result.match(/tsdown\/(\d+\.\d+\.\d+)/);
+		if (match) {
+			const version = match[1]!;
+			const [major, minor] = version.split('.').map(Number) as [number, number];
+			const [minMajor, minMinor] = MIN_TSDOWN_VERSION.split('.').map(
+				Number,
+			) as [number, number];
+
+			if (major < minMajor || (major === minMajor && minor < minMinor)) {
+				throw new Error(
+					`tsdown version ${version} is too old. Please upgrade to ${MIN_TSDOWN_VERSION} or later:\n` +
+						'  npm install -D tsdown@latest\n' +
+						'  # or\n' +
+						'  pnpm add -D tsdown@latest',
+				);
+			}
+		}
+	} catch (error) {
+		if (error instanceof Error && error.message.includes('too old')) {
+			throw error;
+		}
+		throw new Error(
+			'tsdown is required for bundling. Please install it:\n' +
+				'  npm install -D tsdown@latest\n' +
+				'  # or\n' +
+				'  pnpm add -D tsdown@latest',
+		);
+	}
+}
 
 export interface BundleOptions {
 	/** Entry point file (e.g., .gkm/server/server.ts) */
@@ -86,6 +128,9 @@ export async function bundleServer(
 		constructs,
 		dockerServices,
 	} = options;
+
+	// Check tsdown version first
+	checkTsdownVersion();
 
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
