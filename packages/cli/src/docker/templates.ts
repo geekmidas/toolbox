@@ -311,19 +311,13 @@ function generateTurboDockerfile(options: MultiStageDockerfileOptions): string {
 
 	const pm = getPmConfig(packageManager);
 	const installPm = pm.install ? `RUN ${pm.install}` : '';
-	const hasFetch = packageManager === 'pnpm';
 
-	// pnpm has fetch which allows better caching
-	const depsInstall = hasFetch
-		? `# Fetch and install from cache
-RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
-    ${pm.fetch}
+	// For turbo builds, we can't use --frozen-lockfile because turbo prune
+	// creates a subset that may not perfectly match. Use relaxed install.
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
 
-RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
-    ${pm.installCmd}`
-		: `# Install dependencies with cache
-RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
-    ${pm.installCmd}`;
+	// Use pnpm dlx for pnpm (avoids global bin dir issues in Docker)
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
 
 	return `# syntax=docker/dockerfile:1
 # Stage 1: Prune monorepo
@@ -332,12 +326,11 @@ FROM ${baseImage} AS pruner
 WORKDIR /app
 
 ${installPm}
-RUN ${pm.addGlobal} turbo
 
 COPY . .
 
 # Prune to only include necessary packages
-RUN turbo prune ${turboPackage} --docker
+RUN ${turboCmd} prune ${turboPackage} --docker
 
 # Stage 2: Install dependencies
 FROM ${baseImage} AS deps
@@ -350,7 +343,9 @@ ${installPm}
 COPY --from=pruner /app/out/${pm.lockfile} ./
 COPY --from=pruner /app/out/json/ ./
 
-${depsInstall}
+# Install dependencies (no frozen-lockfile since turbo prune creates a subset)
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
 
 # Stage 3: Build
 FROM deps AS builder
