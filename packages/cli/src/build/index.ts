@@ -93,6 +93,22 @@ export async function buildCommand(
 		logger.log(`🪝 Server hooks enabled`);
 	}
 
+	// Extract docker compose services for env var auto-population
+	const services = config.docker?.compose?.services;
+	const dockerServices = services
+		? Array.isArray(services)
+			? {
+					postgres: services.includes('postgres'),
+					redis: services.includes('redis'),
+					rabbitmq: services.includes('rabbitmq'),
+				}
+			: {
+					postgres: Boolean(services.postgres),
+					redis: Boolean(services.redis),
+					rabbitmq: Boolean(services.rabbitmq),
+				}
+		: undefined;
+
 	const buildContext: BuildContext = {
 		envParserPath,
 		envParserImportPattern,
@@ -102,6 +118,7 @@ export async function buildCommand(
 		studio,
 		hooks,
 		production,
+		dockerServices,
 	};
 
 	// Initialize generators
@@ -245,6 +262,9 @@ async function buildForProvider(
 				...subscribers.map((s) => s.construct),
 			];
 
+			// Get docker compose services for auto-populating env vars
+			const dockerServices = context.dockerServices;
+
 			const bundleResult = await bundleServer({
 				entryPoint: join(outputDir, 'server.ts'),
 				outputDir: join(outputDir, 'dist'),
@@ -253,6 +273,7 @@ async function buildForProvider(
 				external: context.production.external,
 				stage,
 				constructs: allConstructs,
+				dockerServices,
 			});
 			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);

@@ -84,6 +84,12 @@ export interface BuildContext {
 	hooks?: NormalizedHooksConfig;
 	/** Production build configuration */
 	production?: NormalizedProductionConfig;
+	/** Docker compose services for auto-populating env vars */
+	dockerServices?: {
+		postgres?: boolean;
+		redis?: boolean;
+		rabbitmq?: boolean;
+	};
 }
 
 export interface ProviderBuildResult {
