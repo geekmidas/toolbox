@@ -181,6 +181,8 @@ export interface DokployProviderConfig {
 	applicationId: string;
 	/** Container registry (overrides docker.registry if set) */
 	registry?: string;
+	/** Registry ID in Dokploy (recommended for private registries) */
+	registryId?: string;
 }
 
 export interface ProvidersConfig {
