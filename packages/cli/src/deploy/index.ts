@@ -452,13 +452,10 @@ async function ensureDokploySetup(
 
 			if (index >= 0 && index < registries.length) {
 				// Selected existing registry
-				registryId = registries[index].registryId;
+				registryId = registries[index]!.registryId;
 				await storeDokployRegistryId(registryId);
-				logger.log(`   ✓ Selected: ${registries[index].registryName}`);
-			} else if (
-				dockerConfig.registry &&
-				index === registries.length
-			) {
+				logger.log(`   ✓ Selected: ${registries[index]!.registryName}`);
+			} else if (dockerConfig.registry && index === registries.length) {
 				// Create new registry
 				logger.log(`\n   Creating new registry...`);
 				logger.log(`   Registry URL: ${dockerConfig.registry}`);
