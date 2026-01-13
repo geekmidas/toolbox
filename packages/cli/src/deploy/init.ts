@@ -129,10 +129,7 @@ export async function updateConfig(
 		// Add dokploy to existing providers
 		if (content.includes('dokploy:')) {
 			// Update existing dokploy config (handle multi-line with registryId)
-			newContent = content.replace(
-				/dokploy:\s*\{[^}]*\}/s,
-				dokployConfigStr,
-			);
+			newContent = content.replace(/dokploy:\s*\{[^}]*\}/s, dokployConfigStr);
 		} else {
 			// Add dokploy to providers
 			newContent = content.replace(
