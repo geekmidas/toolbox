@@ -264,8 +264,8 @@ WORKDIR /app
 # Copy source (deps already installed)
 COPY . .
 
-# Build production server
-RUN ${pm.run} gkm build --provider server --production
+# Build production server using CLI from npm
+RUN ${pm.dlx} @geekmidas/cli build --provider server --production
 
 # Stage 3: Production
 FROM ${baseImage} AS runner
@@ -355,8 +355,8 @@ WORKDIR /app
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
-# Build production server
-RUN ${pm.run} gkm build --provider server --production
+# Build production server using CLI from npm
+RUN ${pm.dlx} @geekmidas/cli build --provider server --production
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
