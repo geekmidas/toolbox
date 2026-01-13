@@ -77,14 +77,27 @@ interface DockerComposeServices {
 }
 
 /**
+ * Service URLs including both connection URLs and individual parameters
+ */
+interface ServiceUrls {
+	DATABASE_URL?: string;
+	DATABASE_HOST?: string;
+	DATABASE_PORT?: string;
+	DATABASE_NAME?: string;
+	DATABASE_USER?: string;
+	DATABASE_PASSWORD?: string;
+	REDIS_URL?: string;
+	REDIS_HOST?: string;
+	REDIS_PORT?: string;
+	REDIS_PASSWORD?: string;
+}
+
+/**
  * Result of Dokploy setup including provisioned service URLs
  */
 interface DokploySetupResult {
 	config: DokployDeployConfig;
-	serviceUrls?: {
-		DATABASE_URL?: string;
-		REDIS_URL?: string;
-	};
+	serviceUrls?: ServiceUrls;
 }
 
 /**
@@ -97,8 +110,8 @@ export async function provisionServices(
 	environmentId: string | undefined,
 	appName: string,
 	services?: DockerComposeServices,
-	existingUrls?: { DATABASE_URL?: string; REDIS_URL?: string },
-): Promise<{ DATABASE_URL?: string; REDIS_URL?: string } | undefined> {
+	existingUrls?: Pick<ServiceUrls, 'DATABASE_URL' | 'REDIS_URL'>,
+): Promise<ServiceUrls | undefined> {
 	logger.log(
 		`\n🔍 provisionServices called: services=${JSON.stringify(services)}, envId=${environmentId}`,
 	);
@@ -107,7 +120,7 @@ export async function provisionServices(
 		return undefined;
 	}
 
-	const serviceUrls: { DATABASE_URL?: string; REDIS_URL?: string } = {};
+	const serviceUrls: ServiceUrls = {};
 
 	if (services.postgres) {
 		// Skip if DATABASE_URL already exists in secrets
@@ -134,9 +147,16 @@ export async function provisionServices(
 				await api.deployPostgres(postgres.postgresId);
 				logger.log('   ✓ PostgreSQL deployed');
 
+				// Store individual connection parameters
+				serviceUrls.DATABASE_HOST = postgres.appName;
+				serviceUrls.DATABASE_PORT = '5432';
+				serviceUrls.DATABASE_NAME = postgres.databaseName;
+				serviceUrls.DATABASE_USER = postgres.databaseUser;
+				serviceUrls.DATABASE_PASSWORD = postgres.databasePassword;
+
 				// Construct connection URL using internal docker network hostname
 				serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
-				logger.log(`   ✓ DATABASE_URL configured`);
+				logger.log(`   ✓ Database credentials configured`);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : 'Unknown error';
@@ -179,12 +199,19 @@ export async function provisionServices(
 				await api.deployRedis(redis.redisId);
 				logger.log('   ✓ Redis deployed');
 
+				// Store individual connection parameters
+				serviceUrls.REDIS_HOST = redis.appName;
+				serviceUrls.REDIS_PORT = '6379';
+				if (redis.databasePassword) {
+					serviceUrls.REDIS_PASSWORD = redis.databasePassword;
+				}
+
 				// Construct connection URL
 				const password = redis.databasePassword
 					? `:${redis.databasePassword}@`
 					: '';
 				serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
-				logger.log(`   ✓ REDIS_URL configured`);
+				logger.log(`   ✓ Redis credentials configured`);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : 'Unknown error';

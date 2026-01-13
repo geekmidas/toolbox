@@ -133,6 +133,39 @@ describe('provisionServices', () => {
 		);
 	});
 
+	it('should provision postgres and return individual connection parameters', async () => {
+		server.use(
+			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
+				const body = (await request.json()) as { databasePassword?: string };
+				return HttpResponse.json({
+					postgresId: 'pg_123',
+					name: 'myapp-db',
+					appName: 'myapp-db',
+					databaseName: 'mydb',
+					databaseUser: 'dbuser',
+					databasePassword: body.databasePassword,
+					applicationStatus: 'idle',
+				});
+			}),
+			http.post(`${BASE_URL}/api/postgres.deploy`, () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
+
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			postgres: true,
+		});
+
+		expect(result).toBeDefined();
+		expect(result?.DATABASE_HOST).toBe('myapp-db');
+		expect(result?.DATABASE_PORT).toBe('5432');
+		expect(result?.DATABASE_NAME).toBe('mydb');
+		expect(result?.DATABASE_USER).toBe('dbuser');
+		expect(result?.DATABASE_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
+	});
+
 	it('should provision redis and return REDIS_URL', async () => {
 		server.use(
 			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
@@ -160,6 +193,35 @@ describe('provisionServices', () => {
 		expect(result?.REDIS_URL).toMatch(
 			/^redis:\/\/:[a-f0-9]{32}@myapp-cache:6379$/,
 		);
+	});
+
+	it('should provision redis and return individual connection parameters', async () => {
+		server.use(
+			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
+				const body = (await request.json()) as { databasePassword?: string };
+				return HttpResponse.json({
+					redisId: 'redis_123',
+					name: 'myapp-cache',
+					appName: 'myapp-cache',
+					databasePassword: body.databasePassword,
+					applicationStatus: 'idle',
+				});
+			}),
+			http.post(`${BASE_URL}/api/redis.deploy`, () => {
+				return HttpResponse.json({ success: true });
+			}),
+		);
+
+		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
+
+		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
+			redis: true,
+		});
+
+		expect(result).toBeDefined();
+		expect(result?.REDIS_HOST).toBe('myapp-cache');
+		expect(result?.REDIS_PORT).toBe('6379');
+		expect(result?.REDIS_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
 	});
 
 	it('should provision both postgres and redis', async () => {
