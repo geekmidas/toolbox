@@ -1,13 +1,13 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import { EventConnectionFactory, Publisher } from '@geekmidas/events';
+import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 
 let instance: {} | null = null;
 
 export const DummyService = {
 	serviceName: 'dummy' as const,
-	register(envParser: EnvironmentParser<{}>): any {
+	register(ctx: ServiceRegisterOptions): {} {
 		// Create the config parser - this tracks environment variables
-		const configParser = envParser.create((get) => ({
+		const configParser = ctx.envParser.create((get) => ({
 			connectionString: get('DUMMY_CONNECTION_STRING').string(),
 		}));
 
@@ -31,4 +31,4 @@ export const DummyService = {
 			return instance;
 		})();
 	},
-} as const;
+} satisfies Service<'dummy', {}>;
