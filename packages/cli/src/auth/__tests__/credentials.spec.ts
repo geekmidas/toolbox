@@ -235,18 +235,18 @@ describe('credentials storage', () => {
 	});
 
 	describe('getDokployRegistryId', () => {
-		it('should return null when no credentials exist', async () => {
+		it('should return undefined when no credentials exist', async () => {
 			const registryId = await getDokployRegistryId({ root: tempDir });
-			expect(registryId).toBeNull();
+			expect(registryId).toBeUndefined();
 		});
 
-		it('should return null when credentials exist but no registryId', async () => {
+		it('should return undefined when credentials exist but no registryId', async () => {
 			await storeDokployCredentials('token', 'https://test.com', {
 				root: tempDir,
 			});
 
 			const registryId = await getDokployRegistryId({ root: tempDir });
-			expect(registryId).toBeNull();
+			expect(registryId).toBeUndefined();
 		});
 
 		it('should return stored registryId', async () => {
