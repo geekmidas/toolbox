@@ -22,6 +22,13 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 	turboPackage?: string;
 }
 
+const LOCKFILES: [string, PackageManager][] = [
+	['pnpm-lock.yaml', 'pnpm'],
+	['bun.lockb', 'bun'],
+	['yarn.lock', 'yarn'],
+	['package-lock.json', 'npm'],
+];
+
 /**
  * Detect package manager from lockfiles
  * Walks up the directory tree to find lockfile (for monorepos)
@@ -29,19 +36,12 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 export function detectPackageManager(
 	cwd: string = process.cwd(),
 ): PackageManager {
-	const lockfiles: [string, PackageManager][] = [
-		['pnpm-lock.yaml', 'pnpm'],
-		['bun.lockb', 'bun'],
-		['yarn.lock', 'yarn'],
-		['package-lock.json', 'npm'],
-	];
-
 	let dir = cwd;
 	const root = parse(dir).root;
 
 	// Walk up the directory tree
 	while (dir !== root) {
-		for (const [lockfile, pm] of lockfiles) {
+		for (const [lockfile, pm] of LOCKFILES) {
 			if (existsSync(join(dir, lockfile))) {
 				return pm;
 			}
@@ -50,13 +50,101 @@ export function detectPackageManager(
 	}
 
 	// Check root directory
-	for (const [lockfile, pm] of lockfiles) {
+	for (const [lockfile, pm] of LOCKFILES) {
 		if (existsSync(join(root, lockfile))) {
 			return pm;
 		}
 	}
 
 	return 'pnpm'; // default
+}
+
+/**
+ * Find the lockfile path by walking up the directory tree
+ * Returns the full path to the lockfile, or null if not found
+ */
+export function findLockfilePath(cwd: string = process.cwd()): string | null {
+	let dir = cwd;
+	const root = parse(dir).root;
+
+	// Walk up the directory tree
+	while (dir !== root) {
+		for (const [lockfile] of LOCKFILES) {
+			const lockfilePath = join(dir, lockfile);
+			if (existsSync(lockfilePath)) {
+				return lockfilePath;
+			}
+		}
+		dir = dirname(dir);
+	}
+
+	// Check root directory
+	for (const [lockfile] of LOCKFILES) {
+		const lockfilePath = join(root, lockfile);
+		if (existsSync(lockfilePath)) {
+			return lockfilePath;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Get the lockfile name for a package manager
+ */
+export function getLockfileName(pm: PackageManager): string {
+	const lockfileMap: Record<PackageManager, string> = {
+		pnpm: 'pnpm-lock.yaml',
+		npm: 'package-lock.json',
+		yarn: 'yarn.lock',
+		bun: 'bun.lockb',
+	};
+	return lockfileMap[pm];
+}
+
+/**
+ * Check if we're in a monorepo (lockfile is in a parent directory)
+ */
+export function isMonorepo(cwd: string = process.cwd()): boolean {
+	const lockfilePath = findLockfilePath(cwd);
+	if (!lockfilePath) {
+		return false;
+	}
+
+	// Check if lockfile is in a parent directory (not in cwd)
+	const lockfileDir = dirname(lockfilePath);
+	return lockfileDir !== cwd;
+}
+
+/**
+ * Check if turbo.json exists (walks up directory tree)
+ */
+export function hasTurboConfig(cwd: string = process.cwd()): boolean {
+	let dir = cwd;
+	const root = parse(dir).root;
+
+	while (dir !== root) {
+		if (existsSync(join(dir, 'turbo.json'))) {
+			return true;
+		}
+		dir = dirname(dir);
+	}
+
+	return existsSync(join(root, 'turbo.json'));
+}
+
+/**
+ * Get install command for turbo builds (without frozen lockfile)
+ * Turbo prune creates a subset that may not perfectly match the lockfile
+ */
+function getTurboInstallCmd(pm: PackageManager): string {
+	const commands: Record<PackageManager, string> = {
+		pnpm: 'pnpm install',
+		npm: 'npm install',
+		yarn: 'yarn install',
+		bun: 'bun install',
+	};
+	return commands[pm];
 }
 
 /**
