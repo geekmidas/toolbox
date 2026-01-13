@@ -1,7 +1,8 @@
-import type { PublishableMessage } from '@geekmidas/events';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
+import { sniffService } from '../Construct';
 import { c } from '../crons';
 import { e } from '../endpoints';
 import { f } from '../functions';
@@ -240,23 +241,37 @@ describe('Construct environment getter', () => {
 				| PublishableMessage<'user.created', { userId: string }>
 				| PublishableMessage<'user.updated', { userId: string }>;
 
+			class UserEventPublisher implements EventPublisher<UserEvents> {
+				async publish(_events: UserEvents[]): Promise<void> {}
+			}
+
+			const eventPublisherService: Service<'events', UserEventPublisher> = {
+				serviceName: 'events' as const,
+				register() {
+					return new UserEventPublisher();
+				},
+			};
+
 			const notificationService = {
 				serviceName: 'notification' as const,
 				register({ envParser }) {
-					return envParser.create((get) => ({
-						apiKey: get('NOTIFICATION_API_KEY').string(),
-						endpoint: get('NOTIFICATION_ENDPOINT')
-							.string()
-							.url()
-							.default('https://api.example.com/notify'),
-					}));
+					return envParser
+						.create((get) => ({
+							apiKey: get('NOTIFICATION_API_KEY').string(),
+							endpoint: get('NOTIFICATION_ENDPOINT')
+								.string()
+								.url()
+								.default('https://api.example.com/notify'),
+						}))
+						.parse();
 				},
 			} satisfies Service<'notification', any>;
 
 			const subscriber = s
+				.publisher(eventPublisherService)
 				.services([notificationService])
 				.subscribe('user.created')
-				.handle(async ({ events }) => {
+				.handle(async () => {
 					// Handle user created events
 				});
 
@@ -354,6 +369,176 @@ describe('Construct environment getter', () => {
 				'FEATURE_FLAGS',
 				'JSON_CONFIG',
 			]);
+		});
+
+		it('should capture env vars from services that parse config', async () => {
+			const service = {
+				serviceName: 'example' as const,
+				register({ envParser }) {
+					const config = envParser
+						.create((get) => ({
+							url: get('SERVICE_URL').string(),
+						}))
+						.parse();
+
+					return { url: config.url };
+				},
+			} satisfies Service<'example', any>;
+
+			// Verify env vars are captured using sniffService
+			const result = await sniffService(service);
+			expect(result.envVars).toEqual(['SERVICE_URL']);
+			// Sniffer returns mock values, so no error expected
+			expect(result.error).toBeUndefined();
+
+			// Also verify it works with multiple services
+			const anotherService = {
+				serviceName: 'another' as const,
+				register({ envParser }) {
+					return envParser
+						.create((get) => ({
+							key: get('API_KEY').string(),
+						}))
+						.parse();
+				},
+			} satisfies Service<'another', any>;
+
+			const fn = f
+				.services([service, anotherService])
+				.handle(async () => ({ success: true }));
+
+			const envVars = await fn.getEnvironment();
+			expect(envVars).toEqual(['API_KEY', 'SERVICE_URL']);
+		});
+
+		it('should capture env vars from async services', async () => {
+			const asyncService = {
+				serviceName: 'asyncService' as const,
+				async register({ envParser }) {
+					const config = envParser
+						.create((get) => ({
+							secret: get('AUTH_SECRET').string(),
+							frontendUrl: get('FRONTEND_URL').string(),
+						}))
+						.parse();
+
+					// Simulate an async operation
+					await Promise.resolve();
+
+					return { config };
+				},
+			} satisfies Service<'asyncService', any>;
+
+			// Verify env vars are captured using sniffService
+			const result = await sniffService(asyncService);
+			expect(result.envVars).toEqual(['AUTH_SECRET', 'FRONTEND_URL']);
+			expect(result.error).toBeUndefined();
+
+			// Also verify via construct
+			const fn = f
+				.services([asyncService])
+				.handle(async () => ({ success: true }));
+
+			const envVars = await fn.getEnvironment();
+			expect(envVars).toEqual(['AUTH_SECRET', 'FRONTEND_URL']);
+		});
+
+		it('should capture env vars from services with multiple config fields', async () => {
+			const authService = {
+				serviceName: 'auth' as const,
+				register({ envParser }) {
+					const config = envParser
+						.create((get) => ({
+							secret: get('AUTH_SECRET').string(),
+							frontendUrl: get('FRONTEND_URL').string(),
+							trustedOrigins: get('TRUSTED_ORIGINS').string(),
+						}))
+						.parse();
+
+					return {
+						secret: config.secret,
+						verify: () => true,
+					};
+				},
+			} satisfies Service<'auth', any>;
+
+			// Verify env vars are captured
+			const result = await sniffService(authService);
+			expect(result.envVars).toEqual([
+				'AUTH_SECRET',
+				'FRONTEND_URL',
+				'TRUSTED_ORIGINS',
+			]);
+			expect(result.error).toBeUndefined();
+
+			// Verify via construct
+			const fn = f
+				.services([authService])
+				.handle(async () => ({ success: true }));
+
+			const envVars = await fn.getEnvironment();
+			expect(envVars).toEqual([
+				'AUTH_SECRET',
+				'FRONTEND_URL',
+				'TRUSTED_ORIGINS',
+			]);
+		});
+
+		it('should handle multiple problematic services without crashing', async () => {
+			const service1 = {
+				serviceName: 'service1' as const,
+				register({ envParser }) {
+					envParser.create((get) => ({
+						var1: get('VAR_1').string(),
+					}));
+					throw new Error('Service 1 failed');
+				},
+			} satisfies Service<'service1', any>;
+
+			const service2 = {
+				serviceName: 'service2' as const,
+				register({ envParser }) {
+					const config = envParser.create((get) => ({
+						var2: get('VAR_2').string(),
+					}));
+
+					// Fire-and-forget rejection
+					Promise.reject(new Error('Service 2 async error'));
+
+					return config;
+				},
+			} satisfies Service<'service2', any>;
+
+			const service3 = {
+				serviceName: 'service3' as const,
+				register({ envParser }) {
+					return envParser.create((get) => ({
+						var3: get('VAR_3').string(),
+					}));
+				},
+			} satisfies Service<'service3', any>;
+
+			// Verify individual services
+			const result1 = await sniffService(service1);
+			expect(result1.envVars).toEqual(['VAR_1']);
+			expect(result1.error?.message).toBe('Service 1 failed');
+
+			const result2 = await sniffService(service2);
+			expect(result2.envVars).toEqual(['VAR_2']);
+			// Fire-and-forget - no error captured
+			expect(result2.error).toBeUndefined();
+
+			const result3 = await sniffService(service3);
+			expect(result3.envVars).toEqual(['VAR_3']);
+			expect(result3.error).toBeUndefined();
+
+			// Verify all work together in construct
+			const fn = f
+				.services([service1, service2, service3])
+				.handle(async () => ({ success: true }));
+
+			const envVars = await fn.getEnvironment();
+			expect(envVars).toEqual(['VAR_1', 'VAR_2', 'VAR_3']);
 		});
 	});
 });
