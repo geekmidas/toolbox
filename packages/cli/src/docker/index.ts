@@ -208,6 +208,42 @@ export async function dockerCommand(
 }
 
 /**
+ * Ensure lockfile exists in the build context
+ * For monorepos, copies from workspace root if needed
+ * Returns cleanup function if file was copied
+ */
+function ensureLockfile(cwd: string): (() => void) | null {
+	const lockfilePath = findLockfilePath(cwd);
+
+	if (!lockfilePath) {
+		logger.warn(
+			'\n⚠️  No lockfile found. Docker build may fail or use stale dependencies.',
+		);
+		return null;
+	}
+
+	const lockfileName = basename(lockfilePath);
+	const localLockfile = join(cwd, lockfileName);
+
+	// If lockfile exists locally (same directory), nothing to do
+	if (lockfilePath === localLockfile) {
+		return null;
+	}
+
+	logger.log(`   Copying ${lockfileName} from monorepo root...`);
+	copyFileSync(lockfilePath, localLockfile);
+
+	// Return cleanup function
+	return () => {
+		try {
+			unlinkSync(localLockfile);
+		} catch {
+			// Ignore cleanup errors
+		}
+	};
+}
+
+/**
  * Build Docker image
  * Uses BuildKit for cache mount support
  */
@@ -224,12 +260,17 @@ async function buildDockerImage(
 
 	logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
 
+	const cwd = process.cwd();
+
+	// Ensure lockfile exists (copy from monorepo root if needed)
+	const cleanup = ensureLockfile(cwd);
+
 	try {
 		// Use BuildKit for cache mount support (required for --mount=type=cache)
 		execSync(
 			`DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`,
 			{
-				cwd: process.cwd(),
+				cwd,
 				stdio: 'inherit',
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 			},
@@ -239,6 +280,9 @@ async function buildDockerImage(
 		throw new Error(
 			`Failed to build Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
 		);
+	} finally {
+		// Clean up copied lockfile
+		cleanup?.();
 	}
 }
 
