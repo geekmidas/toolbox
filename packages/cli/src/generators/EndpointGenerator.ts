@@ -925,11 +925,11 @@ import { createApp } from './app.js';
 
 const port = Number(process.env.PORT) || 3000;
 
-const { app, start } = await createApp();
+const { start } = await createApp();
 
 await start({
   port,
-  serve: (app, port) => serve({ fetch: app.fetch, port }),
+  serve: (app, port) => { serve({ fetch: app.fetch, port }); },
 });
 `;
 
