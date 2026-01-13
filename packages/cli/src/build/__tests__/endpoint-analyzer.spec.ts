@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	analyzeEndpointFeatures,
 	determineEndpointTier,
-	summarizeAnalysis,
 	type EndpointAnalysis,
 	type EndpointFeatures,
+	summarizeAnalysis,
 } from '../endpoint-analyzer';
 
 describe('endpoint-analyzer', () => {
