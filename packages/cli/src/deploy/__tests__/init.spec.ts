@@ -667,4 +667,127 @@ export default defineConfig({
 			),
 		).resolves.toBeUndefined();
 	});
+
+	it('should include registryId when provided', async () => {
+		const configPath = join(tempDir, 'gkm.config.ts');
+		await writeFile(
+			configPath,
+			`import { defineConfig } from '@geekmidas/cli';
+
+export default defineConfig({
+	routes: 'src/endpoints/**/*.ts',
+	envParser: './src/env.ts',
+});`,
+		);
+
+		await updateConfig(
+			{
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+				registryId: 'reg_789',
+			},
+			tempDir,
+		);
+
+		const content = await readFile(configPath, 'utf-8');
+		expect(content).toContain("registryId: 'reg_789'");
+		expect(content).toContain("endpoint: 'https://dokploy.example.com'");
+		expect(content).toContain("projectId: 'proj_123'");
+		expect(content).toContain("applicationId: 'app_456'");
+	});
+
+	it('should omit registryId when not provided', async () => {
+		const configPath = join(tempDir, 'gkm.config.ts');
+		await writeFile(
+			configPath,
+			`import { defineConfig } from '@geekmidas/cli';
+
+export default defineConfig({
+	routes: 'src/endpoints/**/*.ts',
+});`,
+		);
+
+		await updateConfig(
+			{
+				endpoint: 'https://dokploy.example.com',
+				projectId: 'proj_123',
+				applicationId: 'app_456',
+			},
+			tempDir,
+		);
+
+		const content = await readFile(configPath, 'utf-8');
+		expect(content).not.toContain('registryId:');
+	});
+
+	it('should update existing dokploy config with registryId', async () => {
+		const configPath = join(tempDir, 'gkm.config.ts');
+		await writeFile(
+			configPath,
+			`import { defineConfig } from '@geekmidas/cli';
+
+export default defineConfig({
+	routes: 'src/endpoints/**/*.ts',
+	providers: {
+		dokploy: {
+			endpoint: 'https://old.dokploy.com',
+			projectId: 'old_proj',
+			applicationId: 'old_app',
+		},
+	},
+});`,
+		);
+
+		await updateConfig(
+			{
+				endpoint: 'https://new.dokploy.com',
+				projectId: 'new_proj',
+				applicationId: 'new_app',
+				registryId: 'new_reg',
+			},
+			tempDir,
+		);
+
+		const content = await readFile(configPath, 'utf-8');
+		expect(content).toContain("registryId: 'new_reg'");
+		expect(content).toContain("endpoint: 'https://new.dokploy.com'");
+		expect(content).not.toContain('old.dokploy.com');
+	});
+
+	it('should preserve existing config with multi-line dokploy that has registryId', async () => {
+		const configPath = join(tempDir, 'gkm.config.ts');
+		await writeFile(
+			configPath,
+			`import { defineConfig } from '@geekmidas/cli';
+
+export default defineConfig({
+	routes: 'src/endpoints/**/*.ts',
+	providers: {
+		dokploy: {
+			endpoint: 'https://old.dokploy.com',
+			projectId: 'old_proj',
+			applicationId: 'old_app',
+			registryId: 'old_reg',
+		},
+	},
+});`,
+		);
+
+		await updateConfig(
+			{
+				endpoint: 'https://new.dokploy.com',
+				projectId: 'new_proj',
+				applicationId: 'new_app',
+				registryId: 'new_reg',
+			},
+			tempDir,
+		);
+
+		const content = await readFile(configPath, 'utf-8');
+		expect(content).toContain("registryId: 'new_reg'");
+		expect(content).toContain("endpoint: 'https://new.dokploy.com'");
+		expect(content).not.toContain('old.dokploy.com');
+		expect(content).not.toContain('old_reg');
+	});
 });
