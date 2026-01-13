@@ -636,6 +636,33 @@ describe('DokployApi', () => {
 			});
 		});
 
+		it('should create redis with custom options', async () => {
+			let capturedBody: unknown;
+
+			server.use(
+				http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
+					capturedBody = await request.json();
+					return HttpResponse.json({
+						redisId: 'redis_123',
+						name: 'MyCache',
+						appName: 'mycache',
+						databasePassword: 'secretpass',
+						applicationStatus: 'idle',
+					});
+				}),
+			);
+
+			await api.createRedis('MyCache', 'proj_1', 'env_1', {
+				databasePassword: 'secretpass',
+				dockerImage: 'redis:6-alpine',
+			});
+
+			expect(capturedBody).toMatchObject({
+				databasePassword: 'secretpass',
+				dockerImage: 'redis:6-alpine',
+			});
+		});
+
 		it('should get redis by ID', async () => {
 			server.use(
 				http.get(`${BASE_URL}/api/redis.one`, ({ request }) => {
