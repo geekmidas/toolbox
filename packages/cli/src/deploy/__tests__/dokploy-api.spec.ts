@@ -122,6 +122,41 @@ describe('DokployApi', () => {
 				expect(err.message).toContain('Name is too short');
 			}
 		});
+
+		it('should handle empty response body', async () => {
+			server.use(
+				http.post(`${BASE_URL}/api/application.deploy`, () => {
+					return new HttpResponse(null, { status: 200 });
+				}),
+			);
+
+			const result = await api.deployApplication('app_123');
+			expect(result).toBeUndefined();
+		});
+
+		it('should handle 204 No Content response', async () => {
+			server.use(
+				http.post(`${BASE_URL}/api/application.update`, () => {
+					return new HttpResponse(null, { status: 204 });
+				}),
+			);
+
+			const result = await api.updateApplication('app_123', {
+				registryId: 'reg_456',
+			});
+			expect(result).toBeUndefined();
+		});
+
+		it('should handle whitespace-only response body', async () => {
+			server.use(
+				http.post(`${BASE_URL}/api/postgres.deploy`, () => {
+					return new HttpResponse('   \n\t  ', { status: 200 });
+				}),
+			);
+
+			const result = await api.deployPostgres('pg_123');
+			expect(result).toBeUndefined();
+		});
 	});
 
 	describe('validateToken', () => {
