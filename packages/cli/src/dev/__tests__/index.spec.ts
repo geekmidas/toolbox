@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	findAvailablePort,
 	isPortAvailable,
+	normalizeHooksConfig,
+	normalizeProductionConfig,
+	normalizeStudioConfig,
 	normalizeTelescopeConfig,
 } from '../index';
 
@@ -299,5 +302,97 @@ describe('normalizeTelescopeConfig', () => {
 			maxEntries: 1000,
 			websocket: false,
 		});
+	});
+});
+
+describe('normalizeStudioConfig', () => {
+	it('should return undefined when config is false', () => {
+		const result = normalizeStudioConfig(false);
+		expect(result).toBeUndefined();
+	});
+
+	it('should return default config when config is true', () => {
+		const result = normalizeStudioConfig(true);
+		expect(result).toEqual({
+			enabled: true,
+			path: '/__studio',
+			schema: 'public',
+		});
+	});
+
+	it('should return default config when config is undefined', () => {
+		const result = normalizeStudioConfig(undefined);
+		expect(result).toEqual({
+			enabled: true,
+			path: '/__studio',
+			schema: 'public',
+		});
+	});
+
+	it('should return undefined when config.enabled is false', () => {
+		const result = normalizeStudioConfig({ enabled: false });
+		expect(result).toBeUndefined();
+	});
+
+	it('should merge custom config with defaults', () => {
+		const result = normalizeStudioConfig({
+			path: '/__db',
+			schema: 'custom_schema',
+		});
+		expect(result).toEqual({
+			enabled: true,
+			path: '/__db',
+			schema: 'custom_schema',
+		});
+	});
+});
+
+describe('normalizeHooksConfig', () => {
+	it('should return undefined when no hooks configured', () => {
+		const result = normalizeHooksConfig(undefined);
+		expect(result).toBeUndefined();
+	});
+
+	it('should return undefined when server hook not configured', () => {
+		const result = normalizeHooksConfig({});
+		expect(result).toBeUndefined();
+	});
+
+	it('should return path when server hook is configured', () => {
+		const result = normalizeHooksConfig({ server: './src/hooks' });
+		expect(result).toBeDefined();
+		expect(result?.serverHooksPath).toContain('src/hooks.ts');
+	});
+
+	it('should handle .ts extension in path', () => {
+		const result = normalizeHooksConfig({ server: './src/hooks.ts' });
+		expect(result).toBeDefined();
+		expect(result?.serverHooksPath).toContain('src/hooks.ts');
+	});
+});
+
+describe('normalizeProductionConfig', () => {
+	it('should return undefined when cliProduction is false', () => {
+		const result = normalizeProductionConfig(false);
+		expect(result).toBeUndefined();
+	});
+
+	it('should return undefined when cliProduction is false even with config', () => {
+		const result = normalizeProductionConfig(false, { bundle: true });
+		expect(result).toBeUndefined();
+	});
+
+	it('should return default config when cliProduction is true', () => {
+		const result = normalizeProductionConfig(true);
+		expect(result).toBeDefined();
+		expect(result?.enabled).toBe(true);
+		expect(result?.bundle).toBe(true);
+	});
+
+	it('should merge custom config with defaults', () => {
+		const result = normalizeProductionConfig(true, { bundle: false });
+		expect(result).toBeDefined();
+		expect(result?.enabled).toBe(true);
+		expect(result?.bundle).toBe(false);
 	});
 });
