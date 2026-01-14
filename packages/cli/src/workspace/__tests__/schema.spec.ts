@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	formatValidationErrors,
+	getDeployTargetError,
+	isDeployTargetSupported,
+	isPhase2DeployTarget,
 	safeValidateWorkspaceConfig,
 	validateWorkspaceConfig,
 } from '../schema.ts';
@@ -383,7 +386,7 @@ describe('WorkspaceConfigSchema', () => {
 	});
 
 	describe('deploy configuration', () => {
-		it('should accept per-app deploy override', () => {
+		it('should accept dokploy as per-app deploy target', () => {
 			const config = {
 				apps: {
 					api: {
@@ -391,14 +394,7 @@ describe('WorkspaceConfigSchema', () => {
 						path: 'apps/api',
 						port: 3000,
 						routes: './src/**/*.ts',
-						deploy: 'vercel' as const,
-					},
-					web: {
-						type: 'frontend' as const,
-						path: 'apps/web',
-						port: 3001,
-						framework: 'nextjs' as const,
-						deploy: 'cloudflare' as const,
+						deploy: 'dokploy' as const,
 					},
 				},
 				deploy: {
@@ -408,9 +404,114 @@ describe('WorkspaceConfigSchema', () => {
 
 			const result = validateWorkspaceConfig(config);
 
-			expect(result.apps.api.deploy).toBe('vercel');
-			expect(result.apps.web.deploy).toBe('cloudflare');
+			expect(result.apps.api.deploy).toBe('dokploy');
 			expect(result.deploy?.default).toBe('dokploy');
+		});
+
+		it('should reject Phase 2 deploy target in deploy.default', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+					},
+				},
+				deploy: {
+					default: 'vercel' as const,
+				},
+			};
+
+			const result = safeValidateWorkspaceConfig(config);
+
+			expect(result.success).toBe(false);
+			expect(result.error).toBeDefined();
+			if (result.error) {
+				const formatted = formatValidationErrors(result.error);
+				expect(formatted).toContain('coming in Phase 2');
+			}
+		});
+
+		it('should reject Phase 2 deploy target in per-app deploy', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+						deploy: 'cloudflare' as const,
+					},
+				},
+			};
+
+			const result = safeValidateWorkspaceConfig(config);
+
+			expect(result.success).toBe(false);
+			expect(result.error).toBeDefined();
+			if (result.error) {
+				const formatted = formatValidationErrors(result.error);
+				expect(formatted).toContain('coming in Phase 2');
+				expect(formatted).toContain('api');
+			}
+		});
+
+		it('should reject unknown deploy target', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+						deploy: 'kubernetes' as const,
+					},
+				},
+			};
+
+			const result = safeValidateWorkspaceConfig(config);
+
+			expect(result.success).toBe(false);
+		});
+	});
+
+	describe('deploy target helpers', () => {
+		it('isDeployTargetSupported should return true for dokploy', () => {
+			expect(isDeployTargetSupported('dokploy')).toBe(true);
+		});
+
+		it('isDeployTargetSupported should return false for Phase 2 targets', () => {
+			expect(isDeployTargetSupported('vercel')).toBe(false);
+			expect(isDeployTargetSupported('cloudflare')).toBe(false);
+		});
+
+		it('isPhase2DeployTarget should identify Phase 2 targets', () => {
+			expect(isPhase2DeployTarget('vercel')).toBe(true);
+			expect(isPhase2DeployTarget('cloudflare')).toBe(true);
+			expect(isPhase2DeployTarget('dokploy')).toBe(false);
+			expect(isPhase2DeployTarget('unknown')).toBe(false);
+		});
+
+		it('getDeployTargetError should return Phase 2 message', () => {
+			const error = getDeployTargetError('vercel');
+			expect(error).toContain('coming in Phase 2');
+			expect(error).toContain('vercel');
+			expect(error).toContain('dokploy');
+		});
+
+		it('getDeployTargetError should include app name when provided', () => {
+			const error = getDeployTargetError('cloudflare', 'web');
+			expect(error).toContain('coming in Phase 2');
+			expect(error).toContain('cloudflare');
+			expect(error).toContain('web');
+		});
+
+		it('getDeployTargetError should handle unknown targets', () => {
+			const error = getDeployTargetError('kubernetes');
+			expect(error).toContain('Unknown deploy target');
+			expect(error).toContain('kubernetes');
+			expect(error).toContain('Coming in Phase 2');
 		});
 	});
 });

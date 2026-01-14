@@ -9,7 +9,11 @@ import {
 import { storeDokployRegistryId } from '../auth/credentials';
 import { buildCommand } from '../build/index';
 import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
-import { getAppBuildOrder } from '../workspace/index.js';
+import {
+	getAppBuildOrder,
+	getDeployTargetError,
+	isDeployTargetSupported,
+} from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
@@ -602,6 +606,38 @@ export async function workspaceDeployCommand(
 	} else {
 		logger.log(`   Deploying all apps: ${appsToDeployNames.join(', ')}`);
 	}
+
+	// Filter apps by deploy target
+	// In Phase 1, only 'dokploy' is supported. Other targets should have been
+	// caught at config validation, but we handle it gracefully here too.
+	const dokployApps = appsToDeployNames.filter((name) => {
+		const app = workspace.apps[name]!;
+		const target = app.resolvedDeployTarget;
+		if (!isDeployTargetSupported(target)) {
+			logger.log(
+				`   ⚠️  Skipping ${name}: ${getDeployTargetError(target, name)}`,
+			);
+			return false;
+		}
+		return true;
+	});
+
+	if (dokployApps.length === 0) {
+		throw new Error(
+			'No apps to deploy. All selected apps have unsupported deploy targets.',
+		);
+	}
+
+	if (dokployApps.length !== appsToDeployNames.length) {
+		const skipped = appsToDeployNames.filter(
+			(name) => !dokployApps.includes(name),
+		);
+		logger.log(
+			`   📌 ${skipped.length} app(s) skipped due to unsupported targets`,
+		);
+	}
+
+	appsToDeployNames = dokployApps;
 
 	// Ensure we have Dokploy credentials
 	let creds = await getDokployCredentials();

@@ -10,6 +10,7 @@ import type {
 	AppInput,
 	AppsRecord,
 	ConstrainedApps,
+	DeployTarget,
 	InferAppNames,
 	InferredWorkspaceConfig,
 	LoadedConfig,
@@ -50,7 +51,12 @@ export { isWorkspaceConfig } from './types.js';
 
 export {
 	formatValidationErrors,
+	getDeployTargetError,
+	isDeployTargetSupported,
+	isPhase2DeployTarget,
+	PHASE_2_DEPLOY_TARGETS,
 	safeValidateWorkspaceConfig,
+	SUPPORTED_DEPLOY_TARGETS,
 	validateWorkspaceConfig,
 	WorkspaceConfigSchema,
 } from './schema.js';
@@ -160,11 +166,12 @@ export function normalizeWorkspace(
 	cwd: string,
 ): NormalizedWorkspace {
 	const name = config.name ?? getPackageName(cwd) ?? basename(cwd);
+	const defaultTarget = config.deploy?.default ?? 'dokploy';
 
 	const normalizedApps: Record<string, NormalizedAppConfig> = {};
 
 	for (const [appName, app] of Object.entries(config.apps)) {
-		normalizedApps[appName] = normalizeAppConfig(app);
+		normalizedApps[appName] = normalizeAppConfig(app, defaultTarget);
 	}
 
 	return {
@@ -180,14 +187,20 @@ export function normalizeWorkspace(
 
 /**
  * Normalize an app configuration with resolved defaults.
+ * @param app - App configuration
+ * @param defaultTarget - Default deploy target from workspace config
  */
-function normalizeAppConfig(app: AppConfig): NormalizedAppConfig {
+function normalizeAppConfig(
+	app: AppConfig,
+	defaultTarget: DeployTarget,
+): NormalizedAppConfig {
 	return {
 		...app,
 		type: app.type ?? 'backend',
 		port: app.port,
 		path: app.path,
 		dependencies: app.dependencies ?? [],
+		resolvedDeployTarget: app.deploy ?? defaultTarget,
 	};
 }
 
@@ -224,6 +237,7 @@ export function wrapSingleAppAsWorkspace(
 		path: '.',
 		port: 3000,
 		dependencies: [],
+		resolvedDeployTarget: 'dokploy',
 		routes: config.routes,
 		functions: config.functions,
 		crons: config.crons,

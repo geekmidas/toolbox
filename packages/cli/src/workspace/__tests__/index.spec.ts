@@ -152,6 +152,64 @@ describe('normalizeWorkspace', () => {
 		expect(result.apps.api.telescope).toEqual({ enabled: true });
 		expect(result.apps.api.openapi).toEqual({ enabled: true });
 	});
+
+	it('should resolve deploy target to dokploy by default', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.apps.api.resolvedDeployTarget).toBe('dokploy');
+	});
+
+	it('should use deploy.default as fallback for resolvedDeployTarget', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+			deploy: {
+				default: 'dokploy',
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.apps.api.resolvedDeployTarget).toBe('dokploy');
+	});
+
+	it('should use per-app deploy target when specified', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+					deploy: 'dokploy',
+				},
+			},
+			deploy: {
+				default: 'dokploy',
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.apps.api.resolvedDeployTarget).toBe('dokploy');
+	});
 });
 
 describe('wrapSingleAppAsWorkspace', () => {
@@ -194,6 +252,18 @@ describe('wrapSingleAppAsWorkspace', () => {
 
 		expect(result.services.db).toBe(true);
 		expect(result.services.cache).toBe(true);
+	});
+
+	it('should set resolvedDeployTarget to dokploy', () => {
+		const config: GkmConfig = {
+			routes: './src/**/*.ts',
+			envParser: './src/env',
+			logger: './src/logger',
+		};
+
+		const result = wrapSingleAppAsWorkspace(config, '/project');
+
+		expect(result.apps.api.resolvedDeployTarget).toBe('dokploy');
 	});
 });
 

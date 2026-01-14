@@ -53,8 +53,45 @@ const ClientConfigSchema = z.object({
 
 /**
  * Deploy target schema.
+ * Currently only 'dokploy' is supported.
+ * 'vercel' and 'cloudflare' are planned for Phase 2.
  */
 const DeployTargetSchema = z.enum(['dokploy', 'vercel', 'cloudflare']);
+
+/**
+ * Supported deploy targets (Phase 1).
+ */
+const SUPPORTED_DEPLOY_TARGETS = ['dokploy'] as const;
+
+/**
+ * Phase 2 deploy targets (not yet implemented).
+ */
+const PHASE_2_DEPLOY_TARGETS = ['vercel', 'cloudflare'] as const;
+
+/**
+ * Check if a deploy target is supported.
+ */
+export function isDeployTargetSupported(target: string): boolean {
+	return SUPPORTED_DEPLOY_TARGETS.includes(target as typeof SUPPORTED_DEPLOY_TARGETS[number]);
+}
+
+/**
+ * Check if a deploy target is planned for Phase 2.
+ */
+export function isPhase2DeployTarget(target: string): boolean {
+	return PHASE_2_DEPLOY_TARGETS.includes(target as typeof PHASE_2_DEPLOY_TARGETS[number]);
+}
+
+/**
+ * Get error message for unsupported deploy targets.
+ */
+export function getDeployTargetError(target: string, appName?: string): string {
+	if (isPhase2DeployTarget(target)) {
+		const context = appName ? ` for app "${appName}"` : '';
+		return `Deploy target "${target}"${context} is coming in Phase 2. Currently only "dokploy" is supported.`;
+	}
+	return `Unknown deploy target: ${target}. Supported: dokploy. Coming in Phase 2: vercel, cloudflare.`;
+}
 
 /**
  * Service image configuration schema.
@@ -260,7 +297,30 @@ export const WorkspaceConfigSchema = z
 		{
 			message: 'Circular dependencies detected between apps',
 		},
-	);
+	)
+	.superRefine((data, ctx) => {
+		// Validate deploy targets are supported
+		const defaultTarget = data.deploy?.default;
+		if (defaultTarget && !isDeployTargetSupported(defaultTarget)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: getDeployTargetError(defaultTarget),
+				path: ['deploy', 'default'],
+			});
+			return;
+		}
+
+		for (const [appName, app] of Object.entries(data.apps)) {
+			if (app.deploy && !isDeployTargetSupported(app.deploy)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: getDeployTargetError(app.deploy, appName),
+					path: ['apps', appName, 'deploy'],
+				});
+				return;
+			}
+		}
+	});
 
 /**
  * Validate workspace configuration.
@@ -300,3 +360,5 @@ export function formatValidationErrors(error: z.ZodError): string {
 }
 
 export type ValidatedWorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+
+export { SUPPORTED_DEPLOY_TARGETS, PHASE_2_DEPLOY_TARGETS };

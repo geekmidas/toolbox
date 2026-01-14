@@ -292,6 +292,8 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	path: string;
 	port: number;
 	dependencies: string[];
+	/** Resolved deploy target (app.deploy > deploy.default > 'dokploy') */
+	resolvedDeployTarget: DeployTarget;
 }
 
 /**
