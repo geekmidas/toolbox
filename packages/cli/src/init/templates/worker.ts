@@ -112,14 +112,45 @@ export type AppEvents =
 `,
 			},
 
+			// src/events/publisher.ts
+			{
+				path: 'src/events/publisher.ts',
+				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
+import { Publisher, type EventPublisher } from '@geekmidas/events';
+import type { AppEvents } from './types.js';
+
+export const eventsPublisherService = {
+  serviceName: 'events' as const,
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+    logger.info('Connecting to message broker');
+
+    const config = envParser
+      .create((get) => ({
+        url: get('RABBITMQ_URL').string().default('amqp://localhost:5672'),
+      }))
+      .parse();
+
+    const publisher = await Publisher.fromConnectionString<AppEvents>(
+      \`rabbitmq://\${config.url.replace('amqp://', '')}?exchange=events\`
+    );
+
+    logger.info('Message broker connection established');
+    return publisher;
+  },
+} satisfies Service<'events', EventPublisher<AppEvents>>;
+`,
+			},
+
 			// src/subscribers/user-events.ts
 			{
 				path: 'src/subscribers/user-events.ts',
 				content: `import { s } from '@geekmidas/constructs/subscribers';
-import type { AppEvents } from '../events/types.js';
+import { eventsPublisherService } from '../events/publisher.js';
 
-export default s<AppEvents>()
-  .events(['user.created', 'user.updated'])
+export const userEventsSubscriber = s
+  .publisher(eventsPublisherService)
+  .subscribe(['user.created', 'user.updated'])
   .handle(async ({ event, logger }) => {
     logger.info({ type: event.type, payload: event.payload }, 'Processing user event');
 
@@ -143,7 +174,7 @@ export default s<AppEvents>()
 				content: `import { cron } from '@geekmidas/constructs/crons';
 
 // Run every day at midnight
-export default cron('0 0 * * *')
+export const cleanupCron = cron('0 0 * * *')
   .handle(async ({ logger }) => {
     logger.info('Running cleanup job');
 
