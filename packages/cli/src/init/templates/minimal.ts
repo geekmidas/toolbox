@@ -101,28 +101,9 @@ export const healthEndpoint = e
 
 		// Add database service if enabled
 		if (options.database) {
-			// Update env.ts to include database config
-			files[0] = {
-				path: 'src/config/env.ts',
-				content: `import { EnvironmentParser } from '@geekmidas/envkit';
-
-export const envParser = new EnvironmentParser(process.env);
-
-export const config = envParser
-  .create((get) => ({
-    port: get('PORT').string().transform(Number).default(3000),
-    nodeEnv: get('NODE_ENV').string().default('development'),
-    database: {
-      url: get('DATABASE_URL').string().default('postgresql://localhost:5432/mydb'),
-    },
-  }))
-  .parse();
-`,
-			};
-
 			files.push({
 				path: 'src/services/database.ts',
-				content: `import type { Service } from '@geekmidas/services';
+				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 
@@ -133,18 +114,24 @@ export interface Database {
 
 export const databaseService = {
   serviceName: 'database' as const,
-  async register(envParser) {
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+    logger.info('Connecting to database');
+
     const config = envParser
       .create((get) => ({
         url: get('DATABASE_URL').string(),
       }))
       .parse();
 
-    return new Kysely<Database>({
+    const db = new Kysely<Database>({
       dialect: new PostgresDialect({
         pool: new pg.Pool({ connectionString: config.url }),
       }),
     });
+
+    logger.info('Database connection established');
+    return db;
   },
 } satisfies Service<'database', Kysely<Database>>;
 `,
