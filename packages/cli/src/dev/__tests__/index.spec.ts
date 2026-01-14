@@ -1,6 +1,9 @@
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { createServer } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/index.js';
 import {
 	checkPortConflicts,
@@ -11,6 +14,8 @@ import {
 	normalizeProductionConfig,
 	normalizeStudioConfig,
 	normalizeTelescopeConfig,
+	validateFrontendApp,
+	validateFrontendApps,
 } from '../index';
 
 // Skip port-related tests in CI due to flaky port binding issues
@@ -659,6 +664,292 @@ describe('Workspace Dev Server', () => {
 				API_URL: 'http://localhost:3000',
 				PAYMENTS_URL: 'http://localhost:3002',
 			});
+		});
+	});
+
+	describe('validateFrontendApp', () => {
+		let testDir: string;
+
+		beforeEach(() => {
+			// Create a unique temp directory for each test
+			testDir = join(
+				tmpdir(),
+				`gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			);
+			mkdirSync(testDir, { recursive: true });
+		});
+
+		afterEach(() => {
+			// Clean up temp directory
+			if (existsSync(testDir)) {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		it('should validate a properly configured Next.js app', async () => {
+			// Create a valid Next.js app structure
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create next.config.js
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+
+			// Create package.json with next dependency
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0', react: '^18.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+			expect(result.errors).toHaveLength(0);
+			expect(result.warnings).toHaveLength(0);
+		});
+
+		it('should detect missing Next.js config file', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create package.json without next.config.js
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('Next.js config file not found'),
+			);
+		});
+
+		it('should detect missing Next.js dependency', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create next.config.js
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+
+			// Create package.json WITHOUT next dependency
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { react: '^18.0.0' },
+					scripts: { dev: 'echo no next' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('Next.js not found in dependencies'),
+			);
+		});
+
+		it('should detect missing package.json', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create next.config.js but no package.json
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('package.json not found'),
+			);
+		});
+
+		it('should warn about missing dev script', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+
+			// Create package.json WITHOUT dev script
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					// No scripts
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true); // Still valid, just a warning
+			expect(result.warnings).toContainEqual(
+				expect.stringContaining('No "dev" script found'),
+			);
+		});
+
+		it('should accept next.config.ts', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create next.config.ts (TypeScript config)
+			writeFileSync(
+				join(appDir, 'next.config.ts'),
+				'export default { reactStrictMode: true }',
+			);
+
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+		});
+
+		it('should accept next.config.mjs', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Create next.config.mjs (ESM config)
+			writeFileSync(
+				join(appDir, 'next.config.mjs'),
+				'export default { reactStrictMode: true }',
+			);
+
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+		});
+
+		it('should detect next in devDependencies', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+
+			// Next in devDependencies (valid)
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					devDependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+		});
+	});
+
+	describe('validateFrontendApps', () => {
+		let testDir: string;
+
+		beforeEach(() => {
+			testDir = join(
+				tmpdir(),
+				`gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			);
+			mkdirSync(testDir, { recursive: true });
+		});
+
+		afterEach(() => {
+			if (existsSync(testDir)) {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		it('should validate only frontend apps', async () => {
+			// Create valid frontend app
+			const webDir = join(testDir, 'apps/web');
+			mkdirSync(webDir, { recursive: true });
+			writeFileSync(join(webDir, 'next.config.js'), 'module.exports = {}');
+			writeFileSync(
+				join(webDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			const workspace: NormalizedWorkspace = {
+				name: 'test-workspace',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			const results = await validateFrontendApps(workspace);
+
+			// Should only validate the frontend app
+			expect(results).toHaveLength(1);
+			expect(results[0]?.appName).toBe('web');
+			expect(results[0]?.valid).toBe(true);
+		});
+
+		it('should return empty array for backend-only workspace', async () => {
+			const workspace: NormalizedWorkspace = {
+				name: 'test-workspace',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			const results = await validateFrontendApps(workspace);
+
+			expect(results).toHaveLength(0);
 		});
 	});
 });
