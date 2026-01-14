@@ -24,12 +24,13 @@ export function generateMonorepoFiles(
 		version: '0.0.1',
 		private: true,
 		type: 'module',
+		packageManager: 'pnpm@10.13.1',
 		scripts: {
 			dev: isFullstack ? 'gkm dev' : 'turbo dev',
 			build: isFullstack ? 'gkm build' : 'turbo build',
 			test: isFullstack ? 'gkm test' : 'turbo test',
 			'test:once': isFullstack ? 'gkm test --run' : 'turbo test:once',
-			typecheck: 'tsc -b',
+			typecheck: 'turbo typecheck',
 			lint: 'biome lint .',
 			fmt: 'biome format . --write',
 			'fmt:check': 'biome format .',
@@ -171,17 +172,7 @@ coverage/
 `;
 
 	// Root tsconfig.json - base config for all packages
-	// Build references array for project references
-	const references: { path: string }[] = [
-		{ path: './apps/api' },
-		{ path: './packages/models' },
-	];
-
-	// Add web app reference for fullstack template
-	if (isFullstack) {
-		references.push({ path: './apps/web' });
-	}
-
+	// Using turbo typecheck to run tsc --noEmit in each app/package
 	const tsConfig = {
 		compilerOptions: {
 			target: 'ES2022',
@@ -193,12 +184,8 @@ coverage/
 			skipLibCheck: true,
 			forceConsistentCasingInFileNames: true,
 			resolveJsonModule: true,
-			declaration: true,
-			declarationMap: true,
-			composite: true,
 		},
 		exclude: ['node_modules', 'dist'],
-		references,
 	};
 
 	// Vitest config for workspace
@@ -279,7 +266,7 @@ function generateWorkspaceConfig(options: TemplateOptions): string {
 		}
 	};
 
-	let config = `import { defineWorkspace } from '@geekmidas/cli';
+	let config = `import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: '${options.name}',
