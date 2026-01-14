@@ -1,9 +1,12 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, parse } from 'node:path';
 import type { GkmConfig } from './types.js';
 import {
+	getAppGkmConfig,
 	isWorkspaceConfig,
 	type LoadedConfig,
+	type NormalizedAppConfig,
+	type NormalizedWorkspace,
 	processConfig,
 	type WorkspaceConfig,
 } from './workspace/index.js';
@@ -70,17 +73,45 @@ export function parseModuleConfig(
 	return { path, importPattern };
 }
 
+export interface ConfigDiscoveryResult {
+	configPath: string;
+	workspaceRoot: string;
+}
+
 /**
  * Find and return the path to the config file.
+ *
+ * Resolution order:
+ * 1. GKM_CONFIG_PATH env var (set by workspace dev command)
+ * 2. Walk up directory tree from cwd
  */
-function findConfigPath(cwd: string): string {
+function findConfigPath(cwd: string): ConfigDiscoveryResult {
 	const files = ['gkm.config.json', 'gkm.config.ts', 'gkm.config.js'];
 
-	for (const file of files) {
-		const path = join(cwd, file);
-		if (existsSync(path)) {
-			return path;
+	// Check GKM_CONFIG_PATH env var first (set by workspace dev command)
+	const envConfigPath = process.env.GKM_CONFIG_PATH;
+	if (envConfigPath && existsSync(envConfigPath)) {
+		return {
+			configPath: envConfigPath,
+			workspaceRoot: dirname(envConfigPath),
+		};
+	}
+
+	// Walk up directory tree to find config
+	let currentDir = cwd;
+	const { root } = parse(currentDir);
+
+	while (currentDir !== root) {
+		for (const file of files) {
+			const configPath = join(currentDir, file);
+			if (existsSync(configPath)) {
+				return {
+					configPath,
+					workspaceRoot: currentDir,
+				};
+			}
 		}
+		currentDir = dirname(currentDir);
 	}
 
 	throw new Error(
@@ -89,16 +120,57 @@ function findConfigPath(cwd: string): string {
 }
 
 /**
+ * Get app name from package.json in the given directory.
+ * Handles scoped packages by extracting the name after the scope.
+ *
+ * @example
+ * getAppNameFromCwd('/path/to/apps/api')
+ * // package.json: { "name": "@myorg/api" }
+ * // Returns: 'api'
+ */
+export function getAppNameFromCwd(cwd: string = process.cwd()): string | null {
+	const packageJsonPath = join(cwd, 'package.json');
+
+	if (!existsSync(packageJsonPath)) {
+		return null;
+	}
+
+	try {
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+		const name = packageJson.name as string | undefined;
+
+		if (!name) {
+			return null;
+		}
+
+		// Handle scoped packages: @scope/name -> name
+		if (name.startsWith('@') && name.includes('/')) {
+			return name.split('/')[1] ?? null;
+		}
+
+		return name;
+	} catch {
+		return null;
+	}
+}
+
+interface RawConfigResult {
+	config: GkmConfig | WorkspaceConfig;
+	workspaceRoot: string;
+}
+
+/**
  * Load raw configuration from file.
  */
-async function loadRawConfig(
-	cwd: string,
-): Promise<GkmConfig | WorkspaceConfig> {
-	const configPath = findConfigPath(cwd);
+async function loadRawConfig(cwd: string): Promise<RawConfigResult> {
+	const { configPath, workspaceRoot } = findConfigPath(cwd);
 
 	try {
 		const config = await import(configPath);
-		return config.default;
+		return {
+			config: config.default,
+			workspaceRoot,
+		};
 	} catch (error) {
 		throw new Error(`Failed to load config: ${(error as Error).message}`);
 	}
@@ -113,7 +185,7 @@ async function loadRawConfig(
 export async function loadConfig(
 	cwd: string = process.cwd(),
 ): Promise<GkmConfig> {
-	const config = await loadRawConfig(cwd);
+	const { config } = await loadRawConfig(cwd);
 
 	// If it's a workspace config, throw an error
 	if (isWorkspaceConfig(config)) {
@@ -145,6 +217,70 @@ export async function loadConfig(
 export async function loadWorkspaceConfig(
 	cwd: string = process.cwd(),
 ): Promise<LoadedConfig> {
-	const config = await loadRawConfig(cwd);
-	return processConfig(config, cwd);
+	const { config, workspaceRoot } = await loadRawConfig(cwd);
+	return processConfig(config, workspaceRoot);
+}
+
+export interface AppConfigResult {
+	appName: string;
+	app: NormalizedAppConfig;
+	gkmConfig: GkmConfig;
+	workspace: NormalizedWorkspace;
+	workspaceRoot: string;
+	appRoot: string;
+}
+
+/**
+ * Load app-specific configuration from workspace.
+ * Uses the app name from package.json to find the correct app config.
+ *
+ * @example
+ * ```ts
+ * // From apps/api directory with package.json: { "name": "@myorg/api" }
+ * const { app, workspace, workspaceRoot } = await loadAppConfig();
+ * console.log(app.routes); // './src/endpoints/**\/*.ts'
+ * ```
+ */
+export async function loadAppConfig(
+	cwd: string = process.cwd(),
+): Promise<AppConfigResult> {
+	const appName = getAppNameFromCwd(cwd);
+
+	if (!appName) {
+		throw new Error(
+			'Could not determine app name. Ensure package.json exists with a "name" field.',
+		);
+	}
+
+	const { config, workspaceRoot } = await loadRawConfig(cwd);
+	const loadedConfig = processConfig(config, workspaceRoot);
+
+	// Find the app in workspace (apps is a Record<string, NormalizedAppConfig>)
+	const app = loadedConfig.workspace.apps[appName];
+
+	if (!app) {
+		const availableApps = Object.keys(loadedConfig.workspace.apps).join(', ');
+		throw new Error(
+			`App "${appName}" not found in workspace config. Available apps: ${availableApps}. ` +
+				`Ensure the package.json name matches the app key in gkm.config.ts.`,
+		);
+	}
+
+	// Get the app's GKM config using the helper
+	const gkmConfig = getAppGkmConfig(loadedConfig.workspace, appName);
+
+	if (!gkmConfig) {
+		throw new Error(
+			`App "${appName}" is not a backend app and cannot be run with gkm dev.`,
+		);
+	}
+
+	return {
+		appName,
+		app,
+		gkmConfig,
+		workspace: loadedConfig.workspace,
+		workspaceRoot,
+		appRoot: join(workspaceRoot, app.path),
+	};
 }
