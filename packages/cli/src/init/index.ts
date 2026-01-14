@@ -259,13 +259,13 @@ export async function initCommand(
 				...generateConfigFiles(templateOptions, baseTemplate),
 				...generateEnvFiles(templateOptions, baseTemplate),
 				...generateSourceFiles(templateOptions, baseTemplate),
-				...(isMonorepo ? [] : generateDockerFiles(templateOptions, baseTemplate)),
+				...(isMonorepo ? [] : generateDockerFiles(templateOptions, baseTemplate, dbApps)),
 			]
 		: [];
 
 	// For monorepo, docker files go at root level
 	const dockerFiles = isMonorepo && baseTemplate
-		? generateDockerFiles(templateOptions, baseTemplate)
+		? generateDockerFiles(templateOptions, baseTemplate, dbApps)
 		: [];
 
 	// Collect root monorepo files (includes packages/models)
