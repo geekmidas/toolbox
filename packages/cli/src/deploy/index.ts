@@ -17,7 +17,7 @@ import {
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
-import { DokployApi } from './dokploy-api';
+import { type DokployApplication, DokployApi } from './dokploy-api';
 import { updateConfig } from './init';
 import type {
 	AppDeployResult,
@@ -789,12 +789,14 @@ export async function workspaceDeployCommand(
 		const app = workspace.apps[appName]!;
 		const appPath = app.path;
 
-		logger.log(`\n   ${app.type === 'backend' ? '⚙️' : '🌐'} Deploying ${appName}...`);
+		logger.log(
+			`\n   ${app.type === 'backend' ? '⚙️' : '🌐'} Deploying ${appName}...`,
+		);
 
 		try {
 			// Find or create application in Dokploy
 			const dokployAppName = `${workspace.name}-${appName}`;
-			let application;
+			let application: DokployApplication | undefined;
 
 			try {
 				// Try to find existing application (Dokploy doesn't have a direct lookup)
@@ -858,10 +860,7 @@ export async function workspaceDeployCommand(
 			});
 
 			// Prepare environment variables
-			const envVars: string[] = [
-				`NODE_ENV=production`,
-				`PORT=${app.port}`,
-			];
+			const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
 
 			// Add dependency URLs
 			for (const dep of app.dependencies) {
@@ -947,7 +946,7 @@ export async function workspaceDeployCommand(
 	const successCount = results.filter((r) => r.success).length;
 	const failedCount = results.filter((r) => !r.success).length;
 
-	logger.log('\n' + '─'.repeat(50));
+	logger.log(`\n${'─'.repeat(50)}`);
 	logger.log(`\n✅ Workspace deployment complete!`);
 	logger.log(`   Project: ${project.projectId}`);
 	logger.log(`   Successful: ${successCount}`);
