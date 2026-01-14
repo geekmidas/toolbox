@@ -46,10 +46,16 @@
 	},
 	"dependencies": {
 		"@apidevtools/swagger-parser": "^10.1.0",
+		"@geekmidas/constructs": "workspace:~",
+		"@geekmidas/envkit": "workspace:~",
+		"@geekmidas/errors": "workspace:~",
+		"@geekmidas/logger": "workspace:~",
+		"@geekmidas/schema": "workspace:~",
 		"chokidar": "~4.0.3",
 		"commander": "^12.1.0",
 		"dotenv": "~17.2.3",
 		"fast-glob": "^3.3.2",
+		"hono": "~4.8.0",
 		"lodash.kebabcase": "^4.1.1",
 		"openapi-typescript": "^7.4.2",
 		"prompts": "~2.4.2"
@@ -64,10 +70,6 @@
 		"zod": "~4.1.13"
 	},
 	"peerDependencies": {
-		"@geekmidas/constructs": "workspace:~",
-		"@geekmidas/envkit": "workspace:~",
-		"@geekmidas/logger": "workspace:~",
-		"@geekmidas/schema": "workspace:~",
 		"@geekmidas/telescope": "workspace:~"
 	},
 	"peerDependenciesMeta": {
