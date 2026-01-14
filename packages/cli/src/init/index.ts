@@ -395,6 +395,21 @@ export async function initCommand(
 		}
 	}
 
+	// Initialize git repository
+	console.log('\n📦 Initializing git repository...\n');
+	try {
+		execSync('git init', { cwd: targetDir, stdio: 'pipe' });
+		execSync('git branch -M main', { cwd: targetDir, stdio: 'pipe' });
+		execSync('git add .', { cwd: targetDir, stdio: 'pipe' });
+		execSync('git commit -m "🎉 Project created with @geekmidas/toolbox"', {
+			cwd: targetDir,
+			stdio: 'pipe',
+		});
+		console.log('  Initialized git repository on branch main');
+	} catch {
+		console.log('  Could not initialize git repository (git may not be installed)');
+	}
+
 	// Print success message with next steps
 	printNextSteps(name, templateOptions, pkgManager);
 }
