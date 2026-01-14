@@ -237,6 +237,9 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:~
         version: link:../envkit
+      '@geekmidas/errors':
+        specifier: workspace:~
+        version: link:../errors
       '@geekmidas/logger':
         specifier: workspace:~
         version: link:../logger
@@ -258,6 +261,9 @@ importers:
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3
+      hono:
+        specifier: ~4.8.0
+        version: 4.8.2
       lodash.kebabcase:
         specifier: ^4.1.1
         version: 4.1.1
