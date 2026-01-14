@@ -279,6 +279,9 @@ export async function initCommand(
 	// Collect web app files for fullstack template
 	const webAppFiles = isFullstack ? generateWebAppFiles(templateOptions) : [];
 
+	// Collect auth app files for fullstack template
+	const authAppFiles = isFullstack ? generateAuthAppFiles(templateOptions) : [];
+
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {
 		const fullPath = join(targetDir, path);
