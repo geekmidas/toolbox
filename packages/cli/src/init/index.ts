@@ -268,14 +268,17 @@ export async function initCommand(
 				...generateConfigFiles(templateOptions, baseTemplate),
 				...generateEnvFiles(templateOptions, baseTemplate),
 				...generateSourceFiles(templateOptions, baseTemplate),
-				...(isMonorepo ? [] : generateDockerFiles(templateOptions, baseTemplate, dbApps)),
+				...(isMonorepo
+					? []
+					: generateDockerFiles(templateOptions, baseTemplate, dbApps)),
 			]
 		: [];
 
 	// For monorepo, docker files go at root level
-	const dockerFiles = isMonorepo && baseTemplate
-		? generateDockerFiles(templateOptions, baseTemplate, dbApps)
-		: [];
+	const dockerFiles =
+		isMonorepo && baseTemplate
+			? generateDockerFiles(templateOptions, baseTemplate, dbApps)
+			: [];
 
 	// Collect root monorepo files (includes packages/models)
 	const rootFiles = baseTemplate
@@ -358,7 +361,8 @@ export async function initCommand(
 		customSecrets.AUTH_PORT = '3002';
 		customSecrets.BETTER_AUTH_SECRET = `better-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 		customSecrets.BETTER_AUTH_URL = 'http://localhost:3002';
-		customSecrets.BETTER_AUTH_TRUSTED_ORIGINS = 'http://localhost:3000,http://localhost:3001';
+		customSecrets.BETTER_AUTH_TRUSTED_ORIGINS =
+			'http://localhost:3000,http://localhost:3001';
 	}
 
 	devSecrets.custom = customSecrets;
@@ -440,7 +444,9 @@ function printNextSteps(
 	console.log('🔐 Secrets management:');
 	console.log(`  gkm secrets:show --stage development  # View secrets`);
 	console.log(`  gkm secrets:set KEY VALUE --stage development  # Add secret`);
-	console.log(`  gkm secrets:init --stage production  # Create production secrets`);
+	console.log(
+		`  gkm secrets:init --stage production  # Create production secrets`,
+	);
 	console.log('');
 
 	if (options.deployTarget === 'dokploy') {
