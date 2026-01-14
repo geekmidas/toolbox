@@ -1,9 +1,9 @@
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
 	TemplateOptions,
 } from './index.js';
-import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 export const minimalTemplate: TemplateConfig = {
 	name: 'minimal',
