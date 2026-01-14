@@ -4,26 +4,45 @@ import type {
 	TemplateOptions,
 } from '../templates/index.js';
 
+export interface DatabaseAppConfig {
+	name: string;
+	password: string;
+}
+
 /**
  * Generate docker-compose.yml based on template and options
  */
 export function generateDockerFiles(
 	options: TemplateOptions,
 	template: TemplateConfig,
+	dbApps?: DatabaseAppConfig[],
 ): GeneratedFile[] {
 	const { database } = options;
 	const isServerless = template.name === 'serverless';
 	const hasWorker = template.name === 'worker';
+	const isFullstack = options.template === 'fullstack';
 
 	const services: string[] = [];
 	const volumes: string[] = [];
+	const files: GeneratedFile[] = [];
 
 	// PostgreSQL database
 	if (database) {
+		const initVolume = isFullstack && dbApps?.length
+			? `
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro`
+			: '';
+
+		const envFile = isFullstack && dbApps?.length
+			? `
+    env_file:
+      - ./docker/.env`
+			: '';
+
 		services.push(`  postgres:
     image: postgres:16-alpine
     container_name: ${options.name}-postgres
-    restart: unless-stopped
+    restart: unless-stopped${envFile}
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -31,13 +50,27 @@ export function generateDockerFiles(
     ports:
       - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data${initVolume}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
       timeout: 5s
       retries: 5`);
 		volumes.push('  postgres_data:');
+
+		// Generate PostgreSQL init script and .env for fullstack template
+		if (isFullstack && dbApps?.length) {
+			files.push({
+				path: 'docker/postgres/init.sh',
+				content: generatePostgresInitScript(dbApps),
+			});
+
+			// Generate .env file for docker-compose (contains db passwords)
+			files.push({
+				path: 'docker/.env',
+				content: generateDockerEnv(dbApps),
+			});
+		}
 	}
 
 	// Redis - different setup for serverless vs standard
@@ -125,10 +158,82 @@ ${volumes.join('\n')}
 `;
 	}
 
-	return [
-		{
-			path: 'docker-compose.yml',
-			content: dockerCompose,
-		},
-	];
+	// Add docker-compose.yml to files
+	files.push({
+		path: 'docker-compose.yml',
+		content: dockerCompose,
+	});
+
+	return files;
+}
+
+/**
+ * Generate .env file for docker-compose with database passwords
+ */
+function generateDockerEnv(apps: DatabaseAppConfig[]): string {
+	const envVars = apps.map((app) => {
+		const envVar = `${app.name.toUpperCase()}_DB_PASSWORD`;
+		return `${envVar}=${app.password}`;
+	});
+
+	return `# Auto-generated docker environment file
+# Contains database passwords for docker-compose postgres init
+# This file is gitignored - do not commit to version control
+${envVars.join('\n')}
+`;
+}
+
+/**
+ * Generate PostgreSQL init shell script that creates per-app users with separate schemas
+ * Uses environment variables for passwords (more secure than hardcoded values)
+ * - api user: uses public schema
+ * - auth user: uses auth schema with search_path=auth
+ */
+function generatePostgresInitScript(apps: DatabaseAppConfig[]): string {
+	const userCreations = apps.map((app) => {
+		const userName = app.name.replace(/-/g, '_');
+		const envVar = `${app.name.toUpperCase()}_DB_PASSWORD`;
+		const isApi = app.name === 'api';
+		const schemaName = isApi ? 'public' : userName;
+
+		if (isApi) {
+			// API user uses public schema
+			return `
+# Create ${app.name} user (uses public schema)
+echo "Creating user ${userName}..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE USER ${userName} WITH PASSWORD '$${envVar}';
+    GRANT ALL ON SCHEMA public TO ${userName};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${userName};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${userName};
+EOSQL
+`;
+		}
+		// Other users get their own schema with search_path
+		return `
+# Create ${app.name} user with dedicated schema
+echo "Creating user ${userName} with schema ${schemaName}..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE USER ${userName} WITH PASSWORD '$${envVar}';
+    CREATE SCHEMA ${schemaName} AUTHORIZATION ${userName};
+    ALTER USER ${userName} SET search_path TO ${schemaName};
+    GRANT USAGE ON SCHEMA ${schemaName} TO ${userName};
+    GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO ${userName};
+    GRANT ALL ON ALL SEQUENCES IN SCHEMA ${schemaName} TO ${userName};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON TABLES TO ${userName};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON SEQUENCES TO ${userName};
+EOSQL
+`;
+	});
+
+	return `#!/bin/bash
+set -e
+
+# Auto-generated PostgreSQL init script
+# Creates per-app users with separate schemas in a single database
+# - api: uses public schema
+# - auth: uses auth schema (search_path=auth)
+${userCreations.join('\n')}
+echo "Database initialization complete!"
+`;
 }
