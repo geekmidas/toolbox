@@ -8,7 +8,10 @@ import { writeStageSecrets } from '../secrets/storage.js';
 import type { ComposeServiceName } from '../types.js';
 import { generateAuthAppFiles } from './generators/auth.js';
 import { generateConfigFiles } from './generators/config.js';
-import { type DatabaseAppConfig, generateDockerFiles } from './generators/docker.js';
+import {
+	type DatabaseAppConfig,
+	generateDockerFiles,
+} from './generators/docker.js';
 import { generateEnvFiles } from './generators/env.js';
 import { generateModelsPackage } from './generators/models.js';
 import { generateMonorepoFiles } from './generators/monorepo.js';
@@ -21,8 +24,8 @@ import {
 	getTemplate,
 	isFullstackTemplate,
 	loggerTypeChoices,
-	packageManagerChoices,
 	type PackageManager,
+	packageManagerChoices,
 	routesStructureChoices,
 	type ServicesSelection,
 	servicesChoices,
