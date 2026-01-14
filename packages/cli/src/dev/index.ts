@@ -760,7 +760,7 @@ export async function startWorkspaceServices(
 		}
 
 		// Start services with docker-compose
-		execSync(`docker-compose up -d ${servicesToStart.join(' ')}`, {
+		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
 			cwd: workspace.root,
 			stdio: 'inherit',
 		});
