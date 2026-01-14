@@ -4,7 +4,10 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { NormalizedWorkspace } from '../../workspace/index.js';
+import type {
+	NormalizedAppConfig,
+	NormalizedWorkspace,
+} from '../../workspace/index.js';
 import {
 	checkPortConflicts,
 	findAvailablePort,
@@ -408,15 +411,23 @@ describe('normalizeProductionConfig', () => {
 describe('Workspace Dev Server', () => {
 	/**
 	 * Helper to create a test workspace configuration.
+	 * Automatically adds resolvedDeployTarget to each app.
 	 */
 	function createTestWorkspace(
-		apps: NormalizedWorkspace['apps'],
+		apps: Record<string, Omit<NormalizedAppConfig, 'resolvedDeployTarget'>>,
 		overrides: Partial<NormalizedWorkspace> = {},
 	): NormalizedWorkspace {
+		const appsWithDeployTarget: NormalizedWorkspace['apps'] = {};
+		for (const [name, app] of Object.entries(apps)) {
+			appsWithDeployTarget[name] = {
+				...app,
+				resolvedDeployTarget: 'dokploy',
+			};
+		}
 		return {
 			name: 'test-workspace',
 			root: '/test/workspace',
-			apps,
+			apps: appsWithDeployTarget,
 			services: {},
 			deploy: { default: 'dokploy' },
 			shared: { packages: ['packages/*'] },
@@ -907,12 +918,14 @@ describe('Workspace Dev Server', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
 						type: 'frontend',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: ['api'],
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 				services: {},
@@ -939,6 +952,7 @@ describe('Workspace Dev Server', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 				services: {},
