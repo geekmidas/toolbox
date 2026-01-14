@@ -44,7 +44,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/services': '~0.2.0',
 	'@geekmidas/storage': '~0.1.0',
 	'@geekmidas/studio': '~0.4.0',
-	'@geekmidas/telescope': '~0.4.0',
+	'@geekmidas/telescope': '~0.5.0',
 	'@geekmidas/testkit': '~0.6.0',
 };
 
