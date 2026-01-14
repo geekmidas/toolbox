@@ -41,6 +41,14 @@ import {
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
 import {
+	generateAllClients,
+	generateClientForFrontend,
+	getDependentFrontends,
+	getFirstRoute,
+	normalizeRoutes,
+	shouldRegenerateClient,
+} from '../workspace/client-generator.js';
+import {
 	type NormalizedWorkspace,
 	getDependencyEnvVars,
 	getAppBuildOrder,
@@ -828,6 +836,15 @@ async function workspaceDevCommand(
 		logger.log('✅ Frontend apps validated');
 	}
 
+	// Generate initial clients for frontends with backend dependencies
+	if (frontendApps.length > 0) {
+		const clientResults = await generateAllClients(workspace, { force: true });
+		const generatedCount = clientResults.filter((r) => r.generated).length;
+		if (generatedCount > 0) {
+			logger.log(`\n📦 Generated ${generatedCount} API client(s)`);
+		}
+	}
+
 	// Start docker-compose services
 	await startWorkspaceServices(workspace);
 
@@ -901,6 +918,109 @@ async function workspaceDevCommand(
 		},
 	);
 
+	// Set up file watcher for backend endpoint changes (smart client regeneration)
+	let endpointWatcher: ReturnType<typeof chokidar.watch> | null = null;
+
+	if (frontendApps.length > 0 && backendApps.length > 0) {
+		// Collect all backend route patterns to watch
+		const watchPatterns: string[] = [];
+		const backendRouteMap = new Map<string, string[]>(); // routes pattern -> backend app names
+
+		for (const [appName, app] of backendApps) {
+			const routePatterns = normalizeRoutes(app.routes);
+			for (const routePattern of routePatterns) {
+				const fullPattern = join(workspace.root, app.path, routePattern);
+				watchPatterns.push(fullPattern);
+
+				// Map pattern to app name for change detection
+				const patternKey = join(app.path, routePattern);
+				const existing = backendRouteMap.get(patternKey) || [];
+				backendRouteMap.set(patternKey, [...existing, appName]);
+			}
+		}
+
+		if (watchPatterns.length > 0) {
+			// Resolve glob patterns to files
+			const resolvedFiles = await fg(watchPatterns, {
+				cwd: workspace.root,
+				absolute: true,
+				onlyFiles: true,
+			});
+
+			if (resolvedFiles.length > 0) {
+				logger.log(`\n👀 Watching ${resolvedFiles.length} endpoint file(s) for schema changes`);
+
+				endpointWatcher = chokidar.watch(resolvedFiles, {
+					ignored: /(^|[/\\])\../,
+					persistent: true,
+					ignoreInitial: true,
+				});
+
+				let regenerateTimeout: NodeJS.Timeout | null = null;
+
+				endpointWatcher.on('change', async (changedPath) => {
+					// Debounce regeneration
+					if (regenerateTimeout) {
+						clearTimeout(regenerateTimeout);
+					}
+
+					regenerateTimeout = setTimeout(async () => {
+						// Find which backend app this file belongs to
+						const changedBackends: string[] = [];
+
+						for (const [appName, app] of backendApps) {
+							const routePatterns = normalizeRoutes(app.routes);
+							for (const routePattern of routePatterns) {
+								const routesDir = join(workspace.root, app.path, routePattern.split('*')[0] || '');
+								if (changedPath.startsWith(routesDir.replace(/\/$/, ''))) {
+									changedBackends.push(appName);
+									break; // Found a match, no need to check other patterns
+								}
+							}
+						}
+
+						if (changedBackends.length === 0) {
+							return;
+						}
+
+						// Find frontends that depend on changed backends
+						const affectedFrontends = new Set<string>();
+						for (const backend of changedBackends) {
+							const dependents = getDependentFrontends(workspace, backend);
+							for (const frontend of dependents) {
+								affectedFrontends.add(frontend);
+							}
+						}
+
+						if (affectedFrontends.size === 0) {
+							return;
+						}
+
+						// Regenerate clients for affected frontends
+						logger.log(`\n🔄 Detected schema change in ${changedBackends.join(', ')}`);
+
+						for (const frontend of affectedFrontends) {
+							try {
+								const results = await generateClientForFrontend(workspace, frontend);
+								for (const result of results) {
+									if (result.generated) {
+										logger.log(
+											`   📦 Regenerated client for ${result.frontendApp} (${result.endpointCount} endpoints)`,
+										);
+									}
+								}
+							} catch (error) {
+								logger.error(
+									`   ❌ Failed to regenerate client for ${frontend}: ${(error as Error).message}`,
+								);
+							}
+						}
+					}, 500); // 500ms debounce
+				});
+			}
+		}
+	}
+
 	// Handle graceful shutdown
 	let isShuttingDown = false;
 	const shutdown = () => {
@@ -908,6 +1028,11 @@ async function workspaceDevCommand(
 		isShuttingDown = true;
 
 		logger.log('\n🛑 Shutting down workspace...');
+
+		// Close endpoint watcher
+		if (endpointWatcher) {
+			endpointWatcher.close().catch(() => {});
+		}
 
 		// Kill turbo process
 		if (turboProcess.pid) {
@@ -937,6 +1062,11 @@ async function workspaceDevCommand(
 		});
 
 		turboProcess.on('exit', (code) => {
+			// Close watcher on exit
+			if (endpointWatcher) {
+				endpointWatcher.close().catch(() => {});
+			}
+
 			if (code !== null && code !== 0) {
 				reject(new Error(`Turbo exited with code ${code}`));
 			} else {
