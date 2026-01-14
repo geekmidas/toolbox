@@ -146,10 +146,22 @@ export function generateDockerFiles(
 		volumes.push('  rabbitmq_data:');
 	}
 
-	// Build docker-compose.yml
-	let dockerCompose = `version: '3.8'
+	// Mailpit for email testing
+	if (options.services.mail) {
+		services.push(`  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ${options.name}-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1`);
+	}
 
-services:
+	// Build docker-compose.yml
+	let dockerCompose = `services:
 ${services.join('\n\n')}
 `;
 
