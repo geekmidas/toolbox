@@ -55,6 +55,23 @@ export interface InitOptions {
 }
 
 /**
+ * Generate a secure random password for database users
+ */
+function generateDbPassword(): string {
+	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Generate database URL for an app
+ * All apps connect to the same database, but use different users/schemas
+ */
+function generateDbUrl(appName: string, password: string, projectName: string, host = 'localhost', port = 5432): string {
+	const userName = appName.replace(/-/g, '_');
+	const dbName = `${projectName.replace(/-/g, '_')}_dev`;
+	return `postgresql://${userName}:${password}@${host}:${port}/${dbName}`;
+}
+
+/**
  * Main init command - scaffolds a new project
  */
 export async function initCommand(
