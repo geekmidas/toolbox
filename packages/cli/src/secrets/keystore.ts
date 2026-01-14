@@ -1,8 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile, chmod, rm } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { randomBytes } from 'node:crypto';
 
 /** Key length for AES-256 encryption */
 const KEY_LENGTH = 32; // 256 bits
