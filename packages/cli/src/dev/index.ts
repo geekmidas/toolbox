@@ -577,6 +577,111 @@ export function checkPortConflicts(
 }
 
 /**
+ * Next.js config file patterns to check.
+ */
+const NEXTJS_CONFIG_FILES = [
+	'next.config.js',
+	'next.config.ts',
+	'next.config.mjs',
+];
+
+/**
+ * Validation result for a frontend app.
+ */
+export interface FrontendValidationResult {
+	appName: string;
+	valid: boolean;
+	errors: string[];
+	warnings: string[];
+}
+
+/**
+ * Validate a frontend (Next.js) app configuration.
+ * Checks for Next.js config file and dependency.
+ * @internal Exported for testing
+ */
+export async function validateFrontendApp(
+	appName: string,
+	appPath: string,
+	workspaceRoot: string,
+): Promise<FrontendValidationResult> {
+	const errors: string[] = [];
+	const warnings: string[] = [];
+	const fullPath = join(workspaceRoot, appPath);
+
+	// Check for Next.js config file
+	const hasConfigFile = NEXTJS_CONFIG_FILES.some((file) =>
+		existsSync(join(fullPath, file)),
+	);
+
+	if (!hasConfigFile) {
+		errors.push(
+			`Next.js config file not found. Expected one of: ${NEXTJS_CONFIG_FILES.join(', ')}`,
+		);
+	}
+
+	// Check for package.json
+	const packageJsonPath = join(fullPath, 'package.json');
+	if (existsSync(packageJsonPath)) {
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const pkg = require(packageJsonPath);
+			const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+			if (!deps.next) {
+				errors.push(
+					'Next.js not found in dependencies. Run: pnpm add next react react-dom',
+				);
+			}
+
+			// Check for dev script
+			if (!pkg.scripts?.dev) {
+				warnings.push(
+					'No "dev" script found in package.json. Turbo expects a "dev" script to run.',
+				);
+			}
+		} catch {
+			errors.push(`Failed to read package.json at ${packageJsonPath}`);
+		}
+	} else {
+		errors.push(
+			`package.json not found at ${appPath}. Run: pnpm init in the app directory.`,
+		);
+	}
+
+	return {
+		appName,
+		valid: errors.length === 0,
+		errors,
+		warnings,
+	};
+}
+
+/**
+ * Validate all frontend apps in the workspace.
+ * Returns validation results for each frontend app.
+ * @internal Exported for testing
+ */
+export async function validateFrontendApps(
+	workspace: NormalizedWorkspace,
+): Promise<FrontendValidationResult[]> {
+	const results: FrontendValidationResult[] = [];
+
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		if (app.type === 'frontend') {
+			const result = await validateFrontendApp(
+				appName,
+				app.path,
+				workspace.root,
+			);
+			results.push(result);
+		}
+	}
+
+	return results;
+}
+
+/**
  * Load secrets for development stage.
  * Returns env vars to inject, or empty object if secrets not configured/found.
  * @internal Exported for testing
