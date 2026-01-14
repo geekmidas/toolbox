@@ -293,12 +293,19 @@ export default defineWorkspace({
         enabled: true,
       },
     },
+    auth: {
+      type: 'backend',
+      path: 'apps/auth',
+      port: 3002,
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+    },
     web: {
       type: 'frontend',
       framework: 'nextjs',
       path: 'apps/web',
       port: 3001,
-      dependencies: ['api'],
+      dependencies: ['api', 'auth'],
       client: {
         output: './src/api',
       },
