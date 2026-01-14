@@ -4,7 +4,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
 import type { NormalizedAppConfig, NormalizedWorkspace } from '../workspace/types.js';
-import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
+import {
+	generateDockerCompose,
+	generateMinimalDockerCompose,
+	generateWorkspaceCompose,
+} from './compose';
 import {
 	detectPackageManager,
 	findLockfilePath,
@@ -347,6 +351,7 @@ export interface AppDockerResult {
  */
 export interface WorkspaceDockerResult {
 	apps: AppDockerResult[];
+	dockerCompose: string;
 	dockerignore: string;
 }
 
@@ -441,8 +446,16 @@ export async function workspaceDockerCommand(
 	await writeFile(dockerignorePath, dockerignore);
 	logger.log(`\n   Generated: .dockerignore (workspace root)`);
 
+	// Generate docker-compose.yml for workspace
+	const dockerCompose = generateWorkspaceCompose(workspace, {
+		registry: options.registry,
+	});
+	const composePath = join(dockerDir, 'docker-compose.yml');
+	await writeFile(composePath, dockerCompose);
+	logger.log(`   Generated: .gkm/docker/docker-compose.yml`);
+
 	// Summary
-	logger.log(`\n✅ Generated ${results.length} Dockerfile(s)`);
+	logger.log(`\n✅ Generated ${results.length} Dockerfile(s) + docker-compose.yml`);
 	logger.log('\n📋 Build commands:');
 	for (const result of results) {
 		const icon = result.type === 'backend' ? '⚙️' : '🌐';
@@ -450,9 +463,12 @@ export async function workspaceDockerCommand(
 			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
 		);
 	}
+	logger.log('\n📋 Run all services:');
+	logger.log('   docker compose -f .gkm/docker/docker-compose.yml up --build');
 
 	return {
 		apps: results,
+		dockerCompose: composePath,
 		dockerignore: dockerignorePath,
 	};
 }
