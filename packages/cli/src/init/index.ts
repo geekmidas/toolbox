@@ -417,6 +417,7 @@ function printNextSteps(
 		console.log(`  ├── apps/`);
 		console.log(`  │   ├── api/          # Backend API`);
 		if (isFullstackTemplate(options.template)) {
+			console.log(`  │   ├── auth/         # Auth service (better-auth)`);
 			console.log(`  │   └── web/          # Next.js frontend`);
 		}
 		console.log(`  ├── packages/`);
