@@ -1,10 +1,12 @@
+import { type ChildProcess, execSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
-import { loadConfig, parseModuleConfig } from '../config';
+import { loadConfig, loadWorkspaceConfig, parseModuleConfig } from '../config';
 import {
 	getProductionConfigFromGkm,
 	normalizeHooksConfig,
@@ -26,6 +28,11 @@ import type {
 	RouteInfo,
 } from '../types';
 import {
+	type NormalizedAppConfig,
+	type NormalizedWorkspace,
+	getAppBuildOrder,
+} from '../workspace/index.js';
+import {
 	generateAwsManifest,
 	generateServerManifest,
 	type ServerAppInfo,
@@ -38,6 +45,16 @@ const logger = console;
 export async function buildCommand(
 	options: BuildOptions,
 ): Promise<BuildResult> {
+	// Load config with workspace detection
+	const loadedConfig = await loadWorkspaceConfig();
+
+	// Route to workspace build mode for multi-app workspaces
+	if (loadedConfig.type === 'workspace') {
+		logger.log('📦 Detected workspace configuration');
+		return workspaceBuildCommand(loadedConfig.workspace, options);
+	}
+
+	// Single-app build - use existing logic
 	const config = await loadConfig();
 
 	// Resolve providers from new config format
@@ -298,4 +315,168 @@ async function buildForProvider(
 	}
 
 	return {};
+}
+
+/**
+ * Result of building a single app in a workspace.
+ */
+export interface AppBuildResult {
+	appName: string;
+	type: 'backend' | 'frontend';
+	success: boolean;
+	outputPath?: string;
+	error?: string;
+}
+
+/**
+ * Result of workspace build command.
+ */
+export interface WorkspaceBuildResult extends BuildResult {
+	apps: AppBuildResult[];
+}
+
+/**
+ * Detect available package manager.
+ * @internal Exported for testing
+ */
+export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
+	if (existsSync('pnpm-lock.yaml')) return 'pnpm';
+	if (existsSync('yarn.lock')) return 'yarn';
+	return 'npm';
+}
+
+/**
+ * Get the turbo command for running builds.
+ * @internal Exported for testing
+ */
+export function getTurboCommand(
+	pm: 'pnpm' | 'npm' | 'yarn',
+	filter?: string,
+): string {
+	const filterArg = filter ? ` --filter=${filter}` : '';
+	switch (pm) {
+		case 'pnpm':
+			return `pnpm exec turbo run build${filterArg}`;
+		case 'yarn':
+			return `yarn turbo run build${filterArg}`;
+		case 'npm':
+			return `npx turbo run build${filterArg}`;
+	}
+}
+
+/**
+ * Build all apps in a workspace using Turbo for dependency-ordered parallel builds.
+ * @internal Exported for testing
+ */
+export async function workspaceBuildCommand(
+	workspace: NormalizedWorkspace,
+	options: BuildOptions,
+): Promise<WorkspaceBuildResult> {
+	const results: AppBuildResult[] = [];
+	const apps = Object.entries(workspace.apps);
+	const backendApps = apps.filter(([, app]) => app.type === 'backend');
+	const frontendApps = apps.filter(([, app]) => app.type === 'frontend');
+
+	logger.log(`\n🏗️  Building workspace: ${workspace.name}`);
+	logger.log(`   Backend apps: ${backendApps.map(([name]) => name).join(', ') || 'none'}`);
+	logger.log(`   Frontend apps: ${frontendApps.map(([name]) => name).join(', ') || 'none'}`);
+
+	if (options.production) {
+		logger.log(`   🏭 Production mode enabled`);
+	}
+
+	// Get build order (topologically sorted by dependencies)
+	const buildOrder = getAppBuildOrder(workspace);
+	logger.log(`   Build order: ${buildOrder.join(' → ')}`);
+
+	// Use Turbo for parallel builds with dependency awareness
+	const pm = detectPackageManager();
+	logger.log(`\n📦 Using ${pm} with Turbo for parallel builds...\n`);
+
+	try {
+		// Run turbo build which handles dependency ordering and parallelization
+		const turboCommand = getTurboCommand(pm);
+		logger.log(`Running: ${turboCommand}`);
+
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn(turboCommand, {
+				shell: true,
+				cwd: workspace.root,
+				stdio: 'inherit',
+				env: {
+					...process.env,
+					// Pass production flag to builds
+					NODE_ENV: options.production ? 'production' : 'development',
+				},
+			});
+
+			child.on('close', (code) => {
+				if (code === 0) {
+					resolve();
+				} else {
+					reject(new Error(`Turbo build failed with exit code ${code}`));
+				}
+			});
+
+			child.on('error', (err) => {
+				reject(err);
+			});
+		});
+
+		// Mark all apps as successful
+		for (const [appName, app] of apps) {
+			const outputPath = getAppOutputPath(workspace, appName, app);
+			results.push({
+				appName,
+				type: app.type,
+				success: true,
+				outputPath,
+			});
+		}
+
+		logger.log(`\n✅ Workspace build complete!`);
+
+		// Summary
+		logger.log(`\n📋 Build Summary:`);
+		for (const result of results) {
+			const icon = result.type === 'backend' ? '⚙️' : '🌐';
+			logger.log(`   ${icon} ${result.appName}: ${result.outputPath || 'built'}`);
+		}
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : 'Build failed';
+		logger.log(`\n❌ Build failed: ${errorMessage}`);
+
+		// Mark all apps as failed
+		for (const [appName, app] of apps) {
+			results.push({
+				appName,
+				type: app.type,
+				success: false,
+				error: errorMessage,
+			});
+		}
+
+		throw error;
+	}
+
+	return { apps: results };
+}
+
+/**
+ * Get the output path for a built app.
+ */
+function getAppOutputPath(
+	workspace: NormalizedWorkspace,
+	appName: string,
+	app: NormalizedAppConfig,
+): string {
+	const appPath = join(workspace.root, app.path);
+
+	if (app.type === 'frontend') {
+		// Next.js standalone output
+		return join(appPath, '.next');
+	} else {
+		// Backend .gkm output
+		return join(appPath, '.gkm');
+	}
 }
