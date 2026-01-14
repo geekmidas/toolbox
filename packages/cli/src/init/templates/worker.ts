@@ -14,6 +14,7 @@ export const workerTemplate: TemplateConfig = {
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
+		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},

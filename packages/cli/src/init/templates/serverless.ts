@@ -14,6 +14,7 @@ export const serverlessTemplate: TemplateConfig = {
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/cloud': GEEKMIDAS_VERSIONS['@geekmidas/cloud'],
+		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},

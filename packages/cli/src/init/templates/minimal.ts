@@ -13,6 +13,7 @@ export const minimalTemplate: TemplateConfig = {
 		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
+		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},

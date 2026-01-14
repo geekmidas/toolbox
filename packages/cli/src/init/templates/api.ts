@@ -12,10 +12,12 @@ export const apiTemplate: TemplateConfig = {
 	dependencies: {
 		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
+		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/services': GEEKMIDAS_VERSIONS['@geekmidas/services'],
 		'@geekmidas/errors': GEEKMIDAS_VERSIONS['@geekmidas/errors'],
 		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
+		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},
