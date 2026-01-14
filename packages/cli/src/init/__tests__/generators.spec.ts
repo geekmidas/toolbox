@@ -297,7 +297,8 @@ describe('generateModelsPackage', () => {
 		const paths = files.map((f) => f.path);
 		expect(paths).toContain('packages/models/package.json');
 		expect(paths).toContain('packages/models/tsconfig.json');
-		expect(paths).toContain('packages/models/src/index.ts');
+		expect(paths).toContain('packages/models/src/common.ts');
+		expect(paths).toContain('packages/models/src/user.ts');
 	});
 
 	it('should use correct package name', () => {
@@ -335,12 +336,17 @@ describe('generateModelsPackage', () => {
 			apiPath: 'apps/api',
 		};
 		const files = generateModelsPackage(options);
-		const indexTs = files.find(
-			(f) => f.path === 'packages/models/src/index.ts',
+		const userTs = files.find(
+			(f) => f.path === 'packages/models/src/user.ts',
 		);
-		expect(indexTs?.content).toContain('userSchema');
-		expect(indexTs?.content).toContain('paginationSchema');
-		expect(indexTs?.content).toContain("import { z } from 'zod'");
+		const commonTs = files.find(
+			(f) => f.path === 'packages/models/src/common.ts',
+		);
+		expect(userTs?.content).toContain('UserSchema');
+		expect(userTs?.content).toContain('UserResponseSchema');
+		expect(userTs?.content).toContain("import { z } from 'zod'");
+		expect(commonTs?.content).toContain('PaginationSchema');
+		expect(commonTs?.content).toContain('IdSchema');
 	});
 
 	it('should extend root tsconfig', () => {

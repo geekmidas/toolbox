@@ -176,7 +176,10 @@ describe('initCommand', () => {
 			expect(
 				existsSync(join(projectDir, 'packages/models/tsconfig.json')),
 			).toBe(true);
-			expect(existsSync(join(projectDir, 'packages/models/src/index.ts'))).toBe(
+			expect(existsSync(join(projectDir, 'packages/models/src/common.ts'))).toBe(
+				true,
+			);
+			expect(existsSync(join(projectDir, 'packages/models/src/user.ts'))).toBe(
 				true,
 			);
 		});
@@ -265,14 +268,23 @@ describe('initCommand', () => {
 			expect(pkg.name).toBe('@my-monorepo/models');
 			expect(pkg.dependencies.zod).toBeDefined();
 
-			const indexPath = join(
+			const userPath = join(
 				tempDir,
 				'my-monorepo',
-				'packages/models/src/index.ts',
+				'packages/models/src/user.ts',
 			);
-			const indexContent = await readFile(indexPath, 'utf-8');
-			expect(indexContent).toContain('userSchema');
-			expect(indexContent).toContain('paginationSchema');
+			const userContent = await readFile(userPath, 'utf-8');
+			expect(userContent).toContain('UserSchema');
+			expect(userContent).toContain('UserResponseSchema');
+
+			const commonPath = join(
+				tempDir,
+				'my-monorepo',
+				'packages/models/src/common.ts',
+			);
+			const commonContent = await readFile(commonPath, 'utf-8');
+			expect(commonContent).toContain('PaginationSchema');
+			expect(commonContent).toContain('IdSchema');
 		});
 
 		it('should support custom API path', async () => {

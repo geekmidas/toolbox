@@ -20,18 +20,9 @@ export function generateModelsPackage(
 		private: true,
 		type: 'module',
 		exports: {
-			'.': {
-				types: './dist/index.d.ts',
-				import: './dist/index.js',
-			},
-			'./*': {
-				types: './dist/*.d.ts',
-				import: './dist/*.js',
-			},
+			'./*': './src/*.ts',
 		},
 		scripts: {
-			build: 'tsc',
-			'build:watch': 'tsc --watch',
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
@@ -42,7 +33,7 @@ export function generateModelsPackage(
 		},
 	};
 
-	// tsconfig.json for models - library package that builds to dist
+	// tsconfig.json for models - extends root config
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
@@ -55,26 +46,26 @@ export function generateModelsPackage(
 		exclude: ['node_modules', 'dist'],
 	};
 
-	// Main index.ts with example schemas
-	const indexTs = `import { z } from 'zod';
+	// common.ts - shared utility schemas
+	const commonTs = `import { z } from 'zod';
 
 // ============================================
 // Common Schemas
 // ============================================
 
-export const idSchema = z.string().uuid();
+export const IdSchema = z.string().uuid();
 
-export const timestampsSchema = z.object({
+export const TimestampsSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
 
-export const paginationSchema = z.object({
+export const PaginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
     items: z.array(itemSchema),
     total: z.number(),
@@ -84,34 +75,60 @@ export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =
   });
 
 // ============================================
+// Type Exports
+// ============================================
+
+export type Id = z.infer<typeof IdSchema>;
+export type Timestamps = z.infer<typeof TimestampsSchema>;
+export type Pagination = z.infer<typeof PaginationSchema>;
+`;
+
+	// user.ts - user-related schemas
+	const userTs = `import { z } from 'zod';
+import { IdSchema, TimestampsSchema } from './common.js';
+
+// ============================================
 // User Schemas
 // ============================================
 
-export const userSchema = z.object({
-  id: idSchema,
+export const UserSchema = z.object({
+  id: IdSchema,
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  ...timestampsSchema.shape,
+  ...TimestampsSchema.shape,
 });
 
-export const createUserSchema = userSchema.omit({
+export const CreateUserSchema = UserSchema.omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const updateUserSchema = createUserSchema.partial();
+export const UpdateUserSchema = CreateUserSchema.partial();
+
+// ============================================
+// Response Schemas
+// ============================================
+
+export const UserResponseSchema = UserSchema.pick({
+  id: true,
+  name: true,
+  email: true,
+});
+
+export const ListUsersResponseSchema = z.object({
+  users: z.array(UserSchema.pick({ id: true, name: true })),
+});
 
 // ============================================
 // Type Exports
 // ============================================
 
-export type Id = z.infer<typeof idSchema>;
-export type Timestamps = z.infer<typeof timestampsSchema>;
-export type Pagination = z.infer<typeof paginationSchema>;
-export type User = z.infer<typeof userSchema>;
-export type CreateUser = z.infer<typeof createUserSchema>;
-export type UpdateUser = z.infer<typeof updateUserSchema>;
+export type User = z.infer<typeof UserSchema>;
+export type CreateUser = z.infer<typeof CreateUserSchema>;
+export type UpdateUser = z.infer<typeof UpdateUserSchema>;
+export type UserResponse = z.infer<typeof UserResponseSchema>;
+export type ListUsersResponse = z.infer<typeof ListUsersResponseSchema>;
 `;
 
 	return [
@@ -124,8 +141,12 @@ export type UpdateUser = z.infer<typeof updateUserSchema>;
 			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 		{
-			path: 'packages/models/src/index.ts',
-			content: indexTs,
+			path: 'packages/models/src/common.ts',
+			content: commonTs,
+		},
+		{
+			path: 'packages/models/src/user.ts',
+			content: userTs,
 		},
 	];
 }
