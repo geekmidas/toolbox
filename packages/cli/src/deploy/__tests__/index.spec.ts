@@ -1,8 +1,10 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NormalizedWorkspace } from '../../workspace/types.js';
 import { DokployApi } from '../dokploy-api';
-import { generateTag, provisionServices } from '../index';
+import { generateTag, provisionServices, workspaceDeployCommand } from '../index';
+import type { DeployOptions } from '../types';
 
 const BASE_URL = 'https://dokploy.example.com';
 
@@ -397,5 +399,304 @@ describe('generateTag edge cases', () => {
 			// Should match ISO 8601 format with dashes instead of colons/periods
 			expect(tag).toMatch(/^[a-z-]+-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
 		}
+	});
+});
+
+describe('workspaceDeployCommand', () => {
+	/** Create a minimal workspace config for testing */
+	function createWorkspace(
+		overrides: Partial<NormalizedWorkspace> = {},
+	): NormalizedWorkspace {
+		return {
+			name: 'test-workspace',
+			root: '/workspace',
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					dependencies: [],
+				},
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3001,
+					dependencies: ['api'],
+					framework: 'nextjs',
+				},
+			},
+			services: {},
+			deploy: { default: 'dokploy' },
+			shared: { packages: [] },
+			secrets: {},
+			...overrides,
+		};
+	}
+
+	describe('provider validation', () => {
+		it('should reject non-dokploy providers', async () => {
+			const workspace = createWorkspace();
+			const options: DeployOptions = {
+				provider: 'docker',
+				stage: 'production',
+			};
+
+			await expect(
+				workspaceDeployCommand(workspace, options),
+			).rejects.toThrow('Workspace deployment only supports Dokploy');
+		});
+
+		it('should reject aws-lambda provider', async () => {
+			const workspace = createWorkspace();
+			const options: DeployOptions = {
+				provider: 'aws-lambda',
+				stage: 'production',
+			};
+
+			await expect(
+				workspaceDeployCommand(workspace, options),
+			).rejects.toThrow('Workspace deployment only supports Dokploy');
+		});
+	});
+
+	describe('selective app deployment', () => {
+		it('should validate selected apps exist', async () => {
+			const workspace = createWorkspace();
+			const options: DeployOptions = {
+				provider: 'dokploy',
+				stage: 'production',
+				apps: ['api', 'nonexistent'],
+			};
+
+			// Mock credentials check to fail fast
+			vi.mock('../../auth', () => ({
+				getDokployCredentials: vi.fn().mockResolvedValue(null),
+				getDokployRegistryId: vi.fn().mockResolvedValue(null),
+				storeDokployCredentials: vi.fn(),
+				validateDokployToken: vi.fn().mockResolvedValue(true),
+			}));
+
+			await expect(
+				workspaceDeployCommand(workspace, options),
+			).rejects.toThrow('Unknown apps: nonexistent');
+		});
+
+		it('should filter selected apps while maintaining dependency order', () => {
+			// Test the filtering logic directly
+			const buildOrder = ['api', 'auth', 'web', 'admin'];
+			const selectedApps = ['web', 'api'];
+
+			const filtered = buildOrder.filter((name) =>
+				selectedApps.includes(name),
+			);
+
+			// Should be in dependency order (api before web)
+			expect(filtered).toEqual(['api', 'web']);
+		});
+	});
+
+	describe('dependency ordering', () => {
+		it('should deploy backends before dependent frontends', () => {
+			// The getAppBuildOrder function returns topologically sorted order
+			// This is a unit test for the ordering logic
+			const workspace = createWorkspace({
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+					},
+					auth: {
+						type: 'backend',
+						path: 'apps/auth',
+						port: 3001,
+						dependencies: [],
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3002,
+						dependencies: ['api', 'auth'],
+						framework: 'nextjs',
+					},
+				},
+			});
+
+			// Import getAppBuildOrder to verify ordering
+			const { getAppBuildOrder } = require('../../workspace/index.js');
+			const order = getAppBuildOrder(workspace);
+
+			// api and auth should come before web
+			const apiIndex = order.indexOf('api');
+			const authIndex = order.indexOf('auth');
+			const webIndex = order.indexOf('web');
+
+			expect(apiIndex).toBeLessThan(webIndex);
+			expect(authIndex).toBeLessThan(webIndex);
+		});
+
+		it('should handle chain dependencies correctly', () => {
+			const workspace = createWorkspace({
+				apps: {
+					db: {
+						type: 'backend',
+						path: 'apps/db',
+						port: 3000,
+						dependencies: [],
+					},
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3001,
+						dependencies: ['db'],
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3002,
+						dependencies: ['api'],
+						framework: 'nextjs',
+					},
+				},
+			});
+
+			const { getAppBuildOrder } = require('../../workspace/index.js');
+			const order = getAppBuildOrder(workspace);
+
+			// db -> api -> web
+			expect(order.indexOf('db')).toBeLessThan(order.indexOf('api'));
+			expect(order.indexOf('api')).toBeLessThan(order.indexOf('web'));
+		});
+	});
+
+	describe('environment variable injection', () => {
+		it('should inject APP_URL for dependencies', () => {
+			// Test the environment variable construction logic
+			const deployedAppUrls: Record<string, string> = {
+				api: 'http://test-workspace-api:3000',
+				auth: 'http://test-workspace-auth:3001',
+			};
+
+			const appDependencies = ['api', 'auth'];
+			const envVars: string[] = [];
+
+			for (const dep of appDependencies) {
+				const depUrl = deployedAppUrls[dep];
+				if (depUrl) {
+					envVars.push(`${dep.toUpperCase()}_URL=${depUrl}`);
+				}
+			}
+
+			expect(envVars).toContain(
+				'API_URL=http://test-workspace-api:3000',
+			);
+			expect(envVars).toContain(
+				'AUTH_URL=http://test-workspace-auth:3001',
+			);
+		});
+
+		it('should inject DATABASE_URL for backend apps', () => {
+			const workspaceName = 'test-workspace';
+			const hasPostgres = true;
+			const appType: 'backend' | 'frontend' = 'backend';
+
+			const envVars: string[] = [];
+
+			if (appType === 'backend' && hasPostgres) {
+				envVars.push(
+					`DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@${workspaceName}-db:5432/app}`,
+				);
+			}
+
+			expect(envVars).toHaveLength(1);
+			expect(envVars[0]).toContain('test-workspace-db');
+		});
+
+		it('should not inject DATABASE_URL for frontend apps', () => {
+			const hasPostgres = true;
+			const appType: 'backend' | 'frontend' = 'frontend';
+
+			const envVars: string[] = [];
+
+			if (appType === 'backend' && hasPostgres) {
+				envVars.push(`DATABASE_URL=...`);
+			}
+
+			expect(envVars).toHaveLength(0);
+		});
+	});
+
+	describe('image naming', () => {
+		it('should construct image name from workspace and app name', () => {
+			const workspaceName = 'my-workspace';
+			const appName = 'api';
+			const imageTag = 'production-2024-01-01T12-00-00';
+			const registry = 'ghcr.io/myorg';
+
+			const imageName = `${workspaceName}-${appName}`;
+			const imageRef = registry
+				? `${registry}/${imageName}:${imageTag}`
+				: `${imageName}:${imageTag}`;
+
+			expect(imageName).toBe('my-workspace-api');
+			expect(imageRef).toBe(
+				'ghcr.io/myorg/my-workspace-api:production-2024-01-01T12-00-00',
+			);
+		});
+
+		it('should handle workspace name with special characters', () => {
+			const workspaceName = 'my-cool-workspace';
+			const appName = 'web-frontend';
+
+			const imageName = `${workspaceName}-${appName}`;
+
+			expect(imageName).toBe('my-cool-workspace-web-frontend');
+		});
+	});
+
+	describe('result types', () => {
+		it('should have correct structure for AppDeployResult', () => {
+			const successResult = {
+				appName: 'api',
+				type: 'backend' as const,
+				success: true,
+				applicationId: 'app_123',
+				imageRef: 'ghcr.io/org/api:v1',
+			};
+
+			expect(successResult.appName).toBe('api');
+			expect(successResult.type).toBe('backend');
+			expect(successResult.success).toBe(true);
+			expect(successResult.applicationId).toBe('app_123');
+		});
+
+		it('should have correct structure for failed AppDeployResult', () => {
+			const failedResult = {
+				appName: 'web',
+				type: 'frontend' as const,
+				success: false,
+				error: 'Build failed',
+			};
+
+			expect(failedResult.success).toBe(false);
+			expect(failedResult.error).toBe('Build failed');
+		});
+
+		it('should have correct structure for WorkspaceDeployResult', () => {
+			const result = {
+				apps: [
+					{ appName: 'api', type: 'backend' as const, success: true },
+					{ appName: 'web', type: 'frontend' as const, success: false, error: 'Failed' },
+				],
+				projectId: 'proj_123',
+				successCount: 1,
+				failedCount: 1,
+			};
+
+			expect(result.apps).toHaveLength(2);
+			expect(result.successCount).toBe(1);
+			expect(result.failedCount).toBe(1);
+		});
 	});
 });

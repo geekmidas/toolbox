@@ -13,6 +13,8 @@ export interface DeployOptions {
 	skipPush?: boolean;
 	/** Skip building (use existing build) */
 	skipBuild?: boolean;
+	/** Specific apps to deploy (workspace mode only, default: all) */
+	apps?: string[];
 }
 
 /** Result from a deployment */
@@ -25,6 +27,36 @@ export interface DeployResult {
 	deploymentId?: string;
 	/** Deployment URL (if available) */
 	url?: string;
+}
+
+/** Result for a single app deployment in workspace mode */
+export interface AppDeployResult {
+	/** App name */
+	appName: string;
+	/** App type */
+	type: 'backend' | 'frontend';
+	/** Whether deployment succeeded */
+	success: boolean;
+	/** Dokploy application ID */
+	applicationId?: string;
+	/** Docker image reference */
+	imageRef?: string;
+	/** Deployment URL */
+	url?: string;
+	/** Error message if failed */
+	error?: string;
+}
+
+/** Result from workspace deployment */
+export interface WorkspaceDeployResult {
+	/** Results for each app */
+	apps: AppDeployResult[];
+	/** Dokploy project ID */
+	projectId: string;
+	/** Total number of successful deployments */
+	successCount: number;
+	/** Total number of failed deployments */
+	failedCount: number;
 }
 
 /** Docker provider configuration */
