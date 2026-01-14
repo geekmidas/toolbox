@@ -64,21 +64,17 @@ export const logger = createLogger();
 			// src/config/env.ts
 			{
 				path: 'src/config/env.ts',
-				content: `import { EnvironmentParser } from '@geekmidas/envkit';
+				content: `import { Credentials } from '@geekmidas/envkit/credentials';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
-export const envParser = new EnvironmentParser(process.env);
+export const envParser = new EnvironmentParser({ ...process.env, ...Credentials });
 
+// Global config - only minimal shared values
+// Service-specific config should be parsed in each service
 export const config = envParser
   .create((get) => ({
-    stage: get('STAGE').string().default('dev'),
-    region: get('AWS_REGION').string().default('us-east-1'),${
-			options.database
-				? `
-    database: {
-      url: get('DATABASE_URL').string(),
-    },`
-				: ''
-		}
+    nodeEnv: get('NODE_ENV').enum(['development', 'test', 'production']).default('development'),
+    stage: get('STAGE').enum(['dev', 'staging', 'prod']).default('dev'),
   }))
   .parse();
 `,
