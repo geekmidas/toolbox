@@ -1,5 +1,6 @@
 import type {
 	GeneratedFile,
+	RoutesStructure,
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
@@ -15,6 +16,8 @@ export function generateMonorepoFiles(
 		return [];
 	}
 
+	const isFullstack = options.template === 'fullstack';
+
 	// Root package.json for monorepo
 	const rootPackageJson = {
 		name: options.name,
@@ -22,17 +25,21 @@ export function generateMonorepoFiles(
 		private: true,
 		type: 'module',
 		scripts: {
-			dev: 'turbo dev',
-			build: 'turbo build',
+			dev: isFullstack ? 'gkm dev' : 'turbo dev',
+			build: isFullstack ? 'gkm build' : 'turbo build',
 			test: 'turbo test',
 			'test:once': 'turbo test:once',
 			typecheck: 'turbo typecheck',
 			lint: 'biome lint .',
 			fmt: 'biome format . --write',
 			'fmt:check': 'biome format .',
+			...(options.deployTarget === 'dokploy'
+				? { deploy: 'gkm deploy --provider dokploy --stage production' }
+				: {}),
 		},
 		devDependencies: {
 			'@biomejs/biome': '~1.9.4',
+			'@geekmidas/cli': '~0.18.0',
 			turbo: '~2.3.0',
 			typescript: '~5.8.2',
 			vitest: '~4.0.0',
@@ -182,7 +189,7 @@ coverage/
 		exclude: ['node_modules', 'dist'],
 	};
 
-	return [
+	const files: GeneratedFile[] = [
 		{
 			path: 'package.json',
 			content: `${JSON.stringify(rootPackageJson, null, 2)}\n`,
@@ -208,4 +215,112 @@ coverage/
 			content: gitignore,
 		},
 	];
+
+	// Add workspace config for fullstack template
+	if (isFullstack) {
+		files.push({
+			path: 'gkm.config.ts',
+			content: generateWorkspaceConfig(options),
+		});
+	}
+
+	return files;
+}
+
+/**
+ * Generate gkm.config.ts with defineWorkspace for fullstack template
+ */
+function generateWorkspaceConfig(options: TemplateOptions): string {
+	const { telescope, services, deployTarget, routesStructure } = options;
+
+	// Get routes glob pattern
+	const getRoutesGlob = (): string => {
+		switch (routesStructure) {
+			case 'centralized-endpoints':
+				return './src/endpoints/**/*.ts';
+			case 'centralized-routes':
+				return './src/routes/**/*.ts';
+			case 'domain-based':
+				return './src/**/routes/*.ts';
+		}
+	};
+
+	let config = `import { defineWorkspace } from '@geekmidas/cli';
+
+export default defineWorkspace({
+  name: '${options.name}',
+  apps: {
+    api: {
+      type: 'backend',
+      path: 'apps/api',
+      port: 3000,
+      routes: '${getRoutesGlob()}',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',`;
+
+	if (telescope) {
+		config += `
+      telescope: {
+        enabled: true,
+        path: '/__telescope',
+      },`;
+	}
+
+	config += `
+      openapi: {
+        enabled: true,
+      },
+    },
+    web: {
+      type: 'frontend',
+      framework: 'nextjs',
+      path: 'apps/web',
+      port: 3001,
+      dependencies: ['api'],
+      client: {
+        output: './src/api',
+      },
+    },
+  },
+  shared: {
+    packages: ['packages/*'],
+    models: {
+      path: 'packages/models',
+      schema: 'zod',
+    },
+  },`;
+
+	// Add services if any are selected
+	if (services.db || services.cache || services.mail) {
+		config += `
+  services: {`;
+		if (services.db) {
+			config += `
+    db: true,`;
+		}
+		if (services.cache) {
+			config += `
+    cache: true,`;
+		}
+		if (services.mail) {
+			config += `
+    mail: true,`;
+		}
+		config += `
+  },`;
+	}
+
+	// Add deploy config if dokploy is selected
+	if (deployTarget === 'dokploy') {
+		config += `
+  deploy: {
+    default: 'dokploy',
+  },`;
+	}
+
+	config += `
+});
+`;
+
+	return config;
 }

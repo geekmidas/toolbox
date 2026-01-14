@@ -298,6 +298,155 @@ describe('initCommand', () => {
 		});
 	});
 
+	describe('fullstack template', () => {
+		it('should create monorepo with api and web apps', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const projectDir = join(tempDir, 'my-fullstack');
+
+			// Root files
+			expect(existsSync(join(projectDir, 'package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'pnpm-workspace.yaml'))).toBe(true);
+			expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'gkm.config.ts'))).toBe(true);
+
+			// API app files
+			expect(existsSync(join(projectDir, 'apps/api/package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/api/tsconfig.json'))).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'apps/api/src/endpoints/health.ts')),
+			).toBe(true);
+
+			// Web app files
+			expect(existsSync(join(projectDir, 'apps/web/package.json'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/web/next.config.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/web/tsconfig.json'))).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'apps/web/src/app/layout.tsx')),
+			).toBe(true);
+			expect(
+				existsSync(join(projectDir, 'apps/web/src/app/page.tsx')),
+			).toBe(true);
+
+			// Models package
+			expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
+				true,
+			);
+		});
+
+		it('should create workspace config with defineWorkspace', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
+
+			expect(content).toContain("import { defineWorkspace }");
+			expect(content).toContain("name: 'my-fullstack'");
+			expect(content).toContain("type: 'backend'");
+			expect(content).toContain("path: 'apps/api'");
+			expect(content).toContain("type: 'frontend'");
+			expect(content).toContain("framework: 'nextjs'");
+			expect(content).toContain("path: 'apps/web'");
+			expect(content).toContain("packages: ['packages/*']");
+		});
+
+		it('should create root package.json with gkm commands', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const pkgPath = join(tempDir, 'my-fullstack', 'package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
+
+			expect(pkg.scripts.dev).toBe('gkm dev');
+			expect(pkg.scripts.build).toBe('gkm build');
+			expect(pkg.devDependencies['@geekmidas/cli']).toBeDefined();
+		});
+
+		it('should create Next.js web app with models dependency', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const pkgPath = join(tempDir, 'my-fullstack', 'apps/web/package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
+
+			expect(pkg.name).toBe('@my-fullstack/web');
+			expect(pkg.dependencies['@my-fullstack/models']).toBe('workspace:*');
+			expect(pkg.dependencies.next).toBeDefined();
+			expect(pkg.dependencies.react).toBeDefined();
+			expect(pkg.scripts.dev).toContain('next dev');
+		});
+
+		it('should include services config in workspace', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
+
+			expect(content).toContain('services:');
+			expect(content).toContain('db: true');
+			expect(content).toContain('cache: true');
+			expect(content).toContain('mail: true');
+		});
+
+		it('should include deploy config for dokploy', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
+			const content = await readFile(configPath, 'utf-8');
+
+			expect(content).toContain('deploy:');
+			expect(content).toContain("default: 'dokploy'");
+
+			const pkgPath = join(tempDir, 'my-fullstack', 'package.json');
+			const pkgContent = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(pkgContent);
+
+			expect(pkg.scripts.deploy).toContain('gkm deploy');
+		});
+
+		it('should NOT create app-level gkm.config.ts for api', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			// Config should be at root only, not in apps/api
+			expect(
+				existsSync(join(tempDir, 'my-fullstack', 'gkm.config.ts')),
+			).toBe(true);
+			expect(
+				existsSync(join(tempDir, 'my-fullstack', 'apps/api/gkm.config.ts')),
+			).toBe(false);
+		});
+	});
+
 	describe('docker-compose', () => {
 		it('should include postgres for database-enabled projects', async () => {
 			await initCommand('my-api', {

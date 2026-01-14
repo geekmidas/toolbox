@@ -14,6 +14,7 @@ export function generateConfigFiles(
 	const { telescope, studio, routesStructure } = options;
 	const isServerless = template.name === 'serverless';
 	const hasWorker = template.name === 'worker';
+	const isFullstack = options.template === 'fullstack';
 
 	// Get routes glob pattern based on structure
 	const getRoutesGlob = () => {
@@ -27,7 +28,21 @@ export function generateConfigFiles(
 		}
 	};
 
-	// Build gkm.config.ts
+	// For fullstack template, generate workspace config at root
+	// Single app config is still generated for non-fullstack monorepo setups
+	if (isFullstack) {
+		// Workspace config is generated in monorepo.ts for fullstack
+		return generateSingleAppConfigFiles(options, template, {
+			telescope,
+			studio,
+			routesStructure,
+			isServerless,
+			hasWorker,
+			getRoutesGlob,
+		});
+	}
+
+	// Build gkm.config.ts for single-app
 	let gkmConfig = `import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
@@ -210,6 +225,48 @@ export default defineConfig({
 		{
 			path: 'turbo.json',
 			content: `${JSON.stringify(turboConfig, null, 2)}\n`,
+		},
+	];
+}
+
+/**
+ * Helper to generate config files for API app in fullstack template
+ * (workspace config is at root, so no gkm.config.ts for app)
+ */
+interface ConfigHelperOptions {
+	telescope: boolean;
+	studio: boolean;
+	routesStructure: string;
+	isServerless: boolean;
+	hasWorker: boolean;
+	getRoutesGlob: () => string;
+}
+
+function generateSingleAppConfigFiles(
+	options: TemplateOptions,
+	_template: TemplateConfig,
+	_helpers: ConfigHelperOptions,
+): GeneratedFile[] {
+	// For fullstack, only generate tsconfig.json for the API app
+	// The workspace gkm.config.ts is generated in monorepo.ts
+	const tsConfig = {
+		extends: '../../tsconfig.json',
+		compilerOptions: {
+			outDir: './dist',
+			rootDir: './src',
+			baseUrl: '.',
+			paths: {
+				[`@${options.name}/*`]: ['../../packages/*/src'],
+			},
+		},
+		include: ['src/**/*.ts'],
+		exclude: ['node_modules', 'dist'],
+	};
+
+	return [
+		{
+			path: 'tsconfig.json',
+			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 	];
 }

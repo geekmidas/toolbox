@@ -9,13 +9,21 @@ import { generateModelsPackage } from './generators/models.js';
 import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
+import { generateWebAppFiles } from './generators/web.js';
 import {
+	type DeployTarget,
 	getTemplate,
+	isFullstackTemplate,
 	loggerTypeChoices,
+	type PackageManager,
+	packageManagerChoices,
 	routesStructureChoices,
+	servicesChoices,
+	type ServicesSelection,
 	type TemplateName,
 	type TemplateOptions,
 	templateChoices,
+	deployTargetChoices,
 } from './templates/index.js';
 import {
 	checkDirectoryExists,
@@ -26,10 +34,17 @@ import {
 } from './utils.js';
 
 export interface InitOptions {
+	/** Project name */
+	name?: string;
+	/** Template to use */
 	template?: TemplateName;
+	/** Skip dependency installation */
 	skipInstall?: boolean;
+	/** Use defaults for all prompts */
 	yes?: boolean;
+	/** Force monorepo setup (deprecated, use fullstack template) */
 	monorepo?: boolean;
+	/** API app path in monorepo */
 	apiPath?: string;
 }
 
@@ -41,7 +56,7 @@ export async function initCommand(
 	options: InitOptions = {},
 ): Promise<void> {
 	const cwd = process.cwd();
-	const pkgManager = detectPackageManager(cwd);
+	const detectedPkgManager = detectPackageManager(cwd);
 
 	// Handle Ctrl+C gracefully
 	prompts.override({});
@@ -53,10 +68,10 @@ export async function initCommand(
 	const answers = await prompts(
 		[
 			{
-				type: projectName ? null : 'text',
+				type: projectName || options.name ? null : 'text',
 				name: 'name',
 				message: 'Project name:',
-				initial: 'my-api',
+				initial: 'my-app',
 				validate: (value: string) => {
 					const nameValid = validateProjectName(value);
 					if (nameValid !== true) return nameValid;
@@ -73,21 +88,32 @@ export async function initCommand(
 				initial: 0,
 			},
 			{
+				type: options.yes ? null : 'multiselect',
+				name: 'services',
+				message: 'Services (space to select, enter to confirm):',
+				choices: servicesChoices.map((c) => ({ ...c, selected: true })),
+				hint: '- Space to select. Return to submit',
+			},
+			{
+				type: options.yes ? null : 'select',
+				name: 'packageManager',
+				message: 'Package manager:',
+				choices: packageManagerChoices,
+				initial: packageManagerChoices.findIndex(
+					(c) => c.value === detectedPkgManager,
+				),
+			},
+			{
+				type: options.yes ? null : 'select',
+				name: 'deployTarget',
+				message: 'Deployment target:',
+				choices: deployTargetChoices,
+				initial: 0,
+			},
+			{
 				type: options.yes ? null : 'confirm',
 				name: 'telescope',
 				message: 'Include Telescope (debugging dashboard)?',
-				initial: true,
-			},
-			{
-				type: options.yes ? null : 'confirm',
-				name: 'database',
-				message: 'Include database support (Kysely)?',
-				initial: true,
-			},
-			{
-				type: (prev) => (options.yes ? null : prev ? 'confirm' : null),
-				name: 'studio',
-				message: 'Include Studio (database browser)?',
 				initial: true,
 			},
 			{
@@ -104,65 +130,83 @@ export async function initCommand(
 				choices: routesStructureChoices,
 				initial: 0,
 			},
-			{
-				type: options.yes || options.monorepo !== undefined ? null : 'confirm',
-				name: 'monorepo',
-				message: 'Setup as monorepo?',
-				initial: false,
-			},
-			{
-				type: (prev) =>
-					(prev === true || options.monorepo) && !options.apiPath
-						? 'text'
-						: null,
-				name: 'apiPath',
-				message: 'API app path:',
-				initial: 'apps/api',
-			},
 		],
 		{ onCancel },
 	);
 
 	// Build final options
-	const name = projectName || answers.name;
+	const name = projectName || options.name || answers.name;
 	if (!name) {
+		console.error('Project name is required');
 		process.exit(1);
 	}
 
 	// Validate name if provided via argument
-	if (projectName) {
-		const nameValid = validateProjectName(projectName);
+	if (projectName || options.name) {
+		const nameToValidate = projectName || options.name!;
+		const nameValid = validateProjectName(nameToValidate);
 		if (nameValid !== true) {
+			console.error(nameValid);
 			process.exit(1);
 		}
-		const dirValid = checkDirectoryExists(projectName, cwd);
+		const dirValid = checkDirectoryExists(nameToValidate, cwd);
 		if (dirValid !== true) {
+			console.error(dirValid);
 			process.exit(1);
 		}
 	}
 
-	const monorepo =
-		options.monorepo ?? (options.yes ? false : (answers.monorepo ?? false));
-	const database = options.yes ? true : (answers.database ?? true);
+	const template: TemplateName =
+		options.template || answers.template || 'api';
+	const isFullstack = isFullstackTemplate(template);
+
+	// For fullstack, force monorepo mode
+	// For api template, monorepo is optional (via --monorepo flag)
+	const monorepo = isFullstack || options.monorepo || false;
+
+	// Parse services selection
+	const servicesArray: string[] = options.yes
+		? ['db', 'cache', 'mail']
+		: answers.services || [];
+	const services: ServicesSelection = {
+		db: servicesArray.includes('db'),
+		cache: servicesArray.includes('cache'),
+		mail: servicesArray.includes('mail'),
+	};
+
+	const pkgManager: PackageManager = options.yes
+		? detectedPkgManager
+		: (answers.packageManager ?? detectedPkgManager);
+
+	const deployTarget: DeployTarget = options.yes
+		? 'dokploy'
+		: (answers.deployTarget ?? 'dokploy');
+
+	const database = services.db;
 	const templateOptions: TemplateOptions = {
 		name,
-		template: options.template || answers.template || 'minimal',
+		template,
 		telescope: options.yes ? true : (answers.telescope ?? true),
 		database,
-		studio: database && (options.yes ? true : (answers.studio ?? true)),
+		studio: database,
 		loggerType: options.yes ? 'pino' : (answers.loggerType ?? 'pino'),
 		routesStructure: options.yes
 			? 'centralized-endpoints'
 			: (answers.routesStructure ?? 'centralized-endpoints'),
 		monorepo,
-		apiPath: monorepo ? (options.apiPath ?? answers.apiPath ?? 'apps/api') : '',
+		apiPath: monorepo ? (options.apiPath ?? 'apps/api') : '',
+		packageManager: pkgManager,
+		deployTarget,
+		services,
 	};
 
 	const targetDir = join(cwd, name);
-	const template = getTemplate(templateOptions.template);
+	const baseTemplate = getTemplate(templateOptions.template);
 
 	const isMonorepo = templateOptions.monorepo;
 	const apiPath = templateOptions.apiPath;
+
+	console.log('\n🚀 Creating your project...\n');
 
 	// Create project directory
 	await mkdir(targetDir, { recursive: true });
@@ -173,20 +217,27 @@ export async function initCommand(
 		await mkdir(appDir, { recursive: true });
 	}
 
-	// Collect app files
-	const appFiles = [
-		...generatePackageJson(templateOptions, template),
-		...generateConfigFiles(templateOptions, template),
-		...generateEnvFiles(templateOptions, template),
-		...generateSourceFiles(templateOptions, template),
-		...generateDockerFiles(templateOptions, template),
-	];
+	// Collect app files (backend/api)
+	const appFiles = baseTemplate
+		? [
+				...generatePackageJson(templateOptions, baseTemplate),
+				...generateConfigFiles(templateOptions, baseTemplate),
+				...generateEnvFiles(templateOptions, baseTemplate),
+				...generateSourceFiles(templateOptions, baseTemplate),
+				...generateDockerFiles(templateOptions, baseTemplate),
+			]
+		: [];
 
 	// Collect root monorepo files (includes packages/models)
-	const rootFiles = [
-		...generateMonorepoFiles(templateOptions, template),
-		...generateModelsPackage(templateOptions),
-	];
+	const rootFiles = baseTemplate
+		? [
+				...generateMonorepoFiles(templateOptions, baseTemplate),
+				...generateModelsPackage(templateOptions),
+			]
+		: [];
+
+	// Collect web app files for fullstack template
+	const webAppFiles = isFullstack ? generateWebAppFiles(templateOptions) : [];
 
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {
@@ -195,22 +246,31 @@ export async function initCommand(
 		await writeFile(fullPath, content);
 	}
 
-	// Write app files
+	// Write app files (backend)
 	for (const { path, content } of appFiles) {
 		const fullPath = join(appDir, path);
-		const _displayPath = isMonorepo ? `${apiPath}/${path}` : path;
+		await mkdir(dirname(fullPath), { recursive: true });
+		await writeFile(fullPath, content);
+	}
+
+	// Write web app files (frontend)
+	for (const { path, content } of webAppFiles) {
+		const fullPath = join(targetDir, path);
 		await mkdir(dirname(fullPath), { recursive: true });
 		await writeFile(fullPath, content);
 	}
 
 	// Install dependencies
 	if (!options.skipInstall) {
+		console.log('\n📦 Installing dependencies...\n');
 		try {
 			execSync(getInstallCommand(pkgManager), {
 				cwd: targetDir,
 				stdio: 'inherit',
 			});
-		} catch {}
+		} catch {
+			console.error('Failed to install dependencies');
+		}
 
 		// Format generated files with biome
 		try {
@@ -223,6 +283,56 @@ export async function initCommand(
 		}
 	}
 
-	// Print next steps
-	const _devCommand = getRunCommand(pkgManager, 'dev');
+	// Print success message with next steps
+	printNextSteps(name, templateOptions, pkgManager);
+}
+
+/**
+ * Print success message with next steps
+ */
+function printNextSteps(
+	projectName: string,
+	options: TemplateOptions,
+	pkgManager: PackageManager,
+): void {
+	const devCommand = getRunCommand(pkgManager, 'dev');
+	const cdCommand = `cd ${projectName}`;
+
+	console.log('\n' + '─'.repeat(50));
+	console.log('\n✅ Project created successfully!\n');
+
+	console.log('Next steps:\n');
+	console.log(`  ${cdCommand}`);
+
+	if (options.services.db) {
+		console.log(`  # Start PostgreSQL (if not running)`);
+		console.log(`  docker compose up -d postgres`);
+	}
+
+	console.log(`  ${devCommand}`);
+	console.log('');
+
+	if (options.monorepo) {
+		console.log('📁 Project structure:');
+		console.log(`  ${projectName}/`);
+		console.log(`  ├── apps/`);
+		console.log(`  │   ├── api/          # Backend API`);
+		if (isFullstackTemplate(options.template)) {
+			console.log(`  │   └── web/          # Next.js frontend`);
+		}
+		console.log(`  ├── packages/`);
+		console.log(`  │   └── models/       # Shared Zod schemas`);
+		console.log(`  ├── gkm.config.ts     # Workspace config`);
+		console.log(`  └── turbo.json        # Turbo config`);
+		console.log('');
+	}
+
+	if (options.deployTarget === 'dokploy') {
+		console.log('🚀 Deployment:');
+		console.log(`  ${getRunCommand(pkgManager, 'deploy')}`);
+		console.log('');
+	}
+
+	console.log('📚 Documentation: https://docs.geekmidas.dev');
+	console.log('');
 }
