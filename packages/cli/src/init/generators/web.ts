@@ -1,4 +1,5 @@
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**
  * Generate Next.js web app files for fullstack template
@@ -25,6 +26,8 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
+			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
+			'@tanstack/react-query': '~5.80.0',
 			next: '~16.1.0',
 			react: '~19.2.0',
 			'react-dom': '~19.2.0',
@@ -82,8 +85,73 @@ export default nextConfig;
 		exclude: ['node_modules'],
 	};
 
+	// Providers with QueryClient
+	const providersTsx = `'use client';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000,
+          },
+        },
+      }),
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+`;
+
+	// API client setup
+	const apiIndexTs = `import { TypedFetcher } from '@geekmidas/client/fetcher';
+import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
+
+// TODO: Run 'gkm openapi' to generate typed paths from your API
+// This is a placeholder that will be replaced by the generated openapi.ts
+interface paths {
+  '/health': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { status: string; timestamp: string };
+          };
+        };
+      };
+    };
+  };
+  '/users': {
+    get: {
+      responses: {
+        200: {
+          content: {
+            'application/json': { users: Array<{ id: string; name: string }> };
+          };
+        };
+      };
+    };
+  };
+}
+
+const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+const fetcher = new TypedFetcher<paths>({ baseURL });
+
+const hooks = createEndpointHooks<paths>(fetcher.request.bind(fetcher));
+
+export const api = Object.assign(fetcher.request.bind(fetcher), hooks);
+`;
+
 	// App layout
 	const layoutTsx = `import type { Metadata } from 'next';
+import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: '${options.name}',
@@ -97,37 +165,20 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
 `;
 
 	// Home page with API example
-	const pageTsx = `import type { User } from '${modelsPackage}';
+	const pageTsx = `import { api } from '@/api';
 
 export default async function Home() {
-  // Example: Fetch from API
-  const apiUrl = process.env.API_URL || 'http://localhost:3000';
-  let health = null;
-
-  try {
-    const response = await fetch(\`\${apiUrl}/health\`, {
-      cache: 'no-store',
-    });
-    health = await response.json();
-  } catch (error) {
-    console.error('Failed to fetch health:', error);
-  }
-
-  // Example: Type-safe model usage
-  const exampleUser: User = {
-    id: '123e4567-e89b-12d3-a456-426614174000',
-    email: 'user@example.com',
-    name: 'Example User',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  // Type-safe API call using the generated client
+  const health = await api('GET /health').catch(() => null);
 
   return (
     <main style={{ padding: '2rem', fontFamily: 'system-ui' }}>
@@ -140,21 +191,14 @@ export default async function Home() {
             {JSON.stringify(health, null, 2)}
           </pre>
         ) : (
-          <p>Unable to connect to API at {apiUrl}</p>
+          <p>Unable to connect to API</p>
         )}
-      </section>
-
-      <section style={{ marginTop: '2rem' }}>
-        <h2>Shared Models</h2>
-        <p>This user object is typed from @${options.name}/models:</p>
-        <pre style={{ background: '#f0f0f0', padding: '1rem', borderRadius: '8px' }}>
-          {JSON.stringify(exampleUser, null, 2)}
-        </pre>
       </section>
 
       <section style={{ marginTop: '2rem' }}>
         <h2>Next Steps</h2>
         <ul>
+          <li>Run <code>gkm openapi</code> to generate typed API client</li>
           <li>Edit <code>apps/web/src/app/page.tsx</code> to customize this page</li>
           <li>Add API routes in <code>apps/api/src/endpoints/</code></li>
           <li>Define shared schemas in <code>packages/models/src/</code></li>
@@ -166,11 +210,8 @@ export default async function Home() {
 `;
 
 	// Environment file for web app
-	const envLocal = `# API URL (injected automatically in workspace mode)
-API_URL=http://localhost:3000
-
-# Other environment variables
-# NEXT_PUBLIC_API_URL=http://localhost:3000
+	const envLocal = `# API URL for client-side requests
+NEXT_PUBLIC_API_URL=http://localhost:3000
 `;
 
 	// .gitignore for Next.js
@@ -198,8 +239,16 @@ node_modules/
 			content: layoutTsx,
 		},
 		{
+			path: 'apps/web/src/app/providers.tsx',
+			content: providersTsx,
+		},
+		{
 			path: 'apps/web/src/app/page.tsx',
 			content: pageTsx,
+		},
+		{
+			path: 'apps/web/src/api/index.ts',
+			content: apiIndexTs,
 		},
 		{
 			path: 'apps/web/.env.local',
