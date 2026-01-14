@@ -18,7 +18,7 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from './secrets';
-import { testCommand, type TestOptions } from './test/index';
+import { type TestOptions, testCommand } from './test/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 
 const program = new Command();
