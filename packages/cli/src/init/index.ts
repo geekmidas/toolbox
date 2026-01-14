@@ -242,6 +242,15 @@ export async function initCommand(
 		await mkdir(appDir, { recursive: true });
 	}
 
+	// Generate per-app database configs for fullstack template
+	const dbApps: DatabaseAppConfig[] = [];
+	if (isFullstack && services.db) {
+		dbApps.push(
+			{ name: 'api', password: generateDbPassword() },
+			{ name: 'auth', password: generateDbPassword() },
+		);
+	}
+
 	// Collect app files (backend/api)
 	// Note: Docker files go to root for monorepo, so exclude them here
 	const appFiles = baseTemplate
