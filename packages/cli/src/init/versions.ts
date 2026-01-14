@@ -1,8 +1,19 @@
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-// Path is ../package.json from dist/ (bundled output is flat)
-const pkg = require('../package.json') as { version: string };
+
+// Load package.json - handles both bundled (flat dist/) and source (nested src/init/)
+function loadPackageJson(): { version: string } {
+	try {
+		// Try flat dist path first (../package.json from dist/)
+		return require('../package.json');
+	} catch {
+		// Fall back to nested source path (../../package.json from src/init/)
+		return require('../../package.json');
+	}
+}
+
+const pkg = loadPackageJson();
 
 /**
  * CLI version from package.json (used for scaffolded projects)
