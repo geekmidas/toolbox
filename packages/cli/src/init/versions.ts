@@ -1,12 +1,23 @@
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
+
+/**
+ * CLI version from package.json (used for scaffolded projects)
+ */
+export const CLI_VERSION = `~${pkg.version}`;
+
 /**
  * Current released versions of @geekmidas packages
  * Update these when publishing new versions
+ * Note: CLI version is read from package.json via CLI_VERSION
  */
-export const GEEKMIDAS_VERSIONS = {
+export const GEEKMIDAS_VERSIONS: Record<string, string> = {
 	'@geekmidas/audit': '~0.2.0',
 	'@geekmidas/auth': '~0.2.0',
 	'@geekmidas/cache': '~0.2.0',
-	'@geekmidas/cli': '~0.18.0',
+	'@geekmidas/cli': CLI_VERSION,
 	'@geekmidas/client': '~0.5.0',
 	'@geekmidas/cloud': '~0.2.0',
 	'@geekmidas/constructs': '~0.6.0',
@@ -23,13 +34,33 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/studio': '~0.4.0',
 	'@geekmidas/telescope': '~0.4.0',
 	'@geekmidas/testkit': '~0.6.0',
-} as const;
+};
 
-export type GeekmidasPackage = keyof typeof GEEKMIDAS_VERSIONS;
+export type GeekmidasPackage =
+	| '@geekmidas/audit'
+	| '@geekmidas/auth'
+	| '@geekmidas/cache'
+	| '@geekmidas/cli'
+	| '@geekmidas/client'
+	| '@geekmidas/cloud'
+	| '@geekmidas/constructs'
+	| '@geekmidas/db'
+	| '@geekmidas/emailkit'
+	| '@geekmidas/envkit'
+	| '@geekmidas/errors'
+	| '@geekmidas/events'
+	| '@geekmidas/logger'
+	| '@geekmidas/rate-limit'
+	| '@geekmidas/schema'
+	| '@geekmidas/services'
+	| '@geekmidas/storage'
+	| '@geekmidas/studio'
+	| '@geekmidas/telescope'
+	| '@geekmidas/testkit';
 
 /**
  * Get the version for a @geekmidas package
  */
 export function getPackageVersion(pkg: GeekmidasPackage): string {
-	return GEEKMIDAS_VERSIONS[pkg];
+	return GEEKMIDAS_VERSIONS[pkg]!;
 }
