@@ -4,10 +4,19 @@ import type {
 	HonoAdapterConfig,
 	TelescopeHonoContext,
 } from '../adapters/types';
-import { flushTelemetry } from '../instrumentation/core';
 import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
 import { getAsset, getIndexHtml } from '../ui-assets';
+
+// Lazy-loaded telemetry flush function (only loads @opentelemetry/* when actually used)
+let _flushTelemetry: (() => Promise<void>) | null = null;
+async function getFlushTelemetry(): Promise<() => Promise<void>> {
+	if (!_flushTelemetry) {
+		const { flushTelemetry } = await import('../instrumentation/core');
+		_flushTelemetry = flushTelemetry;
+	}
+	return _flushTelemetry;
+}
 
 const CONTEXT_KEY = 'telescope-context';
 
@@ -154,6 +163,7 @@ export function createMiddleware(
 
 			// Flush telemetry for serverless environments
 			if (flushOnResponse) {
+				const flushTelemetry = await getFlushTelemetry();
 				await flushTelemetry();
 			}
 		} catch (error) {
@@ -418,4 +428,15 @@ export type {
 	HonoAdapterConfig,
 	TelescopeHonoContext,
 } from '../adapters/types';
-export { flushTelemetry } from '../instrumentation/core';
+
+/**
+ * Get the flushTelemetry function (lazy-loaded to avoid requiring @opentelemetry/* at import time).
+ * Use this for serverless environments where you need to flush telemetry before the process freezes.
+ *
+ * @example
+ * ```typescript
+ * const flushTelemetry = await getFlushTelemetryFn();
+ * await flushTelemetry();
+ * ```
+ */
+export { getFlushTelemetry as getFlushTelemetryFn };
