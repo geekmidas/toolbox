@@ -15,6 +15,18 @@ export interface DockerTemplateOptions {
 	packageManager: PackageManager;
 }
 
+export interface FrontendDockerfileOptions {
+	imageName: string;
+	baseImage: string;
+	port: number;
+	/** App path relative to workspace root */
+	appPath: string;
+	/** Package name for turbo prune */
+	turboPackage: string;
+	/** Detected package manager */
+	packageManager: PackageManager;
+}
+
 export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 	/** Enable turbo prune for monorepo optimization */
 	turbo?: boolean;
@@ -546,4 +558,195 @@ export function resolveDockerConfig(
 		port: docker.port ?? 3000,
 		compose: docker.compose,
 	};
+}
+
+/**
+ * Generate a Dockerfile for Next.js frontend apps using standalone output.
+ * Uses turbo prune for monorepo optimization.
+ * @internal Exported for testing
+ */
+export function generateNextjsDockerfile(
+	options: FrontendDockerfileOptions,
+): string {
+	const { baseImage, port, appPath, turboPackage, packageManager } = options;
+
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+
+	// For turbo builds, we can't use --frozen-lockfile because turbo prune
+	// creates a subset that may not perfectly match. Use relaxed install.
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
+
+	// Use pnpm dlx for pnpm (avoids global bin dir issues in Docker)
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+
+	return `# syntax=docker/dockerfile:1
+# Next.js standalone Dockerfile with turbo prune optimization
+
+# Stage 1: Prune monorepo
+FROM ${baseImage} AS pruner
+
+WORKDIR /app
+
+${installPm}
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN ${turboCmd} prune ${turboPackage} --docker
+
+# Stage 2: Install dependencies
+FROM ${baseImage} AS deps
+
+WORKDIR /app
+
+${installPm}
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/${pm.lockfile} ./
+COPY --from=pruner /app/out/json/ ./
+
+# Install dependencies
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
+
+# Stage 3: Build
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Set Next.js to produce standalone output
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build the application
+RUN ${turboCmd} run build --filter=${turboPackage}
+
+# Stage 4: Production
+FROM ${baseImage} AS runner
+
+WORKDIR /app
+
+# Install tini for proper signal handling
+RUN apk add --no-cache tini
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 nextjs
+
+# Set environment
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=${port}
+ENV HOSTNAME="0.0.0.0"
+
+# Copy static files and standalone output
+COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/.next/static ./${appPath}/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/public ./${appPath}/public
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \\
+  CMD wget -q --spider http://localhost:${port}/ || exit 1
+
+USER nextjs
+
+EXPOSE ${port}
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "${appPath}/server.js"]
+`;
+}
+
+/**
+ * Generate a Dockerfile for backend apps in a workspace.
+ * Uses turbo prune for monorepo optimization.
+ * @internal Exported for testing
+ */
+export function generateBackendDockerfile(
+	options: FrontendDockerfileOptions & { healthCheckPath?: string },
+): string {
+	const {
+		baseImage,
+		port,
+		appPath,
+		turboPackage,
+		packageManager,
+		healthCheckPath = '/health',
+	} = options;
+
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+
+	return `# syntax=docker/dockerfile:1
+# Backend Dockerfile with turbo prune optimization
+
+# Stage 1: Prune monorepo
+FROM ${baseImage} AS pruner
+
+WORKDIR /app
+
+${installPm}
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN ${turboCmd} prune ${turboPackage} --docker
+
+# Stage 2: Install dependencies
+FROM ${baseImage} AS deps
+
+WORKDIR /app
+
+${installPm}
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/${pm.lockfile} ./
+COPY --from=pruner /app/out/json/ ./
+
+# Install dependencies
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
+
+# Stage 3: Build
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Build production server using gkm
+RUN cd ${appPath} && ./node_modules/.bin/gkm build --provider server --production
+
+# Stage 4: Production
+FROM ${baseImage} AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache tini
+
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 hono
+
+# Copy bundled server
+COPY --from=builder --chown=hono:nodejs /app/${appPath}/.gkm/server/dist/server.mjs ./
+
+ENV NODE_ENV=production
+ENV PORT=${port}
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+
+USER hono
+
+EXPOSE ${port}
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "server.mjs"]
+`;
 }

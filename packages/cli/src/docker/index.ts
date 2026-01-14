@@ -2,14 +2,17 @@ import { execSync } from 'node:child_process';
 import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { loadConfig } from '../config';
+import { loadConfig, loadWorkspaceConfig } from '../config';
+import type { NormalizedAppConfig, NormalizedWorkspace } from '../workspace/types.js';
 import { generateDockerCompose, generateMinimalDockerCompose } from './compose';
 import {
 	detectPackageManager,
 	findLockfilePath,
+	generateBackendDockerfile,
 	generateDockerEntrypoint,
 	generateDockerignore,
 	generateMultiStageDockerfile,
+	generateNextjsDockerfile,
 	generateSlimDockerfile,
 	hasTurboConfig,
 	isMonorepo,
@@ -58,7 +61,17 @@ export interface DockerGeneratedFiles {
  */
 export async function dockerCommand(
 	options: DockerOptions,
-): Promise<DockerGeneratedFiles> {
+): Promise<DockerGeneratedFiles | WorkspaceDockerResult> {
+	// Load config with workspace detection
+	const loadedConfig = await loadWorkspaceConfig();
+
+	// Route to workspace docker mode for multi-app workspaces
+	if (loadedConfig.type === 'workspace') {
+		logger.log('📦 Detected workspace configuration');
+		return workspaceDockerCommand(loadedConfig.workspace, options);
+	}
+
+	// Single-app mode - use existing logic
 	const config = await loadConfig();
 	const dockerConfig = resolveDockerConfig(config);
 
@@ -317,4 +330,129 @@ async function pushDockerImage(
 			`Failed to push Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
 		);
 	}
+}
+
+/**
+ * Result of generating Docker files for a single app in a workspace.
+ */
+export interface AppDockerResult {
+	appName: string;
+	type: 'backend' | 'frontend';
+	dockerfile: string;
+	imageName: string;
+}
+
+/**
+ * Result of workspace docker command.
+ */
+export interface WorkspaceDockerResult {
+	apps: AppDockerResult[];
+	dockerignore: string;
+}
+
+/**
+ * Get the package name from package.json in an app directory.
+ */
+function getAppPackageName(appPath: string): string | undefined {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const pkg = require(`${appPath}/package.json`);
+		return pkg.name;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Generate Dockerfiles for all apps in a workspace.
+ * @internal Exported for testing
+ */
+export async function workspaceDockerCommand(
+	workspace: NormalizedWorkspace,
+	options: DockerOptions,
+): Promise<WorkspaceDockerResult> {
+	const results: AppDockerResult[] = [];
+	const apps = Object.entries(workspace.apps);
+
+	logger.log(`\n🐳 Generating Dockerfiles for workspace: ${workspace.name}`);
+
+	// Create docker output directory
+	const dockerDir = join(workspace.root, '.gkm', 'docker');
+	await mkdir(dockerDir, { recursive: true });
+
+	// Detect package manager
+	const packageManager = detectPackageManager(workspace.root);
+	logger.log(`   Package manager: ${packageManager}`);
+
+	// Generate Dockerfile for each app
+	for (const [appName, app] of apps) {
+		const appPath = app.path;
+		const fullAppPath = join(workspace.root, appPath);
+
+		// Get package name for turbo prune (use package.json name or app name)
+		const turboPackage = getAppPackageName(fullAppPath) ?? appName;
+
+		// Determine image name
+		const imageName = appName;
+
+		logger.log(`\n   📄 Generating Dockerfile for ${appName} (${app.type})`);
+
+		let dockerfile: string;
+
+		if (app.type === 'frontend') {
+			// Generate Next.js Dockerfile
+			dockerfile = generateNextjsDockerfile({
+				imageName,
+				baseImage: 'node:22-alpine',
+				port: app.port,
+				appPath,
+				turboPackage,
+				packageManager,
+			});
+		} else {
+			// Generate backend Dockerfile
+			dockerfile = generateBackendDockerfile({
+				imageName,
+				baseImage: 'node:22-alpine',
+				port: app.port,
+				appPath,
+				turboPackage,
+				packageManager,
+				healthCheckPath: '/health',
+			});
+		}
+
+		// Write Dockerfile with app-specific name
+		const dockerfilePath = join(dockerDir, `Dockerfile.${appName}`);
+		await writeFile(dockerfilePath, dockerfile);
+		logger.log(`      Generated: .gkm/docker/Dockerfile.${appName}`);
+
+		results.push({
+			appName,
+			type: app.type,
+			dockerfile: dockerfilePath,
+			imageName,
+		});
+	}
+
+	// Generate shared .dockerignore
+	const dockerignore = generateDockerignore();
+	const dockerignorePath = join(workspace.root, '.dockerignore');
+	await writeFile(dockerignorePath, dockerignore);
+	logger.log(`\n   Generated: .dockerignore (workspace root)`);
+
+	// Summary
+	logger.log(`\n✅ Generated ${results.length} Dockerfile(s)`);
+	logger.log('\n📋 Build commands:');
+	for (const result of results) {
+		const icon = result.type === 'backend' ? '⚙️' : '🌐';
+		logger.log(
+			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
+		);
+	}
+
+	return {
+		apps: results,
+		dockerignore: dockerignorePath,
+	};
 }

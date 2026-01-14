@@ -5,9 +5,11 @@ import type { GkmConfig } from '../../types';
 import {
 	detectPackageManager,
 	findLockfilePath,
+	generateBackendDockerfile,
 	generateDockerEntrypoint,
 	generateDockerignore,
 	generateMultiStageDockerfile,
+	generateNextjsDockerfile,
 	generateSlimDockerfile,
 	getLockfileName,
 	hasTurboConfig,
@@ -419,6 +421,149 @@ describe('docker templates', () => {
 			mockExistsSync.mockReturnValue(false);
 
 			expect(hasTurboConfig('/test/project')).toBe(false);
+		});
+	});
+
+	describe('generateNextjsDockerfile', () => {
+		const baseOptions = {
+			imageName: 'web',
+			baseImage: 'node:22-alpine',
+			port: 3001,
+			appPath: 'apps/web',
+			turboPackage: '@myapp/web',
+			packageManager: 'pnpm' as const,
+		};
+
+		it('should generate Next.js standalone Dockerfile', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('# Next.js standalone Dockerfile');
+		});
+
+		it('should include four stages: pruner, deps, builder, runner', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('AS pruner');
+			expect(dockerfile).toContain('AS deps');
+			expect(dockerfile).toContain('AS builder');
+			expect(dockerfile).toContain('AS runner');
+		});
+
+		it('should use turbo prune for monorepo optimization', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('turbo prune @myapp/web --docker');
+		});
+
+		it('should copy standalone output', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('.next/standalone');
+			expect(dockerfile).toContain('.next/static');
+		});
+
+		it('should set NEXT_TELEMETRY_DISABLED', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('NEXT_TELEMETRY_DISABLED=1');
+		});
+
+		it('should create nextjs user', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('adduser --system --uid 1001 nextjs');
+			expect(dockerfile).toContain('USER nextjs');
+		});
+
+		it('should expose configured port', () => {
+			const dockerfile = generateNextjsDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('EXPOSE 3001');
+			expect(dockerfile).toContain('ENV PORT=3001');
+		});
+
+		it('should use npm when specified', () => {
+			const dockerfile = generateNextjsDockerfile({
+				...baseOptions,
+				packageManager: 'npm',
+			});
+
+			expect(dockerfile).toContain('npx turbo');
+			expect(dockerfile).toContain('package-lock.json');
+		});
+	});
+
+	describe('generateBackendDockerfile', () => {
+		const baseOptions = {
+			imageName: 'api',
+			baseImage: 'node:22-alpine',
+			port: 3000,
+			appPath: 'apps/api',
+			turboPackage: '@myapp/api',
+			packageManager: 'pnpm' as const,
+		};
+
+		it('should generate backend Dockerfile with turbo prune', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('# Backend Dockerfile with turbo prune');
+		});
+
+		it('should include four stages: pruner, deps, builder, runner', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('AS pruner');
+			expect(dockerfile).toContain('AS deps');
+			expect(dockerfile).toContain('AS builder');
+			expect(dockerfile).toContain('AS runner');
+		});
+
+		it('should use turbo prune for the package', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('turbo prune @myapp/api --docker');
+		});
+
+		it('should build using gkm', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('gkm build --provider server --production');
+		});
+
+		it('should copy bundled server.mjs', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('.gkm/server/dist/server.mjs');
+		});
+
+		it('should create hono user', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('adduser --system --uid 1001 hono');
+			expect(dockerfile).toContain('USER hono');
+		});
+
+		it('should include health check with default path', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('HEALTHCHECK');
+			expect(dockerfile).toContain('/health');
+		});
+
+		it('should use custom health check path when provided', () => {
+			const dockerfile = generateBackendDockerfile({
+				...baseOptions,
+				healthCheckPath: '/api/health',
+			});
+
+			expect(dockerfile).toContain('/api/health');
+		});
+
+		it('should expose configured port', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('EXPOSE 3000');
+			expect(dockerfile).toContain('ENV PORT=3000');
 		});
 	});
 });
