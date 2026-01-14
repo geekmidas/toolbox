@@ -63,24 +63,17 @@ export const logger = createLogger();
 			// src/config/env.ts
 			{
 				path: 'src/config/env.ts',
-				content: `import { EnvironmentParser } from '@geekmidas/envkit';
+				content: `import { Credentials } from '@geekmidas/envkit/credentials';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
-export const envParser = new EnvironmentParser(process.env);
+export const envParser = new EnvironmentParser({ ...process.env, ...Credentials });
 
+// Global config - only minimal shared values
+// Service-specific config should be parsed in each service
 export const config = envParser
   .create((get) => ({
-    port: get('PORT').string().transform(Number).default(3000),
-    nodeEnv: get('NODE_ENV').string().default('development'),
-    rabbitmq: {
-      url: get('RABBITMQ_URL').string().default('amqp://localhost:5672'),
-    },${
-			options.database
-				? `
-    database: {
-      url: get('DATABASE_URL').string().default('postgresql://localhost:5432/mydb'),
-    },`
-				: ''
-		}
+    nodeEnv: get('NODE_ENV').enum(['development', 'test', 'production']).default('development'),
+    stage: get('STAGE').enum(['development', 'staging', 'production']).default('development'),
   }))
   .parse();
 `,
