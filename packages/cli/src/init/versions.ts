@@ -14,7 +14,7 @@ export const CLI_VERSION = `~${pkg.version}`;
  * Update these when publishing new versions
  * Note: CLI version is read from package.json via CLI_VERSION
  */
-export const GEEKMIDAS_VERSIONS: Record<string, string> = {
+export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/audit': '~0.2.0',
 	'@geekmidas/auth': '~0.2.0',
 	'@geekmidas/cache': '~0.2.0',
@@ -37,27 +37,7 @@ export const GEEKMIDAS_VERSIONS: Record<string, string> = {
 	'@geekmidas/testkit': '~0.6.0',
 };
 
-export type GeekmidasPackage =
-	| '@geekmidas/audit'
-	| '@geekmidas/auth'
-	| '@geekmidas/cache'
-	| '@geekmidas/cli'
-	| '@geekmidas/client'
-	| '@geekmidas/cloud'
-	| '@geekmidas/constructs'
-	| '@geekmidas/db'
-	| '@geekmidas/emailkit'
-	| '@geekmidas/envkit'
-	| '@geekmidas/errors'
-	| '@geekmidas/events'
-	| '@geekmidas/logger'
-	| '@geekmidas/rate-limit'
-	| '@geekmidas/schema'
-	| '@geekmidas/services'
-	| '@geekmidas/storage'
-	| '@geekmidas/studio'
-	| '@geekmidas/telescope'
-	| '@geekmidas/testkit';
+export type GeekmidasPackage = keyof typeof GEEKMIDAS_VERSIONS;
 
 /**
  * Get the version for a @geekmidas package
