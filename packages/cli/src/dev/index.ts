@@ -14,7 +14,12 @@ import type {
 	NormalizedStudioConfig,
 	NormalizedTelescopeConfig,
 } from '../build/types';
-import { loadWorkspaceConfig, parseModuleConfig } from '../config';
+import {
+	getAppNameFromCwd,
+	loadAppConfig,
+	loadWorkspaceConfig,
+	parseModuleConfig,
+} from '../config';
 import {
 	CronGenerator,
 	EndpointGenerator,
@@ -230,6 +235,7 @@ export function normalizeStudioConfig(
  */
 export function normalizeHooksConfig(
 	config: GkmConfig['hooks'],
+	cwd: string = process.cwd(),
 ): NormalizedHooksConfig | undefined {
 	if (!config?.server) {
 		return undefined;
@@ -240,7 +246,7 @@ export function normalizeHooksConfig(
 		? config.server
 		: `${config.server}.ts`;
 
-	const resolvedPath = resolve(process.cwd(), serverPath);
+	const resolvedPath = resolve(cwd, serverPath);
 
 	return {
 		serverHooksPath: resolvedPath,
@@ -308,21 +314,47 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	// Try to load workspace config first
-	const loadedConfig = await loadWorkspaceConfig();
+	// Check if we're in an app subdirectory
+	const appName = getAppNameFromCwd();
+	let config: GkmConfig;
+	let appRoot: string = process.cwd();
 
-	// Route to workspace dev mode for multi-app workspaces
-	if (loadedConfig.type === 'workspace') {
-		logger.log('📦 Detected workspace configuration');
-		return workspaceDevCommand(loadedConfig.workspace, options);
+	if (appName) {
+		// Try to load app-specific config from workspace
+		try {
+			const appConfig = await loadAppConfig();
+			config = appConfig.gkmConfig;
+			appRoot = appConfig.appRoot;
+			logger.log(`📦 Running app: ${appConfig.appName}`);
+		} catch {
+			// Not in a workspace or app not found in workspace - fall back to regular loading
+			const loadedConfig = await loadWorkspaceConfig();
+
+			// Route to workspace dev mode for multi-app workspaces
+			if (loadedConfig.type === 'workspace') {
+				logger.log('📦 Detected workspace configuration');
+				return workspaceDevCommand(loadedConfig.workspace, options);
+			}
+
+			config = loadedConfig.raw as GkmConfig;
+		}
+	} else {
+		// Try to load workspace config
+		const loadedConfig = await loadWorkspaceConfig();
+
+		// Route to workspace dev mode for multi-app workspaces
+		if (loadedConfig.type === 'workspace') {
+			logger.log('📦 Detected workspace configuration');
+			return workspaceDevCommand(loadedConfig.workspace, options);
+		}
+
+		// Single-app mode - use existing logic
+		config = loadedConfig.raw as GkmConfig;
 	}
-
-	// Single-app mode - use existing logic
-	const config = loadedConfig.raw as GkmConfig;
 
 	// Load any additional env files specified in config
 	if (config.env) {
-		const { loaded, missing } = loadEnvFiles(config.env);
+		const { loaded, missing } = loadEnvFiles(config.env, appRoot);
 		if (loaded.length > 0) {
 			logger.log(`📦 Loaded env: ${loaded.join(', ')}`);
 		}
@@ -366,7 +398,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	}
 
 	// Normalize hooks configuration
-	const hooks = normalizeHooksConfig(config.hooks);
+	const hooks = normalizeHooksConfig(config.hooks, appRoot);
 	if (hooks) {
 		logger.log(`🪝 Server hooks enabled from ${config.hooks?.server}`);
 	}
@@ -395,6 +427,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		buildContext,
 		resolved.providers[0] as LegacyProvider,
 		enableOpenApi,
+		appRoot,
 	);
 
 	// Generate OpenAPI spec on startup
@@ -414,6 +447,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		telescope,
 		studio,
 		runtime,
+		appRoot,
 	);
 
 	await devServer.start();
@@ -451,7 +485,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	// Resolve glob patterns to actual files (chokidar 4.x doesn't support globs)
 	const resolvedFiles = await fg(normalizedPatterns, {
-		cwd: process.cwd(),
+		cwd: appRoot,
 		absolute: false,
 		onlyFiles: true,
 	});
@@ -474,7 +508,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		ignored: /(^|[/\\])\../, // ignore dotfiles
 		persistent: true,
 		ignoreInitial: true,
-		cwd: process.cwd(),
+		cwd: appRoot,
 	});
 
 	watcher.on('ready', () => {
@@ -503,6 +537,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 					buildContext,
 					resolved.providers[0] as LegacyProvider,
 					enableOpenApi,
+					appRoot,
 				);
 
 				// Regenerate OpenAPI if enabled
