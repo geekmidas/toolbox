@@ -5,7 +5,9 @@ import { GEEKMIDAS_VERSIONS } from '../versions.js';
  * Generate auth app files for fullstack template
  * Uses better-auth with magic link authentication
  */
-export function generateAuthAppFiles(options: TemplateOptions): GeneratedFile[] {
+export function generateAuthAppFiles(
+	options: TemplateOptions,
+): GeneratedFile[] {
 	if (!options.monorepo || options.template !== 'fullstack') {
 		return [];
 	}

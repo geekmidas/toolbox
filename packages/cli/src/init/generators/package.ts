@@ -22,7 +22,8 @@ export function generatePackageJson(
 
 	// Add optional dependencies based on user choices
 	if (telescope) {
-		dependencies['@geekmidas/telescope'] = GEEKMIDAS_VERSIONS['@geekmidas/telescope'];
+		dependencies['@geekmidas/telescope'] =
+			GEEKMIDAS_VERSIONS['@geekmidas/telescope'];
 	}
 
 	if (studio) {

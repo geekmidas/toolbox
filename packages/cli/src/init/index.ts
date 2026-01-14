@@ -66,7 +66,13 @@ function generateDbPassword(): string {
  * Generate database URL for an app
  * All apps connect to the same database, but use different users/schemas
  */
-function generateDbUrl(appName: string, password: string, projectName: string, host = 'localhost', port = 5432): string {
+function generateDbUrl(
+	appName: string,
+	password: string,
+	projectName: string,
+	host = 'localhost',
+	port = 5432,
+): string {
 	const userName = appName.replace(/-/g, '_');
 	const dbName = `${projectName.replace(/-/g, '_')}_dev`;
 	return `postgresql://${userName}:${password}@${host}:${port}/${dbName}`;

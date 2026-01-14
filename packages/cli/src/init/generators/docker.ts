@@ -28,16 +28,18 @@ export function generateDockerFiles(
 
 	// PostgreSQL database
 	if (database) {
-		const initVolume = isFullstack && dbApps?.length
-			? `
+		const initVolume =
+			isFullstack && dbApps?.length
+				? `
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro`
-			: '';
+				: '';
 
-		const envFile = isFullstack && dbApps?.length
-			? `
+		const envFile =
+			isFullstack && dbApps?.length
+				? `
     env_file:
       - ./docker/.env`
-			: '';
+				: '';
 
 		services.push(`  postgres:
     image: postgres:16-alpine
