@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { EndpointGenerator } from '../generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
-import type { NormalizedAppConfig, NormalizedWorkspace } from './types.js';
+import type { NormalizedWorkspace } from './types.js';
 
 const logger = console;
 
@@ -36,7 +35,9 @@ function hashContent(content: string): string {
  * Normalize routes to an array of patterns.
  * @internal Exported for use in dev command
  */
-export function normalizeRoutes(routes: string | string[] | undefined): string[] {
+export function normalizeRoutes(
+	routes: string | string[] | undefined,
+): string[] {
 	if (!routes) return [];
 	return Array.isArray(routes) ? routes : [routes];
 }
@@ -45,7 +46,9 @@ export function normalizeRoutes(routes: string | string[] | undefined): string[]
  * Get the first routes pattern as a string (for simple cases).
  * @internal Exported for use in dev command
  */
-export function getFirstRoute(routes: string | string[] | undefined): string | null {
+export function getFirstRoute(
+	routes: string | string[] | undefined,
+): string | null {
 	const normalized = normalizeRoutes(routes);
 	return normalized[0] || null;
 }
@@ -288,10 +291,7 @@ export function getDependentFrontends(
 	const dependentApps: string[] = [];
 
 	for (const [appName, app] of Object.entries(workspace.apps)) {
-		if (
-			app.type === 'frontend' &&
-			app.dependencies.includes(backendAppName)
-		) {
+		if (app.type === 'frontend' && app.dependencies.includes(backendAppName)) {
 			dependentApps.push(appName);
 		}
 	}

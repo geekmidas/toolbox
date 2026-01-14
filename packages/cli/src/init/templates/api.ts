@@ -20,7 +20,7 @@ export const apiTemplate: TemplateConfig = {
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~1.9.4',
+		'@biomejs/biome': '~2.3.0',
 		'@geekmidas/cli': 'workspace:*',
 		'@types/node': '~22.0.0',
 		tsx: '~4.20.0',
@@ -101,7 +101,7 @@ export const config = envParser
 				path: getRoutePath('health.ts'),
 				content: `import { e } from '@geekmidas/constructs/endpoints';
 
-export default e
+export const endpoint = e
   .get('/health')
   .handle(async () => ({
     status: 'ok',
@@ -115,7 +115,7 @@ export default e
 				path: getRoutePath('users/list.ts'),
 				content: `import { e } from '@geekmidas/constructs/endpoints';
 
-export default e
+export const endpoint = e
   .get('/users')
   .handle(async () => ({
     users: [
@@ -130,7 +130,7 @@ export default e
 				content: `import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
-export default e
+export const endpoint = e
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .handle(async ({ params }) => ({
@@ -146,7 +146,7 @@ export default e
 		if (options.database) {
 			files.push({
 				path: 'src/services/database.ts',
-				content: `import type { Service } from '@geekmidas/services';
+				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 
@@ -162,18 +162,24 @@ export interface Database {
 
 export const databaseService = {
   serviceName: 'database' as const,
-  async register(envParser) {
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+    logger.info('Connecting to database');
+
     const config = envParser
       .create((get) => ({
         url: get('DATABASE_URL').string(),
       }))
       .parse();
 
-    return new Kysely<Database>({
+    const db = new Kysely<Database>({
       dialect: new PostgresDialect({
         pool: new pg.Pool({ connectionString: config.url }),
       }),
     });
+
+    logger.info('Database connection established');
+    return db;
   },
 } satisfies Service<'database', Kysely<Database>>;
 `,

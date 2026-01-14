@@ -17,7 +17,7 @@ import {
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
-import { type DokployApplication, DokployApi } from './dokploy-api';
+import { DokployApi, type DokployApplication } from './dokploy-api';
 import { updateConfig } from './init';
 import type {
 	AppDeployResult,

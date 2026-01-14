@@ -6,12 +6,8 @@ import {
 } from './schema.js';
 import type {
 	AppConfig,
-	AppConfigInput,
-	AppInput,
 	AppsRecord,
-	ConstrainedApps,
 	DeployTarget,
-	InferAppNames,
 	InferredWorkspaceConfig,
 	LoadedConfig,
 	NormalizedAppConfig,
@@ -21,6 +17,17 @@ import type {
 } from './types.js';
 import { isWorkspaceConfig } from './types.js';
 
+export {
+	formatValidationErrors,
+	getDeployTargetError,
+	isDeployTargetSupported,
+	isPhase2DeployTarget,
+	PHASE_2_DEPLOY_TARGETS,
+	SUPPORTED_DEPLOY_TARGETS,
+	safeValidateWorkspaceConfig,
+	validateWorkspaceConfig,
+	WorkspaceConfigSchema,
+} from './schema.js';
 // Re-export types
 export type {
 	AppConfig,
@@ -46,28 +53,13 @@ export type {
 	WorkspaceConfig,
 	WorkspaceInput,
 } from './types.js';
-
 export { isWorkspaceConfig } from './types.js';
-
-export {
-	formatValidationErrors,
-	getDeployTargetError,
-	isDeployTargetSupported,
-	isPhase2DeployTarget,
-	PHASE_2_DEPLOY_TARGETS,
-	safeValidateWorkspaceConfig,
-	SUPPORTED_DEPLOY_TARGETS,
-	validateWorkspaceConfig,
-	WorkspaceConfigSchema,
-} from './schema.js';
 
 /**
  * Validate that all dependencies reference existing apps.
  * Returns the config if valid, throws otherwise.
  */
-function validateDependencies<TApps extends AppsRecord>(
-	apps: TApps,
-): void {
+function validateDependencies<TApps extends AppsRecord>(apps: TApps): void {
 	const appNames = new Set(Object.keys(apps));
 
 	for (const [appName, app] of Object.entries(apps)) {
@@ -328,9 +320,7 @@ export function getAppGkmConfig(
  * Get topologically sorted app names based on dependencies.
  * Apps with no dependencies come first, then apps that depend on them.
  */
-export function getAppBuildOrder(
-	workspace: NormalizedWorkspace,
-): string[] {
+export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 	const appNames = Object.keys(workspace.apps);
 	const visited = new Set<string>();
 	const result: string[] = [];

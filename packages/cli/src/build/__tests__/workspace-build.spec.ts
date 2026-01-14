@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
+	type AppBuildResult,
 	detectPackageManager,
 	getTurboCommand,
-	type AppBuildResult,
 } from '../index.js';
 
 describe('Workspace Build Command', () => {

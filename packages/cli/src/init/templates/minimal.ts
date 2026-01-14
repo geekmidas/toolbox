@@ -85,7 +85,7 @@ export const config = envParser
 				path: getRoutePath('health.ts'),
 				content: `import { e } from '@geekmidas/constructs/endpoints';
 
-export default e
+export const endpoint = e
   .get('/health')
   .handle(async () => ({
     status: 'ok',

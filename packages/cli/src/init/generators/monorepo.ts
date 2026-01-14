@@ -1,6 +1,5 @@
 import type {
 	GeneratedFile,
-	RoutesStructure,
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
@@ -27,9 +26,9 @@ export function generateMonorepoFiles(
 		scripts: {
 			dev: isFullstack ? 'gkm dev' : 'turbo dev',
 			build: isFullstack ? 'gkm build' : 'turbo build',
-			test: 'turbo test',
-			'test:once': 'turbo test:once',
-			typecheck: 'turbo typecheck',
+			test: isFullstack ? 'gkm test' : 'turbo test',
+			'test:once': isFullstack ? 'gkm test --run' : 'turbo test:once',
+			typecheck: 'tsc -b',
 			lint: 'biome lint .',
 			fmt: 'biome format . --write',
 			'fmt:check': 'biome format .',
@@ -38,7 +37,7 @@ export function generateMonorepoFiles(
 				: {}),
 		},
 		devDependencies: {
-			'@biomejs/biome': '~1.9.4',
+			'@biomejs/biome': '~2.3.0',
 			'@geekmidas/cli': '~0.18.0',
 			turbo: '~2.3.0',
 			typescript: '~5.8.2',
@@ -57,7 +56,7 @@ export function generateMonorepoFiles(
 
 	// Root biome.json
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/1.9.4/schema.json',
+		$schema: 'https://biomejs.dev/schemas/2.3.0/schema.json',
 		vcs: {
 			enabled: true,
 			clientKind: 'git',
@@ -171,6 +170,17 @@ coverage/
 `;
 
 	// Root tsconfig.json - base config for all packages
+	// Build references array for project references
+	const references: { path: string }[] = [
+		{ path: './apps/api' },
+		{ path: './packages/models' },
+	];
+
+	// Add web app reference for fullstack template
+	if (isFullstack) {
+		references.push({ path: './apps/web' });
+	}
+
 	const tsConfig = {
 		compilerOptions: {
 			target: 'ES2022',
@@ -187,6 +197,7 @@ coverage/
 			composite: true,
 		},
 		exclude: ['node_modules', 'dist'],
+		references,
 	};
 
 	const files: GeneratedFile[] = [

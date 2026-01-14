@@ -162,7 +162,7 @@ export class HonoEndpoint<
 		return parsed.value;
 	}
 	addRoute(
-		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
+		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>>,
 		app: Hono,
 	): void {
 		HonoEndpoint.addRoute(this.endpoint, serviceDiscovery, app);
@@ -175,7 +175,7 @@ export class HonoEndpoint<
 	 */
 	static applyEventMiddleware(
 		_app: Hono,
-		_serviceDiscovery: ServiceDiscovery<any, any>,
+		_serviceDiscovery: ServiceDiscovery<any>,
 	) {
 		// No-op: Event publishing is now handled per-route in addRoute
 		// This avoids running middleware on every request including 404s
@@ -203,7 +203,7 @@ export class HonoEndpoint<
 		TLogger extends Logger = Logger,
 	>(
 		endpoints: Endpoint<string, HttpMethod, any, any, TServices, TLogger>[],
-		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
+		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>>,
 		app: Hono,
 		options?: HonoEndpointOptions,
 	): void {
@@ -296,7 +296,7 @@ export class HonoEndpoint<
 			TDatabase,
 			TDatabaseServiceName
 		>,
-		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>, TLogger>,
+		serviceDiscovery: ServiceDiscovery<ServiceRecord<TServices>>,
 		app: Hono,
 	): void {
 		const { route } = endpoint;

@@ -37,9 +37,10 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
 			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
 			expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(true);
-			expect(existsSync(join(projectDir, '.env'))).toBe(true);
-			expect(existsSync(join(projectDir, '.env.development'))).toBe(true);
-			expect(existsSync(join(projectDir, '.env.test'))).toBe(true);
+			// Secrets are now encrypted instead of .env files
+			expect(
+				existsSync(join(projectDir, '.gkm/secrets/development.json')),
+			).toBe(true);
 			expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
 			expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
@@ -325,14 +326,16 @@ describe('initCommand', () => {
 
 			// Web app files
 			expect(existsSync(join(projectDir, 'apps/web/package.json'))).toBe(true);
-			expect(existsSync(join(projectDir, 'apps/web/next.config.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/web/next.config.ts'))).toBe(
+				true,
+			);
 			expect(existsSync(join(projectDir, 'apps/web/tsconfig.json'))).toBe(true);
-			expect(
-				existsSync(join(projectDir, 'apps/web/src/app/layout.tsx')),
-			).toBe(true);
-			expect(
-				existsSync(join(projectDir, 'apps/web/src/app/page.tsx')),
-			).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/web/src/app/layout.tsx'))).toBe(
+				true,
+			);
+			expect(existsSync(join(projectDir, 'apps/web/src/app/page.tsx'))).toBe(
+				true,
+			);
 
 			// Models package
 			expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
@@ -350,7 +353,7 @@ describe('initCommand', () => {
 			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
 			const content = await readFile(configPath, 'utf-8');
 
-			expect(content).toContain("import { defineWorkspace }");
+			expect(content).toContain('import { defineWorkspace }');
 			expect(content).toContain("name: 'my-fullstack'");
 			expect(content).toContain("type: 'backend'");
 			expect(content).toContain("path: 'apps/api'");
@@ -438,9 +441,9 @@ describe('initCommand', () => {
 			});
 
 			// Config should be at root only, not in apps/api
-			expect(
-				existsSync(join(tempDir, 'my-fullstack', 'gkm.config.ts')),
-			).toBe(true);
+			expect(existsSync(join(tempDir, 'my-fullstack', 'gkm.config.ts'))).toBe(
+				true,
+			);
 			expect(
 				existsSync(join(tempDir, 'my-fullstack', 'apps/api/gkm.config.ts')),
 			).toBe(false);

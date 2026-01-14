@@ -89,6 +89,7 @@ export default defineConfig({
 		? {
 				extends: '../../tsconfig.json',
 				compilerOptions: {
+					composite: true,
 					outDir: './dist',
 					rootDir: './src',
 					baseUrl: '.',
@@ -98,6 +99,7 @@ export default defineConfig({
 				},
 				include: ['src/**/*.ts'],
 				exclude: ['node_modules', 'dist'],
+				references: [{ path: '../../packages/models' }],
 			}
 		: {
 				compilerOptions: {
@@ -135,7 +137,7 @@ export default defineConfig({
 
 	// Build biome.json
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/1.9.4/schema.json',
+		$schema: 'https://biomejs.dev/schemas/2.3.0/schema.json',
 		vcs: {
 			enabled: true,
 			clientKind: 'git',

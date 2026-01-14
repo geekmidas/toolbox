@@ -52,7 +52,9 @@ describe('defineWorkspace', () => {
 			},
 		} as WorkspaceConfig;
 
-		expect(() => defineWorkspace(config)).toThrow('Backend apps must have routes defined');
+		expect(() => defineWorkspace(config)).toThrow(
+			'Backend apps must have routes defined',
+		);
 	});
 });
 

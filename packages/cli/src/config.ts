@@ -2,10 +2,10 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { GkmConfig } from './types.js';
 import {
-	type LoadedConfig,
-	type WorkspaceConfig,
 	isWorkspaceConfig,
+	type LoadedConfig,
 	processConfig,
+	type WorkspaceConfig,
 } from './workspace/index.js';
 
 export type { GkmConfig } from './types.js';
@@ -100,9 +100,7 @@ async function loadRawConfig(
 		const config = await import(configPath);
 		return config.default;
 	} catch (error) {
-		throw new Error(
-			`Failed to load config: ${(error as Error).message}`,
-		);
+		throw new Error(`Failed to load config: ${(error as Error).message}`);
 	}
 }
 

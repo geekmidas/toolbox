@@ -169,38 +169,31 @@ describe('generateConfigFiles', () => {
 });
 
 describe('generateEnvFiles', () => {
-	it('should generate all env files for non-monorepo', () => {
+	it('should only generate .gitignore for non-monorepo', () => {
+		// .env files are no longer generated - secrets are encrypted instead
 		const files = generateEnvFiles(baseOptions, minimalTemplate);
 		const paths = files.map((f) => f.path);
-		expect(paths).toContain('.env');
-		expect(paths).toContain('.env.example');
-		expect(paths).toContain('.env.development');
-		expect(paths).toContain('.env.test');
 		expect(paths).toContain('.gitignore');
+		expect(paths).not.toContain('.env');
+		expect(paths).not.toContain('.env.example');
+		expect(paths).not.toContain('.env.development');
+		expect(paths).not.toContain('.env.test');
 	});
 
-	it('should not generate .gitignore for monorepo', () => {
+	it('should not generate any files for monorepo (gitignore at root)', () => {
 		const options: TemplateOptions = {
 			...baseOptions,
 			monorepo: true,
 			apiPath: 'apps/api',
 		};
 		const files = generateEnvFiles(options, minimalTemplate);
-		const paths = files.map((f) => f.path);
-		expect(paths).not.toContain('.gitignore');
+		expect(files).toHaveLength(0);
 	});
 
-	it('should include DATABASE_URL when database is enabled', () => {
+	it('should include .gkm in gitignore', () => {
 		const files = generateEnvFiles(baseOptions, minimalTemplate);
-		const envFile = files.find((f) => f.path === '.env');
-		expect(envFile?.content).toContain('DATABASE_URL');
-	});
-
-	it('should include RABBITMQ_URL for worker template', () => {
-		const options = { ...baseOptions, template: 'worker' as const };
-		const files = generateEnvFiles(options, workerTemplate);
-		const envFile = files.find((f) => f.path === '.env');
-		expect(envFile?.content).toContain('RABBITMQ_URL');
+		const gitignore = files.find((f) => f.path === '.gitignore');
+		expect(gitignore?.content).toContain('.gkm/');
 	});
 });
 

@@ -99,10 +99,9 @@ my-api/
 │   │   └── telescope.ts (if enabled)
 │   └── endpoints/          # or routes/, or domain-based
 │       └── health.ts
-├── .env
-├── .env.example
-├── .env.development
-├── .env.test
+├── .gkm/
+│   └── secrets/
+│       └── development.json (encrypted)
 ├── .gitignore
 ├── biome.json
 ├── docker-compose.yml
@@ -122,7 +121,6 @@ my-project/
 │       │   ├── config/
 │       │   └── endpoints/    # or routes/, or domain-based
 │       │       └── health.ts
-│       ├── .env
 │       ├── gkm.config.ts
 │       ├── package.json
 │       └── tsconfig.json
@@ -132,6 +130,9 @@ my-project/
 │       │   └── index.ts (shared Zod schemas)
 │       ├── package.json
 │       └── tsconfig.json
+├── .gkm/
+│   └── secrets/
+│       └── development.json (encrypted)
 ├── biome.json
 ├── docker-compose.yml
 ├── package.json
@@ -139,6 +140,10 @@ my-project/
 ├── tsconfig.json
 └── turbo.json
 ```
+
+**Secrets Storage:**
+
+Secrets are stored encrypted at `.gkm/secrets/{stage}.json` with decryption keys at `~/.gkm/{project-name}/{stage}.key`. This separates secrets from the codebase while keeping them accessible locally.
 
 ### Build
 
@@ -359,6 +364,89 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 - Hot reload on file changes
 - Telescope debugging dashboard integration
 - **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
+
+### Test
+
+Run tests with secrets loaded from the specified stage.
+
+```bash
+# Run tests with development secrets
+gkm test
+
+# Run tests once (no watch mode)
+gkm test --run
+
+# Run tests with coverage
+gkm test --coverage
+
+# Run tests with specific stage secrets
+gkm test --stage staging
+
+# Filter tests by pattern
+gkm test users.spec.ts
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--stage <stage>` | Stage to load secrets from (default: development) |
+| `--run` | Run tests once without watch mode |
+| `--watch` | Enable watch mode |
+| `--coverage` | Generate coverage report |
+| `--ui` | Open Vitest UI |
+| `[pattern]` | Pattern to filter tests |
+
+The test command decrypts secrets from `.gkm/secrets/{stage}.json` and injects them as environment variables before running Vitest.
+
+### Secrets Management
+
+Manage encrypted secrets for different deployment stages.
+
+```bash
+# Initialize secrets for a stage
+gkm secrets:init --stage production
+
+# View secrets (masked)
+gkm secrets:show --stage development
+
+# View actual values
+gkm secrets:show --stage development --reveal
+
+# Set a custom secret
+gkm secrets:set API_KEY sk-1234567890 --stage production
+
+# Rotate service passwords
+gkm secrets:rotate --stage production
+gkm secrets:rotate --stage production --service postgres
+
+# Import secrets from JSON
+gkm secrets:import secrets.json --stage production
+```
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `secrets:init` | Initialize secrets for a stage |
+| `secrets:show` | Display secrets for a stage |
+| `secrets:set` | Set a custom secret |
+| `secrets:rotate` | Rotate service passwords |
+| `secrets:import` | Import secrets from JSON file |
+
+**Encryption:**
+
+Secrets are encrypted using AES-256-GCM:
+- Encrypted data stored at `.gkm/secrets/{stage}.json`
+- Decryption keys stored at `~/.gkm/{project-name}/{stage}.key`
+- Keys are never committed to version control
+
+**Service Credentials:**
+
+When services are configured, the following are auto-generated:
+- PostgreSQL: `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.
+- Redis: `REDIS_URL`, `REDIS_PASSWORD`, etc.
+- RabbitMQ: `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, etc.
 
 ## Configuration File
 

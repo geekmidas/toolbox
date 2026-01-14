@@ -14,25 +14,31 @@ pnpm add @geekmidas/services
 - Type-safe service registration and retrieval
 - Service caching and lifecycle management
 - Integration with EnvironmentParser for configuration
+- Access to request context for logging and tracing
 - Support for async service initialization
 
 ## Basic Usage
 
 ### Define a Service
 
+Services receive `ServiceRegisterOptions` with access to both `envParser` for configuration and `context` for logging:
+
 ```typescript
-import type { Service } from '@geekmidas/services';
-import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 
 const databaseService = {
   serviceName: 'database' as const,
-  async register(envParser: EnvironmentParser<{}>) {
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+    logger.info('Connecting to database');
+
     const config = envParser.create((get) => ({
       url: get('DATABASE_URL').string(),
       poolSize: get('DATABASE_POOL_SIZE').string().transform(Number).default(10),
     })).parse();
 
     const db = await createConnection(config);
+    logger.info('Database connection established');
     return db;
   }
 } satisfies Service<'database', Database>;
@@ -68,7 +74,10 @@ const cache = services.cache;
 ```typescript
 const cacheService = {
   serviceName: 'cache' as const,
-  async register(envParser) {
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+    logger.debug('Initializing cache');
+
     const config = envParser.create((get) => ({
       redisUrl: get('REDIS_URL').string(),
     })).parse();
@@ -79,7 +88,7 @@ const cacheService = {
 
 const emailService = {
   serviceName: 'email' as const,
-  async register(envParser) {
+  async register({ envParser }: ServiceRegisterOptions) {
     const config = envParser.create((get) => ({
       smtpHost: get('SMTP_HOST').string(),
       smtpPort: get('SMTP_PORT').string().transform(Number),
@@ -95,7 +104,7 @@ const emailService = {
 ```typescript
 import { e } from '@geekmidas/constructs/endpoints';
 
-const endpoint = e
+export const endpoint = e
   .get('/users/:id')
   .services([databaseService, cacheService])
   .handle(async ({ params, services }) => {
@@ -112,8 +121,22 @@ const endpoint = e
 ## Service Interface
 
 ```typescript
+interface ServiceRegisterOptions {
+  /** Environment parser for configuration */
+  envParser: EnvironmentParser<{}>;
+  /** Request context for logging and tracing */
+  context: ServiceContext;
+}
+
 interface Service<TName extends string, TInstance> {
   serviceName: TName;
-  register(envParser: EnvironmentParser<{}>): Promise<TInstance> | TInstance;
+  register(options: ServiceRegisterOptions): Promise<TInstance> | TInstance;
+}
+
+interface ServiceContext {
+  /** Get a logger bound to the current request */
+  getLogger(): Logger;
+  /** Get the current request ID */
+  getRequestId(): string | undefined;
 }
 ```

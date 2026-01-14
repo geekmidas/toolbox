@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
-import type { NormalizedAppConfig, NormalizedWorkspace } from '../workspace/types.js';
+import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
 	generateDockerCompose,
 	generateMinimalDockerCompose,
@@ -455,7 +455,9 @@ export async function workspaceDockerCommand(
 	logger.log(`   Generated: .gkm/docker/docker-compose.yml`);
 
 	// Summary
-	logger.log(`\n✅ Generated ${results.length} Dockerfile(s) + docker-compose.yml`);
+	logger.log(
+		`\n✅ Generated ${results.length} Dockerfile(s) + docker-compose.yml`,
+	);
 	logger.log('\n📋 Build commands:');
 	for (const result of results) {
 		const icon = result.type === 'backend' ? '⚙️' : '🌐';

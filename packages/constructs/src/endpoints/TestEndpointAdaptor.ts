@@ -154,10 +154,9 @@ export class TestEndpointAdaptor<
 			TDatabase,
 			TDatabaseServiceName
 		>,
-		private serviceDiscovery: ServiceDiscovery<
-			any,
-			any
-		> = TestEndpointAdaptor.getDefaultServiceDiscover(endpoint),
+		private serviceDiscovery: ServiceDiscovery<any> = TestEndpointAdaptor.getDefaultServiceDiscover(
+			endpoint,
+		),
 	) {}
 
 	async fullRequest(

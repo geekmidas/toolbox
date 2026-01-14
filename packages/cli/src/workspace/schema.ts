@@ -72,14 +72,18 @@ const PHASE_2_DEPLOY_TARGETS = ['vercel', 'cloudflare'] as const;
  * Check if a deploy target is supported.
  */
 export function isDeployTargetSupported(target: string): boolean {
-	return SUPPORTED_DEPLOY_TARGETS.includes(target as typeof SUPPORTED_DEPLOY_TARGETS[number]);
+	return SUPPORTED_DEPLOY_TARGETS.includes(
+		target as (typeof SUPPORTED_DEPLOY_TARGETS)[number],
+	);
 }
 
 /**
  * Check if a deploy target is planned for Phase 2.
  */
 export function isPhase2DeployTarget(target: string): boolean {
-	return PHASE_2_DEPLOY_TARGETS.includes(target as typeof PHASE_2_DEPLOY_TARGETS[number]);
+	return PHASE_2_DEPLOY_TARGETS.includes(
+		target as (typeof PHASE_2_DEPLOY_TARGETS)[number],
+	);
 }
 
 /**

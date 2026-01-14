@@ -25,9 +25,9 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
-			next: '~15.1.0',
-			react: '~19.0.0',
-			'react-dom': '~19.0.0',
+			next: '~16.1.0',
+			react: '~19.2.0',
+			'react-dom': '~19.2.0',
 		},
 		devDependencies: {
 			'@types/node': '~22.0.0',
@@ -50,9 +50,12 @@ export default nextConfig;
 `;
 
 	// tsconfig.json for Next.js
+	// Note: Next.js projects use noEmit: true (Next.js handles compilation)
+	// but we still add composite for project references
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
+			composite: true,
 			lib: ['dom', 'dom.iterable', 'ES2022'],
 			allowJs: true,
 			skipLibCheck: true,
@@ -79,6 +82,7 @@ export default nextConfig;
 		},
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
 		exclude: ['node_modules'],
+		references: [{ path: '../../packages/models' }],
 	};
 
 	// App layout

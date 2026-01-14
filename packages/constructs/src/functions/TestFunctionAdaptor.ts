@@ -83,10 +83,9 @@ export class TestFunctionAdaptor<
 			TAuditAction,
 			any
 		>,
-		private serviceDiscovery: ServiceDiscovery<
-			any,
-			any
-		> = TestFunctionAdaptor.getDefaultServiceDiscovery(fn),
+		private serviceDiscovery: ServiceDiscovery<any> = TestFunctionAdaptor.getDefaultServiceDiscovery(
+			fn,
+		),
 	) {}
 
 	async invoke(

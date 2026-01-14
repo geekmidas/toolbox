@@ -777,7 +777,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			// api section should not have depends_on
-			const apiSection = yaml.split('api:')[1]?.split(/^  \w+:/m)[0];
+			const apiSection = yaml.split('api:')[1]?.split(/^ {2}\w+:/m)[0];
 			expect(apiSection).not.toContain('depends_on:');
 		});
 	});
@@ -894,7 +894,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			// Frontend should not depend on postgres
-			const webSection = yaml.split('web:')[1]?.split(/^  \w+:/m)[0];
+			const webSection = yaml.split('web:')[1]?.split(/^ {2}\w+:/m)[0];
 			expect(webSection).not.toContain('postgres:');
 		});
 

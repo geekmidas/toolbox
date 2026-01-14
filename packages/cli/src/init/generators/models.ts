@@ -46,6 +46,7 @@ export function generateModelsPackage(
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
+			composite: true,
 			outDir: './dist',
 			rootDir: './src',
 		},

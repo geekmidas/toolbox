@@ -18,6 +18,7 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from './secrets';
+import { testCommand, type TestOptions } from './test/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 
 const program = new Command();
@@ -151,6 +152,28 @@ program
 				portExplicit: !!options.port,
 				enableOpenApi: options.enableOpenapi ?? true,
 			});
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('test')
+	.description('Run tests with secrets loaded from environment')
+	.option('--stage <stage>', 'Stage to load secrets from', 'development')
+	.option('--run', 'Run tests once without watch mode')
+	.option('--watch', 'Enable watch mode')
+	.option('--coverage', 'Generate coverage report')
+	.option('--ui', 'Open Vitest UI')
+	.argument('[pattern]', 'Pattern to filter tests')
+	.action(async (pattern: string | undefined, options: TestOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await testCommand({ ...options, pattern });
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);

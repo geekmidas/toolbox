@@ -52,7 +52,7 @@ export async function processEndpointAudits<
 		TAuditAction
 	>,
 	response: InferStandardSchema<OutSchema>,
-	serviceDiscovery: ServiceDiscovery<any, any>,
+	serviceDiscovery: ServiceDiscovery<any>,
 	logger: TLogger,
 	ctx: {
 		session: TSession;
@@ -237,7 +237,7 @@ export async function createAuditContext<
 		TDatabase,
 		TDatabaseServiceName
 	>,
-	serviceDiscovery: ServiceDiscovery<any, any>,
+	serviceDiscovery: ServiceDiscovery<any>,
 	logger: TLogger,
 	ctx: {
 		session: TSession;

@@ -6,7 +6,6 @@ import type {
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
-	ServicesConfig,
 } from '../workspace/types.js';
 
 /** Default Docker images for services */

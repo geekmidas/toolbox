@@ -14,7 +14,7 @@ import type {
 	NormalizedStudioConfig,
 	NormalizedTelescopeConfig,
 } from '../build/types';
-import { loadConfig, loadWorkspaceConfig, parseModuleConfig } from '../config';
+import { loadWorkspaceConfig, parseModuleConfig } from '../config';
 import {
 	CronGenerator,
 	EndpointGenerator,
@@ -26,6 +26,11 @@ import {
 	OPENAPI_OUTPUT_PATH,
 	resolveOpenApiConfig,
 } from '../openapi';
+import {
+	readStageSecrets,
+	secretsExist,
+	toEmbeddableSecrets,
+} from '../secrets/storage.js';
 import type {
 	GkmConfig,
 	LegacyProvider,
@@ -36,22 +41,15 @@ import type {
 	TelescopeConfig,
 } from '../types';
 import {
-	readStageSecrets,
-	secretsExist,
-	toEmbeddableSecrets,
-} from '../secrets/storage.js';
-import {
 	generateAllClients,
 	generateClientForFrontend,
 	getDependentFrontends,
-	getFirstRoute,
 	normalizeRoutes,
-	shouldRegenerateClient,
 } from '../workspace/client-generator.js';
 import {
-	type NormalizedWorkspace,
-	getDependencyEnvVars,
 	getAppBuildOrder,
+	getDependencyEnvVars,
+	type NormalizedWorkspace,
 } from '../workspace/index.js';
 
 const logger = console;
@@ -796,7 +794,9 @@ async function workspaceDevCommand(
 	);
 
 	logger.log(`\n🚀 Starting workspace: ${workspace.name}`);
-	logger.log(`   ${backendApps.length} backend app(s), ${frontendApps.length} frontend app(s)`);
+	logger.log(
+		`   ${backendApps.length} backend app(s), ${frontendApps.length} frontend app(s)`,
+	);
 
 	// Check for port conflicts
 	const conflicts = checkPortConflicts(workspace);
@@ -806,7 +806,9 @@ async function workspaceDevCommand(
 				`❌ Port conflict: Apps "${conflict.app1}" and "${conflict.app2}" both use port ${conflict.port}`,
 			);
 		}
-		throw new Error('Port conflicts detected. Please assign unique ports to each app.');
+		throw new Error(
+			'Port conflicts detected. Please assign unique ports to each app.',
+		);
 	}
 
 	// Validate frontend apps (Next.js setup)
@@ -818,7 +820,9 @@ async function workspaceDevCommand(
 		for (const result of validationResults) {
 			if (!result.valid) {
 				hasErrors = true;
-				logger.error(`\n❌ Frontend app "${result.appName}" validation failed:`);
+				logger.error(
+					`\n❌ Frontend app "${result.appName}" validation failed:`,
+				);
 				for (const error of result.errors) {
 					logger.error(`   • ${error}`);
 				}
@@ -890,10 +894,13 @@ async function workspaceDevCommand(
 	for (const appName of buildOrder) {
 		const app = workspace.apps[appName];
 		if (!app) continue;
-		const deps = app.dependencies.length > 0
-			? ` (depends on: ${app.dependencies.join(', ')})`
-			: '';
-		logger.log(`   ${app.type === 'backend' ? '🔧' : '🌐'} ${appName} → http://localhost:${app.port}${deps}`);
+		const deps =
+			app.dependencies.length > 0
+				? ` (depends on: ${app.dependencies.join(', ')})`
+				: '';
+		logger.log(
+			`   ${app.type === 'backend' ? '🔧' : '🌐'} ${appName} → http://localhost:${app.port}${deps}`,
+		);
 	}
 
 	// Prepare environment variables
@@ -908,15 +915,11 @@ async function workspaceDevCommand(
 	// Spawn turbo run dev
 	logger.log('\n🏃 Starting turbo run dev...\n');
 
-	const turboProcess = spawn(
-		'pnpm',
-		['turbo', 'run', 'dev', ...turboFilter],
-		{
-			cwd: workspace.root,
-			stdio: 'inherit',
-			env: turboEnv,
-		},
-	);
+	const turboProcess = spawn('pnpm', ['turbo', 'run', 'dev', ...turboFilter], {
+		cwd: workspace.root,
+		stdio: 'inherit',
+		env: turboEnv,
+	});
 
 	// Set up file watcher for backend endpoint changes (smart client regeneration)
 	let endpointWatcher: ReturnType<typeof chokidar.watch> | null = null;
@@ -948,7 +951,9 @@ async function workspaceDevCommand(
 			});
 
 			if (resolvedFiles.length > 0) {
-				logger.log(`\n👀 Watching ${resolvedFiles.length} endpoint file(s) for schema changes`);
+				logger.log(
+					`\n👀 Watching ${resolvedFiles.length} endpoint file(s) for schema changes`,
+				);
 
 				endpointWatcher = chokidar.watch(resolvedFiles, {
 					ignored: /(^|[/\\])\../,
@@ -971,7 +976,11 @@ async function workspaceDevCommand(
 						for (const [appName, app] of backendApps) {
 							const routePatterns = normalizeRoutes(app.routes);
 							for (const routePattern of routePatterns) {
-								const routesDir = join(workspace.root, app.path, routePattern.split('*')[0] || '');
+								const routesDir = join(
+									workspace.root,
+									app.path,
+									routePattern.split('*')[0] || '',
+								);
 								if (changedPath.startsWith(routesDir.replace(/\/$/, ''))) {
 									changedBackends.push(appName);
 									break; // Found a match, no need to check other patterns
@@ -997,11 +1006,16 @@ async function workspaceDevCommand(
 						}
 
 						// Regenerate clients for affected frontends
-						logger.log(`\n🔄 Detected schema change in ${changedBackends.join(', ')}`);
+						logger.log(
+							`\n🔄 Detected schema change in ${changedBackends.join(', ')}`,
+						);
 
 						for (const frontend of affectedFrontends) {
 							try {
-								const results = await generateClientForFrontend(workspace, frontend);
+								const results = await generateClientForFrontend(
+									workspace,
+									frontend,
+								);
 								for (const result of results) {
 									if (result.generated) {
 										logger.log(

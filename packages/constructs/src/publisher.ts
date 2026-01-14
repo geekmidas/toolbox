@@ -13,7 +13,7 @@ export async function publishEvents<
 	TPublisherService extends Service<TServiceName, T> | undefined = undefined,
 >(
 	logger: Logger,
-	serviceDiscovery: ServiceDiscovery<any, any>,
+	serviceDiscovery: ServiceDiscovery<any>,
 	ev: MappedEvent<T, OutSchema>[] = [],
 	response: InferStandardSchema<OutSchema>,
 	publisherService: TPublisherService,
@@ -80,7 +80,7 @@ export async function publishConstructEvents<
 		TAuditStorage
 	>,
 	response: InferStandardSchema<OutSchema>,
-	serviceDiscovery: ServiceDiscovery<any, any>,
+	serviceDiscovery: ServiceDiscovery<any>,
 	logger: Logger = construct.logger,
 ) {
 	return publishEvents(

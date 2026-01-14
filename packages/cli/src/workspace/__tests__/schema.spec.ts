@@ -296,7 +296,9 @@ describe('WorkspaceConfigSchema', () => {
 			expect(result.success).toBe(false);
 			if (result.error) {
 				const formatted = formatValidationErrors(result.error);
-				expect(formatted).toContain('Workspace configuration validation failed');
+				expect(formatted).toContain(
+					'Workspace configuration validation failed',
+				);
 			}
 		});
 

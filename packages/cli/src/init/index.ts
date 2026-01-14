@@ -2,6 +2,10 @@ import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import prompts from 'prompts';
+import { createStageSecrets } from '../secrets/generator.js';
+import { getKeyPath } from '../secrets/keystore.js';
+import { writeStageSecrets } from '../secrets/storage.js';
+import type { ComposeServiceName } from '../types.js';
 import { generateConfigFiles } from './generators/config.js';
 import { generateDockerFiles } from './generators/docker.js';
 import { generateEnvFiles } from './generators/env.js';
@@ -12,18 +16,18 @@ import { generateSourceFiles } from './generators/source.js';
 import { generateWebAppFiles } from './generators/web.js';
 import {
 	type DeployTarget,
+	deployTargetChoices,
 	getTemplate,
 	isFullstackTemplate,
 	loggerTypeChoices,
 	type PackageManager,
 	packageManagerChoices,
 	routesStructureChoices,
-	servicesChoices,
 	type ServicesSelection,
+	servicesChoices,
 	type TemplateName,
 	type TemplateOptions,
 	templateChoices,
-	deployTargetChoices,
 } from './templates/index.js';
 import {
 	checkDirectoryExists,
@@ -156,8 +160,7 @@ export async function initCommand(
 		}
 	}
 
-	const template: TemplateName =
-		options.template || answers.template || 'api';
+	const template: TemplateName = options.template || answers.template || 'api';
 	const isFullstack = isFullstackTemplate(template);
 
 	// For fullstack, force monorepo mode
@@ -260,6 +263,27 @@ export async function initCommand(
 		await writeFile(fullPath, content);
 	}
 
+	// Initialize encrypted secrets for development stage
+	console.log('🔐 Initializing encrypted secrets...\n');
+	const secretServices: ComposeServiceName[] = [];
+	if (services.db) secretServices.push('postgres');
+	if (services.cache) secretServices.push('redis');
+
+	const devSecrets = createStageSecrets('development', secretServices);
+
+	// Add common custom secrets
+	devSecrets.custom = {
+		NODE_ENV: 'development',
+		PORT: '3000',
+		LOG_LEVEL: 'debug',
+		JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	};
+
+	await writeStageSecrets(devSecrets, targetDir);
+	const keyPath = getKeyPath('development', name);
+	console.log(`  Secrets: .gkm/secrets/development.json (encrypted)`);
+	console.log(`  Key: ${keyPath}\n`);
+
 	// Install dependencies
 	if (!options.skipInstall) {
 		console.log('\n📦 Installing dependencies...\n');
@@ -298,7 +322,7 @@ function printNextSteps(
 	const devCommand = getRunCommand(pkgManager, 'dev');
 	const cdCommand = `cd ${projectName}`;
 
-	console.log('\n' + '─'.repeat(50));
+	console.log(`\n${'─'.repeat(50)}`);
 	console.log('\n✅ Project created successfully!\n');
 
 	console.log('Next steps:\n');
@@ -322,10 +346,17 @@ function printNextSteps(
 		}
 		console.log(`  ├── packages/`);
 		console.log(`  │   └── models/       # Shared Zod schemas`);
+		console.log(`  ├── .gkm/secrets/     # Encrypted secrets`);
 		console.log(`  ├── gkm.config.ts     # Workspace config`);
 		console.log(`  └── turbo.json        # Turbo config`);
 		console.log('');
 	}
+
+	console.log('🔐 Secrets management:');
+	console.log(`  gkm secrets:show --stage development  # View secrets`);
+	console.log(`  gkm secrets:set KEY VALUE --stage development  # Add secret`);
+	console.log(`  gkm secrets:init --stage production  # Create production secrets`);
+	console.log('');
 
 	if (options.deployTarget === 'dokploy') {
 		console.log('🚀 Deployment:');

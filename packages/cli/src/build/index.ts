@@ -1,4 +1,4 @@
-import { type ChildProcess, execSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
@@ -28,9 +28,9 @@ import type {
 	RouteInfo,
 } from '../types';
 import {
+	getAppBuildOrder,
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
-	getAppBuildOrder,
 } from '../workspace/index.js';
 import {
 	generateAwsManifest,
@@ -378,8 +378,12 @@ export async function workspaceBuildCommand(
 	const frontendApps = apps.filter(([, app]) => app.type === 'frontend');
 
 	logger.log(`\n🏗️  Building workspace: ${workspace.name}`);
-	logger.log(`   Backend apps: ${backendApps.map(([name]) => name).join(', ') || 'none'}`);
-	logger.log(`   Frontend apps: ${frontendApps.map(([name]) => name).join(', ') || 'none'}`);
+	logger.log(
+		`   Backend apps: ${backendApps.map(([name]) => name).join(', ') || 'none'}`,
+	);
+	logger.log(
+		`   Frontend apps: ${frontendApps.map(([name]) => name).join(', ') || 'none'}`,
+	);
 
 	if (options.production) {
 		logger.log(`   🏭 Production mode enabled`);
@@ -440,10 +444,13 @@ export async function workspaceBuildCommand(
 		logger.log(`\n📋 Build Summary:`);
 		for (const result of results) {
 			const icon = result.type === 'backend' ? '⚙️' : '🌐';
-			logger.log(`   ${icon} ${result.appName}: ${result.outputPath || 'built'}`);
+			logger.log(
+				`   ${icon} ${result.appName}: ${result.outputPath || 'built'}`,
+			);
 		}
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Build failed';
+		const errorMessage =
+			error instanceof Error ? error.message : 'Build failed';
 		logger.log(`\n❌ Build failed: ${errorMessage}`);
 
 		// Mark all apps as failed
@@ -467,7 +474,7 @@ export async function workspaceBuildCommand(
  */
 function getAppOutputPath(
 	workspace: NormalizedWorkspace,
-	appName: string,
+	_appName: string,
 	app: NormalizedAppConfig,
 ): string {
 	const appPath = join(workspace.root, app.path);

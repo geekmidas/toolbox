@@ -3,7 +3,11 @@ import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import { DokployApi } from '../dokploy-api';
-import { generateTag, provisionServices, workspaceDeployCommand } from '../index';
+import {
+	generateTag,
+	provisionServices,
+	workspaceDeployCommand,
+} from '../index';
 import type { DeployOptions } from '../types';
 
 const BASE_URL = 'https://dokploy.example.com';
@@ -441,9 +445,9 @@ describe('workspaceDeployCommand', () => {
 				stage: 'production',
 			};
 
-			await expect(
-				workspaceDeployCommand(workspace, options),
-			).rejects.toThrow('Workspace deployment only supports Dokploy');
+			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
+				'Workspace deployment only supports Dokploy',
+			);
 		});
 
 		it('should reject aws-lambda provider', async () => {
@@ -453,9 +457,9 @@ describe('workspaceDeployCommand', () => {
 				stage: 'production',
 			};
 
-			await expect(
-				workspaceDeployCommand(workspace, options),
-			).rejects.toThrow('Workspace deployment only supports Dokploy');
+			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
+				'Workspace deployment only supports Dokploy',
+			);
 		});
 	});
 
@@ -476,9 +480,9 @@ describe('workspaceDeployCommand', () => {
 				validateDokployToken: vi.fn().mockResolvedValue(true),
 			}));
 
-			await expect(
-				workspaceDeployCommand(workspace, options),
-			).rejects.toThrow('Unknown apps: nonexistent');
+			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
+				'Unknown apps: nonexistent',
+			);
 		});
 
 		it('should filter selected apps while maintaining dependency order', () => {
@@ -486,9 +490,7 @@ describe('workspaceDeployCommand', () => {
 			const buildOrder = ['api', 'auth', 'web', 'admin'];
 			const selectedApps = ['web', 'api'];
 
-			const filtered = buildOrder.filter((name) =>
-				selectedApps.includes(name),
-			);
+			const filtered = buildOrder.filter((name) => selectedApps.includes(name));
 
 			// Should be in dependency order (api before web)
 			expect(filtered).toEqual(['api', 'web']);
@@ -588,12 +590,8 @@ describe('workspaceDeployCommand', () => {
 				}
 			}
 
-			expect(envVars).toContain(
-				'API_URL=http://test-workspace-api:3000',
-			);
-			expect(envVars).toContain(
-				'AUTH_URL=http://test-workspace-auth:3001',
-			);
+			expect(envVars).toContain('API_URL=http://test-workspace-api:3000');
+			expect(envVars).toContain('AUTH_URL=http://test-workspace-auth:3001');
 		});
 
 		it('should inject DATABASE_URL for backend apps', () => {
@@ -687,7 +685,12 @@ describe('workspaceDeployCommand', () => {
 			const result = {
 				apps: [
 					{ appName: 'api', type: 'backend' as const, success: true },
-					{ appName: 'web', type: 'frontend' as const, success: false, error: 'Failed' },
+					{
+						appName: 'web',
+						type: 'frontend' as const,
+						success: false,
+						error: 'Failed',
+					},
 				],
 				projectId: 'proj_123',
 				successCount: 1,
