@@ -31,13 +31,17 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		const secrets = await readStageSecrets(stage);
 		if (secrets) {
 			envVars = toEmbeddableSecrets(secrets);
-			console.log(`  Loaded ${Object.keys(envVars).length} secrets from ${stage}\n`);
+			console.log(
+				`  Loaded ${Object.keys(envVars).length} secrets from ${stage}\n`,
+			);
 		} else {
 			console.log(`  No secrets found for ${stage}, running without secrets\n`);
 		}
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('key not found')) {
-			console.log(`  Decryption key not found for ${stage}, running without secrets\n`);
+			console.log(
+				`  Decryption key not found for ${stage}, running without secrets\n`,
+			);
 		} else {
 			throw error;
 		}
