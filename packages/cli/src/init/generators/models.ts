@@ -42,11 +42,12 @@ export function generateModelsPackage(
 		},
 	};
 
-	// tsconfig.json for models - extends root
+	// tsconfig.json for models - library package that builds to dist
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
-			composite: true,
+			declaration: true,
+			declarationMap: true,
 			outDir: './dist',
 			rootDir: './src',
 		},
