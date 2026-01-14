@@ -10,10 +10,13 @@ export const serverlessTemplate: TemplateConfig = {
 	description: 'AWS Lambda handlers',
 
 	dependencies: {
+		'@geekmidas/audit': GEEKMIDAS_VERSIONS['@geekmidas/audit'],
 		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/cloud': GEEKMIDAS_VERSIONS['@geekmidas/cloud'],
+		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
+		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
 		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
@@ -91,9 +94,15 @@ export const config = envParser
 			{
 				path: getRoutePath('health.ts'),
 				content: `import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
 
 export const healthEndpoint = e
   .get('/health')
+  .output(z.object({
+    status: z.string(),
+    timestamp: z.string(),
+    region: z.string(),
+  }))
   .handle(async () => ({
     status: 'ok',
     timestamp: new Date().toISOString(),

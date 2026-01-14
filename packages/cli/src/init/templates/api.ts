@@ -10,10 +10,13 @@ export const apiTemplate: TemplateConfig = {
 	description: 'Full API with auth, database, services',
 
 	dependencies: {
+		'@geekmidas/audit': GEEKMIDAS_VERSIONS['@geekmidas/audit'],
 		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
+		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
+		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
 		'@geekmidas/services': GEEKMIDAS_VERSIONS['@geekmidas/services'],
 		'@geekmidas/errors': GEEKMIDAS_VERSIONS['@geekmidas/errors'],
 		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
@@ -44,12 +47,15 @@ export const apiTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure } = options;
+		const { loggerType, routesStructure, monorepo, name } = options;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
 export const logger = createLogger();
 `;
+
+		// Models package import path for monorepo
+		const modelsImport = monorepo ? `@${name}/models` : null;
 
 		// Get route path based on structure
 		const getRoutePath = (file: string) => {
@@ -98,9 +104,14 @@ export const config = envParser
 			{
 				path: getRoutePath('health.ts'),
 				content: `import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
 
 export const healthEndpoint = e
   .get('/health')
+  .output(z.object({
+    status: z.string(),
+    timestamp: z.string(),
+  }))
   .handle(async () => ({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -111,10 +122,33 @@ export const healthEndpoint = e
 			// users endpoints
 			{
 				path: getRoutePath('users/list.ts'),
-				content: `import { e } from '@geekmidas/constructs/endpoints';
+				content: modelsImport
+					? `import { e } from '@geekmidas/constructs/endpoints';
+import { ListUsersResponseSchema } from '${modelsImport}/user';
 
 export const listUsersEndpoint = e
   .get('/users')
+  .output(ListUsersResponseSchema)
+  .handle(async () => ({
+    users: [
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ],
+  }));
+`
+					: `import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
+
+const UserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export const listUsersEndpoint = e
+  .get('/users')
+  .output(z.object({
+    users: z.array(UserSchema),
+  }))
   .handle(async () => ({
     users: [
       { id: '1', name: 'Alice' },
@@ -125,12 +159,32 @@ export const listUsersEndpoint = e
 			},
 			{
 				path: getRoutePath('users/get.ts'),
-				content: `import { e } from '@geekmidas/constructs/endpoints';
+				content: modelsImport
+					? `import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
+import { UserResponseSchema } from '${modelsImport}/user';
+
+export const getUserEndpoint = e
+  .get('/users/:id')
+  .params(z.object({ id: z.string() }))
+  .output(UserResponseSchema)
+  .handle(async ({ params }) => ({
+    id: params.id,
+    name: 'Alice',
+    email: 'alice@example.com',
+  }));
+`
+					: `import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 export const getUserEndpoint = e
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
+  .output(z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string().email(),
+  }))
   .handle(async ({ params }) => ({
     id: params.id,
     name: 'Alice',
