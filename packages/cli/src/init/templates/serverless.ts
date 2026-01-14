@@ -107,7 +107,7 @@ export const healthEndpoint = e
 				content: `import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 
-export default f
+export const helloFunction = f
   .input(z.object({ name: z.string() }))
   .output(z.object({ message: z.string() }))
   .handle(async ({ input }) => ({
