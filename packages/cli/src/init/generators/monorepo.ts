@@ -200,6 +200,24 @@ coverage/
 		references,
 	};
 
+	// Vitest config for workspace
+	const vitestConfig = `import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['apps/**/*.{test,spec}.ts', 'packages/**/*.{test,spec}.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: ['**/node_modules/**', '**/dist/**', '**/*.d.ts'],
+    },
+  },
+});
+`;
+
 	const files: GeneratedFile[] = [
 		{
 			path: 'package.json',
@@ -220,6 +238,10 @@ coverage/
 		{
 			path: 'turbo.json',
 			content: `${JSON.stringify(turboConfig, null, 2)}\n`,
+		},
+		{
+			path: 'vitest.config.ts',
+			content: vitestConfig,
 		},
 		{
 			path: '.gitignore',

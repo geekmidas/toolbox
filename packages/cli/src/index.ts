@@ -41,6 +41,7 @@ program
 	.option('-y, --yes', 'Skip prompts, use defaults', false)
 	.option('--monorepo', 'Setup as monorepo with packages/models', false)
 	.option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
+	.option('--pm <manager>', 'Package manager (pnpm, npm, yarn, bun)')
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();

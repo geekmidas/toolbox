@@ -20,8 +20,8 @@ import {
 	getTemplate,
 	isFullstackTemplate,
 	loggerTypeChoices,
-	type PackageManager,
 	packageManagerChoices,
+	type PackageManager,
 	routesStructureChoices,
 	type ServicesSelection,
 	servicesChoices,
@@ -50,6 +50,8 @@ export interface InitOptions {
 	monorepo?: boolean;
 	/** API app path in monorepo */
 	apiPath?: string;
+	/** Package manager to use */
+	pm?: PackageManager;
 }
 
 /**
@@ -177,9 +179,11 @@ export async function initCommand(
 		mail: servicesArray.includes('mail'),
 	};
 
-	const pkgManager: PackageManager = options.yes
-		? detectedPkgManager
-		: (answers.packageManager ?? detectedPkgManager);
+	const pkgManager: PackageManager = options.pm
+		? options.pm
+		: options.yes
+			? 'pnpm'
+			: (answers.packageManager ?? detectedPkgManager);
 
 	const deployTarget: DeployTarget = options.yes
 		? 'dokploy'
@@ -221,14 +225,20 @@ export async function initCommand(
 	}
 
 	// Collect app files (backend/api)
+	// Note: Docker files go to root for monorepo, so exclude them here
 	const appFiles = baseTemplate
 		? [
 				...generatePackageJson(templateOptions, baseTemplate),
 				...generateConfigFiles(templateOptions, baseTemplate),
 				...generateEnvFiles(templateOptions, baseTemplate),
 				...generateSourceFiles(templateOptions, baseTemplate),
-				...generateDockerFiles(templateOptions, baseTemplate),
+				...(isMonorepo ? [] : generateDockerFiles(templateOptions, baseTemplate)),
 			]
+		: [];
+
+	// For monorepo, docker files go at root level
+	const dockerFiles = isMonorepo && baseTemplate
+		? generateDockerFiles(templateOptions, baseTemplate)
 		: [];
 
 	// Collect root monorepo files (includes packages/models)
@@ -244,6 +254,13 @@ export async function initCommand(
 
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {
+		const fullPath = join(targetDir, path);
+		await mkdir(dirname(fullPath), { recursive: true });
+		await writeFile(fullPath, content);
+	}
+
+	// Write docker files at root for monorepo
+	for (const { path, content } of dockerFiles) {
 		const fullPath = join(targetDir, path);
 		await mkdir(dirname(fullPath), { recursive: true });
 		await writeFile(fullPath, content);
