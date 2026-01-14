@@ -50,12 +50,10 @@ export default nextConfig;
 `;
 
 	// tsconfig.json for Next.js
-	// Note: Next.js projects use noEmit: true (Next.js handles compilation)
-	// but we still add composite for project references
+	// Note: Next.js handles compilation, so noEmit: true
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
-			composite: true,
 			lib: ['dom', 'dom.iterable', 'ES2022'],
 			allowJs: true,
 			skipLibCheck: true,
@@ -82,7 +80,6 @@ export default nextConfig;
 		},
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
 		exclude: ['node_modules'],
-		references: [{ path: '../../packages/models' }],
 	};
 
 	// App layout

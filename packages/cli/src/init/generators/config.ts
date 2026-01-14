@@ -85,13 +85,12 @@ export default defineConfig({
 `;
 
 	// Build tsconfig.json - extends root for monorepo, standalone for non-monorepo
+	// Using noEmit: true since typecheck is done via turbo
 	const tsConfig = options.monorepo
 		? {
 				extends: '../../tsconfig.json',
 				compilerOptions: {
-					composite: true,
-					outDir: './dist',
-					rootDir: './src',
+					noEmit: true,
 					baseUrl: '.',
 					paths: {
 						[`@${options.name}/*`]: ['../../packages/*/src'],
@@ -99,7 +98,6 @@ export default defineConfig({
 				},
 				include: ['src/**/*.ts'],
 				exclude: ['node_modules', 'dist'],
-				references: [{ path: '../../packages/models' }],
 			}
 		: {
 				compilerOptions: {
@@ -251,11 +249,11 @@ function generateSingleAppConfigFiles(
 ): GeneratedFile[] {
 	// For fullstack, only generate tsconfig.json for the API app
 	// The workspace gkm.config.ts is generated in monorepo.ts
+	// Using noEmit: true since typecheck is done via turbo
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
-			outDir: './dist',
-			rootDir: './src',
+			noEmit: true,
 			baseUrl: '.',
 			paths: {
 				[`@${options.name}/*`]: ['../../packages/*/src'],
