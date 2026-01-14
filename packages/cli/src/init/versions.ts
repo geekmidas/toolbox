@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
+// Path is ../package.json from dist/ (bundled output is flat)
+const pkg = require('../package.json') as { version: string };
 
 /**
  * CLI version from package.json (used for scaffolded projects)
