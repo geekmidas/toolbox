@@ -326,12 +326,33 @@ export async function initCommand(
 	const devSecrets = createStageSecrets('development', secretServices);
 
 	// Add common custom secrets
-	devSecrets.custom = {
+	const customSecrets: Record<string, string> = {
 		NODE_ENV: 'development',
 		PORT: '3000',
 		LOG_LEVEL: 'debug',
 		JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	};
+
+	// Add per-app database URLs and passwords for fullstack template
+	if (isFullstack && dbApps.length > 0) {
+		for (const app of dbApps) {
+			// Database URL for the app to use (all apps use same database, different users/schemas)
+			const urlKey = `${app.name.toUpperCase()}_DATABASE_URL`;
+			customSecrets[urlKey] = generateDbUrl(app.name, app.password, name);
+
+			// Database password for docker-compose init script
+			const passwordKey = `${app.name.toUpperCase()}_DB_PASSWORD`;
+			customSecrets[passwordKey] = app.password;
+		}
+
+		// Auth service secrets (better-auth)
+		customSecrets.AUTH_PORT = '3002';
+		customSecrets.BETTER_AUTH_SECRET = `better-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+		customSecrets.BETTER_AUTH_URL = 'http://localhost:3002';
+		customSecrets.BETTER_AUTH_TRUSTED_ORIGINS = 'http://localhost:3000,http://localhost:3001';
+	}
+
+	devSecrets.custom = customSecrets;
 
 	await writeStageSecrets(devSecrets, targetDir);
 	const keyPath = getKeyPath('development', name);
