@@ -3,25 +3,26 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from './index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 export const apiTemplate: TemplateConfig = {
 	name: 'api',
 	description: 'Full API with auth, database, services',
 
 	dependencies: {
-		'@geekmidas/constructs': 'workspace:*',
-		'@geekmidas/envkit': 'workspace:*',
-		'@geekmidas/logger': 'workspace:*',
-		'@geekmidas/services': 'workspace:*',
-		'@geekmidas/errors': 'workspace:*',
-		'@geekmidas/auth': 'workspace:*',
+		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
+		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
+		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
+		'@geekmidas/services': GEEKMIDAS_VERSIONS['@geekmidas/services'],
+		'@geekmidas/errors': GEEKMIDAS_VERSIONS['@geekmidas/errors'],
+		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},
 
 	devDependencies: {
 		'@biomejs/biome': '~2.3.0',
-		'@geekmidas/cli': 'workspace:*',
+		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 		'@types/node': '~22.0.0',
 		tsx: '~4.20.0',
 		turbo: '~2.3.0',

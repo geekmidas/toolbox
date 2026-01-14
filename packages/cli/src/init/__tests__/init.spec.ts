@@ -62,8 +62,8 @@ describe('initCommand', () => {
 
 			expect(pkg.name).toBe('my-api');
 			expect(pkg.type).toBe('module');
-			expect(pkg.dependencies['@geekmidas/constructs']).toBe('workspace:*');
-			expect(pkg.dependencies['@geekmidas/telescope']).toBe('workspace:*');
+			expect(pkg.dependencies['@geekmidas/constructs']).toMatch(/^~/);
+			expect(pkg.dependencies['@geekmidas/telescope']).toMatch(/^~/);
 			expect(pkg.dependencies.zod).toMatch(/^~/);
 			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
 			expect(pkg.devDependencies.turbo).toBeDefined();

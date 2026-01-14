@@ -3,23 +3,24 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from './index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 export const serverlessTemplate: TemplateConfig = {
 	name: 'serverless',
 	description: 'AWS Lambda handlers',
 
 	dependencies: {
-		'@geekmidas/constructs': 'workspace:*',
-		'@geekmidas/envkit': 'workspace:*',
-		'@geekmidas/logger': 'workspace:*',
-		'@geekmidas/cloud': 'workspace:*',
+		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
+		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
+		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
+		'@geekmidas/cloud': GEEKMIDAS_VERSIONS['@geekmidas/cloud'],
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~1.9.4',
-		'@geekmidas/cli': 'workspace:*',
+		'@biomejs/biome': '~2.3.0',
+		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 		'@types/aws-lambda': '~8.10.92',
 		'@types/node': '~22.0.0',
 		tsx: '~4.20.0',

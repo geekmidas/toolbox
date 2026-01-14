@@ -3,6 +3,7 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**
  * Generate monorepo root files (pnpm-workspace.yaml, root package.json, etc.)
@@ -38,7 +39,7 @@ export function generateMonorepoFiles(
 		},
 		devDependencies: {
 			'@biomejs/biome': '~2.3.0',
-			'@geekmidas/cli': '~0.18.0',
+			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 			turbo: '~2.3.0',
 			typescript: '~5.8.2',
 			vitest: '~4.0.0',

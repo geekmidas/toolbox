@@ -35,13 +35,13 @@ describe('generatePackageJson', () => {
 	it('should include telescope when enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/telescope']).toBe('workspace:*');
+		expect(pkg.dependencies['@geekmidas/telescope']).toMatch(/^~/);
 	});
 
 	it('should include database dependencies when enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/db']).toBe('workspace:*');
+		expect(pkg.dependencies['@geekmidas/db']).toMatch(/^~/);
 		expect(pkg.dependencies.kysely).toBeDefined();
 		expect(pkg.dependencies.pg).toBeDefined();
 	});
@@ -53,12 +53,12 @@ describe('generatePackageJson', () => {
 		expect(pkg.dependencies['@geekmidas/telescope']).toBeUndefined();
 	});
 
-	it('should use workspace:* for @geekmidas packages', () => {
+	it('should use tilde versions for @geekmidas packages', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/constructs']).toBe('workspace:*');
-		expect(pkg.dependencies['@geekmidas/envkit']).toBe('workspace:*');
-		expect(pkg.dependencies['@geekmidas/logger']).toBe('workspace:*');
+		expect(pkg.dependencies['@geekmidas/constructs']).toMatch(/^~/);
+		expect(pkg.dependencies['@geekmidas/envkit']).toMatch(/^~/);
+		expect(pkg.dependencies['@geekmidas/logger']).toMatch(/^~/);
 	});
 
 	it('should use tilde versions for external packages', () => {

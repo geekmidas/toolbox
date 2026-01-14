@@ -4,6 +4,7 @@ import {
 	type TemplateConfig,
 	type TemplateOptions,
 } from '../templates/index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**
  * Generate package.json with dependencies based on template and options
@@ -21,15 +22,15 @@ export function generatePackageJson(
 
 	// Add optional dependencies based on user choices
 	if (telescope) {
-		dependencies['@geekmidas/telescope'] = 'workspace:*';
+		dependencies['@geekmidas/telescope'] = GEEKMIDAS_VERSIONS['@geekmidas/telescope'];
 	}
 
 	if (studio) {
-		dependencies['@geekmidas/studio'] = 'workspace:*';
+		dependencies['@geekmidas/studio'] = GEEKMIDAS_VERSIONS['@geekmidas/studio'];
 	}
 
 	if (database) {
-		dependencies['@geekmidas/db'] = 'workspace:*';
+		dependencies['@geekmidas/db'] = GEEKMIDAS_VERSIONS['@geekmidas/db'];
 		dependencies.kysely = '~0.28.2';
 		dependencies.pg = '~8.16.0';
 		devDependencies['@types/pg'] = '~8.15.0';

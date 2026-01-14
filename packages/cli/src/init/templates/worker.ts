@@ -3,23 +3,24 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from './index.js';
+import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 export const workerTemplate: TemplateConfig = {
 	name: 'worker',
 	description: 'Background job processing',
 
 	dependencies: {
-		'@geekmidas/constructs': 'workspace:*',
-		'@geekmidas/envkit': 'workspace:*',
-		'@geekmidas/logger': 'workspace:*',
-		'@geekmidas/events': 'workspace:*',
+		'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
+		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
+		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
+		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		hono: '~4.8.2',
 		pino: '~9.6.0',
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~1.9.4',
-		'@geekmidas/cli': 'workspace:*',
+		'@biomejs/biome': '~2.3.0',
+		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 		'@types/node': '~22.0.0',
 		tsx: '~4.20.0',
 		turbo: '~2.3.0',
