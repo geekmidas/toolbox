@@ -226,7 +226,9 @@ export default {
 		expect(result.gkmConfig.routes).toBe('./src/endpoints/**/*.ts');
 		// Use realpathSync to handle macOS /var -> /private/var symlink
 		expect(realpathSync(result.appRoot)).toBe(realpathSync(appDir));
-		expect(realpathSync(result.workspaceRoot)).toBe(realpathSync(workspaceRoot));
+		expect(realpathSync(result.workspaceRoot)).toBe(
+			realpathSync(workspaceRoot),
+		);
 	});
 
 	it('should throw error if app not found in workspace', async () => {
