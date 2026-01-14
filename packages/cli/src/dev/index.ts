@@ -1130,6 +1130,7 @@ async function buildServer(
 	context: BuildContext,
 	provider: LegacyProvider,
 	enableOpenApi: boolean,
+	appRoot: string = process.cwd(),
 ): Promise<void> {
 	// Initialize generators
 	const endpointGenerator = new EndpointGenerator();
@@ -1137,17 +1138,21 @@ async function buildServer(
 	const cronGenerator = new CronGenerator();
 	const subscriberGenerator = new SubscriberGenerator();
 
-	// Load all constructs
+	// Load all constructs (resolve paths relative to appRoot)
 	const [allEndpoints, allFunctions, allCrons, allSubscribers] =
 		await Promise.all([
-			endpointGenerator.load(config.routes),
-			config.functions ? functionGenerator.load(config.functions) : [],
-			config.crons ? cronGenerator.load(config.crons) : [],
-			config.subscribers ? subscriberGenerator.load(config.subscribers) : [],
+			endpointGenerator.load(config.routes, appRoot),
+			config.functions
+				? functionGenerator.load(config.functions, appRoot)
+				: [],
+			config.crons ? cronGenerator.load(config.crons, appRoot) : [],
+			config.subscribers
+				? subscriberGenerator.load(config.subscribers, appRoot)
+				: [],
 		]);
 
-	// Ensure .gkm directory exists
-	const outputDir = join(process.cwd(), '.gkm', provider);
+	// Ensure .gkm directory exists in app root
+	const outputDir = join(appRoot, '.gkm', provider);
 	await mkdir(outputDir, { recursive: true });
 
 	// Build for server provider
@@ -1172,9 +1177,10 @@ class DevServer {
 		private requestedPort: number,
 		private portExplicit: boolean,
 		private enableOpenApi: boolean,
-		private telescope?: NormalizedTelescopeConfig,
-		private studio?: NormalizedStudioConfig,
+		private telescope: NormalizedTelescopeConfig | undefined,
+		private studio: NormalizedStudioConfig | undefined,
 		private runtime: Runtime = 'node',
+		private appRoot: string = process.cwd(),
 	) {
 		this.actualPort = requestedPort;
 	}
@@ -1207,7 +1213,7 @@ class DevServer {
 		}
 
 		const serverEntryPath = join(
-			process.cwd(),
+			this.appRoot,
 			'.gkm',
 			this.provider,
 			'server.ts',
@@ -1327,7 +1333,7 @@ class DevServer {
 		const { writeFile } = await import('node:fs/promises');
 		const { relative, dirname } = await import('node:path');
 
-		const serverPath = join(process.cwd(), '.gkm', this.provider, 'server.ts');
+		const serverPath = join(this.appRoot, '.gkm', this.provider, 'server.ts');
 
 		const relativeAppPath = relative(
 			dirname(serverPath),
