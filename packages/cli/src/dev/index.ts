@@ -801,6 +801,33 @@ async function workspaceDevCommand(
 		throw new Error('Port conflicts detected. Please assign unique ports to each app.');
 	}
 
+	// Validate frontend apps (Next.js setup)
+	if (frontendApps.length > 0) {
+		logger.log('\n🔍 Validating frontend apps...');
+		const validationResults = await validateFrontendApps(workspace);
+
+		let hasErrors = false;
+		for (const result of validationResults) {
+			if (!result.valid) {
+				hasErrors = true;
+				logger.error(`\n❌ Frontend app "${result.appName}" validation failed:`);
+				for (const error of result.errors) {
+					logger.error(`   • ${error}`);
+				}
+			}
+			for (const warning of result.warnings) {
+				logger.warn(`   ⚠️  ${result.appName}: ${warning}`);
+			}
+		}
+
+		if (hasErrors) {
+			throw new Error(
+				'Frontend app validation failed. Fix the issues above and try again.',
+			);
+		}
+		logger.log('✅ Frontend apps validated');
+	}
+
 	// Start docker-compose services
 	await startWorkspaceServices(workspace);
 
