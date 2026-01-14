@@ -84,7 +84,7 @@ export const logger = createLogger();
 	// src/auth.ts - better-auth instance with magic link
 	const authTs = `import { betterAuth } from 'better-auth';
 import { magicLink } from 'better-auth/plugins';
-import { Pool } from 'pg';
+import pg from 'pg';
 import { envParser } from './config/env.js';
 import { logger } from './config/logger.js';
 
@@ -99,7 +99,7 @@ const authConfig = envParser
   .parse();
 
 export const auth = betterAuth({
-  database: new Pool({
+  database: new pg.Pool({
     connectionString: authConfig.databaseUrl,
   }),
   baseURL: authConfig.baseUrl,
