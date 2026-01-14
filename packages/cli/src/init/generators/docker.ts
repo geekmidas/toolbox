@@ -147,7 +147,7 @@ export function generateDockerFiles(
 	}
 
 	// Mailpit for email testing
-	if (options.services.mail) {
+	if (options.services?.mail) {
 		services.push(`  mailpit:
     image: axllent/mailpit:latest
     container_name: ${options.name}-mailpit
