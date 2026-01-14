@@ -203,19 +203,7 @@ const AppConfigSchema = z
 		framework: z.enum(['nextjs']).optional(),
 		client: ClientConfigSchema.optional(),
 	})
-	.refine(
-		(data) => {
-			// Backend apps must have routes
-			if (data.type === 'backend' && !data.routes) {
-				return false;
-			}
-			return true;
-		},
-		{
-			message: 'Backend apps must have routes defined',
-			path: ['routes'],
-		},
-	)
+	// Note: routes is optional for backend apps - some backends like auth servers don't use routes
 	.refine(
 		(data) => {
 			// Frontend apps must have framework

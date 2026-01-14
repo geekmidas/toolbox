@@ -142,21 +142,21 @@ describe('WorkspaceConfigSchema', () => {
 			expect(result.error).toBeDefined();
 		});
 
-		it('should reject backend app without routes', () => {
+		it('should allow backend app without routes (e.g., auth servers)', () => {
 			const config = {
 				apps: {
-					api: {
+					auth: {
 						type: 'backend' as const,
-						path: 'apps/api',
+						path: 'apps/auth',
 						port: 3000,
-						// Missing routes
+						// Routes are optional for backend apps
 					},
 				},
 			};
 
 			const result = safeValidateWorkspaceConfig(config);
 
-			expect(result.success).toBe(false);
+			expect(result.success).toBe(true);
 		});
 
 		it('should reject frontend app without framework', () => {

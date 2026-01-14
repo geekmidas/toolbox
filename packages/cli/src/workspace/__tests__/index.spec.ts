@@ -41,20 +41,19 @@ describe('defineWorkspace', () => {
 		);
 	});
 
-	it('should throw with descriptive error for missing routes', () => {
+	it('should allow backend apps without routes (e.g., auth servers)', () => {
 		const config = {
 			apps: {
-				api: {
+				auth: {
 					type: 'backend',
-					path: 'apps/api',
+					path: 'apps/auth',
 					port: 3000,
 				},
 			},
 		} as WorkspaceConfig;
 
-		expect(() => defineWorkspace(config)).toThrow(
-			'Backend apps must have routes defined',
-		);
+		// Should not throw - routes are optional for backend apps
+		expect(() => defineWorkspace(config)).not.toThrow();
 	});
 });
 
