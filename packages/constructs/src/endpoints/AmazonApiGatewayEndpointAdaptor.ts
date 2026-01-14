@@ -292,9 +292,8 @@ export abstract class AmazonApiGatewayEndpoint<
 				if (Endpoint.isSuccessStatus(statusCode)) {
 					const logger = event.logger as TLogger;
 					const serviceDiscovery = ServiceDiscovery.getInstance<
-						ServiceRecord<TServices>,
-						TLogger
-					>(logger, this.envParser);
+						ServiceRecord<TServices>
+					>(this.envParser);
 
 					// Publish events
 					await publishConstructEvents(
@@ -541,8 +540,10 @@ export abstract class AmazonApiGatewayEndpoint<
 			const requestId = context.awsRequestId;
 			const logger = this.endpoint.logger.child({ requestId }) as TLogger;
 
+			// Cast event to any since Middy middlewares enrich the event with
+			// services, logger, session, etc. during the middleware chain execution
 			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event, context),
+				chain(event as unknown as Parameters<typeof chain>[0], context),
 			);
 		};
 
