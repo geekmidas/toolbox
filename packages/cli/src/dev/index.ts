@@ -938,6 +938,17 @@ async function workspaceDevCommand(
 		);
 	}
 
+	// Find the config file path for GKM_CONFIG_PATH
+	const configFiles = ['gkm.config.ts', 'gkm.config.js', 'gkm.config.json'];
+	let configPath = '';
+	for (const file of configFiles) {
+		const fullPath = join(workspace.root, file);
+		if (existsSync(fullPath)) {
+			configPath = fullPath;
+			break;
+		}
+	}
+
 	// Prepare environment variables
 	// Order matters: secrets first, then dependencies (dependencies can override)
 	const turboEnv: Record<string, string> = {
@@ -945,6 +956,8 @@ async function workspaceDevCommand(
 		...secretsEnv,
 		...dependencyEnv,
 		NODE_ENV: 'development',
+		// Inject config path so child processes can find the workspace config
+		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
 	};
 
 	// Spawn turbo run dev
