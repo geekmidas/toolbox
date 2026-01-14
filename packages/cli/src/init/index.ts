@@ -310,6 +310,13 @@ export async function initCommand(
 		await writeFile(fullPath, content);
 	}
 
+	// Write auth app files (authentication service)
+	for (const { path, content } of authAppFiles) {
+		const fullPath = join(targetDir, path);
+		await mkdir(dirname(fullPath), { recursive: true });
+		await writeFile(fullPath, content);
+	}
+
 	// Initialize encrypted secrets for development stage
 	console.log('🔐 Initializing encrypted secrets...\n');
 	const secretServices: ComposeServiceName[] = [];
