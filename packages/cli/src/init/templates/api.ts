@@ -204,13 +204,20 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '../services/database';
-import { config } from './env';
+import type { Database } from '../services/database.js';
+import { envParser } from './env.js';
+
+// Parse database config for Studio
+const studioConfig = envParser
+  .create((get) => ({
+    databaseUrl: get('DATABASE_URL').string(),
+  }))
+  .parse();
 
 // Create a Kysely instance for Studio
 const db = new Kysely<Database>({
   dialect: new PostgresDialect({
-    pool: new pg.Pool({ connectionString: config.database.url }),
+    pool: new pg.Pool({ connectionString: studioConfig.databaseUrl }),
   }),
 });
 
