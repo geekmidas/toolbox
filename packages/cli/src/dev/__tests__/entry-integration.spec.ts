@@ -179,6 +179,90 @@ export default defineWorkspace({
 		});
 	});
 
+	describe('with GKM_CONFIG_PATH set (turbo environment)', () => {
+		const originalEnv = process.env.GKM_CONFIG_PATH;
+
+		beforeEach(async () => {
+			// Create workspace structure
+			const gkmConfig = `
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'test-workspace',
+  apps: {
+    api: {
+      type: 'backend',
+      path: 'apps/api',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+    },
+    auth: {
+      type: 'backend',
+      path: 'apps/auth',
+      port: 3002,
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+    },
+  },
+  services: {},
+});
+`;
+			await writeFile(join(workspaceDir, 'gkm.config.ts'), gkmConfig);
+
+			// Create apps directories
+			await mkdir(join(workspaceDir, 'apps', 'api', 'src'), {
+				recursive: true,
+			});
+			await mkdir(join(workspaceDir, 'apps', 'auth', 'src'), {
+				recursive: true,
+			});
+
+			// Create package.json files
+			await writeFile(
+				join(workspaceDir, 'apps', 'api', 'package.json'),
+				JSON.stringify({ name: '@test/api', version: '0.0.1' }, null, 2),
+			);
+			await writeFile(
+				join(workspaceDir, 'apps', 'auth', 'package.json'),
+				JSON.stringify({ name: '@test/auth', version: '0.0.1' }, null, 2),
+			);
+
+			// Set GKM_CONFIG_PATH like turbo does
+			process.env.GKM_CONFIG_PATH = join(workspaceDir, 'gkm.config.ts');
+		});
+
+		afterEach(() => {
+			// Restore original env
+			if (originalEnv === undefined) {
+				delete process.env.GKM_CONFIG_PATH;
+			} else {
+				process.env.GKM_CONFIG_PATH = originalEnv;
+			}
+		});
+
+		it('should read port from workspace config when GKM_CONFIG_PATH is set', async () => {
+			const authDir = join(workspaceDir, 'apps', 'auth');
+
+			const result = await prepareEntryCredentials({ cwd: authDir });
+
+			expect(result.resolvedPort).toBe(3002);
+			expect(result.credentials.PORT).toBe('3002');
+			expect(result.appName).toBe('auth');
+		});
+
+		it('should read port 3000 for api when GKM_CONFIG_PATH is set', async () => {
+			const apiDir = join(workspaceDir, 'apps', 'api');
+
+			const result = await prepareEntryCredentials({ cwd: apiDir });
+
+			expect(result.resolvedPort).toBe(3000);
+			expect(result.credentials.PORT).toBe('3000');
+			expect(result.appName).toBe('api');
+		});
+	});
+
 	describe('with secrets', () => {
 		beforeEach(async () => {
 			// Create workspace with secrets
