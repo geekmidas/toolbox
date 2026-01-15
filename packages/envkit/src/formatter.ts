@@ -70,7 +70,8 @@ export function formatParseError(
 		// Extract environment variable name from path or message
 		let envName = '';
 		if (issue.path.length > 0) {
-			envName = String(issue.path[0]);
+			// Join the full path with '.' to show nested config keys and env var name
+			envName = issue.path.map(String).join('.');
 		} else {
 			// Try to extract from message like 'Environment variable "NAME": ...'
 			const match = issue.message.match(/Environment variable "([^"]+)"/);

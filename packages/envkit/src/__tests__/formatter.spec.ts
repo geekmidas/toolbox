@@ -102,6 +102,23 @@ describe('formatParseError', () => {
 		expect(formatted).toContain('Expected number, received string');
 	});
 
+	it('should join nested paths with dot', () => {
+		const error = new z.ZodError([
+			createIssue({
+				code: 'invalid_type',
+				expected: 'string',
+				received: 'undefined',
+				path: ['databaseUrl', 'DATABASE_URL'],
+				message: 'Environment variable "DATABASE_URL": Required',
+			}),
+		]);
+
+		const formatted = formatParseError(error, { colors: false });
+
+		// Should show the full path joined with '.'
+		expect(formatted).toContain('databaseUrl.DATABASE_URL');
+	});
+
 	it('should extract env name from message when path is empty', () => {
 		const error = new z.ZodError([
 			createIssue({
