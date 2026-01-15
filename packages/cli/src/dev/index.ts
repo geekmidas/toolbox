@@ -1429,8 +1429,11 @@ async function entryDevCommand(options: DevOptions): Promise<void> {
 	}
 
 	// Prepare credentials (loads workspace config, secrets, injects PORT)
+	// Only pass explicitPort if --port was actually specified by the user
 	const { credentials, resolvedPort, secretsJsonPath, appName } =
-		await prepareEntryCredentials({ explicitPort: options.port });
+		await prepareEntryCredentials({
+			explicitPort: options.portExplicit ? options.port : undefined,
+		});
 
 	if (appName) {
 		logger.log(`📦 App: ${appName} (port ${resolvedPort})`);
