@@ -781,13 +781,29 @@ export async function workspaceDeployCommand(
 	// Track deployed app URLs for environment variable injection
 	const deployedAppUrls: Record<string, string> = {};
 
+	// Build the entire workspace once (not per-app to avoid Turbo/Next.js lock conflicts)
+	if (!skipBuild) {
+		logger.log('\n🏗️  Building workspace...');
+		try {
+			await buildCommand({
+				provider: 'server',
+				production: true,
+				stage,
+			});
+			logger.log('   ✓ Workspace build complete');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			logger.log(`   ✗ Workspace build failed: ${message}`);
+			throw error;
+		}
+	}
+
 	// Deploy apps in dependency order
 	logger.log('\n📦 Deploying applications...');
 	const results: AppDeployResult[] = [];
 
 	for (const appName of appsToDeployNames) {
 		const app = workspace.apps[appName]!;
-		const appPath = app.path;
 
 		logger.log(
 			`\n   ${app.type === 'backend' ? '⚙️' : '🌐'} Deploying ${appName}...`,
@@ -822,24 +838,8 @@ export async function workspaceDeployCommand(
 				}
 			}
 
-			// Build the app if not skipped
-			if (!skipBuild) {
-				logger.log(`      Building ${appName}...`);
-				// For workspace, we need to build from the app directory
-				const originalCwd = process.cwd();
-				const fullAppPath = `${workspace.root}/${appPath}`;
-
-				try {
-					process.chdir(fullAppPath);
-					await buildCommand({
-						provider: 'server',
-						production: true,
-						stage,
-					});
-				} finally {
-					process.chdir(originalCwd);
-				}
-			}
+			// Note: Workspace was already built once at the start of deployment
+			// to avoid Turbo/Next.js lock conflicts from concurrent builds
 
 			// Build Docker image
 			const imageName = `${workspace.name}-${appName}`;
@@ -856,6 +856,7 @@ export async function workspaceDeployCommand(
 				config: {
 					registry,
 					imageName,
+					appName, // Pass appName for Dockerfile.{appName} selection
 				},
 			});
 
