@@ -1344,8 +1344,9 @@ export async function prepareEntryCredentials(options: {
 		workspaceAppPort = appConfig.app.port;
 		secretsRoot = appConfig.workspaceRoot;
 		appName = appConfig.appName;
-	} catch {
+	} catch (error) {
 		// Not in a workspace - use defaults
+		logger.log(`⚠️  Could not load workspace config: ${(error as Error).message}`);
 		secretsRoot = findSecretsRoot(cwd);
 		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
