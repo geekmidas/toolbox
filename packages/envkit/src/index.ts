@@ -11,3 +11,8 @@ export {
 	type TypedResolvers,
 } from './EnvironmentBuilder';
 export { ConfigParser, EnvironmentParser } from './EnvironmentParser';
+export {
+	formatParseError,
+	isDevelopment,
+	type FormatOptions,
+} from './formatter';
