@@ -13,6 +13,7 @@ import {
 	findAvailablePort,
 	generateAllDependencyEnvVars,
 	isPortAvailable,
+	loadSecretsForApp,
 	normalizeHooksConfig,
 	normalizeProductionConfig,
 	normalizeStudioConfig,
@@ -964,6 +965,228 @@ describe('Workspace Dev Server', () => {
 			const results = await validateFrontendApps(workspace);
 
 			expect(results).toHaveLength(0);
+		});
+	});
+});
+
+describe('loadSecretsForApp', () => {
+	let testDir: string;
+
+	beforeEach(() => {
+		testDir = join(
+			tmpdir(),
+			`gkm-secrets-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(testDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		if (existsSync(testDir)) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * Helper to create a secrets file in legacy (unencrypted) format.
+	 * This matches the StageSecrets structure.
+	 */
+	function createSecretsFile(
+		stage: string,
+		secrets: Record<string, string>,
+		root = testDir,
+	) {
+		const secretsDir = join(root, '.gkm', 'secrets');
+		mkdirSync(secretsDir, { recursive: true });
+		const stageSecrets = {
+			stage,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			services: {},
+			urls: {},
+			custom: secrets,
+		};
+		writeFileSync(
+			join(secretsDir, `${stage}.json`),
+			JSON.stringify(stageSecrets, null, 2),
+		);
+	}
+
+	describe('single app mode (no appName)', () => {
+		it('should return secrets as-is without mapping', async () => {
+			createSecretsFile('development', {
+				DATABASE_URL: 'postgresql://localhost/mydb',
+				JWT_SECRET: 'super-secret',
+				NODE_ENV: 'development',
+			});
+
+			const secrets = await loadSecretsForApp(testDir);
+
+			expect(secrets).toEqual({
+				DATABASE_URL: 'postgresql://localhost/mydb',
+				JWT_SECRET: 'super-secret',
+				NODE_ENV: 'development',
+			});
+		});
+
+		it('should try dev stage first, then development', async () => {
+			createSecretsFile('dev', {
+				DATABASE_URL: 'postgresql://localhost/devdb',
+			});
+			createSecretsFile('development', {
+				DATABASE_URL: 'postgresql://localhost/developmentdb',
+			});
+
+			const secrets = await loadSecretsForApp(testDir);
+
+			// Should use 'dev' stage since it's checked first
+			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/devdb');
+		});
+
+		it('should fallback to development if dev does not exist', async () => {
+			createSecretsFile('development', {
+				DATABASE_URL: 'postgresql://localhost/developmentdb',
+			});
+
+			const secrets = await loadSecretsForApp(testDir);
+
+			expect(secrets.DATABASE_URL).toBe(
+				'postgresql://localhost/developmentdb',
+			);
+		});
+
+		it('should return empty object if no secrets exist', async () => {
+			const secrets = await loadSecretsForApp(testDir);
+
+			expect(secrets).toEqual({});
+		});
+	});
+
+	describe('workspace app mode (with appName)', () => {
+		it('should map {APP}_DATABASE_URL to DATABASE_URL', async () => {
+			createSecretsFile('development', {
+				AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
+				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
+				JWT_SECRET: 'shared-secret',
+			});
+
+			const authSecrets = await loadSecretsForApp(testDir, 'auth');
+
+			expect(authSecrets.DATABASE_URL).toBe(
+				'postgresql://auth_user:pass@localhost/authdb',
+			);
+			// Original prefixed secrets are also available
+			expect(authSecrets.AUTH_DATABASE_URL).toBe(
+				'postgresql://auth_user:pass@localhost/authdb',
+			);
+			expect(authSecrets.JWT_SECRET).toBe('shared-secret');
+		});
+
+		it('should map API secrets correctly', async () => {
+			createSecretsFile('development', {
+				AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
+				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
+			});
+
+			const apiSecrets = await loadSecretsForApp(testDir, 'api');
+
+			expect(apiSecrets.DATABASE_URL).toBe(
+				'postgresql://api_user:pass@localhost/apidb',
+			);
+		});
+
+		it('should not override DATABASE_URL if no prefixed version exists', async () => {
+			createSecretsFile('development', {
+				DATABASE_URL: 'postgresql://localhost/maindb',
+				JWT_SECRET: 'secret',
+			});
+
+			// Asking for 'auth' app but AUTH_DATABASE_URL doesn't exist
+			const authSecrets = await loadSecretsForApp(testDir, 'auth');
+
+			// Should keep the original DATABASE_URL since there's no AUTH_DATABASE_URL
+			expect(authSecrets.DATABASE_URL).toBe('postgresql://localhost/maindb');
+		});
+
+		it('should handle uppercase app names in secrets', async () => {
+			createSecretsFile('development', {
+				MYSERVICE_DATABASE_URL: 'postgresql://localhost/myservicedb',
+			});
+
+			// App name is lowercase but secrets are uppercase prefixed
+			const secrets = await loadSecretsForApp(testDir, 'myservice');
+
+			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/myservicedb');
+		});
+
+		it('should return empty object if no secrets exist for app', async () => {
+			const secrets = await loadSecretsForApp(testDir, 'api');
+
+			expect(secrets).toEqual({});
+		});
+	});
+
+	describe('service credentials mapping', () => {
+		it('should include postgres service credentials', async () => {
+			const secretsDir = join(testDir, '.gkm', 'secrets');
+			mkdirSync(secretsDir, { recursive: true });
+			const stageSecrets = {
+				stage: 'development',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				services: {
+					postgres: {
+						username: 'postgres',
+						password: 'postgres123',
+						database: 'myapp',
+						host: 'localhost',
+						port: 5432,
+					},
+				},
+				urls: {},
+				custom: { NODE_ENV: 'development' },
+			};
+			writeFileSync(
+				join(secretsDir, 'development.json'),
+				JSON.stringify(stageSecrets, null, 2),
+			);
+
+			const secrets = await loadSecretsForApp(testDir);
+
+			expect(secrets.POSTGRES_USER).toBe('postgres');
+			expect(secrets.POSTGRES_PASSWORD).toBe('postgres123');
+			expect(secrets.POSTGRES_DB).toBe('myapp');
+			expect(secrets.POSTGRES_HOST).toBe('localhost');
+			expect(secrets.POSTGRES_PORT).toBe('5432');
+			expect(secrets.NODE_ENV).toBe('development');
+		});
+
+		it('should include redis service credentials', async () => {
+			const secretsDir = join(testDir, '.gkm', 'secrets');
+			mkdirSync(secretsDir, { recursive: true });
+			const stageSecrets = {
+				stage: 'development',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				services: {
+					redis: {
+						password: 'redis123',
+						host: 'localhost',
+						port: 6379,
+					},
+				},
+				urls: {},
+				custom: {},
+			};
+			writeFileSync(
+				join(secretsDir, 'development.json'),
+				JSON.stringify(stageSecrets, null, 2),
+			);
+
+			const secrets = await loadSecretsForApp(testDir);
+
+			expect(secrets.REDIS_PASSWORD).toBe('redis123');
+			expect(secrets.REDIS_HOST).toBe('localhost');
+			expect(secrets.REDIS_PORT).toBe('6379');
 		});
 	});
 });
