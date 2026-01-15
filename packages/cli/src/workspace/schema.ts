@@ -52,6 +52,12 @@ const ClientConfigSchema = z.object({
 });
 
 /**
+ * Auth provider schema.
+ * Currently only 'better-auth' is supported.
+ */
+const AuthProviderSchema = z.enum(['better-auth']);
+
+/**
  * Deploy target schema.
  * Currently only 'dokploy' is supported.
  * 'vercel' and 'cloudflare' are planned for Phase 2.
@@ -177,7 +183,7 @@ const SecretsConfigSchema = z.object({
 const AppConfigSchema = z
 	.object({
 		// Core properties
-		type: z.enum(['backend', 'frontend']).optional().default('backend'),
+		type: z.enum(['backend', 'frontend', 'auth']).optional().default('backend'),
 		path: z.string().min(1, 'App path is required'),
 		port: z.number().int().positive('Port must be a positive integer'),
 		dependencies: z.array(z.string()).optional(),
@@ -202,6 +208,9 @@ const AppConfigSchema = z
 		// Frontend-specific
 		framework: z.enum(['nextjs']).optional(),
 		client: ClientConfigSchema.optional(),
+
+		// Auth-specific
+		provider: AuthProviderSchema.optional(),
 	})
 	// Note: routes is optional for backend apps - some backends like auth servers don't use routes
 	.refine(
@@ -215,6 +224,19 @@ const AppConfigSchema = z
 		{
 			message: 'Frontend apps must have framework defined',
 			path: ['framework'],
+		},
+	)
+	.refine(
+		(data) => {
+			// Auth apps must have provider
+			if (data.type === 'auth' && !data.provider) {
+				return false;
+			}
+			return true;
+		},
+		{
+			message: 'Auth apps must have provider defined',
+			path: ['provider'],
 		},
 	);
 
