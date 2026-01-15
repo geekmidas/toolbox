@@ -148,7 +148,6 @@ docker/.env
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 
@@ -207,6 +206,56 @@ export default defineConfig({
 });
 `;
 
+	// VSCode settings for consistent development experience
+	const vscodeSettings = {
+		'search.exclude': {
+			'**/.sst': true,
+			'**/.gkm': true,
+			'**/.turbo': true,
+		},
+		'editor.formatOnSave': true,
+		'editor.defaultFormatter': 'biomejs.biome',
+		'editor.codeActionsOnSave': {
+			'source.fixAll.biome': 'always',
+			'source.organizeImports.biome': 'always',
+			'source.organizeImports': 'always',
+		},
+		'[typescriptreact]': {
+			'editor.defaultFormatter': 'biomejs.biome',
+		},
+		'[typescript]': {
+			'editor.defaultFormatter': 'biomejs.biome',
+		},
+		'[javascript]': {
+			'editor.defaultFormatter': 'biomejs.biome',
+		},
+		'[json]': {
+			'editor.defaultFormatter': 'biomejs.biome',
+		},
+		'cSpell.words': [
+			'betterauth',
+			'dokploy',
+			'envkit',
+			'geekmidas',
+			'healthcheck',
+			'kysely',
+			'testkit',
+			'timestamptz',
+			'turborepo',
+			options.name,
+		],
+	};
+
+	// VSCode extensions recommendations
+	const vscodeExtensions = {
+		recommendations: [
+			'biomejs.biome',
+			'streetsidesoftware.code-spell-checker',
+			'dbaeumer.vscode-eslint',
+			'ms-azuretools.vscode-docker',
+		],
+	};
+
 	const files: GeneratedFile[] = [
 		{
 			path: 'package.json',
@@ -235,6 +284,14 @@ export default defineConfig({
 		{
 			path: '.gitignore',
 			content: gitignore,
+		},
+		{
+			path: '.vscode/settings.json',
+			content: `${JSON.stringify(vscodeSettings, null, '\t')}\n`,
+		},
+		{
+			path: '.vscode/extensions.json',
+			content: `${JSON.stringify(vscodeExtensions, null, '\t')}\n`,
 		},
 	];
 

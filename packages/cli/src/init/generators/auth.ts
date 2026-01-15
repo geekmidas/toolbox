@@ -22,7 +22,7 @@ export function generateAuthAppFiles(
 		private: true,
 		type: 'module',
 		scripts: {
-			dev: 'tsx watch src/index.ts',
+			dev: 'gkm dev --entry ./src/index.ts',
 			build: 'tsc',
 			start: 'node dist/index.js',
 			typecheck: 'tsc --noEmit',
@@ -38,6 +38,7 @@ export function generateAuthAppFiles(
 			pg: '~8.13.0',
 		},
 		devDependencies: {
+			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 			'@types/node': '~22.0.0',
 			'@types/pg': '~8.11.0',
 			tsx: '~4.20.0',
