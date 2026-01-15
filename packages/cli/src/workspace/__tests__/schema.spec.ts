@@ -478,6 +478,120 @@ describe('WorkspaceConfigSchema', () => {
 		});
 	});
 
+	describe('auth app configuration', () => {
+		it('should accept auth app with provider', () => {
+			const config = {
+				apps: {
+					auth: {
+						type: 'auth' as const,
+						path: 'apps/auth',
+						port: 3002,
+						provider: 'better-auth' as const,
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.apps.auth.type).toBe('auth');
+			expect(result.apps.auth.provider).toBe('better-auth');
+		});
+
+		it('should reject auth app without provider', () => {
+			const config = {
+				apps: {
+					auth: {
+						type: 'auth' as const,
+						path: 'apps/auth',
+						port: 3002,
+						// Missing provider
+					},
+				},
+			};
+
+			const result = safeValidateWorkspaceConfig(config);
+
+			expect(result.success).toBe(false);
+			if (result.error) {
+				const formatted = formatValidationErrors(result.error);
+				expect(formatted).toContain('Auth apps must have provider defined');
+			}
+		});
+
+		it('should allow auth app with backend properties', () => {
+			const config = {
+				apps: {
+					auth: {
+						type: 'auth' as const,
+						path: 'apps/auth',
+						port: 3002,
+						provider: 'better-auth' as const,
+						envParser: './src/config/env',
+						logger: './src/logger',
+						telescope: true,
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.apps.auth.type).toBe('auth');
+			expect(result.apps.auth.envParser).toBe('./src/config/env');
+			expect(result.apps.auth.telescope).toBe(true);
+		});
+
+		it('should validate fullstack workspace with auth app', () => {
+			const config = {
+				name: 'fullstack-app',
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						dependencies: ['auth'],
+					},
+					auth: {
+						type: 'auth' as const,
+						path: 'apps/auth',
+						port: 3002,
+						provider: 'better-auth' as const,
+					},
+					web: {
+						type: 'frontend' as const,
+						path: 'apps/web',
+						port: 3001,
+						framework: 'nextjs' as const,
+						dependencies: ['api', 'auth'],
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.apps.api.dependencies).toEqual(['auth']);
+			expect(result.apps.auth.type).toBe('auth');
+			expect(result.apps.web.dependencies).toEqual(['api', 'auth']);
+		});
+
+		it('should reject invalid auth provider', () => {
+			const config = {
+				apps: {
+					auth: {
+						type: 'auth' as const,
+						path: 'apps/auth',
+						port: 3002,
+						provider: 'invalid-provider',
+					},
+				},
+			};
+
+			const result = safeValidateWorkspaceConfig(config);
+
+			expect(result.success).toBe(false);
+		});
+	});
+
 	describe('deploy target helpers', () => {
 		it('isDeployTargetSupported should return true for dokploy', () => {
 			expect(isDeployTargetSupported('dokploy')).toBe(true);
