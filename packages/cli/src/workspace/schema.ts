@@ -58,6 +58,26 @@ const ClientConfigSchema = z.object({
 const AuthProviderSchema = z.enum(['better-auth']);
 
 /**
+ * Backend framework schema for non-gkm apps.
+ */
+const BackendFrameworkSchema = z.enum([
+	'hono',
+	'better-auth',
+	'express',
+	'fastify',
+]);
+
+/**
+ * Frontend framework schema.
+ */
+const FrontendFrameworkSchema = z.enum(['nextjs', 'remix', 'vite']);
+
+/**
+ * Combined framework schema (backend or frontend).
+ */
+const FrameworkSchema = z.union([BackendFrameworkSchema, FrontendFrameworkSchema]);
+
+/**
  * Deploy target schema.
  * Currently only 'dokploy' is supported.
  * 'vercel' and 'cloudflare' are planned for Phase 2.
@@ -205,8 +225,11 @@ const AppConfigSchema = z
 		runtime: z.enum(['node', 'bun']).optional(),
 		env: z.union([z.string(), z.array(z.string())]).optional(),
 
-		// Frontend-specific
-		framework: z.enum(['nextjs']).optional(),
+		// Entry point for non-gkm apps (used by dev and docker build)
+		entry: z.string().optional(),
+
+		// Framework (backend or frontend)
+		framework: FrameworkSchema.optional(),
 		client: ClientConfigSchema.optional(),
 
 		// Auth-specific
@@ -215,14 +238,17 @@ const AppConfigSchema = z
 	// Note: routes is optional for backend apps - some backends like auth servers don't use routes
 	.refine(
 		(data) => {
-			// Frontend apps must have framework
-			if (data.type === 'frontend' && !data.framework) {
-				return false;
+			// Frontend apps must have a frontend framework
+			if (data.type === 'frontend') {
+				const frontendFrameworks = ['nextjs', 'remix', 'vite'];
+				if (!data.framework || !frontendFrameworks.includes(data.framework)) {
+					return false;
+				}
 			}
 			return true;
 		},
 		{
-			message: 'Frontend apps must have framework defined',
+			message: 'Frontend apps must have a valid frontend framework (nextjs, remix, vite)',
 			path: ['framework'],
 		},
 	)

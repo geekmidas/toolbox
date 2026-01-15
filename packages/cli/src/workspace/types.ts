@@ -17,6 +17,16 @@ import type {
 export type DeployTarget = 'dokploy' | 'vercel' | 'cloudflare';
 
 /**
+ * Backend framework types for apps that don't use gkm routes.
+ */
+export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
+
+/**
+ * Frontend framework types.
+ */
+export type FrontendFramework = 'nextjs' | 'remix' | 'vite';
+
+/**
  * Service image configuration for custom Docker images.
  */
 export interface ServiceImageConfig {
@@ -163,9 +173,17 @@ interface AppConfigBase {
 	/** Environment file(s) to load */
 	env?: string | string[];
 
+	// Entry point for non-gkm apps
+	/**
+	 * Entry file path for apps that don't use gkm routes.
+	 * Used by both `gkm dev` (runs with tsx) and Docker builds (bundles with tsdown).
+	 * @example './src/index.ts'
+	 */
+	entry?: string;
+
 	// Frontend-specific
-	/** Frontend framework (currently only 'nextjs') */
-	framework?: 'nextjs';
+	/** Framework for the app (frontend or backend without gkm routes) */
+	framework?: BackendFramework | FrontendFramework;
 	/** Client generation configuration */
 	client?: ClientConfig;
 }
@@ -294,6 +312,10 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	dependencies: string[];
 	/** Resolved deploy target (app.deploy > deploy.default > 'dokploy') */
 	resolvedDeployTarget: DeployTarget;
+	/** Entry file path for non-gkm apps */
+	entry?: string;
+	/** Framework for the app */
+	framework?: BackendFramework | FrontendFramework;
 }
 
 /**
