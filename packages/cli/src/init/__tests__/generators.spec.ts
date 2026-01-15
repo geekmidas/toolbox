@@ -345,9 +345,7 @@ describe('generateModelsPackage', () => {
 			apiPath: 'apps/api',
 		};
 		const files = generateModelsPackage(options);
-		const userTs = files.find(
-			(f) => f.path === 'packages/models/src/user.ts',
-		);
+		const userTs = files.find((f) => f.path === 'packages/models/src/user.ts');
 		const commonTs = files.find(
 			(f) => f.path === 'packages/models/src/common.ts',
 		);
