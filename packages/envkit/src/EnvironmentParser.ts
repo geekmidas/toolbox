@@ -1,6 +1,7 @@
 import get from 'lodash.get';
 import set from 'lodash.set';
 import { z } from 'zod/v4';
+import { formatParseError, isDevelopment } from './formatter.js';
 
 /**
  * Parses and validates configuration objects against Zod schemas.
@@ -63,8 +64,12 @@ export class ConfigParser<TResponse extends EmptyObject> {
 		) as unknown as InferConfig<TResponse>;
 
 		if (errors.length > 0) {
-			// If there are errors, throw them
-			throw new z.ZodError(errors);
+			const zodError = new z.ZodError(errors);
+			// In development, log a formatted error message before throwing
+			if (isDevelopment()) {
+				console.error(formatParseError(zodError));
+			}
+			throw zodError;
 		}
 
 		return parsedConfig;
