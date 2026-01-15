@@ -1,8 +1,8 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { GkmConfig } from '../config';
-import { dockerCommand, findLockfilePath, isMonorepo } from '../docker';
+import { dockerCommand, findLockfilePath } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
 
 /**
@@ -94,15 +94,19 @@ export function getImageRef(
 
 /**
  * Build Docker image
+ * @param imageRef - Full image reference (registry/name:tag)
+ * @param appName - Name of the app (used for Dockerfile.{appName} in workspaces)
  */
-async function buildImage(imageRef: string): Promise<void> {
+async function buildImage(imageRef: string, appName?: string): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
 	const cwd = process.cwd();
-	const inMonorepo = isMonorepo(cwd);
+	const lockfilePath = findLockfilePath(cwd);
+	const lockfileDir = lockfilePath ? dirname(lockfilePath) : cwd;
+	const inMonorepo = lockfileDir !== cwd;
 
 	// Generate appropriate Dockerfile
-	if (inMonorepo) {
+	if (appName || inMonorepo) {
 		logger.log('   Generating Dockerfile for monorepo (turbo prune)...');
 	} else {
 		logger.log('   Generating Dockerfile...');
@@ -110,19 +114,15 @@ async function buildImage(imageRef: string): Promise<void> {
 	await dockerCommand({});
 
 	// Determine build context and Dockerfile path
-	let buildCwd = cwd;
-	let dockerfilePath = '.gkm/docker/Dockerfile';
+	// For workspaces with multiple apps, use per-app Dockerfile (Dockerfile.api, etc.)
+	const dockerfileSuffix = appName ? `.${appName}` : '';
+	const dockerfilePath = `.gkm/docker/Dockerfile${dockerfileSuffix}`;
 
-	if (inMonorepo) {
-		// For monorepos, build from root so turbo prune can access all packages
-		const lockfilePath = findLockfilePath(cwd);
-		if (lockfilePath) {
-			const monorepoRoot = dirname(lockfilePath);
-			const appRelPath = relative(monorepoRoot, cwd);
-			dockerfilePath = join(appRelPath, '.gkm/docker/Dockerfile');
-			buildCwd = monorepoRoot;
-			logger.log(`   Building from monorepo root: ${monorepoRoot}`);
-		}
+	// Build from workspace/monorepo root when we have a lockfile elsewhere or appName is provided
+	const buildCwd =
+		lockfilePath && (inMonorepo || appName) ? lockfileDir : cwd;
+	if (buildCwd !== cwd) {
+		logger.log(`   Building from workspace root: ${buildCwd}`);
 	}
 
 	try {
@@ -174,8 +174,8 @@ export async function deployDocker(
 	const imageName = config.imageName!;
 	const imageRef = getImageRef(config.registry, imageName, tag);
 
-	// Build image
-	await buildImage(imageRef);
+	// Build image (pass appName for workspace Dockerfile selection)
+	await buildImage(imageRef, config.appName);
 
 	// Push to registry if not skipped
 	if (!skipPush) {
