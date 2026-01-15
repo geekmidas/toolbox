@@ -161,7 +161,8 @@ describe('generateConfigFiles', () => {
 		};
 		const files = generateConfigFiles(options, minimalTemplate);
 		const tsConfig = files.find((f) => f.path === 'tsconfig.json');
-		const config = JSON.parse(tsConfig?.content);
+		expect(tsConfig).toBeDefined();
+		const config = JSON.parse(tsConfig!.content);
 		expect(config.extends).toBe('../../tsconfig.json');
 		expect(config.compilerOptions.paths).toBeDefined();
 		expect(config.compilerOptions.paths['@test-project/*']).toBeDefined();
@@ -274,7 +275,8 @@ describe('generateMonorepoFiles', () => {
 		};
 		const files = generateMonorepoFiles(options, minimalTemplate);
 		const pkgJson = files.find((f) => f.path === 'package.json');
-		const pkg = JSON.parse(pkgJson?.content);
+		expect(pkgJson).toBeDefined();
+		const pkg = JSON.parse(pkgJson!.content);
 		expect(pkg.scripts.dev).toBe('turbo dev');
 		expect(pkg.scripts.build).toBe('turbo build');
 		expect(pkg.scripts.lint).toBe('biome lint .');
@@ -311,7 +313,8 @@ describe('generateModelsPackage', () => {
 		const pkgJson = files.find(
 			(f) => f.path === 'packages/models/package.json',
 		);
-		const pkg = JSON.parse(pkgJson?.content);
+		expect(pkgJson).toBeDefined();
+		const pkg = JSON.parse(pkgJson!.content);
 		expect(pkg.name).toBe('@test-project/models');
 	});
 
@@ -325,7 +328,8 @@ describe('generateModelsPackage', () => {
 		const pkgJson = files.find(
 			(f) => f.path === 'packages/models/package.json',
 		);
-		const pkg = JSON.parse(pkgJson?.content);
+		expect(pkgJson).toBeDefined();
+		const pkg = JSON.parse(pkgJson!.content);
 		expect(pkg.dependencies.zod).toBeDefined();
 	});
 
@@ -359,7 +363,8 @@ describe('generateModelsPackage', () => {
 		const tsConfig = files.find(
 			(f) => f.path === 'packages/models/tsconfig.json',
 		);
-		const config = JSON.parse(tsConfig?.content);
+		expect(tsConfig).toBeDefined();
+		const config = JSON.parse(tsConfig!.content);
 		expect(config.extends).toBe('../../tsconfig.json');
 	});
 });
