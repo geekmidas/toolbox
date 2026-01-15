@@ -15,6 +15,7 @@ import {
 	generateBackendDockerfile,
 	generateDockerEntrypoint,
 	generateDockerignore,
+	generateEntryDockerfile,
 	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
 	generateSlimDockerfile,
@@ -400,7 +401,9 @@ export async function workspaceDockerCommand(
 		// Determine image name
 		const imageName = appName;
 
-		logger.log(`\n   📄 Generating Dockerfile for ${appName} (${app.type})`);
+		const hasEntry = !!app.entry;
+		const buildType = hasEntry ? 'entry' : app.type;
+		logger.log(`\n   📄 Generating Dockerfile for ${appName} (${buildType})`);
 
 		let dockerfile: string;
 
@@ -414,8 +417,20 @@ export async function workspaceDockerCommand(
 				turboPackage,
 				packageManager,
 			});
+		} else if (app.entry) {
+			// Backend with custom entry point - use tsdown bundling
+			dockerfile = generateEntryDockerfile({
+				imageName,
+				baseImage: 'node:22-alpine',
+				port: app.port,
+				appPath,
+				entry: app.entry,
+				turboPackage,
+				packageManager,
+				healthCheckPath: '/health',
+			});
 		} else {
-			// Generate backend Dockerfile
+			// Backend with gkm routes - use gkm build
 			dockerfile = generateBackendDockerfile({
 				imageName,
 				baseImage: 'node:22-alpine',
