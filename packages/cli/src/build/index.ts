@@ -1,12 +1,17 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
-import { loadConfig, loadWorkspaceConfig, parseModuleConfig } from '../config';
+import {
+	loadAppConfig,
+	loadConfig,
+	loadWorkspaceConfig,
+	parseModuleConfig,
+} from '../config';
 import {
 	getProductionConfigFromGkm,
 	normalizeHooksConfig,
@@ -49,13 +54,25 @@ export async function buildCommand(
 	const loadedConfig = await loadWorkspaceConfig();
 
 	// Route to workspace build mode for multi-app workspaces
+	// BUT only if we're at the workspace root (prevents recursive builds when
+	// Turbo runs gkm build in each app subdirectory)
 	if (loadedConfig.type === 'workspace') {
-		logger.log('📦 Detected workspace configuration');
-		return workspaceBuildCommand(loadedConfig.workspace, options);
+		const cwd = resolve(process.cwd());
+		const workspaceRoot = resolve(loadedConfig.workspace.root);
+		const isAtWorkspaceRoot = cwd === workspaceRoot;
+
+		if (isAtWorkspaceRoot) {
+			logger.log('📦 Detected workspace configuration');
+			return workspaceBuildCommand(loadedConfig.workspace, options);
+		}
+		// When running from inside an app directory, use app-specific config
 	}
 
-	// Single-app build - use existing logic
-	const config = await loadConfig();
+	// Single-app build - use app config if in workspace, otherwise legacy config
+	const config =
+		loadedConfig.type === 'workspace'
+			? (await loadAppConfig()).gkmConfig
+			: await loadConfig();
 
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
