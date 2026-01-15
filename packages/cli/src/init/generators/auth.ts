@@ -26,6 +26,8 @@ export function generateAuthAppFiles(
 			build: 'tsc',
 			start: 'node dist/index.js',
 			typecheck: 'tsc --noEmit',
+			'db:migrate': 'gkm exec -- npx @better-auth/cli migrate',
+			'db:generate': 'gkm exec -- npx @better-auth/cli generate',
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
