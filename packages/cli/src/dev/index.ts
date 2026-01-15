@@ -755,6 +755,54 @@ export async function loadDevSecrets(
 }
 
 /**
+ * Load secrets from a path for dev mode.
+ * For single app: returns secrets as-is.
+ * For workspace app: maps {APP}_DATABASE_URL → DATABASE_URL.
+ * @internal Exported for testing
+ */
+export async function loadSecretsForApp(
+	secretsRoot: string,
+	appName?: string,
+): Promise<Record<string, string>> {
+	// Try 'dev' stage first, then 'development'
+	const stages = ['dev', 'development'];
+
+	let secrets: Record<string, string> = {};
+
+	for (const stage of stages) {
+		if (secretsExist(stage, secretsRoot)) {
+			const stageSecrets = await readStageSecrets(stage, secretsRoot);
+			if (stageSecrets) {
+				logger.log(`🔐 Loading secrets from stage: ${stage}`);
+				secrets = toEmbeddableSecrets(stageSecrets);
+				break;
+			}
+		}
+	}
+
+	if (Object.keys(secrets).length === 0) {
+		return {};
+	}
+
+	// Single app mode - no mapping needed
+	if (!appName) {
+		return secrets;
+	}
+
+	// Workspace app mode - map {APP}_* to generic names
+	const prefix = appName.toUpperCase();
+	const mapped = { ...secrets };
+
+	// Map {APP}_DATABASE_URL → DATABASE_URL
+	const appDbUrl = secrets[`${prefix}_DATABASE_URL`];
+	if (appDbUrl) {
+		mapped.DATABASE_URL = appDbUrl;
+	}
+
+	return mapped;
+}
+
+/**
  * Start docker-compose services for the workspace.
  * @internal Exported for testing
  */
