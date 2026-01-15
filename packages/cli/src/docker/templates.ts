@@ -750,3 +750,113 @@ ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.mjs"]
 `;
 }
+
+/**
+ * Options for entry-based Dockerfile generation.
+ */
+export interface EntryDockerfileOptions {
+	imageName: string;
+	baseImage: string;
+	port: number;
+	/** App path relative to workspace root */
+	appPath: string;
+	/** Entry file path relative to app path (e.g., './src/index.ts') */
+	entry: string;
+	/** Package name for turbo prune */
+	turboPackage: string;
+	/** Detected package manager */
+	packageManager: PackageManager;
+	/** Health check path (default: '/health') */
+	healthCheckPath?: string;
+}
+
+/**
+ * Generate a Dockerfile for apps with a custom entry point.
+ * Uses tsdown to bundle the entry point into dist/index.mjs.
+ * This is used for apps that don't use gkm routes (e.g., Better Auth servers).
+ * @internal Exported for testing
+ */
+export function generateEntryDockerfile(options: EntryDockerfileOptions): string {
+	const {
+		baseImage,
+		port,
+		appPath,
+		entry,
+		turboPackage,
+		packageManager,
+		healthCheckPath = '/health',
+	} = options;
+
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+
+	return `# syntax=docker/dockerfile:1
+# Entry-based Dockerfile with turbo prune + tsdown bundling
+
+# Stage 1: Prune monorepo
+FROM ${baseImage} AS pruner
+
+WORKDIR /app
+
+${installPm}
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN ${turboCmd} prune ${turboPackage} --docker
+
+# Stage 2: Install dependencies
+FROM ${baseImage} AS deps
+
+WORKDIR /app
+
+${installPm}
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/${pm.lockfile} ./
+COPY --from=pruner /app/out/json/ ./
+
+# Install dependencies
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
+
+# Stage 3: Build with tsdown
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Bundle entry point with tsdown (outputs to dist/index.mjs)
+RUN cd ${appPath} && npx tsdown ${entry} --outDir dist --format esm
+
+# Stage 4: Production
+FROM ${baseImage} AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache tini
+
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 app
+
+# Copy bundled output only (no node_modules needed - fully bundled)
+COPY --from=builder --chown=app:nodejs /app/${appPath}/dist/index.mjs ./
+
+ENV NODE_ENV=production
+ENV PORT=${port}
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+
+USER app
+
+EXPOSE ${port}
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "index.mjs"]
+`;
+}
