@@ -1,4 +1,4 @@
-import { z } from 'zod/v4';
+import type { z } from 'zod/v4';
 
 /**
  * Options for formatting parse errors.
@@ -103,9 +103,7 @@ export function formatParseError(
 	const lines: string[] = [];
 
 	lines.push('');
-	lines.push(
-		`${c.red}${c.bold}Environment Configuration Failed${c.reset}`,
-	);
+	lines.push(`${c.red}${c.bold}Environment Configuration Failed${c.reset}`);
 	lines.push('');
 
 	if (missingVars.length > 0) {
