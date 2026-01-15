@@ -2,7 +2,7 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import { config as dotenvConfig } from 'dotenv';
 import fg from 'fast-glob';
@@ -304,9 +304,18 @@ export interface DevOptions {
 	app?: string;
 	/** Filter apps by pattern (passed to turbo --filter) */
 	filter?: string;
+	/** Entry file to run (bypasses gkm config) */
+	entry?: string;
+	/** Watch for file changes (default: true with --entry) */
+	watch?: boolean;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
+	// Handle --entry mode: run any file with secret injection
+	if (options.entry) {
+		return entryDevCommand(options);
+	}
+
 	// Load default .env file BEFORE loading config
 	// This ensures env vars are available when config and its dependencies are loaded
 	const defaultEnv = loadEnvFiles('.env');

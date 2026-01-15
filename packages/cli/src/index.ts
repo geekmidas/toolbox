@@ -136,28 +136,42 @@ program
 	.command('dev')
 	.description('Start development server with automatic reload')
 	.option('-p, --port <port>', 'Port to run the development server on')
+	.option('--entry <file>', 'Entry file to run (bypasses gkm config)')
+	.option('--watch', 'Watch for file changes (default: true with --entry)')
+	.option('--no-watch', 'Disable file watching')
 	.option(
 		'--enable-openapi',
 		'Enable OpenAPI documentation for development server',
 		true,
 	)
-	.action(async (options: { port?: string; enableOpenapi?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
-			}
+	.action(
+		async (options: {
+			port?: string;
+			entry?: string;
+			watch?: boolean;
+			enableOpenapi?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
 
-			await devCommand({
-				port: options.port ? Number.parseInt(options.port, 10) : 3000,
-				portExplicit: !!options.port,
-				enableOpenApi: options.enableOpenapi ?? true,
-			});
-		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
-			process.exit(1);
-		}
-	});
+				await devCommand({
+					port: options.port ? Number.parseInt(options.port, 10) : 3000,
+					portExplicit: !!options.port,
+					enableOpenApi: options.enableOpenapi ?? true,
+					entry: options.entry,
+					watch: options.watch,
+				});
+			} catch (error) {
+				console.error(
+					error instanceof Error ? error.message : 'Command failed',
+				);
+				process.exit(1);
+			}
+		},
+	);
 
 program
 	.command('test')
