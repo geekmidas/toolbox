@@ -15,9 +15,14 @@ const baseOptions: TemplateOptions = {
 	template: 'minimal',
 	telescope: true,
 	database: true,
-	routeStyle: 'file-based',
+	studio: true,
+	loggerType: 'pino',
+	routesStructure: 'centralized-endpoints',
 	monorepo: false,
 	apiPath: '',
+	packageManager: 'pnpm',
+	deployTarget: 'dokploy',
+	services: { db: true, cache: true, mail: false },
 };
 
 describe('generatePackageJson', () => {
