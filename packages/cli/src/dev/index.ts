@@ -1,6 +1,6 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import chokidar from 'chokidar';
@@ -318,6 +318,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	const appName = getAppNameFromCwd();
 	let config: GkmConfig;
 	let appRoot: string = process.cwd();
+	let secretsRoot: string = process.cwd(); // Where .gkm/secrets/ lives
+	let workspaceAppName: string | undefined; // Set if in workspace mode
 
 	if (appName) {
 		// Try to load app-specific config from workspace
@@ -325,6 +327,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			const appConfig = await loadAppConfig();
 			config = appConfig.gkmConfig;
 			appRoot = appConfig.appRoot;
+			secretsRoot = appConfig.workspaceRoot;
+			workspaceAppName = appConfig.appName;
 			logger.log(`📦 Running app: ${appConfig.appName}`);
 		} catch {
 			// Not in a workspace or app not found in workspace - fall back to regular loading
@@ -438,6 +442,17 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Determine runtime (default to node)
 	const runtime: Runtime = config.runtime ?? 'node';
 
+	// Load secrets for dev mode and write to JSON file
+	let secretsJsonPath: string | undefined;
+	const appSecrets = await loadSecretsForApp(secretsRoot, workspaceAppName);
+	if (Object.keys(appSecrets).length > 0) {
+		const secretsDir = join(secretsRoot, '.gkm');
+		await mkdir(secretsDir, { recursive: true });
+		secretsJsonPath = join(secretsDir, 'dev-secrets.json');
+		await writeFile(secretsJsonPath, JSON.stringify(appSecrets, null, 2));
+		logger.log(`🔐 Loaded ${Object.keys(appSecrets).length} secret(s)`);
+	}
+
 	// Start the dev server
 	const devServer = new DevServer(
 		resolved.providers[0] as LegacyProvider,
@@ -448,6 +463,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		studio,
 		runtime,
 		appRoot,
+		secretsJsonPath,
 	);
 
 	await devServer.start();
