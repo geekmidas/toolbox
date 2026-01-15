@@ -6,7 +6,7 @@ import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import { buildCommand } from './build/index';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
-import { devCommand } from './dev/index';
+import { devCommand, execCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
 import { openapiCommand } from './openapi';
@@ -172,6 +172,23 @@ program
 			}
 		},
 	);
+
+program
+	.command('exec')
+	.description('Run a command with secrets injected into Credentials')
+	.argument('<command...>', 'Command to run (use -- before command)')
+	.action(async (commandArgs: string[]) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await execCommand(commandArgs);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
 
 program
 	.command('test')
