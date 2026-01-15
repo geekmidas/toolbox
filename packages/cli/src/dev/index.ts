@@ -341,6 +341,17 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			workspaceAppName = appConfig.appName;
 			workspaceAppPort = appConfig.app.port;
 			logger.log(`📦 Running app: ${appConfig.appName} on port ${workspaceAppPort}`);
+
+			// Check if app has an entry point (non-gkm app like better-auth)
+			if (appConfig.app.entry) {
+				logger.log(`📄 Using entry point: ${appConfig.app.entry}`);
+				return entryDevCommand({
+					...options,
+					entry: appConfig.app.entry,
+					port: workspaceAppPort,
+					portExplicit: true,
+				});
+			}
 		} catch {
 			// Not in a workspace or app not found in workspace - fall back to regular loading
 			const loadedConfig = await loadWorkspaceConfig();
