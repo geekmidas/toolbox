@@ -131,8 +131,8 @@ export const listUsersEndpoint = e
   .output(ListUsersResponseSchema)
   .handle(async () => ({
     users: [
-      { id: '1', name: 'Alice' },
-      { id: '2', name: 'Bob' },
+      { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Alice' },
+      { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Bob' },
     ],
   }));
 `
@@ -161,12 +161,12 @@ export const listUsersEndpoint = e
 				path: getRoutePath('users/get.ts'),
 				content: modelsImport
 					? `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+import { IdSchema } from '${modelsImport}/common';
 import { UserResponseSchema } from '${modelsImport}/user';
 
 export const getUserEndpoint = e
   .get('/users/:id')
-  .params(z.object({ id: z.string() }))
+  .params({ id: IdSchema })
   .output(UserResponseSchema)
   .handle(async ({ params }) => ({
     id: params.id,
