@@ -823,7 +823,7 @@ export interface EntryDockerfileOptions {
 
 /**
  * Generate a Dockerfile for apps with a custom entry point.
- * Uses tsdown to bundle the entry point into dist/index.mjs.
+ * Uses esbuild to bundle the entry point into dist/index.mjs with all dependencies.
  * This is used for apps that don't use gkm routes (e.g., Better Auth servers).
  * @internal Exported for testing
  */
@@ -896,17 +896,22 @@ RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
       echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
     fi
 
-# Bundle entry point with tsdown (outputs to dist/index.mjs)
+# Bundle entry point with esbuild (outputs to dist/index.mjs)
+# Creates a fully standalone bundle with all dependencies included
 # Use define to embed credentials if present
 RUN cd ${appPath} && \
     if [ -f .gkm/credentials.enc ]; then \
       CREDS=$(cat .gkm/credentials.enc) && \
       IV=$(cat .gkm/credentials.iv) && \
-      npx tsdown ${entry} --outDir dist --format esm \
-        --define __GKM_ENCRYPTED_CREDENTIALS__="'\\"$CREDS\\"'" \
-        --define __GKM_CREDENTIALS_IV__="'\\"$IV\\"'"; \
+      npx esbuild ${entry} --bundle --platform=node --target=node22 --format=esm \
+        --outfile=dist/index.mjs --packages=bundle \
+        --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);' \
+        --define:__GKM_ENCRYPTED_CREDENTIALS__="'\\"$CREDS\\"'" \
+        --define:__GKM_CREDENTIALS_IV__="'\\"$IV\\"'"; \
     else \
-      npx tsdown ${entry} --outDir dist --format esm; \
+      npx esbuild ${entry} --bundle --platform=node --target=node22 --format=esm \
+        --outfile=dist/index.mjs --packages=bundle \
+        --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);'; \
     fi
 
 # Stage 4: Production
