@@ -246,6 +246,62 @@ export interface DokployWorkspaceConfig {
 }
 
 /**
+ * DNS provider types for automatic DNS record creation.
+ */
+export type DnsProvider = 'hostinger' | 'cloudflare' | 'manual';
+
+/**
+ * DNS configuration for automatic record creation during deployment.
+ *
+ * When configured, the deploy command will automatically create DNS
+ * A records pointing to your Dokploy server for each app's domain.
+ *
+ * @example
+ * ```ts
+ * // Auto-create DNS records at Hostinger
+ * dns: {
+ *   provider: 'hostinger',
+ *   domain: 'traflabs.io',
+ *   autoCreate: true,
+ * }
+ *
+ * // Manual mode - just print required records
+ * dns: {
+ *   provider: 'manual',
+ *   domain: 'traflabs.io',
+ * }
+ * ```
+ */
+export interface DnsConfig {
+	/**
+	 * DNS provider for automatic record creation.
+	 * - 'hostinger': Use Hostinger DNS API
+	 * - 'cloudflare': Use Cloudflare DNS API (future)
+	 * - 'manual': Don't create records, just print required records
+	 */
+	provider: DnsProvider;
+
+	/**
+	 * Root domain where records will be created.
+	 * @example 'traflabs.io', 'example.com'
+	 */
+	domain: string;
+
+	/**
+	 * Automatically create DNS records during deploy.
+	 * If false, only prints required records for manual setup.
+	 * @default true
+	 */
+	autoCreate?: boolean;
+
+	/**
+	 * TTL for created DNS records in seconds.
+	 * @default 300 (5 minutes)
+	 */
+	ttl?: number;
+}
+
+/**
  * Deployment configuration for the workspace.
  *
  * @example
@@ -255,7 +311,7 @@ export interface DokployWorkspaceConfig {
  *   default: 'dokploy',
  * }
  *
- * // Full Dokploy configuration
+ * // Full configuration with DNS
  * deploy: {
  *   default: 'dokploy',
  *   dokploy: {
@@ -266,6 +322,11 @@ export interface DokployWorkspaceConfig {
  *       production: 'myapp.com',
  *     },
  *   },
+ *   dns: {
+ *     provider: 'hostinger',
+ *     domain: 'myapp.com',
+ *     autoCreate: true,
+ *   },
  * }
  * ```
  */
@@ -274,6 +335,8 @@ export interface DeployConfig {
 	default?: DeployTarget;
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
+	/** DNS configuration for automatic record creation */
+	dns?: DnsConfig;
 }
 
 /**
