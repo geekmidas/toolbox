@@ -321,8 +321,8 @@ ENV NODE_ENV=production
 ENV PORT=${port}
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 # Switch to non-root user
 USER hono
@@ -413,8 +413,8 @@ COPY --from=builder --chown=hono:nodejs /app/.gkm/server/dist/server.mjs ./
 ENV NODE_ENV=production
 ENV PORT=${port}
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 USER hono
 
@@ -452,8 +452,8 @@ ENV NODE_ENV=production
 ENV PORT=${port}
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 # Switch to non-root user
 USER hono
@@ -682,10 +682,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/.next/static ./${appPath}/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/${appPath}/public ./${appPath}/public
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}/ || exit 1
-
 USER nextjs
 
 EXPOSE ${port}
@@ -790,8 +786,8 @@ COPY --from=builder --chown=hono:nodejs /app/${appPath}/.gkm/server/dist/server.
 ENV NODE_ENV=production
 ENV PORT=${port}
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 USER hono
 
@@ -930,8 +926,8 @@ COPY --from=builder --chown=app:nodejs /app/${appPath}/dist/index.mjs ./
 ENV NODE_ENV=production
 ENV PORT=${port}
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD wget -q --spider http://localhost:${port}${healthCheckPath} || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 USER app
 
