@@ -35,6 +35,7 @@ import {
 	setRedisId,
 	writeStageState,
 } from './state.js';
+import { orchestrateDns } from './dns/index.js';
 import {
 	generatePublicUrlBuildArgs,
 	getPublicUrlArgNames,
@@ -925,6 +926,10 @@ export async function workspaceDeployCommand(
 	const results: AppDeployResult[] = [];
 	const dokployConfig = workspace.deploy.dokploy;
 
+	// Track domain IDs and hostnames for DNS orchestration
+	const appHostnames = new Map<string, string>(); // appName -> hostname
+	const appDomainIds = new Map<string, string>(); // appName -> domainId
+
 	// ==================================================================
 	// PHASE 1: Deploy backend apps (with encrypted secrets)
 	// ==================================================================
@@ -1026,32 +1031,53 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Create domain for this app
-				try {
-					const host = resolveHost(
-						appName,
-						app,
-						stage,
-						dokployConfig,
-						false, // Backend apps are not main frontend
-					);
+				// Create or find domain for this app
+				const backendHost = resolveHost(
+					appName,
+					app,
+					stage,
+					dokployConfig,
+					false, // Backend apps are not main frontend
+				);
 
-					await api.createDomain({
-						host,
-						port: app.port,
-						https: true,
-						certificateType: 'letsencrypt',
-						applicationId: application.applicationId,
-					});
+				// Check if domain already exists
+				const existingDomains = await api.getDomainsByApplicationId(
+					application.applicationId,
+				);
+				const existingDomain = existingDomains.find(
+					(d) => d.host === backendHost,
+				);
 
-					const publicUrl = `https://${host}`;
-					publicUrls[appName] = publicUrl;
-					logger.log(`      ✓ Domain: ${publicUrl}`);
-				} catch (domainError) {
-					// Domain might already exist, try to get public URL anyway
-					const host = resolveHost(appName, app, stage, dokployConfig, false);
-					publicUrls[appName] = `https://${host}`;
-					logger.log(`      ℹ Domain already configured: https://${host}`);
+				if (existingDomain) {
+					// Domain already exists
+					appHostnames.set(appName, backendHost);
+					appDomainIds.set(appName, existingDomain.domainId);
+					publicUrls[appName] = `https://${backendHost}`;
+					logger.log(`      ✓ Domain: https://${backendHost} (existing)`);
+				} else {
+					// Create new domain
+					try {
+						const domain = await api.createDomain({
+							host: backendHost,
+							port: app.port,
+							https: true,
+							certificateType: 'letsencrypt',
+							applicationId: application.applicationId,
+						});
+
+						appHostnames.set(appName, backendHost);
+						appDomainIds.set(appName, domain.domainId);
+						publicUrls[appName] = `https://${backendHost}`;
+						logger.log(`      ✓ Domain: https://${backendHost} (created)`);
+					} catch (domainError) {
+						const message =
+							domainError instanceof Error
+								? domainError.message
+								: 'Unknown error';
+						logger.log(`      ⚠ Domain creation failed: ${message}`);
+						appHostnames.set(appName, backendHost);
+						publicUrls[appName] = `https://${backendHost}`;
+					}
 				}
 
 				results.push({
@@ -1174,38 +1200,54 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Create domain for this app
+				// Create or find domain for this app
 				const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
-				try {
-					const host = resolveHost(
-						appName,
-						app,
-						stage,
-						dokployConfig,
-						isMainFrontend,
-					);
+				const frontendHost = resolveHost(
+					appName,
+					app,
+					stage,
+					dokployConfig,
+					isMainFrontend,
+				);
 
-					await api.createDomain({
-						host,
-						port: app.port,
-						https: true,
-						certificateType: 'letsencrypt',
-						applicationId: application.applicationId,
-					});
+				// Check if domain already exists
+				const existingFrontendDomains = await api.getDomainsByApplicationId(
+					application.applicationId,
+				);
+				const existingFrontendDomain = existingFrontendDomains.find(
+					(d) => d.host === frontendHost,
+				);
 
-					const publicUrl = `https://${host}`;
-					publicUrls[appName] = publicUrl;
-					logger.log(`      ✓ Domain: ${publicUrl}`);
-				} catch (domainError) {
-					const host = resolveHost(
-						appName,
-						app,
-						stage,
-						dokployConfig,
-						isMainFrontend,
-					);
-					publicUrls[appName] = `https://${host}`;
-					logger.log(`      ℹ Domain already configured: https://${host}`);
+				if (existingFrontendDomain) {
+					// Domain already exists
+					appHostnames.set(appName, frontendHost);
+					appDomainIds.set(appName, existingFrontendDomain.domainId);
+					publicUrls[appName] = `https://${frontendHost}`;
+					logger.log(`      ✓ Domain: https://${frontendHost} (existing)`);
+				} else {
+					// Create new domain
+					try {
+						const domain = await api.createDomain({
+							host: frontendHost,
+							port: app.port,
+							https: true,
+							certificateType: 'letsencrypt',
+							applicationId: application.applicationId,
+						});
+
+						appHostnames.set(appName, frontendHost);
+						appDomainIds.set(appName, domain.domainId);
+						publicUrls[appName] = `https://${frontendHost}`;
+						logger.log(`      ✓ Domain: https://${frontendHost} (created)`);
+					} catch (domainError) {
+						const message =
+							domainError instanceof Error
+								? domainError.message
+								: 'Unknown error';
+						logger.log(`      ⚠ Domain creation failed: ${message}`);
+						appHostnames.set(appName, frontendHost);
+						publicUrls[appName] = `https://${frontendHost}`;
+					}
 				}
 
 				results.push({
@@ -1238,6 +1280,39 @@ export async function workspaceDeployCommand(
 	logger.log('\n📋 Saving deploy state...');
 	await writeStageState(workspace.root, stage, state);
 	logger.log(`   ✓ State saved to .gkm/deploy-${stage}.json`);
+
+	// ==================================================================
+	// DNS: Create DNS records and validate domains for SSL
+	// ==================================================================
+	const dnsConfig = workspace.deploy.dns;
+	if (dnsConfig && appHostnames.size > 0) {
+		const dnsResult = await orchestrateDns(
+			appHostnames,
+			dnsConfig,
+			creds.endpoint,
+		);
+
+		// Validate domains to trigger SSL certificate generation
+		if (dnsResult?.success && appHostnames.size > 0) {
+			logger.log('\n🔒 Validating domains for SSL certificates...');
+			for (const [appName, hostname] of appHostnames) {
+				try {
+					const result = await api.validateDomain(hostname);
+					if (result.isValid) {
+						logger.log(`   ✓ ${appName}: ${hostname} → ${result.resolvedIp}`);
+					} else {
+						logger.log(`   ⚠ ${appName}: ${hostname} not valid`);
+					}
+				} catch (validationError) {
+					const message =
+						validationError instanceof Error
+							? validationError.message
+							: 'Unknown error';
+					logger.log(`   ⚠ ${appName}: validation failed - ${message}`);
+				}
+			}
+		}
+	}
 
 	// ==================================================================
 	// Summary
