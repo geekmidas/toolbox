@@ -266,7 +266,8 @@ describe('initCommand', () => {
 			const pkg = JSON.parse(content);
 
 			expect(pkg.name).toBe('@my-monorepo/models');
-			expect(pkg.dependencies.zod).toBeDefined();
+			// zod is at root level in monorepo, not in models package
+			expect(pkg.dependencies).toEqual({});
 
 			const userPath = join(
 				tempDir,
