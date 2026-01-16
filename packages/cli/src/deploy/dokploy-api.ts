@@ -672,6 +672,18 @@ export class DokployApi {
 	}
 
 	/**
+	 * Validate a domain and trigger SSL certificate generation
+	 *
+	 * This should be called after DNS records are created and propagated.
+	 * It triggers Let's Encrypt certificate generation for HTTPS domains.
+	 *
+	 * @param domain - The domain hostname to validate (e.g., 'api.example.com')
+	 */
+	async validateDomain(domain: string): Promise<{ isValid: boolean; resolvedIp: string }> {
+		return this.post<{ isValid: boolean; resolvedIp: string }>('domain.validateDomain', { domain });
+	}
+
+	/**
 	 * Auto-generate a domain name for an application
 	 */
 	async generateDomain(
