@@ -17,6 +17,12 @@ export interface StoredCredentials {
 		/** When the credentials were stored */
 		storedAt: string;
 	};
+	hostinger?: {
+		/** API token from hpanel.hostinger.com/profile/api */
+		token: string;
+		/** When the credentials were stored */
+		storedAt: string;
+	};
 }
 
 /**
@@ -217,4 +223,64 @@ export async function getDokployRegistryId(
 ): Promise<string | undefined> {
 	const stored = await getDokployCredentials(options);
 	return stored?.registryId ?? undefined;
+}
+
+// ============================================
+// Hostinger credentials
+// ============================================
+
+/**
+ * Store Hostinger API token
+ *
+ * @param token - API token from hpanel.hostinger.com/profile/api
+ */
+export async function storeHostingerToken(
+	token: string,
+	options?: CredentialOptions,
+): Promise<void> {
+	const credentials = await readCredentials(options);
+
+	credentials.hostinger = {
+		token,
+		storedAt: new Date().toISOString(),
+	};
+
+	await writeCredentials(credentials, options);
+}
+
+/**
+ * Get stored Hostinger API token
+ *
+ * Checks environment variable first (HOSTINGER_API_TOKEN),
+ * then falls back to stored credentials.
+ */
+export async function getHostingerToken(
+	options?: CredentialOptions,
+): Promise<string | null> {
+	// First check environment variable (takes precedence)
+	const envToken = process.env.HOSTINGER_API_TOKEN;
+	if (envToken) {
+		return envToken;
+	}
+
+	// Then check stored credentials
+	const credentials = await readCredentials(options);
+	return credentials.hostinger?.token ?? null;
+}
+
+/**
+ * Remove Hostinger credentials
+ */
+export async function removeHostingerCredentials(
+	options?: CredentialOptions,
+): Promise<boolean> {
+	const credentials = await readCredentials(options);
+
+	if (!credentials.hostinger) {
+		return false;
+	}
+
+	delete credentials.hostinger;
+	await writeCredentials(credentials, options);
+	return true;
 }
