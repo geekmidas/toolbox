@@ -76,6 +76,16 @@ export interface DockerDeployOptions {
 	masterKey?: string;
 	/** Docker config from gkm.config */
 	config: DockerDeployConfig;
+	/**
+	 * Build arguments to pass to docker build.
+	 * Format: ['KEY=value', 'KEY2=value2']
+	 */
+	buildArgs?: string[];
+	/**
+	 * Public URL argument names for frontend Dockerfile generation.
+	 * Used to ensure the Dockerfile declares these as ARG/ENV.
+	 */
+	publicUrlArgs?: string[];
 }
 
 /**
@@ -96,8 +106,13 @@ export function getImageRef(
  * Build Docker image
  * @param imageRef - Full image reference (registry/name:tag)
  * @param appName - Name of the app (used for Dockerfile.{appName} in workspaces)
+ * @param buildArgs - Build arguments to pass to docker build
  */
-async function buildImage(imageRef: string, appName?: string): Promise<void> {
+async function buildImage(
+	imageRef: string,
+	appName?: string,
+	buildArgs?: string[],
+): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
 	const cwd = process.cwd();
@@ -125,16 +140,30 @@ async function buildImage(imageRef: string, appName?: string): Promise<void> {
 		logger.log(`   Building from workspace root: ${buildCwd}`);
 	}
 
+	// Build the build args string
+	const buildArgsString =
+		buildArgs && buildArgs.length > 0
+			? buildArgs.map((arg) => `--build-arg "${arg}"`).join(' ')
+			: '';
+
 	try {
 		// Build for linux/amd64 to ensure compatibility with most cloud servers
-		execSync(
-			`DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f ${dockerfilePath} -t ${imageRef} .`,
-			{
-				cwd: buildCwd,
-				stdio: 'inherit',
-				env: { ...process.env, DOCKER_BUILDKIT: '1' },
-			},
-		);
+		const cmd = [
+			'DOCKER_BUILDKIT=1 docker build',
+			'--platform linux/amd64',
+			`-f ${dockerfilePath}`,
+			`-t ${imageRef}`,
+			buildArgsString,
+			'.',
+		]
+			.filter(Boolean)
+			.join(' ');
+
+		execSync(cmd, {
+			cwd: buildCwd,
+			stdio: 'inherit',
+			env: { ...process.env, DOCKER_BUILDKIT: '1' },
+		});
 		logger.log(`✅ Image built: ${imageRef}`);
 	} catch (error) {
 		throw new Error(
@@ -168,14 +197,14 @@ async function pushImage(imageRef: string): Promise<void> {
 export async function deployDocker(
 	options: DockerDeployOptions,
 ): Promise<DeployResult> {
-	const { stage, tag, skipPush, masterKey, config } = options;
+	const { stage, tag, skipPush, masterKey, config, buildArgs } = options;
 
 	// imageName should always be set by resolveDockerConfig
 	const imageName = config.imageName!;
 	const imageRef = getImageRef(config.registry, imageName, tag);
 
 	// Build image (pass appName for workspace Dockerfile selection)
-	await buildImage(imageRef, config.appName);
+	await buildImage(imageRef, config.appName, buildArgs);
 
 	// Push to registry if not skipped
 	if (!skipPush) {
