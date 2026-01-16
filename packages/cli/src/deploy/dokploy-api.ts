@@ -458,6 +458,68 @@ export class DokployApi {
 	): Promise<void> {
 		await this.post('redis.update', { redisId, ...updates });
 	}
+
+	// ============================================
+	// Domain endpoints
+	// ============================================
+
+	/**
+	 * Create a new domain for an application
+	 */
+	async createDomain(options: DokployDomainCreate): Promise<DokployDomain> {
+		return this.post<DokployDomain>(
+			'domain.create',
+			options as unknown as Record<string, unknown>,
+		);
+	}
+
+	/**
+	 * Update an existing domain
+	 */
+	async updateDomain(
+		domainId: string,
+		updates: Partial<DokployDomainCreate>,
+	): Promise<void> {
+		await this.post('domain.update', { domainId, ...updates });
+	}
+
+	/**
+	 * Delete a domain
+	 */
+	async deleteDomain(domainId: string): Promise<void> {
+		await this.post('domain.delete', { domainId });
+	}
+
+	/**
+	 * Get a domain by ID
+	 */
+	async getDomain(domainId: string): Promise<DokployDomain> {
+		return this.get<DokployDomain>(`domain.one?domainId=${domainId}`);
+	}
+
+	/**
+	 * Get all domains for an application
+	 */
+	async getDomainsByApplicationId(
+		applicationId: string,
+	): Promise<DokployDomain[]> {
+		return this.get<DokployDomain[]>(
+			`domain.byApplicationId?applicationId=${applicationId}`,
+		);
+	}
+
+	/**
+	 * Auto-generate a domain name for an application
+	 */
+	async generateDomain(
+		appName: string,
+		serverId?: string,
+	): Promise<{ domain: string }> {
+		return this.post<{ domain: string }>('domain.generateDomain', {
+			appName,
+			serverId,
+		});
+	}
 }
 
 // ============================================
@@ -550,6 +612,43 @@ export interface DokployRedisUpdate {
 	databasePassword: string;
 	dockerImage: string;
 	description: string;
+}
+
+export type DokployCertificateType = 'letsencrypt' | 'none' | 'custom';
+export type DokployDomainType = 'application' | 'compose' | 'preview';
+
+export interface DokployDomainCreate {
+	/** Domain hostname (e.g., 'api.example.com') */
+	host: string;
+	/** URL path (optional, e.g., '/api') */
+	path?: string | null;
+	/** Container port to route to (1-65535) */
+	port?: number | null;
+	/** Enable HTTPS */
+	https?: boolean;
+	/** Associated application ID */
+	applicationId?: string | null;
+	/** Certificate type for HTTPS */
+	certificateType?: DokployCertificateType;
+	/** Custom certificate resolver name */
+	customCertResolver?: string | null;
+	/** Docker Compose service ID */
+	composeId?: string | null;
+	/** Service name for compose */
+	serviceName?: string | null;
+	/** Domain type */
+	domainType?: DokployDomainType | null;
+	/** Preview deployment ID */
+	previewDeploymentId?: string | null;
+	/** Internal routing path */
+	internalPath?: string | null;
+	/** Strip path from forwarded requests */
+	stripPath?: boolean;
+}
+
+export interface DokployDomain extends DokployDomainCreate {
+	domainId: string;
+	createdAt?: string;
 }
 
 /**
