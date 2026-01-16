@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
@@ -361,8 +361,12 @@ export interface WorkspaceDockerResult {
  */
 function getAppPackageName(appPath: string): string | undefined {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		const pkg = require(`${appPath}/package.json`);
+		const pkgPath = join(appPath, 'package.json');
+		if (!existsSync(pkgPath)) {
+			return undefined;
+		}
+		const content = readFileSync(pkgPath, 'utf-8');
+		const pkg = JSON.parse(content);
 		return pkg.name;
 	} catch {
 		return undefined;
