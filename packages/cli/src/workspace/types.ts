@@ -62,6 +62,20 @@ export interface ServicesConfig {
 }
 
 /**
+ * Stage-based domain configuration.
+ * Maps deployment stages to base domains.
+ * @example { development: 'dev.myapp.com', production: 'myapp.com' }
+ */
+export type DokployDomainsConfig = Record<string, string>;
+
+/**
+ * Per-app domain override configuration.
+ * Can be a single domain string or stage-specific domains.
+ * @example 'api.custom.com' or { production: 'api.custom.com', staging: 'api.staging.com' }
+ */
+export type AppDomainConfig = string | Record<string, string>;
+
+/**
  * Dokploy workspace deployment configuration.
  */
 export interface DokployWorkspaceConfig {
@@ -73,6 +87,13 @@ export interface DokployWorkspaceConfig {
 	registry?: string;
 	/** Registry ID in Dokploy */
 	registryId?: string;
+	/**
+	 * Stage-based domain configuration.
+	 * The main frontend app gets the base domain.
+	 * Other apps get {appName}.{baseDomain} by default.
+	 * @example { development: 'dev.myapp.com', production: 'myapp.com' }
+	 */
+	domains?: DokployDomainsConfig;
 }
 
 /**
@@ -186,6 +207,21 @@ interface AppConfigBase {
 	framework?: BackendFramework | FrontendFramework;
 	/** Client generation configuration */
 	client?: ClientConfig;
+
+	// Deployment
+	/**
+	 * Override domain for this app (per-stage or single value).
+	 * @example 'api.custom.com' or { production: 'api.custom.com', staging: 'api.staging.com' }
+	 */
+	domain?: AppDomainConfig;
+
+	/**
+	 * Required environment variables for entry-based apps.
+	 * Use this instead of envParser for apps that don't use gkm routes.
+	 * The deploy command uses this to filter which secrets to embed.
+	 * @example ['DATABASE_URL', 'BETTER_AUTH_SECRET']
+	 */
+	requiredEnv?: string[];
 }
 
 /**
@@ -316,6 +352,10 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	entry?: string;
 	/** Framework for the app */
 	framework?: BackendFramework | FrontendFramework;
+	/** Override domain for this app */
+	domain?: AppDomainConfig;
+	/** Required environment variables for entry-based apps */
+	requiredEnv?: string[];
 }
 
 /**
