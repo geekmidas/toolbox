@@ -25,6 +25,12 @@ export interface FrontendDockerfileOptions {
 	turboPackage: string;
 	/** Detected package manager */
 	packageManager: PackageManager;
+	/**
+	 * Public URL build args to include in the Dockerfile.
+	 * These will be declared as ARG and converted to ENV for Next.js build.
+	 * Example: ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL']
+	 */
+	publicUrlArgs?: string[];
 }
 
 export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
@@ -568,7 +574,14 @@ export function resolveDockerConfig(
 export function generateNextjsDockerfile(
 	options: FrontendDockerfileOptions,
 ): string {
-	const { baseImage, port, appPath, turboPackage, packageManager } = options;
+	const {
+		baseImage,
+		port,
+		appPath,
+		turboPackage,
+		packageManager,
+		publicUrlArgs = ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL'],
+	} = options;
 
 	const pm = getPmConfig(packageManager);
 	const installPm = pm.install ? `RUN ${pm.install}` : '';
@@ -579,6 +592,14 @@ export function generateNextjsDockerfile(
 
 	// Use pnpm dlx for pnpm (avoids global bin dir issues in Docker)
 	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+
+	// Generate ARG and ENV declarations for public URLs
+	const publicUrlArgDeclarations = publicUrlArgs
+		.map((arg) => `ARG ${arg}=""`)
+		.join('\n');
+	const publicUrlEnvDeclarations = publicUrlArgs
+		.map((arg) => `ENV ${arg}=$${arg}`)
+		.join('\n');
 
 	return `# syntax=docker/dockerfile:1
 # Next.js standalone Dockerfile with turbo prune optimization
@@ -615,8 +636,22 @@ FROM deps AS builder
 
 WORKDIR /app
 
+# Build-time args for public API URLs (populated by gkm deploy)
+# These get baked into the Next.js build as public environment variables
+${publicUrlArgDeclarations}
+
+# Convert ARGs to ENVs for Next.js build
+${publicUrlEnvDeclarations}
+
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
+
+# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
+# Using wildcard to make it optional for single-app projects
+COPY --from=pruner /app/tsconfig.* ./
+
+# Ensure public directory exists (may be empty for scaffolded projects)
+RUN mkdir -p ${appPath}/public
 
 # Set Next.js to produce standalone output
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -717,8 +752,24 @@ FROM deps AS builder
 
 WORKDIR /app
 
+# Build-time args for encrypted secrets
+ARG GKM_ENCRYPTED_CREDENTIALS=""
+ARG GKM_CREDENTIALS_IV=""
+
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
+
+# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
+# Using wildcard to make it optional for single-app projects
+COPY --from=pruner /app/gkm.config.* ./
+COPY --from=pruner /app/tsconfig.* ./
+
+# Write encrypted credentials for gkm build to embed
+RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
+      mkdir -p ${appPath}/.gkm && \
+      echo "$GKM_ENCRYPTED_CREDENTIALS" > ${appPath}/.gkm/credentials.enc && \
+      echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
+    fi
 
 # Build production server using gkm
 RUN cd ${appPath} && ./node_modules/.bin/gkm build --provider server --production
@@ -827,11 +878,36 @@ FROM deps AS builder
 
 WORKDIR /app
 
+# Build-time args for encrypted secrets
+ARG GKM_ENCRYPTED_CREDENTIALS=""
+ARG GKM_CREDENTIALS_IV=""
+
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
+# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
+# Using wildcard to make it optional for single-app projects
+COPY --from=pruner /app/tsconfig.* ./
+
+# Write encrypted credentials for tsdown to embed via define
+RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
+      mkdir -p ${appPath}/.gkm && \
+      echo "$GKM_ENCRYPTED_CREDENTIALS" > ${appPath}/.gkm/credentials.enc && \
+      echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
+    fi
+
 # Bundle entry point with tsdown (outputs to dist/index.mjs)
-RUN cd ${appPath} && npx tsdown ${entry} --outDir dist --format esm
+# Use define to embed credentials if present
+RUN cd ${appPath} && \
+    if [ -f .gkm/credentials.enc ]; then \
+      CREDS=$(cat .gkm/credentials.enc) && \
+      IV=$(cat .gkm/credentials.iv) && \
+      npx tsdown ${entry} --outDir dist --format esm \
+        --define __GKM_ENCRYPTED_CREDENTIALS__="'\\"$CREDS\\"'" \
+        --define __GKM_CREDENTIALS_IV__="'\\"$IV\\"'"; \
+    else \
+      npx tsdown ${entry} --outDir dist --format esm; \
+    fi
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
