@@ -323,7 +323,7 @@ describe('generateModelsPackage', () => {
 		expect(pkg.name).toBe('@test-project/models');
 	});
 
-	it('should include zod as dependency', () => {
+	it('should have empty dependencies (zod is at root level)', () => {
 		const options: TemplateOptions = {
 			...baseOptions,
 			monorepo: true,
@@ -335,7 +335,8 @@ describe('generateModelsPackage', () => {
 		);
 		expect(pkgJson).toBeDefined();
 		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.dependencies.zod).toBeDefined();
+		// zod is now at root level in monorepo, not in models package
+		expect(pkg.dependencies).toEqual({});
 	});
 
 	it('should include example schemas', () => {
