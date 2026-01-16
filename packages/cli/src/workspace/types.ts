@@ -11,23 +11,78 @@ import type {
 
 /**
  * Deploy target for an app.
- * Currently only 'dokploy' is supported.
- * Future: 'vercel' | 'cloudflare'
+ *
+ * Specifies where the app will be deployed.
+ *
+ * @example
+ * ```ts
+ * // Currently supported
+ * deploy: 'dokploy'
+ *
+ * // Future support (not yet implemented)
+ * deploy: 'vercel'
+ * deploy: 'cloudflare'
+ * ```
  */
 export type DeployTarget = 'dokploy' | 'vercel' | 'cloudflare';
 
 /**
  * Backend framework types for apps that don't use gkm routes.
+ *
+ * Used with `entry` to specify the framework for proper Docker builds.
+ *
+ * @example
+ * ```ts
+ * // Better Auth server
+ * {
+ *   entry: './src/index.ts',
+ *   framework: 'better-auth',
+ *   port: 3001,
+ * }
+ *
+ * // Hono app without gkm routes
+ * {
+ *   entry: './src/server.ts',
+ *   framework: 'hono',
+ *   port: 3000,
+ * }
+ * ```
  */
 export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
 
 /**
  * Frontend framework types.
+ *
+ * @example
+ * ```ts
+ * // Next.js app
+ * {
+ *   type: 'frontend',
+ *   framework: 'nextjs',
+ *   port: 3000,
+ * }
+ *
+ * // Vite SPA
+ * {
+ *   type: 'frontend',
+ *   framework: 'vite',
+ *   port: 5173,
+ * }
+ * ```
  */
 export type FrontendFramework = 'nextjs' | 'remix' | 'vite';
 
 /**
  * Service image configuration for custom Docker images.
+ *
+ * @example
+ * ```ts
+ * // Use specific version
+ * db: { version: '16-alpine' }
+ *
+ * // Use custom image
+ * db: { image: 'timescale/timescaledb:latest-pg16' }
+ * ```
  */
 export interface ServiceImageConfig {
 	/** Docker image version/tag (e.g., '18-alpine') */
@@ -38,6 +93,23 @@ export interface ServiceImageConfig {
 
 /**
  * Mail service configuration.
+ *
+ * In development, uses Mailpit for email testing.
+ * In production, uses SMTP configuration.
+ *
+ * @example
+ * ```ts
+ * services: {
+ *   mail: {
+ *     smtp: {
+ *       host: 'smtp.sendgrid.net',
+ *       port: 587,
+ *       user: 'apikey',
+ *       pass: process.env.SENDGRID_API_KEY,
+ *     }
+ *   }
+ * }
+ * ```
  */
 export interface MailServiceConfig extends ServiceImageConfig {
 	/** SMTP configuration for production */
@@ -51,6 +123,36 @@ export interface MailServiceConfig extends ServiceImageConfig {
 
 /**
  * Development services configuration.
+ *
+ * Configures shared infrastructure services like databases and caches.
+ * These are automatically provisioned in Dokploy during deployment.
+ *
+ * @example
+ * ```ts
+ * // Enable with defaults
+ * services: {
+ *   db: true,      // postgres:18-alpine
+ *   cache: true,   // redis:8-alpine
+ * }
+ *
+ * // Custom versions
+ * services: {
+ *   db: { version: '16-alpine' },
+ *   cache: { version: '7-alpine' },
+ * }
+ *
+ * // Custom images
+ * services: {
+ *   db: { image: 'timescale/timescaledb:latest-pg16' },
+ * }
+ *
+ * // With mail service
+ * services: {
+ *   db: true,
+ *   cache: true,
+ *   mail: true,  // Mailpit in dev
+ * }
+ * ```
  */
 export interface ServicesConfig {
 	/** PostgreSQL database (default: postgres:18-alpine) */
@@ -63,44 +165,112 @@ export interface ServicesConfig {
 
 /**
  * Stage-based domain configuration.
- * Maps deployment stages to base domains.
- * @example { development: 'dev.myapp.com', production: 'myapp.com' }
+ *
+ * Maps deployment stages to base domains. The main frontend app
+ * gets the base domain, other apps get `{appName}.{baseDomain}`.
+ *
+ * @example
+ * ```ts
+ * domains: {
+ *   development: 'dev.myapp.com',
+ *   staging: 'staging.myapp.com',
+ *   production: 'myapp.com',
+ * }
+ *
+ * // Result for production stage:
+ * // - web (main frontend): myapp.com
+ * // - api: api.myapp.com
+ * // - auth: auth.myapp.com
+ * ```
  */
 export type DokployDomainsConfig = Record<string, string>;
 
 /**
  * Per-app domain override configuration.
- * Can be a single domain string or stage-specific domains.
- * @example 'api.custom.com' or { production: 'api.custom.com', staging: 'api.staging.com' }
+ *
+ * Can be a single domain string (used for all stages) or
+ * stage-specific domains.
+ *
+ * @example
+ * ```ts
+ * // Single domain for all stages
+ * domain: 'api.custom.com'
+ *
+ * // Stage-specific domains
+ * domain: {
+ *   development: 'api.dev.custom.com',
+ *   staging: 'api.staging.custom.com',
+ *   production: 'api.custom.com',
+ * }
+ * ```
  */
 export type AppDomainConfig = string | Record<string, string>;
 
 /**
  * Dokploy workspace deployment configuration.
+ *
+ * Configures how the workspace is deployed to a Dokploy server.
+ * One workspace maps to one Dokploy project with stage-based environments.
+ *
+ * @example
+ * ```ts
+ * deploy: {
+ *   default: 'dokploy',
+ *   dokploy: {
+ *     endpoint: 'https://dokploy.myserver.com',
+ *     projectId: 'proj_abc123',
+ *     registry: 'ghcr.io/myorg',
+ *     domains: {
+ *       development: 'dev.myapp.com',
+ *       production: 'myapp.com',
+ *     },
+ *   },
+ * }
+ * ```
  */
 export interface DokployWorkspaceConfig {
-	/** Dokploy API endpoint */
+	/** Dokploy API endpoint (e.g., 'https://dokploy.myserver.com') */
 	endpoint: string;
-	/** Project ID (1 workspace = 1 project) */
+	/** Project ID in Dokploy (auto-created on first deploy) */
 	projectId: string;
-	/** Container registry for images */
+	/** Container registry for Docker images (e.g., 'ghcr.io/myorg') */
 	registry?: string;
-	/** Registry ID in Dokploy */
+	/** Registry ID in Dokploy (auto-configured) */
 	registryId?: string;
 	/**
 	 * Stage-based domain configuration.
 	 * The main frontend app gets the base domain.
 	 * Other apps get {appName}.{baseDomain} by default.
-	 * @example { development: 'dev.myapp.com', production: 'myapp.com' }
 	 */
 	domains?: DokployDomainsConfig;
 }
 
 /**
  * Deployment configuration for the workspace.
+ *
+ * @example
+ * ```ts
+ * // Minimal - just set default target
+ * deploy: {
+ *   default: 'dokploy',
+ * }
+ *
+ * // Full Dokploy configuration
+ * deploy: {
+ *   default: 'dokploy',
+ *   dokploy: {
+ *     endpoint: 'https://dokploy.myserver.com',
+ *     projectId: 'proj_abc123',
+ *     registry: 'ghcr.io/myorg',
+ *     domains: {
+ *       production: 'myapp.com',
+ *     },
+ *   },
+ * }
+ * ```
  */
 export interface DeployConfig {
-	/** Default deploy target for all apps */
+	/** Default deploy target for all apps (default: 'dokploy') */
 	default?: DeployTarget;
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
@@ -108,12 +278,25 @@ export interface DeployConfig {
 
 /**
  * Models package configuration for shared schemas.
+ *
+ * Configures a shared models package containing Zod schemas
+ * that can be used across backend and frontend apps.
+ *
+ * @example
+ * ```ts
+ * shared: {
+ *   models: {
+ *     path: 'packages/models',
+ *     schema: 'zod',
+ *   },
+ * }
+ * ```
  */
 export interface ModelsConfig {
-	/** Path to models package (default: packages/models) */
+	/** Path to models package relative to workspace root (default: 'packages/models') */
 	path?: string;
 	/**
-	 * Schema library to use.
+	 * Schema library to use (default: 'zod').
 	 * Currently only 'zod' is supported.
 	 * Future: any StandardSchema-compatible library
 	 */
@@ -122,6 +305,20 @@ export interface ModelsConfig {
 
 /**
  * Shared packages configuration.
+ *
+ * Configures shared packages in the monorepo that are
+ * used by multiple apps.
+ *
+ * @example
+ * ```ts
+ * shared: {
+ *   packages: ['packages/*', 'libs/*'],
+ *   models: {
+ *     path: 'packages/models',
+ *     schema: 'zod',
+ *   },
+ * }
+ * ```
  */
 export interface SharedConfig {
 	/** Glob patterns for shared packages (default: ['packages/*']) */
@@ -132,18 +329,46 @@ export interface SharedConfig {
 
 /**
  * Secrets encryption configuration.
+ *
+ * Configures how secrets are encrypted for deployment.
+ * Secrets are stored encrypted in `.gkm/secrets/{stage}.json`
+ * with keys stored separately in `~/.gkm/{project}/{stage}.key`.
+ *
+ * @example
+ * ```ts
+ * secrets: {
+ *   enabled: true,
+ *   algorithm: 'aes-256-gcm',
+ *   kdf: 'scrypt',
+ * }
+ * ```
  */
 export interface SecretsConfig {
-	/** Enable encrypted secrets */
+	/** Enable encrypted secrets (default: true) */
 	enabled?: boolean;
-	/** Encryption algorithm (default: aes-256-gcm) */
+	/** Encryption algorithm (default: 'aes-256-gcm') */
 	algorithm?: string;
-	/** Key derivation function (default: scrypt) */
+	/** Key derivation function (default: 'scrypt') */
 	kdf?: 'scrypt' | 'pbkdf2';
 }
 
 /**
  * Client generation configuration for frontend apps.
+ *
+ * Configures automatic API client generation from OpenAPI specs.
+ *
+ * @example
+ * ```ts
+ * // In a frontend app config
+ * {
+ *   type: 'frontend',
+ *   framework: 'nextjs',
+ *   dependencies: ['api'],
+ *   client: {
+ *     output: './src/lib/api',
+ *   },
+ * }
+ * ```
  */
 export interface ClientConfig {
 	/** Output directory for generated client (relative to app path) */
