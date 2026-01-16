@@ -358,6 +358,7 @@ export default defineWorkspace({
       type: 'backend',
       path: 'apps/auth',
       port: 3002,
+      entry: './src/index.ts',
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
     },
