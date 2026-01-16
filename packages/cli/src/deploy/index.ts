@@ -173,7 +173,7 @@ export async function provisionServices(
 
 	if (services.postgres) {
 		logger.log('\n🐘 Checking PostgreSQL...');
-		const postgresName = `${appName}-db`;
+		const postgresName = 'db';
 
 		try {
 			let postgres: DokployPostgres | null = null;
@@ -237,7 +237,7 @@ export async function provisionServices(
 
 	if (services.redis) {
 		logger.log('\n🔴 Checking Redis...');
-		const redisName = `${appName}-cache`;
+		const redisName = 'cache';
 
 		try {
 			let redis: DokployRedis | null = null;
@@ -937,7 +937,8 @@ export async function workspaceDeployCommand(
 			logger.log(`\n   ⚙️  Deploying ${appName}...`);
 
 			try {
-				const dokployAppName = `${workspace.name}-${appName}`;
+				// Use simple app name - project already provides namespace
+				const dokployAppName = appName;
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1093,7 +1094,8 @@ export async function workspaceDeployCommand(
 			logger.log(`\n   🌐 Deploying ${appName}...`);
 
 			try {
-				const dokployAppName = `${workspace.name}-${appName}`;
+				// Use simple app name - project already provides namespace
+				const dokployAppName = appName;
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
