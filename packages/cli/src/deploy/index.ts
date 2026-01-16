@@ -9,6 +9,7 @@ import {
 import { storeDokployRegistryId } from '../auth/credentials';
 import { buildCommand } from '../build/index';
 import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
+import { readStageSecrets } from '../secrets/storage.js';
 import {
 	getAppBuildOrder,
 	getDeployTargetError,
@@ -18,7 +19,18 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
 import { DokployApi, type DokployApplication } from './dokploy-api';
+import {
+	generatePublicUrlBuildArgs,
+	getPublicUrlArgNames,
+	isMainFrontendApp,
+	resolveHost,
+} from './domain.js';
 import { updateConfig } from './init';
+import {
+	generateSecretsReport,
+	prepareSecretsForAllApps,
+} from './secrets.js';
+import { sniffAllApps } from './sniffer.js';
 import type {
 	AppDeployResult,
 	DeployOptions,
@@ -559,17 +571,23 @@ export function generateTag(stage: string): string {
 
 /**
  * Deploy all apps in a workspace to Dokploy.
- * - Workspace maps to one Dokploy project
- * - Each app maps to one Dokploy application
- * - Deploys in dependency order (backends before dependent frontends)
- * - Syncs environment variables including {APP_NAME}_URL
+ *
+ * Two-phase orchestration:
+ * - PHASE 1: Deploy backend apps (with encrypted secrets)
+ * - PHASE 2: Deploy frontend apps (with public URLs from backends)
+ *
+ * Security model:
+ * - Backend apps get encrypted secrets embedded at build time
+ * - Only GKM_MASTER_KEY is injected as Dokploy env var
+ * - Frontend apps get public URLs baked in at build time (no secrets)
+ *
  * @internal Exported for testing
  */
 export async function workspaceDeployCommand(
 	workspace: NormalizedWorkspace,
 	options: DeployOptions,
 ): Promise<WorkspaceDeployResult> {
-	const { provider, stage, tag, skipBuild, apps: selectedApps } = options;
+	const { provider, stage, tag, apps: selectedApps } = options;
 
 	if (provider !== 'dokploy') {
 		throw new Error(
@@ -608,8 +626,6 @@ export async function workspaceDeployCommand(
 	}
 
 	// Filter apps by deploy target
-	// In Phase 1, only 'dokploy' is supported. Other targets should have been
-	// caught at config validation, but we handle it gracefully here too.
 	const dokployApps = appsToDeployNames.filter((name) => {
 		const app = workspace.apps[name]!;
 		const target = app.resolvedDeployTarget;
@@ -628,18 +644,44 @@ export async function workspaceDeployCommand(
 		);
 	}
 
-	if (dokployApps.length !== appsToDeployNames.length) {
-		const skipped = appsToDeployNames.filter(
-			(name) => !dokployApps.includes(name),
-		);
-		logger.log(
-			`   📌 ${skipped.length} app(s) skipped due to unsupported targets`,
-		);
-	}
-
 	appsToDeployNames = dokployApps;
 
-	// Ensure we have Dokploy credentials
+	// ==================================================================
+	// PREFLIGHT: Load secrets and sniff environment requirements
+	// ==================================================================
+	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
+
+	// Load secrets for this stage
+	const stageSecrets = await readStageSecrets(stage, workspace.root);
+	if (!stageSecrets) {
+		logger.log(`   ⚠️  No secrets found for stage "${stage}"`);
+		logger.log(`      Run "gkm secrets:init --stage ${stage}" to create secrets`);
+	}
+
+	// Sniff environment variables for all apps
+	const sniffedApps = await sniffAllApps(workspace.apps, workspace.root);
+
+	// Prepare encrypted secrets for backend apps
+	const encryptedSecrets = stageSecrets
+		? prepareSecretsForAllApps(stageSecrets, sniffedApps)
+		: new Map();
+
+	// Report on secrets preparation
+	if (stageSecrets) {
+		const report = generateSecretsReport(encryptedSecrets, sniffedApps);
+		if (report.appsWithSecrets.length > 0) {
+			logger.log(`   ✓ Encrypted secrets for: ${report.appsWithSecrets.join(', ')}`);
+		}
+		if (report.appsWithMissingSecrets.length > 0) {
+			for (const { appName, missing } of report.appsWithMissingSecrets) {
+				logger.log(`   ⚠️  ${appName}: Missing secrets: ${missing.join(', ')}`);
+			}
+		}
+	}
+
+	// ==================================================================
+	// SETUP: Credentials, Project, Registry
+	// ==================================================================
 	let creds = await getDokployCredentials();
 	if (!creds) {
 		logger.log("\n📋 Dokploy credentials not found. Let's set them up.");
@@ -684,7 +726,6 @@ export async function workspaceDeployCommand(
 
 	if (project) {
 		logger.log(`   Found existing project: ${project.name}`);
-		// Get or create environment for stage
 		const projectDetails = await api.getProject(project.projectId);
 		const environments = projectDetails.environments ?? [];
 		const matchingEnv = environments.find(
@@ -703,7 +744,6 @@ export async function workspaceDeployCommand(
 		logger.log(`   Creating project: ${projectName}`);
 		const result = await api.createProject(projectName);
 		project = result.project;
-		// Create environment for stage if different from default
 		if (result.environment.name.toLowerCase() !== stage.toLowerCase()) {
 			logger.log(`   Creating "${stage}" environment...`);
 			const env = await api.createEnvironment(project.projectId, stage);
@@ -733,7 +773,6 @@ export async function workspaceDeployCommand(
 	if (!registryId) {
 		const registries = await api.listRegistries();
 		if (registries.length > 0) {
-			// Use first available registry
 			registryId = registries[0]!.registryId;
 			await storeDokployRegistryId(registryId);
 			logger.log(`   Using registry: ${registries[0]!.registryName}`);
@@ -778,172 +817,343 @@ export async function workspaceDeployCommand(
 		);
 	}
 
-	// Track deployed app URLs for environment variable injection
-	const deployedAppUrls: Record<string, string> = {};
+	// ==================================================================
+	// Separate apps by type for two-phase deployment
+	// ==================================================================
+	const backendApps = appsToDeployNames.filter(
+		(name) => workspace.apps[name]!.type === 'backend',
+	);
+	const frontendApps = appsToDeployNames.filter(
+		(name) => workspace.apps[name]!.type === 'frontend',
+	);
 
-	// Build the entire workspace once (not per-app to avoid Turbo/Next.js lock conflicts)
-	if (!skipBuild) {
-		logger.log('\n🏗️  Building workspace...');
-		try {
-			await buildCommand({
-				provider: 'server',
-				production: true,
-				stage,
-			});
-			logger.log('   ✓ Workspace build complete');
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`   ✗ Workspace build failed: ${message}`);
-			throw error;
-		}
-	}
-
-	// Deploy apps in dependency order
-	logger.log('\n📦 Deploying applications...');
+	// Track deployed app public URLs for frontend builds
+	const publicUrls: Record<string, string> = {};
 	const results: AppDeployResult[] = [];
+	const dokployConfig = workspace.deploy.dokploy;
 
-	for (const appName of appsToDeployNames) {
-		const app = workspace.apps[appName]!;
+	// ==================================================================
+	// PHASE 1: Deploy backend apps (with encrypted secrets)
+	// ==================================================================
+	if (backendApps.length > 0) {
+		logger.log('\n📦 PHASE 1: Deploying backend applications...');
 
-		logger.log(
-			`\n   ${app.type === 'backend' ? '⚙️' : '🌐'} Deploying ${appName}...`,
-		);
+		for (const appName of backendApps) {
+			const app = workspace.apps[appName]!;
 
-		try {
-			// Find or create application in Dokploy
-			const dokployAppName = `${workspace.name}-${appName}`;
-			let application: DokployApplication | undefined;
+			logger.log(`\n   ⚙️  Deploying ${appName}...`);
 
 			try {
-				// Try to find existing application (Dokploy doesn't have a direct lookup)
-				// We'll create a new one and handle the error if it exists
-				application = await api.createApplication(
-					dokployAppName,
-					project.projectId,
-					environmentId,
-				);
-				logger.log(`      Created application: ${application.applicationId}`);
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unknown error';
-				if (
-					message.includes('already exists') ||
-					message.includes('duplicate')
-				) {
-					logger.log(`      Application already exists`);
-					// For now, we'll continue without the applicationId
-					// In a real implementation, we'd need to list and find the app
+				const dokployAppName = `${workspace.name}-${appName}`;
+				let application: DokployApplication | undefined;
+
+				// Create or find application
+				try {
+					application = await api.createApplication(
+						dokployAppName,
+						project.projectId,
+						environmentId,
+					);
+					logger.log(`      Created application: ${application.applicationId}`);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : 'Unknown error';
+					if (
+						message.includes('already exists') ||
+						message.includes('duplicate')
+					) {
+						logger.log(`      Application already exists`);
+					} else {
+						throw error;
+					}
+				}
+
+				// Get encrypted secrets for this app
+				const appSecrets = encryptedSecrets.get(appName);
+				const buildArgs: string[] = [];
+
+				if (appSecrets && appSecrets.secretCount > 0) {
+					buildArgs.push(
+						`GKM_ENCRYPTED_CREDENTIALS=${appSecrets.payload.encrypted}`,
+					);
+					buildArgs.push(`GKM_CREDENTIALS_IV=${appSecrets.payload.iv}`);
+					logger.log(`      Encrypted ${appSecrets.secretCount} secrets`);
+				}
+
+				// Build Docker image with encrypted secrets
+				const imageName = `${workspace.name}-${appName}`;
+				const imageRef = registry
+					? `${registry}/${imageName}:${imageTag}`
+					: `${imageName}:${imageTag}`;
+
+				logger.log(`      Building Docker image: ${imageRef}`);
+
+				await deployDocker({
+					stage,
+					tag: imageTag,
+					skipPush: false,
+					config: {
+						registry,
+						imageName,
+						appName,
+					},
+					buildArgs,
+				});
+
+				// Prepare environment variables - ONLY inject GKM_MASTER_KEY
+				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
+
+				// Add master key for runtime decryption (NOT plain secrets)
+				if (appSecrets && appSecrets.masterKey) {
+					envVars.push(`GKM_MASTER_KEY=${appSecrets.masterKey}`);
+				}
+
+				// Configure and deploy application in Dokploy
+				if (application) {
+					await api.saveDockerProvider(application.applicationId, imageRef, {
+						registryId,
+					});
+
+					await api.saveApplicationEnv(
+						application.applicationId,
+						envVars.join('\n'),
+					);
+
+					logger.log(`      Deploying to Dokploy...`);
+					await api.deployApplication(application.applicationId);
+
+					// Create domain for this app
+					try {
+						const host = resolveHost(
+							appName,
+							app,
+							stage,
+							dokployConfig,
+							false, // Backend apps are not main frontend
+						);
+
+						await api.createDomain({
+							host,
+							port: app.port,
+							https: true,
+							certificateType: 'letsencrypt',
+							applicationId: application.applicationId,
+						});
+
+						const publicUrl = `https://${host}`;
+						publicUrls[appName] = publicUrl;
+						logger.log(`      ✓ Domain: ${publicUrl}`);
+					} catch (domainError) {
+						// Domain might already exist, try to get public URL anyway
+						const host = resolveHost(appName, app, stage, dokployConfig, false);
+						publicUrls[appName] = `https://${host}`;
+						logger.log(`      ℹ Domain already configured: https://${host}`);
+					}
+
+					results.push({
+						appName,
+						type: app.type,
+						success: true,
+						applicationId: application.applicationId,
+						imageRef,
+					});
+
+					logger.log(`      ✓ ${appName} deployed successfully`);
 				} else {
-					throw error;
+					// Application already exists
+					const host = resolveHost(appName, app, stage, dokployConfig, false);
+					publicUrls[appName] = `https://${host}`;
+
+					results.push({
+						appName,
+						type: app.type,
+						success: true,
+						imageRef,
+					});
+
+					logger.log(`      ✓ ${appName} image pushed (app already exists)`);
 				}
-			}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : 'Unknown error';
+				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
 
-			// Note: Workspace was already built once at the start of deployment
-			// to avoid Turbo/Next.js lock conflicts from concurrent builds
-
-			// Build Docker image
-			const imageName = `${workspace.name}-${appName}`;
-			const imageRef = registry
-				? `${registry}/${imageName}:${imageTag}`
-				: `${imageName}:${imageTag}`;
-
-			logger.log(`      Building Docker image: ${imageRef}`);
-
-			await deployDocker({
-				stage,
-				tag: imageTag,
-				skipPush: false,
-				config: {
-					registry,
-					imageName,
-					appName, // Pass appName for Dockerfile.{appName} selection
-				},
-			});
-
-			// Prepare environment variables
-			const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
-
-			// Add dependency URLs
-			for (const dep of app.dependencies) {
-				const depUrl = deployedAppUrls[dep];
-				if (depUrl) {
-					envVars.push(`${dep.toUpperCase()}_URL=${depUrl}`);
-				}
-			}
-
-			// Add infrastructure URLs for backend apps
-			if (app.type === 'backend') {
-				if (dockerServices.postgres) {
-					envVars.push(
-						`DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@${workspace.name}-db:5432/app}`,
-					);
-				}
-				if (dockerServices.redis) {
-					envVars.push(
-						`REDIS_URL=\${REDIS_URL:-redis://${workspace.name}-cache:6379}`,
-					);
-				}
-			}
-
-			// Configure application in Dokploy
-			if (application) {
-				// Save Docker provider config
-				await api.saveDockerProvider(application.applicationId, imageRef, {
-					registryId,
+				results.push({
+					appName,
+					type: app.type,
+					success: false,
+					error: message,
 				});
 
-				// Save environment variables
-				await api.saveApplicationEnv(
-					application.applicationId,
-					envVars.join('\n'),
+				// Abort on backend failure to prevent incomplete deployment
+				throw new Error(
+					`Backend deployment failed for ${appName}. Aborting to prevent partial deployment.`,
 				);
-
-				// Deploy
-				logger.log(`      Deploying to Dokploy...`);
-				await api.deployApplication(application.applicationId);
-
-				// Track this app's URL for dependent apps
-				// Dokploy uses the appName as the internal hostname
-				const appUrl = `http://${dokployAppName}:${app.port}`;
-				deployedAppUrls[appName] = appUrl;
-
-				results.push({
-					appName,
-					type: app.type,
-					success: true,
-					applicationId: application.applicationId,
-					imageRef,
-				});
-
-				logger.log(`      ✓ ${appName} deployed successfully`);
-			} else {
-				// Application already exists, just track it
-				const appUrl = `http://${dokployAppName}:${app.port}`;
-				deployedAppUrls[appName] = appUrl;
-
-				results.push({
-					appName,
-					type: app.type,
-					success: true,
-					imageRef,
-				});
-
-				logger.log(`      ✓ ${appName} image pushed (app already exists)`);
 			}
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
-
-			results.push({
-				appName,
-				type: app.type,
-				success: false,
-				error: message,
-			});
 		}
 	}
 
+	// ==================================================================
+	// PHASE 2: Deploy frontend apps (with public URLs from backends)
+	// ==================================================================
+	if (frontendApps.length > 0) {
+		logger.log('\n🌐 PHASE 2: Deploying frontend applications...');
+
+		for (const appName of frontendApps) {
+			const app = workspace.apps[appName]!;
+
+			logger.log(`\n   🌐 Deploying ${appName}...`);
+
+			try {
+				const dokployAppName = `${workspace.name}-${appName}`;
+				let application: DokployApplication | undefined;
+
+				// Create or find application
+				try {
+					application = await api.createApplication(
+						dokployAppName,
+						project.projectId,
+						environmentId,
+					);
+					logger.log(`      Created application: ${application.applicationId}`);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : 'Unknown error';
+					if (
+						message.includes('already exists') ||
+						message.includes('duplicate')
+					) {
+						logger.log(`      Application already exists`);
+					} else {
+						throw error;
+					}
+				}
+
+				// Generate public URL build args from dependencies
+				const buildArgs = generatePublicUrlBuildArgs(app, publicUrls);
+				if (buildArgs.length > 0) {
+					logger.log(`      Public URLs: ${buildArgs.join(', ')}`);
+				}
+
+				// Build Docker image with public URLs
+				const imageName = `${workspace.name}-${appName}`;
+				const imageRef = registry
+					? `${registry}/${imageName}:${imageTag}`
+					: `${imageName}:${imageTag}`;
+
+				logger.log(`      Building Docker image: ${imageRef}`);
+
+				await deployDocker({
+					stage,
+					tag: imageTag,
+					skipPush: false,
+					config: {
+						registry,
+						imageName,
+						appName,
+					},
+					buildArgs,
+					// Pass public URL arg names for Dockerfile generation
+					publicUrlArgs: getPublicUrlArgNames(app),
+				});
+
+				// Prepare environment variables - no secrets needed
+				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
+
+				// Configure and deploy application in Dokploy
+				if (application) {
+					await api.saveDockerProvider(application.applicationId, imageRef, {
+						registryId,
+					});
+
+					await api.saveApplicationEnv(
+						application.applicationId,
+						envVars.join('\n'),
+					);
+
+					logger.log(`      Deploying to Dokploy...`);
+					await api.deployApplication(application.applicationId);
+
+					// Create domain for this app
+					const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+					try {
+						const host = resolveHost(
+							appName,
+							app,
+							stage,
+							dokployConfig,
+							isMainFrontend,
+						);
+
+						await api.createDomain({
+							host,
+							port: app.port,
+							https: true,
+							certificateType: 'letsencrypt',
+							applicationId: application.applicationId,
+						});
+
+						const publicUrl = `https://${host}`;
+						publicUrls[appName] = publicUrl;
+						logger.log(`      ✓ Domain: ${publicUrl}`);
+					} catch (domainError) {
+						const host = resolveHost(
+							appName,
+							app,
+							stage,
+							dokployConfig,
+							isMainFrontend,
+						);
+						publicUrls[appName] = `https://${host}`;
+						logger.log(`      ℹ Domain already configured: https://${host}`);
+					}
+
+					results.push({
+						appName,
+						type: app.type,
+						success: true,
+						applicationId: application.applicationId,
+						imageRef,
+					});
+
+					logger.log(`      ✓ ${appName} deployed successfully`);
+				} else {
+					const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+					const host = resolveHost(
+						appName,
+						app,
+						stage,
+						dokployConfig,
+						isMainFrontend,
+					);
+					publicUrls[appName] = `https://${host}`;
+
+					results.push({
+						appName,
+						type: app.type,
+						success: true,
+						imageRef,
+					});
+
+					logger.log(`      ✓ ${appName} image pushed (app already exists)`);
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : 'Unknown error';
+				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
+
+				results.push({
+					appName,
+					type: app.type,
+					success: false,
+					error: message,
+				});
+				// Don't abort on frontend failures - continue with other frontends
+			}
+		}
+	}
+
+	// ==================================================================
 	// Summary
+	// ==================================================================
 	const successCount = results.filter((r) => r.success).length;
 	const failedCount = results.filter((r) => !r.success).length;
 
@@ -953,6 +1163,14 @@ export async function workspaceDeployCommand(
 	logger.log(`   Successful: ${successCount}`);
 	if (failedCount > 0) {
 		logger.log(`   Failed: ${failedCount}`);
+	}
+
+	// Print deployed URLs
+	if (Object.keys(publicUrls).length > 0) {
+		logger.log('\n   📡 Deployed URLs:');
+		for (const [name, url] of Object.entries(publicUrls)) {
+			logger.log(`      ${name}: ${url}`);
+		}
 	}
 
 	return {
