@@ -8,6 +8,7 @@ import {
 	generateBackendDockerfile,
 	generateDockerEntrypoint,
 	generateDockerignore,
+	generateEntryDockerfile,
 	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
 	generateSlimDockerfile,
@@ -564,6 +565,128 @@ describe('docker templates', () => {
 
 			expect(dockerfile).toContain('EXPOSE 3000');
 			expect(dockerfile).toContain('ENV PORT=3000');
+		});
+	});
+
+	describe('generateEntryDockerfile', () => {
+		const baseOptions = {
+			baseImage: 'node:22-alpine',
+			port: 3002,
+			appPath: 'apps/auth',
+			entry: './src/index.ts',
+			turboPackage: '@myapp/auth',
+			packageManager: 'pnpm' as const,
+		};
+
+		it('should generate entry-based Dockerfile with esbuild bundling', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('# Entry-based Dockerfile');
+		});
+
+		it('should include four stages: pruner, deps, builder, runner', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('AS pruner');
+			expect(dockerfile).toContain('AS deps');
+			expect(dockerfile).toContain('AS builder');
+			expect(dockerfile).toContain('AS runner');
+		});
+
+		it('should use turbo prune for the package', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('turbo prune @myapp/auth --docker');
+		});
+
+		it('should bundle with esbuild and packages=bundle flag', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('npx esbuild ./src/index.ts');
+			expect(dockerfile).toContain('--packages=bundle');
+			expect(dockerfile).toContain('--bundle');
+			expect(dockerfile).toContain('--platform=node');
+			expect(dockerfile).toContain('--target=node22');
+			expect(dockerfile).toContain('--format=esm');
+		});
+
+		it('should include CJS compatibility banner for packages like pino', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('import { createRequire } from "module"');
+			expect(dockerfile).toContain('const require = createRequire(import.meta.url)');
+		});
+
+		it('should output to dist/index.mjs', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('--outfile=dist/index.mjs');
+			expect(dockerfile).toContain('CMD ["node", "index.mjs"]');
+		});
+
+		it('should copy bundled output only', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('COPY --from=builder');
+			expect(dockerfile).toContain('dist/index.mjs');
+			// Comment mentions no node_modules needed - fully bundled
+			expect(dockerfile).toContain('no node_modules needed');
+		});
+
+		it('should handle encrypted credentials injection', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('ARG GKM_ENCRYPTED_CREDENTIALS');
+			expect(dockerfile).toContain('ARG GKM_CREDENTIALS_IV');
+			expect(dockerfile).toContain('--define:__GKM_ENCRYPTED_CREDENTIALS__');
+			expect(dockerfile).toContain('--define:__GKM_CREDENTIALS_IV__');
+		});
+
+		it('should create app user instead of hono user', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('adduser --system --uid 1001 app');
+			expect(dockerfile).toContain('USER app');
+		});
+
+		it('should include health check with default path', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('HEALTHCHECK');
+			expect(dockerfile).toContain('/health');
+		});
+
+		it('should use custom health check path when provided', () => {
+			const dockerfile = generateEntryDockerfile({
+				...baseOptions,
+				healthCheckPath: '/api/auth/health',
+			});
+
+			expect(dockerfile).toContain('/api/auth/health');
+		});
+
+		it('should expose configured port', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('EXPOSE 3002');
+			expect(dockerfile).toContain('ENV PORT=3002');
+		});
+
+		it('should use npm when specified', () => {
+			const dockerfile = generateEntryDockerfile({
+				...baseOptions,
+				packageManager: 'npm',
+			});
+
+			expect(dockerfile).toContain('npx turbo');
+			expect(dockerfile).toContain('package-lock.json');
+		});
+
+		it('should install tini for signal handling', () => {
+			const dockerfile = generateEntryDockerfile(baseOptions);
+
+			expect(dockerfile).toContain('apk add --no-cache tini');
+			expect(dockerfile).toContain('ENTRYPOINT ["/sbin/tini", "--"]');
 		});
 	});
 });
