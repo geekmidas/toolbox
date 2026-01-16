@@ -1109,6 +1109,227 @@ const logger = createTelescopeLogger(telescope, new ConsoleLogger());
 
 See the [@geekmidas/telescope documentation](../telescope/README.md) for more details.
 
+## Workspace Configuration
+
+For fullstack monorepo projects with multiple apps, use `defineWorkspace` instead of `defineConfig`:
+
+```typescript
+// gkm.config.ts (at workspace root)
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'my-project',
+  apps: {
+    api: {
+      type: 'backend',
+      path: 'apps/api',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+      telescope: {
+        enabled: true,
+        path: '/__telescope',
+      },
+      openapi: {
+        enabled: true,
+      },
+    },
+    auth: {
+      type: 'backend',
+      path: 'apps/auth',
+      port: 3002,
+      entry: './src/index.ts',  // Entry-based app (no routes)
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+    },
+    web: {
+      type: 'frontend',
+      framework: 'nextjs',
+      path: 'apps/web',
+      port: 3001,
+      dependencies: ['api', 'auth'],
+      client: {
+        output: './src/api',
+      },
+    },
+  },
+  shared: {
+    packages: ['packages/*'],
+    models: {
+      path: 'packages/models',
+      schema: 'zod',
+    },
+  },
+  services: {
+    db: true,
+    cache: true,
+    mail: true,
+  },
+  deploy: {
+    default: 'dokploy',
+  },
+});
+```
+
+### App Types
+
+#### Routes-Based Backend Apps
+
+Standard API apps using endpoint discovery:
+
+```typescript
+api: {
+  type: 'backend',
+  path: 'apps/api',
+  port: 3000,
+  routes: './src/endpoints/**/*.ts',  // Glob pattern for endpoints
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',
+}
+```
+
+These apps use `gkm build --provider server` internally to generate a Hono server from discovered endpoints.
+
+#### Entry-Based Backend Apps
+
+Apps with a custom entry point (like authentication services using better-auth):
+
+```typescript
+auth: {
+  type: 'backend',
+  path: 'apps/auth',
+  port: 3002,
+  entry: './src/index.ts',  // Direct entry point
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',
+}
+```
+
+Entry-based apps are bundled directly with esbuild into a standalone file. All dependencies are bundled, producing a single `index.mjs` file that runs without `node_modules`.
+
+Example entry point for an auth service:
+
+```typescript
+// apps/auth/src/index.ts
+import { Hono } from 'hono';
+import { serve } from '@hono/node-server';
+import { auth } from './auth.js';
+
+const app = new Hono();
+
+app.get('/health', (c) => c.json({ status: 'ok' }));
+app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+
+serve({ fetch: app.fetch, port: 3002 });
+```
+
+#### Frontend Apps
+
+Next.js or other frontend frameworks:
+
+```typescript
+web: {
+  type: 'frontend',
+  framework: 'nextjs',
+  path: 'apps/web',
+  port: 3001,
+  dependencies: ['api', 'auth'],  // Apps this depends on
+  client: {
+    output: './src/api',  // Where to generate API client
+  },
+}
+```
+
+### Workspace Docker Generation
+
+When running `gkm docker` in a workspace, the CLI generates optimized Dockerfiles for each app:
+
+```bash
+gkm docker
+```
+
+**Generated files:**
+- `.gkm/docker/Dockerfile.api` - Routes-based backend (uses `gkm build`)
+- `.gkm/docker/Dockerfile.auth` - Entry-based backend (uses esbuild bundling)
+- `.gkm/docker/Dockerfile.web` - Next.js standalone output
+- `.gkm/docker/docker-compose.yml` - Full stack with all apps and services
+- `.dockerignore` - Optimized ignore patterns
+
+**Dockerfile types by app:**
+
+| App Type | Build Method | Output |
+|----------|--------------|--------|
+| `routes` backend | `gkm build --provider server` | `.gkm/server/dist/server.mjs` |
+| `entry` backend | `esbuild --bundle --packages=bundle` | `dist/index.mjs` |
+| `nextjs` frontend | `next build` (standalone) | `.next/standalone` |
+
+**Entry-based bundling:**
+
+Entry-based apps use esbuild with full dependency bundling:
+
+```bash
+npx esbuild ./src/index.ts \
+  --bundle \
+  --platform=node \
+  --target=node22 \
+  --format=esm \
+  --outfile=dist/index.mjs \
+  --packages=bundle \
+  --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);'
+```
+
+The `--packages=bundle` flag bundles all dependencies (unlike tsdown's default behavior). The banner adds CommonJS compatibility for packages that use `require()` internally.
+
+### Workspace Interface
+
+```typescript
+interface WorkspaceConfig {
+  name: string;
+  apps: Record<string, AppConfig>;
+  shared?: {
+    packages?: string[];
+    models?: {
+      path: string;
+      schema: 'zod' | 'valibot';
+    };
+  };
+  services?: {
+    db?: boolean;
+    cache?: boolean;
+    mail?: boolean;
+  };
+  deploy?: {
+    default?: 'dokploy' | 'docker';
+  };
+}
+
+interface BackendAppConfig {
+  type: 'backend';
+  path: string;
+  port: number;
+  routes?: string;           // Glob pattern for routes-based apps
+  entry?: string;            // Entry file for entry-based apps
+  envParser: string;
+  logger: string;
+  telescope?: TelescopeConfig;
+  openapi?: { enabled: boolean };
+}
+
+interface FrontendAppConfig {
+  type: 'frontend';
+  framework: 'nextjs';
+  path: string;
+  port: number;
+  dependencies?: string[];   // Other apps this depends on
+  client?: {
+    output: string;          // Where to generate typed API client
+  };
+}
+
+type AppConfig = BackendAppConfig | FrontendAppConfig;
+```
+
 ## Providers
 
 ### AWS API Gateway v1
