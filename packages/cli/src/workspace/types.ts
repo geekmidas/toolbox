@@ -737,8 +737,79 @@ export type WorkspaceConfigInput<
 > = WorkspaceInput<T['apps']>;
 
 /**
- * Workspace configuration for multi-app monorepos (legacy).
- * @deprecated Use WorkspaceConfigInput with defineWorkspace for type inference
+ * Workspace configuration for multi-app monorepos.
+ *
+ * Use `defineWorkspace()` helper for type-safe configuration with
+ * auto-completion and dependency validation.
+ *
+ * @example
+ * ```ts
+ * // gkm.config.ts
+ * import { defineWorkspace } from '@geekmidas/cli';
+ *
+ * export default defineWorkspace({
+ *   name: 'my-saas',
+ *
+ *   // App definitions
+ *   apps: {
+ *     // Backend API with gkm routes
+ *     api: {
+ *       path: 'apps/api',
+ *       port: 3000,
+ *       routes: './src/endpoints/**\/*.ts',
+ *       envParser: './src/config/env',
+ *       logger: './src/config/logger',
+ *       telescope: true,
+ *     },
+ *
+ *     // Better Auth service
+ *     auth: {
+ *       path: 'apps/auth',
+ *       port: 3001,
+ *       entry: './src/index.ts',
+ *       framework: 'better-auth',
+ *       requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+ *     },
+ *
+ *     // Next.js frontend
+ *     web: {
+ *       type: 'frontend',
+ *       path: 'apps/web',
+ *       port: 3002,
+ *       framework: 'nextjs',
+ *       dependencies: ['api', 'auth'],
+ *     },
+ *   },
+ *
+ *   // Infrastructure services
+ *   services: {
+ *     db: true,      // PostgreSQL
+ *     cache: true,   // Redis
+ *   },
+ *
+ *   // Deployment configuration
+ *   deploy: {
+ *     default: 'dokploy',
+ *     dokploy: {
+ *       endpoint: 'https://dokploy.myserver.com',
+ *       projectId: 'proj_abc123',
+ *       registry: 'ghcr.io/myorg',
+ *       domains: {
+ *         production: 'myapp.com',
+ *         staging: 'staging.myapp.com',
+ *       },
+ *     },
+ *   },
+ *
+ *   // Shared packages
+ *   shared: {
+ *     packages: ['packages/*'],
+ *     models: { path: 'packages/models' },
+ *   },
+ * });
+ * ```
+ *
+ * @deprecated Use WorkspaceInput with defineWorkspace for type inference
  */
 export interface WorkspaceConfig {
 	/** Workspace name (defaults to root package.json name) */
