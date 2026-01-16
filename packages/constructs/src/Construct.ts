@@ -1,5 +1,9 @@
 import type { AuditStorage } from '@geekmidas/audit';
-import { SnifferEnvironmentParser } from '@geekmidas/envkit/sniffer';
+import {
+	SnifferEnvironmentParser,
+	type SniffResult,
+	sniffWithFireAndForget,
+} from '@geekmidas/envkit/sniffer';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service, ServiceContext } from '@geekmidas/services';
@@ -158,48 +162,15 @@ export enum ConstructType {
  * console.log('Error:', result.error);
  * ```
  */
-export async function sniffService(service: Service): Promise<{
-	envVars: string[];
-	error?: Error;
-	unhandledRejections: Error[];
-}> {
+export async function sniffService(service: Service): Promise<SniffResult> {
 	const sniffer = new SnifferEnvironmentParser();
-	const unhandledRejections: Error[] = [];
 
-	// Capture unhandled rejections during sniffing (fire-and-forget promises)
-	const captureRejection = (reason: unknown) => {
-		const err = reason instanceof Error ? reason : new Error(String(reason));
-		unhandledRejections.push(err);
-	};
-	process.on('unhandledRejection', captureRejection);
-
-	let error: Error | undefined;
-
-	try {
-		const result = service.register({
+	return sniffWithFireAndForget(sniffer, () =>
+		service.register({
 			envParser: sniffer as any,
 			context: snifferContext,
-		});
-
-		if (result && typeof result === 'object' && 'then' in result) {
-			await Promise.resolve(result).catch((e) => {
-				error = e;
-			});
-		}
-	} catch (e) {
-		error = e as Error;
-	} finally {
-		// Wait for fire-and-forget promises to settle - some libraries like better-auth
-		// create async operations that may reject after the initial event loop tick
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		process.off('unhandledRejection', captureRejection);
-	}
-
-	return {
-		envVars: sniffer.getEnvironmentVariables(),
-		error,
-		unhandledRejections,
-	};
+		}),
+	);
 }
 
 // Export for testing
