@@ -1,50 +1,15 @@
-import { execSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
 
-const MIN_TSDOWN_VERSION = '0.11.0';
-
 /**
- * Check if tsdown is installed and meets minimum version requirement
+ * Banner to inject into ESM bundle for CJS compatibility.
+ * Creates a `require` function using Node's createRequire for packages
+ * that internally use CommonJS require() for Node builtins.
  */
-function checkTsdownVersion(): void {
-	try {
-		const result = execSync('npx tsdown --version', {
-			encoding: 'utf-8',
-			stdio: ['pipe', 'pipe', 'pipe'],
-		});
-		// Output format: "tsdown/0.12.8 darwin-arm64 node-v22.21.1"
-		const match = result.match(/tsdown\/(\d+\.\d+\.\d+)/);
-		if (match) {
-			const version = match[1]!;
-			const [major, minor] = version.split('.').map(Number) as [number, number];
-			const [minMajor, minMinor] = MIN_TSDOWN_VERSION.split('.').map(
-				Number,
-			) as [number, number];
-
-			if (major < minMajor || (major === minMajor && minor < minMinor)) {
-				throw new Error(
-					`tsdown version ${version} is too old. Please upgrade to ${MIN_TSDOWN_VERSION} or later:\n` +
-						'  npm install -D tsdown@latest\n' +
-						'  # or\n' +
-						'  pnpm add -D tsdown@latest',
-				);
-			}
-		}
-	} catch (error) {
-		if (error instanceof Error && error.message.includes('too old')) {
-			throw error;
-		}
-		throw new Error(
-			'tsdown is required for bundling. Please install it:\n' +
-				'  npm install -D tsdown@latest\n' +
-				'  # or\n' +
-				'  pnpm add -D tsdown@latest',
-		);
-	}
-}
+const ESM_CJS_COMPAT_BANNER =
+	'import { createRequire } from "module"; const require = createRequire(import.meta.url);';
 
 export interface BundleOptions {
 	/** Entry point file (e.g., .gkm/server/server.ts) */
@@ -97,11 +62,13 @@ async function collectRequiredEnvVars(
 }
 
 /**
- * Bundle the server application using tsdown
+ * Bundle the server application using esbuild.
+ * Creates a fully standalone bundle with all dependencies included.
  *
  * @param options - Bundle configuration options
  * @returns Bundle result with output path and optional master key
  */
+
 /** Default env var values for docker compose services */
 const DOCKER_SERVICE_ENV_VARS: Record<string, Record<string, string>> = {
 	postgres: {
@@ -129,27 +96,23 @@ export async function bundleServer(
 		dockerServices,
 	} = options;
 
-	// Check tsdown version first
-	checkTsdownVersion();
-
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
 
-	// Build command-line arguments for tsdown
+	const mjsOutput = join(outputDir, 'server.mjs');
+
+	// Build command-line arguments for esbuild
 	const args = [
 		'npx',
-		'tsdown',
+		'esbuild',
 		entryPoint,
-		'--no-config', // Don't use any config file from workspace
-		'--out-dir',
-		outputDir,
-		'--format',
-		'esm',
-		'--platform',
-		'node',
-		'--target',
-		'node22',
-		'--clean',
+		'--bundle',
+		'--platform=node',
+		'--target=node22',
+		'--format=esm',
+		`--outfile=${mjsOutput}`,
+		'--packages=bundle', // Bundle all dependencies for standalone output
+		`--banner:js=${ESM_CJS_COMPAT_BANNER}`, // CJS compatibility for packages like pino
 	];
 
 	if (minify) {
@@ -160,13 +123,10 @@ export async function bundleServer(
 		args.push('--sourcemap');
 	}
 
-	// Add external packages
+	// Add external packages (user-specified)
 	for (const ext of external) {
-		args.push('--external', ext);
+		args.push(`--external:${ext}`);
 	}
-
-	// Always exclude node: builtins
-	args.push('--external', 'node:*');
 
 	// Handle secrets injection if stage is provided
 	let masterKey: string | undefined;
@@ -252,21 +212,17 @@ export async function bundleServer(
 		const encrypted = encryptSecrets(embeddable);
 		masterKey = encrypted.masterKey;
 
-		// Add define options for build-time injection using tsdown's --env.* format
+		// Add define options for build-time injection using esbuild's --define:KEY=VALUE format
 		const defines = generateDefineOptions(encrypted);
 		for (const [key, value] of Object.entries(defines)) {
-			args.push(`--env.${key}`, value);
+			args.push(`--define:${key}=${JSON.stringify(value)}`);
 		}
 
 		console.log(`  Secrets encrypted for stage "${stage}"`);
 	}
 
-	const mjsOutput = join(outputDir, 'server.mjs');
-
 	try {
-		// Run tsdown with command-line arguments
-		// Use spawnSync with args array to avoid shell escaping issues with --define values
-		// args is always populated with ['npx', 'tsdown', ...] so cmd is never undefined
+		// Run esbuild with command-line arguments
 		const [cmd, ...cmdArgs] = args as [string, ...string[]];
 		const result = spawnSync(cmd, cmdArgs, {
 			cwd: process.cwd(),
@@ -278,15 +234,7 @@ export async function bundleServer(
 			throw result.error;
 		}
 		if (result.status !== 0) {
-			throw new Error(`tsdown exited with code ${result.status}`);
-		}
-
-		// Rename output to .mjs for explicit ESM
-		// tsdown outputs as server.js for ESM format
-		const jsOutput = join(outputDir, 'server.js');
-
-		if (existsSync(jsOutput)) {
-			await rename(jsOutput, mjsOutput);
+			throw new Error(`esbuild exited with code ${result.status}`);
 		}
 
 		// Add shebang to the bundled file
