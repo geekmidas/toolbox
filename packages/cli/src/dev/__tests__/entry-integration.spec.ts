@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prepareEntryCredentials } from '../index';
 
 describe('prepareEntryCredentials', () => {
@@ -121,14 +121,14 @@ export default defineWorkspace({
 			expect(result.appName).toBe('auth');
 		});
 
-		it('should write credentials to dev-secrets.json at workspace root', async () => {
+		it('should write credentials to app-specific dev-secrets file at workspace root', async () => {
 			const apiDir = join(workspaceDir, 'apps', 'api');
 
 			const result = await prepareEntryCredentials({ cwd: apiDir });
 
-			// Verify the file was written at workspace root
+			// Verify the file was written at workspace root with app-specific name
 			expect(result.secretsJsonPath).toBe(
-				join(workspaceDir, '.gkm', 'dev-secrets.json'),
+				join(workspaceDir, '.gkm', 'dev-secrets-api.json'),
 			);
 
 			// Verify file contents
@@ -170,11 +170,12 @@ export default defineWorkspace({
 			expect(result.credentials.PORT).toBe('5000');
 		});
 
-		it('should write credentials to current directory when not in workspace', async () => {
+		it('should write credentials with app name from package.json when not in workspace', async () => {
 			const result = await prepareEntryCredentials({ cwd: workspaceDir });
 
+			// App name extracted from package.json is used for app-specific filename
 			expect(result.secretsJsonPath).toBe(
-				join(workspaceDir, '.gkm', 'dev-secrets.json'),
+				join(workspaceDir, '.gkm', 'dev-secrets-standalone-app.json'),
 			);
 		});
 	});

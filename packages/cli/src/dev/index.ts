@@ -1402,9 +1402,13 @@ export async function prepareEntryCredentials(options: {
 	credentials.PORT = String(resolvedPort);
 
 	// Write secrets to temp JSON file (always write since we have PORT)
+	// Use app-specific filename to avoid race conditions when running multiple apps via turbo
 	const secretsDir = join(secretsRoot, '.gkm');
 	await mkdir(secretsDir, { recursive: true });
-	const secretsJsonPath = join(secretsDir, 'dev-secrets.json');
+	const secretsFileName = appName
+		? `dev-secrets-${appName}.json`
+		: 'dev-secrets.json';
+	const secretsJsonPath = join(secretsDir, secretsFileName);
 	await writeFile(secretsJsonPath, JSON.stringify(credentials, null, 2));
 
 	return {

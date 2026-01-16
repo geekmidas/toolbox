@@ -18,7 +18,23 @@ import {
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
-import { DokployApi, type DokployApplication } from './dokploy-api';
+import {
+	DokployApi,
+	type DokployApplication,
+	type DokployPostgres,
+	type DokployRedis,
+} from './dokploy-api';
+import {
+	createEmptyState,
+	getApplicationId,
+	getPostgresId,
+	getRedisId,
+	readStageState,
+	setApplicationId,
+	setPostgresId,
+	setRedisId,
+	writeStageState,
+} from './state.js';
 import {
 	generatePublicUrlBuildArgs,
 	getPublicUrlArgNames,
@@ -122,6 +138,17 @@ interface DokploySetupResult {
 }
 
 /**
+ * Result from provisioning services
+ */
+export interface ProvisionServicesResult {
+	serviceUrls: ServiceUrls;
+	serviceIds: {
+		postgresId?: string;
+		redisId?: string;
+	};
+}
+
+/**
  * Provision docker compose services in Dokploy
  * @internal Exported for testing
  */
@@ -131,8 +158,8 @@ export async function provisionServices(
 	environmentId: string | undefined,
 	appName: string,
 	services?: DockerComposeServices,
-	existingUrls?: Pick<ServiceUrls, 'DATABASE_URL' | 'REDIS_URL'>,
-): Promise<ServiceUrls | undefined> {
+	existingServiceIds?: { postgresId?: string; redisId?: string },
+): Promise<ProvisionServicesResult | undefined> {
 	logger.log(
 		`\n🔍 provisionServices called: services=${JSON.stringify(services)}, envId=${environmentId}`,
 	);
@@ -142,113 +169,142 @@ export async function provisionServices(
 	}
 
 	const serviceUrls: ServiceUrls = {};
+	const serviceIds: { postgresId?: string; redisId?: string } = {};
 
 	if (services.postgres) {
-		// Skip if DATABASE_URL already exists in secrets
-		if (existingUrls?.DATABASE_URL) {
-			logger.log('\n🐘 PostgreSQL: Already configured (skipping)');
-		} else {
-			logger.log('\n🐘 Provisioning PostgreSQL...');
-			const postgresName = `${appName}-db`;
+		logger.log('\n🐘 Checking PostgreSQL...');
+		const postgresName = `${appName}-db`;
 
-			try {
-				// Generate a random password for the database
+		try {
+			let postgres: DokployPostgres | null = null;
+			let created = false;
+
+			// Check if we have an existing ID from state
+			if (existingServiceIds?.postgresId) {
+				logger.log(`   Using cached ID: ${existingServiceIds.postgresId}`);
+				postgres = await api.getPostgres(existingServiceIds.postgresId);
+				if (postgres) {
+					logger.log(`   ✓ PostgreSQL found: ${postgres.postgresId}`);
+				} else {
+					logger.log(`   ⚠ Cached ID invalid, will create new`);
+				}
+			}
+
+			// If not found by ID, use findOrCreate
+			if (!postgres) {
 				const { randomBytes } = await import('node:crypto');
 				const databasePassword = randomBytes(16).toString('hex');
 
-				const postgres = await api.createPostgres(
+				const result = await api.findOrCreatePostgres(
 					postgresName,
 					projectId,
 					environmentId,
 					{ databasePassword },
 				);
-				logger.log(`   ✓ Created PostgreSQL: ${postgres.postgresId}`);
+				postgres = result.postgres;
+				created = result.created;
 
-				// Deploy the database
-				await api.deployPostgres(postgres.postgresId);
-				logger.log('   ✓ PostgreSQL deployed');
+				if (created) {
+					logger.log(`   ✓ Created PostgreSQL: ${postgres.postgresId}`);
 
-				// Store individual connection parameters
-				serviceUrls.DATABASE_HOST = postgres.appName;
-				serviceUrls.DATABASE_PORT = '5432';
-				serviceUrls.DATABASE_NAME = postgres.databaseName;
-				serviceUrls.DATABASE_USER = postgres.databaseUser;
-				serviceUrls.DATABASE_PASSWORD = postgres.databasePassword;
-
-				// Construct connection URL using internal docker network hostname
-				serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
-				logger.log(`   ✓ Database credentials configured`);
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unknown error';
-				if (
-					message.includes('already exists') ||
-					message.includes('duplicate')
-				) {
-					logger.log(`   ℹ PostgreSQL already exists`);
+					// Deploy the database (only for new instances)
+					await api.deployPostgres(postgres.postgresId);
+					logger.log('   ✓ PostgreSQL deployed');
 				} else {
-					logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
+					logger.log(`   ✓ PostgreSQL already exists: ${postgres.postgresId}`);
 				}
 			}
+
+			// Store the ID for state
+			serviceIds.postgresId = postgres.postgresId;
+
+			// Store individual connection parameters
+			serviceUrls.DATABASE_HOST = postgres.appName;
+			serviceUrls.DATABASE_PORT = '5432';
+			serviceUrls.DATABASE_NAME = postgres.databaseName;
+			serviceUrls.DATABASE_USER = postgres.databaseUser;
+			serviceUrls.DATABASE_PASSWORD = postgres.databasePassword;
+
+			// Construct connection URL using internal docker network hostname
+			serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
+			logger.log(`   ✓ Database credentials configured`);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : 'Unknown error';
+			logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
 		}
 	}
 
 	if (services.redis) {
-		// Skip if REDIS_URL already exists in secrets
-		if (existingUrls?.REDIS_URL) {
-			logger.log('\n🔴 Redis: Already configured (skipping)');
-		} else {
-			logger.log('\n🔴 Provisioning Redis...');
-			const redisName = `${appName}-cache`;
+		logger.log('\n🔴 Checking Redis...');
+		const redisName = `${appName}-cache`;
 
-			try {
-				// Generate a random password for Redis
+		try {
+			let redis: DokployRedis | null = null;
+			let created = false;
+
+			// Check if we have an existing ID from state
+			if (existingServiceIds?.redisId) {
+				logger.log(`   Using cached ID: ${existingServiceIds.redisId}`);
+				redis = await api.getRedis(existingServiceIds.redisId);
+				if (redis) {
+					logger.log(`   ✓ Redis found: ${redis.redisId}`);
+				} else {
+					logger.log(`   ⚠ Cached ID invalid, will create new`);
+				}
+			}
+
+			// If not found by ID, use findOrCreate
+			if (!redis) {
 				const { randomBytes } = await import('node:crypto');
 				const databasePassword = randomBytes(16).toString('hex');
 
-				const redis = await api.createRedis(
+				const result = await api.findOrCreateRedis(
 					redisName,
 					projectId,
 					environmentId,
-					{
-						databasePassword,
-					},
+					{ databasePassword },
 				);
-				logger.log(`   ✓ Created Redis: ${redis.redisId}`);
+				redis = result.redis;
+				created = result.created;
 
-				// Deploy the redis instance
-				await api.deployRedis(redis.redisId);
-				logger.log('   ✓ Redis deployed');
+				if (created) {
+					logger.log(`   ✓ Created Redis: ${redis.redisId}`);
 
-				// Store individual connection parameters
-				serviceUrls.REDIS_HOST = redis.appName;
-				serviceUrls.REDIS_PORT = '6379';
-				if (redis.databasePassword) {
-					serviceUrls.REDIS_PASSWORD = redis.databasePassword;
-				}
-
-				// Construct connection URL
-				const password = redis.databasePassword
-					? `:${redis.databasePassword}@`
-					: '';
-				serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
-				logger.log(`   ✓ Redis credentials configured`);
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unknown error';
-				if (
-					message.includes('already exists') ||
-					message.includes('duplicate')
-				) {
-					logger.log(`   ℹ Redis already exists`);
+					// Deploy the redis instance (only for new instances)
+					await api.deployRedis(redis.redisId);
+					logger.log('   ✓ Redis deployed');
 				} else {
-					logger.log(`   ⚠ Failed to provision Redis: ${message}`);
+					logger.log(`   ✓ Redis already exists: ${redis.redisId}`);
 				}
 			}
+
+			// Store the ID for state
+			serviceIds.redisId = redis.redisId;
+
+			// Store individual connection parameters
+			serviceUrls.REDIS_HOST = redis.appName;
+			serviceUrls.REDIS_PORT = '6379';
+			if (redis.databasePassword) {
+				serviceUrls.REDIS_PASSWORD = redis.databasePassword;
+			}
+
+			// Construct connection URL
+			const password = redis.databasePassword
+				? `:${redis.databasePassword}@`
+				: '';
+			serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
+			logger.log(`   ✓ Redis credentials configured`);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : 'Unknown error';
+			logger.log(`   ⚠ Failed to provision Redis: ${message}`);
 		}
 	}
 
-	return Object.keys(serviceUrls).length > 0 ? serviceUrls : undefined;
+	return Object.keys(serviceUrls).length > 0
+		? { serviceUrls, serviceIds }
+		: undefined;
 }
 
 /**
@@ -345,13 +401,14 @@ async function ensureDokploySetup(
 			logger.log(
 				`   Services config: ${JSON.stringify(services)}, envId: ${environmentId}`,
 			);
-			const serviceUrls = await provisionServices(
+			// For single-app mode, we don't have state persistence yet, so pass undefined
+			const provisionResult = await provisionServices(
 				api,
 				existingConfig.projectId,
 				environmentId,
 				dockerConfig.appName!,
 				services,
-				existingUrls,
+				undefined, // No state in single-app mode
 			);
 
 			return {
@@ -362,7 +419,7 @@ async function ensureDokploySetup(
 					registry: existingConfig.registry,
 					registryId: storedRegistryId ?? undefined,
 				},
-				serviceUrls,
+				serviceUrls: provisionResult?.serviceUrls,
 			};
 		} catch {
 			logger.log('⚠ Project not found, will recover...');
@@ -546,18 +603,19 @@ async function ensureDokploySetup(
 	}
 
 	// Step 8: Provision docker compose services if configured
-	const serviceUrls = await provisionServices(
+	// For single-app mode, we don't have state persistence yet, so pass undefined
+	const provisionResult = await provisionServices(
 		api,
 		project.projectId,
 		environmentId,
 		dockerConfig.appName!,
 		services,
-		existingUrls,
+		undefined, // No state in single-app mode
 	);
 
 	return {
 		config: dokployConfig,
-		serviceUrls,
+		serviceUrls: provisionResult?.serviceUrls,
 	};
 }
 
@@ -754,6 +812,24 @@ export async function workspaceDeployCommand(
 		logger.log(`   ✓ Created project: ${project.projectId}`);
 	}
 
+	// ==================================================================
+	// STATE: Load or create deploy state for this stage
+	// ==================================================================
+	logger.log('\n📋 Loading deploy state...');
+	let state = await readStageState(workspace.root, stage);
+
+	if (state) {
+		logger.log(`   Found existing state for stage "${stage}"`);
+		// Verify environment ID matches (in case of recreation)
+		if (state.environmentId !== environmentId) {
+			logger.log(`   ⚠ Environment ID changed, updating state`);
+			state.environmentId = environmentId;
+		}
+	} else {
+		logger.log(`   Creating new state for stage "${stage}"`);
+		state = createEmptyState(stage, environmentId);
+	}
+
 	// Get or set up registry
 	logger.log('\n🐳 Checking registry...');
 	let registryId = await getDokployRegistryId();
@@ -808,13 +884,30 @@ export async function workspaceDeployCommand(
 
 	if (dockerServices.postgres || dockerServices.redis) {
 		logger.log('\n🔧 Provisioning infrastructure services...');
-		await provisionServices(
+		// Pass existing service IDs from state (prefer state over URL sniffing)
+		const existingServiceIds = {
+			postgresId: getPostgresId(state),
+			redisId: getRedisId(state),
+		};
+
+		const provisionResult = await provisionServices(
 			api,
 			project.projectId,
 			environmentId,
 			workspace.name,
 			dockerServices,
+			existingServiceIds,
 		);
+
+		// Update state with returned service IDs
+		if (provisionResult?.serviceIds) {
+			if (provisionResult.serviceIds.postgresId) {
+				setPostgresId(state, provisionResult.serviceIds.postgresId);
+			}
+			if (provisionResult.serviceIds.redisId) {
+				setRedisId(state, provisionResult.serviceIds.redisId);
+			}
+		}
 	}
 
 	// ==================================================================
@@ -845,28 +938,39 @@ export async function workspaceDeployCommand(
 
 			try {
 				const dokployAppName = `${workspace.name}-${appName}`;
-				let application: DokployApplication | undefined;
 
-				// Create or find application
-				try {
-					application = await api.createApplication(
+				// Check state for cached application ID
+				let application: DokployApplication | null = null;
+				const cachedAppId = getApplicationId(state, appName);
+
+				if (cachedAppId) {
+					logger.log(`      Using cached ID: ${cachedAppId}`);
+					application = await api.getApplication(cachedAppId);
+					if (application) {
+						logger.log(`      ✓ Application found: ${application.applicationId}`);
+					} else {
+						logger.log(`      ⚠ Cached ID invalid, will create new`);
+					}
+				}
+
+				// If not found by ID, use findOrCreate
+				if (!application) {
+					const result = await api.findOrCreateApplication(
 						dokployAppName,
 						project.projectId,
 						environmentId,
 					);
-					logger.log(`      Created application: ${application.applicationId}`);
-				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : 'Unknown error';
-					if (
-						message.includes('already exists') ||
-						message.includes('duplicate')
-					) {
-						logger.log(`      Application already exists`);
+					application = result.application;
+
+					if (result.created) {
+						logger.log(`      Created application: ${application.applicationId}`);
 					} else {
-						throw error;
+						logger.log(`      Found existing application: ${application.applicationId}`);
 					}
 				}
+
+				// Store application ID in state
+				setApplicationId(state, appName, application.applicationId);
 
 				// Get encrypted secrets for this app
 				const appSecrets = encryptedSecrets.get(appName);
@@ -909,70 +1013,55 @@ export async function workspaceDeployCommand(
 				}
 
 				// Configure and deploy application in Dokploy
-				if (application) {
-					await api.saveDockerProvider(application.applicationId, imageRef, {
-						registryId,
-					});
+				await api.saveDockerProvider(application.applicationId, imageRef, {
+					registryId,
+				});
 
-					await api.saveApplicationEnv(
-						application.applicationId,
-						envVars.join('\n'),
+				await api.saveApplicationEnv(
+					application.applicationId,
+					envVars.join('\n'),
+				);
+
+				logger.log(`      Deploying to Dokploy...`);
+				await api.deployApplication(application.applicationId);
+
+				// Create domain for this app
+				try {
+					const host = resolveHost(
+						appName,
+						app,
+						stage,
+						dokployConfig,
+						false, // Backend apps are not main frontend
 					);
 
-					logger.log(`      Deploying to Dokploy...`);
-					await api.deployApplication(application.applicationId);
-
-					// Create domain for this app
-					try {
-						const host = resolveHost(
-							appName,
-							app,
-							stage,
-							dokployConfig,
-							false, // Backend apps are not main frontend
-						);
-
-						await api.createDomain({
-							host,
-							port: app.port,
-							https: true,
-							certificateType: 'letsencrypt',
-							applicationId: application.applicationId,
-						});
-
-						const publicUrl = `https://${host}`;
-						publicUrls[appName] = publicUrl;
-						logger.log(`      ✓ Domain: ${publicUrl}`);
-					} catch (domainError) {
-						// Domain might already exist, try to get public URL anyway
-						const host = resolveHost(appName, app, stage, dokployConfig, false);
-						publicUrls[appName] = `https://${host}`;
-						logger.log(`      ℹ Domain already configured: https://${host}`);
-					}
-
-					results.push({
-						appName,
-						type: app.type,
-						success: true,
+					await api.createDomain({
+						host,
+						port: app.port,
+						https: true,
+						certificateType: 'letsencrypt',
 						applicationId: application.applicationId,
-						imageRef,
 					});
 
-					logger.log(`      ✓ ${appName} deployed successfully`);
-				} else {
-					// Application already exists
+					const publicUrl = `https://${host}`;
+					publicUrls[appName] = publicUrl;
+					logger.log(`      ✓ Domain: ${publicUrl}`);
+				} catch (domainError) {
+					// Domain might already exist, try to get public URL anyway
 					const host = resolveHost(appName, app, stage, dokployConfig, false);
 					publicUrls[appName] = `https://${host}`;
-
-					results.push({
-						appName,
-						type: app.type,
-						success: true,
-						imageRef,
-					});
-
-					logger.log(`      ✓ ${appName} image pushed (app already exists)`);
+					logger.log(`      ℹ Domain already configured: https://${host}`);
 				}
+
+				results.push({
+					appName,
+					type: app.type,
+					success: true,
+					applicationId: application.applicationId,
+					imageRef,
+				});
+
+				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
@@ -1005,28 +1094,39 @@ export async function workspaceDeployCommand(
 
 			try {
 				const dokployAppName = `${workspace.name}-${appName}`;
-				let application: DokployApplication | undefined;
 
-				// Create or find application
-				try {
-					application = await api.createApplication(
+				// Check state for cached application ID
+				let application: DokployApplication | null = null;
+				const cachedAppId = getApplicationId(state, appName);
+
+				if (cachedAppId) {
+					logger.log(`      Using cached ID: ${cachedAppId}`);
+					application = await api.getApplication(cachedAppId);
+					if (application) {
+						logger.log(`      ✓ Application found: ${application.applicationId}`);
+					} else {
+						logger.log(`      ⚠ Cached ID invalid, will create new`);
+					}
+				}
+
+				// If not found by ID, use findOrCreate
+				if (!application) {
+					const result = await api.findOrCreateApplication(
 						dokployAppName,
 						project.projectId,
 						environmentId,
 					);
-					logger.log(`      Created application: ${application.applicationId}`);
-				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : 'Unknown error';
-					if (
-						message.includes('already exists') ||
-						message.includes('duplicate')
-					) {
-						logger.log(`      Application already exists`);
+					application = result.application;
+
+					if (result.created) {
+						logger.log(`      Created application: ${application.applicationId}`);
 					} else {
-						throw error;
+						logger.log(`      Found existing application: ${application.applicationId}`);
 					}
 				}
+
+				// Store application ID in state
+				setApplicationId(state, appName, application.applicationId);
 
 				// Generate public URL build args from dependencies
 				const buildArgs = generatePublicUrlBuildArgs(app, publicUrls);
@@ -1060,64 +1160,41 @@ export async function workspaceDeployCommand(
 				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
 
 				// Configure and deploy application in Dokploy
-				if (application) {
-					await api.saveDockerProvider(application.applicationId, imageRef, {
-						registryId,
-					});
+				await api.saveDockerProvider(application.applicationId, imageRef, {
+					registryId,
+				});
 
-					await api.saveApplicationEnv(
-						application.applicationId,
-						envVars.join('\n'),
+				await api.saveApplicationEnv(
+					application.applicationId,
+					envVars.join('\n'),
+				);
+
+				logger.log(`      Deploying to Dokploy...`);
+				await api.deployApplication(application.applicationId);
+
+				// Create domain for this app
+				const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+				try {
+					const host = resolveHost(
+						appName,
+						app,
+						stage,
+						dokployConfig,
+						isMainFrontend,
 					);
 
-					logger.log(`      Deploying to Dokploy...`);
-					await api.deployApplication(application.applicationId);
-
-					// Create domain for this app
-					const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
-					try {
-						const host = resolveHost(
-							appName,
-							app,
-							stage,
-							dokployConfig,
-							isMainFrontend,
-						);
-
-						await api.createDomain({
-							host,
-							port: app.port,
-							https: true,
-							certificateType: 'letsencrypt',
-							applicationId: application.applicationId,
-						});
-
-						const publicUrl = `https://${host}`;
-						publicUrls[appName] = publicUrl;
-						logger.log(`      ✓ Domain: ${publicUrl}`);
-					} catch (domainError) {
-						const host = resolveHost(
-							appName,
-							app,
-							stage,
-							dokployConfig,
-							isMainFrontend,
-						);
-						publicUrls[appName] = `https://${host}`;
-						logger.log(`      ℹ Domain already configured: https://${host}`);
-					}
-
-					results.push({
-						appName,
-						type: app.type,
-						success: true,
+					await api.createDomain({
+						host,
+						port: app.port,
+						https: true,
+						certificateType: 'letsencrypt',
 						applicationId: application.applicationId,
-						imageRef,
 					});
 
-					logger.log(`      ✓ ${appName} deployed successfully`);
-				} else {
-					const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+					const publicUrl = `https://${host}`;
+					publicUrls[appName] = publicUrl;
+					logger.log(`      ✓ Domain: ${publicUrl}`);
+				} catch (domainError) {
 					const host = resolveHost(
 						appName,
 						app,
@@ -1126,16 +1203,18 @@ export async function workspaceDeployCommand(
 						isMainFrontend,
 					);
 					publicUrls[appName] = `https://${host}`;
-
-					results.push({
-						appName,
-						type: app.type,
-						success: true,
-						imageRef,
-					});
-
-					logger.log(`      ✓ ${appName} image pushed (app already exists)`);
+					logger.log(`      ℹ Domain already configured: https://${host}`);
 				}
+
+				results.push({
+					appName,
+					type: app.type,
+					success: true,
+					applicationId: application.applicationId,
+					imageRef,
+				});
+
+				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
@@ -1150,6 +1229,13 @@ export async function workspaceDeployCommand(
 			}
 		}
 	}
+
+	// ==================================================================
+	// STATE: Save deploy state
+	// ==================================================================
+	logger.log('\n📋 Saving deploy state...');
+	await writeStageState(workspace.root, stage, state);
+	logger.log(`   ✓ State saved to .gkm/deploy-${stage}.json`);
 
 	// ==================================================================
 	// Summary

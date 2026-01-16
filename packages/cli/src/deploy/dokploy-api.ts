@@ -178,6 +178,34 @@ export class DokployApi {
 	// ============================================
 
 	/**
+	 * List all applications in a project
+	 */
+	async listApplications(projectId: string): Promise<DokployApplication[]> {
+		try {
+			return await this.get<DokployApplication[]>(
+				`application.all?projectId=${projectId}`,
+			);
+		} catch {
+			// Fallback: endpoint might not exist in older Dokploy versions
+			return [];
+		}
+	}
+
+	/**
+	 * Find an application by name in a project
+	 */
+	async findApplicationByName(
+		projectId: string,
+		name: string,
+	): Promise<DokployApplication | undefined> {
+		const applications = await this.listApplications(projectId);
+		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+		return applications.find(
+			(app) => app.name === name || app.appName === normalizedName,
+		);
+	}
+
+	/**
 	 * Create a new application
 	 */
 	async createApplication(
@@ -191,6 +219,42 @@ export class DokployApi {
 			environmentId,
 			appName: name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
 		});
+	}
+
+	/**
+	 * Find or create an application by name
+	 */
+	async findOrCreateApplication(
+		name: string,
+		projectId: string,
+		environmentId: string,
+	): Promise<{ application: DokployApplication; created: boolean }> {
+		const existing = await this.findApplicationByName(projectId, name);
+		if (existing) {
+			return { application: existing, created: false };
+		}
+		const application = await this.createApplication(
+			name,
+			projectId,
+			environmentId,
+		);
+		return { application, created: true };
+	}
+
+	/**
+	 * Get an application by ID
+	 */
+	async getApplication(
+		applicationId: string,
+	): Promise<DokployApplication | null> {
+		try {
+			return await this.get<DokployApplication>(
+				`application.one?applicationId=${applicationId}`,
+			);
+		} catch {
+			// Application not found
+			return null;
+		}
 	}
 
 	/**
@@ -318,6 +382,34 @@ export class DokployApi {
 	// ============================================
 
 	/**
+	 * List all Postgres databases in a project
+	 */
+	async listPostgres(projectId: string): Promise<DokployPostgres[]> {
+		try {
+			return await this.get<DokployPostgres[]>(
+				`postgres.all?projectId=${projectId}`,
+			);
+		} catch {
+			// Fallback: endpoint might not exist in older Dokploy versions
+			return [];
+		}
+	}
+
+	/**
+	 * Find a Postgres database by name in a project
+	 */
+	async findPostgresByName(
+		projectId: string,
+		name: string,
+	): Promise<DokployPostgres | undefined> {
+		const databases = await this.listPostgres(projectId);
+		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+		return databases.find(
+			(db) => db.name === name || db.appName === normalizedName,
+		);
+	}
+
+	/**
 	 * Create a new Postgres database
 	 */
 	async createPostgres(
@@ -345,6 +437,30 @@ export class DokployApi {
 			dockerImage: options?.dockerImage ?? 'postgres:16-alpine',
 			description: options?.description ?? `Postgres database for ${name}`,
 		});
+	}
+
+	/**
+	 * Find or create a Postgres database by name
+	 */
+	async findOrCreatePostgres(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		options?: {
+			databasePassword?: string;
+		},
+	): Promise<{ postgres: DokployPostgres; created: boolean }> {
+		const existing = await this.findPostgresByName(projectId, name);
+		if (existing) {
+			return { postgres: existing, created: false };
+		}
+		const postgres = await this.createPostgres(
+			name,
+			projectId,
+			environmentId,
+			options,
+		);
+		return { postgres, created: true };
 	}
 
 	/**
@@ -393,6 +509,34 @@ export class DokployApi {
 	// ============================================
 
 	/**
+	 * List all Redis instances in a project
+	 */
+	async listRedis(projectId: string): Promise<DokployRedis[]> {
+		try {
+			return await this.get<DokployRedis[]>(
+				`redis.all?projectId=${projectId}`,
+			);
+		} catch {
+			// Fallback: endpoint might not exist in older Dokploy versions
+			return [];
+		}
+	}
+
+	/**
+	 * Find a Redis instance by name in a project
+	 */
+	async findRedisByName(
+		projectId: string,
+		name: string,
+	): Promise<DokployRedis | undefined> {
+		const instances = await this.listRedis(projectId);
+		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+		return instances.find(
+			(redis) => redis.name === name || redis.appName === normalizedName,
+		);
+	}
+
+	/**
 	 * Create a new Redis instance
 	 */
 	async createRedis(
@@ -416,6 +560,25 @@ export class DokployApi {
 			dockerImage: options?.dockerImage ?? 'redis:7-alpine',
 			description: options?.description ?? `Redis instance for ${name}`,
 		});
+	}
+
+	/**
+	 * Find or create a Redis instance by name
+	 */
+	async findOrCreateRedis(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		options?: {
+			databasePassword?: string;
+		},
+	): Promise<{ redis: DokployRedis; created: boolean }> {
+		const existing = await this.findRedisByName(projectId, name);
+		if (existing) {
+			return { redis: existing, created: false };
+		}
+		const redis = await this.createRedis(name, projectId, environmentId, options);
+		return { redis, created: true };
 	}
 
 	/**
