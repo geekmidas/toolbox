@@ -895,6 +895,15 @@ export interface LoadedConfig {
 
 /**
  * Type guard to check if a config is a WorkspaceConfig.
+ *
+ * @example
+ * ```ts
+ * const config = await loadConfig();
+ * if (isWorkspaceConfig(config)) {
+ *   // config.apps is available
+ *   console.log(Object.keys(config.apps));
+ * }
+ * ```
  */
 export function isWorkspaceConfig(
 	config: GkmConfig | WorkspaceConfig,
