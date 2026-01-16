@@ -653,13 +653,49 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
 
 /**
  * Full workspace input type with constrained dependencies.
+ *
+ * @example
+ * ```ts
+ * import { defineWorkspace } from '@geekmidas/cli';
+ *
+ * export default defineWorkspace({
+ *   name: 'my-app',
+ *   apps: {
+ *     api: {
+ *       path: 'apps/api',
+ *       port: 3000,
+ *       routes: './src/endpoints/**\/*.ts',
+ *     },
+ *     web: {
+ *       type: 'frontend',
+ *       path: 'apps/web',
+ *       port: 3001,
+ *       framework: 'nextjs',
+ *       dependencies: ['api'],
+ *     },
+ *   },
+ *   services: {
+ *     db: true,
+ *     cache: true,
+ *   },
+ *   deploy: {
+ *     default: 'dokploy',
+ *   },
+ * });
+ * ```
  */
 export type WorkspaceInput<TApps extends AppsRecord> = {
+	/** Workspace name (defaults to root package.json name) */
 	name?: string;
+	/** App definitions */
 	apps: ConstrainedApps<TApps>;
+	/** Shared packages configuration */
 	shared?: SharedConfig;
+	/** Deployment configuration */
 	deploy?: DeployConfig;
+	/** Development services (db, cache, mail) */
 	services?: ServicesConfig;
+	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
 };
 
