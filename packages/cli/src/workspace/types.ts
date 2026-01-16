@@ -377,81 +377,242 @@ export interface ClientConfig {
 
 /**
  * Base app configuration properties (shared between input and normalized).
+ *
+ * @example
+ * ```ts
+ * // Backend app with gkm routes
+ * api: {
+ *   type: 'backend',
+ *   path: 'apps/api',
+ *   port: 3000,
+ *   routes: './src/endpoints/**\/*.ts',
+ *   envParser: './src/config/env',
+ *   logger: './src/config/logger',
+ * }
+ *
+ * // Backend app with entry point (e.g., Better Auth)
+ * auth: {
+ *   type: 'backend',
+ *   path: 'apps/auth',
+ *   port: 3001,
+ *   entry: './src/index.ts',
+ *   framework: 'better-auth',
+ *   requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+ * }
+ *
+ * // Frontend app
+ * web: {
+ *   type: 'frontend',
+ *   path: 'apps/web',
+ *   port: 3002,
+ *   framework: 'nextjs',
+ *   dependencies: ['api', 'auth'],
+ * }
+ * ```
  */
 interface AppConfigBase {
-	/** App type (default: 'backend') */
+	/**
+	 * App type.
+	 * - 'backend': Server-side app (API, auth service, etc.)
+	 * - 'frontend': Client-side app (Next.js, Vite, etc.)
+	 * @default 'backend'
+	 */
 	type?: 'backend' | 'frontend';
 
-	/** Path relative to workspace root */
+	/**
+	 * Path to the app relative to workspace root.
+	 * @example 'apps/api', 'apps/web', 'services/auth'
+	 */
 	path: string;
 
-	/** Dev server port */
+	/**
+	 * Development server port.
+	 * Must be unique across all apps in the workspace.
+	 * @example 3000, 3001, 3002
+	 */
 	port: number;
 
-	/** Per-app deploy target override */
+	/**
+	 * Per-app deploy target override.
+	 * Overrides `deploy.default` for this specific app.
+	 * @example 'dokploy', 'vercel'
+	 */
 	deploy?: DeployTarget;
 
-	// Backend-specific (from GkmConfig)
-	/** Routes glob pattern */
+	// ─────────────────────────────────────────────────────────────────
+	// Backend-specific (gkm routes mode)
+	// ─────────────────────────────────────────────────────────────────
+
+	/**
+	 * Routes glob pattern for gkm endpoints.
+	 * @example './src/endpoints/**\/*.ts'
+	 */
 	routes?: Routes;
-	/** Functions glob pattern */
+
+	/**
+	 * Functions glob pattern for Lambda functions.
+	 * @example './src/functions/**\/*.ts'
+	 */
 	functions?: Routes;
-	/** Crons glob pattern */
+
+	/**
+	 * Crons glob pattern for scheduled tasks.
+	 * @example './src/crons/**\/*.ts'
+	 */
 	crons?: Routes;
-	/** Subscribers glob pattern */
+
+	/**
+	 * Subscribers glob pattern for event handlers.
+	 * @example './src/subscribers/**\/*.ts'
+	 */
 	subscribers?: Routes;
-	/** Path to environment parser module */
+
+	/**
+	 * Path to environment parser module.
+	 * @example './src/config/env'
+	 */
 	envParser?: string;
-	/** Path to logger module */
+
+	/**
+	 * Path to logger module.
+	 * @example './src/config/logger'
+	 */
 	logger?: string;
-	/** Provider configuration */
+
+	/** Provider configuration (AWS, Docker, etc.) */
 	providers?: ProvidersConfig;
-	/** Server lifecycle hooks */
+
+	/**
+	 * Server lifecycle hooks.
+	 * @example { beforeSetup: './src/hooks/setup.ts' }
+	 */
 	hooks?: HooksConfig;
-	/** Telescope configuration */
+
+	/**
+	 * Telescope debugging dashboard configuration.
+	 * @example true, './src/config/telescope', { enabled: true, path: '/__telescope' }
+	 */
 	telescope?: string | boolean | TelescopeConfig;
-	/** Studio configuration */
+
+	/**
+	 * Studio admin panel configuration.
+	 * @example true, './src/config/studio'
+	 */
 	studio?: string | boolean | StudioConfig;
-	/** OpenAPI configuration */
+
+	/**
+	 * OpenAPI documentation configuration.
+	 * @example true, { output: './src/openapi.ts' }
+	 */
 	openapi?: boolean | OpenApiConfig;
-	/** Runtime (node or bun) */
+
+	/**
+	 * Runtime environment.
+	 * @default 'node'
+	 */
 	runtime?: Runtime;
-	/** Environment file(s) to load */
+
+	/**
+	 * Environment file(s) to load during development.
+	 * @example '.env', ['.env', '.env.local']
+	 */
 	env?: string | string[];
 
-	// Entry point for non-gkm apps
+	// ─────────────────────────────────────────────────────────────────
+	// Entry point mode (non-gkm apps)
+	// ─────────────────────────────────────────────────────────────────
+
 	/**
 	 * Entry file path for apps that don't use gkm routes.
-	 * Used by both `gkm dev` (runs with tsx) and Docker builds (bundles with tsdown).
-	 * @example './src/index.ts'
+	 *
+	 * When specified, the app is run directly with tsx in development
+	 * and bundled with esbuild for production Docker builds.
+	 *
+	 * Use this for:
+	 * - Better Auth servers
+	 * - Custom Hono/Express apps
+	 * - Any backend that doesn't use gkm's endpoint builder
+	 *
+	 * @example './src/index.ts', './src/server.ts'
 	 */
 	entry?: string;
 
+	// ─────────────────────────────────────────────────────────────────
 	// Frontend-specific
-	/** Framework for the app (frontend or backend without gkm routes) */
+	// ─────────────────────────────────────────────────────────────────
+
+	/**
+	 * Framework for the app.
+	 *
+	 * Backend frameworks: 'hono', 'better-auth', 'express', 'fastify'
+	 * Frontend frameworks: 'nextjs', 'remix', 'vite'
+	 *
+	 * @example 'nextjs', 'better-auth', 'hono'
+	 */
 	framework?: BackendFramework | FrontendFramework;
-	/** Client generation configuration */
+
+	/**
+	 * Client generation configuration.
+	 * Generates typed API client from backend dependencies.
+	 */
 	client?: ClientConfig;
 
+	// ─────────────────────────────────────────────────────────────────
 	// Deployment
+	// ─────────────────────────────────────────────────────────────────
+
 	/**
-	 * Override domain for this app (per-stage or single value).
-	 * @example 'api.custom.com' or { production: 'api.custom.com', staging: 'api.staging.com' }
+	 * Override domain for this app.
+	 *
+	 * By default, apps get `{appName}.{baseDomain}` (or just `{baseDomain}`
+	 * for the main frontend). Use this to specify a custom domain.
+	 *
+	 * @example
+	 * ```ts
+	 * // Single domain for all stages
+	 * domain: 'api.custom.com'
+	 *
+	 * // Stage-specific domains
+	 * domain: {
+	 *   production: 'api.custom.com',
+	 *   staging: 'api.staging.custom.com',
+	 * }
+	 * ```
 	 */
 	domain?: AppDomainConfig;
 
 	/**
 	 * Required environment variables for entry-based apps.
+	 *
 	 * Use this instead of envParser for apps that don't use gkm routes.
-	 * The deploy command uses this to filter which secrets to embed.
-	 * @example ['DATABASE_URL', 'BETTER_AUTH_SECRET']
+	 * The deploy command uses this list to filter which secrets to embed
+	 * in the Docker image.
+	 *
+	 * @example ['DATABASE_URL', 'BETTER_AUTH_SECRET', 'REDIS_URL']
 	 */
 	requiredEnv?: string[];
 }
 
 /**
  * App configuration input with type-safe dependencies.
- * @template TAppNames - Union of valid app names in the workspace
+ *
+ * @template TAppNames - Union of valid app names in the workspace (auto-inferred)
+ *
+ * @example
+ * ```ts
+ * // Dependencies are type-checked against app names
+ * apps: {
+ *   api: { path: 'apps/api', port: 3000 },
+ *   auth: { path: 'apps/auth', port: 3001 },
+ *   web: {
+ *     path: 'apps/web',
+ *     port: 3002,
+ *     type: 'frontend',
+ *     dependencies: ['api', 'auth'],  // ✓ Valid
+ *     // dependencies: ['invalid'],   // ✗ Type error
+ *   },
+ * }
+ * ```
  */
 export interface AppConfigInput<TAppNames extends string = string>
 	extends AppConfigBase {
