@@ -833,11 +833,18 @@ export interface WorkspaceConfig {
 
 /**
  * Normalized app configuration with resolved defaults.
+ *
+ * This is the internal representation after processing user input.
+ * All optional fields have been resolved to their defaults.
  */
 export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
+	/** App type (always defined after normalization) */
 	type: 'backend' | 'frontend';
+	/** Path to the app */
 	path: string;
+	/** Development server port */
 	port: number;
+	/** Resolved dependencies array (empty array if none) */
 	dependencies: string[];
 	/** Resolved deploy target (app.deploy > deploy.default > 'dokploy') */
 	resolvedDeployTarget: DeployTarget;
@@ -853,14 +860,24 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 
 /**
  * Normalized workspace configuration with resolved defaults.
+ *
+ * This is the internal representation after processing user input.
+ * All optional fields have been resolved to their defaults.
  */
 export interface NormalizedWorkspace {
+	/** Workspace name (resolved from package.json if not specified) */
 	name: string;
+	/** Absolute path to workspace root */
 	root: string;
+	/** Normalized app configurations */
 	apps: Record<string, NormalizedAppConfig>;
+	/** Services configuration (empty object if not specified) */
 	services: ServicesConfig;
+	/** Deploy configuration (empty object if not specified) */
 	deploy: DeployConfig;
+	/** Shared packages configuration (empty object if not specified) */
 	shared: SharedConfig;
+	/** Secrets configuration (empty object if not specified) */
 	secrets: SecretsConfig;
 }
 
