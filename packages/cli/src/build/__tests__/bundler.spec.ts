@@ -54,9 +54,9 @@ async function createEntryPoint(dir: string): Promise<string> {
 	const entryPoint = join(outputDir, 'server.ts');
 	await writeFile(entryPoint, 'console.log("hello");');
 
-	// Create the output file that tsdown would normally create
-	// (since we're mocking execSync, the file won't be created automatically)
-	await writeFile(join(distDir, 'server.js'), 'console.log("bundled");');
+	// Create the output file that esbuild would normally create
+	// (since we're mocking spawnSync, the file won't be created automatically)
+	await writeFile(join(distDir, 'server.mjs'), 'console.log("bundled");');
 
 	return entryPoint;
 }
