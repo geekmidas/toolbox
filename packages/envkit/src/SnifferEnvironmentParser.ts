@@ -207,3 +207,100 @@ class SnifferConfigParser<
 		return '';
 	}
 }
+
+/**
+ * Result of sniffing with fire-and-forget handling.
+ */
+export interface SniffResult {
+	/** Environment variables that were accessed during sniffing */
+	envVars: string[];
+	/** Error thrown during sniffing (env vars may still be captured) */
+	error?: Error;
+	/** Unhandled promise rejections captured during sniffing */
+	unhandledRejections: Error[];
+}
+
+/**
+ * Options for sniffing with fire-and-forget handling.
+ */
+export interface SniffOptions {
+	/**
+	 * Time in milliseconds to wait for fire-and-forget promises to settle.
+	 * Some libraries like better-auth create async operations that may reject
+	 * after the initial event loop tick.
+	 * @default 100
+	 */
+	settleTimeMs?: number;
+}
+
+/**
+ * Executes a sniffing operation with fire-and-forget handling.
+ *
+ * This function:
+ * 1. Captures unhandled promise rejections during the operation
+ * 2. Waits for async operations to settle before returning
+ * 3. Gracefully handles errors without throwing
+ *
+ * Use this when sniffing environment variables from code that may:
+ * - Throw synchronous errors
+ * - Create fire-and-forget promises that reject
+ * - Have async initialization that may fail
+ *
+ * @param sniffer - The SnifferEnvironmentParser instance to use
+ * @param operation - The async operation to execute (e.g., service.register)
+ * @param options - Optional configuration
+ * @returns SniffResult with env vars and any errors encountered
+ *
+ * @example
+ * ```typescript
+ * const sniffer = new SnifferEnvironmentParser();
+ * const result = await sniffWithFireAndForget(sniffer, async () => {
+ *   await service.register({ envParser: sniffer });
+ * });
+ * console.log('Env vars:', result.envVars);
+ * console.log('Error:', result.error);
+ * console.log('Unhandled rejections:', result.unhandledRejections);
+ * ```
+ */
+export async function sniffWithFireAndForget(
+	sniffer: SnifferEnvironmentParser,
+	operation: () => unknown | Promise<unknown>,
+	options: SniffOptions = {},
+): Promise<SniffResult> {
+	const { settleTimeMs = 100 } = options;
+	const unhandledRejections: Error[] = [];
+
+	// Capture unhandled rejections during sniffing (fire-and-forget promises)
+	// Libraries like better-auth create async operations that may reject after
+	// the initial event loop tick
+	const captureRejection = (reason: unknown) => {
+		const err = reason instanceof Error ? reason : new Error(String(reason));
+		unhandledRejections.push(err);
+	};
+	process.on('unhandledRejection', captureRejection);
+
+	let error: Error | undefined;
+
+	try {
+		const result = operation();
+
+		// Handle async result
+		if (result && typeof result === 'object' && 'then' in result) {
+			await Promise.resolve(result).catch((e) => {
+				error = e instanceof Error ? e : new Error(String(e));
+			});
+		}
+	} catch (e) {
+		error = e instanceof Error ? e : new Error(String(e));
+	} finally {
+		// Wait for fire-and-forget promises to settle
+		await new Promise((resolve) => setTimeout(resolve, settleTimeMs));
+		process.off('unhandledRejection', captureRejection);
+	}
+
+	return {
+		envVars: sniffer.getEnvironmentVariables(),
+		error,
+		unhandledRejections,
+	};
+}

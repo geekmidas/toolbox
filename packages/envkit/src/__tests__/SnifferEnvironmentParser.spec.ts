@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
-import { SnifferEnvironmentParser } from '../SnifferEnvironmentParser';
+import {
+	SnifferEnvironmentParser,
+	sniffWithFireAndForget,
+} from '../SnifferEnvironmentParser';
 
 describe('SnifferEnvironmentParser', () => {
 	describe('Environment variable tracking', () => {
@@ -382,5 +385,106 @@ describe('SnifferEnvironmentParser', () => {
 				'SECOND_VAR',
 			]);
 		});
+	});
+});
+
+describe('sniffWithFireAndForget', () => {
+	it('should capture environment variables from synchronous operations', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			sniffer.create((get) => ({
+				dbUrl: get('DATABASE_URL').string(),
+				apiKey: get('API_KEY').string(),
+			}));
+		});
+
+		expect(result.envVars).toEqual(['API_KEY', 'DATABASE_URL']);
+		expect(result.error).toBeUndefined();
+		expect(result.unhandledRejections).toEqual([]);
+	});
+
+	it('should capture environment variables from async operations', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, async () => {
+			await Promise.resolve();
+			sniffer.create((get) => ({
+				redisUrl: get('REDIS_URL').string(),
+			}));
+		});
+
+		expect(result.envVars).toEqual(['REDIS_URL']);
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should capture error when operation throws synchronously', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			sniffer.create((get) => ({
+				value: get('CAPTURED_BEFORE_ERROR').string(),
+			}));
+			throw new Error('Sync error');
+		});
+
+		// Should still capture env vars accessed before the error
+		expect(result.envVars).toEqual(['CAPTURED_BEFORE_ERROR']);
+		expect(result.error).toBeInstanceOf(Error);
+		expect(result.error?.message).toBe('Sync error');
+	});
+
+	it('should capture error when async operation rejects', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, async () => {
+			sniffer.create((get) => ({
+				value: get('CAPTURED_BEFORE_REJECT').string(),
+			}));
+			throw new Error('Async rejection');
+		});
+
+		expect(result.envVars).toEqual(['CAPTURED_BEFORE_REJECT']);
+		expect(result.error).toBeInstanceOf(Error);
+		expect(result.error?.message).toBe('Async rejection');
+	});
+
+	it('should convert non-Error throws to Error objects', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			throw 'string error';
+		});
+
+		expect(result.error).toBeInstanceOf(Error);
+		expect(result.error?.message).toBe('string error');
+	});
+
+	it('should use custom settle time', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+		const startTime = Date.now();
+
+		await sniffWithFireAndForget(
+			sniffer,
+			() => {},
+			{ settleTimeMs: 50 },
+		);
+
+		const elapsed = Date.now() - startTime;
+		// Should wait at least 50ms but not much longer
+		expect(elapsed).toBeGreaterThanOrEqual(50);
+		expect(elapsed).toBeLessThan(200);
+	});
+
+	it('should return empty arrays when no vars accessed and no errors', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			// Do nothing
+		});
+
+		expect(result.envVars).toEqual([]);
+		expect(result.error).toBeUndefined();
+		expect(result.unhandledRejections).toEqual([]);
 	});
 });
