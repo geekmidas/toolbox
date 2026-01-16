@@ -23,12 +23,14 @@ export const apiTemplate: TemplateConfig = {
 		'@hono/node-server': '~1.14.1',
 		hono: '~4.8.2',
 		pino: '~9.6.0',
+		zod: '~4.1.0',
 	},
 
 	devDependencies: {
 		'@biomejs/biome': '~2.3.0',
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 		'@types/node': '~22.0.0',
+		esbuild: '~0.27.0',
 		tsx: '~4.20.0',
 		turbo: '~2.3.0',
 		typescript: '~5.8.2',

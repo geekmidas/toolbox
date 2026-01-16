@@ -37,22 +37,19 @@ export function generatePackageJson(
 		devDependencies['@types/pg'] = '~8.15.0';
 	}
 
-	// Add zod for schema validation (commonly used)
-	dependencies.zod = '~4.1.0';
-
-	// For monorepo apps, remove biome/turbo (they're at root) and lint/fmt scripts
+	// For monorepo apps, remove biome/turbo/esbuild (they're at root) and lint/fmt scripts
+	// zod is at root level for monorepos
 	if (monorepo) {
 		delete devDependencies['@biomejs/biome'];
 		delete devDependencies.turbo;
+		delete devDependencies.esbuild;
+		delete dependencies.zod;
 		delete scripts.lint;
 		delete scripts.fmt;
 		delete scripts['fmt:check'];
 
 		// Add models package as dependency
 		dependencies[`@${name}/models`] = 'workspace:*';
-
-		// Remove zod from api package (it's in models)
-		delete dependencies.zod;
 	}
 
 	// Sort dependencies alphabetically

@@ -25,9 +25,7 @@ export function generateModelsPackage(
 		scripts: {
 			typecheck: 'tsc --noEmit',
 		},
-		dependencies: {
-			zod: '~4.1.0',
-		},
+		dependencies: {},
 		devDependencies: {
 			typescript: '~5.8.2',
 		},
