@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyState, type DokployStageState } from '../state';
 
 // Mock dns/promises lookup
@@ -8,7 +8,7 @@ vi.mock('node:dns/promises', () => ({
 
 // Import after mocking
 import { lookup } from 'node:dns/promises';
-import { verifyDnsRecords, resolveHostnameToIp } from '../dns/index';
+import { resolveHostnameToIp, verifyDnsRecords } from '../dns/index';
 
 describe('resolveHostnameToIp', () => {
 	const mockLookup = vi.mocked(lookup);
