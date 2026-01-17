@@ -407,7 +407,9 @@ export async function initCommand(
 		});
 		console.log('  Initialized git repository on branch main');
 	} catch {
-		console.log('  Could not initialize git repository (git may not be installed)');
+		console.log(
+			'  Could not initialize git repository (git may not be installed)',
+		);
 	}
 
 	// Print success message with next steps
