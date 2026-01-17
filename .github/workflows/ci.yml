@@ -71,5 +71,3 @@ jobs:
       - name: Publish packages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: pnpm changeset publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
