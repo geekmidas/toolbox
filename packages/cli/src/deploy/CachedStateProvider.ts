@@ -73,9 +73,7 @@ export class CachedStateProvider implements StateProvider {
 	 * Get both local and remote state for comparison.
 	 * Used by `gkm state diff` command.
 	 */
-	async diff(
-		stage: string,
-	): Promise<{
+	async diff(stage: string): Promise<{
 		local: DokployStageState | null;
 		remote: DokployStageState | null;
 	}> {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	createDnsProvider,
-	isDnsProvider,
 	type DnsProvider,
 	type DnsRecord,
+	isDnsProvider,
 	type UpsertDnsRecord,
 	type UpsertResult,
 } from '../dns/DnsProvider';

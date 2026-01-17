@@ -13,8 +13,8 @@ import {
 } from '../state';
 import {
 	createDnsProvider,
-	type DnsConfig as SchemaDnsConfig,
 	type DnsProvider,
+	type DnsConfig as SchemaDnsConfig,
 	type UpsertDnsRecord,
 } from './DnsProvider';
 
