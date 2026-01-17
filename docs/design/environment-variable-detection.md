@@ -1,7 +1,8 @@
 # Environment Variable Detection for Build-Time Analysis
 
-**Status**: Draft
+**Status**: Implemented
 **Created**: 2025-10-13
+**Updated**: 2026-01-17
 **Author**: Architecture Team
 
 ## Overview
@@ -736,14 +737,70 @@ export default {
 ## Changelog
 
 - **2025-10-13**: Initial draft created
-- **TBD**: Implementation started
-- **TBD**: Feature released
+- **2026-01-17**: Implementation completed
 
 ---
 
-**Next Steps**:
-1. Review this design document with the team
-2. Get approval for the approach
-3. Create implementation issues/tickets
-4. Begin Phase 1 implementation
-5. Update this document based on implementation learnings
+## Current Implementation
+
+The environment variable detection feature has been implemented in `@geekmidas/cli/deploy/sniffer`. The implementation supports multiple detection strategies:
+
+### Detection Strategies (in order of priority)
+
+1. **Frontend apps**: Returns empty (no server secrets needed)
+2. **Explicit `requiredEnv`**: Uses explicit list from app config
+3. **Entry-based apps**: Imports entry file in subprocess to capture `config.parse()` calls
+4. **Route-based apps**: Loads route files and calls `getEnvironment()` on each construct
+5. **Apps with `envParser` (no routes)**: Runs SnifferEnvironmentParser to detect usage
+6. **Apps with neither**: Returns empty
+
+### Key Files
+
+- `packages/cli/src/deploy/sniffer.ts` - Main sniffing orchestration
+- `packages/cli/src/deploy/sniffer-routes-worker.ts` - Subprocess worker for route-based sniffing
+- `packages/cli/src/deploy/sniffer-worker.ts` - Subprocess worker for entry-based sniffing
+- `packages/cli/src/deploy/sniffer-loader.ts` - Module loader hook for entry sniffing
+- `packages/envkit/src/SnifferEnvironmentParser.ts` - Environment parser that tracks access
+
+### Route-Based App Sniffing
+
+For apps that define `routes` in their config (e.g., `./src/endpoints/**/*.ts`), the sniffer:
+
+1. Spawns a subprocess with tsx loader for TypeScript/path alias support
+2. Uses fast-glob to find all route files matching the pattern
+3. Imports each route file and checks exports for constructs
+4. Calls `construct.getEnvironment()` on each found construct
+5. Aggregates all detected environment variables
+
+The `Construct.getEnvironment()` method sniffs environment variables from:
+- All services attached to the construct
+- Publisher service (if any)
+- Auditor storage service (if any)
+- Database service (if any)
+
+### Example Usage
+
+```typescript
+import { sniffAppEnvironment } from '@geekmidas/cli/deploy/sniffer';
+
+const app = {
+  type: 'backend',
+  path: 'apps/api',
+  port: 3000,
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env#envParser',
+  dependencies: [],
+  resolvedDeployTarget: 'dokploy',
+};
+
+const result = await sniffAppEnvironment(app, 'api', workspacePath);
+// result: { appName: 'api', requiredEnvVars: ['DATABASE_URL', 'REDIS_URL', ...] }
+```
+
+### Deployment Integration
+
+The sniffer is used during `gkm deploy` to:
+1. Detect required environment variables for each app
+2. Resolve values from user secrets, auto-generated values, or infrastructure config
+3. Validate all required variables are available before deployment
+4. Inject resolved values into Docker containers or deployment configuration
