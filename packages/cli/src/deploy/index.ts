@@ -1320,12 +1320,41 @@ export async function workspaceDeployCommand(
 					buildArgs,
 				});
 
-				// Prepare environment variables - ONLY inject GKM_MASTER_KEY
+				// Prepare environment variables
 				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
 
 				// Add master key for runtime decryption (NOT plain secrets)
-				if (appSecrets && appSecrets.masterKey) {
+				if (appSecrets?.masterKey) {
 					envVars.push(`GKM_MASTER_KEY=${appSecrets.masterKey}`);
+				}
+
+				// Add per-app DATABASE_URL if this app needs it
+				const appDbCreds = perAppDbCredentials.get(appName);
+				if (appDbCreds && provisionedPostgres) {
+					const databaseUrl = buildPerAppDatabaseUrl(
+						appDbCreds.dbUser,
+						appDbCreds.dbPassword,
+						provisionedPostgres.appName,
+						provisionedPostgres.databaseName,
+					);
+					envVars.push(`DATABASE_URL=${databaseUrl}`);
+					logger.log(
+						`      Added DATABASE_URL for user "${appDbCreds.dbUser}"`,
+					);
+				}
+
+				// Add REDIS_URL if this app needs it
+				const appRequirements = sniffedApps.get(appName);
+				if (
+					appRequirements?.requiredEnvVars.includes('REDIS_URL') &&
+					provisionedRedis
+				) {
+					const password = provisionedRedis.databasePassword
+						? `:${provisionedRedis.databasePassword}@`
+						: '';
+					const redisUrl = `redis://${password}${provisionedRedis.appName}:6379`;
+					envVars.push(`REDIS_URL=${redisUrl}`);
+					logger.log(`      Added REDIS_URL`);
 				}
 
 				// Configure and deploy application in Dokploy
