@@ -1049,9 +1049,7 @@ describe('loadSecretsForApp', () => {
 
 			const secrets = await loadSecretsForApp(testDir);
 
-			expect(secrets.DATABASE_URL).toBe(
-				'postgresql://localhost/developmentdb',
-			);
+			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/developmentdb');
 		});
 
 		it('should return empty object if no secrets exist', async () => {
