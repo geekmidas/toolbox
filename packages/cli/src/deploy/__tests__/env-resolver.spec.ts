@@ -151,7 +151,11 @@ describe('buildRedisUrl', () => {
 	});
 
 	it('should encode special characters in password', () => {
-		const redis = { host: 'redis.example.com', port: 6380, password: 'p@ss:word' };
+		const redis = {
+			host: 'redis.example.com',
+			port: 6380,
+			password: 'p@ss:word',
+		};
 
 		const url = buildRedisUrl(redis);
 
@@ -194,15 +198,15 @@ describe('resolveEnvVar', () => {
 	it('should resolve NODE_ENV to production for all stages (deployed apps)', () => {
 		// NODE_ENV is always 'production' for deployed apps
 		// gkm dev handles development mode separately
-		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'production' }))).toBe(
-			'production',
-		);
+		expect(
+			resolveEnvVar('NODE_ENV', createContext({ stage: 'production' })),
+		).toBe('production');
 		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'staging' }))).toBe(
 			'production',
 		);
-		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'development' }))).toBe(
-			'production',
-		);
+		expect(
+			resolveEnvVar('NODE_ENV', createContext({ stage: 'development' })),
+		).toBe('production');
 	});
 
 	it('should resolve DATABASE_URL when credentials and postgres are provided', () => {
@@ -243,7 +247,9 @@ describe('resolveEnvVar', () => {
 	it('should resolve BETTER_AUTH_URL from app hostname', () => {
 		const context = createContext({ appHostname: 'auth.myapp.com' });
 
-		expect(resolveEnvVar('BETTER_AUTH_URL', context)).toBe('https://auth.myapp.com');
+		expect(resolveEnvVar('BETTER_AUTH_URL', context)).toBe(
+			'https://auth.myapp.com',
+		);
 	});
 
 	it('should resolve BETTER_AUTH_SECRET by generating and storing secret', () => {
@@ -269,7 +275,9 @@ describe('resolveEnvVar', () => {
 	it('should return undefined for BETTER_AUTH_TRUSTED_ORIGINS when no frontend URLs', () => {
 		const context = createContext({ frontendUrls: [] });
 
-		expect(resolveEnvVar('BETTER_AUTH_TRUSTED_ORIGINS', context)).toBeUndefined();
+		expect(
+			resolveEnvVar('BETTER_AUTH_TRUSTED_ORIGINS', context),
+		).toBeUndefined();
 	});
 
 	it('should resolve GKM_MASTER_KEY from context', () => {
@@ -366,7 +374,10 @@ describe('resolveEnvVars', () => {
 			postgres: { host: 'postgres', port: 5432, database: 'mydb' },
 		});
 
-		const result = resolveEnvVars(['PORT', 'NODE_ENV', 'DATABASE_URL'], context);
+		const result = resolveEnvVars(
+			['PORT', 'NODE_ENV', 'DATABASE_URL'],
+			context,
+		);
 
 		expect(result.resolved).toEqual({
 			PORT: '3000',
@@ -400,12 +411,20 @@ describe('resolveEnvVars', () => {
 
 describe('formatMissingVarsError', () => {
 	it('should format error message with missing variables', () => {
-		const error = formatMissingVarsError('api', ['DATABASE_URL', 'REDIS_URL'], 'production');
+		const error = formatMissingVarsError(
+			'api',
+			['DATABASE_URL', 'REDIS_URL'],
+			'production',
+		);
 
-		expect(error).toContain('Deployment failed: api is missing required environment variables');
+		expect(error).toContain(
+			'Deployment failed: api is missing required environment variables',
+		);
 		expect(error).toContain('- DATABASE_URL');
 		expect(error).toContain('- REDIS_URL');
-		expect(error).toContain('gkm secrets:set <VAR_NAME> <value> --stage production');
+		expect(error).toContain(
+			'gkm secrets:set <VAR_NAME> <value> --stage production',
+		);
 	});
 
 	it('should handle single missing variable', () => {
@@ -452,7 +471,10 @@ describe('validateEnvVars', () => {
 	it('should return valid=false when vars are missing', () => {
 		const context = createContext();
 
-		const result = validateEnvVars(['PORT', 'DATABASE_URL', 'CUSTOM_VAR'], context);
+		const result = validateEnvVars(
+			['PORT', 'DATABASE_URL', 'CUSTOM_VAR'],
+			context,
+		);
 
 		expect(result.valid).toBe(false);
 		expect(result.missing).toEqual(['DATABASE_URL', 'CUSTOM_VAR']);
