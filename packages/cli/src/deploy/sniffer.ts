@@ -2,11 +2,29 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { Construct } from '@geekmidas/constructs';
+import { Endpoint } from '@geekmidas/constructs/endpoints';
+import { Function as GkmFunction } from '@geekmidas/constructs/functions';
+import { Cron } from '@geekmidas/constructs/crons';
+import { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
+import fg from 'fast-glob';
 import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Check if a value is a gkm construct (Endpoint, Function, Cron, or Subscriber).
+ */
+function isConstruct(value: unknown): value is Construct {
+	return (
+		Endpoint.isEndpoint(value) ||
+		GkmFunction.isFunction(value) ||
+		Cron.isCron(value) ||
+		Subscriber.isSubscriber(value)
+	);
+}
 
 /**
  * Resolve the path to a sniffer helper file.
@@ -67,8 +85,9 @@ export interface SniffAppOptions {
  * 1. Frontend apps: Returns empty (no server secrets)
  * 2. Apps with `requiredEnv`: Uses explicit list from config
  * 3. Entry apps: Imports entry file in subprocess to capture config.parse() calls
- * 4. Apps with `envParser`: Runs SnifferEnvironmentParser to detect usage
- * 5. Apps with neither: Returns empty
+ * 4. Route-based apps: Loads route files and calls getEnvironment() on each construct
+ * 5. Apps with `envParser` (no routes): Runs SnifferEnvironmentParser to detect usage
+ * 6. Apps with neither: Returns empty
  *
  * This function handles "fire and forget" async operations gracefully,
  * capturing errors and unhandled rejections without failing the build.
@@ -110,7 +129,20 @@ export async function sniffAppEnvironment(
 		return { appName, requiredEnvVars: result.envVars };
 	}
 
-	// 4. Apps with envParser - run sniffer to detect env var usage
+	// 4. Route-based apps - load routes and call getEnvironment() on each construct
+	if (app.routes) {
+		const result = await sniffRouteFiles(app.routes, app.path, workspacePath);
+
+		if (logWarnings && result.error) {
+			console.warn(
+				`[sniffer] ${appName}: Route sniffing threw error (env vars still captured): ${result.error.message}`,
+			);
+		}
+
+		return { appName, requiredEnvVars: result.envVars };
+	}
+
+	// 5. Apps with envParser but no routes - run sniffer to detect env var usage
 	if (app.envParser) {
 		const result = await sniffEnvParser(app.envParser, app.path, workspacePath);
 
@@ -233,6 +265,73 @@ async function sniffEntryFile(
 }
 
 /**
+ * Sniff route files by loading constructs and calling getEnvironment().
+ *
+ * Route-based apps have endpoints, functions, crons, and subscribers that
+ * use services. Each service's register() method accesses environment variables.
+ * This function mimics what the bundler does during build to capture those vars.
+ *
+ * @param routes - Glob pattern(s) for route files
+ * @param appPath - The app's path relative to workspace (e.g., 'apps/api')
+ * @param workspacePath - Absolute path to workspace root
+ * @returns EntrySniffResult with env vars and optional error
+ */
+async function sniffRouteFiles(
+	routes: string | string[],
+	appPath: string,
+	workspacePath: string,
+): Promise<EntrySniffResult> {
+	const fullAppPath = resolve(workspacePath, appPath);
+	const patterns = Array.isArray(routes) ? routes : [routes];
+
+	const envVars = new Set<string>();
+	let error: Error | undefined;
+
+	try {
+		// Find all route files matching the patterns
+		const files = await fg(patterns, {
+			cwd: fullAppPath,
+			absolute: true,
+		});
+
+		// Import each file and find constructs
+		for (const file of files) {
+			try {
+				const module = await import(file);
+
+				// Check all exports for constructs
+				for (const [, exportValue] of Object.entries(module)) {
+					if (isConstruct(exportValue)) {
+						// Call getEnvironment() to capture env vars from services
+						try {
+							const constructEnvVars = await exportValue.getEnvironment();
+							constructEnvVars.forEach((v) => envVars.add(v));
+						} catch (e) {
+							// Individual construct may fail, continue with others
+							console.warn(
+								`[sniffer] Failed to get environment for construct in ${file}: ${e instanceof Error ? e.message : String(e)}`,
+							);
+						}
+					}
+				}
+			} catch (e) {
+				// Individual file import may fail, continue with others
+				console.warn(
+					`[sniffer] Failed to import ${file}: ${e instanceof Error ? e.message : String(e)}`,
+				);
+			}
+		}
+	} catch (e) {
+		error = e instanceof Error ? e : new Error(String(e));
+	}
+
+	return {
+		envVars: Array.from(envVars).sort(),
+		error,
+	};
+}
+
+/**
  * Run the SnifferEnvironmentParser on an envParser module to detect
  * which environment variables it accesses.
  *
@@ -333,4 +432,8 @@ export async function sniffAllApps(
 }
 
 // Export for testing
-export { sniffEnvParser as _sniffEnvParser, sniffEntryFile as _sniffEntryFile };
+export {
+	sniffEnvParser as _sniffEnvParser,
+	sniffEntryFile as _sniffEntryFile,
+	sniffRouteFiles as _sniffRouteFiles,
+};
