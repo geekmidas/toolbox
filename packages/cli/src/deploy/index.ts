@@ -64,6 +64,7 @@ import {
 	isDeployTargetSupported,
 } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { orchestrateDns } from './dns/index.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
 import {
@@ -73,29 +74,28 @@ import {
 	type DokployRedis,
 } from './dokploy-api';
 import {
-	createEmptyState,
-	getApplicationId,
-	getPostgresId,
-	getRedisId,
-	readStageState,
-	setApplicationId,
-	setPostgresId,
-	setRedisId,
-	writeStageState,
-} from './state.js';
-import { orchestrateDns } from './dns/index.js';
-import {
 	generatePublicUrlBuildArgs,
 	getPublicUrlArgNames,
 	isMainFrontendApp,
 	resolveHost,
 } from './domain.js';
 import { updateConfig } from './init';
-import {
-	generateSecretsReport,
-	prepareSecretsForAllApps,
-} from './secrets.js';
+import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
+import {
+	type AppDbCredentials,
+	createEmptyState,
+	getAllAppCredentials,
+	getApplicationId,
+	getPostgresId,
+	getRedisId,
+	readStageState,
+	setAppCredentials,
+	setApplicationId,
+	setPostgresId,
+	setRedisId,
+	writeStageState,
+} from './state.js';
 import type {
 	AppDeployResult,
 	DeployOptions,
