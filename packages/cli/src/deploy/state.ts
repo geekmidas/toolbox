@@ -9,6 +9,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
+ * Per-app database credentials
+ */
+export interface AppDbCredentials {
+	dbUser: string;
+	dbPassword: string;
+}
+
+/**
  * State for a single stage deployment
  */
 export interface DokployStageState {
@@ -20,6 +28,8 @@ export interface DokployStageState {
 		postgresId?: string;
 		redisId?: string;
 	};
+	/** Per-app database credentials for reuse on subsequent deploys */
+	appCredentials?: Record<string, AppDbCredentials>;
 	lastDeployedAt: string;
 }
 
@@ -143,4 +153,37 @@ export function getRedisId(state: DokployStageState | null): string | undefined 
  */
 export function setRedisId(state: DokployStageState, redisId: string): void {
 	state.services.redisId = redisId;
+}
+
+/**
+ * Get app credentials from state
+ */
+export function getAppCredentials(
+	state: DokployStageState | null,
+	appName: string,
+): AppDbCredentials | undefined {
+	return state?.appCredentials?.[appName];
+}
+
+/**
+ * Set app credentials in state (mutates state)
+ */
+export function setAppCredentials(
+	state: DokployStageState,
+	appName: string,
+	credentials: AppDbCredentials,
+): void {
+	if (!state.appCredentials) {
+		state.appCredentials = {};
+	}
+	state.appCredentials[appName] = credentials;
+}
+
+/**
+ * Get all app credentials from state
+ */
+export function getAllAppCredentials(
+	state: DokployStageState | null,
+): Record<string, AppDbCredentials> {
+	return state?.appCredentials ?? {};
 }
