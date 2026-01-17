@@ -1,3 +1,4 @@
+import type { z } from 'zod/v4';
 import type {
 	GkmConfig,
 	HooksConfig,
@@ -9,6 +10,7 @@ import type {
 	TelescopeConfig,
 } from '../types.js';
 import type { StateConfig } from '../deploy/StateProvider.js';
+import type { DnsConfigSchema } from './schema.js';
 
 /**
  * Deploy target for an app.
@@ -249,7 +251,7 @@ export interface DokployWorkspaceConfig {
 /**
  * DNS provider types for automatic DNS record creation.
  */
-export type DnsProvider = 'hostinger' | 'cloudflare' | 'manual';
+export type DnsProvider = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
 
 /**
  * DNS configuration for automatic record creation during deployment.
@@ -257,13 +259,20 @@ export type DnsProvider = 'hostinger' | 'cloudflare' | 'manual';
  * When configured, the deploy command will automatically create DNS
  * A records pointing to your Dokploy server for each app's domain.
  *
+ * Derived from Zod schema for type safety.
+ *
  * @example
  * ```ts
  * // Auto-create DNS records at Hostinger
  * dns: {
  *   provider: 'hostinger',
  *   domain: 'traflabs.io',
- *   autoCreate: true,
+ * }
+ *
+ * // Route53 DNS (uses AWS_REGION env var or optional region)
+ * dns: {
+ *   provider: 'route53',
+ *   domain: 'traflabs.io',
  * }
  *
  * // Manual mode - just print required records
@@ -273,34 +282,7 @@ export type DnsProvider = 'hostinger' | 'cloudflare' | 'manual';
  * }
  * ```
  */
-export interface DnsConfig {
-	/**
-	 * DNS provider for automatic record creation.
-	 * - 'hostinger': Use Hostinger DNS API
-	 * - 'cloudflare': Use Cloudflare DNS API (future)
-	 * - 'manual': Don't create records, just print required records
-	 */
-	provider: DnsProvider;
-
-	/**
-	 * Root domain where records will be created.
-	 * @example 'traflabs.io', 'example.com'
-	 */
-	domain: string;
-
-	/**
-	 * Automatically create DNS records during deploy.
-	 * If false, only prints required records for manual setup.
-	 * @default true
-	 */
-	autoCreate?: boolean;
-
-	/**
-	 * TTL for created DNS records in seconds.
-	 * @default 300 (5 minutes)
-	 */
-	ttl?: number;
-}
+export type DnsConfig = z.infer<typeof DnsConfigSchema>;
 
 /**
  * Deployment configuration for the workspace.
@@ -326,7 +308,6 @@ export interface DnsConfig {
  *   dns: {
  *     provider: 'hostinger',
  *     domain: 'myapp.com',
- *     autoCreate: true,
  *   },
  * }
  * ```
