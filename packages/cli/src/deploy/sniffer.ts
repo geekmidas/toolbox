@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -6,6 +7,39 @@ import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Resolve the path to a sniffer helper file.
+ * Handles both dev (.ts with tsx) and production (.mjs from dist).
+ *
+ * In production: sniffer.ts is bundled into dist/index.mjs, but sniffer helper
+ * files are output to dist/deploy/ as standalone modules for subprocess loading.
+ *
+ * In development: All files are in src/deploy/ and loaded via tsx.
+ */
+function resolveSnifferFile(baseName: string): string {
+	// Try deploy/ subdirectory first (production: bundled code is at dist/index.mjs,
+	// but sniffer files are at dist/deploy/)
+	const deployMjsPath = resolve(__dirname, 'deploy', `${baseName}.mjs`);
+	if (existsSync(deployMjsPath)) {
+		return deployMjsPath;
+	}
+
+	// Try same directory .mjs (production: if running from dist/deploy/ directly)
+	const mjsPath = resolve(__dirname, `${baseName}.mjs`);
+	if (existsSync(mjsPath)) {
+		return mjsPath;
+	}
+
+	// Try same directory .ts (development with tsx: all files in src/deploy/)
+	const tsPath = resolve(__dirname, `${baseName}.ts`);
+	if (existsSync(tsPath)) {
+		return tsPath;
+	}
+
+	// Fallback to .ts (will error if neither exists)
+	return tsPath;
+}
 
 // Re-export SniffResult for consumers
 export type { SniffResult } from '@geekmidas/envkit/sniffer';
@@ -134,8 +168,8 @@ async function sniffEntryFile(
 	workspacePath: string,
 ): Promise<EntrySniffResult> {
 	const fullEntryPath = resolve(workspacePath, appPath, entryPath);
-	const loaderPath = resolve(__dirname, 'sniffer-loader.ts');
-	const workerPath = resolve(__dirname, 'sniffer-worker.ts');
+	const loaderPath = resolveSnifferFile('sniffer-loader');
+	const workerPath = resolveSnifferFile('sniffer-worker');
 
 	return new Promise((resolvePromise) => {
 		const child = spawn(

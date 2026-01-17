@@ -7,13 +7,18 @@
  * This file is registered via module.register() from sniffer-loader.ts.
  */
 
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Resolve path to the patched envkit module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const patchedEnvkitPath = join(__dirname, 'sniffer-envkit-patch.ts');
+
+// Try .mjs first (production dist), then .ts (development)
+const mjsPath = join(__dirname, 'sniffer-envkit-patch.mjs');
+const tsPath = join(__dirname, 'sniffer-envkit-patch.ts');
+const patchedEnvkitPath = existsSync(mjsPath) ? mjsPath : tsPath;
 
 type ResolveContext = {
 	conditions: string[];

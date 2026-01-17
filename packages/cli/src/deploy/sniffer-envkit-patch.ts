@@ -22,6 +22,21 @@ if (!globalThis.__envSniffer) {
 	globalThis.__envSniffer = new SnifferEnvironmentParser();
 }
 
+// Type for the config parser returned by create()
+interface ConfigParser<T> {
+	parse(): T;
+	safeParse(): { success: true; data: T } | { success: false; error: Error };
+}
+
+// Type for the env fetcher function
+type EnvFetcher = (name: string) => {
+	string(): { parse(): string; safeParse(): unknown };
+	number(): { parse(): number; safeParse(): unknown };
+	boolean(): { parse(): boolean; safeParse(): unknown };
+	optional(): EnvFetcher;
+	default(value: unknown): EnvFetcher;
+};
+
 /**
  * Patched EnvironmentParser that uses the global sniffer instance.
  *
@@ -30,9 +45,10 @@ if (!globalThis.__envSniffer) {
  * parameter for API compatibility but ignores it since we're sniffing.
  */
 class PatchedEnvironmentParser {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	create(builder: (get: any) => any) {
-		return globalThis.__envSniffer!.create(builder);
+	create<TReturn extends Record<string, unknown>>(
+		builder: (get: EnvFetcher) => TReturn,
+	): ConfigParser<TReturn> {
+		return globalThis.__envSniffer!.create(builder) as ConfigParser<TReturn>;
 	}
 }
 
