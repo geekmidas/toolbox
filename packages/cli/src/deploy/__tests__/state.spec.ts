@@ -423,7 +423,9 @@ describe('state management', () => {
 				lastDeployedAt: '2024-01-01T00:00:00.000Z',
 			};
 
-			expect(getGeneratedSecret(state, 'api', 'BETTER_AUTH_SECRET')).toBeUndefined();
+			expect(
+				getGeneratedSecret(state, 'api', 'BETTER_AUTH_SECRET'),
+			).toBeUndefined();
 		});
 
 		it('should return undefined when secret name not found', () => {
@@ -445,11 +447,15 @@ describe('state management', () => {
 		it('should return undefined when no generatedSecrets', () => {
 			const state = createEmptyState('production', 'env_123');
 
-			expect(getGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET')).toBeUndefined();
+			expect(
+				getGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET'),
+			).toBeUndefined();
 		});
 
 		it('should return undefined when state is null', () => {
-			expect(getGeneratedSecret(null, 'auth', 'BETTER_AUTH_SECRET')).toBeUndefined();
+			expect(
+				getGeneratedSecret(null, 'auth', 'BETTER_AUTH_SECRET'),
+			).toBeUndefined();
 		});
 	});
 
@@ -459,7 +465,9 @@ describe('state management', () => {
 
 			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
 
-			expect(state.generatedSecrets?.auth?.BETTER_AUTH_SECRET).toBe('secret123');
+			expect(state.generatedSecrets?.auth?.BETTER_AUTH_SECRET).toBe(
+				'secret123',
+			);
 		});
 
 		it('should initialize generatedSecrets if not exists', () => {
