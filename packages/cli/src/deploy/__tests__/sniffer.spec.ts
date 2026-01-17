@@ -491,11 +491,7 @@ describe('sniffAppEnvironment with envParser apps', () => {
 			envParser: './valid-env-parser.ts#envParser',
 		};
 
-		const result = await sniffAppEnvironment(
-			app,
-			'api',
-			envParserFixturesPath,
-		);
+		const result = await sniffAppEnvironment(app, 'api', envParserFixturesPath);
 
 		expect(result.appName).toBe('api');
 		expect(result.requiredEnvVars).toContain('PORT');
@@ -514,11 +510,7 @@ describe('sniffAppEnvironment with envParser apps', () => {
 			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
 		};
 
-		const result = await sniffAppEnvironment(
-			app,
-			'api',
-			envParserFixturesPath,
-		);
+		const result = await sniffAppEnvironment(app, 'api', envParserFixturesPath);
 
 		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
 		// Should NOT contain the sniffed vars
@@ -663,11 +655,7 @@ describe('sniffAppEnvironment with route-based apps', () => {
 			envParser: './src/config/env#envParser', // Should be ignored when routes exist
 		};
 
-		const result = await sniffAppEnvironment(
-			app,
-			'api',
-			routeAppsFixturesPath,
-		);
+		const result = await sniffAppEnvironment(app, 'api', routeAppsFixturesPath);
 
 		expect(result.appName).toBe('api');
 		expect(result.requiredEnvVars).toContain('DATABASE_URL');
@@ -686,11 +674,7 @@ describe('sniffAppEnvironment with route-based apps', () => {
 			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
 		};
 
-		const result = await sniffAppEnvironment(
-			app,
-			'api',
-			routeAppsFixturesPath,
-		);
+		const result = await sniffAppEnvironment(app, 'api', routeAppsFixturesPath);
 
 		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
 		// Should NOT contain the sniffed vars
