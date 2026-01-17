@@ -1,41 +1,106 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-// Mock the credentials module
-vi.mock('../../auth/credentials', () => ({
-	getHostingerToken: vi.fn(),
-}));
-
-// Mock the HostingerApi
-vi.mock('../dns/hostinger-api', () => ({
-	HostingerApi: vi.fn().mockImplementation(() => ({
-		getRecords: vi.fn(),
-		upsertRecords: vi.fn(),
-	})),
-}));
-
-import { getHostingerToken } from '../../auth/credentials';
-import { HostingerApi } from '../dns/hostinger-api';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from 'vitest';
 import { HostingerProvider } from '../dns/HostingerProvider';
 
+/**
+ * HostingerProvider Tests
+ *
+ * Uses MSW to mock the Hostinger DNS API.
+ * API Base: https://developers.hostinger.com
+ */
 describe('HostingerProvider', () => {
-	const mockGetHostingerToken = vi.mocked(getHostingerToken);
-	let mockApi: {
-		getRecords: ReturnType<typeof vi.fn>;
-		upsertRecords: ReturnType<typeof vi.fn>;
-	};
+	const HOSTINGER_API_BASE = 'https://developers.hostinger.com';
+	const TEST_DOMAIN = 'example.com';
+	const TEST_TOKEN = 'test-hostinger-token';
+
+	// Track current mock records for realistic API simulation
+	let mockRecords: Array<{
+		name: string;
+		type: string;
+		ttl: number;
+		records: Array<{ content: string }>;
+	}> = [];
+
+	// MSW server setup
+	const server = setupServer(
+		// GET /api/dns/v1/zones/{domain} - Get DNS records
+		http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, ({ request }) => {
+			// Check authorization
+			const authHeader = request.headers.get('Authorization');
+			if (authHeader !== `Bearer ${TEST_TOKEN}`) {
+				return HttpResponse.json(
+					{ message: 'Unauthorized' },
+					{ status: 401 },
+				);
+			}
+
+			return HttpResponse.json({ data: mockRecords });
+		}),
+
+		// PUT /api/dns/v1/zones/{domain} - Upsert DNS records
+		http.put(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, async ({ request }) => {
+			// Check authorization
+			const authHeader = request.headers.get('Authorization');
+			if (authHeader !== `Bearer ${TEST_TOKEN}`) {
+				return HttpResponse.json(
+					{ message: 'Unauthorized' },
+					{ status: 401 },
+				);
+			}
+
+			const body = await request.json() as {
+				overwrite?: boolean;
+				zone: Array<{
+					name: string;
+					type: string;
+					ttl: number;
+					records: Array<{ content: string }>;
+				}>;
+			};
+
+			// Simulate upsert behavior
+			for (const record of body.zone) {
+				const existingIndex = mockRecords.findIndex(
+					(r) => r.name === record.name && r.type === record.type,
+				);
+				if (existingIndex >= 0) {
+					mockRecords[existingIndex] = record;
+				} else {
+					mockRecords.push(record);
+				}
+			}
+
+			return new HttpResponse(null, { status: 204 });
+		}),
+	);
+
+	beforeAll(() => {
+		// Set the token via environment variable
+		process.env.HOSTINGER_API_TOKEN = TEST_TOKEN;
+		server.listen({ onUnhandledRequest: 'error' });
+	});
 
 	beforeEach(() => {
-		vi.clearAllMocks();
-		mockGetHostingerToken.mockResolvedValue('test-token');
-		mockApi = {
-			getRecords: vi.fn(),
-			upsertRecords: vi.fn(),
-		};
-		vi.mocked(HostingerApi).mockImplementation(() => mockApi as any);
+		// Reset mock records before each test
+		mockRecords = [];
 	});
 
 	afterEach(() => {
-		vi.restoreAllMocks();
+		server.resetHandlers();
+	});
+
+	afterAll(() => {
+		delete process.env.HOSTINGER_API_TOKEN;
+		server.close();
 	});
 
 	describe('name', () => {
