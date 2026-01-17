@@ -64,11 +64,7 @@ import {
 	isDeployTargetSupported,
 } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
-import {
-	orchestrateDns,
-	resolveHostnameToIp,
-	verifyDnsRecords,
-} from './dns/index.js';
+import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
 import {
