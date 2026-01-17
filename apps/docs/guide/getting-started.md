@@ -3,21 +3,30 @@
 ## Prerequisites
 
 - Node.js >= 22.0.0
-- pnpm >= 10.11.0
+- pnpm >= 10.13.1
 
 ## Installation
 
 Install the packages you need:
 
 ```bash
-# For API development
-pnpm add @geekmidas/api
+# Core framework for building APIs
+pnpm add @geekmidas/constructs
+
+# CLI tools for development and building
+pnpm add -D @geekmidas/cli
 
 # For testing utilities
 pnpm add -D @geekmidas/testkit
 
 # For environment configuration
 pnpm add @geekmidas/envkit
+
+# For error handling
+pnpm add @geekmidas/errors
+
+# For logging
+pnpm add @geekmidas/logger
 ```
 
 ## Quick Start
@@ -25,7 +34,7 @@ pnpm add @geekmidas/envkit
 ### Building a REST API
 
 ```typescript
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 const createUser = e
