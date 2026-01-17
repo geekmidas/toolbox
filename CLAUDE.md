@@ -36,8 +36,10 @@ toolbox/
 │   ├── schema/       # StandardSchema type utilities
 │   ├── services/     # Service discovery and dependency injection
 │   ├── storage/      # Cloud storage abstraction (S3)
+│   ├── studio/       # Development tools dashboard with database browser
 │   ├── telescope/    # Laravel-style debugging dashboard
-│   └── testkit/      # Testing utilities and database factories
+│   ├── testkit/      # Testing utilities and database factories
+│   └── ui/           # Shared React UI components (shadcn/ui based)
 ├── apps/
 │   ├── docs/         # VitePress documentation site
 │   └── example/      # Example API application
@@ -265,19 +267,41 @@ const endpoint = e
 ```
 
 #### @geekmidas/cloud
-Cloud infrastructure utilities with SST integration.
+Cloud infrastructure utilities with SST integration for serverless deployments.
 
 **Key Features:**
 - SST resource utilities and helpers
-- Cloud service abstractions
+- Cloud service abstractions (AWS, etc.)
 - Infrastructure configuration helpers
+- Resource name resolution from SST outputs
+- Environment variable mapping for cloud resources
 
 **Usage Pattern:**
 ```typescript
-import { getResourceFromSst } from '@geekmidas/cloud/utils';
+import { getResourceFromSst, getSstResourceName } from '@geekmidas/cloud/utils';
 
 // Get SST resources in your application
 const bucketName = getResourceFromSst('MyBucket');
+
+// Get resource with fallback for local development
+const queueUrl = getSstResourceName('TaskQueue', process.env.LOCAL_QUEUE_URL);
+
+// Common pattern for database connection
+const databaseUrl = getResourceFromSst('DatabaseUrl') ?? process.env.DATABASE_URL;
+```
+
+**Integration with Services:**
+```typescript
+import { getResourceFromSst } from '@geekmidas/cloud/utils';
+import type { Service } from '@geekmidas/services';
+
+const s3Service = {
+  serviceName: 's3' as const,
+  async register(envParser) {
+    const bucket = getResourceFromSst('UploadBucket');
+    return new S3Client({ bucket });
+  }
+} satisfies Service<'s3', S3Client>;
 ```
 
 #### @geekmidas/testkit
@@ -310,6 +334,64 @@ const userData = {
   ...faker.timestamps(),
   price: faker.price(),
 };
+```
+
+#### @geekmidas/ui
+Shared React UI components built on shadcn/ui and Radix UI primitives.
+
+**Key Features:**
+- Pre-built React components following shadcn/ui patterns
+- Radix UI primitives for accessibility
+- Tailwind CSS styling with CSS variables for theming
+- TypeScript support with full type definitions
+- Tree-shakable component exports
+- Dark mode support
+
+**Component Categories:**
+- **Layout**: Card, Container, Separator, Tabs
+- **Data Display**: Table, Badge, Avatar, Code blocks
+- **Feedback**: Alert, Toast, Progress, Skeleton
+- **Forms**: Button, Input, Select, Checkbox, Switch
+- **Overlays**: Dialog, Dropdown, Popover, Tooltip
+
+**Usage Pattern:**
+```typescript
+import { Button } from '@geekmidas/ui/components/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@geekmidas/ui/components/card';
+import { Input } from '@geekmidas/ui/components/input';
+
+function UserForm() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Create User</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Input placeholder="Enter name" />
+        <Button variant="default">Submit</Button>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+**Theming:**
+```typescript
+// Use CSS variables for theme customization
+// In your global CSS:
+:root {
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --accent: 210 40% 96.1%;
+  // ... more variables
+}
+
+.dark {
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  // ... dark mode overrides
+}
 ```
 
 #### @geekmidas/envkit
@@ -502,6 +584,72 @@ const uploadUrl = await storage.getUploadURL({
   contentType: 'application/pdf'
 });
 ```
+
+#### @geekmidas/studio
+Unified development dashboard combining request monitoring and database browsing capabilities.
+
+**Key Features:**
+- Wraps @geekmidas/telescope for request/exception monitoring
+- Database schema introspection via Kysely
+- Cursor-based pagination for efficient data browsing
+- Filtering and sorting with multiple operators
+- WebSocket real-time updates
+- Configurable table exclusions
+- Binary column handling options
+
+**Key Components:**
+- `Studio<DB>` - Main orchestrator combining Telescope and DataBrowser
+- `DataBrowser<DB>` - Kysely-based database introspection
+
+**Usage Pattern:**
+```typescript
+import { Studio, InMemoryStorage } from '@geekmidas/studio';
+import { createMiddleware, createUI } from '@geekmidas/studio/server/hono';
+import type { Database } from './db';
+
+const studio = new Studio<Database>({
+  storage: new InMemoryStorage(),
+  db: kyselyInstance,
+  enabled: process.env.NODE_ENV === 'development',
+  excludeTables: ['migrations', 'sessions'], // Tables to hide
+});
+
+const app = new Hono();
+
+// Add middleware to capture requests
+app.use('*', createMiddleware(studio));
+
+// Mount the dashboard
+app.route('/__studio', createUI(studio));
+
+// Access dashboard at http://localhost:3000/__studio
+```
+
+**With `gkm dev`:**
+```typescript
+// gkm.config.ts
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+  studio: {
+    enabled: true,
+    path: '/__studio',
+  },
+});
+
+// Run: gkm dev
+// Studio available at http://localhost:3000/__studio
+```
+
+**Database Browser Features:**
+- Schema introspection with column types
+- Multiple filter operators (equals, contains, greater than, etc.)
+- Sorting by any column
+- Configurable page sizes
+- Custom cursor strategies per table
 
 #### @geekmidas/telescope
 Laravel Telescope-style debugging and monitoring dashboard for development.
@@ -1214,9 +1362,21 @@ Each package uses subpath exports for better tree-shaking:
 
 ### @geekmidas/cli
 - `/` - CLI utilities
+- `/config` - Configuration types and defineConfig helper
 - `/openapi` - OpenAPI generation utilities
 - `/openapi-react-query` - React Query hooks generation
+- `/workspace` - Workspace utilities for monorepo management
 - Binary `gkm` - Command line interface for builds and code generation
+
+**CLI Commands:**
+- `gkm dev` - Start development server with hot-reload
+- `gkm build` - Build for production (server or AWS Lambda)
+- `gkm openapi` - Generate OpenAPI specification
+- `gkm generate:react-query` - Generate React Query hooks
+- `gkm init` - Scaffold new projects with templates
+- `gkm deploy` - Deploy to providers (Docker, Dokploy, AWS)
+- `gkm secrets:init/set/show/rotate` - Secrets management
+- `gkm docker` - Generate Docker files
 
 ### @geekmidas/client
 - `/` - Core client types
@@ -1283,6 +1443,11 @@ Each package uses subpath exports for better tree-shaking:
 - `/` - Core storage interface
 - `/aws` - AWS S3 implementation
 
+### @geekmidas/studio
+- `/` - Core Studio class and types
+- `/server/hono` - Hono middleware, UI routes, and WebSocket setup
+- `/data` - DataBrowser for database introspection
+
 ### @geekmidas/telescope
 - `/` - Core Telescope class and InMemoryStorage
 - `/server/hono` - Hono middleware, UI routes, and WebSocket setup
@@ -1299,6 +1464,14 @@ Each package uses subpath exports for better tree-shaking:
 - `/aws` - AWS testing utilities
 - `/logger` - Logger testing utilities
 - `/better-auth` - Better Auth testing utilities
+
+### @geekmidas/ui
+- `/components/*` - Individual component exports (Button, Card, Input, etc.)
+- `/layout` - Layout components
+- `/data-display` - Data display components (Table, Badge, etc.)
+- `/feedback` - Feedback components (Alert, Toast, etc.)
+- `/hooks` - Custom React hooks
+- `/theme` - Theme utilities and CSS variables
 
 ## Important Notes
 
