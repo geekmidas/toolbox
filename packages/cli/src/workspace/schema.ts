@@ -201,6 +201,91 @@ const SecretsConfigSchema = z.object({
 });
 
 /**
+ * Valid AWS regions.
+ */
+const AwsRegionSchema = z.enum([
+	'us-east-1',
+	'us-east-2',
+	'us-west-1',
+	'us-west-2',
+	'af-south-1',
+	'ap-east-1',
+	'ap-south-1',
+	'ap-south-2',
+	'ap-southeast-1',
+	'ap-southeast-2',
+	'ap-southeast-3',
+	'ap-southeast-4',
+	'ap-northeast-1',
+	'ap-northeast-2',
+	'ap-northeast-3',
+	'ca-central-1',
+	'eu-central-1',
+	'eu-central-2',
+	'eu-west-1',
+	'eu-west-2',
+	'eu-west-3',
+	'eu-south-1',
+	'eu-south-2',
+	'eu-north-1',
+	'me-south-1',
+	'me-central-1',
+	'sa-east-1',
+]);
+
+/**
+ * Local state provider config.
+ */
+const LocalStateConfigSchema = z.object({
+	provider: z.literal('local'),
+});
+
+/**
+ * SSM state provider config (requires region).
+ */
+const SSMStateConfigSchema = z.object({
+	provider: z.literal('ssm'),
+	/** AWS region (required for SSM provider) */
+	region: AwsRegionSchema,
+});
+
+/**
+ * Custom state provider config (user-provided implementation).
+ */
+const CustomStateConfigSchema = z.object({
+	/** Custom StateProvider implementation */
+	provider: z.custom<{ read: Function; write: Function }>(
+		(val) =>
+			typeof val === 'object' &&
+			val !== null &&
+			typeof (val as any).read === 'function' &&
+			typeof (val as any).write === 'function',
+		{ message: 'Custom provider must implement read() and write() methods' },
+	),
+});
+
+/**
+ * Built-in state provider config (discriminated union).
+ */
+const BuiltInStateConfigSchema = z.discriminatedUnion('provider', [
+	LocalStateConfigSchema,
+	SSMStateConfigSchema,
+]);
+
+/**
+ * State configuration schema.
+ *
+ * Configures how deployment state is stored.
+ * - 'local': Store in .gkm/deploy-{stage}.json (default)
+ * - 'ssm': Store in AWS SSM Parameter Store (requires region)
+ * - Custom: Provide a StateProvider implementation with read/write methods
+ */
+const StateConfigSchema = z.union([
+	BuiltInStateConfigSchema,
+	CustomStateConfigSchema,
+]);
+
+/**
  * App configuration schema.
  */
 const AppConfigSchema = z
@@ -285,6 +370,7 @@ export const WorkspaceConfigSchema = z
 		deploy: DeployConfigSchema.optional(),
 		services: ServicesConfigSchema.optional(),
 		secrets: SecretsConfigSchema.optional(),
+		state: StateConfigSchema.optional(),
 	})
 	.refine(
 		(data) => {
@@ -347,7 +433,7 @@ export const WorkspaceConfigSchema = z
 		const defaultTarget = data.deploy?.default;
 		if (defaultTarget && !isDeployTargetSupported(defaultTarget)) {
 			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
+				code: 'custom',
 				message: getDeployTargetError(defaultTarget),
 				path: ['deploy', 'default'],
 			});
@@ -357,12 +443,22 @@ export const WorkspaceConfigSchema = z
 		for (const [appName, app] of Object.entries(data.apps)) {
 			if (app.deploy && !isDeployTargetSupported(app.deploy)) {
 				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
+					code: 'custom',
 					message: getDeployTargetError(app.deploy, appName),
 					path: ['apps', appName, 'deploy'],
 				});
 				return;
 			}
+		}
+
+		// Validate workspace name is required for SSM state provider
+		if (data.state?.provider === 'ssm' && !data.name) {
+			ctx.addIssue({
+				code: 'custom',
+				message:
+					'Workspace name is required when using SSM state provider. Add "name" to your gkm.config.ts.',
+				path: ['name'],
+			});
 		}
 	});
 
