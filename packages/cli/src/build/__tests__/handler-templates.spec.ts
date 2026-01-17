@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { EndpointAnalysis, EndpointFeatures } from '../endpoint-analyzer';
 import {
+	generateMinimalHandler,
 	generateOptimizedImports,
+	generateStandardHandler,
 	generateValidatorFactories,
 } from '../handler-templates';
 
@@ -267,6 +269,229 @@ describe('handler-templates', () => {
 			expect(result).toContain('validateBody');
 			expect(result).toContain('validateQuery');
 			expect(result).not.toContain('validateParams');
+		});
+	});
+
+	describe('generateMinimalHandler', () => {
+		it('should generate inline handler for truly minimal endpoints', () => {
+			const analysis = createAnalysis({
+				route: '/health',
+				method: 'GET',
+				exportName: 'healthEndpoint',
+				tier: 'minimal',
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain("app.get('/health'");
+			expect(result).toContain('healthEndpoint.handler');
+			expect(result).toContain('Minimal handler: /health (GET)');
+			expect(result).toContain('c.json(result');
+		});
+
+		it('should generate handler with body validation', () => {
+			const analysis = createAnalysis({
+				route: '/users',
+				method: 'POST',
+				exportName: 'createUserEndpoint',
+				tier: 'minimal',
+				features: createFeatures({ hasBodyValidation: true }),
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain("app.post('/users'");
+			expect(result).toContain('Minimal handler with validation');
+			expect(result).toContain("(c.req.valid as any)('json')");
+		});
+
+		it('should generate handler with query validation', () => {
+			const analysis = createAnalysis({
+				route: '/search',
+				method: 'GET',
+				exportName: 'searchEndpoint',
+				tier: 'minimal',
+				features: createFeatures({ hasQueryValidation: true }),
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain("(c.req.valid as any)('query')");
+		});
+
+		it('should generate handler with param validation', () => {
+			const analysis = createAnalysis({
+				route: '/users/:id',
+				method: 'GET',
+				exportName: 'getUserEndpoint',
+				tier: 'minimal',
+				features: createFeatures({ hasParamValidation: true }),
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain("(c.req.valid as any)('param')");
+		});
+
+		it('should generate handler with output validation', () => {
+			const analysis = createAnalysis({
+				route: '/data',
+				method: 'GET',
+				exportName: 'dataEndpoint',
+				tier: 'minimal',
+				features: createFeatures({ hasOutputValidation: true }),
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain('parseOutput(result)');
+		});
+
+		it('should generate handler with all validation types', () => {
+			const analysis = createAnalysis({
+				route: '/items/:id',
+				method: 'PUT',
+				exportName: 'updateItemEndpoint',
+				tier: 'minimal',
+				features: createFeatures({
+					hasBodyValidation: true,
+					hasQueryValidation: true,
+					hasParamValidation: true,
+					hasOutputValidation: true,
+				}),
+			});
+
+			const result = generateMinimalHandler(analysis);
+
+			expect(result).toContain("(c.req.valid as any)('json')");
+			expect(result).toContain("(c.req.valid as any)('query')");
+			expect(result).toContain("(c.req.valid as any)('param')");
+			expect(result).toContain('parseOutput(result)');
+		});
+	});
+
+	describe('generateStandardHandler', () => {
+		it('should generate handler with services', () => {
+			const analysis = createAnalysis({
+				route: '/api/data',
+				method: 'GET',
+				exportName: 'dataEndpoint',
+				tier: 'standard',
+				features: createFeatures({ hasServices: true }),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('Standard handler: /api/data (GET)');
+			expect(result).toContain('serviceDiscovery.register');
+			expect(result).toContain('ResponseBuilder');
+		});
+
+		it('should generate handler with database', () => {
+			const analysis = createAnalysis({
+				route: '/api/users',
+				method: 'GET',
+				exportName: 'usersEndpoint',
+				tier: 'standard',
+				features: createFeatures({ hasDatabase: true }),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('databaseService');
+			expect(result).toContain('serviceDiscovery.register');
+		});
+
+		it('should generate handler with authentication', () => {
+			const analysis = createAnalysis({
+				route: '/api/profile',
+				method: 'GET',
+				exportName: 'profileEndpoint',
+				tier: 'standard',
+				features: createFeatures({ hasAuth: true }),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('// Authentication');
+			expect(result).toContain('getSession');
+			expect(result).toContain('authorize');
+			expect(result).toContain('Unauthorized');
+		});
+
+		it('should generate handler with events', () => {
+			const analysis = createAnalysis({
+				route: '/api/orders',
+				method: 'POST',
+				exportName: 'createOrderEndpoint',
+				tier: 'standard',
+				features: createFeatures({ hasEvents: true }),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('publishConstructEvents');
+			expect(result).toContain('isSuccessStatus');
+		});
+
+		it('should generate handler without services when not needed', () => {
+			const analysis = createAnalysis({
+				route: '/api/simple',
+				method: 'GET',
+				exportName: 'simpleEndpoint',
+				tier: 'standard',
+				features: createFeatures({ hasAuth: true }),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('const services = {};');
+			expect(result).toContain('const db = undefined;');
+		});
+
+		it('should generate handler with body validation', () => {
+			const analysis = createAnalysis({
+				route: '/api/items',
+				method: 'POST',
+				exportName: 'createItemEndpoint',
+				tier: 'standard',
+				features: createFeatures({
+					hasServices: true,
+					hasBodyValidation: true,
+				}),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain("(c.req.valid as any)('json')");
+		});
+
+		it('should generate handler with all features', () => {
+			const analysis = createAnalysis({
+				route: '/api/complex/:id',
+				method: 'PUT',
+				exportName: 'complexEndpoint',
+				tier: 'standard',
+				features: createFeatures({
+					hasAuth: true,
+					hasServices: true,
+					hasDatabase: true,
+					hasBodyValidation: true,
+					hasQueryValidation: true,
+					hasParamValidation: true,
+					hasEvents: true,
+				}),
+			});
+
+			const result = generateStandardHandler(analysis);
+
+			expect(result).toContain('getSession');
+			expect(result).toContain('serviceDiscovery.register');
+			expect(result).toContain('databaseService');
+			expect(result).toContain("(c.req.valid as any)('json')");
+			expect(result).toContain("(c.req.valid as any)('query')");
+			expect(result).toContain("(c.req.valid as any)('param')");
+			expect(result).toContain('publishConstructEvents');
 		});
 	});
 });
