@@ -10,10 +10,10 @@ import { randomBytes } from 'node:crypto';
 import type { StageSecrets } from '../secrets/types';
 import type { NormalizedAppConfig } from '../workspace/types';
 import {
-	getGeneratedSecret,
-	setGeneratedSecret,
 	type AppDbCredentials,
 	type DokployStageState,
+	getGeneratedSecret,
+	setGeneratedSecret,
 } from './state';
 
 /**
@@ -82,7 +82,9 @@ export type AutoSupportedVar = (typeof AUTO_SUPPORTED_VARS)[number];
 /**
  * Check if a variable name is auto-supported
  */
-export function isAutoSupportedVar(varName: string): varName is AutoSupportedVar {
+export function isAutoSupportedVar(
+	varName: string,
+): varName is AutoSupportedVar {
 	return AUTO_SUPPORTED_VARS.includes(varName as AutoSupportedVar);
 }
 
@@ -212,11 +214,16 @@ export function resolveEnvVar(
 
 		// Check URLs (DATABASE_URL, REDIS_URL, RABBITMQ_URL)
 		if (varName in context.userSecrets.urls) {
-			return context.userSecrets.urls[varName as keyof typeof context.userSecrets.urls];
+			return context.userSecrets.urls[
+				varName as keyof typeof context.userSecrets.urls
+			];
 		}
 
 		// Check service-specific vars
-		if (varName === 'POSTGRES_PASSWORD' && context.userSecrets.services.postgres) {
+		if (
+			varName === 'POSTGRES_PASSWORD' &&
+			context.userSecrets.services.postgres
+		) {
 			return context.userSecrets.services.postgres.password;
 		}
 		if (varName === 'REDIS_PASSWORD' && context.userSecrets.services.redis) {
