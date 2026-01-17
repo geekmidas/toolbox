@@ -167,38 +167,9 @@ const DokployWorkspaceConfigSchema = z.object({
 	registryId: z.string().optional(),
 });
 
-/**
- * Deploy configuration schema.
- */
-const DeployConfigSchema = z.object({
-	default: DeployTargetSchema.optional(),
-	dokploy: DokployWorkspaceConfigSchema.optional(),
-});
-
-/**
- * Models configuration schema.
- */
-const ModelsConfigSchema = z.object({
-	path: z.string().optional(),
-	schema: z.enum(['zod']).optional(),
-});
-
-/**
- * Shared configuration schema.
- */
-const SharedConfigSchema = z.object({
-	packages: z.array(z.string()).optional(),
-	models: ModelsConfigSchema.optional(),
-});
-
-/**
- * Secrets configuration schema.
- */
-const SecretsConfigSchema = z.object({
-	enabled: z.boolean().optional(),
-	algorithm: z.string().optional(),
-	kdf: z.enum(['scrypt', 'pbkdf2']).optional(),
-});
+// =============================================================================
+// AWS Regions (needed by DNS and State providers)
+// =============================================================================
 
 /**
  * Valid AWS regions.
@@ -232,6 +203,204 @@ const AwsRegionSchema = z.enum([
 	'me-central-1',
 	'sa-east-1',
 ]);
+
+// =============================================================================
+// DNS Record Types (used by DnsProvider interface)
+// =============================================================================
+
+/**
+ * DNS record types supported across providers.
+ */
+export const DnsRecordTypeSchema = z.enum([
+	'A',
+	'AAAA',
+	'CNAME',
+	'MX',
+	'TXT',
+	'NS',
+	'SRV',
+	'CAA',
+]);
+
+/**
+ * A DNS record as returned by the provider.
+ */
+export const DnsRecordSchema = z.object({
+	/** Subdomain name (e.g., 'api' for api.example.com, '@' for root) */
+	name: z.string(),
+	/** Record type */
+	type: DnsRecordTypeSchema,
+	/** TTL in seconds */
+	ttl: z.number().int().positive(),
+	/** Record values */
+	values: z.array(z.string()),
+});
+
+/**
+ * A DNS record to create or update.
+ */
+export const UpsertDnsRecordSchema = z.object({
+	/** Subdomain name (e.g., 'api' for api.example.com, '@' for root) */
+	name: z.string(),
+	/** Record type */
+	type: DnsRecordTypeSchema,
+	/** TTL in seconds */
+	ttl: z.number().int().positive(),
+	/** Record value (IP address, hostname, etc.) */
+	value: z.string(),
+});
+
+/**
+ * Result of an upsert operation.
+ */
+export const UpsertResultSchema = z.object({
+	/** The record that was upserted */
+	record: UpsertDnsRecordSchema,
+	/** Whether the record was created (true) or updated (false) */
+	created: z.boolean(),
+	/** Whether the record already existed with the same value */
+	unchanged: z.boolean(),
+});
+
+// =============================================================================
+// DNS Provider Configuration
+// =============================================================================
+
+/**
+ * Hostinger DNS provider config.
+ */
+export const HostingerDnsConfigSchema = z.object({
+	provider: z.literal('hostinger'),
+	/** Root domain (e.g., 'example.com') */
+	domain: z.string().min(1, 'Domain is required'),
+	/** TTL in seconds (default: 300) */
+	ttl: z.number().int().positive().optional(),
+});
+
+/**
+ * Route53 DNS provider config.
+ */
+export const Route53DnsConfigSchema = z.object({
+	provider: z.literal('route53'),
+	/** Root domain (e.g., 'example.com') */
+	domain: z.string().min(1, 'Domain is required'),
+	/** AWS region (optional - uses AWS_REGION env var if not provided) */
+	region: AwsRegionSchema.optional(),
+	/** Hosted zone ID (optional - auto-detected from domain if not provided) */
+	hostedZoneId: z.string().optional(),
+	/** TTL in seconds (default: 300) */
+	ttl: z.number().int().positive().optional(),
+});
+
+/**
+ * Cloudflare DNS provider config (placeholder for future).
+ */
+export const CloudflareDnsConfigSchema = z.object({
+	provider: z.literal('cloudflare'),
+	/** Root domain (e.g., 'example.com') */
+	domain: z.string().min(1, 'Domain is required'),
+	/** TTL in seconds (default: 300) */
+	ttl: z.number().int().positive().optional(),
+});
+
+/**
+ * Manual DNS configuration (user handles DNS themselves).
+ */
+export const ManualDnsConfigSchema = z.object({
+	provider: z.literal('manual'),
+	/** Root domain (e.g., 'example.com') */
+	domain: z.string().min(1, 'Domain is required'),
+});
+
+/**
+ * Custom DNS provider config (user-provided implementation).
+ */
+export const CustomDnsConfigSchema = z.object({
+	/** Custom DnsProvider implementation */
+	provider: z.custom<{
+		name: string;
+		getRecords: Function;
+		upsertRecords: Function;
+	}>(
+		(val) =>
+			typeof val === 'object' &&
+			val !== null &&
+			typeof (val as any).name === 'string' &&
+			typeof (val as any).getRecords === 'function' &&
+			typeof (val as any).upsertRecords === 'function',
+		{
+			message:
+				'Custom DNS provider must implement name, getRecords(), and upsertRecords() methods',
+		},
+	),
+	/** Root domain (e.g., 'example.com') */
+	domain: z.string().min(1, 'Domain is required'),
+	/** TTL in seconds (default: 300) */
+	ttl: z.number().int().positive().optional(),
+});
+
+/**
+ * Built-in DNS provider config (discriminated union).
+ */
+export const BuiltInDnsConfigSchema = z.discriminatedUnion('provider', [
+	HostingerDnsConfigSchema,
+	Route53DnsConfigSchema,
+	CloudflareDnsConfigSchema,
+	ManualDnsConfigSchema,
+]);
+
+/**
+ * DNS configuration schema.
+ *
+ * Configures DNS provider for automatic record creation during deployment.
+ * - 'hostinger': Use Hostinger DNS API
+ * - 'route53': Use AWS Route53 (requires region)
+ * - 'cloudflare': Use Cloudflare DNS API (future)
+ * - 'manual': Don't create records, just print required records
+ * - Custom: Provide a DnsProvider implementation
+ */
+export const DnsConfigSchema = z.union([
+	BuiltInDnsConfigSchema,
+	CustomDnsConfigSchema,
+]);
+
+/**
+ * Deploy configuration schema.
+ */
+const DeployConfigSchema = z.object({
+	default: DeployTargetSchema.optional(),
+	dokploy: DokployWorkspaceConfigSchema.optional(),
+	dns: DnsConfigSchema.optional(),
+});
+
+/**
+ * Models configuration schema.
+ */
+const ModelsConfigSchema = z.object({
+	path: z.string().optional(),
+	schema: z.enum(['zod']).optional(),
+});
+
+/**
+ * Shared configuration schema.
+ */
+const SharedConfigSchema = z.object({
+	packages: z.array(z.string()).optional(),
+	models: ModelsConfigSchema.optional(),
+});
+
+/**
+ * Secrets configuration schema.
+ */
+const SecretsConfigSchema = z.object({
+	enabled: z.boolean().optional(),
+	algorithm: z.string().optional(),
+	kdf: z.enum(['scrypt', 'pbkdf2']).optional(),
+});
+
+// =============================================================================
+// State Provider Configuration
+// =============================================================================
 
 /**
  * Local state provider config.
