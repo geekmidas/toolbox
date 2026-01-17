@@ -154,7 +154,7 @@ export class Function<
 		events: MappedEvent<TEventPublisher, OutSchema>[] = [],
 		memorySize?: number,
 		auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>,
-		public databaseService?: Service<TDatabaseServiceName, TDatabase>,
+		public override databaseService?: Service<TDatabaseServiceName, TDatabase>,
 	) {
 		super(
 			type,
