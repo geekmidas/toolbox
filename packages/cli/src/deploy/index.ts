@@ -400,7 +400,7 @@ function getServerHostname(endpoint: string): string {
  * // Returns: postgresql://api:secret123@postgres-abc:5432/myproject
  * ```
  */
-function buildPerAppDatabaseUrl(
+function _buildPerAppDatabaseUrl(
 	appName: string,
 	appPassword: string,
 	postgresAppName: string,
