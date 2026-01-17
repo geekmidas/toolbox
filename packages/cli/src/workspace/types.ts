@@ -8,6 +8,7 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
+import type { StateConfig } from '../deploy/StateProvider.js';
 
 /**
  * Deploy target for an app.
@@ -942,6 +943,8 @@ export interface NormalizedWorkspace {
 	shared: SharedConfig;
 	/** Secrets configuration (empty object if not specified) */
 	secrets: SecretsConfig;
+	/** State provider configuration (undefined = local filesystem) */
+	state?: StateConfig;
 }
 
 /**
