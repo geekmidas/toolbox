@@ -19,10 +19,10 @@ import { Subscriber } from '@geekmidas/constructs/subscribers';
 import fg from 'fast-glob';
 
 // Get args from command line
-const appPath = process.argv[2] as string | undefined;
-const routesPattern = process.argv[3] as string | undefined;
+const appPathArg = process.argv[2];
+const routesPatternArg = process.argv[3];
 
-if (!appPath || !routesPattern) {
+if (!appPathArg || !routesPatternArg) {
 	console.log(
 		JSON.stringify({
 			envVars: [],
@@ -31,6 +31,10 @@ if (!appPath || !routesPattern) {
 	);
 	process.exit(1);
 }
+
+// After validation, these are guaranteed to be strings
+const appPath: string = appPathArg;
+const routesPattern: string = routesPatternArg;
 
 /**
  * Check if a value is a gkm construct.
