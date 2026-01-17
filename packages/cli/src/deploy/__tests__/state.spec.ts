@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { DokployStageState } from '../state';
 import {
 	createEmptyState,
 	getAllAppCredentials,
@@ -24,7 +25,6 @@ import {
 	setRedisId,
 	writeStageState,
 } from '../state';
-import type { DokployStageState } from '../state';
 
 describe('state management', () => {
 	let testDir: string;
