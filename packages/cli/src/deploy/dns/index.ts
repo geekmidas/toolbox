@@ -281,7 +281,7 @@ export async function orchestrateDns(
 		return null;
 	}
 
-	const { domain: rootDomain, autoCreate = true } = dnsConfig;
+	const { domain: rootDomain, provider: providerName } = dnsConfig;
 
 	// Resolve Dokploy server IP from endpoint
 	logger.log('\n🌐 Setting up DNS records...');
@@ -309,28 +309,22 @@ export async function orchestrateDns(
 		return { records: [], success: true, serverIp };
 	}
 
-	// Create records if auto-create is enabled
-	let finalRecords: RequiredDnsRecord[];
+	// Create records (if manual mode, createDnsRecords will mark them as needing manual creation)
+	logger.log(`   Creating DNS records at ${providerName}...`);
+	const finalRecords = await createDnsRecords(requiredRecords, dnsConfig);
 
-	if (autoCreate && dnsConfig.provider !== 'manual') {
-		logger.log(`   Creating DNS records at ${dnsConfig.provider}...`);
-		finalRecords = await createDnsRecords(requiredRecords, dnsConfig);
+	const created = finalRecords.filter((r) => r.created).length;
+	const existed = finalRecords.filter((r) => r.existed).length;
+	const failed = finalRecords.filter((r) => r.error).length;
 
-		const created = finalRecords.filter((r) => r.created).length;
-		const existed = finalRecords.filter((r) => r.existed).length;
-		const failed = finalRecords.filter((r) => r.error).length;
-
-		if (created > 0) {
-			logger.log(`   ✓ Created ${created} DNS record(s)`);
-		}
-		if (existed > 0) {
-			logger.log(`   ✓ ${existed} record(s) already exist`);
-		}
-		if (failed > 0) {
-			logger.log(`   ⚠ ${failed} record(s) failed`);
-		}
-	} else {
-		finalRecords = requiredRecords;
+	if (created > 0) {
+		logger.log(`   ✓ Created ${created} DNS record(s)`);
+	}
+	if (existed > 0) {
+		logger.log(`   ✓ ${existed} record(s) already exist`);
+	}
+	if (failed > 0) {
+		logger.log(`   ⚠ ${failed} record(s) failed`);
 	}
 
 	// Print summary table
