@@ -410,7 +410,7 @@ export async function provisionServices(
 	api: DokployApi,
 	projectId: string,
 	environmentId: string | undefined,
-	appName: string,
+	projectName: string,
 	services?: DockerComposeServices,
 	existingServiceIds?: { postgresId?: string; redisId?: string },
 ): Promise<ProvisionServicesResult | undefined> {
@@ -446,14 +446,15 @@ export async function provisionServices(
 
 			// If not found by ID, use findOrCreate
 			if (!postgres) {
-				const { randomBytes } = await import('node:crypto');
 				const databasePassword = randomBytes(16).toString('hex');
+				// Use project name as database name (replace hyphens with underscores for PostgreSQL)
+				const databaseName = projectName.replace(/-/g, '_');
 
 				const result = await api.findOrCreatePostgres(
 					postgresName,
 					projectId,
 					environmentId,
-					{ databasePassword },
+					{ databaseName, databasePassword },
 				);
 				postgres = result.postgres;
 				created = result.created;
@@ -483,8 +484,7 @@ export async function provisionServices(
 			serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
 			logger.log(`   ✓ Database credentials configured`);
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Unknown error';
+			const message = error instanceof Error ? error.message : 'Unknown error';
 			logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
 		}
 	}
@@ -550,8 +550,7 @@ export async function provisionServices(
 			serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
 			logger.log(`   ✓ Redis credentials configured`);
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Unknown error';
+			const message = error instanceof Error ? error.message : 'Unknown error';
 			logger.log(`   ⚠ Failed to provision Redis: ${message}`);
 		}
 	}
