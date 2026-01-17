@@ -68,6 +68,7 @@ export interface EnvResolutionResult {
 export const AUTO_SUPPORTED_VARS = [
 	'PORT',
 	'NODE_ENV',
+	'STAGE',
 	'DATABASE_URL',
 	'REDIS_URL',
 	'BETTER_AUTH_URL',
