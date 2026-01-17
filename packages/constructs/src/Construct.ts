@@ -92,6 +92,7 @@ export abstract class Construct<
 		const services: Service[] = compact([
 			...this.services,
 			this.publisherService,
+			this.publisherService,
 			this.auditorStorageService,
 		]);
 
