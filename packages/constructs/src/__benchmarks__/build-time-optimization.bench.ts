@@ -214,14 +214,14 @@ function createRequest(
 		body?: unknown;
 		headers?: Record<string, string>;
 	} = {},
-) {
+): Request {
 	const { method = 'GET', body, headers = {} } = options;
 	const init: RequestInit = {
 		method,
 		headers: { 'Content-Type': 'application/json', ...headers },
 	};
 	if (body) init.body = JSON.stringify(body);
-	return new Request(`http://localhost${path}`, init);
+	return new Request(`http://localhost${path}`, init) as Request;
 }
 
 // ============================================================================
