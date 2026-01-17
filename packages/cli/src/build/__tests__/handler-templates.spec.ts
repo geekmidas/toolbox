@@ -1007,9 +1007,15 @@ describe('handler-templates', () => {
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
 			expect(files).toHaveProperty('minimal/healthEndpoint.ts');
-			expect(files['minimal/healthEndpoint.ts']).toContain('Minimal endpoint: /health (GET)');
-			expect(files['minimal/healthEndpoint.ts']).toContain('export function setupHealthEndpoint');
-			expect(files['minimal/healthEndpoint.ts']).toContain("import { healthEndpoint }");
+			expect(files['minimal/healthEndpoint.ts']).toContain(
+				'Minimal endpoint: /health (GET)',
+			);
+			expect(files['minimal/healthEndpoint.ts']).toContain(
+				'export function setupHealthEndpoint',
+			);
+			expect(files['minimal/healthEndpoint.ts']).toContain(
+				'import { healthEndpoint }',
+			);
 		});
 
 		it('should generate individual endpoint files for standard tier', () => {
@@ -1030,9 +1036,15 @@ describe('handler-templates', () => {
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
 			expect(files).toHaveProperty('standard/usersEndpoint.ts');
-			expect(files['standard/usersEndpoint.ts']).toContain('Standard endpoint: /api/users (GET)');
-			expect(files['standard/usersEndpoint.ts']).toContain('export function setupUsersEndpoint');
-			expect(files['standard/usersEndpoint.ts']).toContain("import { usersEndpoint }");
+			expect(files['standard/usersEndpoint.ts']).toContain(
+				'Standard endpoint: /api/users (GET)',
+			);
+			expect(files['standard/usersEndpoint.ts']).toContain(
+				'export function setupUsersEndpoint',
+			);
+			expect(files['standard/usersEndpoint.ts']).toContain(
+				'import { usersEndpoint }',
+			);
 		});
 
 		it('should generate individual endpoint files for full tier', () => {
@@ -1053,9 +1065,15 @@ describe('handler-templates', () => {
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
 			expect(files).toHaveProperty('full/auditEndpoint.ts');
-			expect(files['full/auditEndpoint.ts']).toContain('Full endpoint: /api/audit (POST)');
-			expect(files['full/auditEndpoint.ts']).toContain('export function setupAuditEndpoint');
-			expect(files['full/auditEndpoint.ts']).toContain('import { HonoEndpoint }');
+			expect(files['full/auditEndpoint.ts']).toContain(
+				'Full endpoint: /api/audit (POST)',
+			);
+			expect(files['full/auditEndpoint.ts']).toContain(
+				'export function setupAuditEndpoint',
+			);
+			expect(files['full/auditEndpoint.ts']).toContain(
+				'import { HonoEndpoint }',
+			);
 		});
 
 		it('should generate tier index files that import individual endpoints', () => {
@@ -1081,10 +1099,18 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['minimal/index.ts']).toContain("import { setupHealthEndpoint } from './healthEndpoint.js'");
-			expect(files['minimal/index.ts']).toContain("import { setupReadyEndpoint } from './readyEndpoint.js'");
-			expect(files['minimal/index.ts']).toContain('setupHealthEndpoint(app, logger)');
-			expect(files['minimal/index.ts']).toContain('setupReadyEndpoint(app, logger)');
+			expect(files['minimal/index.ts']).toContain(
+				"import { setupHealthEndpoint } from './healthEndpoint.js'",
+			);
+			expect(files['minimal/index.ts']).toContain(
+				"import { setupReadyEndpoint } from './readyEndpoint.js'",
+			);
+			expect(files['minimal/index.ts']).toContain(
+				'setupHealthEndpoint(app, logger)',
+			);
+			expect(files['minimal/index.ts']).toContain(
+				'setupReadyEndpoint(app, logger)',
+			);
 		});
 
 		it('should generate empty tier index for tiers with no endpoints', () => {
@@ -1103,7 +1129,9 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['standard/index.ts']).toContain('No standard-tier endpoints');
+			expect(files['standard/index.ts']).toContain(
+				'No standard-tier endpoints',
+			);
 			expect(files['full/index.ts']).toContain('No full-tier endpoints');
 		});
 
@@ -1123,9 +1151,15 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['index.ts']).toContain("import { setupMinimalEndpoints } from './minimal/index.js'");
-			expect(files['index.ts']).toContain("import { setupStandardEndpoints } from './standard/index.js'");
-			expect(files['index.ts']).toContain("import { setupFullEndpoints } from './full/index.js'");
+			expect(files['index.ts']).toContain(
+				"import { setupMinimalEndpoints } from './minimal/index.js'",
+			);
+			expect(files['index.ts']).toContain(
+				"import { setupStandardEndpoints } from './standard/index.js'",
+			);
+			expect(files['index.ts']).toContain(
+				"import { setupFullEndpoints } from './full/index.js'",
+			);
 		});
 
 		it('should include validator imports in individual endpoint files when needed', () => {
@@ -1140,12 +1174,17 @@ describe('handler-templates', () => {
 			];
 
 			const endpointImports = [
-				{ exportName: 'createUserEndpoint', importPath: '../../endpoints/users' },
+				{
+					exportName: 'createUserEndpoint',
+					importPath: '../../endpoints/users',
+				},
 			];
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['minimal/createUserEndpoint.ts']).toContain("import { validateBody } from '../validators.js'");
+			expect(files['minimal/createUserEndpoint.ts']).toContain(
+				"import { validateBody } from '../validators.js'",
+			);
 		});
 
 		it('should include events import in standard endpoint files when needed', () => {
@@ -1160,12 +1199,17 @@ describe('handler-templates', () => {
 			];
 
 			const endpointImports = [
-				{ exportName: 'createOrderEndpoint', importPath: '../../endpoints/orders' },
+				{
+					exportName: 'createOrderEndpoint',
+					importPath: '../../endpoints/orders',
+				},
 			];
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['standard/createOrderEndpoint.ts']).toContain('import { publishConstructEvents }');
+			expect(files['standard/createOrderEndpoint.ts']).toContain(
+				'import { publishConstructEvents }',
+			);
 		});
 
 		it('should skip endpoints without matching imports', () => {
@@ -1212,7 +1256,9 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['standard/index.ts']).toContain('setupUsersEndpoint(app, serviceDiscovery, logger)');
+			expect(files['standard/index.ts']).toContain(
+				'setupUsersEndpoint(app, serviceDiscovery, logger)',
+			);
 		});
 
 		it('should generate full tier index with correct function calls', () => {
@@ -1232,7 +1278,9 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesNested(analyses, endpointImports);
 
-			expect(files['full/index.ts']).toContain('setupAuditEndpoint(app, serviceDiscovery, openApiOptions)');
+			expect(files['full/index.ts']).toContain(
+				'setupAuditEndpoint(app, serviceDiscovery, openApiOptions)',
+			);
 			expect(files['full/index.ts']).toContain('const openApiOptions');
 		});
 	});
