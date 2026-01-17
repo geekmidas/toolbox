@@ -340,7 +340,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			secretsRoot = appConfig.workspaceRoot;
 			workspaceAppName = appConfig.appName;
 			workspaceAppPort = appConfig.app.port;
-			logger.log(`📦 Running app: ${appConfig.appName} on port ${workspaceAppPort}`);
+			logger.log(
+				`📦 Running app: ${appConfig.appName} on port ${workspaceAppPort}`,
+			);
 
 			// Check if app has an entry point (non-gkm app like better-auth)
 			if (appConfig.app.entry) {
@@ -1387,7 +1389,9 @@ export async function prepareEntryCredentials(options: {
 		appName = appConfig.appName;
 	} catch (error) {
 		// Not in a workspace - use defaults
-		logger.log(`⚠️  Could not load workspace config: ${(error as Error).message}`);
+		logger.log(
+			`⚠️  Could not load workspace config: ${(error as Error).message}`,
+		);
 		secretsRoot = findSecretsRoot(cwd);
 		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
@@ -1457,7 +1461,9 @@ async function entryDevCommand(options: DevOptions): Promise<void> {
 	logger.log(`🚀 Starting entry file: ${entry} on port ${resolvedPort}`);
 
 	if (Object.keys(credentials).length > 1) {
-		logger.log(`🔐 Loaded ${Object.keys(credentials).length - 1} secret(s) + PORT`);
+		logger.log(
+			`🔐 Loaded ${Object.keys(credentials).length - 1} secret(s) + PORT`,
+		);
 	}
 
 	// Create wrapper entry that injects secrets before importing user's file
