@@ -44,7 +44,7 @@ describe('formatParseError', () => {
 				received: 'invalid',
 				path: ['NODE_ENV'],
 				message:
-					'Invalid enum value. Expected \'development\' | \'staging\' | \'production\', received \'invalid\'',
+					"Invalid enum value. Expected 'development' | 'staging' | 'production', received 'invalid'",
 			}),
 		]);
 
@@ -89,7 +89,8 @@ describe('formatParseError', () => {
 				expected: 'number',
 				received: 'string',
 				path: ['PORT'],
-				message: 'Environment variable "PORT": Expected number, received string',
+				message:
+					'Environment variable "PORT": Expected number, received string',
 			}),
 		]);
 
