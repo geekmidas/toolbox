@@ -8,7 +8,10 @@ describe('findSecretsRoot', () => {
 	let testDir: string;
 
 	beforeEach(async () => {
-		testDir = join(tmpdir(), `gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		testDir = join(
+			tmpdir(),
+			`gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
 		await mkdir(testDir, { recursive: true });
 	});
 
@@ -61,7 +64,10 @@ describe('createEntryWrapper', () => {
 	let testDir: string;
 
 	beforeEach(async () => {
-		testDir = join(tmpdir(), `gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		testDir = join(
+			tmpdir(),
+			`gkm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
 		await mkdir(testDir, { recursive: true });
 	});
 
