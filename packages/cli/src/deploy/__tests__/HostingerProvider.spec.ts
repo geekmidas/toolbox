@@ -111,36 +111,48 @@ describe('HostingerProvider', () => {
 	});
 
 	describe('getRecords', () => {
-		it('should throw error when token is not configured', async () => {
-			mockGetHostingerToken.mockResolvedValue(null);
+		it('should throw error when token is invalid', async () => {
+			// Use an invalid token
+			const savedToken = process.env.HOSTINGER_API_TOKEN;
+			process.env.HOSTINGER_API_TOKEN = 'invalid-token';
 
+			try {
+				const provider = new HostingerProvider();
+				await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow(
+					'Hostinger API error',
+				);
+			} finally {
+				// Restore the token
+				process.env.HOSTINGER_API_TOKEN = savedToken;
+			}
+		});
+
+		it('should return empty array when no records exist', async () => {
 			const provider = new HostingerProvider();
+			const records = await provider.getRecords(TEST_DOMAIN);
 
-			await expect(provider.getRecords('example.com')).rejects.toThrow(
-				'Hostinger API token not configured',
-			);
+			expect(records).toEqual([]);
 		});
 
 		it('should return records from API', async () => {
-			const mockRecords = [
+			// Set up mock records
+			mockRecords = [
 				{
 					name: 'api',
-					type: 'A' as const,
+					type: 'A',
 					ttl: 300,
 					records: [{ content: '1.2.3.4' }],
 				},
 				{
 					name: 'www',
-					type: 'CNAME' as const,
+					type: 'CNAME',
 					ttl: 300,
 					records: [{ content: 'example.com' }],
 				},
 			];
 
-			mockApi.getRecords.mockResolvedValue(mockRecords);
-
 			const provider = new HostingerProvider();
-			const records = await provider.getRecords('example.com');
+			const records = await provider.getRecords(TEST_DOMAIN);
 
 			expect(records).toHaveLength(2);
 			expect(records[0]).toEqual({
@@ -158,10 +170,10 @@ describe('HostingerProvider', () => {
 		});
 
 		it('should handle records with multiple values', async () => {
-			const mockRecords = [
+			mockRecords = [
 				{
 					name: 'mail',
-					type: 'MX' as const,
+					type: 'MX',
 					ttl: 3600,
 					records: [
 						{ content: '10 mail1.example.com' },
@@ -170,10 +182,8 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			mockApi.getRecords.mockResolvedValue(mockRecords);
-
 			const provider = new HostingerProvider();
-			const records = await provider.getRecords('example.com');
+			const records = await provider.getRecords(TEST_DOMAIN);
 
 			expect(records).toHaveLength(1);
 			expect(records[0]?.values).toEqual([
