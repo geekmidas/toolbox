@@ -6,6 +6,12 @@ import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import { buildCommand } from './build/index';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
+import {
+	stateDiffCommand,
+	statePullCommand,
+	statePushCommand,
+	stateShowCommand,
+} from './deploy/state-commands';
 import { devCommand, execCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
@@ -706,6 +712,76 @@ program
 			console.error(
 				error instanceof Error ? error.message : 'Failed to get status',
 			);
+			process.exit(1);
+		}
+	});
+
+// State management commands
+program
+	.command('state:pull')
+	.description('Pull deployment state from remote to local')
+	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await statePullCommand(options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('state:push')
+	.description('Push deployment state from local to remote')
+	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await statePushCommand(options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('state:show')
+	.description('Show deployment state for a stage')
+	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.option('--json', 'Output as JSON')
+	.action(async (options: { stage: string; json?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await stateShowCommand(options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('state:diff')
+	.description('Compare local and remote deployment state')
+	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await stateDiffCommand(options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
 		}
 	});
