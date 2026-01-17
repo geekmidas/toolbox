@@ -5,6 +5,7 @@ import type { NormalizedAppConfig } from '../../workspace/types';
 import {
 	_sniffEntryFile,
 	_sniffEnvParser,
+	_sniffRouteFiles,
 	sniffAllApps,
 	sniffAppEnvironment,
 } from '../sniffer';
@@ -13,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const fixturesPath = resolve(__dirname, '__fixtures__/entry-apps');
 const envParserFixturesPath = resolve(__dirname, '__fixtures__/env-parsers');
+const routeAppsFixturesPath = resolve(__dirname, '__fixtures__/route-apps');
 
 describe('sniffAppEnvironment', () => {
 	const workspacePath = '/test/workspace';
@@ -537,6 +539,178 @@ describe('sniffAppEnvironment with envParser apps', () => {
 			app,
 			'api',
 			envParserFixturesPath,
+			{ logWarnings: false },
+		);
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toEqual([]);
+	});
+});
+
+describe('route files sniffing via _sniffRouteFiles', () => {
+	// These tests verify the route-based sniffing for apps with routes config.
+	// Each test uses fixture files that export endpoints with services.
+
+	it('should sniff environment variables from endpoint with single service', async () => {
+		const result = await _sniffRouteFiles(
+			'./endpoints/users.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		expect(result.envVars).toContain('DATABASE_URL');
+		// DB_POOL_SIZE is optional, may or may not be captured
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should sniff environment variables from endpoint with multiple services', async () => {
+		const result = await _sniffRouteFiles(
+			'./endpoints/auth.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('AUTH_SECRET');
+		expect(result.envVars).toContain('AUTH_URL');
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should return empty for endpoint without services', async () => {
+		const result = await _sniffRouteFiles(
+			'./endpoints/health.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should sniff all endpoints matching glob pattern', async () => {
+		const result = await _sniffRouteFiles(
+			'./endpoints/**/*.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		// Should capture env vars from all endpoints
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('AUTH_SECRET');
+		expect(result.envVars).toContain('AUTH_URL');
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should return empty for non-existent pattern', async () => {
+		const result = await _sniffRouteFiles(
+			'./nonexistent/**/*.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should handle array of patterns', async () => {
+		const result = await _sniffRouteFiles(
+			['./endpoints/users.ts', './endpoints/health.ts'],
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should deduplicate env vars from multiple endpoints using same service', async () => {
+		const result = await _sniffRouteFiles(
+			['./endpoints/users.ts', './endpoints/auth.ts'],
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		// DATABASE_URL is used by both endpoints, should only appear once
+		const databaseUrlCount = result.envVars.filter(
+			(v) => v === 'DATABASE_URL',
+		).length;
+		expect(databaseUrlCount).toBe(1);
+	});
+
+	it('should return sorted env vars', async () => {
+		const result = await _sniffRouteFiles(
+			'./endpoints/**/*.ts',
+			routeAppsFixturesPath,
+			routeAppsFixturesPath,
+		);
+
+		const sorted = [...result.envVars].sort();
+		expect(result.envVars).toEqual(sorted);
+	});
+});
+
+describe('sniffAppEnvironment with route-based apps', () => {
+	// Integration tests for sniffAppEnvironment with route-based apps
+
+	it('should use route sniffing for apps with routes config', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: routeAppsFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			routes: './endpoints/**/*.ts',
+			envParser: './src/config/env#envParser', // Should be ignored when routes exist
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			routeAppsFixturesPath,
+		);
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toContain('DATABASE_URL');
+		expect(result.requiredEnvVars).toContain('AUTH_SECRET');
+		expect(result.requiredEnvVars).toContain('AUTH_URL');
+	});
+
+	it('should prefer requiredEnv over route sniffing', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: routeAppsFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			routes: './endpoints/**/*.ts',
+			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			routeAppsFixturesPath,
+		);
+
+		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
+		// Should NOT contain the sniffed vars
+		expect(result.requiredEnvVars).not.toContain('DATABASE_URL');
+	});
+
+	it('should handle route pattern that matches no files', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: routeAppsFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			routes: './nonexistent/**/*.ts',
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			routeAppsFixturesPath,
 			{ logWarnings: false },
 		);
 
