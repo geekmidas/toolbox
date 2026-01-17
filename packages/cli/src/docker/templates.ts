@@ -811,7 +811,9 @@ export interface EntryDockerfileOptions {
  * This is used for apps that don't use gkm routes (e.g., Better Auth servers).
  * @internal Exported for testing
  */
-export function generateEntryDockerfile(options: EntryDockerfileOptions): string {
+export function generateEntryDockerfile(
+	options: EntryDockerfileOptions,
+): string {
 	const {
 		baseImage,
 		port,
