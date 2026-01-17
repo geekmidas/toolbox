@@ -6,6 +6,11 @@ This directory contains design documents, architectural decision records (ADRs),
 
 ### Active Planning
 
+- **[Dokploy Deployment System](./dokploy-deployment.md)** - Deployment to Dokploy with per-app database isolation, env var detection, and DNS management
+  - Status: In Progress
+  - Impact: High - Core deployment infrastructure
+  - Features: Per-app DATABASE_URL, entry app sniffing, auto-generated secrets, DNS verification
+
 - **[Package Refactoring Plan](./package-refactoring-plan.md)** - Plan to extract `@geekmidas/constructs` and enhance `@geekmidas/schema`
   - Status: Planning
   - Impact: High - Major architectural change
