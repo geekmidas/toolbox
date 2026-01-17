@@ -544,9 +544,8 @@ describe('DokployApi', () => {
 				projectId: 'proj_1',
 				environmentId: 'env_1',
 				appName: 'mydb',
-				databaseName: 'app',
 				databaseUser: 'postgres',
-				dockerImage: 'postgres:16-alpine',
+				dockerImage: 'postgres:18',
 			});
 		});
 
@@ -632,7 +631,7 @@ describe('DokployApi', () => {
 				projectId: 'proj_1',
 				environmentId: 'env_1',
 				appName: 'mycache',
-				dockerImage: 'redis:7-alpine',
+				dockerImage: 'redis:8',
 			});
 		});
 
