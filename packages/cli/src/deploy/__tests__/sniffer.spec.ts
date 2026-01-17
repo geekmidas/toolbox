@@ -2,11 +2,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { NormalizedAppConfig } from '../../workspace/types';
-import { _sniffEntryFile, sniffAllApps, sniffAppEnvironment } from '../sniffer';
+import {
+	_sniffEntryFile,
+	_sniffEnvParser,
+	sniffAllApps,
+	sniffAppEnvironment,
+} from '../sniffer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const fixturesPath = resolve(__dirname, '__fixtures__/entry-apps');
+const envParserFixturesPath = resolve(__dirname, '__fixtures__/env-parsers');
 
 describe('sniffAppEnvironment', () => {
 	const workspacePath = '/test/workspace';
@@ -370,5 +376,171 @@ describe('sniffAppEnvironment with entry apps', () => {
 		expect(result.appName).toBe('api');
 		expect(result.requiredEnvVars).toContain('PORT');
 		expect(result.requiredEnvVars).toContain('API_KEY');
+	});
+});
+
+describe('envParser sniffing via _sniffEnvParser', () => {
+	// These tests verify the envParser sniffing functionality.
+	// Each test uses fixture files that export envParser functions.
+
+	it('should sniff environment variables from valid envParser', async () => {
+		const result = await _sniffEnvParser(
+			'./valid-env-parser.ts#envParser',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('DB_POOL_SIZE');
+		expect(result.envVars).toHaveLength(3);
+	});
+
+	it('should sniff environment variables from default export', async () => {
+		// Test with default export (no # specifier)
+		const result = await _sniffEnvParser(
+			'./valid-env-parser.ts',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('DB_POOL_SIZE');
+	});
+
+	it('should return empty when export is not a function', async () => {
+		const result = await _sniffEnvParser(
+			'./non-function-export.ts#envParser',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+	});
+
+	it('should handle non-function default export', async () => {
+		const result = await _sniffEnvParser(
+			'./non-function-export.ts', // Uses default export which is not a function
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+	});
+
+	it('should return empty when module path is empty', async () => {
+		const result = await _sniffEnvParser(
+			'#envParser', // Empty module path
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+		expect(result.unhandledRejections).toEqual([]);
+	});
+
+	it('should capture env vars from throwing envParser', async () => {
+		const result = await _sniffEnvParser(
+			'./throwing-env-parser.ts#envParser',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		// Should still capture env vars accessed before the throw
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('API_KEY');
+	});
+
+	it('should return empty when module does not exist', async () => {
+		const result = await _sniffEnvParser(
+			'./non-existent.ts#envParser',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+	});
+
+	it('should call parse() on returned config and capture env vars', async () => {
+		// This tests the path where envParser returns a config with parse() method
+		const result = await _sniffEnvParser(
+			'./parseable-env-parser.ts#envParser',
+			envParserFixturesPath,
+			envParserFixturesPath,
+		);
+
+		// Should capture env vars even though parse() fails due to missing values
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('API_KEY');
+		expect(result.envVars).toHaveLength(3);
+	});
+});
+
+describe('sniffAppEnvironment with envParser apps', () => {
+	it('should use envParser sniffing for apps with envParser config', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: envParserFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			envParser: './valid-env-parser.ts#envParser',
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			envParserFixturesPath,
+		);
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toContain('PORT');
+		expect(result.requiredEnvVars).toContain('DATABASE_URL');
+		expect(result.requiredEnvVars).toContain('DB_POOL_SIZE');
+	});
+
+	it('should prefer requiredEnv over envParser sniffing', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: envParserFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			envParser: './valid-env-parser.ts#envParser',
+			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			envParserFixturesPath,
+		);
+
+		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
+		// Should NOT contain the sniffed vars
+		expect(result.requiredEnvVars).not.toContain('PORT');
+	});
+
+	it('should handle envParser that exports non-function gracefully', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: envParserFixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			envParser: './non-function-export.ts#envParser',
+		};
+
+		const result = await sniffAppEnvironment(
+			app,
+			'api',
+			envParserFixturesPath,
+			{ logWarnings: false },
+		);
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toEqual([]);
 	});
 });
