@@ -293,7 +293,7 @@ WORKDIR /app
 COPY . .
 
 # Build production server using gkm
-RUN pnpm exec gkm build --provider server --production
+RUN ${pm.exec} gkm build --provider server --production
 
 # Stage 3: Production
 FROM ${baseImage} AS runner
@@ -384,7 +384,7 @@ WORKDIR /app
 COPY --from=pruner /app/out/full/ ./
 
 # Build production server using gkm
-RUN pnpm exec gkm build --provider server --production
+RUN ${pm.exec} gkm build --provider server --production
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
@@ -756,7 +756,7 @@ RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
     fi
 
 # Build production server using gkm
-RUN cd ${appPath} && pnpm exec gkm build --provider server --production
+RUN cd ${appPath} && ${pm.exec} gkm build --provider server --production
 
 # Stage 4: Production
 FROM ${baseImage} AS runner
