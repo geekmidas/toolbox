@@ -75,7 +75,10 @@ const FrontendFrameworkSchema = z.enum(['nextjs', 'remix', 'vite']);
 /**
  * Combined framework schema (backend or frontend).
  */
-const FrameworkSchema = z.union([BackendFrameworkSchema, FrontendFrameworkSchema]);
+const FrameworkSchema = z.union([
+	BackendFrameworkSchema,
+	FrontendFrameworkSchema,
+]);
 
 /**
  * Deploy target schema.
@@ -248,7 +251,8 @@ const AppConfigSchema = z
 			return true;
 		},
 		{
-			message: 'Frontend apps must have a valid frontend framework (nextjs, remix, vite)',
+			message:
+				'Frontend apps must have a valid frontend framework (nextjs, remix, vite)',
 			path: ['framework'],
 		},
 	)
