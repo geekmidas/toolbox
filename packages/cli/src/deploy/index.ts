@@ -85,6 +85,7 @@ import {
 	validateEnvVars,
 } from './env-resolver.js';
 import { updateConfig } from './init';
+import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
 import {
@@ -99,11 +100,6 @@ import {
 	setPostgresId,
 	setRedisId,
 } from './state.js';
-import {
-	type StateProvider,
-	createStateProvider,
-	isStateProvider,
-} from './StateProvider.js';
 import type {
 	AppDeployResult,
 	DeployOptions,

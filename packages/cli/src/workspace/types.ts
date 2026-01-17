@@ -1,4 +1,5 @@
 import type { z } from 'zod/v4';
+import type { StateConfig } from '../deploy/StateProvider.js';
 import type {
 	GkmConfig,
 	HooksConfig,
@@ -9,7 +10,6 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
-import type { StateConfig } from '../deploy/StateProvider.js';
 import type { DnsConfigSchema } from './schema.js';
 
 /**
