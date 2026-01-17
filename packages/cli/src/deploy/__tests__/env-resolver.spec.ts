@@ -191,15 +191,17 @@ describe('resolveEnvVar', () => {
 		expect(resolveEnvVar('PORT', context)).toBe('8080');
 	});
 
-	it('should resolve NODE_ENV based on stage', () => {
+	it('should resolve NODE_ENV to production for all stages (deployed apps)', () => {
+		// NODE_ENV is always 'production' for deployed apps
+		// gkm dev handles development mode separately
 		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'production' }))).toBe(
 			'production',
 		);
 		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'staging' }))).toBe(
-			'development',
+			'production',
 		);
 		expect(resolveEnvVar('NODE_ENV', createContext({ stage: 'development' }))).toBe(
-			'development',
+			'production',
 		);
 	});
 
