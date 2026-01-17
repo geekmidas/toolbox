@@ -64,7 +64,11 @@ import {
 	isDeployTargetSupported,
 } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
-import { orchestrateDns } from './dns/index.js';
+import {
+	orchestrateDns,
+	resolveHostnameToIp,
+	verifyDnsRecords,
+} from './dns/index.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
 import {
@@ -79,6 +83,11 @@ import {
 	isMainFrontendApp,
 	resolveHost,
 } from './domain.js';
+import {
+	type EnvResolverContext,
+	formatMissingVarsError,
+	validateEnvVars,
+} from './env-resolver.js';
 import { updateConfig } from './init';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
@@ -1245,6 +1254,23 @@ export async function workspaceDeployCommand(
 	const appDomainIds = new Map<string, string>(); // appName -> domainId
 
 	// ==================================================================
+	// PRE-COMPUTE: Frontend URLs for BETTER_AUTH_TRUSTED_ORIGINS
+	// ==================================================================
+	const frontendUrls: string[] = [];
+	for (const appName of frontendApps) {
+		const app = workspace.apps[appName]!;
+		const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+		const hostname = resolveHost(
+			appName,
+			app,
+			stage,
+			dokployConfig,
+			isMainFrontend,
+		);
+		frontendUrls.push(`https://${hostname}`);
+	}
+
+	// ==================================================================
 	// PHASE 1: Deploy backend apps (with encrypted secrets)
 	// ==================================================================
 	if (backendApps.length > 0) {
@@ -1330,41 +1356,63 @@ export async function workspaceDeployCommand(
 					buildArgs,
 				});
 
-				// Prepare environment variables
-				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
+				// Compute hostname first (needed for BETTER_AUTH_URL)
+				const backendHost = resolveHost(
+					appName,
+					app,
+					stage,
+					dokployConfig,
+					false, // Backend apps are not main frontend
+				);
 
-				// Add master key for runtime decryption (NOT plain secrets)
-				if (appSecrets?.masterKey) {
-					envVars.push(`GKM_MASTER_KEY=${appSecrets.masterKey}`);
-				}
+				// Build env resolver context
+				const envContext: EnvResolverContext = {
+					app,
+					appName,
+					stage,
+					state,
+					appCredentials: perAppDbCredentials.get(appName),
+					postgres: provisionedPostgres
+						? {
+								host: provisionedPostgres.appName,
+								port: 5432,
+								database: provisionedPostgres.databaseName,
+							}
+						: undefined,
+					redis: provisionedRedis
+						? {
+								host: provisionedRedis.appName,
+								port: 6379,
+								password: provisionedRedis.databasePassword,
+							}
+						: undefined,
+					appHostname: backendHost,
+					frontendUrls,
+					userSecrets: stageSecrets ?? undefined,
+					masterKey: appSecrets?.masterKey,
+				};
 
-				// Add per-app DATABASE_URL if this app needs it
-				const appDbCreds = perAppDbCredentials.get(appName);
-				if (appDbCreds && provisionedPostgres) {
-					const databaseUrl = buildPerAppDatabaseUrl(
-						appDbCreds.dbUser,
-						appDbCreds.dbPassword,
-						provisionedPostgres.appName,
-						provisionedPostgres.databaseName,
-					);
-					envVars.push(`DATABASE_URL=${databaseUrl}`);
-					logger.log(
-						`      Added DATABASE_URL for user "${appDbCreds.dbUser}"`,
-					);
-				}
-
-				// Add REDIS_URL if this app needs it
+				// Resolve all required environment variables
 				const appRequirements = sniffedApps.get(appName);
-				if (
-					appRequirements?.requiredEnvVars.includes('REDIS_URL') &&
-					provisionedRedis
-				) {
-					const password = provisionedRedis.databasePassword
-						? `:${provisionedRedis.databasePassword}@`
-						: '';
-					const redisUrl = `redis://${password}${provisionedRedis.appName}:6379`;
-					envVars.push(`REDIS_URL=${redisUrl}`);
-					logger.log(`      Added REDIS_URL`);
+				const requiredVars = appRequirements?.requiredEnvVars ?? [];
+				const { valid, missing, resolved } = validateEnvVars(
+					requiredVars,
+					envContext,
+				);
+
+				if (!valid) {
+					throw new Error(formatMissingVarsError(appName, missing, stage));
+				}
+
+				// Build env vars string for Dokploy
+				const envVars: string[] = Object.entries(resolved).map(
+					([key, value]) => `${key}=${value}`,
+				);
+
+				if (Object.keys(resolved).length > 0) {
+					logger.log(
+						`      Resolved ${Object.keys(resolved).length} env vars: ${Object.keys(resolved).join(', ')}`,
+					);
 				}
 
 				// Configure and deploy application in Dokploy
@@ -1380,16 +1428,7 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Create or find domain for this app
-				const backendHost = resolveHost(
-					appName,
-					app,
-					stage,
-					dokployConfig,
-					false, // Backend apps are not main frontend
-				);
-
-				// Check if domain already exists
+				// Check if domain already exists (backendHost computed above)
 				const existingDomains = await api.getDomainsByApplicationId(
 					application.applicationId,
 				);
@@ -1639,7 +1678,7 @@ export async function workspaceDeployCommand(
 	logger.log(`   ✓ State saved to .gkm/deploy-${stage}.json`);
 
 	// ==================================================================
-	// DNS: Create DNS records and validate domains for SSL
+	// DNS: Create DNS records, verify propagation, and validate for SSL
 	// ==================================================================
 	const dnsConfig = workspace.deploy.dns;
 	if (dnsConfig && appHostnames.size > 0) {
@@ -1648,6 +1687,14 @@ export async function workspaceDeployCommand(
 			dnsConfig,
 			creds.endpoint,
 		);
+
+		// Verify DNS records resolve correctly (with state caching)
+		if (dnsResult?.serverIp && appHostnames.size > 0) {
+			await verifyDnsRecords(appHostnames, dnsResult.serverIp, state);
+
+			// Save state again to persist DNS verification results
+			await writeStageState(workspace.root, stage, state);
+		}
 
 		// Validate domains to trigger SSL certificate generation
 		if (dnsResult?.success && appHostnames.size > 0) {
