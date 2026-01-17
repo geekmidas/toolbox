@@ -1,6 +1,10 @@
 import { encryptSecrets } from '../secrets/encryption.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
-import type { EmbeddableSecrets, EncryptedPayload, StageSecrets } from '../secrets/types.js';
+import type {
+	EmbeddableSecrets,
+	EncryptedPayload,
+	StageSecrets,
+} from '../secrets/types.js';
 import type { SniffedEnvironment } from './sniffer.js';
 
 /**
