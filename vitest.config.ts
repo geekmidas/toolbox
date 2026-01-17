@@ -18,6 +18,12 @@ export default defineConfig({
 				'**/__benchmarks__/**',
 				'**/packages/ui/**',
 				'**/*.stories.tsx',
+				// Subprocess files - can't be instrumented as they run in child processes
+				'**/sniffer-loader.ts',
+				'**/sniffer-hooks.ts',
+				'**/sniffer-worker.ts',
+				'**/sniffer-envkit-patch.ts',
+				'**/__fixtures__/**',
 			],
 			include: ['packages/*/src/**/*.{ts,tsx}'],
 			thresholds: {
