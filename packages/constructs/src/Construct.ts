@@ -50,7 +50,12 @@ export abstract class Construct<
 	TServices extends Service[] = [],
 	TAuditStorageServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
+	TDatabaseServiceName extends string = string,
+	TDatabase = unknown,
 > {
+	/** Database service for this construct (used by Endpoint for RLS/audit context) */
+	public databaseService?: Service<TDatabaseServiceName, TDatabase>;
+
 	constructor(
 		public readonly type: ConstructType,
 		public readonly logger: TLogger,
@@ -94,6 +99,7 @@ export abstract class Construct<
 			this.publisherService,
 			this.publisherService,
 			this.auditorStorageService,
+			this.databaseService,
 		]);
 
 		try {
