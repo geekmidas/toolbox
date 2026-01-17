@@ -5,13 +5,21 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	createEmptyState,
 	getAllAppCredentials,
+	getAllDnsVerifications,
+	getAllGeneratedSecrets,
 	getAppCredentials,
+	getAppGeneratedSecrets,
 	getApplicationId,
+	getDnsVerification,
+	getGeneratedSecret,
 	getPostgresId,
 	getRedisId,
+	isDnsVerified,
 	readStageState,
 	setAppCredentials,
 	setApplicationId,
+	setDnsVerification,
+	setGeneratedSecret,
 	setPostgresId,
 	setRedisId,
 	writeStageState,
@@ -376,6 +384,461 @@ describe('state management', () => {
 
 		it('should return empty object when state is null', () => {
 			expect(getAllAppCredentials(null)).toEqual({});
+		});
+	});
+
+	// =========================================================================
+	// Generated Secrets Tests
+	// =========================================================================
+
+	describe('getGeneratedSecret', () => {
+		it('should return secret when exists', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret123' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET')).toBe(
+				'secret123',
+			);
+		});
+
+		it('should return undefined when app not found', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret123' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getGeneratedSecret(state, 'api', 'BETTER_AUTH_SECRET')).toBeUndefined();
+		});
+
+		it('should return undefined when secret name not found', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret123' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getGeneratedSecret(state, 'auth', 'OTHER_SECRET')).toBeUndefined();
+		});
+
+		it('should return undefined when no generatedSecrets', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			expect(getGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET')).toBeUndefined();
+		});
+
+		it('should return undefined when state is null', () => {
+			expect(getGeneratedSecret(null, 'auth', 'BETTER_AUTH_SECRET')).toBeUndefined();
+		});
+	});
+
+	describe('setGeneratedSecret', () => {
+		it('should set secret', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
+
+			expect(state.generatedSecrets?.auth?.BETTER_AUTH_SECRET).toBe('secret123');
+		});
+
+		it('should initialize generatedSecrets if not exists', () => {
+			const state = createEmptyState('production', 'env_123');
+			expect(state.generatedSecrets).toBeUndefined();
+
+			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
+
+			expect(state.generatedSecrets).toBeDefined();
+		});
+
+		it('should initialize app secrets if not exists', () => {
+			const state = createEmptyState('production', 'env_123');
+			state.generatedSecrets = {};
+
+			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
+
+			expect(state.generatedSecrets.auth).toBeDefined();
+		});
+
+		it('should update existing secret', () => {
+			const state = createEmptyState('production', 'env_123');
+			state.generatedSecrets = {
+				auth: { BETTER_AUTH_SECRET: 'old_secret' },
+			};
+
+			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'new_secret');
+
+			expect(state.generatedSecrets.auth.BETTER_AUTH_SECRET).toBe('new_secret');
+		});
+
+		it('should add multiple secrets for same app', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret1');
+			setGeneratedSecret(state, 'auth', 'OTHER_SECRET', 'secret2');
+
+			expect(state.generatedSecrets?.auth).toEqual({
+				BETTER_AUTH_SECRET: 'secret1',
+				OTHER_SECRET: 'secret2',
+			});
+		});
+	});
+
+	describe('getAppGeneratedSecrets', () => {
+		it('should return all secrets for an app', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: {
+						BETTER_AUTH_SECRET: 'secret1',
+						OTHER_SECRET: 'secret2',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getAppGeneratedSecrets(state, 'auth')).toEqual({
+				BETTER_AUTH_SECRET: 'secret1',
+				OTHER_SECRET: 'secret2',
+			});
+		});
+
+		it('should return empty object when app not found', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret1' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getAppGeneratedSecrets(state, 'api')).toEqual({});
+		});
+
+		it('should return empty object when state is null', () => {
+			expect(getAppGeneratedSecrets(null, 'auth')).toEqual({});
+		});
+	});
+
+	describe('getAllGeneratedSecrets', () => {
+		it('should return all generated secrets', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret1' },
+					'admin-auth': { BETTER_AUTH_SECRET: 'secret2' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getAllGeneratedSecrets(state)).toEqual({
+				auth: { BETTER_AUTH_SECRET: 'secret1' },
+				'admin-auth': { BETTER_AUTH_SECRET: 'secret2' },
+			});
+		});
+
+		it('should return empty object when no secrets', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			expect(getAllGeneratedSecrets(state)).toEqual({});
+		});
+
+		it('should return empty object when state is null', () => {
+			expect(getAllGeneratedSecrets(null)).toEqual({});
+		});
+	});
+
+	// =========================================================================
+	// DNS Verification Tests
+	// =========================================================================
+
+	describe('getDnsVerification', () => {
+		it('should return verification record when exists', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getDnsVerification(state, 'api.example.com')).toEqual({
+				serverIp: '1.2.3.4',
+				verifiedAt: '2024-01-01T00:00:00.000Z',
+			});
+		});
+
+		it('should return undefined when hostname not found', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getDnsVerification(state, 'web.example.com')).toBeUndefined();
+		});
+
+		it('should return undefined when no dnsVerified', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			expect(getDnsVerification(state, 'api.example.com')).toBeUndefined();
+		});
+
+		it('should return undefined when state is null', () => {
+			expect(getDnsVerification(null, 'api.example.com')).toBeUndefined();
+		});
+	});
+
+	describe('setDnsVerification', () => {
+		it('should set verification record', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			setDnsVerification(state, 'api.example.com', '1.2.3.4');
+
+			expect(state.dnsVerified?.['api.example.com']?.serverIp).toBe('1.2.3.4');
+			expect(state.dnsVerified?.['api.example.com']?.verifiedAt).toBeDefined();
+		});
+
+		it('should initialize dnsVerified if not exists', () => {
+			const state = createEmptyState('production', 'env_123');
+			expect(state.dnsVerified).toBeUndefined();
+
+			setDnsVerification(state, 'api.example.com', '1.2.3.4');
+
+			expect(state.dnsVerified).toBeDefined();
+		});
+
+		it('should update existing verification', () => {
+			const state = createEmptyState('production', 'env_123');
+			state.dnsVerified = {
+				'api.example.com': {
+					serverIp: '1.1.1.1',
+					verifiedAt: '2024-01-01T00:00:00.000Z',
+				},
+			};
+
+			setDnsVerification(state, 'api.example.com', '2.2.2.2');
+
+			expect(state.dnsVerified['api.example.com'].serverIp).toBe('2.2.2.2');
+		});
+
+		it('should generate valid ISO timestamp', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			setDnsVerification(state, 'api.example.com', '1.2.3.4');
+
+			const verifiedAt = state.dnsVerified?.['api.example.com']?.verifiedAt;
+			expect(() => new Date(verifiedAt!)).not.toThrow();
+		});
+	});
+
+	describe('isDnsVerified', () => {
+		it('should return true when hostname verified with same IP', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(isDnsVerified(state, 'api.example.com', '1.2.3.4')).toBe(true);
+		});
+
+		it('should return false when hostname verified with different IP', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(isDnsVerified(state, 'api.example.com', '5.6.7.8')).toBe(false);
+		});
+
+		it('should return false when hostname not verified', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(isDnsVerified(state, 'api.example.com', '1.2.3.4')).toBe(false);
+		});
+
+		it('should return false when state is null', () => {
+			expect(isDnsVerified(null, 'api.example.com', '1.2.3.4')).toBe(false);
+		});
+	});
+
+	describe('getAllDnsVerifications', () => {
+		it('should return all verification records', () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+					'web.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-02T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			expect(getAllDnsVerifications(state)).toEqual({
+				'api.example.com': {
+					serverIp: '1.2.3.4',
+					verifiedAt: '2024-01-01T00:00:00.000Z',
+				},
+				'web.example.com': {
+					serverIp: '1.2.3.4',
+					verifiedAt: '2024-01-02T00:00:00.000Z',
+				},
+			});
+		});
+
+		it('should return empty object when no verifications', () => {
+			const state = createEmptyState('production', 'env_123');
+
+			expect(getAllDnsVerifications(state)).toEqual({});
+		});
+
+		it('should return empty object when state is null', () => {
+			expect(getAllDnsVerifications(null)).toEqual({});
+		});
+	});
+
+	describe('writeStageState with new fields', () => {
+		it('should preserve generatedSecrets', async () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				generatedSecrets: {
+					auth: { BETTER_AUTH_SECRET: 'secret123' },
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			await writeStageState(testDir, 'production', state);
+
+			const content = await readFile(
+				join(testDir, '.gkm', 'deploy-production.json'),
+				'utf-8',
+			);
+			const parsed = JSON.parse(content);
+
+			expect(parsed.generatedSecrets).toEqual({
+				auth: { BETTER_AUTH_SECRET: 'secret123' },
+			});
+		});
+
+		it('should preserve dnsVerified', async () => {
+			const state: DokployStageState = {
+				provider: 'dokploy',
+				stage: 'production',
+				environmentId: 'env_123',
+				applications: {},
+				services: {},
+				dnsVerified: {
+					'api.example.com': {
+						serverIp: '1.2.3.4',
+						verifiedAt: '2024-01-01T00:00:00.000Z',
+					},
+				},
+				lastDeployedAt: '2024-01-01T00:00:00.000Z',
+			};
+
+			await writeStageState(testDir, 'production', state);
+
+			const content = await readFile(
+				join(testDir, '.gkm', 'deploy-production.json'),
+				'utf-8',
+			);
+			const parsed = JSON.parse(content);
+
+			expect(parsed.dnsVerified).toEqual({
+				'api.example.com': {
+					serverIp: '1.2.3.4',
+					verifiedAt: '2024-01-01T00:00:00.000Z',
+				},
+			});
 		});
 	});
 });
