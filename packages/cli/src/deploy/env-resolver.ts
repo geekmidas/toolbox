@@ -158,7 +158,11 @@ export function resolveEnvVar(
 			return String(context.app.port);
 
 		case 'NODE_ENV':
-			return context.stage === 'production' ? 'production' : 'development';
+			// Always 'production' for deployed apps (gkm dev handles development mode)
+			return 'production';
+
+		case 'STAGE':
+			return context.stage;
 
 		case 'DATABASE_URL':
 			if (context.appCredentials && context.postgres) {
