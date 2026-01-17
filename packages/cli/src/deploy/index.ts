@@ -94,13 +94,16 @@ import {
 	getApplicationId,
 	getPostgresId,
 	getRedisId,
-	readStageState,
 	setAppCredentials,
 	setApplicationId,
 	setPostgresId,
 	setRedisId,
-	writeStageState,
 } from './state.js';
+import {
+	type StateProvider,
+	createStateProvider,
+	isStateProvider,
+} from './StateProvider.js';
 import type {
 	AppDeployResult,
 	DeployOptions,
@@ -1069,10 +1072,18 @@ export async function workspaceDeployCommand(
 	}
 
 	// ==================================================================
-	// STATE: Load or create deploy state for this stage
+	// STATE: Create state provider and load deploy state
 	// ==================================================================
 	logger.log('\n📋 Loading deploy state...');
-	let state = await readStageState(workspace.root, stage);
+
+	// Create state provider based on workspace config
+	const stateProvider = await createStateProvider({
+		config: workspace.state,
+		workspaceRoot: workspace.root,
+		workspaceName: workspace.name,
+	});
+
+	let state = await stateProvider.read(stage);
 
 	if (state) {
 		logger.log(`   Found existing state for stage "${stage}"`);
@@ -1680,8 +1691,8 @@ export async function workspaceDeployCommand(
 	// STATE: Save deploy state
 	// ==================================================================
 	logger.log('\n📋 Saving deploy state...');
-	await writeStageState(workspace.root, stage, state);
-	logger.log(`   ✓ State saved to .gkm/deploy-${stage}.json`);
+	await stateProvider.write(stage, state);
+	logger.log('   ✓ State saved');
 
 	// ==================================================================
 	// DNS: Create DNS records, verify propagation, and validate for SSL
@@ -1699,7 +1710,7 @@ export async function workspaceDeployCommand(
 			await verifyDnsRecords(appHostnames, dnsResult.serverIp, state);
 
 			// Save state again to persist DNS verification results
-			await writeStageState(workspace.root, stage, state);
+			await stateProvider.write(stage, state);
 		}
 
 		// Validate domains to trigger SSL certificate generation
