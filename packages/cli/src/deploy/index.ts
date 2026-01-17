@@ -1395,8 +1395,12 @@ export async function workspaceDeployCommand(
 				};
 
 				// Resolve all required environment variables
+				// Always include PORT, NODE_ENV, STAGE even if not explicitly required
 				const appRequirements = sniffedApps.get(appName);
-				const requiredVars = appRequirements?.requiredEnvVars ?? [];
+				const sniffedVars = appRequirements?.requiredEnvVars ?? [];
+				const requiredVars = [
+					...new Set(['PORT', 'NODE_ENV', 'STAGE', ...sniffedVars]),
+				];
 				const { valid, missing, resolved } = validateEnvVars(
 					requiredVars,
 					envContext,
