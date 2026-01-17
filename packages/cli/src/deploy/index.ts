@@ -1586,7 +1586,11 @@ export async function workspaceDeployCommand(
 				});
 
 				// Prepare environment variables - no secrets needed
-				const envVars: string[] = [`NODE_ENV=production`, `PORT=${app.port}`];
+				const envVars: string[] = [
+					`NODE_ENV=production`,
+					`PORT=${app.port}`,
+					`STAGE=${stage}`,
+				];
 
 				// Configure and deploy application in Dokploy
 				await api.saveDockerProvider(application.applicationId, imageRef, {
