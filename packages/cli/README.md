@@ -840,11 +840,32 @@ gkm deploy --provider docker --stage production --tag v1.0.0
 ```
 
 **Workflow:**
-1. Builds production bundle with `gkm build --provider server --production --stage <stage>`
-2. Encrypts secrets from `.gkm/secrets/<stage>.json` into the bundle
-3. Generates Docker files with `gkm docker`
-4. Builds and pushes Docker image
-5. (Dokploy) Triggers deployment via API with `GKM_MASTER_KEY`
+1. **Sniffs environment variables** - Automatically detects which env vars each app needs
+2. Builds production bundle with `gkm build --provider server --production --stage <stage>`
+3. Encrypts secrets from `.gkm/secrets/<stage>.json` into the bundle
+4. Generates Docker files with `gkm docker`
+5. Builds and pushes Docker image
+6. (Dokploy) Triggers deployment via API with `GKM_MASTER_KEY`
+
+**Environment Variable Detection:**
+
+The deploy command automatically detects required environment variables for each app using different strategies based on app configuration:
+
+| App Type | Detection Strategy |
+|----------|-------------------|
+| Frontend apps | Returns empty (no server secrets) |
+| Apps with `requiredEnv` | Uses explicit list from config |
+| Entry-based apps | Imports entry file in subprocess to capture `config.parse()` calls |
+| Route-based apps | Loads routes and calls `getEnvironment()` on each construct |
+| Apps with `envParser` only | Runs SnifferEnvironmentParser to detect usage |
+
+For route-based apps, the sniffer loads each endpoint/function/cron/subscriber and collects environment variables from:
+- All services attached to the construct (via `service.register()`)
+- Publisher service (if any)
+- Auditor storage service (if any)
+- Database service (if any)
+
+This allows the CLI to validate that all required secrets are configured before deployment, preventing runtime errors from missing environment variables.
 
 **Configuration:**
 
