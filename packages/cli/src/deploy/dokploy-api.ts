@@ -431,10 +431,10 @@ export class DokployApi {
 			environmentId,
 			appName:
 				options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-			databaseName: options?.databaseName ?? 'app',
+			databaseName: options?.databaseName,
 			databaseUser: options?.databaseUser ?? 'postgres',
 			databasePassword: options?.databasePassword,
-			dockerImage: options?.dockerImage ?? 'postgres:16-alpine',
+			dockerImage: options?.dockerImage ?? 'postgres:18',
 			description: options?.description ?? `Postgres database for ${name}`,
 		});
 	}
@@ -447,6 +447,7 @@ export class DokployApi {
 		projectId: string,
 		environmentId: string,
 		options?: {
+			databaseName?: string;
 			databasePassword?: string;
 		},
 	): Promise<{ postgres: DokployPostgres; created: boolean }> {
@@ -557,7 +558,7 @@ export class DokployApi {
 			appName:
 				options?.appName ?? name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
 			databasePassword: options?.databasePassword,
-			dockerImage: options?.dockerImage ?? 'redis:7-alpine',
+			dockerImage: options?.dockerImage ?? 'redis:8',
 			description: options?.description ?? `Redis instance for ${name}`,
 		});
 	}
