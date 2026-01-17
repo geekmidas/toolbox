@@ -958,7 +958,9 @@ export async function workspaceDeployCommand(
 	const stageSecrets = await readStageSecrets(stage, workspace.root);
 	if (!stageSecrets) {
 		logger.log(`   ⚠️  No secrets found for stage "${stage}"`);
-		logger.log(`      Run "gkm secrets:init --stage ${stage}" to create secrets`);
+		logger.log(
+			`      Run "gkm secrets:init --stage ${stage}" to create secrets`,
+		);
 	}
 
 	// Sniff environment variables for all apps
@@ -973,7 +975,9 @@ export async function workspaceDeployCommand(
 	if (stageSecrets) {
 		const report = generateSecretsReport(encryptedSecrets, sniffedApps);
 		if (report.appsWithSecrets.length > 0) {
-			logger.log(`   ✓ Encrypted secrets for: ${report.appsWithSecrets.join(', ')}`);
+			logger.log(
+				`   ✓ Encrypted secrets for: ${report.appsWithSecrets.join(', ')}`,
+			);
 		}
 		if (report.appsWithMissingSecrets.length > 0) {
 			for (const { appName, missing } of report.appsWithMissingSecrets) {
@@ -1263,7 +1267,9 @@ export async function workspaceDeployCommand(
 					logger.log(`      Using cached ID: ${cachedAppId}`);
 					application = await api.getApplication(cachedAppId);
 					if (application) {
-						logger.log(`      ✓ Application found: ${application.applicationId}`);
+						logger.log(
+							`      ✓ Application found: ${application.applicationId}`,
+						);
 					} else {
 						logger.log(`      ⚠ Cached ID invalid, will create new`);
 					}
@@ -1279,9 +1285,13 @@ export async function workspaceDeployCommand(
 					application = result.application;
 
 					if (result.created) {
-						logger.log(`      Created application: ${application.applicationId}`);
+						logger.log(
+							`      Created application: ${application.applicationId}`,
+						);
 					} else {
-						logger.log(`      Found existing application: ${application.applicationId}`);
+						logger.log(
+							`      Found existing application: ${application.applicationId}`,
+						);
 					}
 				}
 
@@ -1429,7 +1439,8 @@ export async function workspaceDeployCommand(
 
 				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
+				const message =
+					error instanceof Error ? error.message : 'Unknown error';
 				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
 
 				results.push({
@@ -1470,7 +1481,9 @@ export async function workspaceDeployCommand(
 					logger.log(`      Using cached ID: ${cachedAppId}`);
 					application = await api.getApplication(cachedAppId);
 					if (application) {
-						logger.log(`      ✓ Application found: ${application.applicationId}`);
+						logger.log(
+							`      ✓ Application found: ${application.applicationId}`,
+						);
 					} else {
 						logger.log(`      ⚠ Cached ID invalid, will create new`);
 					}
@@ -1486,9 +1499,13 @@ export async function workspaceDeployCommand(
 					application = result.application;
 
 					if (result.created) {
-						logger.log(`      Created application: ${application.applicationId}`);
+						logger.log(
+							`      Created application: ${application.applicationId}`,
+						);
 					} else {
-						logger.log(`      Found existing application: ${application.applicationId}`);
+						logger.log(
+							`      Found existing application: ${application.applicationId}`,
+						);
 					}
 				}
 
@@ -1599,7 +1616,8 @@ export async function workspaceDeployCommand(
 
 				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
+				const message =
+					error instanceof Error ? error.message : 'Unknown error';
 				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
 
 				results.push({
