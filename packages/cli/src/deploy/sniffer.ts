@@ -1,29 +1,21 @@
-import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Construct } from '@geekmidas/constructs';
-import { Endpoint } from '@geekmidas/constructs/endpoints';
-import { Function as GkmFunction } from '@geekmidas/constructs/functions';
-import { Cron } from '@geekmidas/constructs/crons';
-import { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
-import fg from 'fast-glob';
 import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Check if a value is a gkm construct (Endpoint, Function, Cron, or Subscriber).
+ * Resolve the tsx package path from the CLI package's dependencies.
+ * This ensures tsx is available regardless of whether the target project has it installed.
  */
-function isConstruct(value: unknown): value is Construct {
-	return (
-		Endpoint.isEndpoint(value) ||
-		GkmFunction.isFunction(value) ||
-		Cron.isCron(value) ||
-		Subscriber.isSubscriber(value)
-	);
+function resolveTsxPath(): string {
+	const require = createRequire(import.meta.url);
+	return require.resolve('tsx');
 }
 
 /**
@@ -269,7 +261,9 @@ async function sniffEntryFile(
  *
  * Route-based apps have endpoints, functions, crons, and subscribers that
  * use services. Each service's register() method accesses environment variables.
- * This function mimics what the bundler does during build to capture those vars.
+ *
+ * This runs in a subprocess with tsx loader to properly handle TypeScript
+ * compilation and path alias resolution (e.g., `src/...` imports).
  *
  * @param routes - Glob pattern(s) for route files
  * @param appPath - The app's path relative to workspace (e.g., 'apps/api')
@@ -282,53 +276,81 @@ async function sniffRouteFiles(
 	workspacePath: string,
 ): Promise<EntrySniffResult> {
 	const fullAppPath = resolve(workspacePath, appPath);
-	const patterns = Array.isArray(routes) ? routes : [routes];
+	const workerPath = resolveSnifferFile('sniffer-routes-worker');
+	const tsxPath = resolveTsxPath();
 
-	const envVars = new Set<string>();
-	let error: Error | undefined;
-
-	try {
-		// Find all route files matching the patterns
-		const files = await fg(patterns, {
-			cwd: fullAppPath,
-			absolute: true,
-		});
-
-		// Import each file and find constructs
-		for (const file of files) {
-			try {
-				const module = await import(file);
-
-				// Check all exports for constructs
-				for (const [, exportValue] of Object.entries(module)) {
-					if (isConstruct(exportValue)) {
-						// Call getEnvironment() to capture env vars from services
-						try {
-							const constructEnvVars = await exportValue.getEnvironment();
-							constructEnvVars.forEach((v) => envVars.add(v));
-						} catch (e) {
-							// Individual construct may fail, continue with others
-							console.warn(
-								`[sniffer] Failed to get environment for construct in ${file}: ${e instanceof Error ? e.message : String(e)}`,
-							);
-						}
-					}
-				}
-			} catch (e) {
-				// Individual file import may fail, continue with others
-				console.warn(
-					`[sniffer] Failed to import ${file}: ${e instanceof Error ? e.message : String(e)}`,
-				);
-			}
-		}
-	} catch (e) {
-		error = e instanceof Error ? e : new Error(String(e));
+	// Convert array of patterns to first pattern (worker handles glob internally)
+	const routesArray = Array.isArray(routes) ? routes : [routes];
+	const pattern = routesArray[0];
+	if (!pattern) {
+		return { envVars: [], error: new Error('No route patterns provided') };
 	}
 
-	return {
-		envVars: Array.from(envVars).sort(),
-		error,
-	};
+	return new Promise((resolvePromise) => {
+		const child = spawn(
+			'node',
+			['--import', tsxPath, workerPath, fullAppPath, pattern],
+			{
+				cwd: fullAppPath,
+				stdio: ['ignore', 'pipe', 'pipe'],
+				env: {
+					...process.env,
+				},
+			},
+		);
+
+		let stdout = '';
+		let stderr = '';
+
+		child.stdout.on('data', (data) => {
+			stdout += data.toString();
+		});
+
+		child.stderr.on('data', (data) => {
+			stderr += data.toString();
+		});
+
+		child.on('close', (code) => {
+			// Log any stderr output (import errors, etc.)
+			if (stderr) {
+				stderr
+					.split('\n')
+					.filter((line) => line.trim())
+					.forEach((line) => console.warn(line));
+			}
+
+			// Try to parse the JSON output from the worker
+			try {
+				// Find the last JSON object in stdout (worker may emit other output)
+				const jsonMatch = stdout.match(/\{[^{}]*"envVars"[^{}]*\}[^{]*$/);
+				if (jsonMatch) {
+					const result = JSON.parse(jsonMatch[0]);
+					resolvePromise({
+						envVars: result.envVars || [],
+						error: result.error ? new Error(result.error) : undefined,
+					});
+					return;
+				}
+			} catch {
+				// JSON parse failed
+			}
+
+			// If we couldn't parse the output, return empty with error info
+			resolvePromise({
+				envVars: [],
+				error: new Error(
+					`Failed to sniff route files (exit code ${code}): ${stderr || stdout || 'No output'}`,
+				),
+			});
+		});
+
+		child.on('error', (err) => {
+			resolvePromise({
+				envVars: [],
+				error: err,
+			});
+		});
+	});
 }
 
 /**
