@@ -48,7 +48,9 @@ class PatchedEnvironmentParser {
 	create<TReturn extends Record<string, unknown>>(
 		builder: (get: EnvFetcher) => TReturn,
 	): ConfigParser<TReturn> {
-		return globalThis.__envSniffer!.create(builder as any) as unknown as ConfigParser<TReturn>;
+		return globalThis.__envSniffer!.create(
+			builder as any,
+		) as unknown as ConfigParser<TReturn>;
 	}
 }
 

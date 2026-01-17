@@ -4,7 +4,15 @@ import {
 	PutParameterCommand,
 	SSMClient,
 } from '@aws-sdk/client-ssm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from 'vitest';
 import { SSMStateProvider } from '../SSMStateProvider';
 import type { DokployStageState } from '../state';
 

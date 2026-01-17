@@ -17,7 +17,9 @@ export interface StateCommandOptions {
  * Pull state from remote to local.
  * `gkm state:pull --stage=<stage>`
  */
-export async function statePullCommand(options: StateCommandOptions): Promise<void> {
+export async function statePullCommand(
+	options: StateCommandOptions,
+): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
 
 	if (!workspace.state || workspace.state.provider === 'local') {
@@ -53,7 +55,9 @@ export async function statePullCommand(options: StateCommandOptions): Promise<vo
  * Push local state to remote.
  * `gkm state:push --stage=<stage>`
  */
-export async function statePushCommand(options: StateCommandOptions): Promise<void> {
+export async function statePushCommand(
+	options: StateCommandOptions,
+): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
 
 	if (!workspace.state || workspace.state.provider === 'local') {
@@ -118,7 +122,9 @@ export async function stateShowCommand(
  * Compare local and remote state.
  * `gkm state:diff --stage=<stage>`
  */
-export async function stateDiffCommand(options: StateCommandOptions): Promise<void> {
+export async function stateDiffCommand(
+	options: StateCommandOptions,
+): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
 
 	if (!workspace.state || workspace.state.provider === 'local') {
@@ -163,7 +169,10 @@ export async function stateDiffCommand(options: StateCommandOptions): Promise<vo
 	// Compare applications
 	const localApps = local?.applications ?? {};
 	const remoteApps = remote?.applications ?? {};
-	const allApps = new Set([...Object.keys(localApps), ...Object.keys(remoteApps)]);
+	const allApps = new Set([
+		...Object.keys(localApps),
+		...Object.keys(remoteApps),
+	]);
 
 	if (allApps.size > 0) {
 		console.log('Applications:');
@@ -178,7 +187,9 @@ export async function stateDiffCommand(options: StateCommandOptions): Promise<vo
 			} else if (!remoteId) {
 				console.log(`  ${app}: ${localId} -> (none) [LOCAL ONLY]`);
 			} else {
-				console.log(`  ${app}: ${localId} (local) != ${remoteId} (remote) [MISMATCH]`);
+				console.log(
+					`  ${app}: ${localId} (local) != ${remoteId} (remote) [MISMATCH]`,
+				);
 			}
 		}
 	}
@@ -187,7 +198,10 @@ export async function stateDiffCommand(options: StateCommandOptions): Promise<vo
 	const localServices = local?.services ?? {};
 	const remoteServices = remote?.services ?? {};
 
-	if (Object.keys(localServices).length > 0 || Object.keys(remoteServices).length > 0) {
+	if (
+		Object.keys(localServices).length > 0 ||
+		Object.keys(remoteServices).length > 0
+	) {
 		console.log('\nServices:');
 		const serviceKeys = new Set([
 			...Object.keys(localServices),
@@ -201,7 +215,9 @@ export async function stateDiffCommand(options: StateCommandOptions): Promise<vo
 			if (localVal === remoteVal) {
 				console.log(`  ${key}: ${localVal ?? '(none)'}`);
 			} else {
-				console.log(`  ${key}: ${localVal ?? '(none)'} (local) != ${remoteVal ?? '(none)'} (remote)`);
+				console.log(
+					`  ${key}: ${localVal ?? '(none)'} (local) != ${remoteVal ?? '(none)'} (remote)`,
+				);
 			}
 		}
 	}

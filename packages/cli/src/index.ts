@@ -720,7 +720,10 @@ program
 program
 	.command('state:pull')
 	.description('Pull deployment state from remote to local')
-	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
 	.action(async (options: { stage: string }) => {
 		try {
 			const globalOptions = program.opts();
@@ -737,7 +740,10 @@ program
 program
 	.command('state:push')
 	.description('Push deployment state from local to remote')
-	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
 	.action(async (options: { stage: string }) => {
 		try {
 			const globalOptions = program.opts();
@@ -754,7 +760,10 @@ program
 program
 	.command('state:show')
 	.description('Show deployment state for a stage')
-	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
 	.option('--json', 'Output as JSON')
 	.action(async (options: { stage: string; json?: boolean }) => {
 		try {
@@ -772,7 +781,10 @@ program
 program
 	.command('state:diff')
 	.description('Compare local and remote deployment state')
-	.requiredOption('--stage <stage>', 'Deployment stage (e.g., production, staging)')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
 	.action(async (options: { stage: string }) => {
 		try {
 			const globalOptions = program.opts();

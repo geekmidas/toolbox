@@ -75,7 +75,10 @@ export class CachedStateProvider implements StateProvider {
 	 */
 	async diff(
 		stage: string,
-	): Promise<{ local: DokployStageState | null; remote: DokployStageState | null }> {
+	): Promise<{
+		local: DokployStageState | null;
+		remote: DokployStageState | null;
+	}> {
 		const [local, remote] = await Promise.all([
 			this.local.read(stage),
 			this.remote.read(stage),

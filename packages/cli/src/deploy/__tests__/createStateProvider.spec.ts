@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CachedStateProvider } from '../CachedStateProvider';
 import { LocalStateProvider } from '../LocalStateProvider';
-import { createStateProvider, isStateProvider, type StateProvider } from '../StateProvider';
+import {
+	createStateProvider,
+	isStateProvider,
+	type StateProvider,
+} from '../StateProvider';
 
 describe('createStateProvider', () => {
 	let testDir: string;
