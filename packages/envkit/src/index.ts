@@ -12,7 +12,7 @@ export {
 } from './EnvironmentBuilder';
 export { ConfigParser, EnvironmentParser } from './EnvironmentParser';
 export {
+	type FormatOptions,
 	formatParseError,
 	isDevelopment,
-	type FormatOptions,
 } from './formatter';
