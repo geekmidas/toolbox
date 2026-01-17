@@ -571,14 +571,6 @@ async function ensureDokploySetup(
 ): Promise<DokploySetupResult> {
 	logger.log('\n🔧 Checking Dokploy setup...');
 
-	// Read existing secrets to check if services are already configured
-	const { readStageSecrets } = await import('../secrets/storage');
-	const existingSecrets = await readStageSecrets(stage);
-	const existingUrls: { DATABASE_URL?: string; REDIS_URL?: string } = {
-		DATABASE_URL: existingSecrets?.urls?.DATABASE_URL,
-		REDIS_URL: existingSecrets?.urls?.REDIS_URL,
-	};
-
 	// Step 1: Ensure we have Dokploy credentials
 	let creds = await getDokployCredentials();
 
