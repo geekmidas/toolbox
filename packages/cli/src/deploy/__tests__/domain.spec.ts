@@ -143,6 +143,12 @@ describe('isMainFrontendApp', () => {
 		};
 		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(false);
 	});
+
+	it('should return false when no frontend apps in allApps (edge case)', () => {
+		// Edge case: checking a frontend app against an empty allApps
+		const frontendApp = createApp('frontend');
+		expect(isMainFrontendApp('myapp', frontendApp, {})).toBe(false);
+	});
 });
 
 describe('generatePublicUrlBuildArgs', () => {
