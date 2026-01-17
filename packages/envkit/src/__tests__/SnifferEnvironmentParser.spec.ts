@@ -464,11 +464,7 @@ describe('sniffWithFireAndForget', () => {
 		const sniffer = new SnifferEnvironmentParser();
 		const startTime = Date.now();
 
-		await sniffWithFireAndForget(
-			sniffer,
-			() => {},
-			{ settleTimeMs: 50 },
-		);
+		await sniffWithFireAndForget(sniffer, () => {}, { settleTimeMs: 50 });
 
 		const elapsed = Date.now() - startTime;
 		// Should wait at least 50ms but not much longer
