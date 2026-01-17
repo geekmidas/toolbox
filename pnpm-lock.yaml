@@ -258,6 +258,9 @@ importers:
       prompts:
         specifier: ~2.4.2
         version: 2.4.2
+      tsx:
+        specifier: ~4.20.3
+        version: 4.20.6
     devDependencies:
       '@geekmidas/testkit':
         specifier: workspace:*
@@ -2441,215 +2444,6 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
-
-  '@geekmidas/audit@0.2.0':
-    resolution: {integrity: sha512-qGwi0P6wsFAYF15RkwXYwl/jV+6vnbbEIauWTM/qGP8+xiE1wCfP8z58ujkN6h9gm00hV+84Xbd2xCHH+WyZHw==}
-    peerDependencies:
-      '@geekmidas/cache': ^0.2.0
-      '@geekmidas/schema': ^0.1.0
-      kysely: ^0.28.0
-    peerDependenciesMeta:
-      '@geekmidas/cache':
-        optional: true
-      '@geekmidas/schema':
-        optional: true
-      kysely:
-        optional: true
-
-  '@geekmidas/cache@0.2.0':
-    resolution: {integrity: sha512-S5vd+BaiYyZgm+eB3Yx4NJfPvvpHx0ODC8X0/habIj6iiy0BT8ghVXzpv5uzLiMdI8Tj6WiCxvHcQqHDIvMVow==}
-    peerDependencies:
-      '@upstash/redis': ~1.35.1
-      expo-secure-store: ^14.2.3
-
-  '@geekmidas/cli@0.21.0':
-    resolution: {integrity: sha512-esS18PtZxy2XvhDc40GnDvBM803bKgcJsaq0OVYbv0gt9t/Ea25dlkVRh59tKHYrOQPKrNteMeeL44HVuZLeiw==}
-    hasBin: true
-    peerDependencies:
-      '@geekmidas/constructs': ~0.6.0
-      '@geekmidas/envkit': ~0.4.0
-      '@geekmidas/logger': ~0.4.0
-      '@geekmidas/schema': ~0.1.0
-      '@geekmidas/telescope': ~0.4.0
-    peerDependenciesMeta:
-      '@geekmidas/telescope':
-        optional: true
-
-  '@geekmidas/constructs@0.6.0':
-    resolution: {integrity: sha512-Kkwa4hfLLCE+VEFm5FcjdCmRFXTyiX+43QaQK+rQ1iZTFUZ1TXL+XVRw0OUgMwenipbwcxL0+cqASZ1CUPBmRg==}
-    peerDependencies:
-      '@geekmidas/audit': ^0.2.0
-      '@geekmidas/cache': ^0.2.0
-      '@geekmidas/db': ^0.3.0
-      '@geekmidas/envkit': ^0.4.0
-      '@geekmidas/errors': ^0.1.0
-      '@geekmidas/events': ^0.2.0
-      '@geekmidas/logger': ^0.4.0
-      '@geekmidas/rate-limit': ^0.3.0
-      '@geekmidas/schema': ^0.1.0
-      '@geekmidas/services': ^0.2.0
-      '@middy/core': '>=6.3.1'
-      '@types/aws-lambda': '>=8.10.92'
-      hono: '>=4.8.2'
-    peerDependenciesMeta:
-      '@geekmidas/audit':
-        optional: true
-      '@geekmidas/cache':
-        optional: true
-      '@geekmidas/db':
-        optional: true
-      '@geekmidas/envkit':
-        optional: true
-      '@geekmidas/errors':
-        optional: true
-      '@geekmidas/events':
-        optional: true
-      '@geekmidas/logger':
-        optional: true
-      '@geekmidas/rate-limit':
-        optional: true
-      '@geekmidas/schema':
-        optional: true
-      '@geekmidas/services':
-        optional: true
-      '@middy/core':
-        optional: true
-      '@types/aws-lambda':
-        optional: true
-      hono:
-        optional: true
-
-  '@geekmidas/db@0.3.0':
-    resolution: {integrity: sha512-KqBN5VVtka61UdIVkCR6OmuLeTi/rc4sNuV8wRr7U9E61PZMc8j95kYiaafRcmyJYTla39SrxKmVhqp/Ru+lkQ==}
-    peerDependencies:
-      db-errors: ~0.2.3
-      knex: ~3.1.0
-      kysely: ~0.28.2
-      objection: ~3.1.5
-      pg: ~8.16.3
-      vitest: ~3.2.4
-
-  '@geekmidas/envkit@0.4.0':
-    resolution: {integrity: sha512-6OvXb5F8IsGZuJj6Pk1S2A3YYpxUpgkrw181PrKjnzRHZSYkul1dTr+Vq3I4eDScZvkcmD+sP/G/D+927S3cOQ==}
-    peerDependencies:
-      zod: ~4.1.13
-
-  '@geekmidas/errors@0.1.0':
-    resolution: {integrity: sha512-qnUbWJeGxsKGjVyaEYXQkgmW1A8Tmz35jZ4XabSO1x3T/AMugsdrq8DEErBqf6rg7SVUlxKGzQHz+3y5nMg2+g==}
-
-  '@geekmidas/events@0.2.0':
-    resolution: {integrity: sha512-iG0s7OVCn32hSEXhkzNiaR7W12iXKAV9n0Nb1xMjAqQVVUoGBXP9u+AALwFvy4YNvrpTo6TG5Y3RIJeIZcVzUA==}
-    peerDependencies:
-      '@aws-sdk/client-sns': ~3.908.0
-      '@aws-sdk/client-sqs': ~3.908.0
-      '@geekmidas/schema': ^0.1.0
-      amqplib: ^0.10.3
-    peerDependenciesMeta:
-      '@aws-sdk/client-sns':
-        optional: true
-      '@aws-sdk/client-sqs':
-        optional: true
-      '@geekmidas/schema':
-        optional: true
-      amqplib:
-        optional: true
-
-  '@geekmidas/logger@0.4.0':
-    resolution: {integrity: sha512-srIVesyLXW72kXHB29ZynUihZlLDAXQPZCdu5hcYRSyIED5krAJrU2+q/rx4WeIAO2vydVSJL/XsX5vhDz/6wg==}
-    peerDependencies:
-      pino: ~10.0.0
-      pino-pretty: ~13.1.2
-
-  '@geekmidas/rate-limit@0.3.0':
-    resolution: {integrity: sha512-PpcjjSoj5Z+7dawsdC6dl5aEN5S9KkMdz9QZnFo1bXxmP4uBtlW7hb11WM/8YxR3iYHqwv1B89VdNW92sJiU8g==}
-    peerDependencies:
-      '@geekmidas/cache': ^0.2.0
-      '@geekmidas/logger': ^0.4.0
-      '@geekmidas/services': ^0.2.0
-    peerDependenciesMeta:
-      '@geekmidas/cache':
-        optional: true
-      '@geekmidas/logger':
-        optional: true
-      '@geekmidas/services':
-        optional: true
-
-  '@geekmidas/schema@0.1.0':
-    resolution: {integrity: sha512-Tmlj2TFdBAHnc6EjThRuaalp8JYRB28Kj188tFa8xcBUwPeu7nkGKhjUmYOhoWt6qQQnx7kvpU9nmedv2NT51A==}
-    peerDependencies:
-      '@valibot/to-json-schema': '>=1.3.0'
-      zod: ~4.1.13
-      zod-to-json-schema: ~3.25.1
-
-  '@geekmidas/services@0.2.0':
-    resolution: {integrity: sha512-2sNn1OjjulOZR/bGpAlEPvoKHv0EnpAlwFqVU3LFt8kN60CNIC43yFZ8p0MvQIwnJqTvUBlitd5PoXH7avyHWw==}
-    peerDependencies:
-      '@geekmidas/envkit': ^0.3.0
-      '@geekmidas/logger': ^0.4.0
-    peerDependenciesMeta:
-      '@geekmidas/envkit':
-        optional: true
-      '@geekmidas/logger':
-        optional: true
-
-  '@geekmidas/telescope@0.4.0':
-    resolution: {integrity: sha512-SCMsz7wFMkJjRpILb7DXjD46rp/v68pk47miWhYMcdqFDOnqNmJgwDePCcj/OP9eRFRUdFq/A0JhQaGNSHGNPw==}
-    peerDependencies:
-      '@geekmidas/logger': ^0.4.0
-      '@middy/core': ^5.0.0 || ^6.0.0
-      '@opentelemetry/api': ^1.9.0
-      '@opentelemetry/auto-instrumentations-node': ^0.56.0
-      '@opentelemetry/exporter-logs-otlp-http': ^0.57.0
-      '@opentelemetry/exporter-trace-otlp-http': ^0.57.0
-      '@opentelemetry/instrumentation-pino': ^0.44.0
-      '@opentelemetry/resources': ^1.30.0
-      '@opentelemetry/sdk-logs': ^0.57.0
-      '@opentelemetry/sdk-node': ^0.57.0
-      '@opentelemetry/sdk-trace-base': ^1.30.0
-      '@opentelemetry/sdk-trace-node': ^1.30.0
-      '@opentelemetry/semantic-conventions': ^1.28.0
-      '@types/aws-lambda': ^8.10.0
-      hono: ^4.0.0
-      kysely: ^0.28.0
-      pino: ^9.0.0
-      pino-abstract-transport: ^2.0.0 || ^3.0.0
-    peerDependenciesMeta:
-      '@geekmidas/logger':
-        optional: true
-      '@middy/core':
-        optional: true
-      '@opentelemetry/api':
-        optional: true
-      '@opentelemetry/auto-instrumentations-node':
-        optional: true
-      '@opentelemetry/exporter-logs-otlp-http':
-        optional: true
-      '@opentelemetry/exporter-trace-otlp-http':
-        optional: true
-      '@opentelemetry/instrumentation-pino':
-        optional: true
-      '@opentelemetry/resources':
-        optional: true
-      '@opentelemetry/sdk-logs':
-        optional: true
-      '@opentelemetry/sdk-node':
-        optional: true
-      '@opentelemetry/sdk-trace-base':
-        optional: true
-      '@opentelemetry/sdk-trace-node':
-        optional: true
-      '@opentelemetry/semantic-conventions':
-        optional: true
-      '@types/aws-lambda':
-        optional: true
-      hono:
-        optional: true
-      kysely:
-        optional: true
-      pino:
-        optional: true
-      pino-abstract-transport:
-        optional: true
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -9773,19 +9567,9 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  turbo-darwin-64@2.3.7:
-    resolution: {integrity: sha512-XL0DwYZyM3uE9K1UiVMm5AQ8yiyEZsRPakjUAgxfnMWujNQNlVx1ts6edDHNTFK+Lnx0rhoEb7sDMMI2p0fkGg==}
-    cpu: [x64]
-    os: [darwin]
-
   turbo-darwin-64@2.5.4:
     resolution: {integrity: sha512-ah6YnH2dErojhFooxEzmvsoZQTMImaruZhFPfMKPBq8sb+hALRdvBNLqfc8NWlZq576FkfRZ/MSi4SHvVFT9PQ==}
     cpu: [x64]
-    os: [darwin]
-
-  turbo-darwin-arm64@2.3.7:
-    resolution: {integrity: sha512-0oV0Gj9Bfd9SvvvY77lUZlwii2FhVF/jAYu++RpEgQ6vjfjLjpnSYIxU+e3bvuS7f2ZMmD3GsOwEkfI4NdA7mA==}
-    cpu: [arm64]
     os: [darwin]
 
   turbo-darwin-arm64@2.5.4:
@@ -9793,19 +9577,9 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  turbo-linux-64@2.3.7:
-    resolution: {integrity: sha512-hrSFc+vK1+DBZXlvrcwelzDkKceoZDZvvZaEqVOHmxzZlqWH/5fPGlvlQJOn0hSlWyCLVHP4qLAJFKpWCFywow==}
-    cpu: [x64]
-    os: [linux]
-
   turbo-linux-64@2.5.4:
     resolution: {integrity: sha512-5May2kjWbc8w4XxswGAl74GZ5eM4Gr6IiroqdLhXeXyfvWEdm2mFYCSWOzz0/z5cAgqyGidF1jt1qzUR8hTmOA==}
     cpu: [x64]
-    os: [linux]
-
-  turbo-linux-arm64@2.3.7:
-    resolution: {integrity: sha512-vC+S/Wzm8Tt4n+MLKdJxEHeLOs7Eg/SdPjHubMGYoHYvpGmp7fiGcoRRfpaJNIvRyTtoQoVJdt091eXo9bufVg==}
-    cpu: [arm64]
     os: [linux]
 
   turbo-linux-arm64@2.5.4:
@@ -9813,29 +9587,15 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  turbo-windows-64@2.3.7:
-    resolution: {integrity: sha512-UDyI6vuGSwRGXqlJHlHTcQyt6KajxsowlfazWbD+Nakbn+3+9cWUUY6PKyKvhCrHxFNY7L6EPPV2UqmmHCFYMw==}
-    cpu: [x64]
-    os: [win32]
-
   turbo-windows-64@2.5.4:
     resolution: {integrity: sha512-EQUO4SmaCDhO6zYohxIjJpOKRN3wlfU7jMAj3CgcyTPvQR/UFLEKAYHqJOnJtymbQmiiM/ihX6c6W6Uq0yC7mA==}
     cpu: [x64]
-    os: [win32]
-
-  turbo-windows-arm64@2.3.7:
-    resolution: {integrity: sha512-5Z0ng8XgQpLrLlBMi08fu7ZztPFgyYPCyCKHbEKmZx0efp1HQMoSe43aUK5AGwDTkV70hdynrEbPyNz3an3sDw==}
-    cpu: [arm64]
     os: [win32]
 
   turbo-windows-arm64@2.5.4:
     resolution: {integrity: sha512-oQ8RrK1VS8lrxkLriotFq+PiF7iiGgkZtfLKF4DDKsmdbPo0O9R2mQxm7jHLuXraRCuIQDWMIw6dpcr7Iykf4A==}
     cpu: [arm64]
     os: [win32]
-
-  turbo@2.3.7:
-    resolution: {integrity: sha512-TSSghF6wTlsREaH3qST1VUNfJj+nM0bF/qvLL0OTLQoHtukv0F/sCUkGu/j7ilcnOAadeYZ3QV4tSPfBjIiABQ==}
-    hasBin: true
 
   turbo@2.5.4:
     resolution: {integrity: sha512-kc8ZibdRcuWUG1pbYSBFWqmIjynlD8Lp7IB6U3vIzvOv9VG+6Sp8bzyeBWE3Oi8XV5KsQrznyRTBPvrf99E4mA==}
@@ -12123,14 +11883,14 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)':
+  '@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)':
     dependencies:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
       '@standard-schema/spec': 1.0.0
       better-call: 1.1.0
       jose: 6.1.2
-      kysely: 0.28.8
+      kysely: 0.28.2
       nanostores: 1.1.0
       zod: 4.1.13
 
@@ -12147,7 +11907,7 @@ snapshots:
 
   '@better-auth/telemetry@1.4.1(@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
     dependencies:
-      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
 
@@ -12839,149 +12599,6 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
 
   '@floating-ui/utils@0.2.10': {}
-
-  '@geekmidas/audit@0.2.0(@geekmidas/cache@0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))))(@geekmidas/schema@0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13))(kysely@0.28.8)':
-    dependencies:
-      '@standard-schema/spec': 1.0.0
-      nanoid: 5.1.6
-    optionalDependencies:
-      '@geekmidas/cache': 0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0)))
-      '@geekmidas/schema': 0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13)
-      kysely: 0.28.8
-    optional: true
-
-  '@geekmidas/cache@0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0)))':
-    dependencies:
-      '@upstash/redis': 1.35.1
-      date-fns: 4.1.0
-      expo-secure-store: 14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))
-    optional: true
-
-  '@geekmidas/cli@0.21.0(08b85264a818197469b4b66afe4d20df)':
-    dependencies:
-      '@apidevtools/swagger-parser': 10.1.1(openapi-types@12.1.3)
-      '@geekmidas/constructs': 0.6.0(4f76bf31b5cc6bd5d08725e1e31ef942)
-      '@geekmidas/envkit': 0.4.0(zod@4.1.13)
-      '@geekmidas/logger': 0.4.0(pino-pretty@13.1.2)(pino@10.0.0)
-      '@geekmidas/schema': 0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13)
-      chokidar: 4.0.3
-      commander: 12.1.0
-      dotenv: 17.2.3
-      fast-glob: 3.3.3
-      lodash.kebabcase: 4.1.1
-      openapi-typescript: 7.8.0(typescript@5.8.2)
-      prompts: 2.4.2
-    optionalDependencies:
-      '@geekmidas/telescope': 0.4.0(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))(@middy/core@6.3.2)(@opentelemetry/api@1.9.0)(@opentelemetry/auto-instrumentations-node@0.56.1(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-logs-otlp-http@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation-pino@0.44.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-node@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(@types/aws-lambda@8.10.150)(hono@4.8.2)(kysely@0.28.8)(pino-abstract-transport@3.0.0)(pino@10.0.0)
-    transitivePeerDependencies:
-      - openapi-types
-      - typescript
-
-  '@geekmidas/constructs@0.6.0(4f76bf31b5cc6bd5d08725e1e31ef942)':
-    dependencies:
-      fast-glob: 3.3.3
-      lodash.compact: 3.0.1
-      lodash.get: 4.4.2
-      lodash.pick: 4.4.0
-      lodash.set: 4.3.2
-      lodash.uniqby: 4.7.0
-      openapi-types: 12.1.3
-    optionalDependencies:
-      '@geekmidas/audit': 0.2.0(@geekmidas/cache@0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))))(@geekmidas/schema@0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13))(kysely@0.28.8)
-      '@geekmidas/cache': 0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0)))
-      '@geekmidas/db': 0.3.0(db-errors@0.2.3)(knex@3.1.0(pg@8.16.3))(kysely@0.28.8)(objection@3.1.5(knex@3.1.0(pg@8.16.3)))(pg@8.16.3)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6))
-      '@geekmidas/envkit': 0.4.0(zod@4.1.13)
-      '@geekmidas/errors': 0.1.0
-      '@geekmidas/events': 0.2.0(@aws-sdk/client-sns@3.908.0(aws-crt@1.27.3))(@aws-sdk/client-sqs@3.908.0(aws-crt@1.27.3))(@geekmidas/schema@0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13))(amqplib@0.10.9)
-      '@geekmidas/logger': 0.4.0(pino-pretty@13.1.2)(pino@10.0.0)
-      '@geekmidas/rate-limit': 0.3.0(@geekmidas/cache@0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))(@geekmidas/services@0.2.0(@geekmidas/envkit@0.4.0(zod@4.1.13))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0)))
-      '@geekmidas/schema': 0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13)
-      '@geekmidas/services': 0.2.0(@geekmidas/envkit@0.4.0(zod@4.1.13))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))
-      '@middy/core': 6.3.2
-      '@types/aws-lambda': 8.10.150
-      hono: 4.8.2
-
-  '@geekmidas/db@0.3.0(db-errors@0.2.3)(knex@3.1.0(pg@8.16.3))(kysely@0.28.8)(objection@3.1.5(knex@3.1.0(pg@8.16.3)))(pg@8.16.3)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6))':
-    dependencies:
-      '@faker-js/faker': 9.9.0
-      db-errors: 0.2.3
-      knex: 3.1.0(pg@8.16.3)
-      kysely: 0.28.8
-      objection: 3.1.5(knex@3.1.0(pg@8.16.3))
-      pg: 8.16.3
-      vitest: 4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)
-    optional: true
-
-  '@geekmidas/envkit@0.4.0(zod@4.1.13)':
-    dependencies:
-      lodash.get: 4.4.2
-      lodash.set: 4.3.2
-      lodash.snakecase: 4.1.1
-      zod: 4.1.13
-
-  '@geekmidas/errors@0.1.0':
-    optional: true
-
-  '@geekmidas/events@0.2.0(@aws-sdk/client-sns@3.908.0(aws-crt@1.27.3))(@aws-sdk/client-sqs@3.908.0(aws-crt@1.27.3))(@geekmidas/schema@0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13))(amqplib@0.10.9)':
-    dependencies:
-      lodash.chunk: 4.2.0
-    optionalDependencies:
-      '@aws-sdk/client-sns': 3.908.0(aws-crt@1.27.3)
-      '@aws-sdk/client-sqs': 3.908.0(aws-crt@1.27.3)
-      '@geekmidas/schema': 0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13)
-      amqplib: 0.10.9
-    optional: true
-
-  '@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0)':
-    dependencies:
-      pino: 10.0.0
-      pino-pretty: 13.1.2
-
-  '@geekmidas/rate-limit@0.3.0(@geekmidas/cache@0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))(@geekmidas/services@0.2.0(@geekmidas/envkit@0.4.0(zod@4.1.13))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0)))':
-    optionalDependencies:
-      '@geekmidas/cache': 0.2.0(@upstash/redis@1.35.1)(expo-secure-store@14.2.3(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0)))
-      '@geekmidas/logger': 0.4.0(pino-pretty@13.1.2)(pino@10.0.0)
-      '@geekmidas/services': 0.2.0(@geekmidas/envkit@0.4.0(zod@4.1.13))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))
-    optional: true
-
-  '@geekmidas/schema@0.1.0(@valibot/to-json-schema@1.3.0(valibot@1.1.0(typescript@5.8.2)))(zod-to-json-schema@3.25.1(zod@4.1.13))(zod@4.1.13)':
-    dependencies:
-      '@standard-schema/spec': 1.0.0
-      '@valibot/to-json-schema': 1.3.0(valibot@1.1.0(typescript@5.8.2))
-      openapi-types: 12.1.3
-      zod: 4.1.13
-      zod-to-json-schema: 3.25.1(zod@4.1.13)
-
-  '@geekmidas/services@0.2.0(@geekmidas/envkit@0.4.0(zod@4.1.13))(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))':
-    optionalDependencies:
-      '@geekmidas/envkit': 0.4.0(zod@4.1.13)
-      '@geekmidas/logger': 0.4.0(pino-pretty@13.1.2)(pino@10.0.0)
-    optional: true
-
-  '@geekmidas/telescope@0.4.0(@geekmidas/logger@0.4.0(pino-pretty@13.1.2)(pino@10.0.0))(@middy/core@6.3.2)(@opentelemetry/api@1.9.0)(@opentelemetry/auto-instrumentations-node@0.56.1(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-logs-otlp-http@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation-pino@0.44.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-node@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(@types/aws-lambda@8.10.150)(hono@4.8.2)(kysely@0.28.8)(pino-abstract-transport@3.0.0)(pino@10.0.0)':
-    dependencies:
-      '@pinojs/redact': 0.4.0
-      nanoid: 5.1.6
-    optionalDependencies:
-      '@geekmidas/logger': 0.4.0(pino-pretty@13.1.2)(pino@10.0.0)
-      '@middy/core': 6.3.2
-      '@opentelemetry/api': 1.9.0
-      '@opentelemetry/auto-instrumentations-node': 0.56.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/exporter-logs-otlp-http': 0.57.2(@opentelemetry/api@1.9.0)
-      '@opentelemetry/exporter-trace-otlp-http': 0.57.2(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation-pino': 0.44.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-logs': 0.57.2(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-node': 0.57.2(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions': 1.38.0
-      '@types/aws-lambda': 8.10.150
-      hono: 4.8.2
-      kysely: 0.28.8
-      pino: 10.0.0
-      pino-abstract-transport: 3.0.0
-    optional: true
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
@@ -16586,6 +16203,7 @@ snapshots:
       '@vitest/utils': 4.0.17
       chai: 6.2.2
       tinyrainbow: 3.0.3
+    optional: true
 
   '@vitest/mocker@2.1.9(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@5.4.19(@types/node@24.9.1)(lightningcss@1.30.2)(terser@5.43.1))':
     dependencies:
@@ -16605,14 +16223,14 @@ snapshots:
       msw: 2.10.3(@types/node@22.16.3)(typescript@5.8.2)
       vite: 6.3.5(@types/node@22.16.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)
 
-  '@vitest/mocker@3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6))':
+  '@vitest/mocker@3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@22.16.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3))':
     dependencies:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
       msw: 2.11.5(@types/node@24.9.1)(typescript@5.8.2)
-      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)
+      vite: 6.3.5(@types/node@22.16.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)
 
   '@vitest/mocker@4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6))':
     dependencies:
@@ -16622,6 +16240,7 @@ snapshots:
     optionalDependencies:
       msw: 2.11.5(@types/node@24.9.1)(typescript@5.8.2)
       vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)
+    optional: true
 
   '@vitest/pretty-format@2.0.5':
     dependencies:
@@ -16638,6 +16257,7 @@ snapshots:
   '@vitest/pretty-format@4.0.17':
     dependencies:
       tinyrainbow: 3.0.3
+    optional: true
 
   '@vitest/runner@2.1.9':
     dependencies:
@@ -16654,6 +16274,7 @@ snapshots:
     dependencies:
       '@vitest/utils': 4.0.17
       pathe: 2.0.3
+    optional: true
 
   '@vitest/snapshot@2.1.9':
     dependencies:
@@ -16672,6 +16293,7 @@ snapshots:
       '@vitest/pretty-format': 4.0.17
       magic-string: 0.30.21
       pathe: 2.0.3
+    optional: true
 
   '@vitest/spy@2.0.5':
     dependencies:
@@ -16685,7 +16307,8 @@ snapshots:
     dependencies:
       tinyspy: 4.0.3
 
-  '@vitest/spy@4.0.17': {}
+  '@vitest/spy@4.0.17':
+    optional: true
 
   '@vitest/ui@3.2.4(vitest@3.2.4)':
     dependencies:
@@ -16696,7 +16319,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)
+      vitest: 3.2.4(@types/node@22.16.3)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@22.16.3)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.3)
 
   '@vitest/utils@2.0.5':
     dependencies:
@@ -16721,6 +16344,7 @@ snapshots:
     dependencies:
       '@vitest/pretty-format': 4.0.17
       tinyrainbow: 3.0.3
+    optional: true
 
   '@vue/compiler-core@3.5.18':
     dependencies:
@@ -17153,7 +16777,7 @@ snapshots:
 
   better-auth@1.4.1:
     dependencies:
-      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)
       '@better-auth/telemetry': 1.4.1(@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
@@ -17356,7 +16980,8 @@ snapshots:
       loupe: 3.1.4
       pathval: 2.0.0
 
-  chai@6.2.2: {}
+  chai@6.2.2:
+    optional: true
 
   chalk@2.4.2:
     dependencies:
@@ -17929,7 +17554,8 @@ snapshots:
 
   expect-type@1.2.1: {}
 
-  expect-type@1.3.0: {}
+  expect-type@1.3.0:
+    optional: true
 
   expo-asset@11.1.7(expo@53.0.20(@babel/core@7.28.0)(graphql@16.11.0)(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0))(react-native@0.81.0(@babel/core@7.28.0)(@react-native/metro-config@0.81.0(@babel/core@7.28.0))(@types/react@19.1.8)(react@19.1.0))(react@19.1.0):
     dependencies:
@@ -18098,6 +17724,7 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.3):
     optionalDependencies:
       picomatch: 4.0.3
+    optional: true
 
   fflate@0.8.2: {}
 
@@ -19512,7 +19139,8 @@ snapshots:
       db-errors: 0.2.3
       knex: 3.1.0(pg@8.16.3)
 
-  obug@2.1.1: {}
+  obug@2.1.1:
+    optional: true
 
   oidc-token-hash@5.2.0: {}
 
@@ -20768,7 +20396,8 @@ snapshots:
 
   statuses@2.0.2: {}
 
-  std-env@3.10.0: {}
+  std-env@3.10.0:
+    optional: true
 
   std-env@3.9.0: {}
 
@@ -20958,7 +20587,8 @@ snapshots:
 
   tinyexec@1.0.1: {}
 
-  tinyexec@1.0.2: {}
+  tinyexec@1.0.2:
+    optional: true
 
   tinyglobby@0.2.14:
     dependencies:
@@ -20969,6 +20599,7 @@ snapshots:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
+    optional: true
 
   tinypool@1.1.1: {}
 
@@ -20976,7 +20607,8 @@ snapshots:
 
   tinyrainbow@2.0.0: {}
 
-  tinyrainbow@3.0.3: {}
+  tinyrainbow@3.0.3:
+    optional: true
 
   tinyspy@3.0.2: {}
 
@@ -21131,50 +20763,23 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  turbo-darwin-64@2.3.7:
-    optional: true
-
   turbo-darwin-64@2.5.4:
-    optional: true
-
-  turbo-darwin-arm64@2.3.7:
     optional: true
 
   turbo-darwin-arm64@2.5.4:
     optional: true
 
-  turbo-linux-64@2.3.7:
-    optional: true
-
   turbo-linux-64@2.5.4:
-    optional: true
-
-  turbo-linux-arm64@2.3.7:
     optional: true
 
   turbo-linux-arm64@2.5.4:
     optional: true
 
-  turbo-windows-64@2.3.7:
-    optional: true
-
   turbo-windows-64@2.5.4:
-    optional: true
-
-  turbo-windows-arm64@2.3.7:
     optional: true
 
   turbo-windows-arm64@2.5.4:
     optional: true
-
-  turbo@2.3.7:
-    optionalDependencies:
-      turbo-darwin-64: 2.3.7
-      turbo-darwin-arm64: 2.3.7
-      turbo-linux-64: 2.3.7
-      turbo-linux-arm64: 2.3.7
-      turbo-windows-64: 2.3.7
-      turbo-windows-arm64: 2.3.7
 
   turbo@2.5.4:
     optionalDependencies:
@@ -21663,7 +21268,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.2
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6))
+      '@vitest/mocker': 3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@22.16.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4
@@ -21742,46 +21347,6 @@ snapshots:
       - tsx
       - yaml
     optional: true
-
-  vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6):
-    dependencies:
-      '@vitest/expect': 4.0.17
-      '@vitest/mocker': 4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6))
-      '@vitest/pretty-format': 4.0.17
-      '@vitest/runner': 4.0.17
-      '@vitest/snapshot': 4.0.17
-      '@vitest/spy': 4.0.17
-      '@vitest/utils': 4.0.17
-      es-module-lexer: 1.7.0
-      expect-type: 1.3.0
-      magic-string: 0.30.21
-      obug: 2.1.1
-      pathe: 2.0.3
-      picomatch: 4.0.3
-      std-env: 3.10.0
-      tinybench: 2.9.0
-      tinyexec: 1.0.2
-      tinyglobby: 0.2.15
-      tinyrainbow: 3.0.3
-      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.0
-      '@types/node': 24.9.1
-      '@vitest/ui': 3.2.4(vitest@3.2.4)
-      jsdom: 26.1.0
-    transitivePeerDependencies:
-      - jiti
-      - less
-      - lightningcss
-      - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - yaml
 
   vlq@1.0.1: {}
 
