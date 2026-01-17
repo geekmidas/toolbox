@@ -528,7 +528,9 @@ describe('handler-templates', () => {
 				}),
 			];
 
-			const result = generateOptimizedSetupFunction(analyses, ['healthEndpoint']);
+			const result = generateOptimizedSetupFunction(analyses, [
+				'healthEndpoint',
+			]);
 
 			expect(result).toContain('export async function setupEndpoints');
 			expect(result).toContain('Minimal handlers (1 endpoints)');
@@ -548,7 +550,9 @@ describe('handler-templates', () => {
 				}),
 			];
 
-			const result = generateOptimizedSetupFunction(analyses, ['auditEndpoint']);
+			const result = generateOptimizedSetupFunction(analyses, [
+				'auditEndpoint',
+			]);
 
 			expect(result).toContain('import { HonoEndpoint }');
 			expect(result).toContain('HonoEndpoint.addRoutes');
@@ -603,7 +607,9 @@ describe('handler-templates', () => {
 				}),
 			];
 
-			const result = generateOptimizedSetupFunction(analyses, ['healthEndpoint']);
+			const result = generateOptimizedSetupFunction(analyses, [
+				'healthEndpoint',
+			]);
 
 			expect(result).toContain('if (enableOpenApi)');
 			expect(result).toContain('swaggerUI');
@@ -631,19 +637,18 @@ describe('handler-templates', () => {
 
 			const endpointImports = `import { healthEndpoint } from './endpoints/health';\nimport { createUserEndpoint } from './endpoints/users';`;
 
-			const result = generateOptimizedEndpointsFile(
-				analyses,
-				endpointImports,
-				['healthEndpoint', 'createUserEndpoint'],
-			);
+			const result = generateOptimizedEndpointsFile(analyses, endpointImports, [
+				'healthEndpoint',
+				'createUserEndpoint',
+			]);
 
 			expect(result).toContain('Generated optimized endpoints file');
 			expect(result).toContain('minimal: 1 endpoints');
 			expect(result).toContain('standard: 1 endpoints');
 			expect(result).toContain('full: 0 endpoints');
-			expect(result).toContain("import type { EnvironmentParser }");
-			expect(result).toContain("import { healthEndpoint }");
-			expect(result).toContain("import { createUserEndpoint }");
+			expect(result).toContain('import type { EnvironmentParser }');
+			expect(result).toContain('import { healthEndpoint }');
+			expect(result).toContain('import { createUserEndpoint }');
 			expect(result).toContain('validateBody');
 			expect(result).toContain('export async function setupEndpoints');
 		});
@@ -753,8 +758,10 @@ describe('handler-templates', () => {
 
 			expect(files['minimal.ts']).toContain('Minimal-tier endpoint handlers');
 			expect(files['minimal.ts']).toContain('1 endpoints');
-			expect(files['minimal.ts']).toContain('export function setupMinimalEndpoints');
-			expect(files['minimal.ts']).toContain("import { healthEndpoint }");
+			expect(files['minimal.ts']).toContain(
+				'export function setupMinimalEndpoints',
+			);
+			expect(files['minimal.ts']).toContain('import { healthEndpoint }');
 			expect(files['minimal.ts']).toContain("app.get('/health'");
 		});
 
@@ -798,8 +805,10 @@ describe('handler-templates', () => {
 
 			expect(files['standard.ts']).toContain('Standard-tier endpoint handlers');
 			expect(files['standard.ts']).toContain('1 endpoints');
-			expect(files['standard.ts']).toContain('export function setupStandardEndpoints');
-			expect(files['standard.ts']).toContain("import { usersEndpoint }");
+			expect(files['standard.ts']).toContain(
+				'export function setupStandardEndpoints',
+			);
+			expect(files['standard.ts']).toContain('import { usersEndpoint }');
 		});
 
 		it('should generate standard file with events import when needed', () => {
@@ -814,12 +823,17 @@ describe('handler-templates', () => {
 			];
 
 			const endpointImports = [
-				{ exportName: 'createOrderEndpoint', importPath: '../endpoints/orders' },
+				{
+					exportName: 'createOrderEndpoint',
+					importPath: '../endpoints/orders',
+				},
 			];
 
 			const files = generateEndpointFilesByTier(analyses, endpointImports);
 
-			expect(files['standard.ts']).toContain('import { publishConstructEvents }');
+			expect(files['standard.ts']).toContain(
+				'import { publishConstructEvents }',
+			);
 		});
 
 		it('should generate full file with HonoEndpoint', () => {
@@ -842,7 +856,7 @@ describe('handler-templates', () => {
 			expect(files['full.ts']).toContain('Full-tier endpoint handlers');
 			expect(files['full.ts']).toContain('import { HonoEndpoint }');
 			expect(files['full.ts']).toContain('HonoEndpoint.addRoutes');
-			expect(files['full.ts']).toContain("import { auditEndpoint }");
+			expect(files['full.ts']).toContain('import { auditEndpoint }');
 		});
 
 		it('should generate empty full file when no full endpoints', () => {
@@ -899,10 +913,12 @@ describe('handler-templates', () => {
 			expect(files['index.ts']).toContain('minimal: 1 endpoints');
 			expect(files['index.ts']).toContain('standard: 1 endpoints');
 			expect(files['index.ts']).toContain('full: 1 endpoints');
-			expect(files['index.ts']).toContain("import { setupMinimalEndpoints }");
-			expect(files['index.ts']).toContain("import { setupStandardEndpoints }");
-			expect(files['index.ts']).toContain("import { setupFullEndpoints }");
-			expect(files['index.ts']).toContain('export async function setupEndpoints');
+			expect(files['index.ts']).toContain('import { setupMinimalEndpoints }');
+			expect(files['index.ts']).toContain('import { setupStandardEndpoints }');
+			expect(files['index.ts']).toContain('import { setupFullEndpoints }');
+			expect(files['index.ts']).toContain(
+				'export async function setupEndpoints',
+			);
 		});
 
 		it('should include validator imports in minimal file when needed', () => {
@@ -922,7 +938,9 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesByTier(analyses, endpointImports);
 
-			expect(files['minimal.ts']).toContain("import { validateBody } from './validators.js'");
+			expect(files['minimal.ts']).toContain(
+				"import { validateBody } from './validators.js'",
+			);
 		});
 
 		it('should include validator imports in standard file when needed', () => {
@@ -942,7 +960,9 @@ describe('handler-templates', () => {
 
 			const files = generateEndpointFilesByTier(analyses, endpointImports);
 
-			expect(files['standard.ts']).toContain("import { validateBody } from './validators.js'");
+			expect(files['standard.ts']).toContain(
+				"import { validateBody } from './validators.js'",
+			);
 		});
 	});
 
