@@ -7,6 +7,11 @@
 import { lookup } from 'node:dns/promises';
 import { getHostingerToken, storeHostingerToken } from '../../auth/credentials';
 import type { DnsConfig } from '../../workspace/types';
+import {
+	type DokployStageState,
+	isDnsVerified,
+	setDnsVerification,
+} from '../state';
 import { HostingerApi } from './hostinger-api';
 
 const logger = console;
@@ -395,4 +400,111 @@ export async function orchestrateDns(
 		success: !hasFailures,
 		serverIp,
 	};
+}
+
+/**
+ * Result of DNS verification for a single hostname
+ */
+export interface DnsVerificationResult {
+	hostname: string;
+	appName: string;
+	verified: boolean;
+	resolvedIp?: string;
+	expectedIp: string;
+	error?: string;
+	skipped?: boolean; // True if already verified in state
+}
+
+/**
+ * Verify DNS records resolve correctly after deployment.
+ *
+ * This function:
+ * 1. Checks state for previously verified hostnames (skips if already verified with same IP)
+ * 2. Attempts to resolve each hostname to an IP
+ * 3. Compares resolved IP with expected server IP
+ * 4. Updates state with verification results
+ *
+ * @param appHostnames - Map of app names to hostnames
+ * @param serverIp - Expected IP address the hostnames should resolve to
+ * @param state - Deploy state for caching verification results
+ * @returns Array of verification results
+ */
+export async function verifyDnsRecords(
+	appHostnames: Map<string, string>,
+	serverIp: string,
+	state: DokployStageState,
+): Promise<DnsVerificationResult[]> {
+	const results: DnsVerificationResult[] = [];
+
+	logger.log('\n🔍 Verifying DNS records...');
+
+	for (const [appName, hostname] of appHostnames) {
+		// Check if already verified with same IP
+		if (isDnsVerified(state, hostname, serverIp)) {
+			logger.log(`   ✓ ${hostname} (previously verified)`);
+			results.push({
+				hostname,
+				appName,
+				verified: true,
+				expectedIp: serverIp,
+				skipped: true,
+			});
+			continue;
+		}
+
+		// Attempt to resolve hostname
+		try {
+			const resolvedIp = await resolveHostnameToIp(hostname);
+
+			if (resolvedIp === serverIp) {
+				// DNS verified successfully
+				setDnsVerification(state, hostname, serverIp);
+				logger.log(`   ✓ ${hostname} → ${resolvedIp}`);
+				results.push({
+					hostname,
+					appName,
+					verified: true,
+					resolvedIp,
+					expectedIp: serverIp,
+				});
+			} else {
+				// DNS resolves but to wrong IP
+				logger.log(
+					`   ⚠ ${hostname} resolves to ${resolvedIp}, expected ${serverIp}`,
+				);
+				results.push({
+					hostname,
+					appName,
+					verified: false,
+					resolvedIp,
+					expectedIp: serverIp,
+				});
+			}
+		} catch (error) {
+			// DNS resolution failed
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			logger.log(`   ⚠ ${hostname} DNS not propagated (${message})`);
+			results.push({
+				hostname,
+				appName,
+				verified: false,
+				expectedIp: serverIp,
+				error: message,
+			});
+		}
+	}
+
+	// Summary
+	const verified = results.filter((r) => r.verified).length;
+	const skipped = results.filter((r) => r.skipped).length;
+	const pending = results.filter((r) => !r.verified).length;
+
+	if (pending > 0) {
+		logger.log(`\n   ${verified} verified, ${pending} pending propagation`);
+		logger.log('   DNS changes may take 5-30 minutes to propagate');
+	} else if (skipped > 0) {
+		logger.log(`   ${verified} verified (${skipped} from cache)`);
+	}
+
+	return results;
 }
