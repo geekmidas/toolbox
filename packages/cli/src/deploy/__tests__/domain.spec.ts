@@ -100,9 +100,7 @@ describe('resolveHost', () => {
 });
 
 describe('isMainFrontendApp', () => {
-	const createApp = (
-		type: 'backend' | 'frontend',
-	): NormalizedAppConfig => ({
+	const createApp = (type: 'backend' | 'frontend'): NormalizedAppConfig => ({
 		type,
 		path: 'apps/test',
 		port: 3000,

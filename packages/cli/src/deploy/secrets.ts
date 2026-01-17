@@ -156,7 +156,8 @@ export function generateSecretsReport(
 ): SecretsReport {
 	const appsWithSecrets: string[] = [];
 	const appsWithoutSecrets: string[] = [];
-	const appsWithMissingSecrets: Array<{ appName: string; missing: string[] }> = [];
+	const appsWithMissingSecrets: Array<{ appName: string; missing: string[] }> =
+		[];
 
 	for (const [appName, sniffedEnv] of sniffedApps) {
 		if (sniffedEnv.requiredEnvVars.length === 0) {

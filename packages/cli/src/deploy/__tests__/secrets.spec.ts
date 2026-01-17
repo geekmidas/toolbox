@@ -187,7 +187,10 @@ describe('prepareSecretsForAllApps', () => {
 
 	it('should prepare secrets for multiple apps', () => {
 		const sniffedApps = new Map<string, SniffedEnvironment>([
-			['api', { appName: 'api', requiredEnvVars: ['DATABASE_URL', 'REDIS_URL'] }],
+			[
+				'api',
+				{ appName: 'api', requiredEnvVars: ['DATABASE_URL', 'REDIS_URL'] },
+			],
 			[
 				'auth',
 				{
