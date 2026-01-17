@@ -134,7 +134,7 @@ describe('provisionServices', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result?.DATABASE_URL).toMatch(
+		expect(result?.serviceUrls?.DATABASE_URL).toMatch(
 			/^postgresql:\/\/postgres:[a-f0-9]{32}@myapp-db:5432\/app$/,
 		);
 	});
@@ -165,11 +165,11 @@ describe('provisionServices', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result?.DATABASE_HOST).toBe('myapp-db');
-		expect(result?.DATABASE_PORT).toBe('5432');
-		expect(result?.DATABASE_NAME).toBe('mydb');
-		expect(result?.DATABASE_USER).toBe('dbuser');
-		expect(result?.DATABASE_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
+		expect(result?.serviceUrls?.DATABASE_HOST).toBe('myapp-db');
+		expect(result?.serviceUrls?.DATABASE_PORT).toBe('5432');
+		expect(result?.serviceUrls?.DATABASE_NAME).toBe('mydb');
+		expect(result?.serviceUrls?.DATABASE_USER).toBe('dbuser');
+		expect(result?.serviceUrls?.DATABASE_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
 	});
 
 	it('should provision redis and return REDIS_URL', async () => {
@@ -196,7 +196,7 @@ describe('provisionServices', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result?.REDIS_URL).toMatch(
+		expect(result?.serviceUrls?.REDIS_URL).toMatch(
 			/^redis:\/\/:[a-f0-9]{32}@myapp-cache:6379$/,
 		);
 	});
@@ -225,9 +225,9 @@ describe('provisionServices', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result?.REDIS_HOST).toBe('myapp-cache');
-		expect(result?.REDIS_PORT).toBe('6379');
-		expect(result?.REDIS_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
+		expect(result?.serviceUrls?.REDIS_HOST).toBe('myapp-cache');
+		expect(result?.serviceUrls?.REDIS_PORT).toBe('6379');
+		expect(result?.serviceUrls?.REDIS_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
 	});
 
 	it('should provision both postgres and redis', async () => {
@@ -268,8 +268,8 @@ describe('provisionServices', () => {
 		});
 
 		expect(result).toBeDefined();
-		expect(result?.DATABASE_URL).toBeDefined();
-		expect(result?.REDIS_URL).toBeDefined();
+		expect(result?.serviceUrls?.DATABASE_URL).toBeDefined();
+		expect(result?.serviceUrls?.REDIS_URL).toBeDefined();
 	});
 
 	it('should handle postgres already exists error gracefully', async () => {
