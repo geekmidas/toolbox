@@ -338,9 +338,11 @@ async function initializePostgresUsers(
 			// Create or update user (handles existing users)
 			await client.query(`
 				DO $$ BEGIN
-					CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-				EXCEPTION WHEN duplicate_object THEN
-					ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
+					IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
+						CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
+					ELSE
+						ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
+					END IF;
 				END $$;
 			`);
 
