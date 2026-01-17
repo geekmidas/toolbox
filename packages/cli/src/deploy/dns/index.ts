@@ -105,7 +105,7 @@ export function printDnsRecordsTable(
 	records: RequiredDnsRecord[],
 	rootDomain: string,
 ): void {
-	logger.log('\n   📋 DNS Records for ' + rootDomain + ':');
+	logger.log(`\n   📋 DNS Records for ${rootDomain}:`);
 	logger.log(
 		'   ┌─────────────────────────────────────┬──────┬─────────────────┬────────┐',
 	);

@@ -514,9 +514,7 @@ export class DokployApi {
 	 */
 	async listRedis(projectId: string): Promise<DokployRedis[]> {
 		try {
-			return await this.get<DokployRedis[]>(
-				`redis.all?projectId=${projectId}`,
-			);
+			return await this.get<DokployRedis[]>(`redis.all?projectId=${projectId}`);
 		} catch {
 			// Fallback: endpoint might not exist in older Dokploy versions
 			return [];
@@ -578,7 +576,12 @@ export class DokployApi {
 		if (existing) {
 			return { redis: existing, created: false };
 		}
-		const redis = await this.createRedis(name, projectId, environmentId, options);
+		const redis = await this.createRedis(
+			name,
+			projectId,
+			environmentId,
+			options,
+		);
 		return { redis, created: true };
 	}
 
@@ -680,8 +683,13 @@ export class DokployApi {
 	 *
 	 * @param domain - The domain hostname to validate (e.g., 'api.example.com')
 	 */
-	async validateDomain(domain: string): Promise<{ isValid: boolean; resolvedIp: string }> {
-		return this.post<{ isValid: boolean; resolvedIp: string }>('domain.validateDomain', { domain });
+	async validateDomain(
+		domain: string,
+	): Promise<{ isValid: boolean; resolvedIp: string }> {
+		return this.post<{ isValid: boolean; resolvedIp: string }>(
+			'domain.validateDomain',
+			{ domain },
+		);
 	}
 
 	/**

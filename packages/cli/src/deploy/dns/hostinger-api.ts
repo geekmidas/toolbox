@@ -185,7 +185,10 @@ export class HostingerApi {
 	 * @param records - Records to validate
 	 * @returns true if valid, throws if invalid
 	 */
-	async validateRecords(domain: string, records: DnsRecord[]): Promise<boolean> {
+	async validateRecords(
+		domain: string,
+		records: DnsRecord[],
+	): Promise<boolean> {
 		await this.request('POST', `/api/dns/v1/zones/${domain}/validate`, {
 			overwrite: false,
 			zone: records,

@@ -1,4 +1,7 @@
-import type { DokployWorkspaceConfig, NormalizedAppConfig } from '../workspace/types.js';
+import type {
+	DokployWorkspaceConfig,
+	NormalizedAppConfig,
+} from '../workspace/types.js';
 
 /**
  * Resolve the hostname for an app based on stage configuration.
@@ -119,7 +122,5 @@ export function generatePublicUrlBuildArgs(
  * @returns Array of arg names like 'NEXT_PUBLIC_API_URL'
  */
 export function getPublicUrlArgNames(app: NormalizedAppConfig): string[] {
-	return app.dependencies.map(
-		(dep) => `NEXT_PUBLIC_${dep.toUpperCase()}_URL`,
-	);
+	return app.dependencies.map((dep) => `NEXT_PUBLIC_${dep.toUpperCase()}_URL`);
 }

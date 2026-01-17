@@ -144,7 +144,9 @@ export function setPostgresId(
 /**
  * Get redis ID from state
  */
-export function getRedisId(state: DokployStageState | null): string | undefined {
+export function getRedisId(
+	state: DokployStageState | null,
+): string | undefined {
 	return state?.services.redisId;
 }
 

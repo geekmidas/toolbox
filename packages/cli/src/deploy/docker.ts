@@ -134,8 +134,7 @@ async function buildImage(
 	const dockerfilePath = `.gkm/docker/Dockerfile${dockerfileSuffix}`;
 
 	// Build from workspace/monorepo root when we have a lockfile elsewhere or appName is provided
-	const buildCwd =
-		lockfilePath && (inMonorepo || appName) ? lockfileDir : cwd;
+	const buildCwd = lockfilePath && (inMonorepo || appName) ? lockfileDir : cwd;
 	if (buildCwd !== cwd) {
 		logger.log(`   Building from workspace root: ${buildCwd}`);
 	}
