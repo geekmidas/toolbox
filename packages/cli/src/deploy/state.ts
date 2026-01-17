@@ -17,6 +17,14 @@ export interface AppDbCredentials {
 }
 
 /**
+ * DNS verification record for a hostname
+ */
+export interface DnsVerificationRecord {
+	serverIp: string;
+	verifiedAt: string;
+}
+
+/**
  * State for a single stage deployment
  */
 export interface DokployStageState {
@@ -30,6 +38,10 @@ export interface DokployStageState {
 	};
 	/** Per-app database credentials for reuse on subsequent deploys */
 	appCredentials?: Record<string, AppDbCredentials>;
+	/** Auto-generated secrets per app (e.g., BETTER_AUTH_SECRET) */
+	generatedSecrets?: Record<string, Record<string, string>>;
+	/** DNS verification state per hostname */
+	dnsVerified?: Record<string, DnsVerificationRecord>;
 	lastDeployedAt: string;
 }
 
@@ -188,4 +200,108 @@ export function getAllAppCredentials(
 	state: DokployStageState | null,
 ): Record<string, AppDbCredentials> {
 	return state?.appCredentials ?? {};
+}
+
+// ============================================================================
+// Generated Secrets
+// ============================================================================
+
+/**
+ * Get a generated secret for an app
+ */
+export function getGeneratedSecret(
+	state: DokployStageState | null,
+	appName: string,
+	secretName: string,
+): string | undefined {
+	return state?.generatedSecrets?.[appName]?.[secretName];
+}
+
+/**
+ * Set a generated secret for an app (mutates state)
+ */
+export function setGeneratedSecret(
+	state: DokployStageState,
+	appName: string,
+	secretName: string,
+	value: string,
+): void {
+	if (!state.generatedSecrets) {
+		state.generatedSecrets = {};
+	}
+	if (!state.generatedSecrets[appName]) {
+		state.generatedSecrets[appName] = {};
+	}
+	state.generatedSecrets[appName][secretName] = value;
+}
+
+/**
+ * Get all generated secrets for an app
+ */
+export function getAppGeneratedSecrets(
+	state: DokployStageState | null,
+	appName: string,
+): Record<string, string> {
+	return state?.generatedSecrets?.[appName] ?? {};
+}
+
+/**
+ * Get all generated secrets from state
+ */
+export function getAllGeneratedSecrets(
+	state: DokployStageState | null,
+): Record<string, Record<string, string>> {
+	return state?.generatedSecrets ?? {};
+}
+
+// ============================================================================
+// DNS Verification
+// ============================================================================
+
+/**
+ * Get DNS verification record for a hostname
+ */
+export function getDnsVerification(
+	state: DokployStageState | null,
+	hostname: string,
+): DnsVerificationRecord | undefined {
+	return state?.dnsVerified?.[hostname];
+}
+
+/**
+ * Set DNS verification record for a hostname (mutates state)
+ */
+export function setDnsVerification(
+	state: DokployStageState,
+	hostname: string,
+	serverIp: string,
+): void {
+	if (!state.dnsVerified) {
+		state.dnsVerified = {};
+	}
+	state.dnsVerified[hostname] = {
+		serverIp,
+		verifiedAt: new Date().toISOString(),
+	};
+}
+
+/**
+ * Check if a hostname is already verified with the given IP
+ */
+export function isDnsVerified(
+	state: DokployStageState | null,
+	hostname: string,
+	serverIp: string,
+): boolean {
+	const record = state?.dnsVerified?.[hostname];
+	return record?.serverIp === serverIp;
+}
+
+/**
+ * Get all DNS verification records from state
+ */
+export function getAllDnsVerifications(
+	state: DokployStageState | null,
+): Record<string, DnsVerificationRecord> {
+	return state?.dnsVerified ?? {};
 }
