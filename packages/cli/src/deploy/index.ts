@@ -1,5 +1,53 @@
+/**
+ * Deploy Module
+ *
+ * Handles deployment of GKM workspaces to various providers (Docker, Dokploy).
+ *
+ * ## Per-App Database Credentials
+ *
+ * When deploying to Dokploy with Postgres, this module creates per-app database
+ * users with isolated schemas. This follows the same pattern as local dev mode
+ * (docker/postgres/init.sh).
+ *
+ * ### How It Works
+ *
+ * 1. **Provisioning**: Creates Postgres service with master credentials
+ * 2. **User Creation**: For each backend app that needs DATABASE_URL:
+ *    - Generates a unique password (stored in deploy state)
+ *    - Creates a database user with that password
+ *    - Assigns schema permissions based on app name
+ * 3. **Schema Assignment**:
+ *    - `api` app: Uses `public` schema (shared tables)
+ *    - Other apps (e.g., `auth`): Get their own schema with `search_path` set
+ * 4. **Environment Injection**: Each app receives its own DATABASE_URL
+ *
+ * ### Security
+ *
+ * - External Postgres port is enabled only during user creation, then disabled
+ * - Each app can only access its own schema
+ * - Credentials are stored in `.gkm/deploy-{stage}.json` (gitignored)
+ * - Subsequent deploys reuse existing credentials from state
+ *
+ * ### Example Flow
+ *
+ * ```
+ * gkm deploy --stage production
+ *   ├─ Create Postgres (user: postgres, db: myproject)
+ *   ├─ Enable external port temporarily
+ *   ├─ Create user "api" → public schema
+ *   ├─ Create user "auth" → auth schema (search_path=auth)
+ *   ├─ Disable external port
+ *   ├─ Deploy "api" with DATABASE_URL=postgresql://api:xxx@postgres:5432/myproject
+ *   └─ Deploy "auth" with DATABASE_URL=postgresql://auth:yyy@postgres:5432/myproject
+ * ```
+ *
+ * @module deploy
+ */
+
+import { randomBytes } from 'node:crypto';
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
+import { Client as PgClient } from 'pg';
 import {
 	getDokployCredentials,
 	getDokployRegistryId,
@@ -147,6 +195,211 @@ export interface ProvisionServicesResult {
 		postgresId?: string;
 		redisId?: string;
 	};
+}
+
+/**
+ * Configuration for a database user to create during Dokploy deployment.
+ *
+ * @property name - The database username (typically matches the app name)
+ * @property password - The generated password for this user
+ * @property usePublicSchema - If true, user gets access to public schema (for api app).
+ *                             If false, user gets their own schema with search_path set.
+ */
+interface DbUserConfig {
+	name: string;
+	password: string;
+	usePublicSchema: boolean;
+}
+
+/**
+ * Wait for Postgres to be ready to accept connections.
+ *
+ * Polls the Postgres server until it accepts a connection or max retries reached.
+ * Used after enabling the external port to ensure the database is accessible
+ * before creating users.
+ *
+ * @param host - The Postgres server hostname
+ * @param port - The external port (typically 5432)
+ * @param user - Master database user (postgres)
+ * @param password - Master database password
+ * @param database - Database name to connect to
+ * @param maxRetries - Maximum number of connection attempts (default: 30)
+ * @param retryIntervalMs - Milliseconds between retries (default: 2000)
+ * @throws Error if Postgres is not ready after maxRetries
+ */
+async function waitForPostgres(
+	host: string,
+	port: number,
+	user: string,
+	password: string,
+	database: string,
+	maxRetries = 30,
+	retryIntervalMs = 2000,
+): Promise<void> {
+	for (let i = 0; i < maxRetries; i++) {
+		try {
+			const client = new PgClient({ host, port, user, password, database });
+			await client.connect();
+			await client.end();
+			return;
+		} catch {
+			if (i < maxRetries - 1) {
+				logger.log(`   Waiting for Postgres... (${i + 1}/${maxRetries})`);
+				await new Promise((r) => setTimeout(r, retryIntervalMs));
+			}
+		}
+	}
+	throw new Error(`Postgres not ready after ${maxRetries} retries`);
+}
+
+/**
+ * Initialize Postgres with per-app users and schemas.
+ *
+ * This function implements the same user/schema isolation pattern used in local
+ * dev mode (see docker/postgres/init.sh). It:
+ *
+ * 1. Temporarily enables the external Postgres port
+ * 2. Connects using master credentials
+ * 3. Creates each user with appropriate schema permissions
+ * 4. Disables the external port for security
+ *
+ * Schema assignment follows this pattern:
+ * - `api` app: Uses `public` schema (shared tables, migrations run here)
+ * - Other apps: Get their own schema with `search_path` configured
+ *
+ * @param api - The Dokploy API client
+ * @param postgres - The provisioned Postgres service details
+ * @param serverHostname - The Dokploy server hostname (for external connection)
+ * @param users - Array of users to create with their schema configuration
+ *
+ * @example
+ * ```ts
+ * await initializePostgresUsers(api, postgres, 'dokploy.example.com', [
+ *   { name: 'api', password: 'xxx', usePublicSchema: true },
+ *   { name: 'auth', password: 'yyy', usePublicSchema: false },
+ * ]);
+ * ```
+ */
+async function initializePostgresUsers(
+	api: DokployApi,
+	postgres: DokployPostgres,
+	serverHostname: string,
+	users: DbUserConfig[],
+): Promise<void> {
+	logger.log('\n🔧 Initializing database users...');
+
+	// Enable external port temporarily
+	const externalPort = 5432;
+	logger.log(`   Enabling external port ${externalPort}...`);
+	await api.savePostgresExternalPort(postgres.postgresId, externalPort);
+
+	// Redeploy to apply external port change
+	await api.deployPostgres(postgres.postgresId);
+
+	// Wait for Postgres to be ready with external port
+	logger.log(
+		`   Waiting for Postgres to be accessible at ${serverHostname}:${externalPort}...`,
+	);
+	await waitForPostgres(
+		serverHostname,
+		externalPort,
+		postgres.databaseUser,
+		postgres.databasePassword,
+		postgres.databaseName,
+	);
+
+	// Connect and create users
+	const client = new PgClient({
+		host: serverHostname,
+		port: externalPort,
+		user: postgres.databaseUser,
+		password: postgres.databasePassword,
+		database: postgres.databaseName,
+	});
+
+	try {
+		await client.connect();
+
+		for (const user of users) {
+			const schemaName = user.usePublicSchema ? 'public' : user.name;
+			logger.log(
+				`   Creating user "${user.name}" with schema "${schemaName}"...`,
+			);
+
+			// Create or update user (handles existing users)
+			await client.query(`
+				DO $$ BEGIN
+					CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
+				EXCEPTION WHEN duplicate_object THEN
+					ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
+				END $$;
+			`);
+
+			if (user.usePublicSchema) {
+				// API uses public schema
+				await client.query(`
+					GRANT ALL ON SCHEMA public TO "${user.name}";
+					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${user.name}";
+					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${user.name}";
+				`);
+			} else {
+				// Other apps get their own schema
+				await client.query(`
+					CREATE SCHEMA IF NOT EXISTS "${schemaName}" AUTHORIZATION "${user.name}";
+					ALTER USER "${user.name}" SET search_path TO "${schemaName}";
+					GRANT USAGE ON SCHEMA "${schemaName}" TO "${user.name}";
+					GRANT ALL ON ALL TABLES IN SCHEMA "${schemaName}" TO "${user.name}";
+					ALTER DEFAULT PRIVILEGES IN SCHEMA "${schemaName}" GRANT ALL ON TABLES TO "${user.name}";
+				`);
+			}
+
+			logger.log(`   ✓ User "${user.name}" configured`);
+		}
+	} finally {
+		await client.end();
+	}
+
+	// Disable external port for security
+	logger.log('   Disabling external port...');
+	await api.savePostgresExternalPort(postgres.postgresId, null);
+	await api.deployPostgres(postgres.postgresId);
+
+	logger.log('   ✓ Database users initialized');
+}
+
+/**
+ * Get the server hostname from the Dokploy endpoint URL
+ */
+function getServerHostname(endpoint: string): string {
+	const url = new URL(endpoint);
+	return url.hostname;
+}
+
+/**
+ * Build per-app DATABASE_URL for internal Docker network communication.
+ *
+ * The URL uses the Postgres container name (postgresAppName) as the host,
+ * which resolves via Docker's internal DNS when apps are in the same network.
+ *
+ * @param appName - The database username (matches the app name)
+ * @param appPassword - The app's database password
+ * @param postgresAppName - The Postgres container/service name in Dokploy
+ * @param databaseName - The database name (typically the project name)
+ * @returns A properly encoded PostgreSQL connection URL
+ *
+ * @example
+ * ```ts
+ * const url = buildPerAppDatabaseUrl('api', 'secret123', 'postgres-abc', 'myproject');
+ * // Returns: postgresql://api:secret123@postgres-abc:5432/myproject
+ * ```
+ */
+function buildPerAppDatabaseUrl(
+	appName: string,
+	appPassword: string,
+	postgresAppName: string,
+	databaseName: string,
+): string {
+	return `postgresql://${appName}:${encodeURIComponent(appPassword)}@${postgresAppName}:5432/${databaseName}`;
 }
 
 /**
