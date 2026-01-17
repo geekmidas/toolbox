@@ -1,6 +1,12 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { NormalizedAppConfig } from '../../workspace/types';
-import { sniffAllApps, sniffAppEnvironment, type SniffResult } from '../sniffer';
+import { _sniffEntryFile, sniffAllApps, sniffAppEnvironment } from '../sniffer';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const fixturesPath = resolve(__dirname, '__fixtures__/entry-apps');
 
 describe('sniffAppEnvironment', () => {
 	const workspacePath = '/test/workspace';
@@ -217,5 +223,152 @@ describe('fire-and-forget handling', () => {
 		// Should return gracefully without throwing
 		expect(result.appName).toBe('api');
 		expect(Array.isArray(result.requiredEnvVars)).toBe(true);
+	});
+});
+
+describe('entry app sniffing via subprocess', () => {
+	// These tests verify the subprocess-based sniffing for entry apps.
+	// Each test uses fixture files that import @geekmidas/envkit.
+
+	it('should sniff environment variables from simple entry app', async () => {
+		const result = await _sniffEntryFile(
+			'./simple-entry.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('REDIS_URL');
+		expect(result.envVars).toHaveLength(3);
+	});
+
+	it('should sniff environment variables from nested config entry app', async () => {
+		const result = await _sniffEntryFile(
+			'./nested-config-entry.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		// Should capture all nested env vars
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('HOST');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toContain('DB_POOL_SIZE');
+		expect(result.envVars).toContain('BETTER_AUTH_SECRET');
+		expect(result.envVars).toContain('BETTER_AUTH_URL');
+		expect(result.envVars).toContain('BETTER_AUTH_TRUSTED_ORIGINS');
+		expect(result.envVars).toHaveLength(7);
+	});
+
+	it('should capture env vars even when entry throws', async () => {
+		const result = await _sniffEntryFile(
+			'./throwing-entry.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		// Should still capture env vars accessed before the throw
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('API_KEY');
+		expect(result.envVars).toHaveLength(2);
+
+		// Should report the error
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toContain('Initialization failed');
+	});
+
+	it('should return empty when entry has no env vars', async () => {
+		const result = await _sniffEntryFile(
+			'./no-env-entry.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should handle async entry apps with fire-and-forget promises', async () => {
+		const result = await _sniffEntryFile(
+			'./async-entry.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		expect(result.envVars).toContain('PORT');
+		expect(result.envVars).toContain('DATABASE_URL');
+		expect(result.envVars).toHaveLength(2);
+	});
+
+	it('should return error for non-existent entry file', async () => {
+		const result = await _sniffEntryFile(
+			'./non-existent.ts',
+			fixturesPath,
+			fixturesPath,
+		);
+
+		expect(result.envVars).toEqual([]);
+		expect(result.error).toBeDefined();
+	});
+});
+
+describe('sniffAppEnvironment with entry apps', () => {
+	// Integration tests for sniffAppEnvironment with entry-based apps
+
+	it('should use subprocess sniffing for entry apps without requiredEnv', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: fixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			entry: './simple-entry.ts',
+		};
+
+		const result = await sniffAppEnvironment(app, 'api', fixturesPath);
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toContain('PORT');
+		expect(result.requiredEnvVars).toContain('DATABASE_URL');
+		expect(result.requiredEnvVars).toContain('REDIS_URL');
+	});
+
+	it('should prefer requiredEnv over sniffing for entry apps', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: fixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			entry: './simple-entry.ts',
+			requiredEnv: ['CUSTOM_VAR', 'ANOTHER_VAR'], // Should use this instead of sniffing
+		};
+
+		const result = await sniffAppEnvironment(app, 'api', fixturesPath);
+
+		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR', 'ANOTHER_VAR']);
+		// Should NOT contain the sniffed vars since requiredEnv takes precedence
+		expect(result.requiredEnvVars).not.toContain('PORT');
+		expect(result.requiredEnvVars).not.toContain('DATABASE_URL');
+	});
+
+	it('should handle entry app that throws and still return captured env vars', async () => {
+		const app: NormalizedAppConfig = {
+			type: 'backend',
+			path: fixturesPath,
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			entry: './throwing-entry.ts',
+		};
+
+		const result = await sniffAppEnvironment(app, 'api', fixturesPath, {
+			logWarnings: false,
+		});
+
+		expect(result.appName).toBe('api');
+		expect(result.requiredEnvVars).toContain('PORT');
+		expect(result.requiredEnvVars).toContain('API_KEY');
 	});
 });
