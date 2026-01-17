@@ -5,14 +5,18 @@
  */
 
 import { lookup } from 'node:dns/promises';
-import { getHostingerToken, storeHostingerToken } from '../../auth/credentials';
 import type { DnsConfig } from '../../workspace/types';
 import {
 	type DokployStageState,
 	isDnsVerified,
 	setDnsVerification,
 } from '../state';
-import { HostingerApi } from './hostinger-api';
+import {
+	createDnsProvider,
+	type DnsConfig as SchemaDnsConfig,
+	type DnsProvider,
+	type UpsertDnsRecord,
+} from './DnsProvider';
 
 const logger = console;
 
@@ -165,155 +169,101 @@ export function printDnsRecordsSimple(
 }
 
 /**
- * Prompt for input (reuse from deploy/index.ts pattern)
- */
-async function promptForToken(message: string): Promise<string> {
-	const { stdin, stdout } = await import('node:process');
-
-	if (!stdin.isTTY) {
-		throw new Error('Interactive input required for Hostinger token.');
-	}
-
-	// Hidden input for token
-	stdout.write(message);
-	return new Promise((resolve) => {
-		let value = '';
-		const onData = (char: Buffer) => {
-			const c = char.toString();
-			if (c === '\n' || c === '\r') {
-				stdin.setRawMode(false);
-				stdin.pause();
-				stdin.removeListener('data', onData);
-				stdout.write('\n');
-				resolve(value);
-			} else if (c === '\u0003') {
-				stdin.setRawMode(false);
-				stdin.pause();
-				stdout.write('\n');
-				process.exit(1);
-			} else if (c === '\u007F' || c === '\b') {
-				if (value.length > 0) value = value.slice(0, -1);
-			} else {
-				value += c;
-			}
-		};
-		stdin.setRawMode(true);
-		stdin.resume();
-		stdin.on('data', onData);
-	});
-}
-
-/**
  * Create DNS records using the configured provider
  */
 export async function createDnsRecords(
 	records: RequiredDnsRecord[],
 	dnsConfig: DnsConfig,
 ): Promise<RequiredDnsRecord[]> {
-	const { provider, domain: rootDomain, ttl = 300 } = dnsConfig;
+	const rootDomain = dnsConfig.domain;
+	// Get TTL from config, default to 300. Manual mode doesn't have ttl property.
+	const ttl = 'ttl' in dnsConfig && dnsConfig.ttl ? dnsConfig.ttl : 300;
 
-	if (provider === 'manual') {
-		// Just mark all records as needing manual creation
-		return records.map((r) => ({ ...r, created: false, existed: false }));
-	}
-
-	if (provider === 'hostinger') {
-		return createHostingerRecords(records, rootDomain, ttl);
-	}
-
-	if (provider === 'cloudflare') {
-		logger.log('   ⚠ Cloudflare DNS integration not yet implemented');
-		return records.map((r) => ({
-			...r,
-			error: 'Cloudflare not implemented',
-		}));
-	}
-
-	return records;
-}
-
-/**
- * Create DNS records at Hostinger
- */
-async function createHostingerRecords(
-	records: RequiredDnsRecord[],
-	rootDomain: string,
-	ttl: number,
-): Promise<RequiredDnsRecord[]> {
-	// Get or prompt for Hostinger token
-	let token = await getHostingerToken();
-
-	if (!token) {
-		logger.log('\n   📋 Hostinger API token not found.');
-		logger.log(
-			'   Get your token from: https://hpanel.hostinger.com/profile/api\n',
-		);
-
-		try {
-			token = await promptForToken('   Hostinger API Token: ');
-			await storeHostingerToken(token);
-			logger.log('   ✓ Token saved');
-		} catch {
-			logger.log('   ⚠ Could not get token, skipping DNS creation');
-			return records.map((r) => ({
-				...r,
-				error: 'No API token',
-			}));
-		}
-	}
-
-	const api = new HostingerApi(token);
-	const results: RequiredDnsRecord[] = [];
-
-	// Get existing records to check what already exists
-	let existingRecords: Awaited<ReturnType<typeof api.getRecords>> = [];
+	// Get DNS provider from factory
+	let provider: DnsProvider | null;
 	try {
-		existingRecords = await api.getRecords(rootDomain);
+		// Cast to schema-derived DnsConfig for provider factory
+		provider = await createDnsProvider({
+			config: dnsConfig as SchemaDnsConfig,
+		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.log(`   ⚠ Failed to fetch existing DNS records: ${message}`);
+		logger.log(`   ⚠ Failed to create DNS provider: ${message}`);
 		return records.map((r) => ({ ...r, error: message }));
 	}
 
-	// Process each record
-	for (const record of records) {
-		const existing = existingRecords.find(
-			(r) => r.name === record.subdomain && r.type === 'A',
+	// Manual mode - no provider, just mark records as needing manual creation
+	if (!provider) {
+		return records.map((r) => ({ ...r, created: false, existed: false }));
+	}
+
+	const results: RequiredDnsRecord[] = [];
+
+	// Convert RequiredDnsRecord to UpsertDnsRecord format
+	const upsertRecords: UpsertDnsRecord[] = records.map((r) => ({
+		name: r.subdomain,
+		type: r.type,
+		ttl,
+		value: r.value,
+	}));
+
+	try {
+		// Use provider to upsert records
+		const upsertResults = await provider.upsertRecords(
+			rootDomain,
+			upsertRecords,
 		);
 
-		if (existing) {
-			// Record already exists
-			results.push({
-				...record,
-				existed: true,
-				created: false,
-			});
-			continue;
-		}
+		// Map results back to RequiredDnsRecord format
+		for (const [i, record] of records.entries()) {
+			const result = upsertResults[i];
 
-		// Create the record
-		try {
-			await api.upsertRecords(rootDomain, [
-				{
-					name: record.subdomain,
-					type: 'A',
-					ttl,
-					records: [{ content: record.value }],
-				},
-			]);
+			// Handle case where upsertResults has fewer items (shouldn't happen but be safe)
+			if (!result) {
+				results.push({
+					hostname: record.hostname,
+					subdomain: record.subdomain,
+					type: record.type,
+					value: record.value,
+					appName: record.appName,
+					error: 'No result returned from provider',
+				});
+				continue;
+			}
 
-			results.push({
-				...record,
-				created: true,
-				existed: false,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			results.push({
-				...record,
-				error: message,
-			});
+			if (result.unchanged) {
+				results.push({
+					hostname: record.hostname,
+					subdomain: record.subdomain,
+					type: record.type,
+					value: record.value,
+					appName: record.appName,
+					existed: true,
+					created: false,
+				});
+			} else {
+				results.push({
+					hostname: record.hostname,
+					subdomain: record.subdomain,
+					type: record.type,
+					value: record.value,
+					appName: record.appName,
+					created: result.created,
+					existed: !result.created,
+				});
+			}
 		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		logger.log(`   ⚠ Failed to create DNS records: ${message}`);
+		return records.map((r) => ({
+			hostname: r.hostname,
+			subdomain: r.subdomain,
+			type: r.type,
+			value: r.value,
+			appName: r.appName,
+			error: message,
+		}));
 	}
 
 	return results;
