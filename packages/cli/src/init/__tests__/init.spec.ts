@@ -176,9 +176,9 @@ describe('initCommand', () => {
 			expect(
 				existsSync(join(projectDir, 'packages/models/tsconfig.json')),
 			).toBe(true);
-			expect(existsSync(join(projectDir, 'packages/models/src/common.ts'))).toBe(
-				true,
-			);
+			expect(
+				existsSync(join(projectDir, 'packages/models/src/common.ts')),
+			).toBe(true);
 			expect(existsSync(join(projectDir, 'packages/models/src/user.ts'))).toBe(
 				true,
 			);
