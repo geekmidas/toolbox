@@ -33,54 +33,60 @@ describe('HostingerProvider', () => {
 	// MSW server setup
 	const server = setupServer(
 		// GET /api/dns/v1/zones/{domain} - Get DNS records
-		http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, ({ request }) => {
-			// Check authorization
-			const authHeader = request.headers.get('Authorization');
-			if (authHeader !== `Bearer ${TEST_TOKEN}`) {
-				return HttpResponse.json(
-					{ message: 'Unauthorized' },
-					{ status: 401 },
-				);
-			}
+		http.get(
+			`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`,
+			({ request }) => {
+				// Check authorization
+				const authHeader = request.headers.get('Authorization');
+				if (authHeader !== `Bearer ${TEST_TOKEN}`) {
+					return HttpResponse.json(
+						{ message: 'Unauthorized' },
+						{ status: 401 },
+					);
+				}
 
-			return HttpResponse.json({ data: mockRecords });
-		}),
+				return HttpResponse.json({ data: mockRecords });
+			},
+		),
 
 		// PUT /api/dns/v1/zones/{domain} - Upsert DNS records
-		http.put(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, async ({ request }) => {
-			// Check authorization
-			const authHeader = request.headers.get('Authorization');
-			if (authHeader !== `Bearer ${TEST_TOKEN}`) {
-				return HttpResponse.json(
-					{ message: 'Unauthorized' },
-					{ status: 401 },
-				);
-			}
-
-			const body = await request.json() as {
-				overwrite?: boolean;
-				zone: Array<{
-					name: string;
-					type: string;
-					ttl: number;
-					records: Array<{ content: string }>;
-				}>;
-			};
-
-			// Simulate upsert behavior
-			for (const record of body.zone) {
-				const existingIndex = mockRecords.findIndex(
-					(r) => r.name === record.name && r.type === record.type,
-				);
-				if (existingIndex >= 0) {
-					mockRecords[existingIndex] = record;
-				} else {
-					mockRecords.push(record);
+		http.put(
+			`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`,
+			async ({ request }) => {
+				// Check authorization
+				const authHeader = request.headers.get('Authorization');
+				if (authHeader !== `Bearer ${TEST_TOKEN}`) {
+					return HttpResponse.json(
+						{ message: 'Unauthorized' },
+						{ status: 401 },
+					);
 				}
-			}
 
-			return new HttpResponse(null, { status: 204 });
-		}),
+				const body = (await request.json()) as {
+					overwrite?: boolean;
+					zone: Array<{
+						name: string;
+						type: string;
+						ttl: number;
+						records: Array<{ content: string }>;
+					}>;
+				};
+
+				// Simulate upsert behavior
+				for (const record of body.zone) {
+					const existingIndex = mockRecords.findIndex(
+						(r) => r.name === record.name && r.type === record.type,
+					);
+					if (existingIndex >= 0) {
+						mockRecords[existingIndex] = record;
+					} else {
+						mockRecords.push(record);
+					}
+				}
+
+				return new HttpResponse(null, { status: 204 });
+			},
+		),
 	);
 
 	beforeAll(() => {
