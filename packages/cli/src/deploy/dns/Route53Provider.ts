@@ -40,7 +40,7 @@ export class Route53Provider implements DnsProvider {
 	private hostedZoneId?: string;
 	private hostedZoneCache: Map<string, string> = new Map();
 
-	constructor(private options: Route53ProviderOptions = {}) {
+	constructor(options: Route53ProviderOptions = {}) {
 		this.client = new Route53Client({
 			...(options.region && { region: options.region }),
 			...(options.endpoint && { endpoint: options.endpoint }),
