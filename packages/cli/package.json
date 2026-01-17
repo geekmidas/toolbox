@@ -58,12 +58,14 @@
 		"hono": "~4.8.0",
 		"lodash.kebabcase": "^4.1.1",
 		"openapi-typescript": "^7.4.2",
+		"pg": "~8.17.1",
 		"prompts": "~2.4.2"
 	},
 	"devDependencies": {
 		"@geekmidas/testkit": "workspace:*",
 		"@types/lodash.kebabcase": "^4.1.9",
 		"@types/node": "~24.9.1",
+		"@types/pg": "~8.16.0",
 		"@types/prompts": "~2.4.9",
 		"typescript": "^5.8.2",
 		"vitest": "^3.2.4",
