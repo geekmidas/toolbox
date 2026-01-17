@@ -300,6 +300,42 @@ describe('HostingerProvider', () => {
 			expect(results).toHaveLength(2);
 			expect(results[0]?.unchanged).toBe(true);
 			expect(results[1]?.created).toBe(true);
+
+			// Verify both records exist in mock store
+			expect(mockRecords).toHaveLength(2);
+		});
+	});
+
+	describe('API error handling', () => {
+		it('should handle API errors gracefully', async () => {
+			// Override the handler to return an error
+			server.use(
+				http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, () => {
+					return HttpResponse.json(
+						{ message: 'Domain not found' },
+						{ status: 404 },
+					);
+				}),
+			);
+
+			const provider = new HostingerProvider();
+
+			await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow(
+				'Hostinger API error',
+			);
+		});
+
+		it('should handle network errors', async () => {
+			// Override the handler to simulate network error
+			server.use(
+				http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, () => {
+					return HttpResponse.error();
+				}),
+			);
+
+			const provider = new HostingerProvider();
+
+			await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow();
 		});
 	});
 });
