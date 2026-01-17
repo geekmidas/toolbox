@@ -614,7 +614,9 @@ describe('docker templates', () => {
 			const dockerfile = generateEntryDockerfile(baseOptions);
 
 			expect(dockerfile).toContain('import { createRequire } from "module"');
-			expect(dockerfile).toContain('const require = createRequire(import.meta.url)');
+			expect(dockerfile).toContain(
+				'const require = createRequire(import.meta.url)',
+			);
 		});
 
 		it('should output to dist/index.mjs', () => {
