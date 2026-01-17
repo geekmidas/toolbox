@@ -1127,6 +1127,10 @@ export async function workspaceDeployCommand(
 		redis: services.cache !== undefined && services.cache !== false,
 	};
 
+	// Track provisioned postgres info for per-app DATABASE_URL
+	let provisionedPostgres: DokployPostgres | null = null;
+	let provisionedRedis: DokployRedis | null = null;
+
 	if (dockerServices.postgres || dockerServices.redis) {
 		logger.log('\n🔧 Provisioning infrastructure services...');
 		// Pass existing service IDs from state (prefer state over URL sniffing)
@@ -1148,9 +1152,17 @@ export async function workspaceDeployCommand(
 		if (provisionResult?.serviceIds) {
 			if (provisionResult.serviceIds.postgresId) {
 				setPostgresId(state, provisionResult.serviceIds.postgresId);
+				// Fetch full postgres info for later use
+				provisionedPostgres = await api.getPostgres(
+					provisionResult.serviceIds.postgresId,
+				);
 			}
 			if (provisionResult.serviceIds.redisId) {
 				setRedisId(state, provisionResult.serviceIds.redisId);
+				// Fetch full redis info for later use
+				provisionedRedis = await api.getRedis(
+					provisionResult.serviceIds.redisId,
+				);
 			}
 		}
 	}
@@ -1164,6 +1176,60 @@ export async function workspaceDeployCommand(
 	const frontendApps = appsToDeployNames.filter(
 		(name) => workspace.apps[name]!.type === 'frontend',
 	);
+
+	// ==================================================================
+	// Initialize per-app database users if Postgres is provisioned
+	// ==================================================================
+	const perAppDbCredentials = new Map<string, AppDbCredentials>();
+
+	if (provisionedPostgres && backendApps.length > 0) {
+		// Determine which backend apps need DATABASE_URL
+		const appsNeedingDb = backendApps.filter((appName) => {
+			const requirements = sniffedApps.get(appName);
+			return requirements?.requiredEnvVars.includes('DATABASE_URL');
+		});
+
+		if (appsNeedingDb.length > 0) {
+			logger.log(`\n🔐 Setting up per-app database credentials...`);
+			logger.log(`   Apps needing DATABASE_URL: ${appsNeedingDb.join(', ')}`);
+
+			// Get or generate credentials for each app
+			const existingCredentials = getAllAppCredentials(state);
+			const usersToCreate: DbUserConfig[] = [];
+
+			for (const appName of appsNeedingDb) {
+				let credentials = existingCredentials[appName];
+
+				if (credentials) {
+					logger.log(`   ${appName}: Using existing credentials from state`);
+				} else {
+					// Generate new credentials
+					const password = randomBytes(16).toString('hex');
+					credentials = { dbUser: appName, dbPassword: password };
+					setAppCredentials(state, appName, credentials);
+					logger.log(`   ${appName}: Generated new credentials`);
+				}
+
+				perAppDbCredentials.set(appName, credentials);
+
+				// Always add to users to create (idempotent - will update if exists)
+				usersToCreate.push({
+					name: appName,
+					password: credentials.dbPassword,
+					usePublicSchema: appName === 'api', // API uses public schema, others get their own
+				});
+			}
+
+			// Initialize database users
+			const serverHostname = getServerHostname(creds.endpoint);
+			await initializePostgresUsers(
+				api,
+				provisionedPostgres,
+				serverHostname,
+				usersToCreate,
+			);
+		}
+	}
 
 	// Track deployed app public URLs for frontend builds
 	const publicUrls: Record<string, string> = {};
