@@ -1294,11 +1294,12 @@ function generateCredentialsInjection(secretsJsonPath: string): string {
 	return `import { Credentials } from '@geekmidas/envkit/credentials';
 import { existsSync, readFileSync } from 'node:fs';
 
-// Inject dev secrets into Credentials
+// Inject dev secrets into Credentials and process.env
 const secretsPath = '${secretsJsonPath}';
 if (existsSync(secretsPath)) {
   const secrets = JSON.parse(readFileSync(secretsPath, 'utf-8'));
   Object.assign(Credentials, secrets);
+  Object.assign(process.env, secrets);
   // Debug: uncomment to verify preload is running
   // console.log('[gkm preload] Injected', Object.keys(secrets).length, 'credentials');
 }
