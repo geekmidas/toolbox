@@ -16,7 +16,6 @@ const PACKAGES = [
 	'audit',
 	'auth',
 	'cache',
-	'cli',
 	'client',
 	'cloud',
 	'constructs',
