@@ -5,7 +5,7 @@
  */
 
 import { lookup } from 'node:dns/promises';
-import type { DnsConfig } from '../../workspace/types';
+import type { DnsConfig, DnsProvider as DnsProviderConfig } from '../../workspace/types';
 import {
 	type DokployStageState,
 	isDnsVerified,
@@ -19,6 +19,82 @@ import {
 } from './DnsProvider';
 
 const logger = console;
+
+/**
+ * Check if DNS config is legacy format (single domain with `domain` property)
+ */
+export function isLegacyDnsConfig(
+	config: DnsConfig,
+): config is SchemaDnsConfig & { domain: string } {
+	return (
+		typeof config === 'object' &&
+		config !== null &&
+		'provider' in config &&
+		'domain' in config
+	);
+}
+
+/**
+ * Normalize DNS config to new multi-domain format
+ */
+export function normalizeDnsConfig(
+	config: DnsConfig,
+): Record<string, DnsProviderConfig> {
+	if (isLegacyDnsConfig(config)) {
+		// Convert legacy format to new format
+		const { domain, ...providerConfig } = config;
+		return { [domain]: providerConfig as DnsProviderConfig };
+	}
+	return config as Record<string, DnsProviderConfig>;
+}
+
+/**
+ * Find the root domain for a hostname from available DNS configs
+ *
+ * @example
+ * findRootDomain('api.geekmidas.com', { 'geekmidas.com': {...}, 'geekmidas.dev': {...} })
+ * // Returns 'geekmidas.com'
+ */
+export function findRootDomain(
+	hostname: string,
+	dnsConfig: Record<string, DnsProviderConfig>,
+): string | null {
+	// Sort domains by length descending to match most specific first
+	const domains = Object.keys(dnsConfig).sort((a, b) => b.length - a.length);
+
+	for (const domain of domains) {
+		if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+			return domain;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Group hostnames by their root domain
+ */
+export function groupHostnamesByDomain(
+	appHostnames: Map<string, string>,
+	dnsConfig: Record<string, DnsProviderConfig>,
+): Map<string, Map<string, string>> {
+	const grouped = new Map<string, Map<string, string>>();
+
+	for (const [appName, hostname] of appHostnames) {
+		const rootDomain = findRootDomain(hostname, dnsConfig);
+		if (!rootDomain) {
+			logger.log(`   ⚠ No DNS config found for hostname: ${hostname}`);
+			continue;
+		}
+
+		if (!grouped.has(rootDomain)) {
+			grouped.set(rootDomain, new Map());
+		}
+		grouped.get(rootDomain)!.set(appName, hostname);
+	}
+
+	return grouped;
+}
 
 /**
  * Required DNS record for an app
