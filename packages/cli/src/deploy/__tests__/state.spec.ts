@@ -39,11 +39,12 @@ describe('state management', () => {
 	});
 
 	describe('createEmptyState', () => {
-		it('should create a valid empty state', () => {
-			const state = createEmptyState('production', 'env_123');
+		it('should create a valid empty state with projectId', () => {
+			const state = createEmptyState('production', 'proj_123', 'env_123');
 
 			expect(state.provider).toBe('dokploy');
 			expect(state.stage).toBe('production');
+			expect(state.projectId).toBe('proj_123');
 			expect(state.environmentId).toBe('env_123');
 			expect(state.applications).toEqual({});
 			expect(state.services).toEqual({});
@@ -51,7 +52,7 @@ describe('state management', () => {
 		});
 
 		it('should generate valid ISO timestamp', () => {
-			const state = createEmptyState('staging', 'env_456');
+			const state = createEmptyState('staging', 'proj_test', 'env_456');
 
 			expect(() => new Date(state.lastDeployedAt)).not.toThrow();
 		});
@@ -68,6 +69,7 @@ describe('state management', () => {
 			const stateData: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: { postgresId: 'pg_123' },
@@ -100,7 +102,7 @@ describe('state management', () => {
 
 	describe('writeStageState', () => {
 		it('should create .gkm directory if not exists', async () => {
-			const state = createEmptyState('staging', 'env_456');
+			const state = createEmptyState('staging', 'proj_test', 'env_456');
 
 			await writeStageState(testDir, 'staging', state);
 
@@ -112,7 +114,7 @@ describe('state management', () => {
 		});
 
 		it('should update lastDeployedAt timestamp', async () => {
-			const state = createEmptyState('staging', 'env_456');
+			const state = createEmptyState('staging', 'proj_test', 'env_456');
 			const originalTimestamp = state.lastDeployedAt;
 
 			// Wait a bit to ensure different timestamp
@@ -127,6 +129,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123', web: 'app_456' },
 				services: { postgresId: 'pg_123', redisId: 'redis_123' },
@@ -158,6 +161,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: {},
@@ -171,6 +175,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -187,7 +192,7 @@ describe('state management', () => {
 
 	describe('setApplicationId', () => {
 		it('should set application ID', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setApplicationId(state, 'api', 'app_123');
 
@@ -195,7 +200,7 @@ describe('state management', () => {
 		});
 
 		it('should update existing application ID', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			state.applications.api = 'app_old';
 
 			setApplicationId(state, 'api', 'app_new');
@@ -209,6 +214,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: { postgresId: 'pg_123' },
@@ -219,7 +225,7 @@ describe('state management', () => {
 		});
 
 		it('should return undefined when postgres not configured', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getPostgresId(state)).toBeUndefined();
 		});
@@ -231,7 +237,7 @@ describe('state management', () => {
 
 	describe('setPostgresId', () => {
 		it('should set postgres ID', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setPostgresId(state, 'pg_123');
 
@@ -244,6 +250,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: { redisId: 'redis_123' },
@@ -254,7 +261,7 @@ describe('state management', () => {
 		});
 
 		it('should return undefined when redis not configured', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getRedisId(state)).toBeUndefined();
 		});
@@ -266,7 +273,7 @@ describe('state management', () => {
 
 	describe('setRedisId', () => {
 		it('should set redis ID', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setRedisId(state, 'redis_123');
 
@@ -279,6 +286,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -298,6 +306,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -309,7 +318,7 @@ describe('state management', () => {
 		});
 
 		it('should return undefined when no appCredentials', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getAppCredentials(state, 'api')).toBeUndefined();
 		});
@@ -321,7 +330,7 @@ describe('state management', () => {
 
 	describe('setAppCredentials', () => {
 		it('should set credentials', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setAppCredentials(state, 'api', { dbUser: 'api', dbPassword: 'secret' });
 
@@ -332,7 +341,7 @@ describe('state management', () => {
 		});
 
 		it('should initialize appCredentials if not exists', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			expect(state.appCredentials).toBeUndefined();
 
 			setAppCredentials(state, 'api', { dbUser: 'api', dbPassword: 'secret' });
@@ -341,7 +350,7 @@ describe('state management', () => {
 		});
 
 		it('should update existing credentials', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			state.appCredentials = {
 				api: { dbUser: 'api', dbPassword: 'old_password' },
 			};
@@ -360,6 +369,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -377,7 +387,7 @@ describe('state management', () => {
 		});
 
 		it('should return empty object when no credentials', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getAllAppCredentials(state)).toEqual({});
 		});
@@ -396,6 +406,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -414,6 +425,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -432,6 +444,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -445,7 +458,7 @@ describe('state management', () => {
 		});
 
 		it('should return undefined when no generatedSecrets', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(
 				getGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET'),
@@ -461,7 +474,7 @@ describe('state management', () => {
 
 	describe('setGeneratedSecret', () => {
 		it('should set secret', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
 
@@ -471,7 +484,7 @@ describe('state management', () => {
 		});
 
 		it('should initialize generatedSecrets if not exists', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			expect(state.generatedSecrets).toBeUndefined();
 
 			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
@@ -480,7 +493,7 @@ describe('state management', () => {
 		});
 
 		it('should initialize app secrets if not exists', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			state.generatedSecrets = {};
 
 			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret123');
@@ -489,7 +502,7 @@ describe('state management', () => {
 		});
 
 		it('should update existing secret', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			state.generatedSecrets = {
 				auth: { BETTER_AUTH_SECRET: 'old_secret' },
 			};
@@ -500,7 +513,7 @@ describe('state management', () => {
 		});
 
 		it('should add multiple secrets for same app', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setGeneratedSecret(state, 'auth', 'BETTER_AUTH_SECRET', 'secret1');
 			setGeneratedSecret(state, 'auth', 'OTHER_SECRET', 'secret2');
@@ -517,6 +530,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -539,6 +553,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -561,6 +576,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -578,7 +594,7 @@ describe('state management', () => {
 		});
 
 		it('should return empty object when no secrets', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getAllGeneratedSecrets(state)).toEqual({});
 		});
@@ -597,6 +613,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -619,6 +636,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -635,7 +653,7 @@ describe('state management', () => {
 		});
 
 		it('should return undefined when no dnsVerified', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getDnsVerification(state, 'api.example.com')).toBeUndefined();
 		});
@@ -647,7 +665,7 @@ describe('state management', () => {
 
 	describe('setDnsVerification', () => {
 		it('should set verification record', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setDnsVerification(state, 'api.example.com', '1.2.3.4');
 
@@ -656,7 +674,7 @@ describe('state management', () => {
 		});
 
 		it('should initialize dnsVerified if not exists', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			expect(state.dnsVerified).toBeUndefined();
 
 			setDnsVerification(state, 'api.example.com', '1.2.3.4');
@@ -665,7 +683,7 @@ describe('state management', () => {
 		});
 
 		it('should update existing verification', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 			state.dnsVerified = {
 				'api.example.com': {
 					serverIp: '1.1.1.1',
@@ -679,7 +697,7 @@ describe('state management', () => {
 		});
 
 		it('should generate valid ISO timestamp', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			setDnsVerification(state, 'api.example.com', '1.2.3.4');
 
@@ -693,6 +711,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -712,6 +731,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -731,6 +751,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -751,6 +772,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -780,7 +802,7 @@ describe('state management', () => {
 		});
 
 		it('should return empty object when no verifications', () => {
-			const state = createEmptyState('production', 'env_123');
+			const state = createEmptyState('production', 'proj_test', 'env_123');
 
 			expect(getAllDnsVerifications(state)).toEqual({});
 		});
@@ -795,6 +817,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
@@ -821,6 +844,7 @@ describe('state management', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
