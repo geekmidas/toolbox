@@ -53,7 +53,7 @@ describe('generateSecret', () => {
 describe('getOrGenerateSecret', () => {
 	it('should return existing secret if already stored', () => {
 		const state: DokployStageState = {
-			...createEmptyState('production', 'env-123'),
+			...createEmptyState('production', 'proj_test', 'env-123'),
 			generatedSecrets: {
 				api: { BETTER_AUTH_SECRET: 'existing-secret-123' },
 			},
@@ -64,7 +64,7 @@ describe('getOrGenerateSecret', () => {
 	});
 
 	it('should generate and store new secret if not exists', () => {
-		const state = createEmptyState('production', 'env-123');
+		const state = createEmptyState('production', 'proj_test', 'env-123');
 
 		const result = getOrGenerateSecret(state, 'api', 'BETTER_AUTH_SECRET');
 
@@ -73,7 +73,7 @@ describe('getOrGenerateSecret', () => {
 	});
 
 	it('should generate different secrets for different apps', () => {
-		const state = createEmptyState('production', 'env-123');
+		const state = createEmptyState('production', 'proj_test', 'env-123');
 
 		const apiSecret = getOrGenerateSecret(state, 'api', 'BETTER_AUTH_SECRET');
 		const authSecret = getOrGenerateSecret(state, 'auth', 'BETTER_AUTH_SECRET');
@@ -84,7 +84,7 @@ describe('getOrGenerateSecret', () => {
 	});
 
 	it('should generate different secrets for different secret names', () => {
-		const state = createEmptyState('production', 'env-123');
+		const state = createEmptyState('production', 'proj_test', 'env-123');
 
 		const secret1 = getOrGenerateSecret(state, 'api', 'SECRET_ONE');
 		const secret2 = getOrGenerateSecret(state, 'api', 'SECRET_TWO');
@@ -93,7 +93,7 @@ describe('getOrGenerateSecret', () => {
 	});
 
 	it('should return same secret on subsequent calls', () => {
-		const state = createEmptyState('production', 'env-123');
+		const state = createEmptyState('production', 'proj_test', 'env-123');
 
 		const first = getOrGenerateSecret(state, 'api', 'BETTER_AUTH_SECRET');
 		const second = getOrGenerateSecret(state, 'api', 'BETTER_AUTH_SECRET');
@@ -181,7 +181,7 @@ describe('resolveEnvVar', () => {
 		app: createApp(),
 		appName: 'api',
 		stage: 'production',
-		state: createEmptyState('production', 'env-123'),
+		state: createEmptyState('production', 'proj_test', 'env-123'),
 		appHostname: 'api.example.com',
 		frontendUrls: [],
 		...overrides,
@@ -253,7 +253,7 @@ describe('resolveEnvVar', () => {
 	});
 
 	it('should resolve BETTER_AUTH_SECRET by generating and storing secret', () => {
-		const state = createEmptyState('production', 'env-123');
+		const state = createEmptyState('production', 'proj_test', 'env-123');
 		const context = createContext({ state, appName: 'auth' });
 
 		const secret = resolveEnvVar('BETTER_AUTH_SECRET', context);
@@ -362,7 +362,7 @@ describe('resolveEnvVars', () => {
 		},
 		appName: 'api',
 		stage: 'production',
-		state: createEmptyState('production', 'env-123'),
+		state: createEmptyState('production', 'proj_test', 'env-123'),
 		appHostname: 'api.example.com',
 		frontendUrls: ['https://web.example.com'],
 		...overrides,
@@ -449,7 +449,7 @@ describe('validateEnvVars', () => {
 		},
 		appName: 'api',
 		stage: 'production',
-		state: createEmptyState('production', 'env-123'),
+		state: createEmptyState('production', 'proj_test', 'env-123'),
 		appHostname: 'api.example.com',
 		frontendUrls: [],
 		...overrides,
