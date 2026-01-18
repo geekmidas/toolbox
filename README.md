@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/geekmidas/toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/geekmidas/toolbox/actions/workflows/ci.yml)
-[![Publish](https://github.com/geekmidas/toolbox/actions/workflows/publish.yml/badge.svg)](https://github.com/geekmidas/toolbox/actions/workflows/publish.yml)
+[![Docs](https://github.com/geekmidas/toolbox/actions/workflows/docs.yml/badge.svg)](https://github.com/geekmidas/toolbox/actions/workflows/docs.yml)
 
 ## 🚀 Overview
 
