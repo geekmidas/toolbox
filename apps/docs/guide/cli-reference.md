@@ -160,6 +160,66 @@ Options:
 - `worker` - Background job processing
 - `fullstack` - API + Frontend (Next.js)
 
+### `gkm exec`
+
+Execute a command with workspace environment variables injected.
+
+```bash
+gkm exec [options] -- <command>
+
+Options:
+  --app, -a <name>       App context for env resolution (auto-detected from cwd)
+  --stage, -s <name>     Stage for env resolution (default: development)
+```
+
+**Examples:**
+```bash
+# Run Next.js dev with injected env vars
+gkm exec -- next dev --turbopack
+
+# Run with specific app context
+gkm exec --app web -- next build
+
+# Run tests with production env vars
+gkm exec --stage production -- vitest run
+```
+
+**Injected Environment Variables:**
+
+The `exec` command injects environment variables based on the workspace config:
+
+| Variable | Source |
+|----------|--------|
+| `NEXT_PUBLIC_API_URL` | URL of API app from workspace |
+| `NEXT_PUBLIC_AUTH_URL` | URL of auth app from workspace |
+| `API_URL` | Internal API URL |
+| `AUTH_URL` | Internal auth URL |
+| `DATABASE_URL` | From secrets (if configured) |
+| Custom vars | From app's `env` config |
+
+This is particularly useful for frontend apps that need to know the URLs of backend services:
+
+```typescript
+// gkm.config.ts
+export default defineConfig({
+  apps: {
+    api: { type: 'backend', port: 3000, ... },
+    auth: { type: 'auth', port: 3002, ... },
+    web: { type: 'frontend', port: 3001, dependencies: ['api', 'auth'], ... },
+  },
+});
+```
+
+```json
+// apps/web/package.json
+{
+  "scripts": {
+    "dev": "gkm exec -- next dev --turbopack",
+    "build": "gkm exec -- next build"
+  }
+}
+```
+
 ### `gkm deploy`
 
 Deploy to providers.
