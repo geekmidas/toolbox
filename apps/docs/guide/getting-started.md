@@ -219,39 +219,85 @@ export const createUser = e
     email: z.string(),
   }))
   .handle(async ({ body }) => {
-    // Your logic here
-    return {
-      id: '123',
-      ...body,
-    };
+    return { id: crypto.randomUUID(), ...body };
   });
 ```
 
-### Environment Configuration
+The endpoint is automatically discovered and available at `http://localhost:3000/users`.
+
+## Add Services
+
+Inject database, cache, or custom services:
 
 ```typescript
-import { EnvironmentParser } from '@geekmidas/envkit';
+// apps/api/src/services/database.ts
+import type { Service } from '@geekmidas/services';
+import { Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
 
-const config = new EnvironmentParser(process.env)
-  .create((get) => ({
-    port: get('PORT').string().transform(Number).default(3000),
-    database: {
-      url: get('DATABASE_URL').string().url(),
-    },
-  }))
-  .parse();
+export const databaseService = {
+  serviceName: 'db' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      url: get('DATABASE_URL').string(),
+    })).parse();
+
+    return new Kysely({
+      dialect: new PostgresDialect({
+        pool: new pg.Pool({ connectionString: config.url }),
+      }),
+    });
+  },
+} satisfies Service<'db', Kysely<Database>>;
 ```
-
-### Testing with Factories
 
 ```typescript
-import { KyselyFactory } from '@geekmidas/testkit/kysely';
+// apps/api/src/endpoints/users.ts
+import { e } from '@geekmidas/constructs/endpoints';
+import { databaseService } from '../services/database';
 
-const factory = new KyselyFactory(builders, seeds, db);
-
-// Create test data
-const user = await factory.insert('user', {
-  name: 'Test User',
-  email: 'test@example.com',
-});
+export const listUsers = e
+  .get('/users')
+  .services([databaseService])
+  .handle(async ({ services }) => {
+    return await services.db
+      .selectFrom('users')
+      .selectAll()
+      .execute();
+  });
 ```
+
+## Environment Variables
+
+Secrets are managed with encrypted storage:
+
+```bash
+# Initialize secrets for development
+gkm secrets:init --stage development
+
+# Set a secret
+gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
+
+# View secrets (masked)
+gkm secrets:show --stage development
+```
+
+## Build for Production
+
+```bash
+# Build server application
+gkm build --provider server --production
+
+# Generate Docker files
+gkm docker
+
+# Deploy to Dokploy
+gkm deploy --stage production
+```
+
+## Next Steps
+
+- [CLI Reference](/packages/cli) - All CLI commands
+- [Workspaces](/guide/workspaces) - Multi-app configuration
+- [Testing](/guide/testing) - Testing patterns
+- [Deployment](/guide/deployment) - Production deployment
