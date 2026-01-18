@@ -61,7 +61,7 @@ describe('createDnsProvider', () => {
 	describe('manual provider', () => {
 		it('should return null for manual provider', async () => {
 			const provider = await createDnsProvider({
-				config: { provider: 'manual', domain: 'example.com' },
+				config: { provider: 'manual' },
 			});
 
 			expect(provider).toBeNull();
@@ -71,7 +71,7 @@ describe('createDnsProvider', () => {
 	describe('hostinger provider', () => {
 		it('should create HostingerProvider for hostinger config', async () => {
 			const provider = await createDnsProvider({
-				config: { provider: 'hostinger', domain: 'example.com' },
+				config: { provider: 'hostinger' },
 			});
 
 			expect(provider).not.toBeNull();
@@ -84,7 +84,6 @@ describe('createDnsProvider', () => {
 			const provider = await createDnsProvider({
 				config: {
 					provider: 'route53',
-					domain: 'example.com',
 					region: 'us-east-1',
 				},
 			});
@@ -97,7 +96,6 @@ describe('createDnsProvider', () => {
 			const provider = await createDnsProvider({
 				config: {
 					provider: 'route53',
-					domain: 'example.com',
 					region: 'us-west-2',
 					hostedZoneId: 'Z1234567890',
 				},
@@ -112,7 +110,7 @@ describe('createDnsProvider', () => {
 		it('should throw for cloudflare provider (not yet implemented)', async () => {
 			await expect(
 				createDnsProvider({
-					config: { provider: 'cloudflare', domain: 'example.com' },
+					config: { provider: 'cloudflare' },
 				}),
 			).rejects.toThrow('Cloudflare DNS provider not yet implemented');
 		});
@@ -133,7 +131,6 @@ describe('createDnsProvider', () => {
 			const provider = await createDnsProvider({
 				config: {
 					provider: customProvider,
-					domain: 'example.com',
 				},
 			});
 
@@ -165,7 +162,6 @@ describe('createDnsProvider', () => {
 			const provider = await createDnsProvider({
 				config: {
 					provider: customProvider,
-					domain: 'example.com',
 				},
 			});
 

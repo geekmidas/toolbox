@@ -267,23 +267,19 @@ export const UpsertResultSchema = z.object({
 // =============================================================================
 
 /**
- * Hostinger DNS provider config.
+ * Hostinger DNS provider config (without domain - domain is the record key).
  */
-export const HostingerDnsConfigSchema = z.object({
+export const HostingerDnsProviderSchema = z.object({
 	provider: z.literal('hostinger'),
-	/** Root domain (e.g., 'example.com') */
-	domain: z.string().min(1, 'Domain is required'),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
 
 /**
- * Route53 DNS provider config.
+ * Route53 DNS provider config (without domain - domain is the record key).
  */
-export const Route53DnsConfigSchema = z.object({
+export const Route53DnsProviderSchema = z.object({
 	provider: z.literal('route53'),
-	/** Root domain (e.g., 'example.com') */
-	domain: z.string().min(1, 'Domain is required'),
 	/** AWS region (optional - uses AWS_REGION env var if not provided) */
 	region: AwsRegionSchema.optional(),
 	/** AWS profile name (optional - uses default credential chain if not provided) */
@@ -297,10 +293,8 @@ export const Route53DnsConfigSchema = z.object({
 /**
  * Cloudflare DNS provider config (placeholder for future).
  */
-export const CloudflareDnsConfigSchema = z.object({
+export const CloudflareDnsProviderSchema = z.object({
 	provider: z.literal('cloudflare'),
-	/** Root domain (e.g., 'example.com') */
-	domain: z.string().min(1, 'Domain is required'),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
@@ -308,16 +302,14 @@ export const CloudflareDnsConfigSchema = z.object({
 /**
  * Manual DNS configuration (user handles DNS themselves).
  */
-export const ManualDnsConfigSchema = z.object({
+export const ManualDnsProviderSchema = z.object({
 	provider: z.literal('manual'),
-	/** Root domain (e.g., 'example.com') */
-	domain: z.string().min(1, 'Domain is required'),
 });
 
 /**
  * Custom DNS provider config (user-provided implementation).
  */
-export const CustomDnsConfigSchema = z.object({
+export const CustomDnsProviderSchema = z.object({
 	/** Custom DnsProvider implementation */
 	provider: z.custom<{
 		name: string;
@@ -335,8 +327,6 @@ export const CustomDnsConfigSchema = z.object({
 				'Custom DNS provider must implement name, getRecords(), and upsertRecords() methods',
 		},
 	),
-	/** Root domain (e.g., 'example.com') */
-	domain: z.string().min(1, 'Domain is required'),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
