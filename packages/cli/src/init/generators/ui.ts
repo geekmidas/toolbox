@@ -317,7 +317,7 @@ export { Button, buttonVariants };
 
 	// src/components/ui/button/button.stories.tsx
 	const buttonStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Button } from '.';
+import { Button } from '~/components/ui/button';
 
 const meta: Meta<typeof Button> = {
   title: 'Components/Button',
@@ -488,7 +488,7 @@ export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 
 	// src/components/ui/input/input.stories.tsx
 	const inputStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Input } from '.';
+import { Input } from '~/components/ui/input';
 
 const meta: Meta<typeof Input> = {
   title: 'Components/Input',
@@ -544,7 +544,7 @@ export const WithValue: Story = {
 
 	// src/components/ui/card/card.stories.tsx
 	const cardStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Button } from '../button';
+import { Button } from '~/components/ui/button';
 import {
   Card,
   CardContent,
@@ -552,8 +552,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '.';
-import { Input } from '../input';
+} from '~/components/ui/card';
+import { Input } from '~/components/ui/input';
 
 const meta: Meta<typeof Card> = {
   title: 'Components/Card',
@@ -635,8 +635,8 @@ export { Label };
 
 	// src/components/ui/label/label.stories.tsx
 	const labelStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Input } from '../input';
-import { Label } from '.';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 
 const meta: Meta<typeof Label> = {
   title: 'Components/Label',
@@ -715,7 +715,7 @@ export { Badge, badgeVariants };
 
 	// src/components/ui/badge/badge.stories.tsx
 	const badgeStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Badge } from '.';
+import { Badge } from '~/components/ui/badge';
 
 const meta: Meta<typeof Badge> = {
   title: 'Components/Badge',
@@ -795,7 +795,7 @@ export { Separator };
 
 	// src/components/ui/separator/separator.stories.tsx
 	const separatorStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Separator } from '.';
+import { Separator } from '~/components/ui/separator';
 
 const meta: Meta<typeof Separator> = {
   title: 'Components/Separator',
@@ -904,11 +904,11 @@ export { Tabs, TabsList, TabsTrigger, TabsContent };
 
 	// src/components/ui/tabs/tabs.stories.tsx
 	const tabsStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '.';
-import { Button } from '../button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../card';
-import { Input } from '../input';
-import { Label } from '../label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
+import { Button } from '~/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/components/ui/card';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 
 const meta: Meta<typeof Tabs> = {
   title: 'Components/Tabs',
@@ -1012,8 +1012,8 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
 
 	// src/components/ui/tooltip/tooltip.stories.tsx
 	const tooltipStories = `import type { Meta, StoryObj } from '@storybook/react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '.';
-import { Button } from '../button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip';
+import { Button } from '~/components/ui/button';
 
 const meta: Meta<typeof Tooltip> = {
   title: 'Components/Tooltip',
@@ -1217,10 +1217,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '.';
-import { Button } from '../button';
-import { Input } from '../input';
-import { Label } from '../label';
+} from '~/components/ui/dialog';
+import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 
 const meta: Meta<typeof Dialog> = {
   title: 'Components/Dialog',
