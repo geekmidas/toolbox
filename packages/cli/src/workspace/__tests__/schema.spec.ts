@@ -607,7 +607,10 @@ describe('WorkspaceConfigSchema', () => {
 					default: 'dokploy' as const,
 					dns: {
 						'geekmidas.dev': { provider: 'hostinger' as const },
-						'geekmidas.com': { provider: 'route53' as const, region: 'us-east-1' as const },
+						'geekmidas.com': {
+							provider: 'route53' as const,
+							region: 'us-east-1' as const,
+						},
 					},
 				},
 			};

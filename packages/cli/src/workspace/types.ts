@@ -10,10 +10,7 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
-import type {
-	DnsConfigWithLegacySchema,
-	DnsProviderSchema,
-} from './schema.js';
+import type { DnsConfigWithLegacySchema, DnsProviderSchema } from './schema.js';
 
 /**
  * Deploy target for an app.
