@@ -634,105 +634,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm gkm build --provider server
 
-      - name: Deploy to Dokploy
-        env:
-          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_TOKEN }}
-        run: |
-          pnpm gkm login --provider dokploy --token $DOKPLOY_TOKEN
-          pnpm gkm deploy --stage production
-```
-
-### AWS Deployment
-
-```yaml
-# .github/workflows/aws-deploy.yml
-name: AWS Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v2
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm gkm build --provider aws-apigatewayv2
-
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - run: npx sst deploy --stage production
+      - name: Deploy
+        env:
+          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_TOKEN }}
+        run: |
+          pnpm gkm deploy --stage production
 ```
 
-## Health Checks
+### Required Secrets
 
-Configure health check endpoints:
+| Secret | Purpose |
+|--------|---------|
+| `DOKPLOY_TOKEN` | Dokploy API authentication |
+| `AWS_ROLE_ARN` | For SSM state provider and Route53 DNS |
+| Custom secrets | Application-specific (Stripe, SendGrid, etc.) |
 
-```typescript
-// gkm.config.ts
-export default defineConfig({
-  providers: {
-    server: {
-      production: {
-        healthCheck: '/health',
-      },
-    },
-  },
-});
-```
-
-Or create a custom health endpoint:
-
-```typescript
-// src/endpoints/health.ts
-import { e } from '@geekmidas/constructs/endpoints';
-
-export const healthCheck = e
-  .get('/health')
-  .authorizer('none')
-  .handle(async ({ services }) => {
-    // Check dependencies
-    const dbHealthy = await services.database.ping();
-    const cacheHealthy = await services.cache.ping();
-
-    return {
-      status: dbHealthy && cacheHealthy ? 'healthy' : 'degraded',
-      checks: {
-        database: dbHealthy,
-        cache: cacheHealthy,
-      },
-    };
-  });
-```
+---
 
 ## Production Checklist
 
