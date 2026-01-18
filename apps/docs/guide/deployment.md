@@ -604,108 +604,17 @@ EXPOSE 3000
 CMD ["node", "app.js"]
 ```
 
-### Build and Run
+### Build and Push
 
 ```bash
 # Build image
-docker build -t my-api .
+gkm docker build --tag my-api:latest
 
-# Run container
-docker run -p 3000:3000 \
-  -e DATABASE_URL="postgres://..." \
-  -e JWT_SECRET="..." \
-  my-api
+# Push to registry
+gkm docker push --tag my-api:latest
 ```
 
-## Dokploy Deployment
-
-[Dokploy](https://dokploy.com) is a self-hosted deployment platform.
-
-### Initialize Project
-
-```bash
-# Login to Dokploy instance
-gkm login --provider dokploy
-
-# Initialize deployment
-gkm deploy:init --stage production
-```
-
-### Configure Secrets
-
-```bash
-# Set required environment variables
-gkm secrets:set --stage production --key DATABASE_URL --value "postgres://..."
-gkm secrets:set --stage production --key JWT_SECRET --value "your-secret"
-
-# Or import from file
-gkm secrets:import --stage production --file .env.production
-```
-
-### Deploy
-
-```bash
-# Deploy to production
-gkm deploy --stage production
-
-# Preview changes first
-gkm deploy --stage production --dry-run
-```
-
-### Manage Deployments
-
-```bash
-# List deployments
-gkm deploy:list --stage production
-
-# View logs
-gkm deploy:logs --stage production
-
-# Rollback
-gkm deploy:rollback --stage production
-```
-
-## Environment Management
-
-### Stages
-
-The CLI supports multiple deployment stages:
-
-- `development` - Local development
-- `staging` - Pre-production testing
-- `production` - Live environment
-
-### Secrets Management
-
-```bash
-# Initialize secrets for a stage
-gkm secrets:init --stage production
-
-# View current secrets (masked)
-gkm secrets:show --stage production
-
-# Rotate service passwords
-gkm secrets:rotate --stage production --service postgres
-```
-
-**Secrets Storage:**
-- Local: Encrypted in `.gkm/secrets/`
-- Remote: AWS SSM Parameter Store or Dokploy
-
-### State Management
-
-Track deployment state across environments:
-
-```bash
-# Sync local state with remote
-gkm state:pull --stage production
-
-# Push local changes
-gkm state:push --stage production
-
-# Compare states
-gkm state:diff --stage production
-```
+---
 
 ## CI/CD Integration
 
