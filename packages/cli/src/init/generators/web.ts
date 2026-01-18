@@ -127,6 +127,18 @@ export function getQueryClient() {
 }
 `;
 
+	// Auth client for better-auth
+	const authClientTs = `import { createAuthClient } from 'better-auth/react';
+import { magicLinkClient } from 'better-auth/client/plugins';
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002',
+  plugins: [magicLinkClient()],
+});
+
+export const { signIn, signUp, signOut, useSession, magicLink } = authClient;
+`;
+
 	// Providers using shared QueryClient
 	const providersTsx = `'use client';
 
@@ -237,11 +249,6 @@ export default async function Home() {
 }
 `;
 
-	// Environment file for web app
-	const envLocal = `# API URL for client-side requests
-NEXT_PUBLIC_API_URL=http://localhost:3000
-`;
-
 	// .gitignore for Next.js
 	const gitignore = `.next/
 node_modules/
@@ -287,12 +294,12 @@ node_modules/
 			content: queryClientTs,
 		},
 		{
-			path: 'apps/web/src/api/index.ts',
-			content: apiIndexTs,
+			path: 'apps/web/src/lib/auth-client.ts',
+			content: authClientTs,
 		},
 		{
-			path: 'apps/web/.env.local',
-			content: envLocal,
+			path: 'apps/web/src/api/index.ts',
+			content: apiIndexTs,
 		},
 		{
 			path: 'apps/web/.gitignore',
