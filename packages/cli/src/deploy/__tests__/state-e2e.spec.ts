@@ -42,6 +42,7 @@ describe('State Provider E2E', () => {
 	): DokployStageState => ({
 		provider: 'dokploy',
 		stage: testStage,
+		projectId: 'proj_e2e_123',
 		environmentId: 'env_e2e_123',
 		applications: { api: 'app_e2e_123', web: 'app_e2e_456' },
 		services: { postgresId: 'pg_e2e_123', redisId: 'redis_e2e_123' },
@@ -295,6 +296,7 @@ describe('State Provider E2E', () => {
 			const preExistingState: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_pre_existing',
 				applications: { api: 'app_pre_123' },
 				services: { postgresId: 'pg_pre_123' },
