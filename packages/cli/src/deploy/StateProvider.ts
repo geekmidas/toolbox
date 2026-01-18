@@ -158,7 +158,7 @@ export async function createStateProvider(
 		const { CachedStateProvider } = await import('./CachedStateProvider');
 
 		const local = new LocalStateProvider(workspaceRoot);
-		const ssm = new SSMStateProvider({
+		const ssm = SSMStateProvider.create({
 			workspaceName,
 			region: (config as SSMStateConfig).region,
 		});
