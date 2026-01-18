@@ -11,6 +11,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 
 	const packageName = `@${options.name}/web`;
 	const modelsPackage = `@${options.name}/models`;
+	const uiPackage = `@${options.name}/ui`;
 
 	// package.json for web app
 	const packageJson = {
@@ -26,6 +27,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
+			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@tanstack/react-query': '~5.80.0',
 			next: '~16.1.0',
@@ -33,9 +35,11 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			'react-dom': '~19.2.0',
 		},
 		devDependencies: {
+			'@tailwindcss/postcss': '^4.0.0',
 			'@types/node': '~22.0.0',
 			'@types/react': '~19.0.0',
 			'@types/react-dom': '~19.0.0',
+			tailwindcss: '^4.0.0',
 			typescript: '~5.8.2',
 		},
 	};
@@ -46,10 +50,18 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['${modelsPackage}'],
+  transpilePackages: ['${modelsPackage}', '${uiPackage}'],
 };
 
 export default nextConfig;
+`;
+
+	// postcss.config.mjs for Tailwind v4
+	const postcssConfig = `export default {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
+};
 `;
 
 	// tsconfig.json for Next.js
@@ -75,7 +87,7 @@ export default nextConfig;
 				},
 			],
 			paths: {
-				'@/*': ['./src/*'],
+				'~/*': ['./src/*'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 			},
@@ -149,9 +161,14 @@ const hooks = createEndpointHooks<paths>(fetcher.request.bind(fetcher));
 export const api = Object.assign(fetcher.request.bind(fetcher), hooks);
 `;
 
+	// globals.css that imports UI package styles
+	const globalsCss = `@import '${uiPackage}/styles';
+`;
+
 	// App layout
 	const layoutTsx = `import type { Metadata } from 'next';
 import { Providers } from './providers';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: '${options.name}',
@@ -173,37 +190,57 @@ export default function RootLayout({
 }
 `;
 
-	// Home page with API example
-	const pageTsx = `import { api } from '@/api';
+	// Home page with API example using UI components
+	const pageTsx = `import { api } from '~/api';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '${uiPackage}/components';
 
 export default async function Home() {
   // Type-safe API call using the generated client
   const health = await api('GET /health').catch(() => null);
 
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-      <h1>Welcome to ${options.name}</h1>
+    <main className="min-h-screen bg-background p-8">
+      <div className="mx-auto max-w-4xl space-y-8">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight">Welcome to ${options.name}</h1>
+          <p className="text-muted-foreground">Your fullstack application is ready.</p>
+        </div>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>API Status</h2>
-        {health ? (
-          <pre style={{ background: '#f0f0f0', padding: '1rem', borderRadius: '8px' }}>
-            {JSON.stringify(health, null, 2)}
-          </pre>
-        ) : (
-          <p>Unable to connect to API</p>
-        )}
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>API Status</CardTitle>
+            <CardDescription>Connection to your backend API</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {health ? (
+              <pre className="rounded-lg bg-muted p-4 text-sm">
+                {JSON.stringify(health, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-destructive">Unable to connect to API</p>
+            )}
+          </CardContent>
+        </Card>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>Next Steps</h2>
-        <ul>
-          <li>Run <code>gkm openapi</code> to generate typed API client</li>
-          <li>Edit <code>apps/web/src/app/page.tsx</code> to customize this page</li>
-          <li>Add API routes in <code>apps/api/src/endpoints/</code></li>
-          <li>Define shared schemas in <code>packages/models/src/</code></li>
-        </ul>
-      </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Next Steps</CardTitle>
+            <CardDescription>Get started with your project</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ul className="list-inside list-disc space-y-2 text-muted-foreground">
+              <li>Run <code className="rounded bg-muted px-1">gkm openapi</code> to generate typed API client</li>
+              <li>Edit <code className="rounded bg-muted px-1">apps/web/src/app/page.tsx</code> to customize this page</li>
+              <li>Add API routes in <code className="rounded bg-muted px-1">apps/api/src/endpoints/</code></li>
+              <li>Add UI components with <code className="rounded bg-muted px-1">npx shadcn@latest add</code> in packages/ui</li>
+            </ul>
+            <div className="flex gap-4">
+              <Button>Get Started</Button>
+              <Button variant="outline">Documentation</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </main>
   );
 }
@@ -231,8 +268,16 @@ node_modules/
 			content: nextConfig,
 		},
 		{
+			path: 'apps/web/postcss.config.mjs',
+			content: postcssConfig,
+		},
+		{
 			path: 'apps/web/tsconfig.json',
 			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
+		},
+		{
+			path: 'apps/web/src/app/globals.css',
+			content: globalsCss,
 		},
 		{
 			path: 'apps/web/src/app/layout.tsx',
