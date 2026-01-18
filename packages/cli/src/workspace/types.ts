@@ -10,7 +10,10 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
-import type { DnsConfigSchema } from './schema.js';
+import type {
+	DnsConfigWithLegacySchema,
+	DnsProviderSchema,
+} from './schema.js';
 
 /**
  * Deploy target for an app.
@@ -251,38 +254,40 @@ export interface DokployWorkspaceConfig {
 /**
  * DNS provider types for automatic DNS record creation.
  */
-export type DnsProvider = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
+export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
+
+/**
+ * DNS provider configuration for a single domain.
+ */
+export type DnsProvider = z.infer<typeof DnsProviderSchema>;
 
 /**
  * DNS configuration for automatic record creation during deployment.
  *
+ * Maps root domains to their DNS provider configuration.
  * When configured, the deploy command will automatically create DNS
  * A records pointing to your Dokploy server for each app's domain.
  *
- * Derived from Zod schema for type safety.
- *
  * @example
  * ```ts
- * // Auto-create DNS records at Hostinger
+ * // Multi-domain with different providers
  * dns: {
- *   provider: 'hostinger',
- *   domain: 'traflabs.io',
+ *   'geekmidas.dev': { provider: 'hostinger' },
+ *   'geekmidas.com': { provider: 'route53' },
  * }
  *
- * // Route53 DNS (uses AWS_REGION env var or optional region)
+ * // Single domain
  * dns: {
- *   provider: 'route53',
- *   domain: 'traflabs.io',
+ *   'traflabs.io': { provider: 'hostinger', ttl: 300 },
  * }
  *
  * // Manual mode - just print required records
  * dns: {
- *   provider: 'manual',
- *   domain: 'traflabs.io',
+ *   'myapp.com': { provider: 'manual' },
  * }
  * ```
  */
-export type DnsConfig = z.infer<typeof DnsConfigSchema>;
+export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
 
 /**
  * Deployment configuration for the workspace.
