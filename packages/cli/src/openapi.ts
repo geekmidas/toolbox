@@ -2,17 +2,18 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { loadConfig } from './config.js';
+import { loadConfig, loadWorkspaceConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig } from './types.js';
+import { isWorkspaceConfig } from './workspace/index.js';
 
 interface OpenAPIOptions {
 	cwd?: string;
 }
 
 /**
- * Fixed output path for generated OpenAPI client (not configurable)
+ * Default output path for generated OpenAPI client (used for single-app configs)
  */
 export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
 
@@ -92,17 +93,99 @@ export async function openapiCommand(
 	const logger = console;
 
 	try {
-		const config = await loadConfig(options.cwd);
+		const loadedConfig = await loadWorkspaceConfig(options.cwd);
 
-		// Enable openapi if not configured
-		if (!config.openapi) {
-			config.openapi = { enabled: true };
-		}
+		if (loadedConfig.type === 'single') {
+			// Single-app config - use existing behavior
+			const config = loadedConfig.raw as GkmConfig;
 
-		const result = await generateOpenApi(config);
+			// Enable openapi if not configured
+			if (!config.openapi) {
+				config.openapi = { enabled: true };
+			}
 
-		if (result) {
-			logger.log(`Found ${result.endpointCount} endpoints`);
+			const result = await generateOpenApi(config);
+
+			if (result) {
+				logger.log(`Found ${result.endpointCount} endpoints`);
+			}
+		} else {
+			// Workspace config - generate for each backend app and copy to frontend clients
+			const { workspace } = loadedConfig;
+			const workspaceRoot = options.cwd || process.cwd();
+
+			// Find backend apps with openapi enabled
+			const backendApps = Object.entries(workspace.apps).filter(
+				([_, app]) =>
+					app.type === 'backend' &&
+					(app.openapi === true ||
+						(typeof app.openapi === 'object' && app.openapi.enabled !== false)),
+			);
+
+			if (backendApps.length === 0) {
+				logger.log('No backend apps with OpenAPI enabled found');
+				return;
+			}
+
+			// Find frontend apps with client config
+			const frontendApps = Object.entries(workspace.apps).filter(
+				([_, app]) => app.type === 'frontend' && app.client?.output,
+			);
+
+			// Generate OpenAPI for each backend app
+			for (const [appName, app] of backendApps) {
+				if (app.type !== 'backend' || !app.routes) continue;
+
+				const appPath = join(workspaceRoot, app.path);
+				const routes = Array.isArray(app.routes) ? app.routes : [app.routes];
+				const routesGlob = routes.map((r) => join(appPath, r));
+
+				const gkmConfig: GkmConfig = {
+					routes: routesGlob,
+					envParser: app.envParser || '',
+					logger: app.logger || '',
+					openapi: app.openapi,
+				};
+
+				// Change to app directory for generation
+				const originalCwd = process.cwd();
+				process.chdir(appPath);
+
+				const result = await generateOpenApi(gkmConfig, { silent: true });
+
+				process.chdir(originalCwd);
+
+				if (result) {
+					logger.log(`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`);
+
+					// Copy to frontend apps that depend on this backend
+					for (const [frontendName, frontendApp] of frontendApps) {
+						if (frontendApp.type !== 'frontend') continue;
+
+						const dependsOnBackend =
+							!frontendApp.dependencies ||
+							frontendApp.dependencies.includes(appName);
+
+						if (dependsOnBackend && frontendApp.client?.output) {
+							const frontendPath = join(workspaceRoot, frontendApp.path);
+							const clientOutputPath = join(
+								frontendPath,
+								frontendApp.client.output,
+								'openapi.ts',
+							);
+
+							await mkdir(dirname(clientOutputPath), { recursive: true });
+
+							// Read the generated content and write to frontend
+							const { readFile } = await import('node:fs/promises');
+							const content = await readFile(result.outputPath, 'utf-8');
+							await writeFile(clientOutputPath, content);
+
+							logger.log(`   → [${frontendName}] ${frontendApp.client.output}/openapi.ts`);
+						}
+					}
+				}
+			}
 		}
 	} catch (error) {
 		throw new Error(`OpenAPI generation failed: ${(error as Error).message}`);
