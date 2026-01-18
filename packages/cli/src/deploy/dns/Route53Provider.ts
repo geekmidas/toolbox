@@ -36,6 +36,7 @@ export interface Route53ProviderOptions {
  *
  * Uses AWS default credential chain for authentication.
  * Region can be specified or will use AWS_REGION/AWS_DEFAULT_REGION env vars.
+ * Profile can be specified to use a named profile from ~/.aws/credentials.
  */
 export class Route53Provider implements DnsProvider {
 	readonly name = 'route53';
