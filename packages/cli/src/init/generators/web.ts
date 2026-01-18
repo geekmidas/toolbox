@@ -29,6 +29,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			[modelsPackage]: 'workspace:*',
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
+			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@tanstack/react-query': '~5.80.0',
 			'better-auth': '~1.2.0',
 			next: '~16.1.0',
@@ -42,6 +43,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			'@types/react': '~19.0.0',
 			'@types/react-dom': '~19.0.0',
 			tailwindcss: '^4.0.0',
+			tsx: '~4.20.0',
 			typescript: '~5.8.2',
 		},
 	};
