@@ -1911,8 +1911,8 @@ export async function execCommand(
 	// Merge NODE_OPTIONS with existing value (if any)
 	// Add tsx loader first so our .ts preload can be loaded
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
-	const tsxImport = '--import tsx';
-	const preloadImport = `--import ${preloadPath}`;
+	const tsxImport = '--import=tsx';
+	const preloadImport = `--import=${preloadPath}`;
 
 	// Build NODE_OPTIONS: existing + tsx loader + our preload
 	const nodeOptions = [existingNodeOptions, tsxImport, preloadImport]

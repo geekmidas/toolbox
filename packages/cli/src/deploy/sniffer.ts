@@ -205,7 +205,7 @@ async function sniffEntryFile(
 				env: {
 					...process.env,
 					// Ensure tsx is available for TypeScript entry files
-					NODE_OPTIONS: '--import tsx',
+					NODE_OPTIONS: '--import=tsx',
 				},
 			},
 		);
