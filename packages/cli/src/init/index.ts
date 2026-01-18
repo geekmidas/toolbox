@@ -17,6 +17,7 @@ import { generateModelsPackage } from './generators/models.js';
 import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
+import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
 import {
 	type DeployTarget,
@@ -294,6 +295,9 @@ export async function initCommand(
 	// Collect auth app files for fullstack template
 	const authAppFiles = isFullstack ? generateAuthAppFiles(templateOptions) : [];
 
+	// Collect UI package files for fullstack template
+	const uiPackageFiles = isFullstack ? generateUiPackageFiles(templateOptions) : [];
+
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {
 		const fullPath = join(targetDir, path);
@@ -324,6 +328,13 @@ export async function initCommand(
 
 	// Write auth app files (authentication service)
 	for (const { path, content } of authAppFiles) {
+		const fullPath = join(targetDir, path);
+		await mkdir(dirname(fullPath), { recursive: true });
+		await writeFile(fullPath, content);
+	}
+
+	// Write UI package files (shared components)
+	for (const { path, content } of uiPackageFiles) {
 		const fullPath = join(targetDir, path);
 		await mkdir(dirname(fullPath), { recursive: true });
 		await writeFile(fullPath, content);
@@ -451,7 +462,10 @@ function printNextSteps(
 			console.log(`  │   └── web/          # Next.js frontend`);
 		}
 		console.log(`  ├── packages/`);
-		console.log(`  │   └── models/       # Shared Zod schemas`);
+		console.log(`  │   ├── models/       # Shared Zod schemas`);
+		if (isFullstackTemplate(options.template)) {
+			console.log(`  │   └── ui/           # Shared UI components`);
+		}
 		console.log(`  ├── .gkm/secrets/     # Encrypted secrets`);
 		console.log(`  ├── gkm.config.ts     # Workspace config`);
 		console.log(`  └── turbo.json        # Turbo config`);
