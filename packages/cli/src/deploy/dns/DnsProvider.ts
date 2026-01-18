@@ -149,6 +149,7 @@ export async function createDnsProvider(
 		const route53Config = config as Route53DnsConfig;
 		return new Route53Provider({
 			region: route53Config.region,
+			profile: route53Config.profile,
 			hostedZoneId: route53Config.hostedZoneId,
 		});
 	}
