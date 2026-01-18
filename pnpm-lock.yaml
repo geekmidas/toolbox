@@ -1094,6 +1094,10 @@ packages:
   '@aws-crypto/util@5.2.0':
     resolution: {integrity: sha512-4RkU9EsI6ZpBve5fseQlGNUWKMa1RLPQ1dnjnQoe07ldfIzcsGb5hC5W0Dm7u423KWzawlrpbjXBrXCEv9zazQ==}
 
+  '@aws-sdk/client-cognito-identity@3.971.0':
+    resolution: {integrity: sha512-JK1H3EXpm+z2qrfaM56ohx6wfibuF9+Kis4nGxQgitZjKhtZRysIkV7EBoeRGXXutESAumSV+DYSuFHU9n4Pzw==}
+    engines: {node: '>=20.0.0'}
+
   '@aws-sdk/client-route-53@3.971.0':
     resolution: {integrity: sha512-C8NSXmawBkNJQgphdjPcMl4RYduBVhkDnxJwpgns8RzWDwe1BK5GE9RE1Vnf32rSmfDJn5oNkaxbswETS6KbEw==}
     engines: {node: '>=20.0.0'}
