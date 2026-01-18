@@ -11436,6 +11436,31 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
+  '@aws-sdk/credential-providers@3.971.0(aws-crt@1.27.3)':
+    dependencies:
+      '@aws-sdk/client-cognito-identity': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/core': 3.970.0
+      '@aws-sdk/credential-provider-cognito-identity': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/credential-provider-env': 3.970.0
+      '@aws-sdk/credential-provider-http': 3.970.0
+      '@aws-sdk/credential-provider-ini': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/credential-provider-login': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/credential-provider-node': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/credential-provider-process': 3.970.0
+      '@aws-sdk/credential-provider-sso': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/credential-provider-web-identity': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/nested-clients': 3.971.0(aws-crt@1.27.3)
+      '@aws-sdk/types': 3.969.0
+      '@smithy/config-resolver': 4.4.6
+      '@smithy/core': 3.20.7
+      '@smithy/credential-provider-imds': 4.2.8
+      '@smithy/node-config-provider': 4.3.8
+      '@smithy/property-provider': 4.2.8
+      '@smithy/types': 4.12.0
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - aws-crt
+
   '@aws-sdk/middleware-bucket-endpoint@3.840.0':
     dependencies:
       '@aws-sdk/types': 3.840.0
