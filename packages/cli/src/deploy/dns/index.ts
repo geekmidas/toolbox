@@ -245,26 +245,26 @@ export function printDnsRecordsSimple(
 }
 
 /**
- * Create DNS records using the configured provider
+ * Create DNS records for a single domain using its configured provider
  */
-export async function createDnsRecords(
+export async function createDnsRecordsForDomain(
 	records: RequiredDnsRecord[],
-	dnsConfig: DnsConfig,
+	rootDomain: string,
+	providerConfig: DnsProviderConfig,
 ): Promise<RequiredDnsRecord[]> {
-	const rootDomain = dnsConfig.domain;
 	// Get TTL from config, default to 300. Manual mode doesn't have ttl property.
-	const ttl = 'ttl' in dnsConfig && dnsConfig.ttl ? dnsConfig.ttl : 300;
+	const ttl = 'ttl' in providerConfig && providerConfig.ttl ? providerConfig.ttl : 300;
 
 	// Get DNS provider from factory
 	let provider: DnsProvider | null;
 	try {
 		// Cast to schema-derived DnsConfig for provider factory
 		provider = await createDnsProvider({
-			config: dnsConfig as SchemaDnsConfig,
+			config: providerConfig as SchemaDnsConfig,
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.log(`   ⚠ Failed to create DNS provider: ${message}`);
+		logger.log(`   ⚠ Failed to create DNS provider for ${rootDomain}: ${message}`);
 		return records.map((r) => ({ ...r, error: message }));
 	}
 
@@ -331,7 +331,7 @@ export async function createDnsRecords(
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.log(`   ⚠ Failed to create DNS records: ${message}`);
+		logger.log(`   ⚠ Failed to create DNS records for ${rootDomain}: ${message}`);
 		return records.map((r) => ({
 			hostname: r.hostname,
 			subdomain: r.subdomain,
@@ -346,7 +346,27 @@ export async function createDnsRecords(
 }
 
 /**
+ * Create DNS records using the configured provider
+ * @deprecated Use createDnsRecordsForDomain for multi-domain support
+ */
+export async function createDnsRecords(
+	records: RequiredDnsRecord[],
+	dnsConfig: DnsConfig,
+): Promise<RequiredDnsRecord[]> {
+	// Handle legacy config format
+	if (!isLegacyDnsConfig(dnsConfig)) {
+		throw new Error('createDnsRecords requires legacy DnsConfig with domain property. Use createDnsRecordsForDomain instead.');
+	}
+	const { domain: rootDomain, ...providerConfig } = dnsConfig;
+	return createDnsRecordsForDomain(records, rootDomain, providerConfig as DnsProviderConfig);
+}
+
+/**
  * Main DNS orchestration function for deployments
+ *
+ * Supports both legacy single-domain format and new multi-domain format:
+ * - Legacy: { provider: 'hostinger', domain: 'example.com' }
+ * - Multi:  { 'example.com': { provider: 'hostinger' }, 'example.dev': { provider: 'route53' } }
  */
 export async function orchestrateDns(
 	appHostnames: Map<string, string>, // appName -> hostname
