@@ -23,6 +23,8 @@ import type {
 export interface Route53ProviderOptions {
 	/** AWS region (optional - uses AWS_REGION env var if not provided) */
 	region?: string;
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile?: string;
 	/** Hosted zone ID (optional - auto-detected from domain if not provided) */
 	hostedZoneId?: string;
 	/** Custom endpoint for testing with localstack */
