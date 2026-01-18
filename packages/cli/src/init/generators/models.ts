@@ -51,7 +51,11 @@ export function generateModelsPackage(
 // Common Schemas
 // ============================================
 
-export const IdSchema = z.string().uuid();
+export const IdSchema = z.uuid();
+
+export const IdParamsSchema = z.object({
+  id: IdSchema,
+});
 
 export const TimestampsSchema = z.object({
   createdAt: z.coerce.date(),
@@ -77,6 +81,7 @@ export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =
 // ============================================
 
 export type Id = z.infer<typeof IdSchema>;
+export type IdParams = z.infer<typeof IdParamsSchema>;
 export type Timestamps = z.infer<typeof TimestampsSchema>;
 export type Pagination = z.infer<typeof PaginationSchema>;
 `;
