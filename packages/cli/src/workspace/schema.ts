@@ -286,6 +286,8 @@ export const Route53DnsConfigSchema = z.object({
 	domain: z.string().min(1, 'Domain is required'),
 	/** AWS region (optional - uses AWS_REGION env var if not provided) */
 	region: AwsRegionSchema.optional(),
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile: z.string().optional(),
 	/** Hosted zone ID (optional - auto-detected from domain if not provided) */
 	hostedZoneId: z.string().optional(),
 	/** TTL in seconds (default: 300) */
