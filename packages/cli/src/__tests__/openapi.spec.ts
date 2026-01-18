@@ -38,9 +38,9 @@ describe('resolveOpenApiConfig', () => {
 		});
 	});
 
-	it('should return disabled when openapi is undefined', () => {
+	it('should return enabled by default when openapi is undefined', () => {
 		const result = resolveOpenApiConfig({ ...baseConfig });
-		expect(result.enabled).toBe(false);
+		expect(result.enabled).toBe(true);
 	});
 
 	it('should use custom config values when provided', () => {

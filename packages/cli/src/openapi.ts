@@ -27,8 +27,9 @@ export function resolveOpenApiConfig(
 	}
 
 	if (config.openapi === true || config.openapi === undefined) {
+		// Enable by default when not explicitly set (undefined) or explicitly true
 		return {
-			enabled: config.openapi === true,
+			enabled: true,
 			title: 'API Documentation',
 			version: '1.0.0',
 			description: 'Auto-generated API documentation from endpoints',
