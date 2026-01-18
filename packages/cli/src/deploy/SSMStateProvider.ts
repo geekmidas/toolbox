@@ -12,6 +12,7 @@ import {
 	ParameterNotFound,
 	PutParameterCommand,
 	SSMClient,
+	type SSMClientConfig,
 } from '@aws-sdk/client-ssm';
 import type { AwsRegion, StateProvider } from './StateProvider';
 import type { DokployStageState } from './state';
@@ -19,8 +20,12 @@ import type { DokployStageState } from './state';
 export interface SSMStateProviderOptions {
 	/** Workspace name (used in parameter path) */
 	workspaceName: string;
-	/** AWS region (required) */
-	region: AwsRegion;
+	/** AWS region */
+	region?: AwsRegion;
+	/** AWS credentials (optional - uses default credential chain if not provided) */
+	credentials?: SSMClientConfig['credentials'];
+	/** Custom endpoint (for LocalStack or other S3-compatible services) */
+	endpoint?: string;
 }
 
 /**
@@ -30,14 +35,22 @@ export interface SSMStateProviderOptions {
  * Parameter path: /gkm/{workspaceName}/{stage}/state
  */
 export class SSMStateProvider implements StateProvider {
-	private readonly client: SSMClient;
-	private readonly workspaceName: string;
+	constructor(
+		readonly workspaceName: string,
+		private readonly client: SSMClient,
+	) {}
 
-	constructor(options: SSMStateProviderOptions) {
-		this.workspaceName = options.workspaceName;
-		this.client = new SSMClient({
+	/**
+	 * Create an SSMStateProvider with a new SSMClient.
+	 */
+	static create(options: SSMStateProviderOptions): SSMStateProvider {
+		const client = new SSMClient({
 			region: options.region,
+			credentials: options.credentials,
+			endpoint: options.endpoint,
 		});
+
+		return new SSMStateProvider(options.workspaceName, client);
 	}
 
 	/**
