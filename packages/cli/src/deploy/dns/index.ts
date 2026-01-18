@@ -5,7 +5,10 @@
  */
 
 import { lookup } from 'node:dns/promises';
-import type { DnsConfig, DnsProvider as DnsProviderConfig } from '../../workspace/types';
+import type {
+	DnsConfig,
+	DnsProvider as DnsProviderConfig,
+} from '../../workspace/types';
 import {
 	type DokployStageState,
 	isDnsVerified,
@@ -253,7 +256,8 @@ export async function createDnsRecordsForDomain(
 	providerConfig: DnsProviderConfig,
 ): Promise<RequiredDnsRecord[]> {
 	// Get TTL from config, default to 300. Manual mode doesn't have ttl property.
-	const ttl = 'ttl' in providerConfig && providerConfig.ttl ? providerConfig.ttl : 300;
+	const ttl =
+		'ttl' in providerConfig && providerConfig.ttl ? providerConfig.ttl : 300;
 
 	// Get DNS provider from factory
 	let provider: DnsProvider | null;
@@ -264,7 +268,9 @@ export async function createDnsRecordsForDomain(
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.log(`   ⚠ Failed to create DNS provider for ${rootDomain}: ${message}`);
+		logger.log(
+			`   ⚠ Failed to create DNS provider for ${rootDomain}: ${message}`,
+		);
 		return records.map((r) => ({ ...r, error: message }));
 	}
 
@@ -331,7 +337,9 @@ export async function createDnsRecordsForDomain(
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.log(`   ⚠ Failed to create DNS records for ${rootDomain}: ${message}`);
+		logger.log(
+			`   ⚠ Failed to create DNS records for ${rootDomain}: ${message}`,
+		);
 		return records.map((r) => ({
 			hostname: r.hostname,
 			subdomain: r.subdomain,
@@ -355,10 +363,16 @@ export async function createDnsRecords(
 ): Promise<RequiredDnsRecord[]> {
 	// Handle legacy config format
 	if (!isLegacyDnsConfig(dnsConfig)) {
-		throw new Error('createDnsRecords requires legacy DnsConfig with domain property. Use createDnsRecordsForDomain instead.');
+		throw new Error(
+			'createDnsRecords requires legacy DnsConfig with domain property. Use createDnsRecordsForDomain instead.',
+		);
 	}
 	const { domain: rootDomain, ...providerConfig } = dnsConfig;
-	return createDnsRecordsForDomain(records, rootDomain, providerConfig as DnsProviderConfig);
+	return createDnsRecordsForDomain(
+		records,
+		rootDomain,
+		providerConfig as DnsProviderConfig,
+	);
 }
 
 /**
@@ -395,10 +409,15 @@ export async function orchestrateDns(
 	}
 
 	// Group hostnames by their root domain
-	const groupedHostnames = groupHostnamesByDomain(appHostnames, normalizedConfig);
+	const groupedHostnames = groupHostnamesByDomain(
+		appHostnames,
+		normalizedConfig,
+	);
 
 	if (groupedHostnames.size === 0) {
-		logger.log('   No DNS records needed (no hostnames match configured domains)');
+		logger.log(
+			'   No DNS records needed (no hostnames match configured domains)',
+		);
 		return { records: [], success: true, serverIp };
 	}
 
@@ -413,9 +432,10 @@ export async function orchestrateDns(
 			continue;
 		}
 
-		const providerName = typeof providerConfig.provider === 'string'
-			? providerConfig.provider
-			: 'custom';
+		const providerName =
+			typeof providerConfig.provider === 'string'
+				? providerConfig.provider
+				: 'custom';
 
 		// Generate required records for this domain
 		const requiredRecords = generateRequiredRecords(
@@ -429,7 +449,9 @@ export async function orchestrateDns(
 		}
 
 		// Create records for this domain
-		logger.log(`   Creating DNS records for ${rootDomain} (${providerName})...`);
+		logger.log(
+			`   Creating DNS records for ${rootDomain} (${providerName})...`,
+		);
 		const domainRecords = await createDnsRecordsForDomain(
 			requiredRecords,
 			rootDomain,
