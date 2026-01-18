@@ -744,6 +744,8 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	services?: ServicesConfig;
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
+	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
+	state?: StateConfig;
 };
 
 /**
@@ -765,6 +767,7 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	deploy?: DeployConfig;
 	services?: ServicesConfig;
 	secrets?: SecretsConfig;
+	state?: StateConfig;
 };
 
 // Legacy types for backwards compatibility
@@ -776,6 +779,7 @@ export type RawWorkspaceInput = {
 	deploy?: DeployConfig;
 	services?: ServicesConfig;
 	secrets?: SecretsConfig;
+	state?: StateConfig;
 };
 
 /** @deprecated Use WorkspaceInput */
@@ -876,6 +880,9 @@ export interface WorkspaceConfig {
 
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
+
+	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
+	state?: StateConfig;
 }
 
 /**
