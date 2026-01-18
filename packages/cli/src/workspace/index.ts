@@ -373,3 +373,46 @@ export function getDependencyEnvVars(
 
 	return env;
 }
+
+/**
+ * Resolve the Dokploy endpoint for a specific stage.
+ *
+ * Uses per-stage endpoint from `endpoints` if available,
+ * otherwise falls back to the global `endpoint`.
+ *
+ * @param dokployConfig - Dokploy workspace configuration
+ * @param stage - Deployment stage (e.g., 'development', 'production')
+ * @returns The endpoint URL for the stage, or undefined if not configured
+ *
+ * @example
+ * ```ts
+ * // With per-stage endpoints
+ * const config = {
+ *   endpoints: {
+ *     development: 'https://dev.dokploy.example.com:3000',
+ *     production: 'https://prod.dokploy.example.com:3000',
+ *   },
+ * };
+ * getEndpointForStage(config, 'production'); // => 'https://prod.dokploy.example.com:3000'
+ *
+ * // With single endpoint
+ * const config = { endpoint: 'https://dokploy.example.com:3000' };
+ * getEndpointForStage(config, 'production'); // => 'https://dokploy.example.com:3000'
+ * ```
+ */
+export function getEndpointForStage(
+	dokployConfig:
+		| { endpoint?: string; endpoints?: Record<string, string> }
+		| undefined,
+	stage: string,
+): string | undefined {
+	if (!dokployConfig) return undefined;
+
+	// Check per-stage endpoint first
+	if (dokployConfig.endpoints?.[stage]) {
+		return dokployConfig.endpoints[stage];
+	}
+
+	// Fall back to global endpoint
+	return dokployConfig.endpoint;
+}
