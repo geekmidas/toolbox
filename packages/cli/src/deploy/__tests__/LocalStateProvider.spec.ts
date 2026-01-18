@@ -29,6 +29,7 @@ describe('LocalStateProvider', () => {
 			const stateData: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: { postgresId: 'pg_123' },
@@ -62,6 +63,7 @@ describe('LocalStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'staging',
+				projectId: 'proj_test',
 				environmentId: 'env_456',
 				applications: {},
 				services: {},
@@ -81,6 +83,7 @@ describe('LocalStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'staging',
+				projectId: 'proj_test',
 				environmentId: 'env_456',
 				applications: {},
 				services: {},
@@ -98,6 +101,7 @@ describe('LocalStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123', web: 'app_456' },
 				services: { postgresId: 'pg_123', redisId: 'redis_123' },
