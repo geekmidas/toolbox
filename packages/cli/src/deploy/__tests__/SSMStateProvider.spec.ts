@@ -87,6 +87,7 @@ describe('SSMStateProvider', () => {
 			const stateData: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: { postgresId: 'pg_123' },
@@ -112,6 +113,7 @@ describe('SSMStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: {},
@@ -135,6 +137,7 @@ describe('SSMStateProvider', () => {
 			const state1: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_old' },
 				services: {},
@@ -144,6 +147,7 @@ describe('SSMStateProvider', () => {
 			const state2: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_new' },
 				services: {},
@@ -168,6 +172,7 @@ describe('SSMStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: testStage,
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: {},
 				services: {},
