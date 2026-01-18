@@ -140,44 +140,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 `;
 
-	// API client setup
-	const apiIndexTs = `import { TypedFetcher } from '@geekmidas/client/fetcher';
-import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
+	// API client setup - uses createApi with shared QueryClient
+	const apiIndexTs = `import { createApi } from './openapi';
+import { getQueryClient } from '~/lib/query-client';
 
-// TODO: Run 'gkm openapi' to generate typed paths from your API
-// This is a placeholder that will be replaced by the generated openapi.ts
-interface paths {
-  '/health': {
-    get: {
-      responses: {
-        200: {
-          content: {
-            'application/json': { status: string; timestamp: string };
-          };
-        };
-      };
-    };
-  };
-  '/users': {
-    get: {
-      responses: {
-        200: {
-          content: {
-            'application/json': { users: Array<{ id: string; name: string }> };
-          };
-        };
-      };
-    };
-  };
-}
-
-const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-const fetcher = new TypedFetcher<paths>({ baseURL });
-
-const hooks = createEndpointHooks<paths>(fetcher.request.bind(fetcher));
-
-export const api = Object.assign(fetcher.request.bind(fetcher), hooks);
+export const api = createApi({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  queryClient: getQueryClient(),
+});
 `;
 
 	// globals.css that imports UI package styles
