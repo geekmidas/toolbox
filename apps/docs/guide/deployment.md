@@ -96,31 +96,44 @@ gkm build --provider server
 - `app.ts` - Hono application entry point
 - `dist/` - Production bundle (when bundling enabled)
 
-**Configuration:**
+**Production Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `bundle` | `true` | Bundle server into single file |
+| `minify` | `true` | Minify bundled output |
+| `healthCheck` | `'/health'` | Health check endpoint path |
+| `gracefulShutdown` | `true` | Enable graceful shutdown handling |
+| `external` | `[]` | Packages to exclude from bundling |
+| `openapi` | `false` | Include OpenAPI spec in production |
+
 ```typescript
 // gkm.config.ts
-export default defineConfig({
-  providers: {
-    server: {
-      enableOpenApi: true,
-      production: {
-        bundle: true,
-        minify: true,
-        healthCheck: '/health',
-        external: ['@prisma/client'], // Don't bundle these
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  apps: {
+    api: {
+      path: 'apps/api',
+      type: 'backend',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+      providers: {
+        server: {
+          enableOpenApi: true,
+          production: {
+            bundle: true,
+            minify: true,
+            healthCheck: '/health',
+            external: ['@prisma/client'],
+          },
+        },
       },
     },
   },
 });
-```
-
-**Running:**
-```bash
-# Development
-gkm dev
-
-# Production
-node .gkm/server/dist/app.js
 ```
 
 ### AWS Lambda Provider
