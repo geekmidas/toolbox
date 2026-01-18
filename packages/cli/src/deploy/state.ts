@@ -103,11 +103,13 @@ export async function writeStageState(
  */
 export function createEmptyState(
 	stage: string,
+	projectId: string,
 	environmentId: string,
 ): DokployStageState {
 	return {
 		provider: 'dokploy',
 		stage,
+		projectId,
 		environmentId,
 		applications: {},
 		services: {},
