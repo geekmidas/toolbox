@@ -159,13 +159,24 @@ const ServicesConfigSchema = z.object({
 
 /**
  * Dokploy workspace configuration schema.
+ * Supports either a single endpoint or per-stage endpoints.
  */
-const DokployWorkspaceConfigSchema = z.object({
-	endpoint: z.url('Dokploy endpoint must be a valid URL'),
-	projectId: z.string().min(1, 'Project ID is required'),
-	registry: z.string().optional(),
-	registryId: z.string().optional(),
-});
+const DokployWorkspaceConfigSchema = z
+	.object({
+		/** Single endpoint for all stages */
+		endpoint: z.url('Dokploy endpoint must be a valid URL').optional(),
+		/** Per-stage endpoints (stage name -> endpoint URL) */
+		endpoints: z
+			.record(z.string(), z.url('Endpoint must be a valid URL'))
+			.optional(),
+		registry: z.string().optional(),
+		registryId: z.string().optional(),
+		/** Per-stage domain configuration (stage name -> base domain) */
+		domains: z.record(z.string(), z.string()).optional(),
+	})
+	.refine((data) => data.endpoint || data.endpoints, {
+		message: 'Either endpoint or endpoints must be provided',
+	});
 
 // =============================================================================
 // AWS Regions (needed by DNS and State providers)

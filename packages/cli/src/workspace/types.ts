@@ -214,28 +214,38 @@ export type AppDomainConfig = string | Record<string, string>;
  *
  * Configures how the workspace is deployed to a Dokploy server.
  * One workspace maps to one Dokploy project with stage-based environments.
+ * Project IDs are stored in deploy state (not config) and created on first deploy.
  *
- * @example
+ * @example Single endpoint for all stages:
  * ```ts
  * deploy: {
  *   default: 'dokploy',
  *   dokploy: {
  *     endpoint: 'https://dokploy.myserver.com',
- *     projectId: 'proj_abc123',
  *     registry: 'ghcr.io/myorg',
- *     domains: {
- *       development: 'dev.myapp.com',
- *       production: 'myapp.com',
+ *   },
+ * }
+ * ```
+ *
+ * @example Per-stage endpoints (different Dokploy servers):
+ * ```ts
+ * deploy: {
+ *   default: 'dokploy',
+ *   dokploy: {
+ *     endpoints: {
+ *       development: 'https://dev-dokploy.myserver.com',
+ *       production: 'https://dokploy.myserver.com',
  *     },
+ *     registry: 'ghcr.io/myorg',
  *   },
  * }
  * ```
  */
 export interface DokployWorkspaceConfig {
-	/** Dokploy API endpoint (e.g., 'https://dokploy.myserver.com') */
-	endpoint: string;
-	/** Project ID in Dokploy (auto-created on first deploy) */
-	projectId: string;
+	/** Dokploy API endpoint for all stages */
+	endpoint?: string;
+	/** Per-stage Dokploy API endpoints (overrides endpoint) */
+	endpoints?: Record<string, string>;
 	/** Container registry for Docker images (e.g., 'ghcr.io/myorg') */
 	registry?: string;
 	/** Registry ID in Dokploy (auto-configured) */
