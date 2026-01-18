@@ -107,7 +107,9 @@ describe('DNS orchestration helpers', () => {
 			expect(grouped.get('traflabs.io')?.get('api')).toBe('api.traflabs.io');
 			expect(grouped.get('traflabs.io')?.get('web')).toBe('web.traflabs.io');
 			expect(grouped.get('geekmidas.com')?.size).toBe(1);
-			expect(grouped.get('geekmidas.com')?.get('docs')).toBe('docs.geekmidas.com');
+			expect(grouped.get('geekmidas.com')?.get('docs')).toBe(
+				'docs.geekmidas.com',
+			);
 		});
 
 		it('should skip hostnames without matching domain', () => {
@@ -139,9 +141,9 @@ describe('DNS orchestration helpers', () => {
 		});
 
 		it('should throw for hostname not under root domain', () => {
-			expect(() =>
-				extractSubdomain('api.other.com', 'example.com'),
-			).toThrow('not under root domain');
+			expect(() => extractSubdomain('api.other.com', 'example.com')).toThrow(
+				'not under root domain',
+			);
 		});
 	});
 
@@ -176,9 +178,7 @@ describe('DNS orchestration helpers', () => {
 		});
 
 		it('should handle nested subdomains', () => {
-			const appHostnames = new Map([
-				['api', 'staging.api.example.com'],
-			]);
+			const appHostnames = new Map([['api', 'staging.api.example.com']]);
 
 			const records = generateRequiredRecords(
 				appHostnames,
