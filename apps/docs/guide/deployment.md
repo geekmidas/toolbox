@@ -583,17 +583,15 @@ ALTER USER "worker" SET search_path TO "worker";
 gkm docker --compose --services postgres,redis
 ```
 
-**Generated Files:**
-- `Dockerfile` - Multi-stage production build
-- `docker-compose.yml` - Development environment
+### Dockerfile Generation
 
-### Dockerfile Structure
+The CLI generates optimized multi-stage Dockerfiles:
 
 ```dockerfile
 # Build stage
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json pnpm-lock.yaml ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build && pnpm gkm build --provider server
