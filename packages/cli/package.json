@@ -36,6 +36,8 @@
 	},
 	"scripts": {
 		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
+		"sync-versions": "tsx scripts/sync-versions.ts",
+		"prebuild": "pnpm sync-versions",
 		"test": "vitest",
 		"test:once": "vitest run",
 		"test:coverage": "vitest run --coverage"
