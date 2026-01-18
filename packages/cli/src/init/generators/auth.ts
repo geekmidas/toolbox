@@ -55,6 +55,7 @@ export function generateAuthAppFiles(
 			noEmit: true,
 			baseUrl: '.',
 			paths: {
+				'~/*': ['./src/*'],
 				[`@${options.name}/*`]: ['../../packages/*/src'],
 			},
 		},

@@ -93,6 +93,7 @@ export default defineConfig({
 					noEmit: true,
 					baseUrl: '.',
 					paths: {
+						'~/*': ['./src/*'],
 						[`@${options.name}/*`]: ['../../packages/*/src'],
 					},
 				},
@@ -256,6 +257,7 @@ function generateSingleAppConfigFiles(
 			noEmit: true,
 			baseUrl: '.',
 			paths: {
+				'~/*': ['./src/*'],
 				[`@${options.name}/*`]: ['../../packages/*/src'],
 			},
 		},
