@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.2.0
+
+### Minor Changes
+
+- 🔥 [`43d4451`](https://github.com/geekmidas/toolbox/commit/43d44510f1077ecdf0c64ae56c8d2d97d446cea2) Thanks [@geekmidas](https://github.com/geekmidas)! - Remove projectId from workspace config and move to state
+
 ## 1.1.0
 
 ### Minor Changes
