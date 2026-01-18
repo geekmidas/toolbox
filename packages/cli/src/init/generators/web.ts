@@ -99,23 +99,40 @@ export default nextConfig;
 		exclude: ['node_modules'],
 	};
 
-	// Providers with QueryClient
+	// Query client singleton for browser, fresh instance for server
+	const queryClientTs = `import { QueryClient } from '@tanstack/react-query';
+
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+      },
+    },
+  });
+}
+
+let browserQueryClient: QueryClient | undefined = undefined;
+
+export function getQueryClient() {
+  if (typeof window === 'undefined') {
+    // Server: always make a new query client
+    return makeQueryClient();
+  }
+  // Browser: reuse existing query client
+  if (!browserQueryClient) browserQueryClient = makeQueryClient();
+  return browserQueryClient;
+}
+`;
+
+	// Providers using shared QueryClient
 	const providersTsx = `'use client';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { getQueryClient } from '~/lib/query-client';
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60 * 1000,
-          },
-        },
-      }),
-  );
+  const queryClient = getQueryClient();
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -292,6 +309,10 @@ node_modules/
 		{
 			path: 'apps/web/src/app/page.tsx',
 			content: pageTsx,
+		},
+		{
+			path: 'apps/web/src/lib/query-client.ts',
+			content: queryClientTs,
 		},
 		{
 			path: 'apps/web/src/api/index.ts',
