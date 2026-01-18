@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	getSecretsDir,
@@ -56,6 +56,10 @@ describe('file operations', () => {
 		if (existsSync(tempDir)) {
 			await rm(tempDir, { recursive: true });
 		}
+
+		// Clean up keystore directory created at ~/.gkm/{tempDir-basename}
+		const keystoreDir = join(homedir(), '.gkm', basename(tempDir));
+		await rm(keystoreDir, { recursive: true, force: true });
 	});
 
 	describe('writeStageSecrets / readStageSecrets', () => {

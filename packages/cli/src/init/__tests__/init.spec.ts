@@ -1,9 +1,12 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initCommand } from '../index.js';
+
+// Project names used in tests - keystore directories are created at ~/.gkm/{name}
+const TEST_PROJECT_NAMES = ['my-api', 'my-monorepo', 'my-fullstack'];
 
 describe('initCommand', () => {
 	let tempDir: string;
@@ -19,6 +22,12 @@ describe('initCommand', () => {
 	afterEach(async () => {
 		process.chdir(originalCwd);
 		await rm(tempDir, { recursive: true, force: true });
+
+		// Clean up keystore directories created at ~/.gkm/{project-name}
+		const gkmDir = join(homedir(), '.gkm');
+		for (const name of TEST_PROJECT_NAMES) {
+			await rm(join(gkmDir, name), { recursive: true, force: true });
+		}
 	});
 
 	describe('non-monorepo', () => {

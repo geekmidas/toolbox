@@ -14,6 +14,10 @@ export const itWithDir = it.extend<DirectoryFixtures>({
 		await fs.mkdir(dir, { recursive: true });
 		await use(dir);
 		await fs.rm(dir, { recursive: true, force: true });
+
+		// Clean up keystore directory that may have been created at ~/.gkm/{directoryName}
+		const keystoreDir = path.join(os.homedir(), '.gkm', directoryName);
+		await fs.rm(keystoreDir, { recursive: true, force: true });
 	},
 });
 
