@@ -1083,6 +1083,11 @@ export async function workspaceDeployCommand(
 
 	if (state) {
 		logger.log(`   Found existing state for stage "${stage}"`);
+		// Verify project ID matches (in case of recreation)
+		if (state.projectId !== project.projectId) {
+			logger.log(`   ⚠ Project ID changed, updating state`);
+			state.projectId = project.projectId;
+		}
 		// Verify environment ID matches (in case of recreation)
 		if (state.environmentId !== environmentId) {
 			logger.log(`   ⚠ Environment ID changed, updating state`);
@@ -1090,7 +1095,7 @@ export async function workspaceDeployCommand(
 		}
 	} else {
 		logger.log(`   Creating new state for stage "${stage}"`);
-		state = createEmptyState(stage, environmentId);
+		state = createEmptyState(stage, project.projectId, environmentId);
 	}
 
 	// Get or set up registry
