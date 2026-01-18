@@ -334,26 +334,75 @@ export const CustomDnsProviderSchema = z.object({
 /**
  * Built-in DNS provider config (discriminated union).
  */
+export const BuiltInDnsProviderSchema = z.discriminatedUnion('provider', [
+	HostingerDnsProviderSchema,
+	Route53DnsProviderSchema,
+	CloudflareDnsProviderSchema,
+	ManualDnsProviderSchema,
+]);
+
+/**
+ * Single DNS provider config (for one domain).
+ */
+export const DnsProviderSchema = z.union([
+	BuiltInDnsProviderSchema,
+	CustomDnsProviderSchema,
+]);
+
+/**
+ * DNS configuration schema.
+ *
+ * Maps root domains to their DNS provider configuration.
+ * Example:
+ * ```
+ * dns: {
+ *   'geekmidas.dev': { provider: 'hostinger' },
+ *   'geekmidas.com': { provider: 'route53' },
+ * }
+ * ```
+ *
+ * Supported providers:
+ * - 'hostinger': Use Hostinger DNS API
+ * - 'route53': Use AWS Route53
+ * - 'cloudflare': Use Cloudflare DNS API (future)
+ * - 'manual': Don't create records, just print required records
+ * - Custom: Provide a DnsProvider implementation
+ */
+export const DnsConfigSchema = z.record(z.string(), DnsProviderSchema);
+
+// Legacy single-domain config schemas (for backwards compatibility)
+export const HostingerDnsConfigSchema = HostingerDnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
+export const Route53DnsConfigSchema = Route53DnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
+export const CloudflareDnsConfigSchema = CloudflareDnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
+export const ManualDnsConfigSchema = ManualDnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
+export const CustomDnsConfigSchema = CustomDnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
 export const BuiltInDnsConfigSchema = z.discriminatedUnion('provider', [
 	HostingerDnsConfigSchema,
 	Route53DnsConfigSchema,
 	CloudflareDnsConfigSchema,
 	ManualDnsConfigSchema,
 ]);
-
-/**
- * DNS configuration schema.
- *
- * Configures DNS provider for automatic record creation during deployment.
- * - 'hostinger': Use Hostinger DNS API
- * - 'route53': Use AWS Route53 (requires region)
- * - 'cloudflare': Use Cloudflare DNS API (future)
- * - 'manual': Don't create records, just print required records
- * - Custom: Provide a DnsProvider implementation
- */
-export const DnsConfigSchema = z.union([
+export const LegacyDnsConfigSchema = z.union([
 	BuiltInDnsConfigSchema,
 	CustomDnsConfigSchema,
+]);
+
+/**
+ * Combined DNS config that supports both new multi-domain and legacy single-domain formats.
+ */
+export const DnsConfigWithLegacySchema = z.union([
+	DnsConfigSchema,
+	LegacyDnsConfigSchema,
 ]);
 
 /**
@@ -362,7 +411,7 @@ export const DnsConfigSchema = z.union([
 const DeployConfigSchema = z.object({
 	default: DeployTargetSchema.optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
-	dns: DnsConfigSchema.optional(),
+	dns: DnsConfigWithLegacySchema.optional(),
 });
 
 /**
