@@ -48,6 +48,7 @@ export class Route53Provider implements DnsProvider {
 		this.client = new Route53Client({
 			...(options.region && { region: options.region }),
 			...(options.endpoint && { endpoint: options.endpoint }),
+			...(options.profile && { credentials: fromIni({ profile: options.profile }) }),
 		});
 		this.hostedZoneId = options.hostedZoneId;
 	}
