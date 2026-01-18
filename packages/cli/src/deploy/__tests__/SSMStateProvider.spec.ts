@@ -44,14 +44,8 @@ describe('SSMStateProvider', () => {
 			},
 		});
 
-		provider = new SSMStateProvider({
-			workspaceName,
-			region: 'us-east-1',
-		});
-
-		// Override the client's endpoint for localstack
-		// @ts-expect-error - accessing private property for testing
-		provider.client = client;
+		// Create provider with injected client
+		provider = new SSMStateProvider(workspaceName, client);
 	});
 
 	afterEach(async () => {
@@ -68,6 +62,19 @@ describe('SSMStateProvider', () => {
 
 	afterAll(() => {
 		client.destroy();
+	});
+
+	describe('static create', () => {
+		it('should create provider with options', () => {
+			const provider = SSMStateProvider.create({
+				workspaceName: 'my-workspace',
+				region: 'us-west-2',
+				endpoint: LOCALSTACK_ENDPOINT,
+			});
+
+			expect(provider).toBeInstanceOf(SSMStateProvider);
+			expect(provider.workspaceName).toBe('my-workspace');
+		});
 	});
 
 	describe('read', () => {
