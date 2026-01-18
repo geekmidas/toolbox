@@ -211,6 +211,67 @@ describe('normalizeWorkspace', () => {
 
 		expect(result.apps.api.resolvedDeployTarget).toBe('dokploy');
 	});
+
+	it('should pass through state config when specified', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+			state: {
+				provider: 'ssm',
+				region: 'us-east-1',
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.state).toEqual({
+			provider: 'ssm',
+			region: 'us-east-1',
+		});
+	});
+
+	it('should leave state undefined when not specified', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.state).toBeUndefined();
+	});
+
+	it('should pass through local state config', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+			state: {
+				provider: 'local',
+			},
+		};
+
+		const result = normalizeWorkspace(config, '/project');
+
+		expect(result.state).toEqual({ provider: 'local' });
+	});
 });
 
 describe('wrapSingleAppAsWorkspace', () => {
