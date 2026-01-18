@@ -11,6 +11,7 @@ import {
 	Route53Client,
 	type RRType,
 } from '@aws-sdk/client-route-53';
+import { fromIni } from '@aws-sdk/credential-providers';
 import type {
 	DnsProvider,
 	DnsRecord,
