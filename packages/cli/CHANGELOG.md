@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.2.2
+
+### Patch Changes
+
+- 🐛 [`ab91786`](https://github.com/geekmidas/toolbox/commit/ab917864eaf64793e5bc93818a98caeb5b766324) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix env var injection for dev, and make sure openapi generation for client apps
+
 ## 1.2.1
 
 ### Patch Changes
