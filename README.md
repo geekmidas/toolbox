@@ -427,30 +427,25 @@ Cloud storage abstraction layer with provider-agnostic API.
 
 - Unified interface for multiple storage providers
 - AWS S3 implementation with presigned URLs
-- File versioning and metadata support
-- Stream-based uploads and downloads
+- File versioning support
+- Presigned URL caching with `@geekmidas/cache`
 - Type-safe file operations
 
 ```typescript
-import { S3Storage } from '@geekmidas/storage/s3';
+import { AmazonStorageClient } from '@geekmidas/storage/aws';
+import { InMemoryCache } from '@geekmidas/cache/memory';
 
-const storage = new S3Storage({
+const storage = AmazonStorageClient.create({
   bucket: 'my-bucket',
   region: 'us-east-1',
+  cache: new InMemoryCache(), // Optional: cache presigned URLs
 });
 
-// Upload with metadata
-const result = await storage.upload({
-  key: 'documents/report.pdf',
-  body: fileBuffer,
-  metadata: { userId: '123' },
-});
+// Upload file
+await storage.upload('documents/report.pdf', fileBuffer, 'application/pdf');
 
-// Get presigned URL for direct download
-const url = await storage.getPresignedUrl({
-  key: 'documents/report.pdf',
-  expiresIn: 3600,
-});
+// Get presigned URL for direct download (cached)
+const url = await storage.getDownloadURL({ path: 'documents/report.pdf' }, 3600);
 ```
 
 [Learn more →](./packages/storage/README.md)

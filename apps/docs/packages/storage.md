@@ -12,8 +12,8 @@ pnpm add @geekmidas/storage
 
 - Unified interface for multiple storage providers
 - AWS S3 implementation with presigned URLs
-- File versioning and metadata support
-- Stream-based uploads and downloads
+- File versioning support
+- Presigned URL caching with `@geekmidas/cache`
 - Type-safe file operations
 
 ## Package Exports
