@@ -38,8 +38,8 @@ The init command guides you through project setup:
 | Template | Description | Includes |
 |----------|-------------|----------|
 | `minimal` | Basic health endpoint | Hono, envkit, logger |
-| `fullstack` | API + Next.js frontend | + auth, db, cache, web app |
-| `api` | Backend API | + auth, db, cache, services |
+| `fullstack` | API + Next.js frontend | + Better Auth, db, cache, web app, shared models |
+| `api` | Backend API | + db, cache, services, JWT auth utilities |
 | `serverless` | AWS Lambda | + cloud, Lambda adapters |
 
 ### Quick Start (Non-Interactive)
@@ -54,7 +54,7 @@ gkm init my-api --template api --yes
 
 ## Project Structure
 
-After initialization, your workspace looks like this:
+After initialization, your workspace looks like this (fullstack template):
 
 ```
 my-project/
@@ -68,7 +68,14 @@ my-project/
 │   │   │   └── endpoints/
 │   │   │       └── health.ts   # Health check endpoint
 │   │   └── gkm.config.ts       # App-level config (optional)
-│   └── web/                    # Frontend (fullstack only)
+│   ├── auth/                   # Better Auth server (fullstack only)
+│   │   └── src/
+│   │       ├── auth.ts         # Better Auth instance
+│   │       ├── index.ts        # Hono server entry
+│   │       └── config/
+│   │           ├── env.ts
+│   │           └── logger.ts
+│   └── web/                    # Next.js frontend (fullstack only)
 │       └── ...
 ├── packages/
 │   └── models/                 # Shared Zod schemas
@@ -94,7 +101,7 @@ gkm dev
 
 ## Configuration
 
-The generated `gkm.config.ts` defines your workspace:
+The generated `gkm.config.ts` defines your workspace (fullstack template):
 
 ```typescript
 import { defineWorkspace } from '@geekmidas/cli/config';
@@ -141,12 +148,12 @@ export default defineWorkspace({
 | Type | Description | Key Config |
 |------|-------------|------------|
 | `backend` | API with gkm endpoints | `routes`, `envParser`, `logger` |
-| `auth` | Authentication server | `provider`, `entry`, `requiredEnv` |
+| `auth` | Better Auth server (fullstack template) | `provider`, `entry`, `requiredEnv` |
 | `frontend` | Web application | `framework`, `dependencies` |
 
 ### Auth App (Better Auth)
 
-The `auth` type configures a [Better Auth](https://better-auth.com) server:
+The fullstack template includes a [Better Auth](https://better-auth.com) server with magic link authentication:
 
 ```typescript
 auth: {
@@ -159,23 +166,41 @@ auth: {
 }
 ```
 
-The auth app entry file exports a Hono app:
+The generated auth app uses magic link authentication:
+
+```typescript
+// apps/auth/src/auth.ts
+import { betterAuth } from 'better-auth';
+import { magicLink } from 'better-auth/plugins';
+import pg from 'pg';
+
+export const auth = betterAuth({
+  database: new pg.Pool({ connectionString: process.env.DATABASE_URL }),
+  baseURL: process.env.BETTER_AUTH_URL,
+  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(','),
+  secret: process.env.BETTER_AUTH_SECRET,
+  plugins: [
+    magicLink({
+      sendMagicLink: async ({ email, url }) => {
+        // TODO: Implement email sending
+        console.log('Magic link for', email, ':', url);
+      },
+    }),
+  ],
+});
+```
 
 ```typescript
 // apps/auth/src/index.ts
 import { Hono } from 'hono';
-import { betterAuth } from 'better-auth';
-import { Pool } from 'pg';
-
-const auth = betterAuth({
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
-  emailAndPassword: { enabled: true },
-});
+import { serve } from '@hono/node-server';
+import { auth } from './auth.js';
 
 const app = new Hono();
-app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+app.get('/health', (c) => c.json({ status: 'ok' }));
+app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
-export default app;
+serve({ fetch: app.fetch, port: 3001 });
 ```
 
 **Auto-Injected Environment Variables:**
