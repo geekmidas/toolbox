@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.0.2
+
+### Patch Changes
+
+- 🐛 [`159e365`](https://github.com/geekmidas/toolbox/commit/159e36572adb2b489629d4ab2a0142f8ff59b7a8) Thanks [@geekmidas](https://github.com/geekmidas)! - Resolve correct cli version at runtime
+
 ## 1.0.1
 
 ### Patch Changes
