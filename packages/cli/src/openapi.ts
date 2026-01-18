@@ -2,11 +2,10 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { loadConfig, loadWorkspaceConfig } from './config.js';
+import { loadWorkspaceConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig } from './types.js';
-import { isWorkspaceConfig } from './workspace/index.js';
 
 interface OpenAPIOptions {
 	cwd?: string;
@@ -156,7 +155,9 @@ export async function openapiCommand(
 				process.chdir(originalCwd);
 
 				if (result) {
-					logger.log(`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`);
+					logger.log(
+						`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`,
+					);
 
 					// Copy to frontend apps that depend on this backend
 					for (const [frontendName, frontendApp] of frontendApps) {
@@ -181,7 +182,9 @@ export async function openapiCommand(
 							const content = await readFile(result.outputPath, 'utf-8');
 							await writeFile(clientOutputPath, content);
 
-							logger.log(`   → [${frontendName}] ${frontendApp.client.output}/openapi.ts`);
+							logger.log(
+								`   → [${frontendName}] ${frontendApp.client.output}/openapi.ts`,
+							);
 						}
 					}
 				}
