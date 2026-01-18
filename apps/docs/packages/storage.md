@@ -90,16 +90,56 @@ const files = await storage.list('documents/');
 await storage.delete('documents/old-report.pdf');
 ```
 
+## URL Caching
+
+Presigned download URLs can be cached to avoid regenerating them on every request. Pass a cache instance when creating the storage client:
+
+```typescript
+import { AmazonStorageClient } from '@geekmidas/storage/aws';
+import { InMemoryCache } from '@geekmidas/cache/memory';
+// Or for production: import { UpstashCache } from '@geekmidas/cache/upstash';
+
+const cache = new InMemoryCache<string>();
+
+const storage = AmazonStorageClient.create({
+  bucket: process.env.S3_BUCKET!,
+  region: process.env.AWS_REGION!,
+  cache, // Optional: cache presigned URLs
+});
+
+// First call generates and caches the URL
+const url1 = await storage.getDownloadURL({ path: 'file.pdf' }, 3600);
+
+// Subsequent calls return cached URL (until expiry)
+const url2 = await storage.getDownloadURL({ path: 'file.pdf' }, 3600);
+```
+
+The cache TTL is automatically set to `expiresIn - 60` seconds to ensure URLs are refreshed before they expire.
+
 ## Storage Interface
 
 ```typescript
 interface StorageClient {
-  upload(path: string, content: Buffer, contentType: string, options?: UploadOptions): Promise<void>;
-  download(path: string): Promise<Buffer>;
-  delete(path: string): Promise<void>;
-  list(prefix: string): Promise<string[]>;
-  getDownloadURL(options: PresignedOptions): Promise<string>;
-  getUploadURL(options: PresignedOptions): Promise<string>;
+  readonly provider: StorageProvider;
+  readonly cache?: Cache;
+
+  upload(key: string, data: string | Buffer, contentType: string): Promise<void>;
+  getDownloadURL(file: File, expiresIn?: number): Promise<string>;
+  getUploadURL(params: GetUploadParams, expiresIn?: number): Promise<string>;
+  getUpload(params: GetUploadParams, expiresIn?: number): Promise<GetUploadResponse>;
+  getVersions(key: string): Promise<DocumentVersion[]>;
+  getVersionDownloadURL(file: File, versionId: string): Promise<string>;
+}
+
+interface File {
+  name?: string;  // Optional filename for Content-Disposition
+  path: string;   // S3 key
+}
+
+interface GetUploadParams {
+  path: string;
+  contentType: string;
+  contentLength: number;
 }
 ```
 
