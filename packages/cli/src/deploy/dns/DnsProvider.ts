@@ -8,14 +8,14 @@
 
 import type { z } from 'zod/v4';
 import type {
-	CloudflareDnsConfigSchema,
-	CustomDnsConfigSchema,
-	DnsConfigSchema,
+	CloudflareDnsProviderSchema,
+	CustomDnsProviderSchema,
+	DnsProviderSchema,
 	DnsRecordSchema,
 	DnsRecordTypeSchema,
-	HostingerDnsConfigSchema,
-	ManualDnsConfigSchema,
-	Route53DnsConfigSchema,
+	HostingerDnsProviderSchema,
+	ManualDnsProviderSchema,
+	Route53DnsProviderSchema,
 	UpsertDnsRecordSchema,
 	UpsertResultSchema,
 } from '../../workspace/schema';
@@ -81,15 +81,16 @@ export interface DnsProvider {
 }
 
 // =============================================================================
-// DNS Config Types (derived from Zod schemas)
+// DNS Provider Config Types (derived from Zod schemas)
 // =============================================================================
 
-export type HostingerDnsConfig = z.infer<typeof HostingerDnsConfigSchema>;
-export type Route53DnsConfig = z.infer<typeof Route53DnsConfigSchema>;
-export type CloudflareDnsConfig = z.infer<typeof CloudflareDnsConfigSchema>;
-export type ManualDnsConfig = z.infer<typeof ManualDnsConfigSchema>;
-export type CustomDnsConfig = z.infer<typeof CustomDnsConfigSchema>;
-export type DnsConfig = z.infer<typeof DnsConfigSchema>;
+export type HostingerDnsConfig = z.infer<typeof HostingerDnsProviderSchema>;
+export type Route53DnsConfig = z.infer<typeof Route53DnsProviderSchema>;
+export type CloudflareDnsConfig = z.infer<typeof CloudflareDnsProviderSchema>;
+export type ManualDnsConfig = z.infer<typeof ManualDnsProviderSchema>;
+export type CustomDnsConfig = z.infer<typeof CustomDnsProviderSchema>;
+/** Single DNS provider config (for one domain) */
+export type DnsConfig = z.infer<typeof DnsProviderSchema>;
 
 // =============================================================================
 // DNS Provider Factory
