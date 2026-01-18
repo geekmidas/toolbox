@@ -36,6 +36,7 @@ describe('CachedStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'local_app' },
 				services: {},
@@ -58,6 +59,7 @@ describe('CachedStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'remote_app' },
 				services: {},
@@ -96,6 +98,7 @@ describe('CachedStateProvider', () => {
 			const state: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'app_123' },
 				services: {},
@@ -120,6 +123,7 @@ describe('CachedStateProvider', () => {
 			const remoteState: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'remote_app' },
 				services: {},
@@ -155,6 +159,7 @@ describe('CachedStateProvider', () => {
 			const localState: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'local_app' },
 				services: {},
@@ -190,6 +195,7 @@ describe('CachedStateProvider', () => {
 			const localState: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'local_app' },
 				services: {},
@@ -198,6 +204,7 @@ describe('CachedStateProvider', () => {
 			const remoteState: DokployStageState = {
 				provider: 'dokploy',
 				stage: 'production',
+				projectId: 'proj_test',
 				environmentId: 'env_123',
 				applications: { api: 'remote_app' },
 				services: {},
