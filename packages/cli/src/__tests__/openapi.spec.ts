@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -465,6 +465,386 @@ export const complexEndpoint = e
 		await openapiCommand({ cwd: tempDir });
 
 		const content = await readFile(join(tempDir, OPENAPI_OUTPUT_PATH), 'utf-8');
+		expect(content).toContain('export interface paths');
+	});
+});
+
+describe('openapiCommand - workspace mode', () => {
+	let tempDir: string;
+	const originalCwd = process.cwd();
+
+	beforeEach(async () => {
+		tempDir = realpathSync(await createTempDir('openapi-workspace-'));
+	});
+
+	afterEach(async () => {
+		process.chdir(originalCwd);
+		await cleanupDir(tempDir);
+		vi.restoreAllMocks();
+	});
+
+	it('should generate OpenAPI for backend app in workspace', async () => {
+		// Create workspace structure
+		const apiDir = join(tempDir, 'apps/api');
+		await mkdir(apiDir, { recursive: true });
+
+		// Create endpoint in backend app
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+
+		// Create workspace config (gkm.config.json)
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+		const consoleSpy = vi.spyOn(console, 'log');
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Should generate OpenAPI in the backend app's .gkm folder
+		const outputPath = join(apiDir, OPENAPI_OUTPUT_PATH);
+		expect(existsSync(outputPath)).toBe(true);
+
+		const content = await readFile(outputPath, 'utf-8');
+		expect(content).toContain('export interface paths');
+		expect(content).toContain("'/users'");
+
+		expect(consoleSpy).toHaveBeenCalledWith(
+			expect.stringContaining('[api] Generated OpenAPI'),
+		);
+	});
+
+	it('should copy OpenAPI to frontend app with client.output', async () => {
+		// Create workspace structure
+		const apiDir = join(tempDir, 'apps/api');
+		const webDir = join(tempDir, 'apps/web');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(webDir, { recursive: true });
+
+		// Create endpoint in backend app
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+
+		// Create workspace config with frontend that depends on backend
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					web: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						client: {
+							output: './src/api',
+						},
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+		const consoleSpy = vi.spyOn(console, 'log');
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Should generate OpenAPI in backend app
+		const backendOutput = join(apiDir, OPENAPI_OUTPUT_PATH);
+		expect(existsSync(backendOutput)).toBe(true);
+
+		// Should copy to frontend app's client output path
+		const frontendOutput = join(webDir, 'src/api/openapi.ts');
+		expect(existsSync(frontendOutput)).toBe(true);
+
+		// Content should be the same
+		const backendContent = await readFile(backendOutput, 'utf-8');
+		const frontendContent = await readFile(frontendOutput, 'utf-8');
+		expect(frontendContent).toBe(backendContent);
+
+		expect(consoleSpy).toHaveBeenCalledWith(
+			expect.stringContaining('[web] ./src/api/openapi.ts'),
+		);
+	});
+
+	it('should only copy to frontend apps that depend on the backend', async () => {
+		// Create workspace structure with multiple apps
+		const apiDir = join(tempDir, 'apps/api');
+		const authDir = join(tempDir, 'apps/auth');
+		const webDir = join(tempDir, 'apps/web');
+		const adminDir = join(tempDir, 'apps/admin');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(authDir, { recursive: true });
+		await mkdir(webDir, { recursive: true });
+		await mkdir(adminDir, { recursive: true });
+
+		// Create endpoints
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+		await createMockEndpointFile(
+			authDir,
+			'src/endpoints/login.ts',
+			'login',
+			'/login',
+			'POST',
+		);
+
+		// Create workspace config
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					auth: {
+						type: 'backend',
+						path: 'apps/auth',
+						port: 3001,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					web: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/web',
+						port: 3002,
+						dependencies: ['api'], // Only depends on api
+						client: {
+							output: './src/api',
+						},
+					},
+					admin: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/admin',
+						port: 3003,
+						dependencies: ['auth'], // Only depends on auth
+						client: {
+							output: './src/client',
+						},
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Web should have api's OpenAPI (not auth's)
+		const webApiOutput = join(webDir, 'src/api/openapi.ts');
+		expect(existsSync(webApiOutput)).toBe(true);
+		const webContent = await readFile(webApiOutput, 'utf-8');
+		expect(webContent).toContain("'/users'");
+		expect(webContent).not.toContain("'/login'");
+
+		// Admin should have auth's OpenAPI (not api's)
+		const adminClientOutput = join(adminDir, 'src/client/openapi.ts');
+		expect(existsSync(adminClientOutput)).toBe(true);
+		const adminContent = await readFile(adminClientOutput, 'utf-8');
+		expect(adminContent).toContain("'/login'");
+		expect(adminContent).not.toContain("'/users'");
+	});
+
+	it('should not copy to frontend with empty dependencies array', async () => {
+		// Create workspace structure
+		const apiDir = join(tempDir, 'apps/api');
+		const webDir = join(tempDir, 'apps/web');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(webDir, { recursive: true });
+
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+
+		// Frontend with empty dependencies array (depends on nothing)
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					web: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: [], // Empty array means depends on nothing
+						client: {
+							output: './src/api',
+						},
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Should NOT copy to frontend since it has no dependencies
+		const frontendOutput = join(webDir, 'src/api/openapi.ts');
+		expect(existsSync(frontendOutput)).toBe(false);
+	});
+
+	it('should skip frontend apps without client.output', async () => {
+		const apiDir = join(tempDir, 'apps/api');
+		const webDir = join(tempDir, 'apps/web');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(webDir, { recursive: true });
+
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+
+		// Frontend without client.output
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					web: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						// No client.output configured
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Backend should still have OpenAPI generated
+		expect(existsSync(join(apiDir, OPENAPI_OUTPUT_PATH))).toBe(true);
+
+		// But no files should be created in frontend
+		expect(existsSync(join(webDir, 'src/api/openapi.ts'))).toBe(false);
+	});
+
+	it('should handle nested client.output paths', async () => {
+		const apiDir = join(tempDir, 'apps/api');
+		const webDir = join(tempDir, 'apps/web');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(webDir, { recursive: true });
+
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+
+		// Deeply nested client output path
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					web: {
+						type: 'frontend',
+						framework: 'nextjs',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						client: {
+							output: './src/lib/api/generated',
+						},
+					},
+				},
+			}),
+		);
+
+		process.chdir(tempDir);
+
+		await openapiCommand({ cwd: tempDir });
+
+		// Should create nested directories and file
+		const frontendOutput = join(webDir, 'src/lib/api/generated/openapi.ts');
+		expect(existsSync(frontendOutput)).toBe(true);
+
+		const content = await readFile(frontendOutput, 'utf-8');
 		expect(content).toContain('export interface paths');
 	});
 });
