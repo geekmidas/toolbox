@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/ui",
-	"version": "0.2.0",
+	"version": "1.0.0",
 	"description": "Shared UI component library built on shadcn/ui",
 	"type": "module",
 	"exports": {
