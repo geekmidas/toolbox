@@ -780,3 +780,216 @@ export async function afterSetup(app: Hono, ctx: HookContext) {
 ::: tip
 Custom routes added in `beforeSetup` are automatically captured by Telescope since the telescope middleware runs first.
 :::
+
+## Workspace Commands
+
+### Deploy
+
+Deploy workspace apps to configured targets.
+
+```bash
+# Deploy all apps to production
+gkm deploy --stage production
+
+# Deploy specific app
+gkm deploy --app api --stage production
+
+# Dry run (preview changes)
+gkm deploy --stage production --dry-run
+
+# Skip build (use existing images)
+gkm deploy --stage production --skip-build
+
+# Force DNS re-verification
+gkm deploy --stage production --force-dns
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--stage <stage>` | Deployment stage (required) |
+| `--app <name>` | Deploy specific app only |
+| `--dry-run` | Preview changes without deploying |
+| `--skip-build` | Skip Docker build step |
+| `--force-dns` | Force DNS re-verification |
+
+### Login
+
+Authenticate with deployment providers.
+
+```bash
+# Login to Dokploy
+gkm login --provider dokploy
+
+# Login to Hostinger DNS
+gkm login --provider hostinger
+```
+
+**Providers:**
+
+| Provider | Credentials |
+|----------|-------------|
+| `dokploy` | API endpoint + token |
+| `hostinger` | API token from hPanel |
+
+::: info Route53 Authentication
+Route53 uses the AWS default credential chain. No login command is required. Configure credentials via:
+- Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+- Shared credentials file (`~/.aws/credentials`)
+- AWS profile (set `profile` in DNS config)
+- IAM role (EC2, ECS, Lambda)
+:::
+
+### State Commands
+
+Manage deployment state across local and remote storage.
+
+```bash
+# Show current state
+gkm state:show --stage production
+
+# Pull remote state to local
+gkm state:pull --stage production
+
+# Push local state to remote
+gkm state:push --stage production
+
+# Compare local vs remote
+gkm state:diff --stage production
+
+# Force push (overwrite remote)
+gkm state:push --stage production --force
+```
+
+**State Contents:**
+
+- Application IDs and service IDs
+- Per-app database credentials
+- Generated secrets (BETTER_AUTH_SECRET, etc.)
+- DNS verification status
+- Last deployment timestamp
+
+## Workspace Configuration
+
+For monorepo workspaces, use `defineWorkspace` instead of `defineConfig`:
+
+```typescript
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'my-saas',
+
+  apps: {
+    api: {
+      path: 'apps/api',
+      type: 'backend',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+      telescope: true,
+    },
+    auth: {
+      path: 'apps/auth',
+      type: 'backend',
+      port: 3001,
+      entry: './src/index.ts',
+      framework: 'better-auth',
+      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+    },
+    web: {
+      type: 'frontend',
+      path: 'apps/web',
+      port: 3002,
+      framework: 'nextjs',
+      dependencies: ['api', 'auth'],
+    },
+  },
+
+  services: {
+    db: { version: '16-alpine' },
+    cache: true,
+    mail: true,
+  },
+
+  deploy: {
+    default: 'dokploy',
+    dokploy: {
+      endpoint: 'https://dokploy.myserver.com',
+      projectId: 'proj_abc123',
+      registry: 'ghcr.io/myorg',
+      domains: {
+        production: 'myapp.com',
+        staging: 'staging.myapp.com',
+      },
+    },
+    dns: {
+      provider: 'route53',
+      domain: 'myapp.com',
+      profile: 'production',  // Optional: AWS profile name
+    },
+  },
+
+  state: {
+    provider: 'ssm',
+    region: 'us-east-1',
+  },
+});
+```
+
+### App Types
+
+| Type | Description | Key Config |
+|------|-------------|------------|
+| `backend` | API server with gkm routes | `routes`, `envParser`, `logger` |
+| `backend` (entry) | Custom backend (Hono, Express) | `entry`, `framework`, `requiredEnv` |
+| `auth` | Better Auth server | `provider`, `entry`, `requiredEnv` |
+| `frontend` | Web application | `framework`, `dependencies` |
+
+### Auth App Configuration
+
+The `auth` type is specialized for [Better Auth](https://better-auth.com) servers:
+
+```typescript
+auth: {
+  type: 'auth',
+  path: 'apps/auth',
+  port: 3001,
+  provider: 'better-auth',
+  entry: './src/index.ts',
+  requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+}
+```
+
+**Auto-injected variables during deployment:**
+
+| Variable | Source |
+|----------|--------|
+| `BETTER_AUTH_URL` | Derived from app hostname |
+| `BETTER_AUTH_SECRET` | Generated and persisted in state |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Comma-separated list of frontend URLs |
+
+### Services Configuration
+
+| Service | Key | Default Image | Environment Variables |
+|---------|-----|---------------|----------------------|
+| PostgreSQL | `db` | `postgres:18-alpine` | `DATABASE_URL` |
+| Redis | `cache` | `redis:8-alpine` | `REDIS_URL` |
+| Mailpit | `mail` | `axllent/mailpit` | `SMTP_HOST`, `SMTP_PORT` |
+
+### State Providers
+
+| Provider | Location | Use Case |
+|----------|----------|----------|
+| `local` (default) | `.gkm/deploy-{stage}.json` | Single developer |
+| `ssm` | AWS Parameter Store | Teams, CI/CD |
+
+### DNS Providers
+
+| Provider | Setup |
+|----------|-------|
+| `route53` | AWS credential chain (or `profile` config) |
+| `hostinger` | `gkm login --provider hostinger` |
+| `cloudflare` | Coming soon |
+| `manual` | Prints required records |
