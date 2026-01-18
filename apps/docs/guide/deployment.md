@@ -674,11 +674,51 @@ Before deploying to production:
 - [ ] All tests passing (`pnpm test:once`)
 - [ ] Type checks passing (`pnpm ts:check`)
 - [ ] Linting passing (`pnpm lint`)
-- [ ] Environment variables configured
-- [ ] Secrets set for production stage
+- [ ] Secrets configured (`gkm secrets:show --stage production`)
+- [ ] DNS provider configured
+- [ ] State provider configured (SSM for teams)
 - [ ] Health check endpoint configured
+- [ ] Database migrations ready
 - [ ] Logging configured for production
 - [ ] Error tracking enabled (Sentry, etc.)
-- [ ] Rate limiting configured
-- [ ] CORS configured appropriately
-- [ ] Database migrations applied
+
+---
+
+## Troubleshooting
+
+### Environment Variables Not Detected
+
+If the sniffer misses variables:
+1. Ensure all `get()` calls happen before `.parse()`
+2. Use `requiredEnv` in config for dynamic variables
+3. Check subprocess output with `--verbose` flag
+
+### DNS Propagation Issues
+
+```bash
+# Check DNS resolution
+dig api.myapp.com
+
+# Force re-verification
+gkm deploy --stage production --force-dns
+```
+
+### State Sync Issues
+
+```bash
+# Pull latest state from remote
+gkm state:pull --stage production
+
+# Compare local vs remote
+gkm state:diff --stage production
+
+# Force push local state
+gkm state:push --stage production --force
+```
+
+### Database Connection Issues
+
+Per-app credentials are stored in state. If connection fails:
+1. Check `gkm state:show --stage production`
+2. Verify credentials match Postgres users
+3. Re-run deployment to recreate users if needed
