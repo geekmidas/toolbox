@@ -592,6 +592,110 @@ describe('WorkspaceConfigSchema', () => {
 		});
 	});
 
+	describe('DNS configuration', () => {
+		it('should accept multi-domain DNS config', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+					},
+				},
+				deploy: {
+					default: 'dokploy' as const,
+					dns: {
+						'geekmidas.dev': { provider: 'hostinger' as const },
+						'geekmidas.com': { provider: 'route53' as const, region: 'us-east-1' as const },
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.deploy?.dns).toEqual({
+				'geekmidas.dev': { provider: 'hostinger' },
+				'geekmidas.com': { provider: 'route53', region: 'us-east-1' },
+			});
+		});
+
+		it('should accept legacy single-domain DNS config', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+					},
+				},
+				deploy: {
+					default: 'dokploy' as const,
+					dns: {
+						provider: 'hostinger' as const,
+						domain: 'example.com',
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.deploy?.dns).toEqual({
+				provider: 'hostinger',
+				domain: 'example.com',
+			});
+		});
+
+		it('should accept DNS config with manual provider', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+					},
+				},
+				deploy: {
+					default: 'dokploy' as const,
+					dns: {
+						'example.com': { provider: 'manual' as const },
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect(result.deploy?.dns).toEqual({
+				'example.com': { provider: 'manual' },
+			});
+		});
+
+		it('should accept DNS config with TTL', () => {
+			const config = {
+				apps: {
+					api: {
+						type: 'backend' as const,
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/**/*.ts',
+					},
+				},
+				deploy: {
+					default: 'dokploy' as const,
+					dns: {
+						'example.com': { provider: 'hostinger' as const, ttl: 600 },
+					},
+				},
+			};
+
+			const result = validateWorkspaceConfig(config);
+
+			expect((result.deploy?.dns as any)['example.com'].ttl).toBe(600);
+		});
+	});
+
 	describe('deploy target helpers', () => {
 		it('isDeployTargetSupported should return true for dokploy', () => {
 			expect(isDeployTargetSupported('dokploy')).toBe(true);
