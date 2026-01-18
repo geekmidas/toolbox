@@ -90,6 +90,8 @@ export default nextConfig;
 				'~/*': ['./src/*'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
+				[`${uiPackage}`]: ['../../packages/ui/src'],
+				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
 			},
 			baseUrl: '.',
 		},
