@@ -105,7 +105,22 @@ export const config = envParser
 			// health endpoint
 			{
 				path: getRoutePath('health.ts'),
-				content: `import { e } from '@geekmidas/constructs/endpoints';
+				content: monorepo
+					? `import { z } from 'zod';
+import { publicRouter } from '~/router';
+
+export const healthEndpoint = publicRouter
+  .get('/health')
+  .output(z.object({
+    status: z.string(),
+    timestamp: z.string(),
+  }))
+  .handle(async () => ({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+  }));
+`
+					: `import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 export const healthEndpoint = e
@@ -195,6 +210,97 @@ export const getUserEndpoint = e
 `,
 			},
 		];
+
+		// Add auth service for monorepo (calls auth app for session)
+		if (options.monorepo) {
+			files.push({
+				path: 'src/services/auth.ts',
+				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
+
+export interface Session {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+  };
+}
+
+export interface AuthClient {
+  getSession: (cookie: string) => Promise<Session | null>;
+}
+
+export const authService = {
+  serviceName: 'auth' as const,
+  async register({ envParser, context }: ServiceRegisterOptions) {
+    const logger = context.getLogger();
+
+    const config = envParser
+      .create((get) => ({
+        url: get('AUTH_URL').string(),
+      }))
+      .parse();
+
+    logger.info({ authUrl: config.url }, 'Auth service configured');
+
+    return {
+      getSession: async (cookie: string): Promise<Session | null> => {
+        const res = await fetch(\`\${config.url}/api/auth/get-session\`, {
+          headers: { cookie },
+        });
+        if (!res.ok) return null;
+        return res.json();
+      },
+    };
+  },
+} satisfies Service<'auth', AuthClient>;
+`,
+			});
+
+			// Add router with session
+			files.push({
+				path: 'src/router.ts',
+				content: `import { e } from '@geekmidas/constructs/endpoints';
+import { UnauthorizedError } from '@geekmidas/errors';
+import { authService, type Session } from './services/auth.js';
+import { logger } from './config/logger.js';
+
+// Public router - no auth required
+export const publicRouter = e.logger(logger);
+
+// Router with auth service available (but session not enforced)
+export const r = publicRouter.services([authService]);
+
+// Session router - requires active session, throws if not authenticated
+export const sessionRouter = r.session<Session>(async ({ services, header }) => {
+  const cookie = header('cookie') || '';
+  const session = await services.auth.getSession(cookie);
+
+  if (!session?.user) {
+    throw new UnauthorizedError('No active session');
+  }
+
+  return session;
+});
+`,
+			});
+
+			// Add protected endpoint example
+			files.push({
+				path: getRoutePath('profile.ts'),
+				content: `import { z } from 'zod';
+import { sessionRouter } from '~/router';
+
+export const profileEndpoint = sessionRouter
+  .get('/profile')
+  .output(z.object({
+    id: z.string(),
+    email: z.string(),
+    name: z.string(),
+  }))
+  .handle(async ({ session }) => session.user);
+`,
+			});
+		}
 
 		// Add database service if enabled
 		if (options.database) {
