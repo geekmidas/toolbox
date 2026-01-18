@@ -176,6 +176,7 @@ export function normalizeWorkspace(
 		deploy: config.deploy ?? { default: 'dokploy' },
 		shared: config.shared ?? { packages: ['packages/*'] },
 		secrets: config.secrets ?? {},
+		state: config.state,
 	};
 }
 
