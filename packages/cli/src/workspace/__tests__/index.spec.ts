@@ -5,6 +5,7 @@ import {
 	getAppBuildOrder,
 	getAppGkmConfig,
 	getDependencyEnvVars,
+	getEndpointForStage,
 	isWorkspaceConfig,
 	normalizeWorkspace,
 	processConfig,
@@ -599,5 +600,72 @@ describe('getDependencyEnvVars', () => {
 		const envVars = getDependencyEnvVars(workspace, 'nonexistent');
 
 		expect(envVars).toEqual({});
+	});
+});
+
+describe('getEndpointForStage', () => {
+	it('should return per-stage endpoint when available', () => {
+		const config = {
+			endpoints: {
+				development: 'https://dev.dokploy.example.com:3000',
+				production: 'https://prod.dokploy.example.com:3000',
+			},
+		};
+
+		expect(getEndpointForStage(config, 'production')).toBe(
+			'https://prod.dokploy.example.com:3000',
+		);
+		expect(getEndpointForStage(config, 'development')).toBe(
+			'https://dev.dokploy.example.com:3000',
+		);
+	});
+
+	it('should fall back to global endpoint when per-stage not found', () => {
+		const config = {
+			endpoint: 'https://dokploy.example.com:3000',
+			endpoints: {
+				development: 'https://dev.dokploy.example.com:3000',
+			},
+		};
+
+		expect(getEndpointForStage(config, 'production')).toBe(
+			'https://dokploy.example.com:3000',
+		);
+	});
+
+	it('should return global endpoint when only endpoint is configured', () => {
+		const config = {
+			endpoint: 'https://dokploy.example.com:3000',
+		};
+
+		expect(getEndpointForStage(config, 'production')).toBe(
+			'https://dokploy.example.com:3000',
+		);
+		expect(getEndpointForStage(config, 'development')).toBe(
+			'https://dokploy.example.com:3000',
+		);
+	});
+
+	it('should return undefined when config is undefined', () => {
+		expect(getEndpointForStage(undefined, 'production')).toBeUndefined();
+	});
+
+	it('should return undefined when neither endpoint nor endpoints is configured', () => {
+		const config = {};
+
+		expect(getEndpointForStage(config, 'production')).toBeUndefined();
+	});
+
+	it('should prefer per-stage endpoint over global endpoint', () => {
+		const config = {
+			endpoint: 'https://global.example.com:3000',
+			endpoints: {
+				production: 'https://prod.example.com:3000',
+			},
+		};
+
+		expect(getEndpointForStage(config, 'production')).toBe(
+			'https://prod.example.com:3000',
+		);
 	});
 });
