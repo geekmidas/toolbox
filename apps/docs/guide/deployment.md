@@ -1,6 +1,86 @@
 # Deployment Guide
 
-This guide covers deploying @geekmidas applications to various targets.
+This guide covers deploying @geekmidas workspace applications to various targets with the CLI's sophisticated deployment system.
+
+## Overview
+
+The CLI provides a complete deployment pipeline for monorepo workspaces:
+- **Environment Sniffing** - Automatic detection of required environment variables
+- **State Management** - Track deployments across local and remote storage
+- **DNS Automation** - Automatic DNS configuration with multiple providers
+- **Secrets Management** - Encrypted secrets injection during builds
+- **Multi-App Orchestration** - Coordinated deployment of workspace apps
+
+## Quick Start
+
+```typescript
+// gkm.config.ts
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'my-saas',
+
+  apps: {
+    api: {
+      path: 'apps/api',
+      type: 'backend',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+    },
+    auth: {
+      type: 'auth',
+      path: 'apps/auth',
+      port: 3001,
+      provider: 'better-auth',
+      entry: './src/index.ts',
+      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+    },
+    web: {
+      type: 'frontend',
+      path: 'apps/web',
+      port: 3002,
+      framework: 'nextjs',
+      dependencies: ['api', 'auth'],
+    },
+  },
+
+  services: {
+    db: true,
+    cache: true,
+  },
+
+  deploy: {
+    default: 'dokploy',
+    dokploy: {
+      endpoint: 'https://dokploy.myserver.com',
+      projectId: 'proj_abc123',
+      registry: 'ghcr.io/myorg',
+      domains: {
+        production: 'myapp.com',
+        staging: 'staging.myapp.com',
+      },
+    },
+    dns: {
+      provider: 'route53',
+      domain: 'myapp.com',
+    },
+  },
+
+  state: {
+    provider: 'ssm',
+    region: 'us-east-1',
+  },
+});
+```
+
+```bash
+# Deploy to production
+gkm deploy --stage production
+```
+
+---
 
 ## Build Providers
 
