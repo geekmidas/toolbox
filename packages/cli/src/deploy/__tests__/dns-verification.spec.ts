@@ -44,7 +44,7 @@ describe('verifyDnsRecords', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		state = createEmptyState('production', 'env-123');
+		state = createEmptyState('production', 'proj_test', 'env-123');
 		console.log = vi.fn();
 	});
 
