@@ -1,5 +1,11 @@
 # @geekmidas/testkit
 
+## 1.0.1
+
+### Patch Changes
+
+- ✨ [`3b6d7d9`](https://github.com/geekmidas/toolbox/commit/3b6d7d9ed41dc08675395d937248a8ab754af9e1) Thanks [@geekmidas](https://github.com/geekmidas)! - Add state provider configuration to workspace config
+
 ## 1.0.0
 
 ### Major Changes
