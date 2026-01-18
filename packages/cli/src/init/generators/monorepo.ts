@@ -34,7 +34,9 @@ export function generateMonorepoFiles(
 			lint: 'biome lint .',
 			fmt: 'biome format . --write',
 			'fmt:check': 'biome format .',
-			...(isFullstack ? { storybook: 'pnpm --filter ./packages/ui storybook' } : {}),
+			...(isFullstack
+				? { storybook: 'pnpm --filter ./packages/ui storybook' }
+				: {}),
 			...(options.deployTarget === 'dokploy'
 				? { deploy: 'gkm deploy --provider dokploy --stage production' }
 				: {}),

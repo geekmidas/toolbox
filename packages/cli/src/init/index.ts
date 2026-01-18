@@ -296,7 +296,9 @@ export async function initCommand(
 	const authAppFiles = isFullstack ? generateAuthAppFiles(templateOptions) : [];
 
 	// Collect UI package files for fullstack template
-	const uiPackageFiles = isFullstack ? generateUiPackageFiles(templateOptions) : [];
+	const uiPackageFiles = isFullstack
+		? generateUiPackageFiles(templateOptions)
+		: [];
 
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {

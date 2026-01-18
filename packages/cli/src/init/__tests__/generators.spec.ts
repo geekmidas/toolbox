@@ -476,9 +476,7 @@ describe('generateUiPackageFiles', () => {
 
 	it('should extend root tsconfig with noEmit', () => {
 		const files = generateUiPackageFiles(fullstackOptions);
-		const tsConfig = files.find(
-			(f) => f.path === 'packages/ui/tsconfig.json',
-		);
+		const tsConfig = files.find((f) => f.path === 'packages/ui/tsconfig.json');
 		expect(tsConfig).toBeDefined();
 		const config = JSON.parse(tsConfig!.content);
 		expect(config.extends).toBe('../../tsconfig.json');
@@ -641,9 +639,7 @@ describe('generateUiPackageFiles', () => {
 
 	it('should configure ~/* path in tsconfig', () => {
 		const files = generateUiPackageFiles(fullstackOptions);
-		const tsConfig = files.find(
-			(f) => f.path === 'packages/ui/tsconfig.json',
-		);
+		const tsConfig = files.find((f) => f.path === 'packages/ui/tsconfig.json');
 		expect(tsConfig).toBeDefined();
 		const config = JSON.parse(tsConfig!.content);
 		expect(config.compilerOptions.paths['~/*']).toEqual(['./src/*']);
