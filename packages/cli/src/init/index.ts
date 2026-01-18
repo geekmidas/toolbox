@@ -370,6 +370,7 @@ export async function initCommand(
 
 		// Auth service secrets (better-auth)
 		customSecrets.AUTH_PORT = '3002';
+		customSecrets.AUTH_URL = 'http://localhost:3002'; // For API app to call auth service
 		customSecrets.BETTER_AUTH_SECRET = `better-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 		customSecrets.BETTER_AUTH_URL = 'http://localhost:3002';
 		customSecrets.BETTER_AUTH_TRUSTED_ORIGINS =
