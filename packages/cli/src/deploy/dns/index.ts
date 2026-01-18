@@ -377,7 +377,8 @@ export async function orchestrateDns(
 		return null;
 	}
 
-	const { domain: rootDomain, provider: providerName } = dnsConfig;
+	// Normalize config to multi-domain format
+	const normalizedConfig = normalizeDnsConfig(dnsConfig);
 
 	// Resolve Dokploy server IP from endpoint
 	logger.log('\n🌐 Setting up DNS records...');
@@ -393,50 +394,79 @@ export async function orchestrateDns(
 		return null;
 	}
 
-	// Generate required records
-	const requiredRecords = generateRequiredRecords(
-		appHostnames,
-		rootDomain,
-		serverIp,
-	);
+	// Group hostnames by their root domain
+	const groupedHostnames = groupHostnamesByDomain(appHostnames, normalizedConfig);
 
-	if (requiredRecords.length === 0) {
-		logger.log('   No DNS records needed');
+	if (groupedHostnames.size === 0) {
+		logger.log('   No DNS records needed (no hostnames match configured domains)');
 		return { records: [], success: true, serverIp };
 	}
 
-	// Create records (if manual mode, createDnsRecords will mark them as needing manual creation)
-	logger.log(`   Creating DNS records at ${providerName}...`);
-	const finalRecords = await createDnsRecords(requiredRecords, dnsConfig);
+	const allRecords: RequiredDnsRecord[] = [];
+	let hasFailures = false;
 
-	const created = finalRecords.filter((r) => r.created).length;
-	const existed = finalRecords.filter((r) => r.existed).length;
-	const failed = finalRecords.filter((r) => r.error).length;
+	// Process each domain group with its specific provider
+	for (const [rootDomain, domainHostnames] of groupedHostnames) {
+		const providerConfig = normalizedConfig[rootDomain];
+		if (!providerConfig) {
+			logger.log(`   ⚠ No provider config for ${rootDomain}`);
+			continue;
+		}
 
-	if (created > 0) {
-		logger.log(`   ✓ Created ${created} DNS record(s)`);
-	}
-	if (existed > 0) {
-		logger.log(`   ✓ ${existed} record(s) already exist`);
-	}
-	if (failed > 0) {
-		logger.log(`   ⚠ ${failed} record(s) failed`);
-	}
+		const providerName = typeof providerConfig.provider === 'string'
+			? providerConfig.provider
+			: 'custom';
 
-	// Print summary table
-	printDnsRecordsTable(finalRecords, rootDomain);
-
-	// If manual mode or some failed, print simple instructions
-	const hasFailures = finalRecords.some((r) => r.error);
-	if (dnsConfig.provider === 'manual' || hasFailures) {
-		printDnsRecordsSimple(
-			finalRecords.filter((r) => !r.created && !r.existed),
+		// Generate required records for this domain
+		const requiredRecords = generateRequiredRecords(
+			domainHostnames,
 			rootDomain,
+			serverIp,
 		);
+
+		if (requiredRecords.length === 0) {
+			continue;
+		}
+
+		// Create records for this domain
+		logger.log(`   Creating DNS records for ${rootDomain} (${providerName})...`);
+		const domainRecords = await createDnsRecordsForDomain(
+			requiredRecords,
+			rootDomain,
+			providerConfig,
+		);
+
+		allRecords.push(...domainRecords);
+
+		const created = domainRecords.filter((r) => r.created).length;
+		const existed = domainRecords.filter((r) => r.existed).length;
+		const failed = domainRecords.filter((r) => r.error).length;
+
+		if (created > 0) {
+			logger.log(`   ✓ Created ${created} DNS record(s) for ${rootDomain}`);
+		}
+		if (existed > 0) {
+			logger.log(`   ✓ ${existed} record(s) already exist for ${rootDomain}`);
+		}
+		if (failed > 0) {
+			logger.log(`   ⚠ ${failed} record(s) failed for ${rootDomain}`);
+			hasFailures = true;
+		}
+
+		// Print summary table for this domain
+		printDnsRecordsTable(domainRecords, rootDomain);
+
+		// If manual mode or some failed, print simple instructions
+		if (providerConfig.provider === 'manual' || failed > 0) {
+			printDnsRecordsSimple(
+				domainRecords.filter((r) => !r.created && !r.existed),
+				rootDomain,
+			);
+		}
 	}
 
 	return {
-		records: finalRecords,
+		records: allRecords,
 		success: !hasFailures,
 		serverIp,
 	};
