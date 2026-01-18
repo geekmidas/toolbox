@@ -163,12 +163,12 @@ export const listUsersEndpoint = e
 				path: getRoutePath('users/get.ts'),
 				content: modelsImport
 					? `import { e } from '@geekmidas/constructs/endpoints';
-import { IdSchema } from '${modelsImport}/common';
+import { IdParamsSchema } from '${modelsImport}/common';
 import { UserResponseSchema } from '${modelsImport}/user';
 
 export const getUserEndpoint = e
   .get('/users/:id')
-  .params({ id: IdSchema })
+  .params(IdParamsSchema)
   .output(UserResponseSchema)
   .handle(async ({ params }) => ({
     id: params.id,
