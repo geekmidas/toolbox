@@ -472,6 +472,6 @@ function printNextSteps(
 		console.log('');
 	}
 
-	console.log('📚 Documentation: https://docs.geekmidas.dev');
+	console.log('📚 Documentation: https://geekmidas.github.io/toolbox/');
 	console.log('');
 }

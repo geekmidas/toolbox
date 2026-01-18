@@ -1410,7 +1410,7 @@ Next steps:
   3. Initialize secrets (optional):
      gkm secrets:init --stage dev
 
-Documentation: https://geekmidas.dev/docs
+Documentation: https://geekmidas.github.io/toolbox/
 `);
 }
 ```

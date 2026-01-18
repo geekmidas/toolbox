@@ -2,6 +2,7 @@
 
 > A comprehensive TypeScript monorepo for building modern, type-safe web applications
 
+[![Documentation](https://img.shields.io/badge/docs-geekmidas.github.io%2Ftoolbox-blue)](https://geekmidas.github.io/toolbox/)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
 [![pnpm Version](https://img.shields.io/badge/pnpm-10.13.1-blue)](https://pnpm.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue)](https://www.typescriptlang.org)
@@ -20,6 +21,16 @@
 - 🚀 **Modern Tooling**: pnpm, Turbo, tsdown, Biome, and Vitest
 - 🎯 **Zero Config**: Sensible defaults with extensive customization options
 - 📖 **Well Documented**: Comprehensive docs with practical examples
+
+## 📚 Documentation
+
+**[geekmidas.github.io/toolbox](https://geekmidas.github.io/toolbox/)** — Full documentation with guides and API reference.
+
+- [Getting Started](https://geekmidas.github.io/toolbox/guide/getting-started) — Create your first workspace
+- [Workspaces](https://geekmidas.github.io/toolbox/guide/workspaces) — Multi-app configuration
+- [Deployment](https://geekmidas.github.io/toolbox/guide/deployment) — Deploy to production
+- [CLI Reference](https://geekmidas.github.io/toolbox/packages/cli) — All CLI commands
+- [API Reference](https://geekmidas.github.io/toolbox/api/) — Package documentation
 
 ## 📦 Packages
 
@@ -651,20 +662,8 @@ Special thanks to all contributors and the open-source community for the amazing
 ---
 
 <p align="center">
+  <a href="https://geekmidas.github.io/toolbox/">Documentation</a> •
   <a href="https://github.com/geekmidas/toolbox">GitHub</a> •
-  <a href="./packages/constructs">Constructs</a> •
-  <a href="./packages/client">Client</a> •
-  <a href="./packages/audit">Audit</a> •
-  <a href="./packages/auth">Auth</a> •
-  <a href="./packages/cache">Cache</a> •
-  <a href="./packages/cli">CLI</a> •
-  <a href="./packages/db">DB</a> •
-  <a href="./packages/schema">Schema</a> •
-  <a href="./packages/logger">Logger</a> •
-  <a href="./packages/errors">Errors</a> •
-  <a href="./packages/services">Services</a> •
-  <a href="./packages/events">Events</a> •
-  <a href="./packages/storage">Storage</a> •
-  <a href="./packages/testkit">TestKit</a> •
+  <a href="https://geekmidas.github.io/toolbox/guide/getting-started">Getting Started</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>

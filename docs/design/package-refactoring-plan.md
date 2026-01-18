@@ -422,7 +422,7 @@ export const Endpoint = new Proxy(_Endpoint, {
       console.warn(
         'DEPRECATED: Importing Endpoint from @geekmidas/api/constructs is deprecated. ' +
         'Use @geekmidas/constructs instead. ' +
-        'See migration guide: https://docs.geekmidas.dev/migrations/constructs-schema-split'
+        'See migration guide: https://geekmidas.github.io/toolbox/migrations/constructs-schema-split'
       );
       warningShown = true;
     }
