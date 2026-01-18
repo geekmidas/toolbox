@@ -111,9 +111,9 @@ describe('generateOpenApi', () => {
 		expect(result).toBeNull();
 	});
 
-	it('should return null when openapi is undefined', async () => {
+	it('should return null when no endpoints are found', async () => {
 		const config: GkmConfig = {
-			routes: './src/endpoints/**/*.ts',
+			routes: './src/endpoints/**/*.ts', // Path doesn't exist
 			envParser: './src/config/env#envParser',
 			logger: './src/config/logger#logger',
 		};
