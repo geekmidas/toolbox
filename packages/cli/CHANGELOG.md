@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.2.1
+
+### Patch Changes
+
+- 🐛 [`e4ab724`](https://github.com/geekmidas/toolbox/commit/e4ab724fc044bbcab9e4a1426e55b515a4185a2b) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix bug when running gkm exec so tsx is importted correctly
+
 ## 1.2.0
 
 ### Minor Changes
