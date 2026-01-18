@@ -30,6 +30,8 @@ export interface DnsVerificationRecord {
 export interface DokployStageState {
 	provider: 'dokploy';
 	stage: string;
+	/** Dokploy project ID - created on first deploy */
+	projectId: string;
 	environmentId: string;
 	applications: Record<string, string>; // appName -> applicationId
 	services: {
