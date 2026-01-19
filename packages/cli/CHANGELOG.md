@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.4.0
+
+### Minor Changes
+
+- 🐛 [`bebf821`](https://github.com/geekmidas/toolbox/commit/bebf821ce4534e314d3d536e9956260c4230a183) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix dependecy output injecttion for urls
+
 ## 1.3.0
 
 ### Minor Changes
