@@ -208,8 +208,18 @@ export function resolveEnvVar(
 	}
 
 	// Check dependency URLs (e.g., AUTH_URL -> dependencyUrls.auth)
+	// Also supports NEXT_PUBLIC_ prefix for frontend apps (NEXT_PUBLIC_AUTH_URL -> dependencyUrls.auth)
 	if (context.dependencyUrls && varName.endsWith('_URL')) {
-		const depName = varName.slice(0, -4).toLowerCase(); // AUTH_URL -> auth
+		let depName: string;
+
+		if (varName.startsWith('NEXT_PUBLIC_')) {
+			// NEXT_PUBLIC_AUTH_URL -> auth
+			depName = varName.slice(12, -4).toLowerCase();
+		} else {
+			// AUTH_URL -> auth
+			depName = varName.slice(0, -4).toLowerCase();
+		}
+
 		if (context.dependencyUrls[depName]) {
 			return context.dependencyUrls[depName];
 		}
