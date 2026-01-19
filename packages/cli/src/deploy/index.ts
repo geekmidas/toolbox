@@ -1571,13 +1571,71 @@ export async function workspaceDeployCommand(
 				// Store application ID in state
 				setApplicationId(state, appName, application.applicationId);
 
-				// Generate public URL build args from dependencies
-				const buildArgs = generatePublicUrlBuildArgs(app, publicUrls);
-				if (buildArgs.length > 0) {
-					logger.log(`      Public URLs: ${buildArgs.join(', ')}`);
+				// Build dependency URLs for frontend (same pattern as backend)
+				const dependencyUrls: Record<string, string> = {};
+				if (app.dependencies) {
+					for (const dep of app.dependencies) {
+						if (publicUrls[dep]) {
+							dependencyUrls[dep] = publicUrls[dep];
+						}
+					}
 				}
 
-				// Build Docker image with public URLs
+				// Compute hostname for this frontend app
+				const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
+				const frontendHost = resolveHost(
+					appName,
+					app,
+					stage,
+					dokployConfig,
+					isMainFrontend,
+				);
+
+				// Build env context for frontend
+				const envContext: EnvResolverContext = {
+					app,
+					appName,
+					stage,
+					state,
+					appHostname: frontendHost,
+					frontendUrls: [],
+					userSecrets: stageSecrets ?? undefined,
+					dependencyUrls,
+				};
+
+				// Resolve all env vars BEFORE Docker build (NEXT_PUBLIC_* must be present at build time)
+				const sniffedVars = sniffedApps.get(appName)?.requiredEnvVars ?? [];
+				const { valid, missing, resolved } = validateEnvVars(
+					sniffedVars,
+					envContext,
+				);
+
+				if (!valid) {
+					throw new Error(formatMissingVarsError(appName, missing, stage));
+				}
+
+				if (Object.keys(resolved).length > 0) {
+					logger.log(
+						`      Resolved ${Object.keys(resolved).length} env vars: ${Object.keys(resolved).join(', ')}`,
+					);
+				}
+
+				// Build args: all NEXT_PUBLIC_* vars must be present at Next.js build time
+				const buildArgs: string[] = [];
+				const publicUrlArgNames: string[] = [];
+
+				for (const [key, value] of Object.entries(resolved)) {
+					if (key.startsWith('NEXT_PUBLIC_')) {
+						buildArgs.push(`${key}=${value}`);
+						publicUrlArgNames.push(key);
+					}
+				}
+
+				if (buildArgs.length > 0) {
+					logger.log(`      Build args: ${publicUrlArgNames.join(', ')}`);
+				}
+
+				// Build Docker image with NEXT_PUBLIC_* vars as build args
 				const imageName = `${workspace.name}-${appName}`;
 				const imageRef = registry
 					? `${registry}/${imageName}:${imageTag}`
@@ -1595,16 +1653,21 @@ export async function workspaceDeployCommand(
 						appName,
 					},
 					buildArgs,
-					// Pass public URL arg names for Dockerfile generation
-					publicUrlArgs: getPublicUrlArgNames(app),
+					// Pass arg names for Dockerfile ARG generation
+					publicUrlArgs: publicUrlArgNames,
 				});
 
-				// Prepare environment variables - no secrets needed
+				// Prepare runtime environment variables
 				const envVars: string[] = [
 					`NODE_ENV=production`,
 					`PORT=${app.port}`,
 					`STAGE=${stage}`,
 				];
+
+				// Add all resolved vars as runtime env (for SSR and server components)
+				for (const [key, value] of Object.entries(resolved)) {
+					envVars.push(`${key}=${value}`);
+				}
 
 				// Configure and deploy application in Dokploy
 				await api.saveDockerProvider(application.applicationId, imageRef, {
@@ -1619,17 +1682,7 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Create or find domain for this app
-				const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
-				const frontendHost = resolveHost(
-					appName,
-					app,
-					stage,
-					dokployConfig,
-					isMainFrontend,
-				);
-
-				// Check if domain already exists
+				// Check if domain already exists (frontendHost computed earlier for env context)
 				const existingFrontendDomains = await api.getDomainsByApplicationId(
 					application.applicationId,
 				);
