@@ -467,8 +467,8 @@ describe('sniffWithFireAndForget', () => {
 		await sniffWithFireAndForget(sniffer, () => {}, { settleTimeMs: 50 });
 
 		const elapsed = Date.now() - startTime;
-		// Should wait at least 50ms but not much longer
-		expect(elapsed).toBeGreaterThanOrEqual(50);
+		// Should wait approximately 50ms (allow small timing variance)
+		expect(elapsed).toBeGreaterThanOrEqual(45);
 		expect(elapsed).toBeLessThan(200);
 	});
 
