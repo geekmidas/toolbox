@@ -4,10 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import { DokployApi } from '../dokploy-api';
 import {
+	type EnvResolverContext,
+	resolveEnvVar,
+	resolveEnvVars,
+} from '../env-resolver';
+import {
 	generateTag,
 	provisionServices,
 	workspaceDeployCommand,
 } from '../index';
+import { createEmptyState } from '../state';
 import type { DeployOptions } from '../types';
 
 const BASE_URL = 'https://dokploy.example.com';
