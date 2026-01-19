@@ -373,6 +373,10 @@ export default defineWorkspace({
       path: 'apps/web',
       port: 3001,
       dependencies: ['api', 'auth'],
+      config: {
+        client: './src/config/client.ts',
+        server: './src/config/server.ts',
+      },
       client: {
         output: './src/api',
       },
