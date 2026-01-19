@@ -31,8 +31,8 @@ describe('sniffAppEnvironment', () => {
 	});
 
 	describe('frontend apps', () => {
-		it('should return empty env vars for frontend apps', async () => {
-			const app = createApp({ type: 'frontend' });
+		it('should return empty env vars for frontend apps with no dependencies', async () => {
+			const app = createApp({ type: 'frontend', dependencies: [] });
 
 			const result = await sniffAppEnvironment(app, 'web', workspacePath);
 
@@ -40,51 +40,130 @@ describe('sniffAppEnvironment', () => {
 			expect(result.requiredEnvVars).toEqual([]);
 		});
 
-		it('should ignore requiredEnv for frontend apps', async () => {
+		it('should return NEXT_PUBLIC_{DEP}_URL for frontend dependencies', async () => {
 			const app = createApp({
 				type: 'frontend',
-				requiredEnv: ['API_KEY', 'SECRET'], // Should be ignored
+				dependencies: ['api', 'auth'],
 			});
 
 			const result = await sniffAppEnvironment(app, 'web', workspacePath);
 
-			expect(result.requiredEnvVars).toEqual([]);
+			expect(result.appName).toBe('web');
+			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_API_URL');
+			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_AUTH_URL');
+			expect(result.requiredEnvVars).toHaveLength(2);
 		});
-	});
 
-	describe('entry-based apps with requiredEnv', () => {
-		it('should return requiredEnv list for entry-based apps', async () => {
+		it('should generate uppercase dep names in NEXT_PUBLIC_{DEP}_URL', async () => {
 			const app = createApp({
-				entry: './src/index.ts',
-				requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+				type: 'frontend',
+				dependencies: ['payments-service', 'notification_api'],
 			});
 
-			const result = await sniffAppEnvironment(app, 'auth', workspacePath);
+			const result = await sniffAppEnvironment(app, 'web', workspacePath);
 
-			expect(result.appName).toBe('auth');
-			expect(result.requiredEnvVars).toEqual([
-				'DATABASE_URL',
-				'BETTER_AUTH_SECRET',
-			]);
+			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_PAYMENTS-SERVICE_URL');
+			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_NOTIFICATION_API_URL');
 		});
 
-		it('should return copy of requiredEnv (not reference)', async () => {
-			const requiredEnv = ['DATABASE_URL'];
-			const app = createApp({ requiredEnv });
+		describe('config sniffing', () => {
+			it('should sniff env vars from string config path', async () => {
+				const app = createApp({
+					type: 'frontend',
+					path: fixturesPath,
+					dependencies: ['api'],
+					config: './simple-entry.ts',
+				});
 
-			const result = await sniffAppEnvironment(app, 'api', workspacePath);
+				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
 
-			// Modify the result and verify original is unchanged
-			result.requiredEnvVars.push('MODIFIED');
-			expect(requiredEnv).toEqual(['DATABASE_URL']);
-		});
+				// Should have dependency var + sniffed vars
+				expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_API_URL');
+				expect(result.requiredEnvVars).toContain('PORT');
+				expect(result.requiredEnvVars).toContain('DATABASE_URL');
+				expect(result.requiredEnvVars).toContain('REDIS_URL');
+			});
 
-		it('should return empty when requiredEnv is empty array', async () => {
-			const app = createApp({ requiredEnv: [] });
+			it('should sniff env vars from config.client path', async () => {
+				const app = createApp({
+					type: 'frontend',
+					path: fixturesPath,
+					dependencies: [],
+					config: {
+						client: './simple-entry.ts',
+					},
+				});
 
-			const result = await sniffAppEnvironment(app, 'api', workspacePath);
+				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
 
-			expect(result.requiredEnvVars).toEqual([]);
+				expect(result.requiredEnvVars).toContain('PORT');
+				expect(result.requiredEnvVars).toContain('DATABASE_URL');
+				expect(result.requiredEnvVars).toContain('REDIS_URL');
+			});
+
+			it('should sniff env vars from config.server path', async () => {
+				const app = createApp({
+					type: 'frontend',
+					path: fixturesPath,
+					dependencies: [],
+					config: {
+						server: './nested-config-entry.ts',
+					},
+				});
+
+				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
+
+				expect(result.requiredEnvVars).toContain('PORT');
+				expect(result.requiredEnvVars).toContain('HOST');
+				expect(result.requiredEnvVars).toContain('DATABASE_URL');
+			});
+
+			it('should combine vars from both config.client and config.server', async () => {
+				const app = createApp({
+					type: 'frontend',
+					path: fixturesPath,
+					dependencies: ['api'],
+					config: {
+						client: './simple-entry.ts',
+						server: './nested-config-entry.ts',
+					},
+				});
+
+				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
+
+				// Dependency var
+				expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_API_URL');
+				// From simple-entry.ts
+				expect(result.requiredEnvVars).toContain('REDIS_URL');
+				// From nested-config-entry.ts
+				expect(result.requiredEnvVars).toContain('HOST');
+				expect(result.requiredEnvVars).toContain('BETTER_AUTH_SECRET');
+			});
+
+			it('should deduplicate vars from both config files', async () => {
+				const app = createApp({
+					type: 'frontend',
+					path: fixturesPath,
+					dependencies: [],
+					config: {
+						client: './simple-entry.ts',
+						server: './nested-config-entry.ts',
+					},
+				});
+
+				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
+
+				// Both files have PORT and DATABASE_URL, should only appear once
+				const portCount = result.requiredEnvVars.filter(
+					(v) => v === 'PORT',
+				).length;
+				const dbUrlCount = result.requiredEnvVars.filter(
+					(v) => v === 'DATABASE_URL',
+				).length;
+
+				expect(portCount).toBe(1);
+				expect(dbUrlCount).toBe(1);
+			});
 		});
 	});
 
@@ -119,9 +198,9 @@ describe('sniffAppEnvironment', () => {
 	});
 
 	describe('apps without env detection', () => {
-		it('should return empty when no envParser or requiredEnv', async () => {
+		it('should return empty when no envParser, entry, or routes', async () => {
 			const app = createApp({
-				// No envParser or requiredEnv
+				// No envParser, entry, or routes
 			});
 
 			const result = await sniffAppEnvironment(app, 'api', workspacePath);
@@ -142,7 +221,7 @@ describe('sniffAllApps', () => {
 				port: 3000,
 				dependencies: [],
 				resolvedDeployTarget: 'dokploy',
-				requiredEnv: ['DATABASE_URL', 'REDIS_URL'],
+				// No entry, routes, or envParser - will return empty
 			},
 			auth: {
 				type: 'backend',
@@ -150,7 +229,7 @@ describe('sniffAllApps', () => {
 				port: 3002,
 				dependencies: [],
 				resolvedDeployTarget: 'dokploy',
-				requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+				// No entry, routes, or envParser - will return empty
 			},
 			web: {
 				type: 'frontend',
@@ -167,17 +246,17 @@ describe('sniffAllApps', () => {
 
 		expect(results.get('api')).toEqual({
 			appName: 'api',
-			requiredEnvVars: ['DATABASE_URL', 'REDIS_URL'],
+			requiredEnvVars: [],
 		});
 
 		expect(results.get('auth')).toEqual({
 			appName: 'auth',
-			requiredEnvVars: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+			requiredEnvVars: [],
 		});
 
 		expect(results.get('web')).toEqual({
 			appName: 'web',
-			requiredEnvVars: [], // Frontend - no secrets
+			requiredEnvVars: ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL'],
 		});
 	});
 
@@ -324,7 +403,7 @@ describe('entry app sniffing via subprocess', () => {
 describe('sniffAppEnvironment with entry apps', () => {
 	// Integration tests for sniffAppEnvironment with entry-based apps
 
-	it('should use subprocess sniffing for entry apps without requiredEnv', async () => {
+	it('should use subprocess sniffing for entry apps', async () => {
 		const app: NormalizedAppConfig = {
 			type: 'backend',
 			path: fixturesPath,
@@ -340,25 +419,6 @@ describe('sniffAppEnvironment with entry apps', () => {
 		expect(result.requiredEnvVars).toContain('PORT');
 		expect(result.requiredEnvVars).toContain('DATABASE_URL');
 		expect(result.requiredEnvVars).toContain('REDIS_URL');
-	});
-
-	it('should prefer requiredEnv over sniffing for entry apps', async () => {
-		const app: NormalizedAppConfig = {
-			type: 'backend',
-			path: fixturesPath,
-			port: 3000,
-			dependencies: [],
-			resolvedDeployTarget: 'dokploy',
-			entry: './simple-entry.ts',
-			requiredEnv: ['CUSTOM_VAR', 'ANOTHER_VAR'], // Should use this instead of sniffing
-		};
-
-		const result = await sniffAppEnvironment(app, 'api', fixturesPath);
-
-		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR', 'ANOTHER_VAR']);
-		// Should NOT contain the sniffed vars since requiredEnv takes precedence
-		expect(result.requiredEnvVars).not.toContain('PORT');
-		expect(result.requiredEnvVars).not.toContain('DATABASE_URL');
 	});
 
 	it('should handle entry app that throws and still return captured env vars', async () => {
@@ -497,24 +557,6 @@ describe('sniffAppEnvironment with envParser apps', () => {
 		expect(result.requiredEnvVars).toContain('PORT');
 		expect(result.requiredEnvVars).toContain('DATABASE_URL');
 		expect(result.requiredEnvVars).toContain('DB_POOL_SIZE');
-	});
-
-	it('should prefer requiredEnv over envParser sniffing', async () => {
-		const app: NormalizedAppConfig = {
-			type: 'backend',
-			path: envParserFixturesPath,
-			port: 3000,
-			dependencies: [],
-			resolvedDeployTarget: 'dokploy',
-			envParser: './valid-env-parser.ts#envParser',
-			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
-		};
-
-		const result = await sniffAppEnvironment(app, 'api', envParserFixturesPath);
-
-		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
-		// Should NOT contain the sniffed vars
-		expect(result.requiredEnvVars).not.toContain('PORT');
 	});
 
 	it('should handle envParser that exports non-function gracefully', async () => {
@@ -661,24 +703,6 @@ describe('sniffAppEnvironment with route-based apps', () => {
 		expect(result.requiredEnvVars).toContain('DATABASE_URL');
 		expect(result.requiredEnvVars).toContain('AUTH_SECRET');
 		expect(result.requiredEnvVars).toContain('AUTH_URL');
-	});
-
-	it('should prefer requiredEnv over route sniffing', async () => {
-		const app: NormalizedAppConfig = {
-			type: 'backend',
-			path: routeAppsFixturesPath,
-			port: 3000,
-			dependencies: [],
-			resolvedDeployTarget: 'dokploy',
-			routes: './endpoints/**/*.ts',
-			requiredEnv: ['CUSTOM_VAR'], // Should use this instead
-		};
-
-		const result = await sniffAppEnvironment(app, 'api', routeAppsFixturesPath);
-
-		expect(result.requiredEnvVars).toEqual(['CUSTOM_VAR']);
-		// Should NOT contain the sniffed vars
-		expect(result.requiredEnvVars).not.toContain('DATABASE_URL');
 	});
 
 	it('should handle route pattern that matches no files', async () => {
