@@ -1375,6 +1375,16 @@ export async function workspaceDeployCommand(
 					false, // Backend apps are not main frontend
 				);
 
+				// Build dependency URLs from already-deployed apps
+				const dependencyUrls: Record<string, string> = {};
+				if (app.dependencies) {
+					for (const dep of app.dependencies) {
+						if (publicUrls[dep]) {
+							dependencyUrls[dep] = publicUrls[dep];
+						}
+					}
+				}
+
 				// Build env resolver context
 				const envContext: EnvResolverContext = {
 					app,
@@ -1400,6 +1410,7 @@ export async function workspaceDeployCommand(
 					frontendUrls,
 					userSecrets: stageSecrets ?? undefined,
 					masterKey: appSecrets?.masterKey,
+					dependencyUrls,
 				};
 
 				// Resolve all required environment variables
