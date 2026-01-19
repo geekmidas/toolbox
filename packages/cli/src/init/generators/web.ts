@@ -133,12 +133,46 @@ export function getQueryClient() {
 }
 `;
 
+	// Client config - NEXT_PUBLIC_* vars (available in browser)
+	const clientConfigTs = `import { EnvironmentParser } from '@geekmidas/envkit';
+
+// Client config - only NEXT_PUBLIC_* vars (available in browser)
+// These values are inlined at build time by Next.js
+const envParser = new EnvironmentParser({
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NEXT_PUBLIC_AUTH_URL: process.env.NEXT_PUBLIC_AUTH_URL,
+});
+
+export const clientConfig = envParser
+  .create((get) => ({
+    apiUrl: get('NEXT_PUBLIC_API_URL').string().default('http://localhost:3000'),
+    authUrl: get('NEXT_PUBLIC_AUTH_URL').string().default('http://localhost:3002'),
+  }))
+  .parse();
+`;
+
+	// Server config - server-only vars (not available in browser)
+	const serverConfigTs = `import { EnvironmentParser } from '@geekmidas/envkit';
+
+// Server config - all env vars (server-side only, not exposed to browser)
+// Access these only in Server Components, Route Handlers, or Server Actions
+const envParser = new EnvironmentParser({ ...process.env });
+
+export const serverConfig = envParser
+  .create((get) => ({
+    // Add server-only secrets here
+    // Example: stripeSecretKey: get('STRIPE_SECRET_KEY').string(),
+  }))
+  .parse();
+`;
+
 	// Auth client for better-auth
 	const authClientTs = `import { createAuthClient } from 'better-auth/react';
 import { magicLinkClient } from 'better-auth/client/plugins';
+import { clientConfig } from '~/config/client';
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002',
+  baseURL: clientConfig.authUrl,
   plugins: [magicLinkClient()],
 });
 
@@ -163,9 +197,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 	// API client setup - uses createApi with shared QueryClient
 	const apiIndexTs = `import { createApi } from './openapi';
 import { getQueryClient } from '~/lib/query-client';
+import { clientConfig } from '~/config/client';
 
 export const api = createApi({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  baseURL: clientConfig.apiUrl,
   queryClient: getQueryClient(),
 });
 `;
@@ -294,6 +329,14 @@ node_modules/
 		{
 			path: 'apps/web/src/app/page.tsx',
 			content: pageTsx,
+		},
+		{
+			path: 'apps/web/src/config/client.ts',
+			content: clientConfigTs,
+		},
+		{
+			path: 'apps/web/src/config/server.ts',
+			content: serverConfigTs,
 		},
 		{
 			path: 'apps/web/src/lib/query-client.ts',
