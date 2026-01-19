@@ -83,7 +83,7 @@ describe('provisionServices', () => {
 		expect(result).toBeUndefined();
 	});
 
-	it('should skip postgres when DATABASE_URL already exists', async () => {
+	it('should skip postgres when already provisioned', async () => {
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
 		const result = await provisionServices(
@@ -92,14 +92,14 @@ describe('provisionServices', () => {
 			'env_1',
 			'myapp',
 			{ postgres: true },
-			{ DATABASE_URL: 'postgresql://existing:5432/db' },
+			{ postgresId: 'pg_existing' },
 		);
 
 		// Should return undefined since nothing new was provisioned
 		expect(result).toBeUndefined();
 	});
 
-	it('should skip redis when REDIS_URL already exists', async () => {
+	it('should skip redis when already provisioned', async () => {
 		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
 
 		const result = await provisionServices(
@@ -108,7 +108,7 @@ describe('provisionServices', () => {
 			'env_1',
 			'myapp',
 			{ redis: true },
-			{ REDIS_URL: 'redis://existing:6379' },
+			{ redisId: 'redis_existing' },
 		);
 
 		expect(result).toBeUndefined();
