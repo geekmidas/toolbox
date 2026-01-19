@@ -608,6 +608,116 @@ describe('workspaceDeployCommand', () => {
 			expect(envVars).toContain('AUTH_URL=http://test-workspace-auth:3001');
 		});
 
+		it('should build dependencyUrls from publicUrls for deployed apps', () => {
+			// Test the dependencyUrls building logic used in workspaceDeployCommand
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+				auth: 'https://auth.example.com',
+			};
+
+			const app = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3000,
+				dependencies: ['api', 'auth'],
+				framework: 'nextjs' as const,
+			};
+
+			// Build dependency URLs from already-deployed apps (mimics workspaceDeployCommand logic)
+			const dependencyUrls: Record<string, string> = {};
+			if (app.dependencies) {
+				for (const dep of app.dependencies) {
+					if (publicUrls[dep]) {
+						dependencyUrls[dep] = publicUrls[dep];
+					}
+				}
+			}
+
+			expect(dependencyUrls).toEqual({
+				api: 'https://api.example.com',
+				auth: 'https://auth.example.com',
+			});
+		});
+
+		it('should only include dependencies that have been deployed', () => {
+			// Test that dependencyUrls only includes apps that exist in publicUrls
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+				// auth is NOT deployed yet
+			};
+
+			const app = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3000,
+				dependencies: ['api', 'auth'], // wants both api and auth
+				framework: 'nextjs' as const,
+			};
+
+			const dependencyUrls: Record<string, string> = {};
+			if (app.dependencies) {
+				for (const dep of app.dependencies) {
+					if (publicUrls[dep]) {
+						dependencyUrls[dep] = publicUrls[dep];
+					}
+				}
+			}
+
+			// Only api should be included, auth is not yet deployed
+			expect(dependencyUrls).toEqual({
+				api: 'https://api.example.com',
+			});
+			expect(dependencyUrls.auth).toBeUndefined();
+		});
+
+		it('should handle apps with no dependencies', () => {
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+			};
+
+			const app = {
+				type: 'backend' as const,
+				path: 'apps/api',
+				port: 3000,
+				dependencies: [], // no dependencies
+			};
+
+			const dependencyUrls: Record<string, string> = {};
+			if (app.dependencies) {
+				for (const dep of app.dependencies) {
+					if (publicUrls[dep]) {
+						dependencyUrls[dep] = publicUrls[dep];
+					}
+				}
+			}
+
+			expect(dependencyUrls).toEqual({});
+		});
+
+		it('should handle apps with undefined dependencies', () => {
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+			};
+
+			const app = {
+				type: 'backend' as const,
+				path: 'apps/api',
+				port: 3000,
+				dependencies: undefined as unknown as string[],
+			};
+
+			const dependencyUrls: Record<string, string> = {};
+			if (app.dependencies) {
+				for (const dep of app.dependencies) {
+					if (publicUrls[dep]) {
+						dependencyUrls[dep] = publicUrls[dep];
+					}
+				}
+			}
+
+			expect(dependencyUrls).toEqual({});
+		});
+
 		it('should inject DATABASE_URL for backend apps', () => {
 			const workspaceName = 'test-workspace';
 			const hasPostgres = true;
@@ -627,7 +737,7 @@ describe('workspaceDeployCommand', () => {
 
 		it('should not inject DATABASE_URL for frontend apps', () => {
 			const hasPostgres = true;
-			const appType: 'backend' | 'frontend' = 'frontend';
+			const appType = 'frontend' as 'backend' | 'frontend';
 
 			const envVars: string[] = [];
 
