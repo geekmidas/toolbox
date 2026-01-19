@@ -1024,7 +1024,10 @@ describe('workspaceDeployCommand', () => {
 				dependencyUrls: webDependencyUrls,
 			};
 
-			const webResult = resolveEnvVars(['PORT', 'NODE_ENV', 'API_URL'], webContext);
+			const webResult = resolveEnvVars(
+				['PORT', 'NODE_ENV', 'API_URL'],
+				webContext,
+			);
 
 			expect(webResult.missing).toEqual([]);
 			expect(webResult.resolved).toEqual({

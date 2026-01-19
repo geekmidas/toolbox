@@ -428,7 +428,9 @@ describe('resolveEnvVar', () => {
 				dependencyUrls: { auth: 'https://login.myapp.com' },
 			});
 
-			expect(resolveEnvVar('AUTH_URL', context)).toBe('https://login.myapp.com');
+			expect(resolveEnvVar('AUTH_URL', context)).toBe(
+				'https://login.myapp.com',
+			);
 		});
 
 		it('should prefer user secrets over dependency URLs', () => {
@@ -603,10 +605,7 @@ describe('validateEnvVars', () => {
 			},
 		});
 
-		const result = validateEnvVars(
-			['PORT', 'AUTH_URL', 'API_URL'],
-			context,
-		);
+		const result = validateEnvVars(['PORT', 'AUTH_URL', 'API_URL'], context);
 
 		expect(result.valid).toBe(true);
 		expect(result.missing).toEqual([]);
