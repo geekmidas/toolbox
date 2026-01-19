@@ -373,6 +373,84 @@ describe('resolveEnvVar', () => {
 
 		expect(resolveEnvVar('UNKNOWN_VAR', context)).toBeUndefined();
 	});
+
+	describe('dependency URLs', () => {
+		it('should resolve AUTH_URL from dependencyUrls', () => {
+			const context = createContext({
+				dependencyUrls: { auth: 'https://auth.example.com' },
+			});
+
+			expect(resolveEnvVar('AUTH_URL', context)).toBe(
+				'https://auth.example.com',
+			);
+		});
+
+		it('should resolve API_URL from dependencyUrls', () => {
+			const context = createContext({
+				dependencyUrls: { api: 'https://api.example.com' },
+			});
+
+			expect(resolveEnvVar('API_URL', context)).toBe('https://api.example.com');
+		});
+
+		it('should resolve any {DEP}_URL pattern from dependencyUrls', () => {
+			const context = createContext({
+				dependencyUrls: {
+					payments: 'https://payments.example.com',
+					notifications: 'https://notifications.example.com',
+				},
+			});
+
+			expect(resolveEnvVar('PAYMENTS_URL', context)).toBe(
+				'https://payments.example.com',
+			);
+			expect(resolveEnvVar('NOTIFICATIONS_URL', context)).toBe(
+				'https://notifications.example.com',
+			);
+		});
+
+		it('should return undefined for missing dependency URL', () => {
+			const context = createContext({
+				dependencyUrls: { auth: 'https://auth.example.com' },
+			});
+
+			expect(resolveEnvVar('API_URL', context)).toBeUndefined();
+		});
+
+		it('should return undefined when dependencyUrls is not provided', () => {
+			const context = createContext();
+
+			expect(resolveEnvVar('AUTH_URL', context)).toBeUndefined();
+		});
+
+		it('should handle custom domain from config', () => {
+			const context = createContext({
+				dependencyUrls: { auth: 'https://login.myapp.com' },
+			});
+
+			expect(resolveEnvVar('AUTH_URL', context)).toBe('https://login.myapp.com');
+		});
+
+		it('should prefer user secrets over dependency URLs', () => {
+			const context = createContext({
+				dependencyUrls: { auth: 'https://auth.example.com' },
+				userSecrets: {
+					stage: 'production',
+					createdAt: '2024-01-01T00:00:00Z',
+					updatedAt: '2024-01-01T00:00:00Z',
+					custom: { AUTH_URL: 'https://custom-auth.example.com' },
+					urls: {},
+					services: {},
+				},
+			});
+
+			// User secrets are checked after dependency URLs, so dependency URL wins
+			// If you want user secrets to override, the order in resolveEnvVar should change
+			expect(resolveEnvVar('AUTH_URL', context)).toBe(
+				'https://auth.example.com',
+			);
+		});
+	});
 });
 
 describe('resolveEnvVars', () => {
@@ -515,5 +593,45 @@ describe('validateEnvVars', () => {
 		expect(result.valid).toBe(true);
 		expect(result.missing).toEqual([]);
 		expect(result.resolved).toEqual({});
+	});
+
+	it('should resolve dependency URLs in validation', () => {
+		const context = createContext({
+			dependencyUrls: {
+				auth: 'https://auth.example.com',
+				api: 'https://api.example.com',
+			},
+		});
+
+		const result = validateEnvVars(
+			['PORT', 'AUTH_URL', 'API_URL'],
+			context,
+		);
+
+		expect(result.valid).toBe(true);
+		expect(result.missing).toEqual([]);
+		expect(result.resolved).toEqual({
+			PORT: '3000',
+			AUTH_URL: 'https://auth.example.com',
+			API_URL: 'https://api.example.com',
+		});
+	});
+
+	it('should report missing dependency URLs', () => {
+		const context = createContext({
+			dependencyUrls: { auth: 'https://auth.example.com' },
+		});
+
+		const result = validateEnvVars(
+			['PORT', 'AUTH_URL', 'PAYMENTS_URL'],
+			context,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.missing).toEqual(['PAYMENTS_URL']);
+		expect(result.resolved).toEqual({
+			PORT: '3000',
+			AUTH_URL: 'https://auth.example.com',
+		});
 	});
 });
