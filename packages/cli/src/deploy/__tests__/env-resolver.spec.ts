@@ -295,6 +295,9 @@ describe('resolveEnvVar', () => {
 	it('should resolve custom variable from userSecrets.custom', () => {
 		const context = createContext({
 			userSecrets: {
+				stage: 'production',
+				createdAt: '2024-01-01T00:00:00Z',
+				updatedAt: '2024-01-01T00:00:00Z',
 				custom: { MY_API_KEY: 'secret-api-key' },
 				urls: {},
 				services: {},
@@ -307,6 +310,9 @@ describe('resolveEnvVar', () => {
 	it('should resolve URL variables from userSecrets.urls', () => {
 		const context = createContext({
 			userSecrets: {
+				stage: 'production',
+				createdAt: '2024-01-01T00:00:00Z',
+				updatedAt: '2024-01-01T00:00:00Z',
 				custom: {},
 				urls: { DATABASE_URL: 'postgresql://external:5432/db' },
 				services: {},
@@ -321,9 +327,19 @@ describe('resolveEnvVar', () => {
 	it('should resolve POSTGRES_PASSWORD from userSecrets.services', () => {
 		const context = createContext({
 			userSecrets: {
+				stage: 'production',
+				createdAt: '2024-01-01T00:00:00Z',
+				updatedAt: '2024-01-01T00:00:00Z',
 				custom: {},
 				urls: {},
-				services: { postgres: { password: 'pg-password' } },
+				services: {
+					postgres: {
+						host: 'localhost',
+						port: 5432,
+						username: 'postgres',
+						password: 'pg-password',
+					},
+				},
 			},
 		});
 
@@ -333,9 +349,19 @@ describe('resolveEnvVar', () => {
 	it('should resolve REDIS_PASSWORD from userSecrets.services', () => {
 		const context = createContext({
 			userSecrets: {
+				stage: 'production',
+				createdAt: '2024-01-01T00:00:00Z',
+				updatedAt: '2024-01-01T00:00:00Z',
 				custom: {},
 				urls: {},
-				services: { redis: { password: 'redis-password' } },
+				services: {
+					redis: {
+						host: 'localhost',
+						port: 6379,
+						username: 'default',
+						password: 'redis-password',
+					},
+				},
 			},
 		});
 
