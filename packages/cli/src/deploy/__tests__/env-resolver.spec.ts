@@ -452,6 +452,73 @@ describe('resolveEnvVar', () => {
 				'https://auth.example.com',
 			);
 		});
+
+		describe('NEXT_PUBLIC_ prefix', () => {
+			it('should resolve NEXT_PUBLIC_API_URL from dependencyUrls.api', () => {
+				const context = createContext({
+					dependencyUrls: { api: 'https://api.example.com' },
+				});
+
+				expect(resolveEnvVar('NEXT_PUBLIC_API_URL', context)).toBe(
+					'https://api.example.com',
+				);
+			});
+
+			it('should resolve NEXT_PUBLIC_AUTH_URL from dependencyUrls.auth', () => {
+				const context = createContext({
+					dependencyUrls: { auth: 'https://auth.example.com' },
+				});
+
+				expect(resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+			});
+
+			it('should resolve both AUTH_URL and NEXT_PUBLIC_AUTH_URL to same value', () => {
+				const context = createContext({
+					dependencyUrls: { auth: 'https://auth.example.com' },
+				});
+
+				expect(resolveEnvVar('AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+				expect(resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+			});
+
+			it('should resolve NEXT_PUBLIC_ prefix for any dependency', () => {
+				const context = createContext({
+					dependencyUrls: {
+						payments: 'https://payments.example.com',
+						notifications: 'https://notifications.example.com',
+					},
+				});
+
+				expect(resolveEnvVar('NEXT_PUBLIC_PAYMENTS_URL', context)).toBe(
+					'https://payments.example.com',
+				);
+				expect(resolveEnvVar('NEXT_PUBLIC_NOTIFICATIONS_URL', context)).toBe(
+					'https://notifications.example.com',
+				);
+			});
+
+			it('should return undefined for missing NEXT_PUBLIC_ dependency URL', () => {
+				const context = createContext({
+					dependencyUrls: { auth: 'https://auth.example.com' },
+				});
+
+				expect(resolveEnvVar('NEXT_PUBLIC_API_URL', context)).toBeUndefined();
+			});
+
+			it('should return undefined when dependencyUrls is not provided', () => {
+				const context = createContext();
+
+				expect(
+					resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context),
+				).toBeUndefined();
+			});
+		});
 	});
 });
 
