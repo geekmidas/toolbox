@@ -614,6 +614,36 @@ interface AppConfigBase {
 	 */
 	client?: ClientConfig;
 
+	/**
+	 * Config file path(s) for frontend environment sniffing.
+	 *
+	 * Points to file(s) that call EnvironmentParser.parse() at import time.
+	 * The sniffer imports these files and captures all env vars accessed.
+	 *
+	 * Dependencies are auto-generated as NEXT_PUBLIC_{DEP}_URL variables.
+	 *
+	 * @example Single config file
+	 * ```ts
+	 * config: './src/config/env'
+	 * ```
+	 *
+	 * @example Separate client/server configs
+	 * ```ts
+	 * config: {
+	 *   client: './src/config/client',  // NEXT_PUBLIC_* vars for browser
+	 *   server: './src/config/server',  // Server-only vars for SSR
+	 * }
+	 * ```
+	 */
+	config?:
+		| string
+		| {
+				/** Client-side config (NEXT_PUBLIC_* vars, available in browser) */
+				client?: string;
+				/** Server-side config (all env vars, for SSR/API routes) */
+				server?: string;
+		  };
+
 	// ─────────────────────────────────────────────────────────────────
 	// Deployment
 	// ─────────────────────────────────────────────────────────────────
