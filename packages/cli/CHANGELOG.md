@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.5.0
+
+### Minor Changes
+
+- ✨ [`36166de`](https://github.com/geekmidas/toolbox/commit/36166defde0a66e68cb9ac5c6a6856ea23e2da62) Thanks [@geekmidas](https://github.com/geekmidas)! - Add sniffing and config for frontend apps. Also ensure next.js apps get args at build time.
+
 ## 1.4.0
 
 ### Minor Changes
