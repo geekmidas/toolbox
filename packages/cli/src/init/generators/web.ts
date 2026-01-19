@@ -90,17 +90,21 @@ export default nextConfig;
 					name: 'next',
 				},
 			],
+			baseUrl: '.',
 			paths: {
-				'~/*': ['./src/*'],
+				'~/*': ['./src/*', '../../packages/ui/src/*'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[`${uiPackage}`]: ['../../packages/ui/src'],
 				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
 			},
-			baseUrl: '.',
 		},
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
 		exclude: ['node_modules'],
+		references: [
+			{ path: '../../packages/ui' },
+			{ path: '../../packages/models' },
+		],
 	};
 
 	// Query client singleton for browser, fresh instance for server
