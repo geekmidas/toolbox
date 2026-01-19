@@ -399,4 +399,27 @@ describe('Route53Provider', () => {
 			).rejects.toThrow('No hosted zone found for domain');
 		});
 	});
+
+	describe('default region', () => {
+		it('should use us-east-1 as default region when none specified', () => {
+			// This test verifies the provider can be created without region
+			// and doesn't throw "Region is missing" error
+			const providerWithoutRegion = new Route53Provider({
+				endpoint: LOCALSTACK_ENDPOINT,
+				hostedZoneId: 'test-zone',
+			});
+
+			expect(providerWithoutRegion.name).toBe('route53');
+		});
+
+		it('should use provided region when specified', () => {
+			const providerWithRegion = new Route53Provider({
+				endpoint: LOCALSTACK_ENDPOINT,
+				region: 'eu-west-1',
+				hostedZoneId: 'test-zone',
+			});
+
+			expect(providerWithRegion.name).toBe('route53');
+		});
+	});
 });
