@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.3.0
+
+### Minor Changes
+
+- 🐛 [`bee0e64`](https://github.com/geekmidas/toolbox/commit/bee0e64367dc937869556de516fedfea64f2a438) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix route53 profile setting for state management, fix web templates on init.
+
 ## 1.2.3
 
 ### Patch Changes
