@@ -93,6 +93,16 @@ describe('createStateProvider', () => {
 
 			expect(provider).toBeInstanceOf(CachedStateProvider);
 		});
+
+		it('should create CachedStateProvider for ssm config with profile', async () => {
+			const provider = await createStateProvider({
+				config: { provider: 'ssm', region: 'us-east-1', profile: 'my-profile' },
+				workspaceRoot: testDir,
+				workspaceName: 'test-workspace',
+			});
+
+			expect(provider).toBeInstanceOf(CachedStateProvider);
+		});
 	});
 
 	describe('custom provider', () => {

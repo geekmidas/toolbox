@@ -75,6 +75,18 @@ describe('SSMStateProvider', () => {
 			expect(provider).toBeInstanceOf(SSMStateProvider);
 			expect(provider.workspaceName).toBe('my-workspace');
 		});
+
+		it('should create provider with profile option', () => {
+			const provider = SSMStateProvider.create({
+				workspaceName: 'my-workspace',
+				region: 'us-west-2',
+				profile: 'my-profile',
+				endpoint: LOCALSTACK_ENDPOINT,
+			});
+
+			expect(provider).toBeInstanceOf(SSMStateProvider);
+			expect(provider.workspaceName).toBe('my-workspace');
+		});
 	});
 
 	describe('read', () => {
