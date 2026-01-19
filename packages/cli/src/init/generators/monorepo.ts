@@ -343,7 +343,8 @@ export default defineWorkspace({
       port: 3000,
       routes: '${getRoutesGlob()}',
       envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',`;
+      logger: './src/config/logger#logger',
+      dependencies: ['auth'],`;
 
 	if (telescope) {
 		config += `
