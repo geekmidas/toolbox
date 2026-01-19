@@ -514,9 +514,7 @@ describe('resolveEnvVar', () => {
 			it('should return undefined when dependencyUrls is not provided', () => {
 				const context = createContext();
 
-				expect(
-					resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context),
-				).toBeUndefined();
+				expect(resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context)).toBeUndefined();
 			});
 		});
 	});
@@ -801,9 +799,7 @@ describe('Docker build arg extraction', () => {
 
 		// Only NEXT_PUBLIC_* should be in build args
 		expect(publicUrlArgNames).toEqual(['NEXT_PUBLIC_API_URL']);
-		expect(buildArgs).toEqual([
-			'NEXT_PUBLIC_API_URL=https://api.example.com',
-		]);
+		expect(buildArgs).toEqual(['NEXT_PUBLIC_API_URL=https://api.example.com']);
 
 		// Server vars should still be in resolved (for runtime)
 		expect(resolved.DATABASE_URL).toBe(
