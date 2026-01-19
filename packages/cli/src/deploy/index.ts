@@ -73,12 +73,7 @@ import {
 	type DokployPostgres,
 	type DokployRedis,
 } from './dokploy-api';
-import {
-	generatePublicUrlBuildArgs,
-	getPublicUrlArgNames,
-	isMainFrontendApp,
-	resolveHost,
-} from './domain.js';
+import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
 	type EnvResolverContext,
 	formatMissingVarsError,
