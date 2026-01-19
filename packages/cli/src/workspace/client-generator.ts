@@ -1,34 +1,20 @@
-import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { EndpointGenerator } from '../generators/EndpointGenerator.js';
-import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
 import type { NormalizedWorkspace } from './types.js';
 
 const logger = console;
 
 /**
- * Result of generating a client for a frontend app.
+ * Result of copying a client to a frontend app.
  */
-export interface ClientGenerationResult {
+export interface ClientCopyResult {
 	frontendApp: string;
 	backendApp: string;
 	outputPath: string;
 	endpointCount: number;
-	generated: boolean;
-	reason?: string;
-}
-
-/**
- * Cache of OpenAPI spec hashes to detect changes.
- */
-const specHashCache = new Map<string, string>();
-
-/**
- * Calculate hash of content for change detection.
- */
-function hashContent(content: string): string {
-	return createHash('sha256').update(content).digest('hex').slice(0, 16);
+	success: boolean;
+	error?: string;
 }
 
 /**
@@ -51,188 +37,6 @@ export function getFirstRoute(
 ): string | null {
 	const normalized = normalizeRoutes(routes);
 	return normalized[0] || null;
-}
-
-/**
- * Generate OpenAPI spec for a backend app.
- * Returns the spec content and endpoint count.
- */
-export async function generateBackendOpenApi(
-	workspace: NormalizedWorkspace,
-	appName: string,
-): Promise<{ content: string; endpointCount: number } | null> {
-	const app = workspace.apps[appName];
-	if (!app || app.type !== 'backend' || !app.routes) {
-		return null;
-	}
-
-	const appPath = join(workspace.root, app.path);
-	const routesPatterns = normalizeRoutes(app.routes);
-
-	if (routesPatterns.length === 0) {
-		return null;
-	}
-
-	// Load endpoints from all routes patterns
-	const endpointGenerator = new EndpointGenerator();
-	const allLoadedEndpoints = [];
-
-	for (const pattern of routesPatterns) {
-		const fullPattern = join(appPath, pattern);
-		const loaded = await endpointGenerator.load(fullPattern);
-		allLoadedEndpoints.push(...loaded);
-	}
-
-	const loadedEndpoints = allLoadedEndpoints;
-
-	if (loadedEndpoints.length === 0) {
-		return null;
-	}
-
-	const endpoints = loadedEndpoints.map(({ construct }) => construct);
-
-	const tsGenerator = new OpenApiTsGenerator();
-	const content = await tsGenerator.generate(endpoints, {
-		title: `${appName} API`,
-		version: '1.0.0',
-		description: `Auto-generated API client for ${appName}`,
-	});
-
-	return { content, endpointCount: loadedEndpoints.length };
-}
-
-/**
- * Generate client for a frontend app from its backend dependencies.
- * Only regenerates if the OpenAPI spec has changed.
- */
-export async function generateClientForFrontend(
-	workspace: NormalizedWorkspace,
-	frontendAppName: string,
-	options: { force?: boolean } = {},
-): Promise<ClientGenerationResult[]> {
-	const results: ClientGenerationResult[] = [];
-	const frontendApp = workspace.apps[frontendAppName];
-
-	if (!frontendApp || frontendApp.type !== 'frontend') {
-		return results;
-	}
-
-	const dependencies = frontendApp.dependencies || [];
-	const backendDeps = dependencies.filter((dep) => {
-		const depApp = workspace.apps[dep];
-		return depApp?.type === 'backend' && depApp.routes;
-	});
-
-	if (backendDeps.length === 0) {
-		return results;
-	}
-
-	// Determine output directory
-	const clientOutput = frontendApp.client?.output || 'src/api';
-	const frontendPath = join(workspace.root, frontendApp.path);
-	const outputDir = join(frontendPath, clientOutput);
-
-	for (const backendAppName of backendDeps) {
-		const result: ClientGenerationResult = {
-			frontendApp: frontendAppName,
-			backendApp: backendAppName,
-			outputPath: '',
-			endpointCount: 0,
-			generated: false,
-		};
-
-		try {
-			// Generate OpenAPI spec for backend
-			const spec = await generateBackendOpenApi(workspace, backendAppName);
-
-			if (!spec) {
-				result.reason = 'No endpoints found in backend';
-				results.push(result);
-				continue;
-			}
-
-			result.endpointCount = spec.endpointCount;
-
-			// Check if spec has changed (unless force)
-			const cacheKey = `${backendAppName}:${frontendAppName}`;
-			const newHash = hashContent(spec.content);
-			const oldHash = specHashCache.get(cacheKey);
-
-			if (!options.force && oldHash === newHash) {
-				result.reason = 'No schema changes detected';
-				results.push(result);
-				continue;
-			}
-
-			// Generate client file
-			await mkdir(outputDir, { recursive: true });
-
-			// For single dependency, use openapi.ts; for multiple, use {backend}-api.ts
-			const fileName =
-				backendDeps.length === 1 ? 'openapi.ts' : `${backendAppName}-api.ts`;
-			const outputPath = join(outputDir, fileName);
-
-			// Add header comment with backend reference
-			const backendRelPath = relative(
-				dirname(outputPath),
-				join(workspace.root, workspace.apps[backendAppName]!.path),
-			);
-
-			const clientContent = `/**
- * Auto-generated API client for ${backendAppName}
- * Generated from: ${backendRelPath}
- *
- * DO NOT EDIT - This file is automatically regenerated when backend schemas change.
- */
-
-${spec.content}
-`;
-
-			await writeFile(outputPath, clientContent);
-
-			// Update cache
-			specHashCache.set(cacheKey, newHash);
-
-			result.outputPath = outputPath;
-			result.generated = true;
-			results.push(result);
-		} catch (error) {
-			result.reason = `Error: ${(error as Error).message}`;
-			results.push(result);
-		}
-	}
-
-	return results;
-}
-
-/**
- * Generate clients for all frontend apps in the workspace.
- */
-export async function generateAllClients(
-	workspace: NormalizedWorkspace,
-	options: { force?: boolean; silent?: boolean } = {},
-): Promise<ClientGenerationResult[]> {
-	const log = options.silent ? () => {} : logger.log.bind(logger);
-	const allResults: ClientGenerationResult[] = [];
-
-	for (const [appName, app] of Object.entries(workspace.apps)) {
-		if (app.type === 'frontend' && app.dependencies.length > 0) {
-			const results = await generateClientForFrontend(workspace, appName, {
-				force: options.force,
-			});
-
-			for (const result of results) {
-				if (result.generated) {
-					log(
-						`📦 Generated client for ${result.frontendApp} from ${result.backendApp} (${result.endpointCount} endpoints)`,
-					);
-				}
-				allResults.push(result);
-			}
-		}
-	}
-
-	return allResults;
 }
 
 /**
@@ -300,8 +104,144 @@ export function getDependentFrontends(
 }
 
 /**
- * Clear the spec hash cache (useful for testing).
+ * Get the path to a backend's OpenAPI spec file.
  */
-export function clearSpecHashCache(): void {
-	specHashCache.clear();
+export function getBackendOpenApiPath(
+	workspace: NormalizedWorkspace,
+	backendAppName: string,
+): string | null {
+	const app = workspace.apps[backendAppName];
+	if (!app || app.type !== 'backend') {
+		return null;
+	}
+
+	return join(workspace.root, app.path, '.gkm', 'openapi.ts');
+}
+
+/**
+ * Count endpoints in an OpenAPI spec content.
+ */
+function countEndpoints(content: string): number {
+	const endpointMatches = content.match(
+		/'(GET|POST|PUT|PATCH|DELETE)\s+\/[^']+'/g,
+	);
+	return endpointMatches?.length ?? 0;
+}
+
+/**
+ * Copy the OpenAPI client from a backend to all dependent frontend apps.
+ * Called when the backend's .gkm/openapi.ts file changes.
+ */
+export async function copyClientToFrontends(
+	workspace: NormalizedWorkspace,
+	backendAppName: string,
+	options: { silent?: boolean } = {},
+): Promise<ClientCopyResult[]> {
+	const log = options.silent ? () => {} : logger.log.bind(logger);
+	const results: ClientCopyResult[] = [];
+
+	const backendApp = workspace.apps[backendAppName];
+	if (!backendApp || backendApp.type !== 'backend') {
+		return results;
+	}
+
+	// Get the backend's OpenAPI spec
+	const openApiPath = join(
+		workspace.root,
+		backendApp.path,
+		'.gkm',
+		'openapi.ts',
+	);
+
+	if (!existsSync(openApiPath)) {
+		return results;
+	}
+
+	const content = await readFile(openApiPath, 'utf-8');
+	const endpointCount = countEndpoints(content);
+
+	// Get all frontends that depend on this backend
+	const dependentFrontends = getDependentFrontends(workspace, backendAppName);
+
+	for (const frontendAppName of dependentFrontends) {
+		const frontendApp = workspace.apps[frontendAppName];
+		if (!frontendApp || frontendApp.type !== 'frontend') {
+			continue;
+		}
+
+		// Check if frontend has client output configured
+		const clientOutput = frontendApp.client?.output;
+		if (!clientOutput) {
+			continue;
+		}
+
+		const result: ClientCopyResult = {
+			frontendApp: frontendAppName,
+			backendApp: backendAppName,
+			outputPath: '',
+			endpointCount,
+			success: false,
+		};
+
+		try {
+			const frontendPath = join(workspace.root, frontendApp.path);
+			const outputDir = join(frontendPath, clientOutput);
+			await mkdir(outputDir, { recursive: true });
+
+			// Use backend app name as filename
+			const fileName = `${backendAppName}.ts`;
+			const outputPath = join(outputDir, fileName);
+
+			// Add header comment with backend reference
+			const backendRelPath = relative(
+				dirname(outputPath),
+				join(workspace.root, backendApp.path),
+			);
+
+			const clientContent = `/**
+ * Auto-generated API client for ${backendAppName}
+ * Generated from: ${backendRelPath}
+ *
+ * DO NOT EDIT - This file is automatically regenerated when backend schemas change.
+ */
+
+${content}
+`;
+
+			await writeFile(outputPath, clientContent);
+
+			result.outputPath = outputPath;
+			result.success = true;
+
+			log(
+				`📦 Copied client to ${frontendAppName} from ${backendAppName} (${endpointCount} endpoints)`,
+			);
+		} catch (error) {
+			result.error = (error as Error).message;
+		}
+
+		results.push(result);
+	}
+
+	return results;
+}
+
+/**
+ * Copy clients from all backends to their dependent frontends.
+ * Useful for initial setup or force refresh.
+ */
+export async function copyAllClients(
+	workspace: NormalizedWorkspace,
+	options: { silent?: boolean } = {},
+): Promise<ClientCopyResult[]> {
+	const allResults: ClientCopyResult[] = [];
+
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		if (app.type === 'backend' && app.routes) {
+			const results = await copyClientToFrontends(workspace, appName, options);
+			allResults.push(...results);
+		}
+	}
+
+	return allResults;
 }
