@@ -826,4 +826,265 @@ describe('workspaceDeployCommand', () => {
 			expect(result.failedCount).toBe(1);
 		});
 	});
+
+	describe('workspace dependencyUrls integration with env resolver', () => {
+		it('should resolve dependency URLs when building env context for an app', () => {
+			// Simulate the scenario where api and auth are deployed, then web needs their URLs
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.myapp.com',
+				auth: 'https://auth.myapp.com',
+			};
+
+			const webApp = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3000,
+				dependencies: ['api', 'auth'],
+				framework: 'nextjs' as const,
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			// Build dependencyUrls (as done in workspaceDeployCommand)
+			const dependencyUrls: Record<string, string> = {};
+			for (const dep of webApp.dependencies) {
+				if (publicUrls[dep]) {
+					dependencyUrls[dep] = publicUrls[dep];
+				}
+			}
+
+			// Create env context with dependencyUrls
+			const context: EnvResolverContext = {
+				app: webApp,
+				appName: 'web',
+				stage: 'production',
+				state: createEmptyState('production', 'proj_test', 'env-123'),
+				appHostname: 'web.myapp.com',
+				frontendUrls: [],
+				dependencyUrls,
+			};
+
+			// Resolve API_URL and AUTH_URL
+			expect(resolveEnvVar('API_URL', context)).toBe('https://api.myapp.com');
+			expect(resolveEnvVar('AUTH_URL', context)).toBe('https://auth.myapp.com');
+		});
+
+		it('should resolve multiple env vars including dependency URLs', () => {
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+				payments: 'https://payments.example.com',
+			};
+
+			const webApp = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3001,
+				dependencies: ['api', 'payments'],
+				framework: 'nextjs' as const,
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			// Build dependencyUrls
+			const dependencyUrls: Record<string, string> = {};
+			for (const dep of webApp.dependencies) {
+				if (publicUrls[dep]) {
+					dependencyUrls[dep] = publicUrls[dep];
+				}
+			}
+
+			const context: EnvResolverContext = {
+				app: webApp,
+				appName: 'web',
+				stage: 'production',
+				state: createEmptyState('production', 'proj_test', 'env-123'),
+				appHostname: 'web.example.com',
+				frontendUrls: [],
+				dependencyUrls,
+			};
+
+			// Resolve all required vars including dependency URLs
+			const result = resolveEnvVars(
+				['PORT', 'NODE_ENV', 'API_URL', 'PAYMENTS_URL'],
+				context,
+			);
+
+			expect(result.resolved).toEqual({
+				PORT: '3001',
+				NODE_ENV: 'production',
+				API_URL: 'https://api.example.com',
+				PAYMENTS_URL: 'https://payments.example.com',
+			});
+			expect(result.missing).toEqual([]);
+		});
+
+		it('should report missing dependency URLs when dependency not yet deployed', () => {
+			// Scenario: web depends on api and auth, but only api is deployed
+			const publicUrls: Record<string, string> = {
+				api: 'https://api.example.com',
+				// auth is NOT deployed
+			};
+
+			const webApp = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3001,
+				dependencies: ['api', 'auth'],
+				framework: 'nextjs' as const,
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			// Build dependencyUrls (auth will be missing)
+			const dependencyUrls: Record<string, string> = {};
+			for (const dep of webApp.dependencies) {
+				if (publicUrls[dep]) {
+					dependencyUrls[dep] = publicUrls[dep];
+				}
+			}
+
+			const context: EnvResolverContext = {
+				app: webApp,
+				appName: 'web',
+				stage: 'production',
+				state: createEmptyState('production', 'proj_test', 'env-123'),
+				appHostname: 'web.example.com',
+				frontendUrls: [],
+				dependencyUrls,
+			};
+
+			const result = resolveEnvVars(['API_URL', 'AUTH_URL'], context);
+
+			expect(result.resolved).toEqual({
+				API_URL: 'https://api.example.com',
+			});
+			expect(result.missing).toEqual(['AUTH_URL']);
+		});
+
+		it('should correctly resolve chain of dependencies (db -> api -> web)', () => {
+			// Simulate deploying in order: db (no deps), api (depends on nothing but needs DATABASE_URL),
+			// then web (depends on api)
+			const publicUrls: Record<string, string> = {};
+			const state = createEmptyState('production', 'proj_test', 'env-123');
+
+			// Step 1: Deploy api first
+			const apiApp = {
+				type: 'backend' as const,
+				path: 'apps/api',
+				port: 3000,
+				dependencies: [],
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			const apiContext: EnvResolverContext = {
+				app: apiApp,
+				appName: 'api',
+				stage: 'production',
+				state,
+				appHostname: 'api.example.com',
+				frontendUrls: [],
+				appCredentials: { dbUser: 'api', dbPassword: 'secret' },
+				postgres: { host: 'db', port: 5432, database: 'myapp' },
+				dependencyUrls: {}, // api has no dependencies
+			};
+
+			const apiResult = resolveEnvVars(
+				['PORT', 'NODE_ENV', 'DATABASE_URL'],
+				apiContext,
+			);
+			expect(apiResult.missing).toEqual([]);
+			expect(apiResult.resolved.DATABASE_URL).toBe(
+				'postgresql://api:secret@db:5432/myapp',
+			);
+
+			// Simulate api is now deployed
+			publicUrls.api = 'https://api.example.com';
+
+			// Step 2: Deploy web (depends on api)
+			const webApp = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3001,
+				dependencies: ['api'],
+				framework: 'nextjs' as const,
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			const webDependencyUrls: Record<string, string> = {};
+			for (const dep of webApp.dependencies) {
+				if (publicUrls[dep]) {
+					webDependencyUrls[dep] = publicUrls[dep];
+				}
+			}
+
+			const webContext: EnvResolverContext = {
+				app: webApp,
+				appName: 'web',
+				stage: 'production',
+				state,
+				appHostname: 'web.example.com',
+				frontendUrls: [],
+				dependencyUrls: webDependencyUrls,
+			};
+
+			const webResult = resolveEnvVars(['PORT', 'NODE_ENV', 'API_URL'], webContext);
+
+			expect(webResult.missing).toEqual([]);
+			expect(webResult.resolved).toEqual({
+				PORT: '3001',
+				NODE_ENV: 'production',
+				API_URL: 'https://api.example.com',
+			});
+		});
+
+		it('should handle microservices topology with multiple inter-dependencies', () => {
+			// Scenario:
+			// - auth service (no deps)
+			// - api service (depends on auth)
+			// - notifications service (depends on api)
+			// - web (depends on api, auth, notifications)
+			const publicUrls: Record<string, string> = {
+				auth: 'https://auth.example.com',
+				api: 'https://api.example.com',
+				notifications: 'https://notifications.example.com',
+			};
+
+			const webApp = {
+				type: 'frontend' as const,
+				path: 'apps/web',
+				port: 3000,
+				dependencies: ['api', 'auth', 'notifications'],
+				framework: 'nextjs' as const,
+				resolvedDeployTarget: 'dokploy' as const,
+			};
+
+			// Build dependencyUrls for web
+			const dependencyUrls: Record<string, string> = {};
+			for (const dep of webApp.dependencies) {
+				if (publicUrls[dep]) {
+					dependencyUrls[dep] = publicUrls[dep];
+				}
+			}
+
+			const context: EnvResolverContext = {
+				app: webApp,
+				appName: 'web',
+				stage: 'production',
+				state: createEmptyState('production', 'proj_test', 'env-123'),
+				appHostname: 'web.example.com',
+				frontendUrls: [],
+				dependencyUrls,
+			};
+
+			const result = resolveEnvVars(
+				['PORT', 'API_URL', 'AUTH_URL', 'NOTIFICATIONS_URL'],
+				context,
+			);
+
+			expect(result.missing).toEqual([]);
+			expect(result.resolved).toEqual({
+				PORT: '3000',
+				API_URL: 'https://api.example.com',
+				AUTH_URL: 'https://auth.example.com',
+				NOTIFICATIONS_URL: 'https://notifications.example.com',
+			});
+		});
+	});
 });
