@@ -62,8 +62,12 @@ describe('sniffAppEnvironment', () => {
 
 			const result = await sniffAppEnvironment(app, 'web', workspacePath);
 
-			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_PAYMENTS-SERVICE_URL');
-			expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_NOTIFICATION_API_URL');
+			expect(result.requiredEnvVars).toContain(
+				'NEXT_PUBLIC_PAYMENTS-SERVICE_URL',
+			);
+			expect(result.requiredEnvVars).toContain(
+				'NEXT_PUBLIC_NOTIFICATION_API_URL',
+			);
 		});
 
 		describe('config sniffing', () => {
