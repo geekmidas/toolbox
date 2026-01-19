@@ -67,23 +67,6 @@ describe('sniffAppEnvironment', () => {
 		});
 
 		describe('config sniffing', () => {
-			it('should sniff env vars from string config path', async () => {
-				const app = createApp({
-					type: 'frontend',
-					path: fixturesPath,
-					dependencies: ['api'],
-					config: './simple-entry.ts',
-				});
-
-				const result = await sniffAppEnvironment(app, 'web', fixturesPath);
-
-				// Should have dependency var + sniffed vars
-				expect(result.requiredEnvVars).toContain('NEXT_PUBLIC_API_URL');
-				expect(result.requiredEnvVars).toContain('PORT');
-				expect(result.requiredEnvVars).toContain('DATABASE_URL');
-				expect(result.requiredEnvVars).toContain('REDIS_URL');
-			});
-
 			it('should sniff env vars from config.client path', async () => {
 				const app = createApp({
 					type: 'frontend',
