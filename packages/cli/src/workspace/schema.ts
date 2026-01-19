@@ -468,6 +468,8 @@ const SSMStateConfigSchema = z.object({
 	provider: z.literal('ssm'),
 	/** AWS region (required for SSM provider) */
 	region: AwsRegionSchema,
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile: z.string().optional(),
 });
 
 /**

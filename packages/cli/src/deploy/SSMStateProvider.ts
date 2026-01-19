@@ -22,6 +22,8 @@ export interface SSMStateProviderOptions {
 	workspaceName: string;
 	/** AWS region */
 	region?: AwsRegion;
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile?: string;
 	/** AWS credentials (optional - uses default credential chain if not provided) */
 	credentials?: SSMClientConfig['credentials'];
 	/** Custom endpoint (for LocalStack or other S3-compatible services) */
@@ -44,12 +46,21 @@ export class SSMStateProvider implements StateProvider {
 	 * Create an SSMStateProvider with a new SSMClient.
 	 */
 	static create(options: SSMStateProviderOptions): SSMStateProvider {
-		const client = new SSMClient({
+		const clientConfig: SSMClientConfig = {
 			region: options.region,
-			credentials: options.credentials,
 			endpoint: options.endpoint,
-		});
+		};
 
+		// Use profile credentials if specified, otherwise use provided credentials or default chain
+		if (options.profile) {
+			// Dynamic import to avoid requiring @aws-sdk/credential-providers when not using profiles
+			const { fromIni } = require('@aws-sdk/credential-providers');
+			clientConfig.credentials = fromIni({ profile: options.profile });
+		} else if (options.credentials) {
+			clientConfig.credentials = options.credentials;
+		}
+
+		const client = new SSMClient(clientConfig);
 		return new SSMStateProvider(options.workspaceName, client);
 	}
 

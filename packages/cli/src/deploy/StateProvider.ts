@@ -79,6 +79,8 @@ export interface SSMStateConfig {
 	provider: 'ssm';
 	/** AWS region (required for SSM provider) */
 	region: AwsRegion;
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile?: string;
 }
 
 /**
@@ -157,10 +159,12 @@ export async function createStateProvider(
 		const { SSMStateProvider } = await import('./SSMStateProvider');
 		const { CachedStateProvider } = await import('./CachedStateProvider');
 
+		const ssmConfig = config as SSMStateConfig;
 		const local = new LocalStateProvider(workspaceRoot);
 		const ssm = SSMStateProvider.create({
 			workspaceName,
-			region: (config as SSMStateConfig).region,
+			region: ssmConfig.region,
+			profile: ssmConfig.profile,
 		});
 
 		return new CachedStateProvider(ssm, local);
