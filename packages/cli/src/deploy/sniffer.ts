@@ -98,17 +98,53 @@ export async function sniffAppEnvironment(
 ): Promise<SniffedEnvironment> {
 	const { logWarnings = true } = options;
 
-	// 1. Frontend apps don't have server-side secrets
+	// 1. Frontend apps - handle dependencies and config sniffing
 	if (app.type === 'frontend') {
-		return { appName, requiredEnvVars: [] };
+		// Auto-generate NEXT_PUBLIC_{DEP}_URL from dependencies
+		const depVars = (app.dependencies ?? []).map(
+			(dep) => `NEXT_PUBLIC_${dep.toUpperCase()}_URL`,
+		);
+
+		// If config specified, sniff by importing the file(s)
+		// The file calls .parse() at module load, which triggers sniffer to capture vars
+		if (app.config) {
+			const sniffedVars: string[] = [];
+
+			// Normalize config to array of paths to sniff
+			const configPaths: string[] = [];
+			if (typeof app.config === 'string') {
+				configPaths.push(app.config);
+			} else {
+				if (app.config.client) configPaths.push(app.config.client);
+				if (app.config.server) configPaths.push(app.config.server);
+			}
+
+			// Sniff each config file
+			for (const configPath of configPaths) {
+				const result = await sniffEntryFile(
+					configPath,
+					app.path,
+					workspacePath,
+				);
+
+				if (logWarnings && result.error) {
+					console.warn(
+						`[sniffer] ${appName}: Config file "${configPath}" threw error during sniffing (env vars still captured): ${result.error.message}`,
+					);
+				}
+
+				sniffedVars.push(...result.envVars);
+			}
+
+			// Combine: dependency vars + sniffed vars (deduplicated)
+			const allVars = [...new Set([...depVars, ...sniffedVars])];
+			return { appName, requiredEnvVars: allVars };
+		}
+
+		return { appName, requiredEnvVars: depVars };
 	}
 
-	// 2. Entry-based apps with explicit env list
-	if (app.requiredEnv && app.requiredEnv.length > 0) {
-		return { appName, requiredEnvVars: [...app.requiredEnv] };
-	}
-
-	// 3. Entry apps - import entry file in subprocess to trigger config.parse()
+	// 2. Entry apps - import entry file in subprocess to trigger config.parse()
 	if (app.entry) {
 		const result = await sniffEntryFile(app.entry, app.path, workspacePath);
 
