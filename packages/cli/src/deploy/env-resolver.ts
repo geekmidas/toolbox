@@ -50,6 +50,8 @@ export interface EnvResolverContext {
 	userSecrets?: StageSecrets;
 	/** Master key for runtime decryption (optional) */
 	masterKey?: string;
+	/** URLs of deployed dependency apps (e.g., { auth: 'https://auth.example.com' }) */
+	dependencyUrls?: Record<string, string>;
 }
 
 /**
@@ -203,6 +205,14 @@ export function resolveEnvVar(
 			}
 			// Fall through to check user secrets
 			break;
+	}
+
+	// Check dependency URLs (e.g., AUTH_URL -> dependencyUrls.auth)
+	if (context.dependencyUrls && varName.endsWith('_URL')) {
+		const depName = varName.slice(0, -4).toLowerCase(); // AUTH_URL -> auth
+		if (context.dependencyUrls[depName]) {
+			return context.dependencyUrls[depName];
+		}
 	}
 
 	// Check user-provided secrets
