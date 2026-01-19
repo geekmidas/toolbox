@@ -10,6 +10,7 @@ export default defineConfig({
 		// Sniffer files need to be standalone for subprocess loading via --import
 		'src/deploy/sniffer-loader.ts',
 		'src/deploy/sniffer-worker.ts',
+		'src/deploy/sniffer-routes-worker.ts',
 		'src/deploy/sniffer-hooks.ts',
 		'src/deploy/sniffer-envkit-patch.ts',
 	],
