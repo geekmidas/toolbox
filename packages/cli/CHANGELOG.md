@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.2.3
+
+### Patch Changes
+
+- 🐛 [`11c96af`](https://github.com/geekmidas/toolbox/commit/11c96af896fa5355f37edd276fc96010cd177ccc) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix cli client generation for monorepos
+
 ## 1.2.2
 
 ### Patch Changes
