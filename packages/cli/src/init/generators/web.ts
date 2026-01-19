@@ -145,8 +145,8 @@ const envParser = new EnvironmentParser({
 
 export const clientConfig = envParser
   .create((get) => ({
-    apiUrl: get('NEXT_PUBLIC_API_URL').string().default('http://localhost:3000'),
-    authUrl: get('NEXT_PUBLIC_AUTH_URL').string().default('http://localhost:3002'),
+    apiUrl: get('NEXT_PUBLIC_API_URL').string(),
+    authUrl: get('NEXT_PUBLIC_AUTH_URL').string(),
   }))
   .parse();
 `;
