@@ -46,10 +46,9 @@ import type {
 	TelescopeConfig,
 } from '../types';
 import {
-	generateAllClients,
-	generateClientForFrontend,
-	getDependentFrontends,
-	normalizeRoutes,
+	copyAllClients,
+	copyClientToFrontends,
+	getBackendOpenApiPath,
 } from '../workspace/client-generator.js';
 import {
 	getAppBuildOrder,
@@ -964,12 +963,12 @@ async function workspaceDevCommand(
 		logger.log('✅ Frontend apps validated');
 	}
 
-	// Generate initial clients for frontends with backend dependencies
-	if (frontendApps.length > 0) {
-		const clientResults = await generateAllClients(workspace, { force: true });
-		const generatedCount = clientResults.filter((r) => r.generated).length;
-		if (generatedCount > 0) {
-			logger.log(`\n📦 Generated ${generatedCount} API client(s)`);
+	// Copy initial clients from backends to frontends
+	if (frontendApps.length > 0 && backendApps.length > 0) {
+		const clientResults = await copyAllClients(workspace);
+		const copiedCount = clientResults.filter((r) => r.success).length;
+		if (copiedCount > 0) {
+			logger.log(`\n📦 Copied ${copiedCount} API client(s)`);
 		}
 	}
 
@@ -1058,117 +1057,81 @@ async function workspaceDevCommand(
 		env: turboEnv,
 	});
 
-	// Set up file watcher for backend endpoint changes (smart client regeneration)
-	let endpointWatcher: ReturnType<typeof chokidar.watch> | null = null;
+	// Set up file watcher for backend .gkm/openapi.ts changes (auto-copy to frontends)
+	let openApiWatcher: ReturnType<typeof chokidar.watch> | null = null;
 
 	if (frontendApps.length > 0 && backendApps.length > 0) {
-		// Collect all backend route patterns to watch
-		const watchPatterns: string[] = [];
-		const backendRouteMap = new Map<string, string[]>(); // routes pattern -> backend app names
+		// Collect all backend openapi.ts file paths to watch
+		const openApiPaths: { path: string; appName: string }[] = [];
 
-		for (const [appName, app] of backendApps) {
-			const routePatterns = normalizeRoutes(app.routes);
-			for (const routePattern of routePatterns) {
-				const fullPattern = join(workspace.root, app.path, routePattern);
-				watchPatterns.push(fullPattern);
-
-				// Map pattern to app name for change detection
-				const patternKey = join(app.path, routePattern);
-				const existing = backendRouteMap.get(patternKey) || [];
-				backendRouteMap.set(patternKey, [...existing, appName]);
+		for (const [appName] of backendApps) {
+			const openApiPath = getBackendOpenApiPath(workspace, appName);
+			if (openApiPath) {
+				openApiPaths.push({ path: openApiPath, appName });
 			}
 		}
 
-		if (watchPatterns.length > 0) {
-			// Resolve glob patterns to files
-			const resolvedFiles = await fg(watchPatterns, {
-				cwd: workspace.root,
-				absolute: true,
-				onlyFiles: true,
-			});
+		if (openApiPaths.length > 0) {
+			logger.log(
+				`\n👀 Watching ${openApiPaths.length} backend OpenAPI spec(s) for changes`,
+			);
 
-			if (resolvedFiles.length > 0) {
-				logger.log(
-					`\n👀 Watching ${resolvedFiles.length} endpoint file(s) for schema changes`,
-				);
+			// Create a map for quick lookup of app name from path
+			const pathToApp = new Map(openApiPaths.map((p) => [p.path, p.appName]));
 
-				endpointWatcher = chokidar.watch(resolvedFiles, {
-					ignored: /(^|[/\\])\../,
+			openApiWatcher = chokidar.watch(
+				openApiPaths.map((p) => p.path),
+				{
 					persistent: true,
 					ignoreInitial: true,
-				});
+					// Watch parent directory too since file may not exist yet
+					depth: 0,
+				},
+			);
 
-				let regenerateTimeout: NodeJS.Timeout | null = null;
+			let copyTimeout: NodeJS.Timeout | null = null;
 
-				endpointWatcher.on('change', async (changedPath) => {
-					// Debounce regeneration
-					if (regenerateTimeout) {
-						clearTimeout(regenerateTimeout);
+			const handleChange = async (changedPath: string) => {
+				// Debounce to handle rapid changes
+				if (copyTimeout) {
+					clearTimeout(copyTimeout);
+				}
+
+				copyTimeout = setTimeout(async () => {
+					const backendAppName = pathToApp.get(changedPath);
+					if (!backendAppName) {
+						return;
 					}
 
-					regenerateTimeout = setTimeout(async () => {
-						// Find which backend app this file belongs to
-						const changedBackends: string[] = [];
+					logger.log(`\n🔄 OpenAPI spec changed for ${backendAppName}`);
 
-						for (const [appName, app] of backendApps) {
-							const routePatterns = normalizeRoutes(app.routes);
-							for (const routePattern of routePatterns) {
-								const routesDir = join(
-									workspace.root,
-									app.path,
-									routePattern.split('*')[0] || '',
-								);
-								if (changedPath.startsWith(routesDir.replace(/\/$/, ''))) {
-									changedBackends.push(appName);
-									break; // Found a match, no need to check other patterns
-								}
-							}
-						}
-
-						if (changedBackends.length === 0) {
-							return;
-						}
-
-						// Find frontends that depend on changed backends
-						const affectedFrontends = new Set<string>();
-						for (const backend of changedBackends) {
-							const dependents = getDependentFrontends(workspace, backend);
-							for (const frontend of dependents) {
-								affectedFrontends.add(frontend);
-							}
-						}
-
-						if (affectedFrontends.size === 0) {
-							return;
-						}
-
-						// Regenerate clients for affected frontends
-						logger.log(
-							`\n🔄 Detected schema change in ${changedBackends.join(', ')}`,
+					try {
+						const results = await copyClientToFrontends(
+							workspace,
+							backendAppName,
+							{ silent: true },
 						);
-
-						for (const frontend of affectedFrontends) {
-							try {
-								const results = await generateClientForFrontend(
-									workspace,
-									frontend,
+						for (const result of results) {
+							if (result.success) {
+								logger.log(
+									`   📦 Copied client to ${result.frontendApp} (${result.endpointCount} endpoints)`,
 								);
-								for (const result of results) {
-									if (result.generated) {
-										logger.log(
-											`   📦 Regenerated client for ${result.frontendApp} (${result.endpointCount} endpoints)`,
-										);
-									}
-								}
-							} catch (error) {
+							} else if (result.error) {
 								logger.error(
-									`   ❌ Failed to regenerate client for ${frontend}: ${(error as Error).message}`,
+									`   ❌ Failed to copy client to ${result.frontendApp}: ${result.error}`,
 								);
 							}
 						}
-					}, 500); // 500ms debounce
-				});
-			}
+					} catch (error) {
+						logger.error(
+							`   ❌ Failed to copy clients: ${(error as Error).message}`,
+						);
+					}
+				}, 200); // 200ms debounce
+			};
+
+			openApiWatcher.on('change', handleChange);
+			openApiWatcher.on('add', handleChange);
 		}
 	}
 
@@ -1180,9 +1143,9 @@ async function workspaceDevCommand(
 
 		logger.log('\n🛑 Shutting down workspace...');
 
-		// Close endpoint watcher
-		if (endpointWatcher) {
-			endpointWatcher.close().catch(() => {});
+		// Close OpenAPI watcher
+		if (openApiWatcher) {
+			openApiWatcher.close().catch(() => {});
 		}
 
 		// Kill turbo process
@@ -1214,8 +1177,8 @@ async function workspaceDevCommand(
 
 		turboProcess.on('exit', (code) => {
 			// Close watcher on exit
-			if (endpointWatcher) {
-				endpointWatcher.close().catch(() => {});
+			if (openApiWatcher) {
+				openApiWatcher.close().catch(() => {});
 			}
 
 			if (code !== null && code !== 0) {
