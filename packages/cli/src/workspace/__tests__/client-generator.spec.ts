@@ -1,11 +1,18 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-	clearSpecHashCache,
-	generateClientForFrontend,
+	copyAllClients,
+	copyClientToFrontends,
 	getBackendDependencies,
+	getBackendOpenApiPath,
 	getDependentFrontends,
 	getFirstRoute,
 	normalizeRoutes,
@@ -264,51 +271,11 @@ describe('Client Generator', () => {
 		});
 	});
 
-	describe('generateClientForFrontend', () => {
-		let testDir: string;
-
-		beforeEach(() => {
-			testDir = join(
-				tmpdir(),
-				`gkm-client-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-			);
-			mkdirSync(testDir, { recursive: true });
-			clearSpecHashCache();
-		});
-
-		afterEach(() => {
-			if (existsSync(testDir)) {
-				rmSync(testDir, { recursive: true, force: true });
-			}
-		});
-
-		it('should return empty array for frontend with no backend dependencies', async () => {
+	describe('getBackendOpenApiPath', () => {
+		it('should return correct path for backend app', () => {
 			const workspace: NormalizedWorkspace = {
 				name: 'test',
-				root: testDir,
-				apps: {
-					web: {
-						type: 'frontend',
-						path: 'apps/web',
-						port: 3001,
-						dependencies: [],
-						resolvedDeployTarget: 'dokploy',
-					},
-				},
-				services: {},
-				deploy: { default: 'dokploy' },
-				shared: { packages: [] },
-				secrets: {},
-			};
-
-			const results = await generateClientForFrontend(workspace, 'web');
-			expect(results).toEqual([]);
-		});
-
-		it('should return empty array for non-frontend app', async () => {
-			const workspace: NormalizedWorkspace = {
-				name: 'test',
-				root: testDir,
+				root: '/project',
 				apps: {
 					api: {
 						type: 'backend',
@@ -325,35 +292,20 @@ describe('Client Generator', () => {
 				secrets: {},
 			};
 
-			const results = await generateClientForFrontend(workspace, 'api');
-			expect(results).toEqual([]);
+			const path = getBackendOpenApiPath(workspace, 'api');
+			expect(path).toBe('/project/apps/api/.gkm/openapi.ts');
 		});
 
-		it('should use configured client output path', async () => {
-			// Create minimal workspace structure
-			const apiDir = join(testDir, 'apps/api');
-			const webDir = join(testDir, 'apps/web');
-			mkdirSync(join(apiDir, 'src/endpoints'), { recursive: true });
-			mkdirSync(webDir, { recursive: true });
-
+		it('should return null for non-backend app', () => {
 			const workspace: NormalizedWorkspace = {
 				name: 'test',
-				root: testDir,
+				root: '/project',
 				apps: {
-					api: {
-						type: 'backend',
-						path: 'apps/api',
-						port: 3000,
-						dependencies: [],
-						routes: './src/endpoints/**/*.ts',
-						resolvedDeployTarget: 'dokploy',
-					},
 					web: {
 						type: 'frontend',
 						path: 'apps/web',
-						port: 3001,
-						dependencies: ['api'],
-						client: { output: 'lib/api' },
+						port: 3000,
+						dependencies: [],
 						resolvedDeployTarget: 'dokploy',
 					},
 				},
@@ -363,24 +315,35 @@ describe('Client Generator', () => {
 				secrets: {},
 			};
 
-			// This will fail to generate because there are no endpoints,
-			// but we can verify the output path would be correct
-			const results = await generateClientForFrontend(workspace, 'web');
-			expect(results).toHaveLength(1);
-			expect(results[0]?.reason).toBe('No endpoints found in backend');
+			const path = getBackendOpenApiPath(workspace, 'web');
+			expect(path).toBeNull();
+		});
+
+		it('should return null for non-existent app', () => {
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: '/project',
+				apps: {},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			const path = getBackendOpenApiPath(workspace, 'nonexistent');
+			expect(path).toBeNull();
 		});
 	});
 
-	describe('hot reload - hash-based change detection', () => {
+	describe('copyClientToFrontends', () => {
 		let testDir: string;
 
 		beforeEach(() => {
 			testDir = join(
 				tmpdir(),
-				`gkm-hotreload-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+				`gkm-client-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			);
 			mkdirSync(testDir, { recursive: true });
-			clearSpecHashCache();
 		});
 
 		afterEach(() => {
@@ -389,32 +352,42 @@ describe('Client Generator', () => {
 			}
 		});
 
-		function createEndpointFile(
-			dir: string,
-			filename: string,
-			exportName: string,
-			path: string,
-			method: string,
+		function createOpenApiFile(
+			appDir: string,
+			endpoints: Array<{ method: string; path: string }>,
 		): void {
-			const content = `
-import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+			const endpointAuthEntries = endpoints
+				.map((ep) => `  '${ep.method.toUpperCase()} ${ep.path}': null,`)
+				.join('\n');
 
-export const ${exportName} = e
-  .${method.toLowerCase()}('${path}')
-  .output(z.object({ message: z.string() }))
-  .handle(async () => ({ message: 'Hello' }));
+			const content = `// Auto-generated by @geekmidas/cli - DO NOT EDIT
+
+export const endpointAuth = {
+${endpointAuthEntries}
+} as const;
+
+export const paths = {};
+export function createApi() { return {}; }
 `;
-			const { writeFileSync } = require('node:fs');
-			const { dirname } = require('node:path');
-			mkdirSync(dirname(join(dir, filename)), { recursive: true });
-			writeFileSync(join(dir, filename), content);
+
+			const gkmDir = join(appDir, '.gkm');
+			mkdirSync(gkmDir, { recursive: true });
+			writeFileSync(join(gkmDir, 'openapi.ts'), content);
 		}
 
-		function createWorkspace(root: string): NormalizedWorkspace {
-			return {
+		it('should copy client to dependent frontends', async () => {
+			const apiDir = join(testDir, 'apps/api');
+			const webDir = join(testDir, 'apps/web');
+			mkdirSync(webDir, { recursive: true });
+
+			createOpenApiFile(apiDir, [
+				{ method: 'GET', path: '/users' },
+				{ method: 'POST', path: '/users' },
+			]);
+
+			const workspace: NormalizedWorkspace = {
 				name: 'test',
-				root,
+				root: testDir,
 				apps: {
 					api: {
 						type: 'backend',
@@ -438,196 +411,135 @@ export const ${exportName} = e
 				shared: { packages: [] },
 				secrets: {},
 			};
-		}
 
-		it('should generate client on first call', async () => {
-			const apiDir = join(testDir, 'apps/api');
-			const webDir = join(testDir, 'apps/web');
-			mkdirSync(webDir, { recursive: true });
-
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
-
-			const workspace = createWorkspace(testDir);
-			const results = await generateClientForFrontend(workspace, 'web', {
-				force: true,
+			const results = await copyClientToFrontends(workspace, 'api', {
+				silent: true,
 			});
 
 			expect(results).toHaveLength(1);
-			expect(results[0]?.generated).toBe(true);
-			expect(results[0]?.endpointCount).toBe(1);
-			expect(existsSync(join(webDir, 'src/api/openapi.ts'))).toBe(true);
+			expect(results[0]?.success).toBe(true);
+			expect(results[0]?.frontendApp).toBe('web');
+			expect(results[0]?.backendApp).toBe('api');
+			expect(results[0]?.endpointCount).toBe(2);
+			expect(existsSync(join(webDir, 'src/api/api.ts'))).toBe(true);
 		});
 
-		it('should skip regeneration when schema has not changed', async () => {
+		it('should skip frontends without client.output configured', async () => {
 			const apiDir = join(testDir, 'apps/api');
 			const webDir = join(testDir, 'apps/web');
 			mkdirSync(webDir, { recursive: true });
 
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
+			createOpenApiFile(apiDir, [{ method: 'GET', path: '/users' }]);
 
-			const workspace = createWorkspace(testDir);
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+						routes: './src/endpoints/**/*.ts',
+						resolvedDeployTarget: 'dokploy',
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						// No client.output configured
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
 
-			// First call - should generate
-			const firstResults = await generateClientForFrontend(workspace, 'web', {
-				force: true,
+			const results = await copyClientToFrontends(workspace, 'api', {
+				silent: true,
 			});
-			expect(firstResults[0]?.generated).toBe(true);
 
-			// Second call - should skip (no changes)
-			const secondResults = await generateClientForFrontend(workspace, 'web');
-			expect(secondResults[0]?.generated).toBe(false);
-			expect(secondResults[0]?.reason).toBe('No schema changes detected');
+			expect(results).toHaveLength(0);
 		});
 
-		it('should regenerate when endpoint schema changes', async () => {
-			const apiDir = join(testDir, 'apps/api');
-			const webDir = join(testDir, 'apps/web');
-			mkdirSync(webDir, { recursive: true });
+		it('should return empty results for non-backend app', async () => {
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
 
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
-
-			const workspace = createWorkspace(testDir);
-
-			// First call - generate initial client
-			const firstResults = await generateClientForFrontend(workspace, 'web', {
-				force: true,
+			const results = await copyClientToFrontends(workspace, 'web', {
+				silent: true,
 			});
-			expect(firstResults[0]?.generated).toBe(true);
 
-			// Second call without changes - should skip
-			const secondResults = await generateClientForFrontend(workspace, 'web');
-			expect(secondResults[0]?.generated).toBe(false);
-
-			// Modify endpoint - add new route
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/posts.ts',
-				'getPosts',
-				'/posts',
-				'GET',
-			);
-
-			// Third call - should regenerate due to schema change
-			const thirdResults = await generateClientForFrontend(workspace, 'web');
-			expect(thirdResults[0]?.generated).toBe(true);
-			expect(thirdResults[0]?.endpointCount).toBe(2);
+			expect(results).toEqual([]);
 		});
 
-		it('should regenerate when endpoint path changes (via new file)', async () => {
+		it('should return empty results when openapi file does not exist', async () => {
 			const apiDir = join(testDir, 'apps/api');
 			const webDir = join(testDir, 'apps/web');
+			mkdirSync(apiDir, { recursive: true });
 			mkdirSync(webDir, { recursive: true });
+			// Don't create openapi file
 
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+						routes: './src/endpoints/**/*.ts',
+						resolvedDeployTarget: 'dokploy',
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						client: { output: 'src/api' },
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
 
-			const workspace = createWorkspace(testDir);
+			const results = await copyClientToFrontends(workspace, 'api', {
+				silent: true,
+			});
 
-			// First call
-			await generateClientForFrontend(workspace, 'web', { force: true });
-
-			// Second call - skip
-			const skipResult = await generateClientForFrontend(workspace, 'web');
-			expect(skipResult[0]?.generated).toBe(false);
-
-			// Add endpoint with different path (new file to avoid ESM cache)
-			// This simulates what happens when a developer changes a path -
-			// in real dev server, the watcher would reload the module
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/api-users.ts',
-				'getApiUsers',
-				'/api/users',
-				'GET',
-			);
-
-			// Third call - should regenerate because schema changed
-			const regenerateResult = await generateClientForFrontend(
-				workspace,
-				'web',
-			);
-			expect(regenerateResult[0]?.generated).toBe(true);
-			expect(regenerateResult[0]?.endpointCount).toBe(2); // Now has 2 endpoints
+			expect(results).toEqual([]);
 		});
 
-		it('should skip when only handler implementation changes', async () => {
-			const apiDir = join(testDir, 'apps/api');
-			const webDir = join(testDir, 'apps/web');
-			mkdirSync(webDir, { recursive: true });
-
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
-
-			const workspace = createWorkspace(testDir);
-
-			// First call
-			await generateClientForFrontend(workspace, 'web', { force: true });
-
-			// Change only the handler implementation (not the schema)
-			const { writeFileSync } = require('node:fs');
-			const modifiedContent = `
-import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
-
-export const getUsers = e
-  .get('/users')
-  .output(z.object({ message: z.string() }))
-  .handle(async () => {
-    // Different implementation - added a comment and console.log
-    console.log('Getting users');
-    return { message: 'Hello World' };
-  });
-`;
-			writeFileSync(join(apiDir, 'src/endpoints/users.ts'), modifiedContent);
-
-			// Second call - should skip (schema unchanged, only implementation changed)
-			const results = await generateClientForFrontend(workspace, 'web');
-			expect(results[0]?.generated).toBe(false);
-			expect(results[0]?.reason).toBe('No schema changes detected');
-		});
-
-		it('should regenerate for multiple frontends when backend changes', async () => {
+		it('should copy to multiple frontends', async () => {
 			const apiDir = join(testDir, 'apps/api');
 			const webDir = join(testDir, 'apps/web');
 			const adminDir = join(testDir, 'apps/admin');
 			mkdirSync(webDir, { recursive: true });
 			mkdirSync(adminDir, { recursive: true });
 
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
+			createOpenApiFile(apiDir, [{ method: 'GET', path: '/users' }]);
 
 			const workspace: NormalizedWorkspace = {
 				name: 'test',
@@ -654,7 +566,7 @@ export const getUsers = e
 						path: 'apps/admin',
 						port: 3002,
 						dependencies: ['api'],
-						client: { output: 'src/client' },
+						client: { output: 'lib/client' },
 						resolvedDeployTarget: 'dokploy',
 					},
 				},
@@ -664,54 +576,65 @@ export const getUsers = e
 				secrets: {},
 			};
 
-			// Generate for both frontends
-			await generateClientForFrontend(workspace, 'web', { force: true });
-			await generateClientForFrontend(workspace, 'admin', { force: true });
+			const results = await copyClientToFrontends(workspace, 'api', {
+				silent: true,
+			});
 
-			// Both should skip
-			const webSkip = await generateClientForFrontend(workspace, 'web');
-			const adminSkip = await generateClientForFrontend(workspace, 'admin');
-			expect(webSkip[0]?.generated).toBe(false);
-			expect(adminSkip[0]?.generated).toBe(false);
-
-			// Add new endpoint
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/products.ts',
-				'getProducts',
-				'/products',
-				'GET',
-			);
-
-			// Both should regenerate
-			const webRegen = await generateClientForFrontend(workspace, 'web');
-			const adminRegen = await generateClientForFrontend(workspace, 'admin');
-			expect(webRegen[0]?.generated).toBe(true);
-			expect(adminRegen[0]?.generated).toBe(true);
+			expect(results).toHaveLength(2);
+			expect(results.every((r) => r.success)).toBe(true);
+			expect(existsSync(join(webDir, 'src/api/api.ts'))).toBe(true);
+			expect(existsSync(join(adminDir, 'lib/client/api.ts'))).toBe(true);
 		});
 
-		it('should only regenerate affected frontend when specific backend changes', async () => {
+		it('should add header comment to copied file', async () => {
+			const apiDir = join(testDir, 'apps/api');
+			const webDir = join(testDir, 'apps/web');
+			mkdirSync(webDir, { recursive: true });
+
+			createOpenApiFile(apiDir, [{ method: 'GET', path: '/users' }]);
+
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+						routes: './src/endpoints/**/*.ts',
+						resolvedDeployTarget: 'dokploy',
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3001,
+						dependencies: ['api'],
+						client: { output: 'src/api' },
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			await copyClientToFrontends(workspace, 'api', { silent: true });
+
+			const content = readFileSync(join(webDir, 'src/api/api.ts'), 'utf-8');
+			expect(content).toContain('Auto-generated API client for api');
+			expect(content).toContain('DO NOT EDIT');
+		});
+
+		it('should use backend name in filename when frontend has multiple backends', async () => {
 			const apiDir = join(testDir, 'apps/api');
 			const authDir = join(testDir, 'apps/auth');
 			const webDir = join(testDir, 'apps/web');
-			const adminDir = join(testDir, 'apps/admin');
 			mkdirSync(webDir, { recursive: true });
-			mkdirSync(adminDir, { recursive: true });
 
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/users.ts',
-				'getUsers',
-				'/users',
-				'GET',
-			);
-			createEndpointFile(
-				authDir,
-				'src/endpoints/login.ts',
-				'login',
-				'/login',
-				'POST',
-			);
+			createOpenApiFile(apiDir, [{ method: 'GET', path: '/users' }]);
+			createOpenApiFile(authDir, [{ method: 'POST', path: '/login' }]);
 
 			const workspace: NormalizedWorkspace = {
 				name: 'test',
@@ -737,16 +660,8 @@ export const getUsers = e
 						type: 'frontend',
 						path: 'apps/web',
 						port: 3002,
-						dependencies: ['api'], // Only depends on api
+						dependencies: ['api', 'auth'], // Multiple backends
 						client: { output: 'src/api' },
-						resolvedDeployTarget: 'dokploy',
-					},
-					admin: {
-						type: 'frontend',
-						path: 'apps/admin',
-						port: 3003,
-						dependencies: ['auth'], // Only depends on auth
-						client: { output: 'src/client' },
 						resolvedDeployTarget: 'dokploy',
 					},
 				},
@@ -756,26 +671,140 @@ export const getUsers = e
 				secrets: {},
 			};
 
-			// Initial generation
-			await generateClientForFrontend(workspace, 'web', { force: true });
-			await generateClientForFrontend(workspace, 'admin', { force: true });
+			await copyClientToFrontends(workspace, 'api', { silent: true });
+			await copyClientToFrontends(workspace, 'auth', { silent: true });
 
-			// Change only the api backend
-			createEndpointFile(
-				apiDir,
-				'src/endpoints/products.ts',
-				'getProducts',
-				'/products',
-				'GET',
+			// Should use {backend}.ts naming
+			expect(existsSync(join(webDir, 'src/api/api.ts'))).toBe(true);
+			expect(existsSync(join(webDir, 'src/api/auth.ts'))).toBe(true);
+		});
+	});
+
+	describe('copyAllClients', () => {
+		let testDir: string;
+
+		beforeEach(() => {
+			testDir = join(
+				tmpdir(),
+				`gkm-client-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			);
+			mkdirSync(testDir, { recursive: true });
+		});
 
-			// web should regenerate (depends on api)
-			const webResult = await generateClientForFrontend(workspace, 'web');
-			expect(webResult[0]?.generated).toBe(true);
+		afterEach(() => {
+			if (existsSync(testDir)) {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
 
-			// admin should skip (depends on auth, which didn't change)
-			const adminResult = await generateClientForFrontend(workspace, 'admin');
-			expect(adminResult[0]?.generated).toBe(false);
+		function createOpenApiFile(
+			appDir: string,
+			endpoints: Array<{ method: string; path: string }>,
+		): void {
+			const endpointAuthEntries = endpoints
+				.map((ep) => `  '${ep.method.toUpperCase()} ${ep.path}': null,`)
+				.join('\n');
+
+			const content = `// Auto-generated by @geekmidas/cli - DO NOT EDIT
+
+export const endpointAuth = {
+${endpointAuthEntries}
+} as const;
+
+export const paths = {};
+export function createApi() { return {}; }
+`;
+
+			const gkmDir = join(appDir, '.gkm');
+			mkdirSync(gkmDir, { recursive: true });
+			writeFileSync(join(gkmDir, 'openapi.ts'), content);
+		}
+
+		it('should copy from all backends to their dependent frontends', async () => {
+			const apiDir = join(testDir, 'apps/api');
+			const authDir = join(testDir, 'apps/auth');
+			const webDir = join(testDir, 'apps/web');
+			const adminDir = join(testDir, 'apps/admin');
+			mkdirSync(webDir, { recursive: true });
+			mkdirSync(adminDir, { recursive: true });
+
+			createOpenApiFile(apiDir, [{ method: 'GET', path: '/users' }]);
+			createOpenApiFile(authDir, [{ method: 'POST', path: '/login' }]);
+
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+						routes: './src/endpoints/**/*.ts',
+						resolvedDeployTarget: 'dokploy',
+					},
+					auth: {
+						type: 'backend',
+						path: 'apps/auth',
+						port: 3001,
+						dependencies: [],
+						routes: './src/endpoints/**/*.ts',
+						resolvedDeployTarget: 'dokploy',
+					},
+					web: {
+						type: 'frontend',
+						path: 'apps/web',
+						port: 3002,
+						dependencies: ['api'],
+						client: { output: 'src/api' },
+						resolvedDeployTarget: 'dokploy',
+					},
+					admin: {
+						type: 'frontend',
+						path: 'apps/admin',
+						port: 3003,
+						dependencies: ['auth'],
+						client: { output: 'lib/client' },
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			const results = await copyAllClients(workspace, { silent: true });
+
+			expect(results).toHaveLength(2);
+			expect(results.every((r) => r.success)).toBe(true);
+			expect(existsSync(join(webDir, 'src/api/api.ts'))).toBe(true);
+			expect(existsSync(join(adminDir, 'lib/client/auth.ts'))).toBe(true);
+		});
+
+		it('should return empty array when no backends have routes', async () => {
+			const workspace: NormalizedWorkspace = {
+				name: 'test',
+				root: testDir,
+				apps: {
+					worker: {
+						type: 'backend',
+						path: 'apps/worker',
+						port: 3000,
+						dependencies: [],
+						// No routes
+						resolvedDeployTarget: 'dokploy',
+					},
+				},
+				services: {},
+				deploy: { default: 'dokploy' },
+				shared: { packages: [] },
+				secrets: {},
+			};
+
+			const results = await copyAllClients(workspace, { silent: true });
+
+			expect(results).toEqual([]);
 		});
 	});
 });
