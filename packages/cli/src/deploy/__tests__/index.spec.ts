@@ -426,6 +426,7 @@ describe('workspaceDeployCommand', () => {
 					path: 'apps/api',
 					port: 3000,
 					dependencies: [],
+					resolvedDeployTarget: 'dokploy',
 				},
 				web: {
 					type: 'frontend',
@@ -433,6 +434,7 @@ describe('workspaceDeployCommand', () => {
 					port: 3001,
 					dependencies: ['api'],
 					framework: 'nextjs',
+					resolvedDeployTarget: 'dokploy',
 				},
 			},
 			services: {},
@@ -514,12 +516,14 @@ describe('workspaceDeployCommand', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					auth: {
 						type: 'backend',
 						path: 'apps/auth',
 						port: 3001,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
 						type: 'frontend',
@@ -527,6 +531,7 @@ describe('workspaceDeployCommand', () => {
 						port: 3002,
 						dependencies: ['api', 'auth'],
 						framework: 'nextjs',
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -552,12 +557,14 @@ describe('workspaceDeployCommand', () => {
 						path: 'apps/db',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					api: {
 						type: 'backend',
 						path: 'apps/api',
 						port: 3001,
 						dependencies: ['db'],
+						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
 						type: 'frontend',
@@ -565,6 +572,7 @@ describe('workspaceDeployCommand', () => {
 						port: 3002,
 						dependencies: ['api'],
 						framework: 'nextjs',
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
