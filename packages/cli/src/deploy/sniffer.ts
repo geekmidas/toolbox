@@ -110,14 +110,10 @@ export async function sniffAppEnvironment(
 		if (app.config) {
 			const sniffedVars: string[] = [];
 
-			// Normalize config to array of paths to sniff
+			// Collect config paths to sniff
 			const configPaths: string[] = [];
-			if (typeof app.config === 'string') {
-				configPaths.push(app.config);
-			} else {
-				if (app.config.client) configPaths.push(app.config.client);
-				if (app.config.server) configPaths.push(app.config.server);
-			}
+			if (app.config.client) configPaths.push(app.config.client);
+			if (app.config.server) configPaths.push(app.config.server);
 
 			// Sniff each config file
 			for (const configPath of configPaths) {
