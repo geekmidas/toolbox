@@ -701,3 +701,179 @@ describe('validateEnvVars', () => {
 		});
 	});
 });
+
+/**
+ * Tests for Docker build arg extraction logic.
+ * This simulates the behavior in deploy/index.ts where NEXT_PUBLIC_* vars
+ * are extracted from resolved vars for Docker build args.
+ */
+describe('Docker build arg extraction', () => {
+	const createContext = (
+		overrides: Partial<EnvResolverContext> = {},
+	): EnvResolverContext => ({
+		app: {
+			type: 'frontend',
+			path: 'apps/web',
+			port: 3001,
+			dependencies: ['api', 'auth'],
+			resolvedDeployTarget: 'dokploy',
+		},
+		appName: 'web',
+		stage: 'production',
+		state: createEmptyState('production', 'proj_test', 'env-123'),
+		appHostname: 'web.example.com',
+		frontendUrls: [],
+		...overrides,
+	});
+
+	/**
+	 * Simulates the build arg extraction logic from deploy/index.ts
+	 */
+	function extractBuildArgs(resolved: Record<string, string>): {
+		buildArgs: string[];
+		publicUrlArgNames: string[];
+	} {
+		const buildArgs: string[] = [];
+		const publicUrlArgNames: string[] = [];
+
+		for (const [key, value] of Object.entries(resolved)) {
+			if (key.startsWith('NEXT_PUBLIC_')) {
+				buildArgs.push(`${key}=${value}`);
+				publicUrlArgNames.push(key);
+			}
+		}
+
+		return { buildArgs, publicUrlArgNames };
+	}
+
+	it('should extract NEXT_PUBLIC_* vars as build args', () => {
+		const context = createContext({
+			dependencyUrls: {
+				api: 'https://api.example.com',
+				auth: 'https://auth.example.com',
+			},
+		});
+
+		const sniffedVars = [
+			'NEXT_PUBLIC_API_URL',
+			'NEXT_PUBLIC_AUTH_URL',
+			'NEXT_PUBLIC_STRIPE_KEY',
+		];
+
+		const { resolved } = validateEnvVars(sniffedVars, context);
+
+		// Simulate user secrets providing STRIPE_KEY
+		resolved.NEXT_PUBLIC_STRIPE_KEY = 'pk_test_123';
+
+		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
+
+		expect(publicUrlArgNames).toEqual([
+			'NEXT_PUBLIC_API_URL',
+			'NEXT_PUBLIC_AUTH_URL',
+			'NEXT_PUBLIC_STRIPE_KEY',
+		]);
+		expect(buildArgs).toEqual([
+			'NEXT_PUBLIC_API_URL=https://api.example.com',
+			'NEXT_PUBLIC_AUTH_URL=https://auth.example.com',
+			'NEXT_PUBLIC_STRIPE_KEY=pk_test_123',
+		]);
+	});
+
+	it('should NOT include server-only vars in build args', () => {
+		const context = createContext({
+			dependencyUrls: { api: 'https://api.example.com' },
+			appCredentials: { dbUser: 'web', dbPassword: 'pass' },
+			postgres: { host: 'postgres', port: 5432, database: 'mydb' },
+		});
+
+		const sniffedVars = [
+			'NEXT_PUBLIC_API_URL',
+			'DATABASE_URL',
+			'STRIPE_SECRET_KEY',
+		];
+
+		const { resolved } = validateEnvVars(sniffedVars, context);
+
+		// Add server-only secret
+		resolved.STRIPE_SECRET_KEY = 'sk_test_secret';
+
+		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
+
+		// Only NEXT_PUBLIC_* should be in build args
+		expect(publicUrlArgNames).toEqual(['NEXT_PUBLIC_API_URL']);
+		expect(buildArgs).toEqual([
+			'NEXT_PUBLIC_API_URL=https://api.example.com',
+		]);
+
+		// Server vars should still be in resolved (for runtime)
+		expect(resolved.DATABASE_URL).toBe(
+			'postgresql://web:pass@postgres:5432/mydb',
+		);
+		expect(resolved.STRIPE_SECRET_KEY).toBe('sk_test_secret');
+	});
+
+	it('should handle mixed frontend vars correctly', () => {
+		const context = createContext({
+			dependencyUrls: {
+				api: 'https://api.example.com',
+				auth: 'https://auth.example.com',
+			},
+			userSecrets: {
+				stage: 'production',
+				createdAt: '2024-01-01T00:00:00Z',
+				updatedAt: '2024-01-01T00:00:00Z',
+				custom: {
+					NEXT_PUBLIC_POSTHOG_KEY: 'phc_test123',
+					STRIPE_SECRET_KEY: 'sk_test_secret',
+				},
+				urls: {},
+				services: {},
+			},
+		});
+
+		const sniffedVars = [
+			// From dependencies (auto-generated)
+			'NEXT_PUBLIC_API_URL',
+			'NEXT_PUBLIC_AUTH_URL',
+			// From client config
+			'NEXT_PUBLIC_POSTHOG_KEY',
+			// From server config
+			'STRIPE_SECRET_KEY',
+			'DATABASE_URL',
+		];
+
+		const { resolved, missing } = validateEnvVars(sniffedVars, context);
+
+		// DATABASE_URL is missing (no postgres config)
+		expect(missing).toContain('DATABASE_URL');
+
+		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
+
+		// Only NEXT_PUBLIC_* should be build args
+		expect(publicUrlArgNames).toHaveLength(3);
+		expect(publicUrlArgNames).toContain('NEXT_PUBLIC_API_URL');
+		expect(publicUrlArgNames).toContain('NEXT_PUBLIC_AUTH_URL');
+		expect(publicUrlArgNames).toContain('NEXT_PUBLIC_POSTHOG_KEY');
+
+		// Server secret should NOT be in build args
+		expect(publicUrlArgNames).not.toContain('STRIPE_SECRET_KEY');
+
+		// But should be in resolved for runtime
+		expect(resolved.STRIPE_SECRET_KEY).toBe('sk_test_secret');
+	});
+
+	it('should return empty build args when no NEXT_PUBLIC_* vars', () => {
+		const context = createContext({
+			appCredentials: { dbUser: 'web', dbPassword: 'pass' },
+			postgres: { host: 'postgres', port: 5432, database: 'mydb' },
+		});
+
+		const sniffedVars = ['DATABASE_URL', 'PORT'];
+
+		const { resolved } = validateEnvVars(sniffedVars, context);
+		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
+
+		expect(buildArgs).toEqual([]);
+		expect(publicUrlArgNames).toEqual([]);
+	});
+});
