@@ -543,16 +543,12 @@ const AppConfigSchema = z
 		framework: FrameworkSchema.optional(),
 		client: ClientConfigSchema.optional(),
 
-		// Frontend-specific: config file path(s) for env sniffing (calls .parse() at import)
-		// Can be a string for single config, or object with client/server paths
+		// Frontend-specific: config file paths for env sniffing (calls .parse() at import)
 		config: z
-			.union([
-				z.string(),
-				z.object({
-					client: z.string().optional(),
-					server: z.string().optional(),
-				}),
-			])
+			.object({
+				client: z.string().optional(),
+				server: z.string().optional(),
+			})
 			.optional(),
 
 		// Auth-specific
