@@ -45,8 +45,11 @@ export class Route53Provider implements DnsProvider {
 	private hostedZoneCache: Map<string, string> = new Map();
 
 	constructor(options: Route53ProviderOptions = {}) {
+		// Route53 is a global service, default to us-east-1 if no region specified
+		const region = options.region ?? process.env.AWS_REGION ?? 'us-east-1';
+
 		this.client = new Route53Client({
-			...(options.region && { region: options.region }),
+			region,
 			...(options.endpoint && { endpoint: options.endpoint }),
 			...(options.profile && {
 				credentials: fromIni({ profile: options.profile }),
