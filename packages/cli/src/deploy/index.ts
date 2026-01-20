@@ -325,29 +325,39 @@ async function initializePostgresUsers(
 				`   Creating user "${user.name}" with schema "${schemaName}"...`,
 			);
 
-			// Create or update user (handles existing users)
-			await client.query(`
-				DO $$ BEGIN
-					IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
-						CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-					ELSE
-						ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
-					END IF;
-				END $$;
-			`);
-
+			// Create or update user with all settings in one DO block
+			// This avoids "tuple already updated by self" errors from multiple ALTER USER calls
 			if (user.usePublicSchema) {
 				// API uses public schema
+				await client.query(`
+					DO $$ BEGIN
+						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
+							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
+						ELSE
+							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
+						END IF;
+					END $$;
+				`);
 				await client.query(`
 					GRANT ALL ON SCHEMA public TO "${user.name}";
 					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${user.name}";
 					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${user.name}";
 				`);
 			} else {
-				// Other apps get their own schema
+				// Other apps get their own schema - combine user creation and search_path in one block
+				await client.query(`
+					DO $$ BEGIN
+						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
+							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
+						ELSE
+							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
+						END IF;
+						-- Set search_path in same transaction to avoid tuple conflict
+						ALTER USER "${user.name}" SET search_path TO "${schemaName}";
+					END $$;
+				`);
 				await client.query(`
 					CREATE SCHEMA IF NOT EXISTS "${schemaName}" AUTHORIZATION "${user.name}";
-					ALTER USER "${user.name}" SET search_path TO "${schemaName}";
 					GRANT USAGE ON SCHEMA "${schemaName}" TO "${user.name}";
 					GRANT ALL ON ALL TABLES IN SCHEMA "${schemaName}" TO "${user.name}";
 					ALTER DEFAULT PRIVILEGES IN SCHEMA "${schemaName}" GRANT ALL ON TABLES TO "${user.name}";
