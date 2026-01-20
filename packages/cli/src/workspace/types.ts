@@ -1,5 +1,7 @@
-import type { z } from 'zod/v4';
-import type { StateConfig } from '../deploy/StateProvider.js';
+import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
+
+export type { AwsRegion };
+
 import type {
 	GkmConfig,
 	HooksConfig,
@@ -10,7 +12,9 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
-import type { DnsConfigWithLegacySchema, DnsProviderSchema } from './schema.js';
+import type { BackupsConfig, DnsConfig, DnsProvider } from './schema.js';
+
+export type { BackupsConfig, DnsConfig, DnsProvider };
 
 /**
  * Deploy target for an app.
@@ -264,39 +268,6 @@ export interface DokployWorkspaceConfig {
 export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
 
 /**
- * DNS provider configuration for a single domain.
- */
-export type DnsProvider = z.infer<typeof DnsProviderSchema>;
-
-/**
- * DNS configuration for automatic record creation during deployment.
- *
- * Maps root domains to their DNS provider configuration.
- * When configured, the deploy command will automatically create DNS
- * A records pointing to your Dokploy server for each app's domain.
- *
- * @example
- * ```ts
- * // Multi-domain with different providers
- * dns: {
- *   'geekmidas.dev': { provider: 'hostinger' },
- *   'geekmidas.com': { provider: 'route53' },
- * }
- *
- * // Single domain
- * dns: {
- *   'traflabs.io': { provider: 'hostinger', ttl: 300 },
- * }
- *
- * // Manual mode - just print required records
- * dns: {
- *   'myapp.com': { provider: 'manual' },
- * }
- * ```
- */
-export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
-
-/**
  * Deployment configuration for the workspace.
  *
  * @example
@@ -306,7 +277,7 @@ export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
  *   default: 'dokploy',
  * }
  *
- * // Full configuration with DNS
+ * // Full configuration with DNS and backups
  * deploy: {
  *   default: 'dokploy',
  *   dokploy: {
@@ -321,6 +292,10 @@ export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
  *     provider: 'hostinger',
  *     domain: 'myapp.com',
  *   },
+ *   backups: {
+ *     type: 's3',
+ *     region: 'us-east-1',
+ *   },
  * }
  * ```
  */
@@ -331,6 +306,8 @@ export interface DeployConfig {
 	dokploy?: DokployWorkspaceConfig;
 	/** DNS configuration for automatic record creation */
 	dns?: DnsConfig;
+	/** Backup destination configuration for database services */
+	backups?: BackupsConfig;
 }
 
 /**

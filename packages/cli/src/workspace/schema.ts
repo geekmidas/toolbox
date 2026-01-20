@@ -360,6 +360,8 @@ export const DnsProviderSchema = z.union([
 	CustomDnsProviderSchema,
 ]);
 
+export type DnsProvider = z.infer<typeof DnsProviderSchema>;
+
 /**
  * DNS configuration schema.
  *
@@ -416,6 +418,29 @@ export const DnsConfigWithLegacySchema = z.union([
 	LegacyDnsConfigSchema,
 ]);
 
+export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
+
+/**
+ * Backups configuration schema.
+ *
+ * Configures automatic backup destinations for database services.
+ * On first deploy, creates S3 bucket with unique name and IAM credentials.
+ */
+export const BackupsConfigSchema = z.object({
+	/** Backup storage type (currently only 's3' supported) */
+	type: z.literal('s3'),
+	/** AWS profile name for creating bucket/IAM resources */
+	profile: z.string().optional(),
+	/** AWS region for the backup bucket */
+	region: AwsRegionSchema,
+	/** Cron schedule for backups (default: '0 2 * * *' = 2 AM daily) */
+	schedule: z.string().optional(),
+	/** Number of backups to retain (default: 30) */
+	retention: z.number().optional(),
+});
+
+export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
+
 /**
  * Deploy configuration schema.
  */
@@ -423,6 +448,7 @@ const DeployConfigSchema = z.object({
 	default: DeployTargetSchema.optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
+	backups: BackupsConfigSchema.optional(),
 });
 
 /**
