@@ -49,11 +49,36 @@ export type UpsertResult = z.infer<typeof UpsertResultSchema>;
 // =============================================================================
 
 /**
+ * A record to delete from DNS.
+ */
+export interface DeleteDnsRecord {
+	/** Record name/subdomain (e.g., 'api' or '@' for root) */
+	name: string;
+	/** Record type (A, CNAME, etc.) */
+	type: DnsRecordType;
+}
+
+/**
+ * Result of a delete operation.
+ */
+export interface DeleteResult {
+	/** The record that was requested for deletion */
+	record: DeleteDnsRecord;
+	/** Whether the record was deleted */
+	deleted: boolean;
+	/** Whether the record was not found (already deleted) */
+	notFound: boolean;
+	/** Error message if deletion failed */
+	error?: string;
+}
+
+/**
  * Interface for DNS providers.
  *
  * Implementations must handle:
  * - Getting all records for a domain
  * - Creating or updating records for a domain
+ * - Deleting records from a domain
  */
 export interface DnsProvider {
 	/** Provider name for logging */
@@ -78,6 +103,18 @@ export interface DnsProvider {
 		domain: string,
 		records: UpsertDnsRecord[],
 	): Promise<UpsertResult[]>;
+
+	/**
+	 * Delete DNS records.
+	 *
+	 * @param domain - Root domain (e.g., 'example.com')
+	 * @param records - Records to delete
+	 * @returns Results of the delete operations
+	 */
+	deleteRecords(
+		domain: string,
+		records: DeleteDnsRecord[],
+	): Promise<DeleteResult[]>;
 }
 
 // =============================================================================
@@ -105,7 +142,8 @@ export function isDnsProvider(value: unknown): value is DnsProvider {
 		value !== null &&
 		typeof (value as DnsProvider).name === 'string' &&
 		typeof (value as DnsProvider).getRecords === 'function' &&
-		typeof (value as DnsProvider).upsertRecords === 'function'
+		typeof (value as DnsProvider).upsertRecords === 'function' &&
+		typeof (value as DnsProvider).deleteRecords === 'function'
 	);
 }
 
