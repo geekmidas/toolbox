@@ -73,7 +73,7 @@ services:
     ports:
       - "4566:4566" # LocalStack Gateway
     environment:
-      - SERVICES=sqs,sns,ssm,route53
+      - SERVICES=sqs,sns,ssm,route53,iam,s3
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_ACCESS_KEY_ID=test
