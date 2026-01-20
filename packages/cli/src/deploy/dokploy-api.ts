@@ -154,6 +154,13 @@ export class DokployApi {
 		});
 	}
 
+	/**
+	 * Delete a project and all its resources
+	 */
+	async deleteProject(projectId: string): Promise<void> {
+		await this.post('project.remove', { projectId });
+	}
+
 	// ============================================
 	// Environment endpoints
 	// ============================================
@@ -313,6 +320,13 @@ export class DokployApi {
 	 */
 	async deployApplication(applicationId: string): Promise<void> {
 		await this.post('application.deploy', { applicationId });
+	}
+
+	/**
+	 * Delete an application
+	 */
+	async deleteApplication(applicationId: string): Promise<void> {
+		await this.post('application.remove', { applicationId });
 	}
 
 	// ============================================
@@ -505,6 +519,13 @@ export class DokployApi {
 		await this.post('postgres.update', { postgresId, ...updates });
 	}
 
+	/**
+	 * Delete a Postgres database
+	 */
+	async deletePostgres(postgresId: string): Promise<void> {
+		await this.post('postgres.remove', { postgresId });
+	}
+
 	// ============================================
 	// Redis endpoints
 	// ============================================
@@ -624,6 +645,13 @@ export class DokployApi {
 		updates: Partial<DokployRedisUpdate>,
 	): Promise<void> {
 		await this.post('redis.update', { redisId, ...updates });
+	}
+
+	/**
+	 * Delete a Redis instance
+	 */
+	async deleteRedis(redisId: string): Promise<void> {
+		await this.post('redis.remove', { redisId });
 	}
 
 	// ============================================
