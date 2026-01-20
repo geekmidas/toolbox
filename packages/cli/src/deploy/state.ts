@@ -25,6 +25,30 @@ export interface DnsVerificationRecord {
 }
 
 /**
+ * Backup destination state
+ */
+export interface BackupState {
+	/** S3 bucket name for backups */
+	bucketName: string;
+	/** S3 bucket ARN */
+	bucketArn: string;
+	/** IAM user name created for backup access */
+	iamUserName: string;
+	/** IAM access key ID */
+	iamAccessKeyId: string;
+	/** IAM secret access key */
+	iamSecretAccessKey: string;
+	/** Dokploy destination ID */
+	destinationId: string;
+	/** Dokploy backup schedule ID for postgres (if configured) */
+	postgresBackupId?: string;
+	/** AWS region where bucket was created */
+	region: string;
+	/** Timestamp when backup was configured */
+	createdAt: string;
+}
+
+/**
  * State for a single stage deployment
  */
 export interface DokployStageState {
@@ -44,6 +68,8 @@ export interface DokployStageState {
 	generatedSecrets?: Record<string, Record<string, string>>;
 	/** DNS verification state per hostname */
 	dnsVerified?: Record<string, DnsVerificationRecord>;
+	/** Backup destination state */
+	backups?: BackupState;
 	lastDeployedAt: string;
 }
 
@@ -308,4 +334,57 @@ export function getAllDnsVerifications(
 	state: DokployStageState | null,
 ): Record<string, DnsVerificationRecord> {
 	return state?.dnsVerified ?? {};
+}
+
+// ============================================================================
+// Backup State
+// ============================================================================
+
+/**
+ * Get backup state from state
+ */
+export function getBackupState(
+	state: DokployStageState | null,
+): BackupState | undefined {
+	return state?.backups;
+}
+
+/**
+ * Set backup state (mutates state)
+ */
+export function setBackupState(
+	state: DokployStageState,
+	backupState: BackupState,
+): void {
+	state.backups = backupState;
+}
+
+/**
+ * Get backup destination ID from state
+ */
+export function getBackupDestinationId(
+	state: DokployStageState | null,
+): string | undefined {
+	return state?.backups?.destinationId;
+}
+
+/**
+ * Get postgres backup ID from state
+ */
+export function getPostgresBackupId(
+	state: DokployStageState | null,
+): string | undefined {
+	return state?.backups?.postgresBackupId;
+}
+
+/**
+ * Set postgres backup ID in state (mutates state)
+ */
+export function setPostgresBackupId(
+	state: DokployStageState,
+	backupId: string,
+): void {
+	if (state.backups) {
+		state.backups.postgresBackupId = backupId;
+	}
 }
