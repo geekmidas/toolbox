@@ -613,7 +613,9 @@ describe('undeploy', () => {
 			const result = await undeploy(createOptions(state, { dnsProvider }));
 
 			expect(result.deletedDnsRecords).toEqual([]);
-			expect(result.errors).toContain('Failed to delete DNS record api:A: Access denied');
+			expect(result.errors).toContain(
+				'Failed to delete DNS record api:A: Access denied',
+			);
 		});
 
 		it('should mark not-found records as deleted', async () => {

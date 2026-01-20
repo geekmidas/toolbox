@@ -122,12 +122,21 @@ export async function undeploy(
 
 			for (const [domain, records] of recordsByDomain) {
 				try {
-					logger.log(`   Deleting ${records.length} DNS record(s) for ${domain}...`);
+					logger.log(
+						`   Deleting ${records.length} DNS record(s) for ${domain}...`,
+					);
 					const deleteResults = await dnsProvider.deleteRecords(
 						domain,
 						records.map((r) => ({
 							name: r.name,
-							type: r.type as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA',
+							type: r.type as
+								| 'A'
+								| 'AAAA'
+								| 'CNAME'
+								| 'MX'
+								| 'TXT'
+								| 'SRV'
+								| 'CAA',
 						})),
 					);
 

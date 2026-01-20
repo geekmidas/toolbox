@@ -141,8 +141,15 @@ async function userExists(iam: IAMClient, userName: string): Promise<boolean> {
 export async function provisionBackupDestination(
 	options: ProvisionBackupOptions,
 ): Promise<BackupState> {
-	const { api, projectName, stage, config, existingState, logger, awsEndpoint } =
-		options;
+	const {
+		api,
+		projectName,
+		stage,
+		config,
+		existingState,
+		logger,
+		awsEndpoint,
+	} = options;
 
 	// If we have existing state, verify the Dokploy destination still exists
 	if (existingState?.destinationId) {
@@ -156,7 +163,11 @@ export async function provisionBackupDestination(
 	}
 
 	// Create AWS clients
-	const aws = await createAwsClients(config.region, config.profile, awsEndpoint);
+	const aws = await createAwsClients(
+		config.region,
+		config.profile,
+		awsEndpoint,
+	);
 	const sanitizedProject = sanitizeName(projectName);
 
 	// 1. Create or verify S3 bucket
