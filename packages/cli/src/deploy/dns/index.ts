@@ -12,6 +12,7 @@ import type {
 import {
 	type DokployStageState,
 	isDnsVerified,
+	setDnsRecord,
 	setDnsVerification,
 } from '../state';
 import {
@@ -381,11 +382,17 @@ export async function createDnsRecords(
  * Supports both legacy single-domain format and new multi-domain format:
  * - Legacy: { provider: 'hostinger', domain: 'example.com' }
  * - Multi:  { 'example.com': { provider: 'hostinger' }, 'example.dev': { provider: 'route53' } }
+ *
+ * @param appHostnames - Map of app names to hostnames
+ * @param dnsConfig - DNS configuration (legacy or multi-domain)
+ * @param dokployEndpoint - Dokploy server endpoint to resolve IP from
+ * @param state - Optional state to save created records for later deletion
  */
 export async function orchestrateDns(
 	appHostnames: Map<string, string>, // appName -> hostname
 	dnsConfig: DnsConfig | undefined,
 	dokployEndpoint: string,
+	state?: DokployStageState,
 ): Promise<DnsCreationResult | null> {
 	if (!dnsConfig) {
 		return null;
@@ -473,6 +480,24 @@ export async function orchestrateDns(
 		if (failed > 0) {
 			logger.log(`   ⚠ ${failed} record(s) failed for ${rootDomain}`);
 			hasFailures = true;
+		}
+
+		// Save created/existing records to state for later deletion during undeploy
+		if (state) {
+			for (const record of domainRecords) {
+				if (record.created || record.existed) {
+					setDnsRecord(state, {
+						domain: rootDomain,
+						name: record.subdomain,
+						type: record.type,
+						value: record.value,
+						ttl:
+							'ttl' in providerConfig && providerConfig.ttl
+								? providerConfig.ttl
+								: 300,
+					});
+				}
+			}
 		}
 
 		// Print summary table for this domain
