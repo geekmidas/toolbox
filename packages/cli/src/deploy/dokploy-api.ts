@@ -704,6 +704,144 @@ export class DokployApi {
 			serverId,
 		});
 	}
+
+	// ============================================
+	// Destination endpoints (backup storage)
+	// ============================================
+
+	/**
+	 * List all backup destinations
+	 */
+	async listDestinations(): Promise<DokployDestination[]> {
+		return this.get<DokployDestination[]>('destination.all');
+	}
+
+	/**
+	 * Get a destination by ID
+	 */
+	async getDestination(destinationId: string): Promise<DokployDestination> {
+		return this.get<DokployDestination>(
+			`destination.one?destinationId=${destinationId}`,
+		);
+	}
+
+	/**
+	 * Create a new S3 backup destination
+	 */
+	async createDestination(
+		options: DokployDestinationCreate,
+	): Promise<DokployDestination> {
+		return this.post<DokployDestination>('destination.create', { ...options });
+	}
+
+	/**
+	 * Find a destination by name
+	 */
+	async findDestinationByName(
+		name: string,
+	): Promise<DokployDestination | undefined> {
+		const destinations = await this.listDestinations();
+		return destinations.find((d) => d.name === name);
+	}
+
+	/**
+	 * Find or create a destination by name
+	 */
+	async findOrCreateDestination(
+		name: string,
+		options: Omit<DokployDestinationCreate, 'name'>,
+	): Promise<{ destination: DokployDestination; created: boolean }> {
+		const existing = await this.findDestinationByName(name);
+		if (existing) {
+			return { destination: existing, created: false };
+		}
+		const destination = await this.createDestination({ name, ...options });
+		return { destination, created: true };
+	}
+
+	/**
+	 * Update a destination
+	 */
+	async updateDestination(
+		destinationId: string,
+		updates: Partial<DokployDestinationCreate>,
+	): Promise<void> {
+		await this.post('destination.update', { destinationId, ...updates });
+	}
+
+	/**
+	 * Delete a destination
+	 */
+	async deleteDestination(destinationId: string): Promise<void> {
+		await this.post('destination.remove', { destinationId });
+	}
+
+	/**
+	 * Test connection to a destination
+	 */
+	async testDestinationConnection(
+		destinationId: string,
+	): Promise<{ success: boolean }> {
+		return this.post<{ success: boolean }>('destination.testConnection', {
+			destinationId,
+		});
+	}
+
+	// ============================================
+	// Backup endpoints (scheduled backups)
+	// ============================================
+
+	/**
+	 * Create a backup schedule for postgres
+	 */
+	async createPostgresBackup(
+		options: DokployBackupCreate,
+	): Promise<DokployBackup> {
+		return this.post<DokployBackup>('backup.create', {
+			...options,
+			databaseType: 'postgres',
+		});
+	}
+
+	/**
+	 * List backups for a postgres database
+	 */
+	async listPostgresBackups(postgresId: string): Promise<DokployBackup[]> {
+		return this.get<DokployBackup[]>(
+			`backup.all?postgresId=${postgresId}&databaseType=postgres`,
+		);
+	}
+
+	/**
+	 * Get a backup by ID
+	 */
+	async getBackup(backupId: string): Promise<DokployBackup> {
+		return this.get<DokployBackup>(`backup.one?backupId=${backupId}`);
+	}
+
+	/**
+	 * Update a backup schedule
+	 */
+	async updateBackup(
+		backupId: string,
+		updates: Partial<DokployBackupUpdate>,
+	): Promise<void> {
+		await this.post('backup.update', { backupId, ...updates });
+	}
+
+	/**
+	 * Delete a backup schedule
+	 */
+	async deleteBackup(backupId: string): Promise<void> {
+		await this.post('backup.remove', { backupId });
+	}
+
+	/**
+	 * Trigger a manual backup run
+	 */
+	async runBackupManually(backupId: string): Promise<void> {
+		await this.post('backup.manualBackup', { backupId });
+	}
 }
 
 // ============================================
@@ -833,6 +971,77 @@ export interface DokployDomainCreate {
 export interface DokployDomain extends DokployDomainCreate {
 	domainId: string;
 	createdAt?: string;
+}
+
+// ============================================
+// Destination types (backup storage)
+// ============================================
+
+export interface DokployDestination {
+	destinationId: string;
+	name: string;
+	accessKey: string;
+	bucket: string;
+	region: string;
+	endpoint: string | null;
+	createdAt?: string;
+}
+
+export interface DokployDestinationCreate {
+	/** User-friendly name for the destination */
+	name: string;
+	/** S3 access key ID */
+	accessKey: string;
+	/** S3 secret access key */
+	secretAccessKey: string;
+	/** S3 bucket name */
+	bucket: string;
+	/** AWS region (e.g., 'us-east-1') */
+	region: string;
+	/** Optional endpoint for S3-compatible services */
+	endpoint?: string;
+}
+
+// ============================================
+// Backup types (scheduled backups)
+// ============================================
+
+export type DokployDatabaseType = 'postgres' | 'mysql' | 'mariadb' | 'mongo';
+
+export interface DokployBackup {
+	backupId: string;
+	schedule: string;
+	prefix: string;
+	enabled: boolean;
+	destinationId: string;
+	postgresId?: string;
+	databaseType: DokployDatabaseType;
+	keepLatestCount: number | null;
+	createdAt?: string;
+}
+
+export interface DokployBackupCreate {
+	/** Cron schedule (e.g., '0 2 * * *' for 2 AM daily) */
+	schedule: string;
+	/** Backup file prefix (e.g., 'production/postgres') */
+	prefix: string;
+	/** Destination ID for backup storage */
+	destinationId: string;
+	/** Database name to backup */
+	database: string;
+	/** Postgres instance ID */
+	postgresId: string;
+	/** Enable/disable backup (default: true) */
+	enabled?: boolean;
+	/** Number of backups to keep (default: keep all) */
+	keepLatestCount?: number;
+}
+
+export interface DokployBackupUpdate {
+	schedule?: string;
+	prefix?: string;
+	enabled?: boolean;
+	keepLatestCount?: number;
 }
 
 /**
