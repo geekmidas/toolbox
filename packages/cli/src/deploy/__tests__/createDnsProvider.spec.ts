@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	createDnsProvider,
+	type DeleteDnsRecord,
+	type DeleteResult,
 	type DnsProvider,
 	type DnsRecord,
 	isDnsProvider,
@@ -14,6 +16,7 @@ describe('isDnsProvider', () => {
 			name: 'test',
 			getRecords: async () => [],
 			upsertRecords: async () => [],
+			deleteRecords: async () => [],
 		};
 		expect(isDnsProvider(provider)).toBe(true);
 	});
@@ -126,6 +129,16 @@ describe('createDnsProvider', () => {
 				async upsertRecords(): Promise<UpsertResult[]> {
 					return [];
 				},
+				async deleteRecords(
+					_domain: string,
+					records: DeleteDnsRecord[],
+				): Promise<DeleteResult[]> {
+					return records.map((r) => ({
+						record: r,
+						deleted: true,
+						notFound: false,
+					}));
+				},
 			};
 
 			const provider = await createDnsProvider({
@@ -155,6 +168,16 @@ describe('createDnsProvider', () => {
 						record: r,
 						created: true,
 						unchanged: false,
+					}));
+				},
+				async deleteRecords(
+					_domain: string,
+					records: DeleteDnsRecord[],
+				): Promise<DeleteResult[]> {
+					return records.map((r) => ({
+						record: r,
+						deleted: true,
+						notFound: false,
 					}));
 				},
 			};
