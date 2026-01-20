@@ -13,6 +13,8 @@ import {
 } from '@aws-sdk/client-route-53';
 import { fromIni } from '@aws-sdk/credential-providers';
 import type {
+	DeleteDnsRecord,
+	DeleteResult,
 	DnsProvider,
 	DnsRecord,
 	DnsRecordType,
@@ -251,6 +253,85 @@ export class Route53Provider implements DnsProvider {
 				});
 
 				await this.client.send(command);
+			}
+		}
+
+		return results;
+	}
+
+	async deleteRecords(
+		domain: string,
+		records: DeleteDnsRecord[],
+	): Promise<DeleteResult[]> {
+		const zoneId = await this.getHostedZoneId(domain);
+		const results: DeleteResult[] = [];
+
+		// Get existing records to find the ones to delete
+		const existingRecords = await this.getRecords(domain);
+
+		// Process records in batches (Route53 allows max 1000 changes per request)
+		const batchSize = 100;
+		for (let i = 0; i < records.length; i += batchSize) {
+			const batch = records.slice(i, i + batchSize);
+			const changes = [];
+
+			for (const record of batch) {
+				const existing = existingRecords.find(
+					(r) => r.name === record.name && r.type === record.type,
+				);
+
+				if (!existing) {
+					// Record doesn't exist - already deleted
+					results.push({
+						record,
+						deleted: false,
+						notFound: true,
+					});
+					continue;
+				}
+
+				// Build full record name
+				const recordName =
+					record.name === '@' ? domain : `${record.name}.${domain}`;
+
+				changes.push({
+					Action: 'DELETE' as const,
+					ResourceRecordSet: {
+						Name: recordName,
+						Type: record.type,
+						TTL: existing.ttl,
+						ResourceRecords: existing.values.map((v) => ({ Value: v })),
+					},
+				});
+
+				results.push({
+					record,
+					deleted: true,
+					notFound: false,
+				});
+			}
+
+			// Execute batch if there are changes
+			if (changes.length > 0) {
+				try {
+					const command = new ChangeResourceRecordSetsCommand({
+						HostedZoneId: zoneId,
+						ChangeBatch: {
+							Comment: 'Delete by gkm undeploy',
+							Changes: changes,
+						},
+					});
+
+					await this.client.send(command);
+				} catch (error) {
+					// Mark all records in this batch as failed
+					for (const result of results.slice(-changes.length)) {
+						if (result.deleted) {
+							result.deleted = false;
+							result.error = String(error);
+						}
+					}
+				}
 			}
 		}
 
