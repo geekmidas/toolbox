@@ -6,6 +6,8 @@
 
 import { getHostingerToken } from '../../auth/credentials';
 import type {
+	DeleteDnsRecord,
+	DeleteResult,
 	DnsProvider,
 	DnsRecord,
 	UpsertDnsRecord,
@@ -93,6 +95,71 @@ export class HostingerProvider implements DnsProvider {
 				created: !existing,
 				unchanged: false,
 			});
+		}
+
+		return results;
+	}
+
+	async deleteRecords(
+		domain: string,
+		records: DeleteDnsRecord[],
+	): Promise<DeleteResult[]> {
+		const api = await this.getApi();
+		const results: DeleteResult[] = [];
+
+		// Get existing records to check what exists
+		const existingRecords = await api.getRecords(domain);
+
+		// Filter to only records that exist
+		const recordsToDelete = records.filter((record) =>
+			existingRecords.some(
+				(r) => r.name === record.name && r.type === record.type,
+			),
+		);
+
+		// Delete existing records
+		if (recordsToDelete.length > 0) {
+			try {
+				await api.deleteRecords(
+					domain,
+					recordsToDelete.map((r) => ({
+						name: r.name,
+						type: r.type as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA',
+					})),
+				);
+
+				for (const record of recordsToDelete) {
+					results.push({
+						record,
+						deleted: true,
+						notFound: false,
+					});
+				}
+			} catch (error) {
+				// If batch delete fails, report error for all records
+				for (const record of recordsToDelete) {
+					results.push({
+						record,
+						deleted: false,
+						notFound: false,
+						error: String(error),
+					});
+				}
+			}
+		}
+
+		// Mark non-existent records as not found
+		for (const record of records) {
+			const existing = existingRecords.find(
+				(r) => r.name === record.name && r.type === record.type,
+			);
+			if (!existing) {
+				results.push({
+					record,
+					deleted: false,
+					notFound: true,
+				});
+			}
 		}
 
 		return results;
