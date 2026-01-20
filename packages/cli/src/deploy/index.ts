@@ -88,10 +88,13 @@ import {
 	createEmptyState,
 	getAllAppCredentials,
 	getApplicationId,
+	getBackupState,
 	getPostgresId,
 	getRedisId,
 	setAppCredentials,
 	setApplicationId,
+	setBackupState,
+	setPostgresBackupId,
 	setPostgresId,
 	setRedisId,
 } from './state.js';
@@ -1256,6 +1259,51 @@ export async function workspaceDeployCommand(
 				serverHostname,
 				usersToCreate,
 			);
+		}
+	}
+
+	// ==================================================================
+	// Provision backup destination if configured
+	// ==================================================================
+	if (workspace.deploy?.backups && provisionedPostgres) {
+		logger.log('\n💾 Provisioning backup destination...');
+
+		const { provisionBackupDestination } = await import(
+			'./backup-provisioner.js'
+		);
+
+		const backupState = await provisionBackupDestination({
+			api,
+			projectId: project.projectId,
+			projectName: workspace.name,
+			stage,
+			config: workspace.deploy.backups,
+			existingState: getBackupState(state),
+			logger,
+		});
+
+		// Save backup state
+		setBackupState(state, backupState);
+
+		// Create backup schedule for postgres if not already configured
+		if (!backupState.postgresBackupId) {
+			const backupSchedule = workspace.deploy.backups.schedule ?? '0 2 * * *';
+			const backupRetention = workspace.deploy.backups.retention ?? 30;
+
+			logger.log('   Creating postgres backup schedule...');
+			const backup = await api.createPostgresBackup({
+				schedule: backupSchedule,
+				prefix: `${stage}/postgres`,
+				destinationId: backupState.destinationId,
+				database: provisionedPostgres.databaseName,
+				postgresId: provisionedPostgres.postgresId,
+				enabled: true,
+				keepLatestCount: backupRetention,
+			});
+			setPostgresBackupId(state, backup.backupId);
+			logger.log(`   ✓ Postgres backup schedule created (${backupSchedule})`);
+		} else {
+			logger.log('   ✓ Using existing postgres backup schedule');
 		}
 	}
 
