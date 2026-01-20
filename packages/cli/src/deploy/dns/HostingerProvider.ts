@@ -124,7 +124,14 @@ export class HostingerProvider implements DnsProvider {
 					domain,
 					recordsToDelete.map((r) => ({
 						name: r.name,
-						type: r.type as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA',
+						type: r.type as
+							| 'A'
+							| 'AAAA'
+							| 'CNAME'
+							| 'MX'
+							| 'TXT'
+							| 'SRV'
+							| 'CAA',
 					})),
 				);
 
