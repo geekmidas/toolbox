@@ -25,6 +25,24 @@ export interface DnsVerificationRecord {
 }
 
 /**
+ * A DNS record that was created during deploy
+ */
+export interface CreatedDnsRecord {
+	/** The domain this record belongs to (e.g., 'example.com') */
+	domain: string;
+	/** Record name/subdomain (e.g., 'api' or '@' for root) */
+	name: string;
+	/** Record type (A, CNAME, etc.) */
+	type: string;
+	/** Record value (IP address, hostname, etc.) */
+	value: string;
+	/** TTL in seconds */
+	ttl: number;
+	/** When this record was created */
+	createdAt: string;
+}
+
+/**
  * Backup destination state
  */
 export interface BackupState {
@@ -68,6 +86,8 @@ export interface DokployStageState {
 	generatedSecrets?: Record<string, Record<string, string>>;
 	/** DNS verification state per hostname */
 	dnsVerified?: Record<string, DnsVerificationRecord>;
+	/** DNS records created during deploy (keyed by "name:type", e.g., "api:A") */
+	dnsRecords?: Record<string, CreatedDnsRecord>;
 	/** Backup destination state */
 	backups?: BackupState;
 	lastDeployedAt: string;
@@ -334,6 +354,78 @@ export function getAllDnsVerifications(
 	state: DokployStageState | null,
 ): Record<string, DnsVerificationRecord> {
 	return state?.dnsVerified ?? {};
+}
+
+// ============================================================================
+// DNS Records
+// ============================================================================
+
+/**
+ * Get the key for a DNS record in state
+ */
+function getDnsRecordKey(name: string, type: string): string {
+	return `${name}:${type}`;
+}
+
+/**
+ * Get a created DNS record from state
+ */
+export function getDnsRecord(
+	state: DokployStageState | null,
+	name: string,
+	type: string,
+): CreatedDnsRecord | undefined {
+	return state?.dnsRecords?.[getDnsRecordKey(name, type)];
+}
+
+/**
+ * Set a created DNS record in state (mutates state)
+ */
+export function setDnsRecord(
+	state: DokployStageState,
+	record: Omit<CreatedDnsRecord, 'createdAt'>,
+): void {
+	if (!state.dnsRecords) {
+		state.dnsRecords = {};
+	}
+	const key = getDnsRecordKey(record.name, record.type);
+	state.dnsRecords[key] = {
+		...record,
+		createdAt: new Date().toISOString(),
+	};
+}
+
+/**
+ * Remove a DNS record from state (mutates state)
+ */
+export function removeDnsRecord(
+	state: DokployStageState,
+	name: string,
+	type: string,
+): void {
+	if (state.dnsRecords) {
+		delete state.dnsRecords[getDnsRecordKey(name, type)];
+	}
+}
+
+/**
+ * Get all created DNS records from state
+ */
+export function getAllDnsRecords(
+	state: DokployStageState | null,
+): CreatedDnsRecord[] {
+	if (!state?.dnsRecords) {
+		return [];
+	}
+	return Object.values(state.dnsRecords);
+}
+
+/**
+ * Clear all DNS records from state (mutates state)
+ */
+export function clearDnsRecords(state: DokployStageState): void {
+	state.dnsRecords = {};
+	state.dnsVerified = {};
 }
 
 // ============================================================================
