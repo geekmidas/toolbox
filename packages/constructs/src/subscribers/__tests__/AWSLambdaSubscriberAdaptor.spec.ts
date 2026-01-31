@@ -90,6 +90,38 @@ const createSNSEvent = (messages: any[]): SNSEvent => ({
 	),
 });
 
+// Helper to create SNS event with payload-only format (type in MessageAttributes)
+const createSNSEventWithMessageAttributes = (
+	messages: { type: string; payload: any }[],
+): SNSEvent => ({
+	Records: messages.map(
+		(message, index) =>
+			({
+				EventSource: 'aws:sns',
+				EventVersion: '1.0',
+				EventSubscriptionArn: 'arn:aws:sns:region:account:topic-name',
+				Sns: {
+					Type: 'Notification',
+					MessageId: `message-${index}`,
+					TopicArn: 'arn:aws:sns:region:account:topic-name',
+					Subject: undefined,
+					Message: JSON.stringify(message.payload),
+					Timestamp: '2023-01-01T00:00:00.000Z',
+					SignatureVersion: '1',
+					Signature: 'signature',
+					SigningCertUrl: 'https://example.com/cert',
+					UnsubscribeUrl: 'https://example.com/unsubscribe',
+					MessageAttributes: {
+						type: {
+							Type: 'String',
+							Value: message.type,
+						},
+					},
+				},
+			}) satisfies SNSEventRecord,
+	),
+});
+
 // Helper to create SNS wrapped in SQS
 const createSNSWrappedInSQS = (messages: any[]): SQSEvent => {
 	return createSQSEvent(
@@ -99,6 +131,27 @@ const createSNSWrappedInSQS = (messages: any[]): SQSEvent => {
 			TopicArn: 'arn:aws:sns:region:account:topic-name',
 			Message: JSON.stringify(message),
 			Timestamp: '2023-01-01T00:00:00.000Z',
+		})),
+	);
+};
+
+// Helper to create SNS wrapped in SQS with payload-only format (type in MessageAttributes)
+const createSNSWrappedInSQSWithMessageAttributes = (
+	messages: { type: string; payload: any }[],
+): SQSEvent => {
+	return createSQSEvent(
+		messages.map((message) => ({
+			Type: 'Notification',
+			MessageId: 'message-id',
+			TopicArn: 'arn:aws:sns:region:account:topic-name',
+			Message: JSON.stringify(message.payload),
+			Timestamp: '2023-01-01T00:00:00.000Z',
+			MessageAttributes: {
+				type: {
+					Type: 'String',
+					Value: message.type,
+				},
+			},
 		})),
 	);
 };
