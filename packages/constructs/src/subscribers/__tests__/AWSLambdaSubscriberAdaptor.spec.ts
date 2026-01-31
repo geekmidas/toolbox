@@ -277,6 +277,72 @@ describe('AWSLambdaSubscriber', () => {
 
 			expect(handler).toHaveBeenCalled();
 		});
+
+		it('should process SNS events with type in MessageAttributes (payload-only format)', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toEqual({
+					type: 'tenant.created',
+					payload: { tenantId: '019c0b2b-d881-7c21-93b6-480571144b28' },
+				});
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				['tenant.created'] as any,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const snsEvent = createSNSEventWithMessageAttributes([
+				{
+					type: 'tenant.created',
+					payload: { tenantId: '019c0b2b-d881-7c21-93b6-480571144b28' },
+				},
+			]);
+
+			await lambdaHandler(snsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should process SNS-wrapped-in-SQS with type in MessageAttributes (payload-only format)', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toEqual({
+					type: 'tenant.created',
+					payload: { tenantId: '019c0b2b-d881-7c21-93b6-480571144b28' },
+				});
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				['tenant.created'] as any,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const sqsEvent = createSNSWrappedInSQSWithMessageAttributes([
+				{
+					type: 'tenant.created',
+					payload: { tenantId: '019c0b2b-d881-7c21-93b6-480571144b28' },
+				},
+			]);
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
 	});
 
 	describe('event type filtering', () => {
