@@ -11,6 +11,7 @@ import type {
 	Context,
 	Handler,
 	SNSEvent,
+	SNSEventRecord,
 	SQSEvent,
 	SQSRecord,
 } from 'aws-lambda';
@@ -128,7 +129,12 @@ export class AWSLambdaSubscriber<
 	private parseEvents(): Middleware<TServices, TLogger, OutSchema> {
 		return {
 			before: async (req) => {
-				const rawEvent = (req as any).event as SQSEvent | SNSEvent;
+				const { logger, ...e } = req.event;
+				const rawEvent = e as any as SQSEvent | SNSEvent;
+
+				logger.info({
+					rawEvent,
+				});
 
 				// Parse events based on the event type
 				const events: any[] = [];
@@ -153,7 +159,7 @@ export class AWSLambdaSubscriber<
 						// SNS Event
 						for (const record of rawEvent.Records) {
 							try {
-								const event = JSON.parse(record.Sns.Message);
+								const event = this.parseSNSRecord(record);
 								if (event && this.isSubscribedEvent(event.type)) {
 									events.push(event);
 								}
@@ -194,15 +200,43 @@ export class AWSLambdaSubscriber<
 		);
 	}
 
+	private parseSNSRecord(record: SNSEventRecord): any | null {
+		try {
+			const message = JSON.parse(record.Sns.Message);
+			// Resolve type from MessageAttributes (preferred) or message body
+			const messageType =
+				record.Sns.MessageAttributes?.type?.Value ?? message.type;
+
+			if (message.type) {
+				return message; // Full event format: { type, payload }
+			}
+
+			// Payload-only format: type is in MessageAttributes
+			return messageType ? { type: messageType, payload: message } : message;
+		} catch (error) {
+			this.logger.error({ error, record }, 'Failed to parse SNS record body');
+			return null;
+		}
+	}
+
 	private parseSQSRecord(record: SQSRecord): any | null {
 		try {
 			const body = JSON.parse(record.body);
 
 			// Check if this is an SNS message wrapped in SQS
 			if (body.Type === 'Notification' && body.Message) {
-				// Parse the SNS message
 				const snsMessage = JSON.parse(body.Message);
-				return snsMessage;
+
+				if (snsMessage.type) {
+					return snsMessage; // Full event format: { type, payload }
+				}
+
+				// Payload-only format: type is in MessageAttributes
+				const messageType =
+					body.MessageAttributes?.type?.Value ?? snsMessage.type;
+				return messageType
+					? { type: messageType, payload: snsMessage }
+					: snsMessage;
 			}
 
 			// Direct SQS message
@@ -262,8 +296,8 @@ export class AWSLambdaSubscriber<
 		// Apply middleware in order
 		return middy(handler)
 			.use(this.loggerMiddleware())
+			.use(this.parseEvents())
 			.use(this.error())
-			.use(this.services())
-			.use(this.parseEvents()) as unknown as AWSLambdaHandler;
+			.use(this.services());
 	}
 }
