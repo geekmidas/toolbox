@@ -66,7 +66,7 @@ const createSQSEvent = (messages: any[]): SQSEvent => ({
 	),
 });
 
-// Helper to create SNS event
+// Helper to create SNS event with full event format (type in message body)
 const createSNSEvent = (messages: any[]): SNSEvent => ({
 	Records: messages.map(
 		(message, index) =>
