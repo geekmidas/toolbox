@@ -16,7 +16,10 @@ describe('EndpointFactory.authorizers', () => {
 			.authorizer('iam')
 			.handle(async () => ({ success: true }));
 
-		expect(endpoint.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 
 	it('should allow setting authorizer on individual endpoints', () => {
@@ -33,8 +36,14 @@ describe('EndpointFactory.authorizers', () => {
 			.authorizer('jwt')
 			.handle(async () => ({ users: [] }));
 
-		expect(endpoint1.authorizer).toEqual({ name: 'iam' });
-		expect(endpoint2.authorizer).toEqual({ name: 'jwt' });
+		expect(endpoint1.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
+		expect(endpoint2.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 	});
 
 	it('should throw error when using non-existent authorizer', () => {
@@ -71,7 +80,10 @@ describe('EndpointFactory.authorizers', () => {
 			.authorizer('jwt')
 			.handle(async () => ({ data: 'protected' }));
 
-		expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 		expect(endpoint.route).toBe('/api/v1/protected');
 	});
 
@@ -94,7 +106,10 @@ describe('EndpointFactory.authorizers', () => {
 				return { name: body.name };
 			});
 
-		expect(endpoint.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 
 	it('should maintain type safety with authorizer names', () => {
@@ -129,7 +144,10 @@ describe('EndpointFactory.authorizers', () => {
 			.handle(async () => ({ protected: true }));
 
 		expect(endpoint1.authorizer).toBeUndefined();
-		expect(endpoint2.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint2.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 
 	it('should work with nested routes', () => {
@@ -147,7 +165,10 @@ describe('EndpointFactory.authorizers', () => {
 			.handle(async () => ({ deleted: true }));
 
 		expect(endpoint.route).toBe('/api/v1/admin/users/:id');
-		expect(endpoint.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 
 	it('should work with all HTTP methods', () => {
@@ -178,12 +199,16 @@ describe('EndpointFactory.authorizers', () => {
 			.authorizer('jwt')
 			.handle(async () => ({}));
 
-		expect(getEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(postEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(putEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(patchEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(deleteEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(optionsEndpoint.authorizer).toEqual({ name: 'jwt' });
+		const expectedJwt = {
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		};
+		expect(getEndpoint.authorizer).toEqual(expectedJwt);
+		expect(postEndpoint.authorizer).toEqual(expectedJwt);
+		expect(putEndpoint.authorizer).toEqual(expectedJwt);
+		expect(patchEndpoint.authorizer).toEqual(expectedJwt);
+		expect(deleteEndpoint.authorizer).toEqual(expectedJwt);
+		expect(optionsEndpoint.authorizer).toEqual(expectedJwt);
 	});
 
 	it('should work with output schemas', () => {
@@ -203,7 +228,10 @@ describe('EndpointFactory.authorizers', () => {
 				name: 'John Doe',
 			}));
 
-		expect(endpoint.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 		expect(endpoint.outputSchema).toBe(outputSchema);
 	});
 
@@ -237,9 +265,14 @@ describe('EndpointFactory.authorizers', () => {
 			.authorizer('jwt')
 			.handle(async () => ({}));
 
+		// jwt-user and jwt-admin are custom names (no built-in scheme)
 		expect(endpoint1.authorizer).toEqual({ name: 'jwt-user' });
 		expect(endpoint2.authorizer).toEqual({ name: 'jwt-admin' });
-		expect(endpoint3.authorizer).toEqual({ name: 'jwt' });
+		// jwt is a built-in scheme
+		expect(endpoint3.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 	});
 
 	it('should support "none" to explicitly mark endpoint as having no authorizer', () => {
