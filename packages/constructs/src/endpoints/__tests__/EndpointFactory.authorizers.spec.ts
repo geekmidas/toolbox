@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { BUILT_IN_SECURITY_SCHEMES } from '../Authorizer';
 import { EndpointFactory } from '../EndpointFactory';
 
 describe('EndpointFactory.authorizers', () => {
