@@ -843,7 +843,7 @@ describe('Docker build arg extraction', () => {
 		// DATABASE_URL is missing (no postgres config)
 		expect(missing).toContain('DATABASE_URL');
 
-		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
+		const { publicUrlArgNames } = extractBuildArgs(resolved);
 
 		// Only NEXT_PUBLIC_* should be build args
 		expect(publicUrlArgNames).toHaveLength(3);
