@@ -10,7 +10,13 @@ export {
 	type TypedInputValue,
 	type TypedResolvers,
 } from './EnvironmentBuilder';
-export { ConfigParser, EnvironmentParser } from './EnvironmentParser';
+export {
+	ConfigParser,
+	type EmptyObject,
+	type EnvFetcher,
+	EnvironmentParser,
+	type InferConfig,
+} from './EnvironmentParser';
 export {
 	type FormatOptions,
 	formatParseError,
