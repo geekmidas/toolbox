@@ -22,7 +22,7 @@ export const dailyReport = c
 			],
 		};
 
-		logger.info('Daily report generated', reportData);
+		logger.info(reportData, 'Daily report generated');
 
 		return reportData;
 	});
