@@ -341,8 +341,12 @@ describe('EndpointFactory.authorizer (default)', () => {
 			.body(z.object({ name: z.string() }))
 			.handle(async () => ({ id: '1' }));
 
-		expect(endpoint1.authorizer).toEqual({ name: 'jwt' });
-		expect(endpoint2.authorizer).toEqual({ name: 'jwt' });
+		const expectedJwt = {
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		};
+		expect(endpoint1.authorizer).toEqual(expectedJwt);
+		expect(endpoint2.authorizer).toEqual(expectedJwt);
 	});
 
 	it('should allow endpoint to override factory default authorizer', () => {
@@ -355,7 +359,10 @@ describe('EndpointFactory.authorizer (default)', () => {
 			.authorizer('iam')
 			.handle(async () => ({ admin: true }));
 
-		expect(endpoint.authorizer).toEqual({ name: 'iam' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 
 	it('should allow endpoint to disable authorizer with none', () => {
@@ -375,7 +382,6 @@ describe('EndpointFactory.authorizer (default)', () => {
 		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
 
 		expect(() => {
-			// @ts-expect-error - testing invalid authorizer
 			factory.authorizer('invalid');
 		}).toThrow(
 			'Authorizer "invalid" not found in available authorizers: iam, jwt',
@@ -390,7 +396,10 @@ describe('EndpointFactory.authorizer (default)', () => {
 
 		const endpoint = factory.get('/users').handle(async () => ({ users: [] }));
 
-		expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 		expect(endpoint.route).toBe('/api/v1/users');
 	});
 
@@ -410,7 +419,10 @@ describe('EndpointFactory.authorizer (default)', () => {
 			return { users: [] };
 		});
 
-		expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 	});
 
 	it('should allow factory.authorizer("none") to clear default', () => {
@@ -447,7 +459,10 @@ describe('EndpointFactory.authorizer (default)', () => {
 			.handle(async () => ({ deleted: true }));
 
 		expect(endpoint.route).toBe('/api/admin/users/:id');
-		expect(endpoint.authorizer).toEqual({ name: 'jwt' });
+		expect(endpoint.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
 	});
 
 	it('should allow sub-factory to override parent default authorizer', () => {
@@ -465,7 +480,13 @@ describe('EndpointFactory.authorizer (default)', () => {
 			.get('/dashboard')
 			.handle(async () => ({ admin: true }));
 
-		expect(publicEndpoint.authorizer).toEqual({ name: 'jwt' });
-		expect(adminEndpoint.authorizer).toEqual({ name: 'iam' });
+		expect(publicEndpoint.authorizer).toEqual({
+			name: 'jwt',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.jwt,
+		});
+		expect(adminEndpoint.authorizer).toEqual({
+			name: 'iam',
+			securityScheme: BUILT_IN_SECURITY_SCHEMES.iam,
+		});
 	});
 });
