@@ -182,6 +182,7 @@ export class EndpointFactory<
 	> {
 		const authorizerConfigs = authorizers.map((name) => ({
 			name,
+			securityScheme: getSecurityScheme(name, this.customSecuritySchemes),
 		}));
 		return new EndpointFactory<
 			TServices,
