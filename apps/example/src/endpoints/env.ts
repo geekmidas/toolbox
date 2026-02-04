@@ -10,7 +10,7 @@ export const geEnvironment = router
 	.get('/env')
 
 	.output(z.string().array())
-	.handle(async ({ services, logger, db, auditor }) => {
+	.handle(async () => {
 		const config = envParser
 			.create((g) => ({
 				test: g('TEST_VAR').string(),

@@ -24,7 +24,7 @@ export const processOrder = f
 		}),
 	)
 	.timeout(300000) // 5 minutes
-	.handle(async ({ input, services, logger }) => {
+	.handle(async ({ input, logger }) => {
 		logger.info(`Processing order ${input.orderId}`);
 
 		// Process order logic here
