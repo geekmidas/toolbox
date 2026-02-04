@@ -9,10 +9,11 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import type { HttpMethod } from '../types';
-import type {
-	Authorizer,
-	BuiltInSecuritySchemeId,
-	SecurityScheme,
+import {
+	type Authorizer,
+	type BuiltInSecuritySchemeId,
+	getSecurityScheme,
+	type SecurityScheme,
 } from './Authorizer';
 import type { ActorExtractor } from './audit';
 import type { AuthorizeFn, SessionFn } from './Endpoint';
