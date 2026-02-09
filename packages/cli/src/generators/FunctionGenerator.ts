@@ -99,7 +99,7 @@ export class FunctionGenerator extends ConstructGenerator<
 			context.loggerPath,
 		);
 
-		const content = `import { AWSLambdaFunction } from '@geekmidas/constructs/functions';
+		const content = `import { AWSLambdaFunction } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
