@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 1.0.4
+
+### Patch Changes
+
+- 🐛 [`05a6302`](https://github.com/geekmidas/toolbox/commit/05a6302a37ef2285aaf07ee46eeb9135ed658a68) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix lambda function generator to use correct adaptor import
+
 ## 1.0.3
 
 ### Patch Changes
