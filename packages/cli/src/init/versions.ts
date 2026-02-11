@@ -35,7 +35,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/constructs': '~1.0.4',
 	'@geekmidas/db': '~1.0.0',
 	'@geekmidas/emailkit': '~1.0.0',
-	'@geekmidas/envkit': '~1.0.1',
+	'@geekmidas/envkit': '~1.0.2',
 	'@geekmidas/errors': '~1.0.0',
 	'@geekmidas/events': '~1.0.0',
 	'@geekmidas/logger': '~1.0.0',
