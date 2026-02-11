@@ -12,6 +12,7 @@ export { environmentCase } from './EnvironmentBuilder';
 export {
 	type ApiGatewayV2,
 	type Bucket,
+	type Dynamo,
 	type Function,
 	type Postgres,
 	type ResourceProcessor,
