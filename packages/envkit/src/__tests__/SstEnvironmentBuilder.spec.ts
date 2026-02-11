@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	type Bucket,
+	type Dynamo,
 	type Postgres,
 	ResourceType,
 	type Secret,
@@ -155,6 +156,23 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				EVENTS_TOPIC_ARN: 'arn:aws:sns:us-east-1:123456789:my-topic',
+			});
+		});
+	});
+
+	describe('Dynamo resource', () => {
+		it('should process Dynamo resource correctly', () => {
+			const dynamo: Dynamo = {
+				type: ResourceType.SSTDynamo,
+				name: 'my-dynamo-table',
+			};
+
+			const env = new SstEnvironmentBuilder({
+				usersTable: dynamo,
+			}).build();
+
+			expect(env).toEqual({
+				USERS_TABLE_NAME: 'my-dynamo-table',
 			});
 		});
 	});
@@ -331,6 +349,7 @@ describe('SstEnvironmentBuilder', () => {
 			expect(typeof sstResolvers[ResourceType.Postgres]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.Bucket]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.SnsTopic]).toBe('function');
+			expect(typeof sstResolvers[ResourceType.SSTDynamo]).toBe('function');
 		});
 	});
 
@@ -348,6 +367,7 @@ describe('SstEnvironmentBuilder', () => {
 			expect(ResourceType.SSTPostgres).toBe('sst:aws:Postgres');
 			expect(ResourceType.SSTBucket).toBe('sst:aws:Bucket');
 			expect(ResourceType.SnsTopic).toBe('sst:aws:SnsTopic');
+			expect(ResourceType.SSTDynamo).toBe('sst:aws:Dynamo');
 		});
 	});
 });
