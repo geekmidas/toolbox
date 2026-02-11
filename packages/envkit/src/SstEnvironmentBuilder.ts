@@ -152,6 +152,10 @@ const topicResolver = (name: string, value: SnsTopicValue) => ({
 	[`${name}Arn`]: value.arn,
 });
 
+const dynamoResolver = (name: string, value: DynamoValue) => ({
+	[`${name}Name`]: value.name,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -173,6 +177,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.SSTPostgres]: postgresResolver,
 	[ResourceType.SSTApiGatewayV2]: noopResolver,
 	[ResourceType.SnsTopic]: topicResolver,
+	[ResourceType.SSTDynamo]: dynamoResolver,
 };
 
 /**
