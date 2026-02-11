@@ -79,12 +79,10 @@ export class ServiceDiscovery<TServices extends Record<string, unknown> = {}> {
 	}
 
 	/**
-	 * Private constructor to enforce singleton pattern.
 	 *
 	 * @param envParser - Environment parser for service configuration
-	 * @private
 	 */
-	private constructor(readonly envParser: EnvironmentParser<{}>) {}
+	constructor(readonly envParser: EnvironmentParser<{}>) {}
 
 	/**
 	 * Register multiple services with the service discovery.
