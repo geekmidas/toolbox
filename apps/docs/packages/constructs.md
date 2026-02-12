@@ -20,6 +20,7 @@ pnpm add @geekmidas/constructs
 - ✅ Session and authorization management
 - ✅ Structured logging
 - ✅ Rate limiting
+- ✅ Row Level Security (RLS) with PostgreSQL
 - ✅ Response handling (cookies, headers, status codes)
 - ✅ Event publishing
 - ✅ Testing utilities
@@ -410,6 +411,154 @@ const rateLimitedEndpoint = e
   .body(messageSchema)
   .handle(async ({ body }) => {
     return await sendMessage(body);
+  });
+```
+
+### Row Level Security (RLS)
+
+Endpoints support PostgreSQL [Row Level Security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) via the `.rls()` method. When configured, the handler receives a `db` parameter — a transaction with PostgreSQL session variables set — so RLS policies can filter rows automatically.
+
+#### Setting Up RLS on the Factory
+
+Configure RLS once on the factory so all endpoints inherit it:
+
+```typescript
+import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+
+const api = new EndpointFactory()
+  .services([databaseService])
+  .database(databaseService)
+  .session(extractSession)
+  .authorizer('jwt')
+  .rls({
+    extractor: ({ session }) => ({
+      user_id: session.sub,
+      tenant_id: session.tenantId,
+    }),
+    prefix: 'app', // optional, default: 'app'
+  });
+```
+
+The `.database()` call tells the factory which service provides the database connection. The `.rls()` extractor receives the request context (session, services, headers, cookies, logger) and returns key-value pairs that become PostgreSQL session variables (e.g. `app.user_id`).
+
+#### Using `db` in Handlers
+
+When RLS is configured, handlers receive a `db` parameter — a transaction with the RLS context applied:
+
+```typescript
+const listOrders = api
+  .get('/orders')
+  .handle(async ({ db }) => {
+    // db is a transaction with app.user_id and app.tenant_id set
+    // PostgreSQL policies using current_setting('app.user_id') filter rows automatically
+    return db
+      .selectFrom('orders')
+      .selectAll()
+      .execute();
+  });
+```
+
+::: warning Important
+Always use `db` from the handler context when RLS is configured. Using `services.database` directly bypasses the RLS transaction and PostgreSQL session variables won't be set.
+
+```typescript
+// Wrong - bypasses RLS
+.handle(async ({ services }) => {
+  return services.database.selectFrom('orders').execute();
+});
+
+// Correct - uses RLS transaction
+.handle(async ({ db }) => {
+  return db.selectFrom('orders').execute();
+});
+```
+:::
+
+#### Bypassing RLS for Specific Endpoints
+
+For admin endpoints that need unrestricted access, bypass the factory-level RLS:
+
+```typescript
+// Using .rls(false)
+const adminOrders = api
+  .get('/admin/orders')
+  .rls(false)
+  .handle(async ({ services }) => {
+    return services.database
+      .selectFrom('orders')
+      .selectAll()
+      .execute();
+  });
+
+// Or using .rlsBypass()
+const adminUsers = api
+  .get('/admin/users')
+  .rlsBypass()
+  .handle(async ({ services }) => {
+    return services.database
+      .selectFrom('users')
+      .selectAll()
+      .execute();
+  });
+```
+
+#### Per-Endpoint RLS
+
+You can also configure RLS on individual endpoints instead of (or in addition to) the factory:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+
+const endpoint = e
+  .get('/orders')
+  .services([databaseService])
+  .database(databaseService)
+  .rls({
+    extractor: ({ session, header }) => ({
+      user_id: session.userId,
+      ip_address: header('x-forwarded-for'),
+    }),
+  })
+  .handle(async ({ db }) => {
+    return db
+      .selectFrom('orders')
+      .selectAll()
+      .execute();
+  });
+```
+
+#### PostgreSQL Policy Example
+
+The session variables set by the RLS extractor are consumed by PostgreSQL policies:
+
+```sql
+-- Enable RLS on the table
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+-- Create policies using session variables
+CREATE POLICY tenant_isolation ON orders
+  USING (tenant_id = current_setting('app.tenant_id', true));
+
+CREATE POLICY user_access ON orders
+  USING (user_id = current_setting('app.user_id', true));
+```
+
+#### Combining RLS with Other Handler Context
+
+The `db` parameter coexists with services, logger, session, and other context:
+
+```typescript
+const endpoint = api
+  .get('/orders')
+  .handle(async ({ db, services, logger, session }) => {
+    const orders = await db
+      .selectFrom('orders')
+      .selectAll()
+      .execute();
+
+    logger.info({ count: orders.length }, 'Fetched orders');
+
+    return orders;
   });
 ```
 
