@@ -485,7 +485,8 @@ export class EndpointFactory<
 		TDatabase,
 		TDatabaseServiceName,
 		TSecuritySchemes,
-		undefined // Reset RLS config when services change - user should call .rls() after .services()
+		| RlsConfig<[...S, ...TServices], TSession, TLogger>
+		| undefined
 	> {
 		return new EndpointFactory<
 			[...S, ...TServices],
@@ -501,7 +502,8 @@ export class EndpointFactory<
 			TDatabase,
 			TDatabaseServiceName,
 			TSecuritySchemes,
-			undefined
+			| RlsConfig<[...S, ...TServices], TSession, TLogger>
+			| undefined
 		>({
 			defaultServices: [...services, ...this.defaultServices],
 			basePath: this.basePath,
@@ -523,8 +525,9 @@ export class EndpointFactory<
 				| ActorExtractor<[...S, ...TServices], TSession, TLogger>
 				| undefined,
 			customSecuritySchemes: this.customSecuritySchemes,
-			// Reset RLS config when services change since it depends on TServices
-			defaultRlsConfig: undefined,
+			defaultRlsConfig: this.defaultRlsConfig as unknown as
+				| RlsConfig<[...S, ...TServices], TSession, TLogger>
+				| undefined,
 		});
 	}
 
@@ -544,7 +547,7 @@ export class EndpointFactory<
 		TDatabase,
 		TDatabaseServiceName,
 		TSecuritySchemes,
-		undefined // Reset RLS config when logger type changes - user should call .rls() after .logger()
+		RlsConfig<TServices, TSession, L> | undefined
 	> {
 		return new EndpointFactory<
 			TServices,
@@ -560,7 +563,7 @@ export class EndpointFactory<
 			TDatabase,
 			TDatabaseServiceName,
 			TSecuritySchemes,
-			undefined
+			RlsConfig<TServices, TSession, L> | undefined
 		>({
 			defaultServices: this.defaultServices,
 			basePath: this.basePath,
@@ -588,8 +591,9 @@ export class EndpointFactory<
 				L
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
-			// Reset RLS config when logger type changes since it depends on TLogger
-			defaultRlsConfig: undefined,
+			defaultRlsConfig: this.defaultRlsConfig as unknown as
+				| RlsConfig<TServices, TSession, L>
+				| undefined,
 		});
 	}
 
@@ -662,7 +666,7 @@ export class EndpointFactory<
 		TDatabase,
 		TDatabaseServiceName,
 		TSecuritySchemes,
-		undefined // Reset RLS config when session type changes - user should call .rls() after .session()
+		RlsConfig<TServices, T, TLogger> | undefined
 	> {
 		return new EndpointFactory<
 			TServices,
@@ -678,7 +682,7 @@ export class EndpointFactory<
 			TDatabase,
 			TDatabaseServiceName,
 			TSecuritySchemes,
-			undefined
+			RlsConfig<TServices, T, TLogger> | undefined
 		>({
 			defaultServices: this.defaultServices,
 			basePath: this.basePath,
@@ -701,8 +705,9 @@ export class EndpointFactory<
 				TLogger
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
-			// Reset RLS config when session type changes since it depends on TSession
-			defaultRlsConfig: undefined,
+			defaultRlsConfig: this.defaultRlsConfig as unknown as
+				| RlsConfig<TServices, T, TLogger>
+				| undefined,
 		});
 	}
 
