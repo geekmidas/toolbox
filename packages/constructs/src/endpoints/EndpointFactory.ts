@@ -485,8 +485,7 @@ export class EndpointFactory<
 		TDatabase,
 		TDatabaseServiceName,
 		TSecuritySchemes,
-		| RlsConfig<[...S, ...TServices], TSession, TLogger>
-		| undefined
+		RlsConfig<[...S, ...TServices], TSession, TLogger> | undefined
 	> {
 		return new EndpointFactory<
 			[...S, ...TServices],
@@ -502,8 +501,7 @@ export class EndpointFactory<
 			TDatabase,
 			TDatabaseServiceName,
 			TSecuritySchemes,
-			| RlsConfig<[...S, ...TServices], TSession, TLogger>
-			| undefined
+			RlsConfig<[...S, ...TServices], TSession, TLogger> | undefined
 		>({
 			defaultServices: [...services, ...this.defaultServices],
 			basePath: this.basePath,
