@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 1.0.5
+
+### Patch Changes
+
+- ⬆️ [`53c39a0`](https://github.com/geekmidas/toolbox/commit/53c39a0ed9244be6ca2ff6ec8e39138a0fc88692) Thanks [@geekmidas](https://github.com/geekmidas)! - Update RLS types
+
 ## 1.0.4
 
 ### Patch Changes
