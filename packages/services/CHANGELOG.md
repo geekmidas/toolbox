@@ -1,5 +1,11 @@
 # @geekmidas/services
 
+## 1.0.1
+
+### Patch Changes
+
+- 🔥 [`4bed570`](https://github.com/geekmidas/toolbox/commit/4bed57049db24417ef81279bc88fa0e1255f7b9a) Thanks [@geekmidas](https://github.com/geekmidas)! - Remove singleton enforcement so people can use it how they see fit
+
 ## 1.0.0
 
 ### Major Changes

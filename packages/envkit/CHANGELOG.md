@@ -1,5 +1,11 @@
 # @geekmidas/envkit
 
+## 1.0.2
+
+### Patch Changes
+
+- ✨ [`bfa41ad`](https://github.com/geekmidas/toolbox/commit/bfa41ad86c74c73a98e3922a536805fdf65d7607) Thanks [@geekmidas](https://github.com/geekmidas)! - Add support for dynamo links
+
 ## 1.0.1
 
 ### Patch Changes

@@ -27,6 +27,7 @@ export enum ResourceType {
 	SSTPostgres = 'sst:aws:Postgres',
 	SSTBucket = 'sst:aws:Bucket',
 	SnsTopic = 'sst:aws:SnsTopic',
+	SSTDynamo = 'sst:aws:Dynamo',
 }
 
 /**
@@ -92,6 +93,14 @@ export type SnsTopic = {
 };
 
 /**
+ * AWS DynamoDB Table resource type.
+ */
+export type Dynamo = {
+	type: ResourceType.SSTDynamo;
+	name: string;
+};
+
+/**
  * Union type of all supported SST resource types.
  */
 export type SstResource =
@@ -101,13 +110,15 @@ export type SstResource =
 	| Bucket
 	| Vpc
 	| Secret
-	| SnsTopic;
+	| SnsTopic
+	| Dynamo;
 
 // Value types without the `type` key (for resolver parameters)
 type SecretValue = Omit<Secret, 'type'>;
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
+type DynamoValue = Omit<Dynamo, 'type'>;
 
 /**
  * Function type for processing a specific resource type into environment variables.
@@ -141,6 +152,10 @@ const topicResolver = (name: string, value: SnsTopicValue) => ({
 	[`${name}Arn`]: value.arn,
 });
 
+const dynamoResolver = (name: string, value: DynamoValue) => ({
+	[`${name}Name`]: value.name,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -162,6 +177,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.SSTPostgres]: postgresResolver,
 	[ResourceType.SSTApiGatewayV2]: noopResolver,
 	[ResourceType.SnsTopic]: topicResolver,
+	[ResourceType.SSTDynamo]: dynamoResolver,
 };
 
 /**
