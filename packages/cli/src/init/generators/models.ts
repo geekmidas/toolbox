@@ -35,10 +35,8 @@ export function generateModelsPackage(
 	const tsConfig = {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
-			declaration: true,
-			declarationMap: true,
-			outDir: './dist',
-			rootDir: './src',
+			noEmit: true,
+			allowImportingTsExtensions: true,
 		},
 		include: ['src/**/*.ts'],
 		exclude: ['node_modules', 'dist'],
