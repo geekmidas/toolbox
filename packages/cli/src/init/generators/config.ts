@@ -91,6 +91,7 @@ export default defineConfig({
 				extends: '../../tsconfig.json',
 				compilerOptions: {
 					noEmit: true,
+					allowImportingTsExtensions: true,
 					baseUrl: '.',
 					paths: {
 						'~/*': ['./src/*'],
@@ -255,6 +256,7 @@ function generateSingleAppConfigFiles(
 		extends: '../../tsconfig.json',
 		compilerOptions: {
 			noEmit: true,
+			allowImportingTsExtensions: true,
 			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],

@@ -78,6 +78,7 @@ export default nextConfig;
 			skipLibCheck: true,
 			strict: true,
 			noEmit: true,
+			allowImportingTsExtensions: true,
 			esModuleInterop: true,
 			module: 'ESNext',
 			moduleResolution: 'bundler',

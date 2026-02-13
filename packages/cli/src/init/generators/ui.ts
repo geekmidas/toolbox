@@ -72,6 +72,7 @@ export function generateUiPackageFiles(
 			jsx: 'react-jsx',
 			lib: ['ES2023', 'DOM', 'DOM.Iterable'],
 			noEmit: true,
+			allowImportingTsExtensions: true,
 			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],

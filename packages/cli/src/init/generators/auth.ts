@@ -53,6 +53,7 @@ export function generateAuthAppFiles(
 		extends: '../../tsconfig.json',
 		compilerOptions: {
 			noEmit: true,
+			allowImportingTsExtensions: true,
 			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],
