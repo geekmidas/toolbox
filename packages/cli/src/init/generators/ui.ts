@@ -1291,8 +1291,8 @@ export const Alert: Story = {
 `;
 
 	// src/components/ui/index.ts
-	const componentsUiIndex = `export { Button, type ButtonProps, buttonVariants } from './button';
-export { Input } from './input';
+	const componentsUiIndex = `export { Button, type ButtonProps, buttonVariants } from './button.tsx';
+export { Input } from './input.tsx';
 export {
   Card,
   CardHeader,
@@ -1300,17 +1300,17 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
-} from './card';
-export { Label } from './label';
-export { Badge, type BadgeProps, badgeVariants } from './badge';
-export { Separator } from './separator';
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
+} from './card.tsx';
+export { Label } from './label.tsx';
+export { Badge, type BadgeProps, badgeVariants } from './badge.tsx';
+export { Separator } from './separator.tsx';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs.tsx';
 export {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-} from './tooltip';
+} from './tooltip.tsx';
 export {
   Dialog,
   DialogPortal,
@@ -1322,7 +1322,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from './dialog';
+} from './dialog.tsx';
 `;
 
 	// Rename component files to index.tsx (same content)
@@ -1331,17 +1331,17 @@ export {
 	const cardIndexTsx = cardTsx;
 
 	// src/components/index.ts
-	const componentsIndex = `export * from './ui';
+	const componentsIndex = `export * from './ui/index.ts';
 `;
 
 	// src/index.ts
 	const indexTs = `// @${options.name}/ui - Shared UI component library
 
 // shadcn/ui components
-export * from './components';
+export * from './components/index.ts';
 
 // Utilities
-export { cn } from './lib/utils';
+export { cn } from './lib/utils.ts';
 `;
 
 	// .gitignore for UI package

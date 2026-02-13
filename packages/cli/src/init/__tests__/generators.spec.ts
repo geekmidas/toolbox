@@ -557,15 +557,15 @@ describe('generateUiPackageFiles', () => {
 			(f) => f.path === 'packages/ui/src/components/ui/index.ts',
 		);
 		expect(indexFile).toBeDefined();
-		expect(indexFile!.content).toContain("from './button'");
-		expect(indexFile!.content).toContain("from './input'");
-		expect(indexFile!.content).toContain("from './card'");
-		expect(indexFile!.content).toContain("from './label'");
-		expect(indexFile!.content).toContain("from './badge'");
-		expect(indexFile!.content).toContain("from './separator'");
-		expect(indexFile!.content).toContain("from './tabs'");
-		expect(indexFile!.content).toContain("from './tooltip'");
-		expect(indexFile!.content).toContain("from './dialog'");
+		expect(indexFile!.content).toContain("from './button.tsx'");
+		expect(indexFile!.content).toContain("from './input.tsx'");
+		expect(indexFile!.content).toContain("from './card.tsx'");
+		expect(indexFile!.content).toContain("from './label.tsx'");
+		expect(indexFile!.content).toContain("from './badge.tsx'");
+		expect(indexFile!.content).toContain("from './separator.tsx'");
+		expect(indexFile!.content).toContain("from './tabs.tsx'");
+		expect(indexFile!.content).toContain("from './tooltip.tsx'");
+		expect(indexFile!.content).toContain("from './dialog.tsx'");
 	});
 
 	it('should include cn utility function', () => {
