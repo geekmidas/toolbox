@@ -20,6 +20,7 @@ pnpm add @geekmidas/constructs
 - ✅ Session and authorization management
 - ✅ Structured logging
 - ✅ Rate limiting
+- ✅ Audit logging
 - ✅ Row Level Security (RLS) with PostgreSQL
 - ✅ Response handling (cookies, headers, status codes)
 - ✅ Event publishing
