@@ -1864,13 +1864,18 @@ export async function execCommand(
 	await createCredentialsPreload(preloadPath, secretsJsonPath);
 
 	// Build command
-	const [cmd, ...args] = commandArgs;
+	const [cmd, ...rawArgs] = commandArgs;
 
 	if (!cmd) {
 		throw new Error('No command specified');
 	}
 
-	logger.log(`🚀 Running: ${commandArgs.join(' ')}`);
+	// Replace template variables in command args (e.g. $PORT -> resolved port)
+	const args = rawArgs.map((arg) =>
+		arg.replace(/\$PORT\b/g, credentials.PORT ?? '3000'),
+	);
+
+	logger.log(`🚀 Running: ${[cmd, ...args].join(' ')}`);
 
 	// Merge NODE_OPTIONS with existing value (if any)
 	// Add tsx loader first so our .ts preload can be loaded
