@@ -414,6 +414,240 @@ const rateLimitedEndpoint = e
   });
 ```
 
+### Audit Logging
+
+Endpoints support declarative and manual audit logging via integration with [`@geekmidas/audit`](/packages/audit). Audits can be recorded automatically after a handler completes or manually inside the handler, and they are flushed atomically within the same database transaction when possible.
+
+#### Setting Up Audit Storage
+
+Define an audit storage service and attach it to an endpoint with `.auditor()`:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
+import type { Service } from '@geekmidas/services';
+import type { AuditableAction } from '@geekmidas/audit';
+
+// Define type-safe audit actions
+type AppAuditAction =
+  | AuditableAction<'user.created', { userId: string; email: string }>
+  | AuditableAction<'user.updated', { userId: string; changes: string[] }>
+  | AuditableAction<'user.deleted', { userId: string }>;
+
+// Create audit storage service
+const auditStorageService = {
+  serviceName: 'auditStorage' as const,
+  async register(envParser) {
+    return new KyselyAuditStorage<Database>({
+      db: kyselyDb,
+      tableName: 'audit_logs',
+    });
+  },
+} satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
+
+const endpoint = e
+  .post('/users')
+  .auditor(auditStorageService)
+  .handle(async ({ auditor }) => {
+    // auditor is now available in the handler context
+    return { id: '123' };
+  });
+```
+
+#### Actor Extraction
+
+Use `.actor()` to identify who performed the action. The extractor receives the request context and returns an `AuditActor`:
+
+```typescript
+const endpoint = e
+  .post('/users')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({
+    id: session.sub,
+    type: 'user',
+    data: { email: session.email },
+  }))
+  .handle(async ({ auditor }) => {
+    // auditor.actor is { id: session.sub, type: 'user', ... }
+    return { id: '123' };
+  });
+```
+
+The actor extractor can also be async and has access to `services`, `session`, `header`, `cookie`, and `logger`.
+
+#### Declarative Audits
+
+Use `.audit()` to define audits that fire automatically after the handler returns successfully. Each audit receives the handler's response to extract the payload:
+
+```typescript
+import { z } from 'zod';
+
+const createUserEndpoint = e
+  .post('/users')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }))
+  .body(z.object({ name: z.string(), email: z.string() }))
+  .output(z.object({ id: z.string(), email: z.string() }))
+  .audit([
+    {
+      type: 'user.created',
+      payload: (response) => ({
+        userId: response.id,
+        email: response.email,
+      }),
+      entityId: (response) => response.id,
+      table: 'users',
+    },
+  ])
+  .handle(async ({ body }) => {
+    const user = await createUser(body);
+    return user;
+  });
+```
+
+**Audit definition fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `string` | The audit action type (must match a defined `AuditableAction`) |
+| `payload` | `(response) => object` | Extracts the payload from the handler response |
+| `when` | `(response) => boolean` | Optional condition — skips the audit if it returns `false` |
+| `entityId` | `(response) => string` | Optional entity identifier for querying |
+| `table` | `string` | Optional table name for querying |
+
+#### Conditional Audits
+
+Use the `when` clause to only record audits under certain conditions:
+
+```typescript
+const updateUserEndpoint = e
+  .patch('/users/:id')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }))
+  .output(userResponseSchema)
+  .audit([
+    {
+      type: 'user.updated',
+      payload: (response) => ({
+        userId: response.id,
+        changes: response.changedFields,
+      }),
+      when: (response) => response.changedFields.length > 0,
+    },
+  ])
+  .handle(async ({ body, params }) => {
+    return await updateUser(params.id, body);
+  });
+```
+
+#### Manual Audits in Handlers
+
+When you need more control, call `ctx.auditor` directly inside the handler. This is useful for auditing intermediate steps or conditional logic:
+
+```typescript
+const transferEndpoint = e
+  .post('/transfers')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }))
+  .handle(async ({ body, auditor }) => {
+    const result = await processTransfer(body);
+
+    auditor.audit('transfer.completed', {
+      transferId: result.id,
+      amount: result.amount,
+    });
+
+    if (result.flagged) {
+      auditor.audit('transfer.flagged', {
+        transferId: result.id,
+        reason: result.flagReason,
+      });
+    }
+
+    return result;
+  });
+```
+
+Manual audits are buffered in memory and flushed together with any declarative audits when the handler completes.
+
+#### Factory-Level Defaults
+
+Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit the configuration:
+
+```typescript
+import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+
+const api = new EndpointFactory()
+  .services([databaseService, auditStorageService])
+  .session(extractSession)
+  .authorizer('jwt')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({
+    id: session.sub,
+    type: 'user',
+  }));
+
+// All endpoints inherit auditor and actor
+const createUser = api
+  .post('/users')
+  .audit([{
+    type: 'user.created',
+    payload: (response) => ({
+      userId: response.id,
+      email: response.email,
+    }),
+  }])
+  .handle(async ({ body }) => {
+    return await createUser(body);
+  });
+
+const deleteUser = api
+  .delete('/users/:id')
+  .handle(async ({ params, auditor }) => {
+    await removeUser(params.id);
+    auditor.audit('user.deleted', { userId: params.id });
+    return { success: true };
+  });
+```
+
+#### Transaction Coordination
+
+When the audit storage uses the same database as the endpoint (e.g., both use the same Kysely instance), audits are flushed inside the same database transaction. This guarantees atomicity — if the handler fails, both the data changes and the audit records are rolled back.
+
+```typescript
+const api = new EndpointFactory()
+  .services([databaseService, auditStorageService])
+  .database(databaseService)
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }));
+
+const endpoint = api
+  .post('/users')
+  .output(userSchema)
+  .audit([{
+    type: 'user.created',
+    payload: (response) => ({
+      userId: response.id,
+      email: response.email,
+    }),
+  }])
+  .handle(async ({ body, db }) => {
+    // db is a transaction — both the insert and audit write
+    // happen atomically in the same transaction
+    const user = await db
+      .insertInto('users')
+      .values(body)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    return user;
+  });
+```
+
+::: tip
+When `.database()` is configured and the audit storage's `databaseServiceName` matches the endpoint's database service, the framework automatically wraps the handler and audit flush in a single transaction. No extra configuration is needed.
+:::
+
 ### Row Level Security (RLS)
 
 Endpoints support PostgreSQL [Row Level Security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) via the `.rls()` method. When configured, the handler receives a `db` parameter — a transaction with PostgreSQL session variables set — so RLS policies can filter rows automatically.
