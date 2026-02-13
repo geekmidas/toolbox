@@ -107,7 +107,7 @@ export const config = envParser
 				path: getRoutePath('health.ts'),
 				content: monorepo
 					? `import { z } from 'zod';
-import { publicRouter } from '~/router';
+import { publicRouter } from '~/router.ts';
 
 export const healthEndpoint = publicRouter
   .get('/health')
@@ -261,8 +261,8 @@ export const authService = {
 				path: 'src/router.ts',
 				content: `import { e } from '@geekmidas/constructs/endpoints';
 import { UnauthorizedError } from '@geekmidas/errors';
-import { authService, type Session } from './services/auth.js';
-import { logger } from './config/logger.js';
+import { authService, type Session } from './services/auth.ts';
+import { logger } from './config/logger.ts';
 
 // Public router - no auth required
 export const publicRouter = e.logger(logger);
@@ -288,7 +288,7 @@ export const sessionRouter = r.session<Session>(async ({ services, header }) => 
 			files.push({
 				path: getRoutePath('profile.ts'),
 				content: `import { z } from 'zod';
-import { sessionRouter } from '~/router';
+import { sessionRouter } from '~/router.ts';
 
 export const profileEndpoint = sessionRouter
   .get('/profile')
@@ -368,8 +368,8 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '../services/database.js';
-import { envParser } from './env.js';
+import type { Database } from '~/services/database.ts';
+import { envParser } from '~/config/env.ts';
 
 // Parse database config for Studio
 const studioConfig = envParser

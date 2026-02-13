@@ -170,7 +170,7 @@ export const serverConfig = envParser
 	// Auth client for better-auth
 	const authClientTs = `import { createAuthClient } from 'better-auth/react';
 import { magicLinkClient } from 'better-auth/client/plugins';
-import { clientConfig } from '~/config/client';
+import { clientConfig } from '~/config/client.ts';
 
 export const authClient = createAuthClient({
   baseURL: clientConfig.authUrl,
@@ -184,7 +184,7 @@ export const { signIn, signUp, signOut, useSession, magicLink } = authClient;
 	const providersTsx = `'use client';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { getQueryClient } from '~/lib/query-client';
+import { getQueryClient } from '~/lib/query-client.ts';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
@@ -196,9 +196,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
 `;
 
 	// API client setup - uses createApi with shared QueryClient
-	const apiIndexTs = `import { createApi } from './openapi';
-import { getQueryClient } from '~/lib/query-client';
-import { clientConfig } from '~/config/client';
+	const apiIndexTs = `import { createApi } from './api.ts';
+import { getQueryClient } from '~/lib/query-client.ts';
+import { clientConfig } from '~/config/client.ts';
 
 export const api = createApi({
   baseURL: clientConfig.apiUrl,
@@ -212,7 +212,7 @@ export const api = createApi({
 
 	// App layout
 	const layoutTsx = `import type { Metadata } from 'next';
-import { Providers } from './providers';
+import { Providers } from './providers.tsx';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -236,7 +236,7 @@ export default function RootLayout({
 `;
 
 	// Home page with API example using UI components
-	const pageTsx = `import { api } from '~/api';
+	const pageTsx = `import { api } from '~/api/index.ts';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '${uiPackage}/components';
 
 export default async function Home() {

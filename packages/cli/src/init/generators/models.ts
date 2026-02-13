@@ -88,7 +88,7 @@ export type Pagination = z.infer<typeof PaginationSchema>;
 
 	// user.ts - user-related schemas
 	const userTs = `import { z } from 'zod';
-import { IdSchema, TimestampsSchema } from './common.js';
+import { IdSchema, TimestampsSchema } from './common.ts';
 
 // ============================================
 // User Schemas

@@ -126,7 +126,7 @@ export type AppEvents =
 				path: 'src/events/publisher.ts',
 				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Publisher, type EventPublisher } from '@geekmidas/events';
-import type { AppEvents } from './types.js';
+import type { AppEvents } from './types.ts';
 
 export const eventsPublisherService = {
   serviceName: 'events' as const,
@@ -155,7 +155,7 @@ export const eventsPublisherService = {
 			{
 				path: 'src/subscribers/user-events.ts',
 				content: `import { s } from '@geekmidas/constructs/subscribers';
-import { eventsPublisherService } from '../events/publisher.js';
+import { eventsPublisherService } from '~/events/publisher.ts';
 
 export const userEventsSubscriber = s
   .publisher(eventsPublisherService)

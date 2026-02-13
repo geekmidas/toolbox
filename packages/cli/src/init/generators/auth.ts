@@ -90,8 +90,8 @@ export const logger = createLogger();
 	const authTs = `import { betterAuth } from 'better-auth';
 import { magicLink } from 'better-auth/plugins';
 import pg from 'pg';
-import { envParser } from './config/env.js';
-import { logger } from './config/logger.js';
+import { envParser } from './config/env.ts';
+import { logger } from './config/logger.ts';
 
 // Parse auth-specific config (no defaults - values from secrets)
 const authConfig = envParser
@@ -136,9 +136,9 @@ export type Auth = typeof auth;
 	const indexTs = `import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
-import { auth } from './auth.js';
-import { envParser } from './config/env.js';
-import { logger } from './config/logger.js';
+import { auth } from './auth.ts';
+import { envParser } from './config/env.ts';
+import { logger } from './config/logger.ts';
 
 // Parse server config (no defaults - values from secrets)
 const serverConfig = envParser

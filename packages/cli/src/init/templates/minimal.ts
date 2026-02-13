@@ -171,8 +171,8 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '../services/database.js';
-import { envParser } from './env.js';
+import type { Database } from '~/services/database.ts';
+import { envParser } from '~/config/env.ts';
 
 // Parse database config for Studio
 const studioConfig = envParser
