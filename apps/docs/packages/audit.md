@@ -21,6 +21,8 @@ pnpm add @geekmidas/audit
 
 - `/` - Core types, Auditor interface, and DefaultAuditor
 - `/kysely` - KyselyAuditStorage and withAuditableTransaction
+- `/memory` - InMemoryAuditStorage for development and testing
+- `/cache` - CacheAuditStorage using @geekmidas/cache backends
 
 ## Basic Usage
 
@@ -97,6 +99,85 @@ const result = await withAuditableTransaction(
   },
 );
 ```
+
+## Querying Audit Records
+
+The `query()` and `count()` methods on audit storage let you search, filter, and paginate audit records. Both `KyselyAuditStorage` and `CacheAuditStorage` implement these methods.
+
+### Basic Query
+
+```typescript
+const records = await storage.query({
+  limit: 20,
+  offset: 0,
+  orderBy: 'timestamp',
+  orderDirection: 'desc',
+});
+```
+
+### Filtering
+
+Filter by any combination of type, actor, entity, table, and date range:
+
+```typescript
+// By audit type (single or multiple)
+const userEvents = await storage.query({
+  type: 'user.created',
+});
+
+const allUserEvents = await storage.query({
+  type: ['user.created', 'user.updated', 'user.deleted'],
+});
+
+// By actor
+const actorEvents = await storage.query({
+  actorId: 'user-123',
+});
+
+// By entity and table
+const entityHistory = await storage.query({
+  entityId: 'order-456',
+  table: 'orders',
+});
+
+// By date range
+const recentEvents = await storage.query({
+  from: new Date('2025-01-01'),
+  to: new Date('2025-01-31'),
+});
+```
+
+### Pagination with Count
+
+Use `count()` alongside `query()` for paginated views:
+
+```typescript
+const filter = { type: 'user.created', actorId: 'user-123' };
+
+const total = await storage.count(filter);
+const records = await storage.query({
+  ...filter,
+  limit: 20,
+  offset: 0,
+});
+
+// { total, records, page: 1, pageSize: 20 }
+```
+
+### Query Options Reference
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `type` | `string \| string[]` | Filter by audit action type |
+| `entityId` | `string` | Filter by entity identifier |
+| `table` | `string` | Filter by table name |
+| `actorId` | `string` | Filter by actor ID |
+| `from` | `Date` | Start of date range (inclusive) |
+| `to` | `Date` | End of date range (inclusive) |
+| `limit` | `number` | Maximum number of results |
+| `offset` | `number` | Number of results to skip |
+| `orderBy` | `'timestamp' \| 'type'` | Sort field (default: `'timestamp'`) |
+| `orderDirection` | `'asc' \| 'desc'` | Sort direction (default: `'desc'`) |
 
 ## Integration with @geekmidas/constructs
 
