@@ -100,13 +100,25 @@ const result = await withAuditableTransaction(
 
 ## Integration with @geekmidas/constructs
 
+The audit system integrates deeply with [`@geekmidas/constructs`](/packages/constructs) endpoints. See the [Audit Logging section](/packages/constructs#audit-logging) in the constructs docs for the full guide.
+
+### Quick Setup
+
+Attach an audit storage service to an endpoint or factory with `.auditor()`, identify the actor with `.actor()`, and define audits with `.audit()`:
+
 ```typescript
 import { e } from '@geekmidas/constructs/endpoints';
+import { z } from 'zod';
 
 const endpoint = e
   .post('/users')
-  .body(UserSchema)
-  .output(UserResponseSchema)
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({
+    id: session.sub,
+    type: 'user',
+  }))
+  .body(z.object({ name: z.string(), email: z.string() }))
+  .output(z.object({ id: z.string(), email: z.string() }))
   .audit([
     {
       type: 'user.created',
@@ -114,10 +126,96 @@ const endpoint = e
         userId: response.id,
         email: response.email,
       }),
+      entityId: (response) => response.id,
+      table: 'users',
     },
   ])
+  .handle(async ({ body }) => {
+    return await createUser(body);
+  });
+```
+
+### Factory-Level Defaults
+
+Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit the configuration:
+
+```typescript
+import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+
+const api = new EndpointFactory()
+  .services([databaseService, auditStorageService])
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }));
+
+// All endpoints created from this factory inherit auditor and actor
+const createUser = api
+  .post('/users')
+  .audit([{
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+  }])
+  .handle(async ({ body }) => createUser(body));
+```
+
+### Manual Auditing in Handlers
+
+When `.auditor()` is configured, the handler context includes an `auditor` instance for manual audit calls:
+
+```typescript
+const endpoint = e
+  .post('/transfers')
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }))
   .handle(async ({ body, auditor }) => {
-    return { id: '123', ...body };
+    const result = await processTransfer(body);
+
+    // Type-safe — only valid audit types and payloads are accepted
+    auditor.audit('transfer.completed', {
+      transferId: result.id,
+      amount: result.amount,
+    });
+
+    return result;
+  });
+```
+
+### Transaction Coordination
+
+When the audit storage uses the same database as the endpoint (via `KyselyAuditStorage`), the framework automatically wraps the handler and audit flush in a single database transaction. Both data changes and audit records commit or roll back together:
+
+```typescript
+import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
+
+const auditStorageService = {
+  serviceName: 'auditStorage' as const,
+  async register() {
+    return new KyselyAuditStorage<Database>({
+      db: kyselyDb,
+      tableName: 'audit_logs',
+      databaseServiceName: 'database', // matches the endpoint's database service
+    });
+  },
+} satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
+
+const api = new EndpointFactory()
+  .services([databaseService, auditStorageService])
+  .database(databaseService)
+  .auditor(auditStorageService)
+  .actor(({ session }) => ({ id: session.sub, type: 'user' }));
+
+// Handler, declarative audits, and manual audits all share one transaction
+const endpoint = api
+  .post('/users')
+  .audit([{
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+  }])
+  .handle(async ({ body, db }) => {
+    return await db
+      .insertInto('users')
+      .values(body)
+      .returningAll()
+      .executeTakeFirstOrThrow();
   });
 ```
 
