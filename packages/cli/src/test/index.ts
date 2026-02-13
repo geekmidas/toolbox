@@ -1,5 +1,9 @@
 import { spawn } from 'node:child_process';
+import { loadAppConfig } from '../config';
+import { loadEnvFiles } from '../dev/index';
+import { sniffAppEnvironment } from '../deploy/sniffer';
 import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
+import { getDependencyEnvVars } from '../workspace/index';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -17,35 +21,85 @@ export interface TestOptions {
 }
 
 /**
- * Run tests with secrets loaded from the specified stage.
- * Secrets are decrypted and injected into the environment.
+ * Run tests with secrets, dependency URLs, and .env files loaded.
+ * Environment variables are sniffed to inject only what the app needs.
  */
 export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const stage = options.stage ?? 'development';
+	const cwd = process.cwd();
 
-	console.log(`\n🧪 Running tests with ${stage} secrets...\n`);
+	console.log(`\n🧪 Running tests with ${stage} environment...\n`);
 
-	// Load and decrypt secrets
-	let envVars: Record<string, string> = {};
+	// 1. Load .env files
+	const defaultEnv = loadEnvFiles('.env');
+	if (defaultEnv.loaded.length > 0) {
+		console.log(`  📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
+	}
+
+	// 2. Load and decrypt secrets
+	let secretsEnv: Record<string, string> = {};
 	try {
 		const secrets = await readStageSecrets(stage);
 		if (secrets) {
-			envVars = toEmbeddableSecrets(secrets);
+			secretsEnv = toEmbeddableSecrets(secrets);
 			console.log(
-				`  Loaded ${Object.keys(envVars).length} secrets from ${stage}\n`,
+				`  🔐 Loaded ${Object.keys(secretsEnv).length} secrets from ${stage}`,
 			);
 		} else {
-			console.log(`  No secrets found for ${stage}, running without secrets\n`);
+			console.log(`  No secrets found for ${stage}`);
 		}
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('key not found')) {
-			console.log(
-				`  Decryption key not found for ${stage}, running without secrets\n`,
-			);
+			console.log(`  Decryption key not found for ${stage}`);
 		} else {
 			throw error;
 		}
 	}
+
+	// 3. Load workspace config + dependency URLs + sniff env vars
+	let dependencyEnv: Record<string, string> = {};
+	try {
+		const appConfig = await loadAppConfig(cwd);
+		dependencyEnv = getDependencyEnvVars(
+			appConfig.workspace,
+			appConfig.appName,
+		);
+
+		if (Object.keys(dependencyEnv).length > 0) {
+			console.log(
+				`  🔗 Loaded ${Object.keys(dependencyEnv).length} dependency URL(s)`,
+			);
+		}
+
+		// 4. Sniff to detect which env vars the app needs
+		const sniffed = await sniffAppEnvironment(
+			appConfig.app,
+			appConfig.appName,
+			appConfig.workspaceRoot,
+			{ logWarnings: false },
+		);
+
+		// Filter to only include what the app needs
+		if (sniffed.requiredEnvVars.length > 0) {
+			const needed = new Set(sniffed.requiredEnvVars);
+			const allEnv = { ...secretsEnv, ...dependencyEnv };
+			const filteredEnv: Record<string, string> = {};
+			for (const [key, value] of Object.entries(allEnv)) {
+				if (needed.has(key)) {
+					filteredEnv[key] = value;
+				}
+			}
+			secretsEnv = {};
+			dependencyEnv = filteredEnv;
+			console.log(
+				`  🔍 Sniffed ${sniffed.requiredEnvVars.length} required env var(s)`,
+			);
+		}
+	} catch {
+		// Not in a workspace — continue with just secrets
+	}
+
+	console.log('');
 
 	// Build vitest args
 	const args: string[] = [];
@@ -68,13 +122,14 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		args.push(options.pattern);
 	}
 
-	// Run vitest with secrets in environment
+	// Run vitest with combined environment
 	const vitestProcess = spawn('npx', ['vitest', ...args], {
-		cwd: process.cwd(),
+		cwd,
 		stdio: 'inherit',
 		env: {
 			...process.env,
-			...envVars,
+			...secretsEnv,
+			...dependencyEnv,
 			// Ensure NODE_ENV is set to test
 			NODE_ENV: 'test',
 		},
