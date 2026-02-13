@@ -417,6 +417,7 @@ describe('initCommand', () => {
 			expect(pkg.dependencies.next).toBeDefined();
 			expect(pkg.dependencies.react).toBeDefined();
 			expect(pkg.scripts.dev).toContain('next dev');
+			expect(pkg.scripts.dev).toContain('-p $PORT');
 		});
 
 		it('should include services config in workspace', async () => {
