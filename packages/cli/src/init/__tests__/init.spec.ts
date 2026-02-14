@@ -473,6 +473,68 @@ describe('initCommand', () => {
 		});
 	});
 
+	describe('test infrastructure', () => {
+		it('should generate test files for standalone app with database', async () => {
+			await initCommand('my-api', {
+				template: 'api',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(join(projectDir, 'test/config.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/globalSetup.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/factory/index.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/factory/users.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/example.spec.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'vitest.config.ts'))).toBe(true);
+		});
+
+		it('should include testkit and faker in devDependencies', async () => {
+			await initCommand('my-api', {
+				template: 'api',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const pkgPath = join(tempDir, 'my-api', 'package.json');
+			const content = await readFile(pkgPath, 'utf-8');
+			const pkg = JSON.parse(content);
+			expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(/^~/);
+			expect(pkg.devDependencies['@faker-js/faker']).toMatch(/^~/);
+		});
+
+		it('should generate test files for fullstack api app', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const apiDir = join(tempDir, 'my-fullstack', 'apps/api');
+			expect(existsSync(join(apiDir, 'test/config.ts'))).toBe(true);
+			expect(existsSync(join(apiDir, 'test/globalSetup.ts'))).toBe(true);
+			expect(existsSync(join(apiDir, 'test/factory/index.ts'))).toBe(true);
+			expect(existsSync(join(apiDir, 'test/factory/users.ts'))).toBe(true);
+			expect(existsSync(join(apiDir, 'vitest.config.ts'))).toBe(true);
+		});
+
+		it('should include globalSetup and vite-tsconfig-paths in vitest.config.ts', async () => {
+			await initCommand('my-api', {
+				template: 'api',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const vitestConfigPath = join(tempDir, 'my-api', 'vitest.config.ts');
+			const content = await readFile(vitestConfigPath, 'utf-8');
+			expect(content).toContain('globalSetup');
+			expect(content).toContain('./test/globalSetup.ts');
+			expect(content).toContain('vite-tsconfig-paths');
+			expect(content).not.toContain('globals: true');
+		});
+	});
+
 	describe('docker-compose', () => {
 		it('should include postgres for database-enabled projects', async () => {
 			await initCommand('my-api', {
