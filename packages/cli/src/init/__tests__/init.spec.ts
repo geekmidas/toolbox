@@ -546,7 +546,7 @@ describe('initCommand', () => {
 			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
 			const content = await readFile(dockerPath, 'utf-8');
 			expect(content).toContain('postgres:16-alpine');
-			expect(content).toContain('5432:5432');
+			expect(content).toContain("'${POSTGRES_HOST_PORT:-5432}:5432'");
 		});
 
 		it('should include serverless-redis-http for serverless template', async () => {
@@ -571,8 +571,8 @@ describe('initCommand', () => {
 			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
 			const content = await readFile(dockerPath, 'utf-8');
 			expect(content).toContain('rabbitmq:3-management-alpine');
-			expect(content).toContain('5672:5672');
-			expect(content).toContain('15672:15672');
+			expect(content).toContain("'${RABBITMQ_HOST_PORT:-5672}:5672'");
+			expect(content).toContain("'${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'");
 		});
 	});
 });

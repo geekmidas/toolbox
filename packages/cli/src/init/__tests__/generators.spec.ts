@@ -213,31 +213,52 @@ describe('generateDockerFiles', () => {
 		expect(files[0].path).toBe('docker-compose.yml');
 	});
 
-	it('should include postgres when database is enabled', () => {
+	it('should include postgres with dynamic port when database is enabled', () => {
 		const files = generateDockerFiles(baseOptions, minimalTemplate);
 		expect(files[0].content).toContain('postgres');
-		expect(files[0].content).toContain('5432');
+		expect(files[0].content).toContain(
+			"'${POSTGRES_HOST_PORT:-5432}:5432'",
+		);
 	});
 
-	it('should include redis', () => {
+	it('should include redis with dynamic port', () => {
 		const files = generateDockerFiles(baseOptions, minimalTemplate);
 		expect(files[0].content).toContain('redis');
-		expect(files[0].content).toContain('6379');
+		expect(files[0].content).toContain("'${REDIS_HOST_PORT:-6379}:6379'");
 	});
 
-	it('should include serverless-redis-http for serverless template', () => {
+	it('should include serverless-redis-http with dynamic port for serverless template', () => {
 		const options = { ...baseOptions, template: 'serverless' as const };
 		const files = generateDockerFiles(options, serverlessTemplate);
 		expect(files[0].content).toContain('hiett/serverless-redis-http');
-		expect(files[0].content).toContain('8079');
+		expect(files[0].content).toContain("'${SRH_HOST_PORT:-8079}:80'");
 	});
 
-	it('should include rabbitmq for worker template', () => {
+	it('should include rabbitmq with dynamic ports for worker template', () => {
 		const options = { ...baseOptions, template: 'worker' as const };
 		const files = generateDockerFiles(options, workerTemplate);
 		expect(files[0].content).toContain('rabbitmq');
-		expect(files[0].content).toContain('5672');
-		expect(files[0].content).toContain('15672');
+		expect(files[0].content).toContain(
+			"'${RABBITMQ_HOST_PORT:-5672}:5672'",
+		);
+		expect(files[0].content).toContain(
+			"'${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'",
+		);
+	});
+
+	it('should include mailpit with dynamic ports when mail is enabled', () => {
+		const options = {
+			...baseOptions,
+			services: { db: true, cache: true, mail: true },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		expect(files[0].content).toContain('mailpit');
+		expect(files[0].content).toContain(
+			"'${MAILPIT_SMTP_HOST_PORT:-1025}:1025'",
+		);
+		expect(files[0].content).toContain(
+			"'${MAILPIT_UI_HOST_PORT:-8025}:8025'",
+		);
 	});
 });
 
