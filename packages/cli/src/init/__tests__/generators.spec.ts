@@ -5,8 +5,10 @@ import { generateEnvFiles } from '../generators/env.js';
 import { generateModelsPackage } from '../generators/models.js';
 import { generateMonorepoFiles } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
+import { generateTestFiles } from '../generators/test.js';
 import { generateUiPackageFiles } from '../generators/ui.js';
 import type { TemplateOptions } from '../templates/index.js';
+import { apiTemplate } from '../templates/api.js';
 import { minimalTemplate } from '../templates/minimal.js';
 import { serverlessTemplate } from '../templates/serverless.js';
 import { workerTemplate } from '../templates/worker.js';
@@ -643,5 +645,143 @@ describe('generateUiPackageFiles', () => {
 		expect(tsConfig).toBeDefined();
 		const config = JSON.parse(tsConfig!.content);
 		expect(config.compilerOptions.paths['~/*']).toEqual(['./src/*']);
+	});
+});
+
+describe('generateTestFiles', () => {
+	it('should return empty array when database is disabled', () => {
+		const options = { ...baseOptions, database: false };
+		const files = generateTestFiles(options, minimalTemplate);
+		expect(files).toHaveLength(0);
+	});
+
+	it('should generate all test infrastructure files when database is enabled', () => {
+		const files = generateTestFiles(baseOptions, minimalTemplate);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('test/config.ts');
+		expect(paths).toContain('test/globalSetup.ts');
+		expect(paths).toContain('test/factory/index.ts');
+		expect(paths).toContain('test/factory/users.ts');
+		expect(paths).toContain('test/example.spec.ts');
+	});
+
+	it('should use wrapVitestKyselyTransaction in config', () => {
+		const files = generateTestFiles(baseOptions, minimalTemplate);
+		const configFile = files.find((f) => f.path === 'test/config.ts');
+		expect(configFile).toBeDefined();
+		expect(configFile!.content).toContain('wrapVitestKyselyTransaction');
+		expect(configFile!.content).toContain('@geekmidas/testkit/kysely');
+		expect(configFile!.content).toContain('~/services/database.ts');
+	});
+
+	it('should use PostgresKyselyMigrator in globalSetup', () => {
+		const files = generateTestFiles(baseOptions, minimalTemplate);
+		const setupFile = files.find((f) => f.path === 'test/globalSetup.ts');
+		expect(setupFile).toBeDefined();
+		expect(setupFile!.content).toContain('PostgresKyselyMigrator');
+		expect(setupFile!.content).toContain('_test');
+		expect(setupFile!.content).toContain('migrateToLatest');
+	});
+
+	it('should use KyselyFactory in factory files', () => {
+		const files = generateTestFiles(baseOptions, minimalTemplate);
+		const factoryIndex = files.find(
+			(f) => f.path === 'test/factory/index.ts',
+		);
+		expect(factoryIndex).toBeDefined();
+		expect(factoryIndex!.content).toContain('KyselyFactory');
+		expect(factoryIndex!.content).toContain('createFactory');
+
+		const usersBuilder = files.find(
+			(f) => f.path === 'test/factory/users.ts',
+		);
+		expect(usersBuilder).toBeDefined();
+		expect(usersBuilder!.content).toContain('KyselyFactory.createBuilder');
+		expect(usersBuilder!.content).toContain("'users'");
+	});
+
+	it('should generate example spec with transaction-wrapped it', () => {
+		const files = generateTestFiles(baseOptions, minimalTemplate);
+		const exampleSpec = files.find(
+			(f) => f.path === 'test/example.spec.ts',
+		);
+		expect(exampleSpec).toBeDefined();
+		expect(exampleSpec!.content).toContain("from './config.ts'");
+		expect(exampleSpec!.content).toContain('{ db }');
+	});
+
+	it('should work with fullstack template options', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+		};
+		const files = generateTestFiles(options, apiTemplate);
+		expect(files.length).toBeGreaterThan(0);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('test/config.ts');
+		expect(paths).toContain('test/globalSetup.ts');
+	});
+});
+
+describe('generateConfigFiles - vitest.config.ts', () => {
+	it('should generate vitest.config.ts when database is enabled (standalone)', () => {
+		const files = generateConfigFiles(baseOptions, minimalTemplate);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('vitest.config.ts');
+
+		const vitestConfig = files.find((f) => f.path === 'vitest.config.ts');
+		expect(vitestConfig!.content).toContain('globalSetup');
+		expect(vitestConfig!.content).toContain('./test/globalSetup.ts');
+		expect(vitestConfig!.content).toContain('vite-tsconfig-paths');
+		expect(vitestConfig!.content).not.toContain('globals: true');
+	});
+
+	it('should not generate vitest.config.ts when database is disabled', () => {
+		const options = { ...baseOptions, database: false };
+		const files = generateConfigFiles(options, minimalTemplate);
+		const paths = files.map((f) => f.path);
+		expect(paths).not.toContain('vitest.config.ts');
+	});
+
+	it('should generate vitest.config.ts for monorepo app with database', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			monorepo: true,
+			apiPath: 'apps/api',
+		};
+		const files = generateConfigFiles(options, minimalTemplate);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('vitest.config.ts');
+	});
+
+	it('should generate vitest.config.ts for fullstack template with database', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+		};
+		const files = generateConfigFiles(options, apiTemplate);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('vitest.config.ts');
+	});
+});
+
+describe('generatePackageJson - testkit dependencies', () => {
+	it('should include testkit and faker when database is enabled', () => {
+		const files = generatePackageJson(baseOptions, minimalTemplate);
+		const pkg = JSON.parse(files[0].content);
+		expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(/^~/);
+		expect(pkg.devDependencies['@faker-js/faker']).toMatch(/^~/);
+	});
+
+	it('should not include testkit when database is disabled', () => {
+		const options = { ...baseOptions, database: false };
+		const files = generatePackageJson(options, minimalTemplate);
+		const pkg = JSON.parse(files[0].content);
+		expect(pkg.devDependencies['@geekmidas/testkit']).toBeUndefined();
+		expect(pkg.devDependencies['@faker-js/faker']).toBeUndefined();
 	});
 });
