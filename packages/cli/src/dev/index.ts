@@ -1,11 +1,12 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import { config as dotenvConfig } from 'dotenv';
 import fg from 'fast-glob';
+import { parse as parseYaml } from 'yaml';
 import { resolveProviders } from '../build/providerResolver';
 import type {
 	BuildContext,
