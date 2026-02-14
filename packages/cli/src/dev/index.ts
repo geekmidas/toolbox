@@ -1108,6 +1108,7 @@ export async function loadSecretsForApp(
  */
 export async function startWorkspaceServices(
 	workspace: NormalizedWorkspace,
+	portEnv?: Record<string, string>,
 ): Promise<void> {
 	const services = workspace.services;
 	if (!services.db && !services.cache && !services.mail) {
@@ -1146,6 +1147,7 @@ export async function startWorkspaceServices(
 		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
 			cwd: workspace.root,
 			stdio: 'inherit',
+			env: { ...process.env, ...portEnv },
 		});
 
 		logger.log('✅ Services started');
@@ -1232,11 +1234,17 @@ async function workspaceDevCommand(
 		}
 	}
 
-	// Start docker-compose services
-	await startWorkspaceServices(workspace);
+	// Resolve dynamic service ports from docker-compose.yml
+	const resolvedPorts = await resolveServicePorts(workspace.root);
 
-	// Load secrets if enabled
-	const secretsEnv = await loadDevSecrets(workspace);
+	// Start docker-compose services with resolved ports
+	await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
+
+	// Load secrets if enabled, then rewrite URLs with resolved ports
+	const secretsEnv = rewriteUrlsWithPorts(
+		await loadDevSecrets(workspace),
+		resolvedPorts,
+	);
 	if (Object.keys(secretsEnv).length > 0) {
 		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
 	}
