@@ -139,6 +139,265 @@ export async function findAvailablePort(
 }
 
 /**
+ * A port mapping extracted from docker-compose.yml.
+ * Only entries using env var interpolation (e.g., `${VAR:-default}:container`) are captured.
+ */
+export interface ComposePortMapping {
+	service: string;
+	envVar: string;
+	defaultPort: number;
+	containerPort: number;
+}
+
+/** Port state persisted to .gkm/ports.json, keyed by env var name. */
+export type PortState = Record<string, number>;
+
+export interface ResolvedServicePorts {
+	dockerEnv: Record<string, string>;
+	ports: PortState;
+	mappings: ComposePortMapping[];
+}
+
+const PORT_STATE_PATH = '.gkm/ports.json';
+
+/**
+ * Parse docker-compose.yml and extract all port mappings that use env var interpolation.
+ * Entries like `'${POSTGRES_HOST_PORT:-5432}:5432'` are captured.
+ * Fixed port mappings like `'5050:80'` are skipped.
+ * @internal Exported for testing
+ */
+export function parseComposePortMappings(
+	composePath: string,
+): ComposePortMapping[] {
+	if (!existsSync(composePath)) {
+		return [];
+	}
+
+	const content = readFileSync(composePath, 'utf-8');
+	const compose = parseYaml(content) as {
+		services?: Record<string, { ports?: string[] }>;
+	};
+
+	if (!compose?.services) {
+		return [];
+	}
+
+	const results: ComposePortMapping[] = [];
+
+	for (const [serviceName, serviceConfig] of Object.entries(
+		compose.services,
+	)) {
+		for (const portMapping of serviceConfig?.ports ?? []) {
+			const match = String(portMapping).match(
+				/\$\{(\w+):-(\d+)\}:(\d+)/,
+			);
+			if (match?.[1] && match[2] && match[3]) {
+				results.push({
+					service: serviceName,
+					envVar: match[1],
+					defaultPort: Number(match[2]),
+					containerPort: Number(match[3]),
+				});
+			}
+		}
+	}
+
+	return results;
+}
+
+/**
+ * Load saved port state from .gkm/ports.json.
+ * @internal Exported for testing
+ */
+export async function loadPortState(
+	workspaceRoot: string,
+): Promise<PortState> {
+	try {
+		const raw = await readFile(join(workspaceRoot, PORT_STATE_PATH), 'utf-8');
+		return JSON.parse(raw) as PortState;
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * Save port state to .gkm/ports.json.
+ * @internal Exported for testing
+ */
+export async function savePortState(
+	workspaceRoot: string,
+	ports: PortState,
+): Promise<void> {
+	const dir = join(workspaceRoot, '.gkm');
+	await mkdir(dir, { recursive: true });
+	await writeFile(
+		join(workspaceRoot, PORT_STATE_PATH),
+		`${JSON.stringify(ports, null, 2)}\n`,
+	);
+}
+
+/**
+ * Check if a project's own Docker container is running and return its host port.
+ * Uses `docker compose port` scoped to the project's compose file.
+ * @internal Exported for testing
+ */
+export function getContainerHostPort(
+	workspaceRoot: string,
+	service: string,
+	containerPort: number,
+): number | null {
+	try {
+		const result = execSync(
+			`docker compose port ${service} ${containerPort}`,
+			{ cwd: workspaceRoot, stdio: 'pipe' },
+		)
+			.toString()
+			.trim();
+		const match = result.match(/:(\d+)$/);
+		return match ? Number(match[1]) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Resolve host ports for Docker services by parsing docker-compose.yml.
+ * Priority: running container → saved state → find available port.
+ * Persists resolved ports to .gkm/ports.json.
+ * @internal Exported for testing
+ */
+export async function resolveServicePorts(
+	workspaceRoot: string,
+): Promise<ResolvedServicePorts> {
+	const composePath = join(workspaceRoot, 'docker-compose.yml');
+	const mappings = parseComposePortMappings(composePath);
+
+	if (mappings.length === 0) {
+		return { dockerEnv: {}, ports: {}, mappings: [] };
+	}
+
+	const savedState = await loadPortState(workspaceRoot);
+	const dockerEnv: Record<string, string> = {};
+	const ports: PortState = {};
+
+	logger.log('\n🔌 Resolving service ports...');
+
+	for (const mapping of mappings) {
+		// 1. Check if own container is already running
+		const containerPort = getContainerHostPort(
+			workspaceRoot,
+			mapping.service,
+			mapping.containerPort,
+		);
+		if (containerPort !== null) {
+			ports[mapping.envVar] = containerPort;
+			dockerEnv[mapping.envVar] = String(containerPort);
+			logger.log(
+				`   🔄 ${mapping.service}:${mapping.containerPort}: reusing existing container on port ${containerPort}`,
+			);
+			continue;
+		}
+
+		// 2. Check saved port state
+		const savedPort = savedState[mapping.envVar];
+		if (savedPort && (await isPortAvailable(savedPort))) {
+			ports[mapping.envVar] = savedPort;
+			dockerEnv[mapping.envVar] = String(savedPort);
+			logger.log(
+				`   💾 ${mapping.service}:${mapping.containerPort}: using saved port ${savedPort}`,
+			);
+			continue;
+		}
+
+		// 3. Find available port
+		const resolvedPort = await findAvailablePort(mapping.defaultPort);
+		ports[mapping.envVar] = resolvedPort;
+		dockerEnv[mapping.envVar] = String(resolvedPort);
+
+		if (resolvedPort !== mapping.defaultPort) {
+			logger.log(
+				`   ⚡ ${mapping.service}:${mapping.containerPort}: port ${mapping.defaultPort} occupied, using port ${resolvedPort}`,
+			);
+		} else {
+			logger.log(
+				`   ✅ ${mapping.service}:${mapping.containerPort}: using default port ${resolvedPort}`,
+			);
+		}
+	}
+
+	await savePortState(workspaceRoot, ports);
+
+	return { dockerEnv, ports, mappings };
+}
+
+/**
+ * Replace a port in a URL string.
+ * Handles both `hostname:port` and `localhost:port` patterns.
+ * @internal Exported for testing
+ */
+export function replacePortInUrl(
+	url: string,
+	oldPort: number,
+	newPort: number,
+): string {
+	if (oldPort === newPort) return url;
+	return url.replace(
+		new RegExp(`:${oldPort}(?=/|$)`, 'g'),
+		`:${newPort}`,
+	);
+}
+
+/**
+ * Rewrite connection URLs and port vars in secrets with resolved ports.
+ * Uses the parsed compose mappings to determine which default ports to replace.
+ * Pure transform — does not modify secrets on disk.
+ * @internal Exported for testing
+ */
+export function rewriteUrlsWithPorts(
+	secrets: Record<string, string>,
+	resolvedPorts: ResolvedServicePorts,
+): Record<string, string> {
+	const { ports, mappings } = resolvedPorts;
+	const result = { ...secrets };
+
+	// Build a map of defaultPort → resolvedPort for all changed ports
+	const portReplacements: { defaultPort: number; resolvedPort: number }[] =
+		[];
+	for (const mapping of mappings) {
+		const resolved = ports[mapping.envVar];
+		if (resolved !== undefined) {
+			portReplacements.push({
+				defaultPort: mapping.defaultPort,
+				resolvedPort: resolved,
+			});
+		}
+	}
+
+	// Rewrite _PORT env vars whose values match a default port
+	for (const [key, value] of Object.entries(result)) {
+		if (!key.endsWith('_PORT')) continue;
+		for (const { defaultPort, resolvedPort } of portReplacements) {
+			if (value === String(defaultPort)) {
+				result[key] = String(resolvedPort);
+			}
+		}
+	}
+
+	// Rewrite URLs containing default ports
+	for (const [key, value] of Object.entries(result)) {
+		if (!key.endsWith('_URL') && key !== 'DATABASE_URL') continue;
+
+		let rewritten = value;
+		for (const { defaultPort, resolvedPort } of portReplacements) {
+			rewritten = replacePortInUrl(rewritten, defaultPort, resolvedPort);
+		}
+		result[key] = rewritten;
+	}
+
+	return result;
+}
+
+/**
  * Normalize telescope configuration
  * @internal Exported for testing
  */
