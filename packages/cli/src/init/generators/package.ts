@@ -35,6 +35,10 @@ export function generatePackageJson(
 		dependencies.kysely = '~0.28.2';
 		dependencies.pg = '~8.16.0';
 		devDependencies['@types/pg'] = '~8.15.0';
+		devDependencies['@geekmidas/testkit'] =
+			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
+		devDependencies['@faker-js/faker'] = '~9.8.0';
+		devDependencies['vite-tsconfig-paths'] = '~5.1.0';
 	}
 
 	// For monorepo apps, remove biome/turbo/esbuild (they're at root) and lint/fmt scripts
