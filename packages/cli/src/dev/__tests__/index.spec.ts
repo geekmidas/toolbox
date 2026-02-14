@@ -13,11 +13,16 @@ import {
 	findAvailablePort,
 	generateAllDependencyEnvVars,
 	isPortAvailable,
+	loadPortState,
 	loadSecretsForApp,
 	normalizeHooksConfig,
 	normalizeProductionConfig,
 	normalizeStudioConfig,
 	normalizeTelescopeConfig,
+	parseComposePortMappings,
+	replacePortInUrl,
+	rewriteUrlsWithPorts,
+	savePortState,
 	validateFrontendApp,
 	validateFrontendApps,
 } from '../index';
@@ -1186,5 +1191,483 @@ describe('loadSecretsForApp', () => {
 			expect(secrets.REDIS_HOST).toBe('localhost');
 			expect(secrets.REDIS_PORT).toBe('6379');
 		});
+	});
+});
+
+describe('replacePortInUrl', () => {
+	it('should replace port in a postgresql URL', () => {
+		const url = 'postgresql://app:pass@localhost:5432/mydb';
+		expect(replacePortInUrl(url, 5432, 5433)).toBe(
+			'postgresql://app:pass@localhost:5433/mydb',
+		);
+	});
+
+	it('should replace port in a redis URL', () => {
+		const url = 'redis://:pass@localhost:6379';
+		expect(replacePortInUrl(url, 6379, 6380)).toBe(
+			'redis://:pass@localhost:6380',
+		);
+	});
+
+	it('should replace port with Docker hostname', () => {
+		const url = 'postgresql://app:pass@postgres:5432/mydb';
+		expect(replacePortInUrl(url, 5432, 5433)).toBe(
+			'postgresql://app:pass@postgres:5433/mydb',
+		);
+	});
+
+	it('should return url unchanged when ports are equal', () => {
+		const url = 'postgresql://app:pass@localhost:5432/mydb';
+		expect(replacePortInUrl(url, 5432, 5432)).toBe(url);
+	});
+
+	it('should not replace port that appears in path or password', () => {
+		const url = 'postgresql://app:pass5432@localhost:5432/db5432';
+		const result = replacePortInUrl(url, 5432, 5433);
+		// Only the :5432 before / should be replaced
+		expect(result).toBe('postgresql://app:pass5432@localhost:5433/db5432');
+	});
+});
+
+describe('rewriteUrlsWithPorts', () => {
+	const pgMapping = {
+		service: 'postgres',
+		envVar: 'POSTGRES_HOST_PORT',
+		defaultPort: 5432,
+		containerPort: 5432,
+	};
+	const redisMapping = {
+		service: 'redis',
+		envVar: 'REDIS_HOST_PORT',
+		defaultPort: 6379,
+		containerPort: 6379,
+	};
+	const rmqMapping = {
+		service: 'rabbitmq',
+		envVar: 'RABBITMQ_HOST_PORT',
+		defaultPort: 5672,
+		containerPort: 5672,
+	};
+
+	it('should rewrite DATABASE_URL with resolved postgres port', () => {
+		const secrets = {
+			DATABASE_URL: 'postgresql://app:pass@postgres:5432/mydb',
+			POSTGRES_PORT: '5432',
+			SOME_OTHER: 'value',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { POSTGRES_HOST_PORT: '5433' },
+			ports: { POSTGRES_HOST_PORT: 5433 },
+			mappings: [pgMapping],
+		});
+		expect(result.DATABASE_URL).toBe(
+			'postgresql://app:pass@postgres:5433/mydb',
+		);
+		expect(result.POSTGRES_PORT).toBe('5433');
+		expect(result.SOME_OTHER).toBe('value');
+	});
+
+	it('should rewrite fullstack APP_DATABASE_URL', () => {
+		const secrets = {
+			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/mydb',
+			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/mydb',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { POSTGRES_HOST_PORT: '5433' },
+			ports: { POSTGRES_HOST_PORT: 5433 },
+			mappings: [pgMapping],
+		});
+		expect(result.API_DATABASE_URL).toBe(
+			'postgresql://api:pass@localhost:5433/mydb',
+		);
+		expect(result.AUTH_DATABASE_URL).toBe(
+			'postgresql://auth:pass@localhost:5433/mydb',
+		);
+	});
+
+	it('should rewrite REDIS_URL and REDIS_PORT', () => {
+		const secrets = {
+			REDIS_URL: 'redis://:pass@redis:6379',
+			REDIS_PORT: '6379',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { REDIS_HOST_PORT: '6380' },
+			ports: { REDIS_HOST_PORT: 6380 },
+			mappings: [redisMapping],
+		});
+		expect(result.REDIS_URL).toBe('redis://:pass@redis:6380');
+		expect(result.REDIS_PORT).toBe('6380');
+	});
+
+	it('should rewrite RABBITMQ_URL and RABBITMQ_PORT', () => {
+		const secrets = {
+			RABBITMQ_URL: 'amqp://app:pass@rabbitmq:5672/%2F',
+			RABBITMQ_PORT: '5672',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { RABBITMQ_HOST_PORT: '5673' },
+			ports: { RABBITMQ_HOST_PORT: 5673 },
+			mappings: [rmqMapping],
+		});
+		expect(result.RABBITMQ_URL).toBe('amqp://app:pass@rabbitmq:5673/%2F');
+		expect(result.RABBITMQ_PORT).toBe('5673');
+	});
+
+	it('should handle multiple services at once', () => {
+		const secrets = {
+			DATABASE_URL: 'postgresql://app:pass@postgres:5432/mydb',
+			POSTGRES_PORT: '5432',
+			REDIS_URL: 'redis://:pass@redis:6379',
+			REDIS_PORT: '6379',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: {
+				POSTGRES_HOST_PORT: '5433',
+				REDIS_HOST_PORT: '6380',
+			},
+			ports: { POSTGRES_HOST_PORT: 5433, REDIS_HOST_PORT: 6380 },
+			mappings: [pgMapping, redisMapping],
+		});
+		expect(result.DATABASE_URL).toContain(':5433/');
+		expect(result.POSTGRES_PORT).toBe('5433');
+		expect(result.REDIS_URL).toContain(':6380');
+		expect(result.REDIS_PORT).toBe('6380');
+	});
+
+	it('should not modify secrets when ports are defaults', () => {
+		const secrets = {
+			DATABASE_URL: 'postgresql://app:pass@postgres:5432/mydb',
+			POSTGRES_PORT: '5432',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { POSTGRES_HOST_PORT: '5432' },
+			ports: { POSTGRES_HOST_PORT: 5432 },
+			mappings: [pgMapping],
+		});
+		expect(result.DATABASE_URL).toBe(secrets.DATABASE_URL);
+		expect(result.POSTGRES_PORT).toBe('5432');
+	});
+
+	it('should return empty for no mappings', () => {
+		const result = rewriteUrlsWithPorts(
+			{},
+			{ dockerEnv: {}, ports: {}, mappings: [] },
+		);
+		expect(result).toEqual({});
+	});
+});
+
+describe('port state persistence', () => {
+	let testDir: string;
+
+	beforeEach(() => {
+		testDir = join(tmpdir(), `gkm-port-state-test-${Date.now()}`);
+		mkdirSync(testDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(testDir, { recursive: true, force: true });
+	});
+
+	it('should return empty object when no state file exists', async () => {
+		const state = await loadPortState(testDir);
+		expect(state).toEqual({});
+	});
+
+	it('should save and load port state', async () => {
+		const ports = { POSTGRES_HOST_PORT: 5433, REDIS_HOST_PORT: 6380 };
+		await savePortState(testDir, ports);
+		const loaded = await loadPortState(testDir);
+		expect(loaded).toEqual(ports);
+	});
+
+	it('should create .gkm directory if missing', async () => {
+		const ports = { POSTGRES_HOST_PORT: 5433 };
+		await savePortState(testDir, ports);
+		expect(existsSync(join(testDir, '.gkm'))).toBe(true);
+		expect(existsSync(join(testDir, '.gkm', 'ports.json'))).toBe(true);
+	});
+
+	it('should overwrite existing state', async () => {
+		await savePortState(testDir, { POSTGRES_HOST_PORT: 5433 });
+		await savePortState(testDir, {
+			POSTGRES_HOST_PORT: 5434,
+			REDIS_HOST_PORT: 6380,
+		});
+		const loaded = await loadPortState(testDir);
+		expect(loaded).toEqual({
+			POSTGRES_HOST_PORT: 5434,
+			REDIS_HOST_PORT: 6380,
+		});
+	});
+});
+
+describe('parseComposePortMappings', () => {
+	let testDir: string;
+
+	beforeEach(() => {
+		testDir = join(tmpdir(), `gkm-compose-parse-test-${Date.now()}`);
+		mkdirSync(testDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(testDir, { recursive: true, force: true });
+	});
+
+	it('should parse standard api template ports', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  redis:
+    image: redis:7
+    ports:
+      - '\${REDIS_HOST_PORT:-6379}:6379'
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - '\${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '\${MAILPIT_UI_PORT:-8025}:8025'
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+			{
+				service: 'redis',
+				envVar: 'REDIS_HOST_PORT',
+				defaultPort: 6379,
+				containerPort: 6379,
+			},
+			{
+				service: 'mailpit',
+				envVar: 'MAILPIT_SMTP_PORT',
+				defaultPort: 1025,
+				containerPort: 1025,
+			},
+			{
+				service: 'mailpit',
+				envVar: 'MAILPIT_UI_PORT',
+				defaultPort: 8025,
+				containerPort: 8025,
+			},
+		]);
+	});
+
+	it('should parse worker template with rabbitmq', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - '\${RABBITMQ_HOST_PORT:-5672}:5672'
+      - '\${RABBITMQ_MGMT_PORT:-15672}:15672'
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+			{
+				service: 'rabbitmq',
+				envVar: 'RABBITMQ_HOST_PORT',
+				defaultPort: 5672,
+				containerPort: 5672,
+			},
+			{
+				service: 'rabbitmq',
+				envVar: 'RABBITMQ_MGMT_PORT',
+				defaultPort: 15672,
+				containerPort: 15672,
+			},
+		]);
+	});
+
+	it('should parse serverless template with redis variants', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  redis:
+    image: redis:7
+    ports:
+      - '\${REDIS_HOST_PORT:-6379}:6379'
+  serverless-redis-http:
+    image: hiett/serverless-redis-http:latest
+    ports:
+      - '\${SRH_PORT:-8079}:80'
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+			{
+				service: 'redis',
+				envVar: 'REDIS_HOST_PORT',
+				defaultPort: 6379,
+				containerPort: 6379,
+			},
+			{
+				service: 'serverless-redis-http',
+				envVar: 'SRH_PORT',
+				defaultPort: 8079,
+				containerPort: 80,
+			},
+		]);
+	});
+
+	it('should handle custom user-added services', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - '\${PGADMIN_HOST_PORT:-5050}:80'
+  minio:
+    image: minio/minio
+    ports:
+      - '\${MINIO_API_PORT:-9000}:9000'
+      - '\${MINIO_CONSOLE_PORT:-9001}:9001'
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+			{
+				service: 'pgadmin',
+				envVar: 'PGADMIN_HOST_PORT',
+				defaultPort: 5050,
+				containerPort: 80,
+			},
+			{
+				service: 'minio',
+				envVar: 'MINIO_API_PORT',
+				defaultPort: 9000,
+				containerPort: 9000,
+			},
+			{
+				service: 'minio',
+				envVar: 'MINIO_CONSOLE_PORT',
+				defaultPort: 9001,
+				containerPort: 9001,
+			},
+		]);
+	});
+
+	it('should skip fixed port mappings without env vars', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  nginx:
+    image: nginx
+    ports:
+      - '8080:80'
+      - '443:443'
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+		]);
+	});
+
+	it('should skip services without ports', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  worker:
+    image: node:22
+    command: npm start
+`,
+		);
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([
+			{
+				service: 'postgres',
+				envVar: 'POSTGRES_HOST_PORT',
+				defaultPort: 5432,
+				containerPort: 5432,
+			},
+		]);
+	});
+
+	it('should return empty array when file does not exist', () => {
+		const composePath = join(testDir, 'nonexistent.yml');
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([]);
+	});
+
+	it('should return empty array when no services defined', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(composePath, 'version: "3.8"\n');
+
+		const mappings = parseComposePortMappings(composePath);
+		expect(mappings).toEqual([]);
 	});
 });
