@@ -50,7 +50,7 @@ export function generateDockerFiles(
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ${options.name.replace(/-/g, '_')}_dev
     ports:
-      - '5432:5432'
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data${initVolume}
     healthcheck:
@@ -83,7 +83,7 @@ export function generateDockerFiles(
     container_name: ${options.name}-redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '\${REDIS_HOST_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -97,7 +97,7 @@ export function generateDockerFiles(
     container_name: ${options.name}-serverless-redis
     restart: unless-stopped
     ports:
-      - '8079:80'
+      - '\${SRH_HOST_PORT:-8079}:80'
     environment:
       SRH_MODE: env
       SRH_TOKEN: local_dev_token
@@ -113,7 +113,7 @@ export function generateDockerFiles(
     container_name: ${options.name}-redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '\${REDIS_HOST_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -131,8 +131,8 @@ export function generateDockerFiles(
     container_name: ${options.name}-rabbitmq
     restart: unless-stopped
     ports:
-      - '5672:5672'
-      - '15672:15672'
+      - '\${RABBITMQ_HOST_PORT:-5672}:5672'
+      - '\${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -153,8 +153,8 @@ export function generateDockerFiles(
     container_name: ${options.name}-mailpit
     restart: unless-stopped
     ports:
-      - '1025:1025'
-      - '8025:8025'
+      - '\${MAILPIT_SMTP_HOST_PORT:-1025}:1025'
+      - '\${MAILPIT_UI_HOST_PORT:-8025}:8025'
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1`);
