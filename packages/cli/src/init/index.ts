@@ -17,6 +17,7 @@ import { generateModelsPackage } from './generators/models.js';
 import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
+import { generateTestFiles } from './generators/test.js';
 import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
 import {
@@ -269,6 +270,7 @@ export async function initCommand(
 				...generateConfigFiles(templateOptions, baseTemplate),
 				...generateEnvFiles(templateOptions, baseTemplate),
 				...generateSourceFiles(templateOptions, baseTemplate),
+				...generateTestFiles(templateOptions, baseTemplate),
 				...(isMonorepo
 					? []
 					: generateDockerFiles(templateOptions, baseTemplate, dbApps)),
