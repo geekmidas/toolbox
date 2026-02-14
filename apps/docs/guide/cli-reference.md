@@ -89,6 +89,51 @@ Options:
 - Studio database browser at `/__studio`
 - OpenAPI docs at `/__docs`
 - Automatic endpoint discovery
+- Dynamic Docker service port resolution (avoids conflicts between projects)
+
+#### Dynamic Docker Port Resolution
+
+When running `gkm dev`, the CLI automatically manages Docker service ports so multiple projects can run simultaneously without port conflicts.
+
+**How it works:**
+
+1. The CLI parses your project's `docker-compose.yml` to discover all services with port mappings that use env var interpolation (e.g., `${POSTGRES_HOST_PORT:-5432}:5432`)
+2. For each service, it resolves ports using a 3-tier strategy:
+   - **Running container** — if the project's own Docker container is already using a port, reuse it
+   - **Saved state** — if a port was resolved in a previous session, reuse it from `.gkm/ports.json`
+   - **Find available** — if the default port is occupied by another process, find the next available port
+3. Resolved ports are passed as environment variables to `docker compose up` and injected into your app's env (URLs are rewritten automatically)
+
+**Example output:**
+
+```
+✅ POSTGRES_HOST_PORT: using default port 5432
+⚡ REDIS_HOST_PORT: port 6379 occupied, using port 6380
+💾 MAILPIT_SMTP_PORT: using saved port 1026
+```
+
+**Adding custom services:**
+
+Any service you add to `docker-compose.yml` that uses the `${ENV_VAR:-default}:container` port pattern will be automatically picked up:
+
+```yaml
+services:
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - '${PGADMIN_HOST_PORT:-5050}:80'
+  minio:
+    image: minio/minio
+    ports:
+      - '${MINIO_API_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+```
+
+Fixed port mappings (e.g., `'8080:80'`) are intentionally skipped — only env var interpolated ports get dynamic resolution.
+
+**Port persistence:**
+
+Resolved ports are saved to `.gkm/ports.json` so that external tools (like pgAdmin, database GUIs, etc.) keep working across restarts. The `.gkm/` directory is automatically gitignored.
 
 ### `gkm build`
 

@@ -364,6 +364,7 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 - Hot reload on file changes
 - Telescope debugging dashboard integration
 - **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
+- **Dynamic Docker port resolution** — automatically avoids port conflicts between projects
 
 ### Test
 
@@ -651,33 +652,56 @@ The `docker` configuration controls Docker file generation:
 
 | Service | Description | Environment Variables |
 |---------|-------------|-----------------------|
-| `postgres` | PostgreSQL 16 | `DATABASE_URL` |
+| `postgres` | PostgreSQL 17 | `DATABASE_URL` |
 | `redis` | Redis 7 | `REDIS_URL` |
 | `rabbitmq` | RabbitMQ 3 | `RABBITMQ_URL` |
+| `mailpit` | Mailpit SMTP | `SMTP_HOST`, `SMTP_PORT` |
 
 **Example docker-compose.yml with services:**
 
 ```yaml
 services:
-  api:
-    build: .
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17
+    ports:
+      - '${POSTGRES_HOST_PORT:-5432}:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
+    ports:
+      - '${REDIS_HOST_PORT:-6379}:6379'
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+```
+
+#### Dynamic Port Resolution
+
+Generated `docker-compose.yml` files use env var interpolation for host ports (e.g., `${POSTGRES_HOST_PORT:-5432}:5432`). When you run `gkm dev`, these ports are automatically resolved to avoid conflicts with other projects running on the same machine.
+
+**Resolution strategy (per service port):**
+
+1. If the project's own Docker container is already running on a port, reuse it
+2. If a port was previously resolved, reuse it from `.gkm/ports.json`
+3. If the default port is occupied, find the next available port
+
+**URL rewriting:** When a port is remapped (e.g., postgres on 5433 instead of 5432), the CLI automatically rewrites all related environment variables (`DATABASE_URL`, `REDIS_URL`, etc.) so your app connects to the correct port.
+
+**Custom services:** You can add any service to `docker-compose.yml` using the `${ENV_VAR:-default}:container` pattern, and it will be automatically managed:
+
+```yaml
+services:
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - '${PGADMIN_HOST_PORT:-5050}:80'
 ```
 
 ### Server Hooks
