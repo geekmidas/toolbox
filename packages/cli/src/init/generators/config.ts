@@ -5,6 +5,21 @@ import type {
 } from '../templates/index.js';
 
 /**
+ * Vitest config content with globalSetup for database-enabled apps
+ */
+const vitestConfigContent = `import { defineConfig } from 'vitest/config';
+import tsconfigPaths from 'vite-tsconfig-paths';
+
+export default defineConfig({
+  plugins: [tsconfigPaths()],
+  test: {
+    environment: 'node',
+    globalSetup: './test/globalSetup.ts',
+  },
+});
+`;
+
+/**
  * Generate configuration files (gkm.config.ts, tsconfig.json, biome.json, turbo.json)
  */
 export function generateConfigFiles(
@@ -121,7 +136,7 @@ export default defineConfig({
 
 	// Skip biome.json and turbo.json for monorepo (they're at root)
 	if (options.monorepo) {
-		return [
+		const files: GeneratedFile[] = [
 			{
 				path: 'gkm.config.ts',
 				content: gkmConfig,
@@ -131,6 +146,15 @@ export default defineConfig({
 				content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 			},
 		];
+
+		if (options.database) {
+			files.push({
+				path: 'vitest.config.ts',
+				content: vitestConfigContent,
+			});
+		}
+
+		return files;
 	}
 
 	// Build biome.json
@@ -209,7 +233,7 @@ export default defineConfig({
 		},
 	};
 
-	return [
+	const files: GeneratedFile[] = [
 		{
 			path: 'gkm.config.ts',
 			content: gkmConfig,
@@ -227,6 +251,15 @@ export default defineConfig({
 			content: `${JSON.stringify(turboConfig, null, 2)}\n`,
 		},
 	];
+
+	if (options.database) {
+		files.push({
+			path: 'vitest.config.ts',
+			content: vitestConfigContent,
+		});
+	}
+
+	return files;
 }
 
 /**
@@ -265,10 +298,19 @@ function generateSingleAppConfigFiles(
 		exclude: ['node_modules', 'dist'],
 	};
 
-	return [
+	const files: GeneratedFile[] = [
 		{
 			path: 'tsconfig.json',
 			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
 	];
+
+	if (options.database) {
+		files.push({
+			path: 'vitest.config.ts',
+			content: vitestConfigContent,
+		});
+	}
+
+	return files;
 }
