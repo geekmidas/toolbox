@@ -535,7 +535,9 @@ describe('getDependencyEnvVars', () => {
 
 		expect(envVars).toEqual({
 			API_URL: 'http://localhost:3000',
+			NEXT_PUBLIC_API_URL: 'http://localhost:3000',
 			AUTH_URL: 'http://localhost:3002',
+			NEXT_PUBLIC_AUTH_URL: 'http://localhost:3002',
 		});
 	});
 
@@ -563,6 +565,7 @@ describe('getDependencyEnvVars', () => {
 
 		expect(envVars).toEqual({
 			API_URL: 'https://internal:3000',
+			NEXT_PUBLIC_API_URL: 'https://internal:3000',
 		});
 	});
 

@@ -351,7 +351,7 @@ export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 
 /**
  * Generate environment variables for app dependencies.
- * Each dependency gets a {DEP_NAME}_URL variable.
+ * Each dependency gets both a `{DEP_NAME}_URL` and `NEXT_PUBLIC_{DEP_NAME}_URL` variable.
  */
 export function getDependencyEnvVars(
 	workspace: NormalizedWorkspace,
@@ -366,8 +366,10 @@ export function getDependencyEnvVars(
 	for (const depName of app.dependencies) {
 		const dep = workspace.apps[depName];
 		if (dep) {
+			const url = `${urlPrefix}:${dep.port}`;
 			const envKey = `${depName.toUpperCase()}_URL`;
-			env[envKey] = `${urlPrefix}:${dep.port}`;
+			env[envKey] = url;
+			env[`NEXT_PUBLIC_${envKey}`] = url;
 		}
 	}
 
