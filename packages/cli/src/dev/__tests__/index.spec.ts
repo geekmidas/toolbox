@@ -587,7 +587,9 @@ describe('Workspace Dev Server', () => {
 			const env = generateAllDependencyEnvVars(workspace);
 			expect(env).toEqual({
 				API_URL: 'http://localhost:3000',
+				NEXT_PUBLIC_API_URL: 'http://localhost:3000',
 				AUTH_URL: 'http://localhost:3001',
+				NEXT_PUBLIC_AUTH_URL: 'http://localhost:3001',
 			});
 		});
 
@@ -616,6 +618,7 @@ describe('Workspace Dev Server', () => {
 			const env = generateAllDependencyEnvVars(workspace);
 			expect(env).toEqual({
 				'USER-SERVICE_URL': 'http://localhost:3001',
+				'NEXT_PUBLIC_USER-SERVICE_URL': 'http://localhost:3001',
 			});
 		});
 
@@ -638,6 +641,7 @@ describe('Workspace Dev Server', () => {
 			const env = generateAllDependencyEnvVars(workspace, 'http://127.0.0.1');
 			expect(env).toEqual({
 				API_URL: 'http://127.0.0.1:3000',
+				NEXT_PUBLIC_API_URL: 'http://127.0.0.1:3000',
 			});
 		});
 
@@ -678,8 +682,11 @@ describe('Workspace Dev Server', () => {
 			const env = generateAllDependencyEnvVars(workspace);
 			expect(env).toEqual({
 				AUTH_URL: 'http://localhost:3001',
+				NEXT_PUBLIC_AUTH_URL: 'http://localhost:3001',
 				API_URL: 'http://localhost:3000',
+				NEXT_PUBLIC_API_URL: 'http://localhost:3000',
 				PAYMENTS_URL: 'http://localhost:3002',
+				NEXT_PUBLIC_PAYMENTS_URL: 'http://localhost:3002',
 			});
 		});
 	});
