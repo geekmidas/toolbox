@@ -39,7 +39,10 @@ export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
 `,
 		},
 
-		// test/globalSetup.ts - Creates test DB, runs migrations
+		// test/globalSetup.ts - Runs migrations on the test database
+		// Note: gkm test automatically rewrites DATABASE_URL to use a _test
+		// suffixed database and creates it if needed. This setup only runs
+		// migrations.
 		{
 			path: 'test/globalSetup.ts',
 			content: `import { Kysely, PostgresDialect } from 'kysely';
