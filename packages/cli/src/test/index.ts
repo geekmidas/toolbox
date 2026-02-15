@@ -150,3 +150,77 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		});
 	});
 }
+
+const TEST_DB_SUFFIX = '_test';
+
+/**
+ * Rewrite DATABASE_URL to point to a separate test database.
+ * Appends `_test` to the database name (e.g., `app` -> `app_test`).
+ * @internal Exported for testing
+ */
+export function rewriteDatabaseUrlForTests(
+	env: Record<string, string>,
+): Record<string, string> {
+	const result = { ...env };
+
+	for (const key of Object.keys(result)) {
+		if (!key.includes('DATABASE_URL')) continue;
+
+		const value = result[key] as string;
+		try {
+			const url = new URL(value);
+			const dbName = url.pathname.slice(1);
+			if (dbName && !dbName.endsWith(TEST_DB_SUFFIX)) {
+				url.pathname = `/${dbName}${TEST_DB_SUFFIX}`;
+				result[key] = url.toString();
+				console.log(
+					`  🧪 ${key}: using test database "${dbName}${TEST_DB_SUFFIX}"`,
+				);
+			}
+		} catch {
+			// Not a valid URL, skip
+		}
+	}
+
+	return result;
+}
+
+/**
+ * Ensure the test database exists by connecting to the default database
+ * and running CREATE DATABASE IF NOT EXISTS.
+ * @internal Exported for testing
+ */
+export async function ensureTestDatabase(
+	env: Record<string, string>,
+): Promise<void> {
+	const databaseUrl = env.DATABASE_URL;
+	if (!databaseUrl) return;
+
+	try {
+		const url = new URL(databaseUrl);
+		const testDbName = url.pathname.slice(1);
+		if (!testDbName) return;
+
+		// Connect to the default 'postgres' database to create the test database
+		url.pathname = '/postgres';
+		const { default: pg } = await import('pg');
+		const client = new pg.Client({ connectionString: url.toString() });
+		await client.connect();
+
+		try {
+			await client.query(`CREATE DATABASE "${testDbName}"`);
+			console.log(`  📦 Created test database "${testDbName}"`);
+		} catch (err: unknown) {
+			// 42P04 = database already exists — that's fine
+			if ((err as { code?: string }).code !== '42P04') throw err;
+		} finally {
+			await client.end();
+		}
+	} catch (err) {
+		// Don't fail test startup if we can't create the database
+		// (e.g., postgres not running yet, will fail later with a clear error)
+		console.log(
+			`  ⚠️  Could not ensure test database: ${(err as Error).message}`,
+		);
+	}
+}
