@@ -1,7 +1,13 @@
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { loadAppConfig } from '../config';
-import { loadEnvFiles } from '../dev/index';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import {
+	loadEnvFiles,
+	loadPortState,
+	parseComposePortMappings,
+	rewriteUrlsWithPorts,
+} from '../dev/index';
 import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
 import { getDependencyEnvVars } from '../workspace/index';
 
@@ -56,7 +62,26 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		}
 	}
 
-	// 3. Load workspace config + dependency URLs + sniff env vars
+	// 3. Rewrite URLs with resolved Docker ports (from gkm dev)
+	const composePath = join(cwd, 'docker-compose.yml');
+	const mappings = parseComposePortMappings(composePath);
+	if (mappings.length > 0) {
+		const ports = await loadPortState(cwd);
+		if (Object.keys(ports).length > 0) {
+			secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
+				dockerEnv: {},
+				ports,
+				mappings,
+			});
+			console.log(`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`);
+		}
+	}
+
+	// 4. Use a separate test database (append _test suffix)
+	secretsEnv = rewriteDatabaseUrlForTests(secretsEnv);
+	await ensureTestDatabase(secretsEnv);
+
+	// 5. Load workspace config + dependency URLs + sniff env vars
 	let dependencyEnv: Record<string, string> = {};
 	try {
 		const appConfig = await loadAppConfig(cwd);
@@ -71,7 +96,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			);
 		}
 
-		// 4. Sniff to detect which env vars the app needs
+		// 6. Sniff to detect which env vars the app needs
 		const sniffed = await sniffAppEnvironment(
 			appConfig.app,
 			appConfig.appName,
