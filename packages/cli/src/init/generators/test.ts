@@ -51,29 +51,11 @@ import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
 import type { Database } from '~/services/database.ts';
 
 export async function setup() {
-  const baseUrl = process.env.DATABASE_URL;
-  if (!baseUrl) throw new Error('DATABASE_URL is required for tests');
+  const testUrl = process.env.DATABASE_URL;
+  if (!testUrl) throw new Error('DATABASE_URL is required for tests');
 
-  // Append _test suffix to database name
-  const url = new URL(baseUrl);
-  const testDbName = url.pathname.slice(1) + '_test';
-
-  // Create test database if it doesn't exist
-  const adminPool = new pg.Pool({ connectionString: baseUrl });
-  try {
-    await adminPool.query(\`CREATE DATABASE "\${testDbName}"\`);
-  } catch (err: any) {
-    if (err.code !== '42P04') throw err; // 42P04 = already exists
-  } finally {
-    await adminPool.end();
-  }
-
-  // Update URL to point to test database
-  url.pathname = \`/\${testDbName}\`;
-  const testUrl = url.toString();
-  process.env.DATABASE_URL = testUrl;
-
-  // Run migrations
+  // Run migrations on the test database
+  // (gkm test already rewrites DATABASE_URL to point to the _test database)
   const db = new Kysely<Database>({
     dialect: new PostgresDialect({
       pool: new pg.Pool({ connectionString: testUrl }),
