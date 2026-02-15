@@ -2110,7 +2110,7 @@ export async function execCommand(
 
 	// Prepare credentials (loads workspace config and secrets)
 	// Don't inject PORT for exec since we're not running a server
-	const { credentials, secretsJsonPath, appName } =
+	const { credentials, secretsJsonPath, appName, secretsRoot } =
 		await prepareEntryCredentials({ cwd });
 
 	if (appName) {
@@ -2122,6 +2122,36 @@ export async function execCommand(
 	).length;
 	if (secretCount > 0) {
 		logger.log(`🔐 Loaded ${secretCount} secret(s)`);
+	}
+
+	// Rewrite URLs with resolved Docker ports (from gkm dev)
+	const composePath = join(secretsRoot, 'docker-compose.yml');
+	const mappings = parseComposePortMappings(composePath);
+	if (mappings.length > 0) {
+		const ports = await loadPortState(secretsRoot);
+		if (Object.keys(ports).length > 0) {
+			const rewritten = rewriteUrlsWithPorts(credentials, {
+				dockerEnv: {},
+				ports,
+				mappings,
+			});
+			Object.assign(credentials, rewritten);
+			logger.log(`🔌 Applied ${Object.keys(ports).length} port mapping(s)`);
+		}
+	}
+
+	// Inject dependency URLs
+	try {
+		const appConfig = await loadAppConfig(cwd);
+		if (appConfig.appName) {
+			const depEnv = getDependencyEnvVars(
+				appConfig.workspace,
+				appConfig.appName,
+			);
+			Object.assign(credentials, depEnv);
+		}
+	} catch {
+		// Not in a workspace — skip dependency URL injection
 	}
 
 	// Create preload script that injects Credentials
