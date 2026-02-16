@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { loadAppConfig } from '../config';
+import { loadWorkspaceAppInfo } from '../config';
 import { sniffAppEnvironment } from '../deploy/sniffer';
 import {
 	loadEnvFiles,
@@ -84,10 +84,10 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	// 5. Load workspace config + dependency URLs + sniff env vars
 	let dependencyEnv: Record<string, string> = {};
 	try {
-		const appConfig = await loadAppConfig(cwd);
+		const appInfo = await loadWorkspaceAppInfo(cwd);
 		dependencyEnv = getDependencyEnvVars(
-			appConfig.workspace,
-			appConfig.appName,
+			appInfo.workspace,
+			appInfo.appName,
 		);
 
 		if (Object.keys(dependencyEnv).length > 0) {
@@ -98,9 +98,9 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 
 		// 6. Sniff to detect which env vars the app needs
 		const sniffed = await sniffAppEnvironment(
-			appConfig.app,
-			appConfig.appName,
-			appConfig.workspaceRoot,
+			appInfo.app,
+			appInfo.appName,
+			appInfo.workspaceRoot,
 			{ logWarnings: false },
 		);
 
