@@ -284,3 +284,47 @@ export async function loadAppConfig(
 		appRoot: join(workspaceRoot, app.path),
 	};
 }
+
+export interface WorkspaceAppInfo {
+	appName: string;
+	app: NormalizedAppConfig;
+	workspace: NormalizedWorkspace;
+	workspaceRoot: string;
+}
+
+/**
+ * Load workspace info for any app (frontend or backend).
+ * Unlike loadAppConfig, this does NOT require the app to have a gkm config
+ * (routes, entry, etc.), making it suitable for gkm exec/test from frontend apps.
+ */
+export async function loadWorkspaceAppInfo(
+	cwd: string = process.cwd(),
+): Promise<WorkspaceAppInfo> {
+	const appName = getAppNameFromCwd(cwd);
+
+	if (!appName) {
+		throw new Error(
+			'Could not determine app name. Ensure package.json exists with a "name" field.',
+		);
+	}
+
+	const { config, workspaceRoot } = await loadRawConfig(cwd);
+	const loadedConfig = processConfig(config, workspaceRoot);
+
+	const app = loadedConfig.workspace.apps[appName];
+
+	if (!app) {
+		const availableApps = Object.keys(loadedConfig.workspace.apps).join(', ');
+		throw new Error(
+			`App "${appName}" not found in workspace config. Available apps: ${availableApps}. ` +
+				`Ensure the package.json name matches the app key in gkm.config.ts.`,
+		);
+	}
+
+	return {
+		appName,
+		app,
+		workspace: loadedConfig.workspace,
+		workspaceRoot,
+	};
+}
