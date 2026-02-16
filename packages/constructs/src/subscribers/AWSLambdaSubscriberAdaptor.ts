@@ -145,7 +145,7 @@ export class AWSLambdaSubscriber<
 						for (const record of rawEvent.Records) {
 							try {
 								const event = this.parseSQSRecord(record);
-								if (event && this.isSubscribedEvent(event.type)) {
+								if (this.shouldIncludeEvent(event)) {
 									events.push(event);
 								}
 							} catch (error) {
@@ -160,7 +160,7 @@ export class AWSLambdaSubscriber<
 						for (const record of rawEvent.Records) {
 							try {
 								const event = this.parseSNSRecord(record);
-								if (event && this.isSubscribedEvent(event.type)) {
+								if (this.shouldIncludeEvent(event)) {
 									events.push(event);
 								}
 							} catch (error) {
@@ -200,59 +200,83 @@ export class AWSLambdaSubscriber<
 		);
 	}
 
-	private parseSNSRecord(record: SNSEventRecord): any | null {
-		try {
-			const message = JSON.parse(record.Sns.Message);
-			// Resolve type from MessageAttributes (preferred) or message body
-			const messageType =
-				record.Sns.MessageAttributes?.type?.Value ?? message.type;
+	private parseSNSRecord(record: SNSEventRecord): any {
+		const message = this.safeJsonParse(record.Sns.Message);
+		const messageType = record.Sns.MessageAttributes?.type?.Value;
 
-			if (message.type) {
-				return message; // Full event format: { type, payload }
+		// Not JSON — wrap raw string with type from MessageAttributes if available
+		if (message === null) {
+			return messageType
+				? { type: messageType, payload: record.Sns.Message }
+				: record.Sns.Message;
+		}
+
+		// Resolve type from MessageAttributes (preferred) or message body
+		const resolvedType = messageType ?? message.type;
+
+		if (message.type) {
+			return message; // Full event format: { type, payload }
+		}
+
+		// Payload-only format: type is in MessageAttributes
+		return resolvedType ? { type: resolvedType, payload: message } : message;
+	}
+
+	private parseSQSRecord(record: SQSRecord): any {
+		const body = this.safeJsonParse(record.body);
+
+		// Not JSON — return raw body as-is
+		if (body === null) {
+			return record.body;
+		}
+
+		// Check if this is an SNS message wrapped in SQS
+		if (body.Type === 'Notification' && body.Message) {
+			const snsMessage = this.safeJsonParse(body.Message);
+			const messageType = body.MessageAttributes?.type?.Value;
+
+			// SNS Message not JSON — wrap with type from MessageAttributes if available
+			if (snsMessage === null) {
+				return messageType
+					? { type: messageType, payload: body.Message }
+					: body.Message;
+			}
+
+			if (snsMessage.type) {
+				return snsMessage; // Full event format: { type, payload }
 			}
 
 			// Payload-only format: type is in MessageAttributes
-			return messageType ? { type: messageType, payload: message } : message;
-		} catch (error) {
-			this.logger.error({ error, record }, 'Failed to parse SNS record body');
-			return null;
+			const resolvedType = messageType ?? snsMessage.type;
+			return resolvedType
+				? { type: resolvedType, payload: snsMessage }
+				: snsMessage;
 		}
+
+		// Direct SQS message
+		return body;
 	}
 
-	private parseSQSRecord(record: SQSRecord): any | null {
+	private safeJsonParse(value: string): any | null {
 		try {
-			const body = JSON.parse(record.body);
-
-			// Check if this is an SNS message wrapped in SQS
-			if (body.Type === 'Notification' && body.Message) {
-				const snsMessage = JSON.parse(body.Message);
-
-				if (snsMessage.type) {
-					return snsMessage; // Full event format: { type, payload }
-				}
-
-				// Payload-only format: type is in MessageAttributes
-				const messageType =
-					body.MessageAttributes?.type?.Value ?? snsMessage.type;
-				return messageType
-					? { type: messageType, payload: snsMessage }
-					: snsMessage;
-			}
-
-			// Direct SQS message
-			return body;
-		} catch (error) {
-			this.logger.error({ error, record }, 'Failed to parse SQS record body');
+			return JSON.parse(value);
+		} catch {
 			return null;
 		}
 	}
 
-	private isSubscribedEvent(eventType: string): boolean {
-		if (!this.subscriber.subscribedEvents) {
-			return true; // If no events specified, accept all
+	private shouldIncludeEvent(event: any): boolean {
+		// No event type (raw string/non-object) — always include
+		if (typeof event !== 'object' || !event?.type) {
+			return true;
 		}
 
-		return this.subscriber.subscribedEvents.includes(eventType as any);
+		// No filter configured — accept all
+		if (!this.subscriber.subscribedEvents) {
+			return true;
+		}
+
+		return this.subscriber.subscribedEvents.includes(event.type as any);
 	}
 
 	private async _handler(event: SubscriberEvent<TServices, TLogger>) {
