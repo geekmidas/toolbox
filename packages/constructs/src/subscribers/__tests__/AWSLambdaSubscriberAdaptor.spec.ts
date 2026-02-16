@@ -662,41 +662,260 @@ describe('AWSLambdaSubscriber', () => {
 			);
 		});
 
-		it('should log errors for invalid SQS records', async () => {
-			const childLogger = {
-				info: vi.fn(),
-				error: vi.fn(),
-				warn: vi.fn(),
-				debug: vi.fn(),
-				child: vi.fn(),
-			};
-
-			const mockLogger = {
-				child: vi.fn().mockReturnValue(childLogger),
-				info: vi.fn(),
-				error: vi.fn(),
-				warn: vi.fn(),
-				debug: vi.fn(),
-			};
-
+		it('should wrap non-JSON SNS message with type from MessageAttributes in SQS', async () => {
 			const handler = vi.fn(async ({ events }) => {
-				// Should still process valid events
 				expect(events).toHaveLength(1);
+				expect(events[0]).toEqual({
+					type: 'notification.sent',
+					payload: 'this is not json',
+				});
 			});
 
 			const subscriber = new Subscriber(
 				handler,
-				30000, // timeout
-				undefined, // subscribedEvents
-				undefined, // outputSchema
-				[], // services
-				mockLogger as any, // logger
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
 			);
 
 			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
 			const lambdaHandler = adapter.handler;
 
-			// Create event with one invalid record
+			const sqsEvent: SQSEvent = {
+				Records: [
+					{
+						messageId: 'message-1',
+						receiptHandle: 'receipt-1',
+						body: JSON.stringify({
+							Type: 'Notification',
+							MessageId: 'sns-msg-1',
+							TopicArn: 'arn:aws:sns:region:account:topic',
+							Message: 'this is not json',
+							Timestamp: '2023-01-01T00:00:00.000Z',
+							MessageAttributes: {
+								type: { Type: 'String', Value: 'notification.sent' },
+							},
+						}),
+						attributes: {} as any,
+						messageAttributes: {},
+						md5OfBody: 'md5',
+						eventSource: 'aws:sqs',
+						eventSourceARN: 'arn:aws:sqs:region:account:queue-name',
+						awsRegion: 'us-east-1',
+					} as SQSRecord,
+				],
+			};
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should pass through non-JSON SNS message without type as raw string', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toBe('plain text without type');
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const sqsEvent: SQSEvent = {
+				Records: [
+					{
+						messageId: 'message-1',
+						receiptHandle: 'receipt-1',
+						body: JSON.stringify({
+							Type: 'Notification',
+							MessageId: 'sns-msg-1',
+							TopicArn: 'arn:aws:sns:region:account:topic',
+							Message: 'plain text without type',
+							Timestamp: '2023-01-01T00:00:00.000Z',
+						}),
+						attributes: {} as any,
+						messageAttributes: {},
+						md5OfBody: 'md5',
+						eventSource: 'aws:sqs',
+						eventSourceARN: 'arn:aws:sqs:region:account:queue-name',
+						awsRegion: 'us-east-1',
+					} as SQSRecord,
+				],
+			};
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should wrap non-JSON SNS record with type from MessageAttributes', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toEqual({
+					type: 'alert.fired',
+					payload: 'plain text, not json',
+				});
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const snsEvent: SNSEvent = {
+				Records: [
+					{
+						EventSource: 'aws:sns',
+						EventVersion: '1.0',
+						EventSubscriptionArn: 'arn:aws:sns:region:account:topic',
+						Sns: {
+							Type: 'Notification',
+							MessageId: 'msg-1',
+							TopicArn: 'arn:aws:sns:region:account:topic',
+							Subject: 'Test',
+							Message: 'plain text, not json',
+							Timestamp: '2023-01-01T00:00:00.000Z',
+							SignatureVersion: '1',
+							Signature: 'sig',
+							SigningCertUrl: 'https://example.com/cert',
+							UnsubscribeUrl: 'https://example.com/unsub',
+							MessageAttributes: {
+								type: { Type: 'String', Value: 'alert.fired' },
+							},
+						},
+					} as SNSEventRecord,
+				],
+			};
+
+			await lambdaHandler(snsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should pass through non-JSON SNS record without type as raw string', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toBe('plain text, no type attr');
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const snsEvent: SNSEvent = {
+				Records: [
+					{
+						EventSource: 'aws:sns',
+						EventVersion: '1.0',
+						EventSubscriptionArn: 'arn:aws:sns:region:account:topic',
+						Sns: {
+							Type: 'Notification',
+							MessageId: 'msg-1',
+							TopicArn: 'arn:aws:sns:region:account:topic',
+							Subject: 'Test',
+							Message: 'plain text, no type attr',
+							Timestamp: '2023-01-01T00:00:00.000Z',
+							SignatureVersion: '1',
+							Signature: 'sig',
+							SigningCertUrl: 'https://example.com/cert',
+							UnsubscribeUrl: 'https://example.com/unsub',
+						},
+					} as SNSEventRecord,
+				],
+			};
+
+			await lambdaHandler(snsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should pass through non-JSON SQS body', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				expect(events).toHaveLength(1);
+				expect(events[0]).toBe('raw text body');
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
+			const sqsEvent: SQSEvent = {
+				Records: [
+					{
+						messageId: 'message-1',
+						receiptHandle: 'receipt-1',
+						body: 'raw text body',
+						attributes: {} as any,
+						messageAttributes: {},
+						md5OfBody: 'md5',
+						eventSource: 'aws:sqs',
+						eventSourceARN: 'arn:aws:sqs:region:account:queue-name',
+						awsRegion: 'us-east-1',
+					} as SQSRecord,
+				],
+			};
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(handler).toHaveBeenCalled();
+		});
+
+		it('should pass through invalid JSON SQS records alongside valid ones', async () => {
+			const handler = vi.fn(async ({ events }) => {
+				// Both records should be passed through
+				expect(events).toHaveLength(2);
+				expect(events[0]).toBe('invalid json{');
+				expect(events[1]).toEqual({
+					type: 'user.created',
+					payload: { userId: '1', email: 'user1@example.com' },
+				});
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adapter = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adapter.handler;
+
 			const sqsEvent: SQSEvent = {
 				Records: [
 					{
@@ -729,13 +948,6 @@ describe('AWSLambdaSubscriber', () => {
 
 			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
 
-			expect(childLogger.error).toHaveBeenCalledWith(
-				expect.objectContaining({
-					error: expect.any(Error),
-					record: expect.any(Object),
-				}),
-				'Failed to parse SQS record body',
-			);
 			expect(handler).toHaveBeenCalled();
 		});
 	});
