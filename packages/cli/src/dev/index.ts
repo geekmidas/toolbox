@@ -18,6 +18,7 @@ import type {
 import {
 	getAppNameFromCwd,
 	loadAppConfig,
+	loadWorkspaceAppInfo,
 	loadWorkspaceConfig,
 	parseModuleConfig,
 } from '../config';
@@ -1615,10 +1616,10 @@ export async function prepareEntryCredentials(options: {
 	let appName: string | undefined;
 
 	try {
-		const appConfig = await loadAppConfig(cwd);
-		workspaceAppPort = appConfig.app.port;
-		secretsRoot = appConfig.workspaceRoot;
-		appName = appConfig.appName;
+		const appInfo = await loadWorkspaceAppInfo(cwd);
+		workspaceAppPort = appInfo.app.port;
+		secretsRoot = appInfo.workspaceRoot;
+		appName = appInfo.appName;
 	} catch (error) {
 		// Not in a workspace - use defaults
 		logger.log(
@@ -2140,13 +2141,13 @@ export async function execCommand(
 		}
 	}
 
-	// Inject dependency URLs
+	// Inject dependency URLs (works for both frontend and backend apps)
 	try {
-		const appConfig = await loadAppConfig(cwd);
-		if (appConfig.appName) {
+		const appInfo = await loadWorkspaceAppInfo(cwd);
+		if (appInfo.appName) {
 			const depEnv = getDependencyEnvVars(
-				appConfig.workspace,
-				appConfig.appName,
+				appInfo.workspace,
+				appInfo.appName,
 			);
 			Object.assign(credentials, depEnv);
 		}
