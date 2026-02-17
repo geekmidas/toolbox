@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 1.1.0
+
+### Minor Changes
+
+- ⚡️ [`73511d9`](https://github.com/geekmidas/toolbox/commit/73511d912062eb0776935168c9f72d42c7c854a6) Thanks [@geekmidas](https://github.com/geekmidas)! - Improve dev script experience and export function tester
+
 ## 1.0.5
 
 ### Patch Changes

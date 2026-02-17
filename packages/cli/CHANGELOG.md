@@ -1,5 +1,16 @@
 # @geekmidas/cli
 
+## 1.6.0
+
+### Minor Changes
+
+- ⚡️ [`73511d9`](https://github.com/geekmidas/toolbox/commit/73511d912062eb0776935168c9f72d42c7c854a6) Thanks [@geekmidas](https://github.com/geekmidas)! - Improve dev script experience and export function tester
+
+### Patch Changes
+
+- Updated dependencies [[`73511d9`](https://github.com/geekmidas/toolbox/commit/73511d912062eb0776935168c9f72d42c7c854a6)]:
+  - @geekmidas/constructs@1.1.0
+
 ## 1.5.1
 
 ### Patch Changes
