@@ -36,7 +36,8 @@
 				"noShadowRestrictedNames": "off",
 				"noNonNullAssertedOptionalChain": "off",
 				"noArrayIndexKey": "off",
-				"useIterableCallbackReturn": "off"
+				"useIterableCallbackReturn": "off",
+				"noTemplateCurlyInString": "off"
 			},
 			"style": {
 				"noNonNullAssertion": "off"
