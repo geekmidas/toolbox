@@ -839,11 +839,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
 					resolved.providers[0] as LegacyProvider,
 					enableOpenApi,
 					appRoot,
+					true, // bust module cache on rebuild
 				);
 
 				// Regenerate OpenAPI if enabled
 				if (enableOpenApi) {
-					await generateOpenApi(config, { silent: true });
+					await generateOpenApi(config, { silent: true, bustCache: true });
 				}
 
 				logger.log('✅ Rebuild complete, restarting server...');
