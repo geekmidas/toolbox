@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.7.0
+
+### Minor Changes
+
+- 🔥 [`66a0eac`](https://github.com/geekmidas/toolbox/commit/66a0eacfb2aa711da5d67ec10f28a8fa8bcbdf1e) Thanks [@geekmidas](https://github.com/geekmidas)! - Remove test adaptor from subscriber exports
+
 ## 1.6.0
 
 ### Minor Changes
