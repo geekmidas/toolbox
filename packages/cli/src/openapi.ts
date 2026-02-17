@@ -52,7 +52,7 @@ export function resolveOpenApiConfig(
  */
 export async function generateOpenApi(
 	config: GkmConfig,
-	options: { silent?: boolean } = {},
+	options: { silent?: boolean; bustCache?: boolean } = {},
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
 	const logger = options.silent ? { log: () => {} } : console;
 	const openApiConfig = resolveOpenApiConfig(config);
@@ -62,7 +62,11 @@ export async function generateOpenApi(
 	}
 
 	const endpointGenerator = new EndpointGenerator();
-	const loadedEndpoints = await endpointGenerator.load(config.routes);
+	const loadedEndpoints = await endpointGenerator.load(
+		config.routes,
+		undefined,
+		options.bustCache,
+	);
 
 	if (loadedEndpoints.length === 0) {
 		logger.log('No valid endpoints found for OpenAPI generation');
