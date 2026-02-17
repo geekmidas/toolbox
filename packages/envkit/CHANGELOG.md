@@ -1,5 +1,11 @@
 # @geekmidas/envkit
 
+## 1.0.3
+
+### Patch Changes
+
+- ✨ [`bf094cd`](https://github.com/geekmidas/toolbox/commit/bf094cd29df2d18e75213f0976c0c9ff8047d14c) Thanks [@geekmidas](https://github.com/geekmidas)! - Add legacy dynamo resolution
+
 ## 1.0.2
 
 ### Patch Changes
