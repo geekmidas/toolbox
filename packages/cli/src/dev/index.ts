@@ -1465,6 +1465,7 @@ async function buildServer(
 	provider: LegacyProvider,
 	enableOpenApi: boolean,
 	appRoot: string = process.cwd(),
+	bustCache = false,
 ): Promise<void> {
 	// Initialize generators
 	const endpointGenerator = new EndpointGenerator();
@@ -1475,11 +1476,15 @@ async function buildServer(
 	// Load all constructs (resolve paths relative to appRoot)
 	const [allEndpoints, allFunctions, allCrons, allSubscribers] =
 		await Promise.all([
-			endpointGenerator.load(config.routes, appRoot),
-			config.functions ? functionGenerator.load(config.functions, appRoot) : [],
-			config.crons ? cronGenerator.load(config.crons, appRoot) : [],
+			endpointGenerator.load(config.routes, appRoot, bustCache),
+			config.functions
+				? functionGenerator.load(config.functions, appRoot, bustCache)
+				: [],
+			config.crons
+				? cronGenerator.load(config.crons, appRoot, bustCache)
+				: [],
 			config.subscribers
-				? subscriberGenerator.load(config.subscribers, appRoot)
+				? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
 				: [],
 		]);
 
