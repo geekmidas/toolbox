@@ -17,7 +17,10 @@ import {
 	rewriteUrlsWithPorts,
 	savePortState,
 } from '../../dev/index';
-import { getDependencyEnvVars, normalizeWorkspace } from '../../workspace/index';
+import {
+	getDependencyEnvVars,
+	normalizeWorkspace,
+} from '../../workspace/index';
 import {
 	COMPOSE_FULL,
 	createFullstackSecrets,

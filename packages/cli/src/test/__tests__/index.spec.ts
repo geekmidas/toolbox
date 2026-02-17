@@ -1,17 +1,23 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import {
 	loadPortState,
 	parseComposePortMappings,
 	rewriteUrlsWithPorts,
 	savePortState,
 } from '../../dev/index';
-import {
-	ensureTestDatabase,
-	rewriteDatabaseUrlForTests,
-} from '../index';
+import { ensureTestDatabase, rewriteDatabaseUrlForTests } from '../index';
 
 describe('rewriteDatabaseUrlForTests', () => {
 	beforeAll(() => {
