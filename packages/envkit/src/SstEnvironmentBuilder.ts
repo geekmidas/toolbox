@@ -19,6 +19,7 @@ export enum ResourceType {
 	Bucket = 'sst.aws.Bucket',
 	Vpc = 'sst.aws.Vpc',
 	Secret = 'sst.sst.Secret',
+	Dynamo = 'sst.aws.Dynamo',
 
 	// Modern format (colon notation)
 	SSTSecret = 'sst:sst:Secret',
@@ -96,7 +97,7 @@ export type SnsTopic = {
  * AWS DynamoDB Table resource type.
  */
 export type Dynamo = {
-	type: ResourceType.SSTDynamo;
+	type: ResourceType.Dynamo | ResourceType.SSTDynamo;
 	name: string;
 };
 
@@ -169,6 +170,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.Secret]: secretResolver,
 	[ResourceType.Postgres]: postgresResolver,
 	[ResourceType.Bucket]: bucketResolver,
+	[ResourceType.Dynamo]: dynamoResolver,
 
 	// Modern format
 	[ResourceType.SSTSecret]: secretResolver,

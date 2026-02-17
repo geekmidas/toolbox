@@ -161,9 +161,9 @@ describe('SstEnvironmentBuilder', () => {
 	});
 
 	describe('Dynamo resource', () => {
-		it('should process Dynamo resource correctly', () => {
+		it('should process legacy Dynamo resource correctly', () => {
 			const dynamo: Dynamo = {
-				type: ResourceType.SSTDynamo,
+				type: ResourceType.Dynamo,
 				name: 'my-dynamo-table',
 			};
 
@@ -173,6 +173,21 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				USERS_TABLE_NAME: 'my-dynamo-table',
+			});
+		});
+
+		it('should process SSTDynamo resource correctly', () => {
+			const dynamo: Dynamo = {
+				type: ResourceType.SSTDynamo,
+				name: 'sessions-table-prod',
+			};
+
+			const env = new SstEnvironmentBuilder({
+				sessionsTable: dynamo,
+			}).build();
+
+			expect(env).toEqual({
+				SESSIONS_TABLE_NAME: 'sessions-table-prod',
 			});
 		});
 	});
