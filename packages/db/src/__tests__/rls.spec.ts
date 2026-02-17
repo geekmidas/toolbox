@@ -469,9 +469,7 @@ describe('RLS Utility - Integration Tests', () => {
 			});
 
 			// Clean up from any previous failed runs
-			await sql`DROP TABLE IF EXISTS rls_policy_items CASCADE`.execute(
-				adminDb,
-			);
+			await sql`DROP TABLE IF EXISTS rls_policy_items CASCADE`.execute(adminDb);
 
 			// Create non-superuser role (RLS doesn't apply to superusers)
 			await sql`
@@ -559,9 +557,7 @@ describe('RLS Utility - Integration Tests', () => {
 
 		afterAll(async () => {
 			await userDb.destroy();
-			await sql`DROP TABLE IF EXISTS rls_policy_items CASCADE`.execute(
-				adminDb,
-			);
+			await sql`DROP TABLE IF EXISTS rls_policy_items CASCADE`.execute(adminDb);
 			await sql`DROP ROLE IF EXISTS rls_test_role`.execute(adminDb);
 			await adminDb.destroy();
 		});
@@ -596,13 +592,9 @@ describe('RLS Utility - Integration Tests', () => {
 		});
 
 		it('should return no rows when tenant context is not set', async () => {
-			const rows = await withRlsContext(
-				userDb,
-				{},
-				async (trx) => {
-					return trx.selectFrom('rlsPolicyItems').selectAll().execute();
-				},
-			);
+			const rows = await withRlsContext(userDb, {}, async (trx) => {
+				return trx.selectFrom('rlsPolicyItems').selectAll().execute();
+			});
 
 			expect(rows).toHaveLength(0);
 		});
@@ -635,20 +627,16 @@ describe('RLS Utility - Integration Tests', () => {
 
 		it('should reject inserting rows that violate the tenant policy', async () => {
 			await expect(
-				withRlsContext(
-					userDb,
-					{ tenant_id: 'tenant-a' },
-					async (trx) => {
-						return trx
-							.insertInto('rlsPolicyItems')
-							.values({
-								tenantId: 'tenant-b',
-								userId: 'user-cross-tenant',
-								amount: 666,
-							})
-							.execute();
-					},
-				),
+				withRlsContext(userDb, { tenant_id: 'tenant-a' }, async (trx) => {
+					return trx
+						.insertInto('rlsPolicyItems')
+						.values({
+							tenantId: 'tenant-b',
+							userId: 'user-cross-tenant',
+							amount: 666,
+						})
+						.execute();
+				}),
 			).rejects.toThrow(/row-level security/i);
 		});
 
@@ -679,17 +667,13 @@ describe('RLS Utility - Integration Tests', () => {
 
 		it('should reject updates that reassign a row to another tenant', async () => {
 			await expect(
-				withRlsContext(
-					userDb,
-					{ tenant_id: 'tenant-a' },
-					async (trx) => {
-						return trx
-							.updateTable('rlsPolicyItems')
-							.set({ tenantId: 'tenant-b' })
-							.where('userId', '=', 'user-1')
-							.execute();
-					},
-				),
+				withRlsContext(userDb, { tenant_id: 'tenant-a' }, async (trx) => {
+					return trx
+						.updateTable('rlsPolicyItems')
+						.set({ tenantId: 'tenant-b' })
+						.where('userId', '=', 'user-1')
+						.execute();
+				}),
 			).rejects.toThrow(/row-level security/i);
 		});
 
