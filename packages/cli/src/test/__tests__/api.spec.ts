@@ -48,10 +48,7 @@ describe('api app context', () => {
 	});
 
 	it('should resolve DATABASE_URL from API_DATABASE_URL', () => {
-		const apiSecrets = mapSecretsForApp(
-			createFullstackSecrets(),
-			'api',
-		);
+		const apiSecrets = mapSecretsForApp(createFullstackSecrets(), 'api');
 
 		expect(apiSecrets.DATABASE_URL).toBe(
 			'postgresql://api:api-pass@localhost:5432/my-saas',
@@ -85,9 +82,7 @@ describe('api app context', () => {
 		expect(secrets.API_DATABASE_URL).toBe(
 			'postgresql://api:api-pass@localhost:5433/my-saas',
 		);
-		expect(secrets.REDIS_URL).toBe(
-			'redis://:redis-pass@localhost:6380',
-		);
+		expect(secrets.REDIS_URL).toBe('redis://:redis-pass@localhost:6380');
 		// AUTH_URL is an app URL, not a docker service
 		expect(secrets.AUTH_URL).toBe('http://localhost:3002');
 	});
@@ -114,9 +109,7 @@ describe('api app context', () => {
 			'postgresql://api:api-pass@localhost:5433/my-saas',
 		);
 		// Redis port unchanged — URL stays the same
-		expect(secrets.REDIS_URL).toBe(
-			'redis://:redis-pass@localhost:6379',
-		);
+		expect(secrets.REDIS_URL).toBe('redis://:redis-pass@localhost:6379');
 	});
 
 	it('should apply full pipeline for gkm test in api context', async () => {
@@ -150,9 +143,7 @@ describe('api app context', () => {
 			'postgresql://auth:auth-pass@localhost:5433/my-saas_test',
 		);
 		// Non-database URLs unaffected
-		expect(secrets.REDIS_URL).toBe(
-			'redis://:redis-pass@localhost:6380',
-		);
+		expect(secrets.REDIS_URL).toBe('redis://:redis-pass@localhost:6380');
 		expect(secrets.AUTH_URL).toBe('http://localhost:3002');
 	});
 
@@ -176,9 +167,7 @@ describe('api app context', () => {
 		expect(secrets.DATABASE_URL).toBe(
 			'postgresql://api:api-pass@localhost:5432/my-saas_test',
 		);
-		expect(secrets.REDIS_URL).toBe(
-			'redis://:redis-pass@localhost:6379',
-		);
+		expect(secrets.REDIS_URL).toBe('redis://:redis-pass@localhost:6379');
 	});
 
 	it('should not inject dependency URLs for api app (no dependencies)', () => {

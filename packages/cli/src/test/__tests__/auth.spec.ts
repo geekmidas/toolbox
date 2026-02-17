@@ -48,10 +48,7 @@ describe('auth app context', () => {
 	});
 
 	it('should resolve DATABASE_URL from AUTH_DATABASE_URL', () => {
-		const authSecrets = mapSecretsForApp(
-			createFullstackSecrets(),
-			'auth',
-		);
+		const authSecrets = mapSecretsForApp(createFullstackSecrets(), 'auth');
 
 		expect(authSecrets.DATABASE_URL).toBe(
 			'postgresql://auth:auth-pass@localhost:5432/my-saas',
@@ -62,14 +59,9 @@ describe('auth app context', () => {
 	});
 
 	it('should preserve BETTER_AUTH_* secrets untouched', () => {
-		const authSecrets = mapSecretsForApp(
-			createFullstackSecrets(),
-			'auth',
-		);
+		const authSecrets = mapSecretsForApp(createFullstackSecrets(), 'auth');
 
-		expect(authSecrets.BETTER_AUTH_SECRET).toBe(
-			'better-auth-secret-123',
-		);
+		expect(authSecrets.BETTER_AUTH_SECRET).toBe('better-auth-secret-123');
 		expect(authSecrets.BETTER_AUTH_URL).toBe('http://localhost:3002');
 		expect(authSecrets.BETTER_AUTH_TRUSTED_ORIGINS).toBe(
 			'http://localhost:3000,http://localhost:3001',

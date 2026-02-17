@@ -367,9 +367,7 @@ describe('TestSubscriberAdaptor', () => {
 			});
 
 			expect(result).toEqual({ value: 'custom-discovery' });
-			expect(mockDiscovery.register).toHaveBeenCalledWith(
-				subscriber.services,
-			);
+			expect(mockDiscovery.register).toHaveBeenCalledWith(subscriber.services);
 		});
 	});
 
@@ -553,8 +551,7 @@ describe('TestSubscriberAdaptor', () => {
 
 	describe('default service discovery', () => {
 		it('should create default service discovery', () => {
-			const discovery =
-				TestSubscriberAdaptor.getDefaultServiceDiscovery();
+			const discovery = TestSubscriberAdaptor.getDefaultServiceDiscovery();
 			expect(discovery).toBeDefined();
 		});
 	});

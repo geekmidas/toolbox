@@ -85,10 +85,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	let dependencyEnv: Record<string, string> = {};
 	try {
 		const appInfo = await loadWorkspaceAppInfo(cwd);
-		dependencyEnv = getDependencyEnvVars(
-			appInfo.workspace,
-			appInfo.appName,
-		);
+		dependencyEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
 
 		if (Object.keys(dependencyEnv).length > 0) {
 			console.log(

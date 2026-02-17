@@ -58,9 +58,7 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 			try {
 				const file = f.toString();
 				// Append cache-busting query param to force re-import of changed modules
-				const importPath = bustCache
-					? `${file}?t=${Date.now()}`
-					: file;
+				const importPath = bustCache ? `${file}?t=${Date.now()}` : file;
 				const module = await import(importPath);
 
 				// Check all exports for constructs

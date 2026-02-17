@@ -216,9 +216,7 @@ describe('generateDockerFiles', () => {
 	it('should include postgres with dynamic port when database is enabled', () => {
 		const files = generateDockerFiles(baseOptions, minimalTemplate);
 		expect(files[0].content).toContain('postgres');
-		expect(files[0].content).toContain(
-			"'${POSTGRES_HOST_PORT:-5432}:5432'",
-		);
+		expect(files[0].content).toContain("'${POSTGRES_HOST_PORT:-5432}:5432'");
 	});
 
 	it('should include redis with dynamic port', () => {
@@ -238,9 +236,7 @@ describe('generateDockerFiles', () => {
 		const options = { ...baseOptions, template: 'worker' as const };
 		const files = generateDockerFiles(options, workerTemplate);
 		expect(files[0].content).toContain('rabbitmq');
-		expect(files[0].content).toContain(
-			"'${RABBITMQ_HOST_PORT:-5672}:5672'",
-		);
+		expect(files[0].content).toContain("'${RABBITMQ_HOST_PORT:-5672}:5672'");
 		expect(files[0].content).toContain(
 			"'${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'",
 		);
@@ -256,9 +252,7 @@ describe('generateDockerFiles', () => {
 		expect(files[0].content).toContain(
 			"'${MAILPIT_SMTP_HOST_PORT:-1025}:1025'",
 		);
-		expect(files[0].content).toContain(
-			"'${MAILPIT_UI_HOST_PORT:-8025}:8025'",
-		);
+		expect(files[0].content).toContain("'${MAILPIT_UI_HOST_PORT:-8025}:8025'");
 	});
 });
 
@@ -706,16 +700,12 @@ describe('generateTestFiles', () => {
 
 	it('should use KyselyFactory in factory files', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
-		const factoryIndex = files.find(
-			(f) => f.path === 'test/factory/index.ts',
-		);
+		const factoryIndex = files.find((f) => f.path === 'test/factory/index.ts');
 		expect(factoryIndex).toBeDefined();
 		expect(factoryIndex!.content).toContain('KyselyFactory');
 		expect(factoryIndex!.content).toContain('createFactory');
 
-		const usersBuilder = files.find(
-			(f) => f.path === 'test/factory/users.ts',
-		);
+		const usersBuilder = files.find((f) => f.path === 'test/factory/users.ts');
 		expect(usersBuilder).toBeDefined();
 		expect(usersBuilder!.content).toContain('KyselyFactory.createBuilder');
 		expect(usersBuilder!.content).toContain("'users'");
@@ -723,9 +713,7 @@ describe('generateTestFiles', () => {
 
 	it('should generate example spec with transaction-wrapped it', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
-		const exampleSpec = files.find(
-			(f) => f.path === 'test/example.spec.ts',
-		);
+		const exampleSpec = files.find((f) => f.path === 'test/example.spec.ts');
 		expect(exampleSpec).toBeDefined();
 		expect(exampleSpec!.content).toContain("from './config.ts'");
 		expect(exampleSpec!.content).toContain('{ db }');

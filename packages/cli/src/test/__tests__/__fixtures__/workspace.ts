@@ -11,10 +11,8 @@ export function createFullstackSecrets(): Record<string, string> {
 		LOG_LEVEL: 'debug',
 		JWT_SECRET: 'dev-jwt-secret',
 		// Per-app database URLs (fullstack workspace)
-		API_DATABASE_URL:
-			'postgresql://api:api-pass@localhost:5432/my-saas',
-		AUTH_DATABASE_URL:
-			'postgresql://auth:auth-pass@localhost:5432/my-saas',
+		API_DATABASE_URL: 'postgresql://api:api-pass@localhost:5432/my-saas',
+		AUTH_DATABASE_URL: 'postgresql://auth:auth-pass@localhost:5432/my-saas',
 		API_DB_PASSWORD: 'api-pass',
 		AUTH_DB_PASSWORD: 'auth-pass',
 		// Auth service secrets
@@ -22,8 +20,7 @@ export function createFullstackSecrets(): Record<string, string> {
 		AUTH_URL: 'http://localhost:3002',
 		BETTER_AUTH_SECRET: 'better-auth-secret-123',
 		BETTER_AUTH_URL: 'http://localhost:3002',
-		BETTER_AUTH_TRUSTED_ORIGINS:
-			'http://localhost:3000,http://localhost:3001',
+		BETTER_AUTH_TRUSTED_ORIGINS: 'http://localhost:3000,http://localhost:3001',
 		// Service credentials
 		POSTGRES_USER: 'api',
 		POSTGRES_PASSWORD: 'api-pass',

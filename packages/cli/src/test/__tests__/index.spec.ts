@@ -33,8 +33,7 @@ describe('rewriteDatabaseUrlForTests', () => {
 
 	it('should handle URL-encoded passwords', () => {
 		const result = rewriteDatabaseUrlForTests({
-			DATABASE_URL:
-				'postgresql://app:p%40ssw0rd@localhost:5432/myapp',
+			DATABASE_URL: 'postgresql://app:p%40ssw0rd@localhost:5432/myapp',
 		});
 		expect(result.DATABASE_URL).toBe(
 			'postgresql://app:p%40ssw0rd@localhost:5432/myapp_test',
@@ -96,9 +95,7 @@ describe('rewriteDatabaseUrlForTests', () => {
 		const result = rewriteDatabaseUrlForTests({
 			DATABASE_URL: 'postgresql://app:secret@localhost:5432/',
 		});
-		expect(result.DATABASE_URL).toBe(
-			'postgresql://app:secret@localhost:5432/',
-		);
+		expect(result.DATABASE_URL).toBe('postgresql://app:secret@localhost:5432/');
 	});
 
 	it('should return empty object for empty input', () => {
@@ -315,8 +312,6 @@ services:
 			'postgresql://app:secret@localhost:5432/myapp_test',
 		);
 		// RabbitMQ port rewritten
-		expect(secrets.RABBITMQ_URL).toBe(
-			'amqp://app:secret@localhost:5673',
-		);
+		expect(secrets.RABBITMQ_URL).toBe('amqp://app:secret@localhost:5673');
 	});
 });

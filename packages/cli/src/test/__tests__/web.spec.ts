@@ -201,11 +201,7 @@ describe('web (frontend) app context', () => {
 		// App dependency URLs NOT rewritten (3000 and 3002 are not docker ports)
 		expect(rewritten.API_URL).toBe('http://localhost:3000');
 		expect(rewritten.AUTH_URL).toBe('http://localhost:3002');
-		expect(rewritten.NEXT_PUBLIC_API_URL).toBe(
-			'http://localhost:3000',
-		);
-		expect(rewritten.NEXT_PUBLIC_AUTH_URL).toBe(
-			'http://localhost:3002',
-		);
+		expect(rewritten.NEXT_PUBLIC_API_URL).toBe('http://localhost:3000');
+		expect(rewritten.NEXT_PUBLIC_AUTH_URL).toBe('http://localhost:3002');
 	});
 });

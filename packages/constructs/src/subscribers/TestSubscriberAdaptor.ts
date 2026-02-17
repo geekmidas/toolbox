@@ -61,9 +61,7 @@ export class TestSubscriberAdaptor<
 		if (request.services) {
 			services = request.services;
 		} else {
-			services = await this.serviceDiscovery.register(
-				this.subscriber.services,
-			);
+			services = await this.serviceDiscovery.register(this.subscriber.services);
 		}
 
 		// Filter events to only subscribed types

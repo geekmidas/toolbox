@@ -185,13 +185,9 @@ export function parseComposePortMappings(
 
 	const results: ComposePortMapping[] = [];
 
-	for (const [serviceName, serviceConfig] of Object.entries(
-		compose.services,
-	)) {
+	for (const [serviceName, serviceConfig] of Object.entries(compose.services)) {
 		for (const portMapping of serviceConfig?.ports ?? []) {
-			const match = String(portMapping).match(
-				/\$\{(\w+):-(\d+)\}:(\d+)/,
-			);
+			const match = String(portMapping).match(/\$\{(\w+):-(\d+)\}:(\d+)/);
 			if (match?.[1] && match[2] && match[3]) {
 				results.push({
 					service: serviceName,
@@ -210,9 +206,7 @@ export function parseComposePortMappings(
  * Load saved port state from .gkm/ports.json.
  * @internal Exported for testing
  */
-export async function loadPortState(
-	workspaceRoot: string,
-): Promise<PortState> {
+export async function loadPortState(workspaceRoot: string): Promise<PortState> {
 	try {
 		const raw = await readFile(join(workspaceRoot, PORT_STATE_PATH), 'utf-8');
 		return JSON.parse(raw) as PortState;
@@ -248,10 +242,10 @@ export function getContainerHostPort(
 	containerPort: number,
 ): number | null {
 	try {
-		const result = execSync(
-			`docker compose port ${service} ${containerPort}`,
-			{ cwd: workspaceRoot, stdio: 'pipe' },
-		)
+		const result = execSync(`docker compose port ${service} ${containerPort}`, {
+			cwd: workspaceRoot,
+			stdio: 'pipe',
+		})
 			.toString()
 			.trim();
 		const match = result.match(/:(\d+)$/);
@@ -342,10 +336,7 @@ export function replacePortInUrl(
 	newPort: number,
 ): string {
 	if (oldPort === newPort) return url;
-	return url.replace(
-		new RegExp(`:${oldPort}(?=/|$)`, 'g'),
-		`:${newPort}`,
-	);
+	return url.replace(new RegExp(`:${oldPort}(?=/|$)`, 'g'), `:${newPort}`);
 }
 
 /**
@@ -362,8 +353,7 @@ export function rewriteUrlsWithPorts(
 	const result = { ...secrets };
 
 	// Build a map of defaultPort → resolvedPort for all changed ports
-	const portReplacements: { defaultPort: number; resolvedPort: number }[] =
-		[];
+	const portReplacements: { defaultPort: number; resolvedPort: number }[] = [];
 	for (const mapping of mappings) {
 		const resolved = ports[mapping.envVar];
 		if (resolved !== undefined) {
@@ -1481,9 +1471,7 @@ async function buildServer(
 			config.functions
 				? functionGenerator.load(config.functions, appRoot, bustCache)
 				: [],
-			config.crons
-				? cronGenerator.load(config.crons, appRoot, bustCache)
-				: [],
+			config.crons ? cronGenerator.load(config.crons, appRoot, bustCache) : [],
 			config.subscribers
 				? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
 				: [],
@@ -2151,10 +2139,7 @@ export async function execCommand(
 	try {
 		const appInfo = await loadWorkspaceAppInfo(cwd);
 		if (appInfo.appName) {
-			const depEnv = getDependencyEnvVars(
-				appInfo.workspace,
-				appInfo.appName,
-			);
+			const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
 			Object.assign(credentials, depEnv);
 		}
 	} catch {
