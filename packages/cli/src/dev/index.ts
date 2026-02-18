@@ -1041,7 +1041,7 @@ export async function loadDevSecrets(
 	}
 
 	logger.warn(
-		'⚠️  Secrets enabled but no dev/development secrets found. Run "gkm secrets:init --stage dev"',
+		'⚠️  Secrets enabled but no dev/development secrets found. Run "gkm setup" to initialize your development environment',
 	);
 	return {};
 }
