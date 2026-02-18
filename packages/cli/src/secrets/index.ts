@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { loadConfig } from '../config';
+import { loadConfig, loadWorkspaceConfig } from '../config';
+import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
 import type { ComposeServiceName, ComposeServicesConfig } from '../types';
 import { createStageSecrets, rotateServicePassword } from './generator';
 import {
@@ -88,6 +89,20 @@ export async function secretsInitCommand(
 	// Generate secrets
 	const secrets = createStageSecrets(stage, services);
 
+	// Detect workspace mode and generate fullstack-aware custom secrets
+	try {
+		const loaded = await loadWorkspaceConfig();
+		const isMultiApp = Object.keys(loaded.workspace.apps).length > 1;
+
+		if (isMultiApp) {
+			const customSecrets = generateFullstackCustomSecrets(loaded.workspace);
+			secrets.custom = customSecrets;
+			logger.log('  Detected workspace mode — generating per-app secrets');
+		}
+	} catch {
+		// Not a workspace — single-app mode, skip custom secrets
+	}
+
 	// Write to file
 	await writeStageSecrets(secrets);
 
@@ -107,6 +122,10 @@ export async function secretsInitCommand(
 	}
 	if (secrets.urls.RABBITMQ_URL) {
 		logger.log(`  RABBITMQ_URL: ${maskUrl(secrets.urls.RABBITMQ_URL)}`);
+	}
+
+	if (Object.keys(secrets.custom).length > 0) {
+		logger.log(`\n  Custom secrets: ${Object.keys(secrets.custom).length}`);
 	}
 
 	logger.log(`\n  Use "gkm secrets:show --stage ${stage}" to view secrets`);
