@@ -24,6 +24,7 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from './secrets';
+import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 
@@ -55,6 +56,28 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('setup')
+	.description(
+		'Setup development environment (secrets, Docker, database)',
+	)
+	.option('--stage <stage>', 'Stage name', 'development')
+	.option('--force', 'Regenerate secrets even if they exist')
+	.option('--skip-docker', 'Skip starting Docker services')
+	.option('-y, --yes', 'Skip prompts')
+	.action(async (options: SetupOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await setupCommand(options);
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
