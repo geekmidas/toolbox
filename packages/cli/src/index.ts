@@ -506,6 +506,66 @@ program
 		}
 	});
 
+program
+	.command('secrets:push')
+	.description('Push secrets to remote provider (SSM)')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+
+			const { loadWorkspaceConfig } = await import('./config');
+			const { pushSecrets } = await import('./secrets/sync');
+
+			const { workspace } = await loadWorkspaceConfig();
+			await pushSecrets(options.stage, workspace);
+			console.log(
+				`\n✓ Secrets pushed for stage "${options.stage}"`,
+			);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('secrets:pull')
+	.description('Pull secrets from remote provider (SSM)')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+
+			const { loadWorkspaceConfig } = await import('./config');
+			const { pullSecrets } = await import('./secrets/sync');
+			const { writeStageSecrets } = await import('./secrets/storage');
+
+			const { workspace } = await loadWorkspaceConfig();
+			const secrets = await pullSecrets(options.stage, workspace);
+
+			if (!secrets) {
+				console.error(
+					`No remote secrets found for stage "${options.stage}".`,
+				);
+				process.exit(1);
+			}
+
+			await writeStageSecrets(secrets, workspace.root);
+			console.log(
+				`\n✓ Secrets pulled for stage "${options.stage}"`,
+			);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
 // Deploy command
 program
 	.command('deploy')
