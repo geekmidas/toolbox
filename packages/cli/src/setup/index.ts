@@ -55,9 +55,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	const isMultiApp = Object.keys(workspace.apps).length > 1;
 
 	logger.log(`📦 Workspace: ${workspace.name}`);
-	logger.log(
-		`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`,
-	);
+	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
 	logger.log(`🔑 Stage: ${stage}\n`);
 
 	// 2. Resolve secrets
@@ -81,9 +79,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 			logger.log('');
 			await startWorkspaceServices(workspace);
 		} else {
-			logger.log(
-				'⚠️  No docker-compose.yml found. Skipping Docker services.',
-			);
+			logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
 		}
 	}
 
@@ -131,9 +127,7 @@ async function resolveSecrets(
 			}
 			logger.log('   No remote secrets found');
 		} catch (error) {
-			logger.warn(
-				`⚠️  Failed to pull from SSM: ${(error as Error).message}`,
-			);
+			logger.warn(`⚠️  Failed to pull from SSM: ${(error as Error).message}`);
 		}
 	}
 
@@ -190,9 +184,7 @@ async function generateFreshSecrets(
 				await pushSecrets(stage, workspace);
 				logger.log('☁️  Secrets pushed to SSM');
 			} catch (error) {
-				logger.warn(
-					`⚠️  Failed to push to SSM: ${(error as Error).message}`,
-				);
+				logger.warn(`⚠️  Failed to push to SSM: ${(error as Error).message}`);
 			}
 		}
 	}
@@ -203,10 +195,7 @@ async function generateFreshSecrets(
 /**
  * Print setup summary with next steps.
  */
-function printSummary(
-	workspace: NormalizedWorkspace,
-	stage: string,
-): void {
+function printSummary(workspace: NormalizedWorkspace, stage: string): void {
 	logger.log(`\n${'─'.repeat(50)}`);
 	logger.log('\n✅ Development environment ready!\n');
 
@@ -218,8 +207,6 @@ function printSummary(
 
 	logger.log('\n🚀 Next steps:');
 	logger.log('   gkm dev                    # Start all apps');
-	logger.log(
-		`   gkm secrets:show --stage ${stage}  # View secrets`,
-	);
+	logger.log(`   gkm secrets:show --stage ${stage}  # View secrets`);
 	logger.log('');
 }

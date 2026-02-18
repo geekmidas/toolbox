@@ -21,10 +21,7 @@ import type { StageSecrets } from './types.js';
 /**
  * Get the SSM parameter name for secrets.
  */
-function getSecretsParameterName(
-	workspaceName: string,
-	stage: string,
-): string {
+function getSecretsParameterName(workspaceName: string, stage: string): string {
 	return `/gkm/${workspaceName}/${stage}/secrets`;
 }
 

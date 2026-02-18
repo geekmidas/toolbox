@@ -64,9 +64,7 @@ program
 
 program
 	.command('setup')
-	.description(
-		'Setup development environment (secrets, Docker, database)',
-	)
+	.description('Setup development environment (secrets, Docker, database)')
 	.option('--stage <stage>', 'Stage name', 'development')
 	.option('--force', 'Regenerate secrets even if they exist')
 	.option('--skip-docker', 'Skip starting Docker services')
@@ -522,9 +520,7 @@ program
 
 			const { workspace } = await loadWorkspaceConfig();
 			await pushSecrets(options.stage, workspace);
-			console.log(
-				`\n✓ Secrets pushed for stage "${options.stage}"`,
-			);
+			console.log(`\n✓ Secrets pushed for stage "${options.stage}"`);
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
@@ -550,16 +546,12 @@ program
 			const secrets = await pullSecrets(options.stage, workspace);
 
 			if (!secrets) {
-				console.error(
-					`No remote secrets found for stage "${options.stage}".`,
-				);
+				console.error(`No remote secrets found for stage "${options.stage}".`);
 				process.exit(1);
 			}
 
 			await writeStageSecrets(secrets, workspace.root);
-			console.log(
-				`\n✓ Secrets pulled for stage "${options.stage}"`,
-			);
+			console.log(`\n✓ Secrets pulled for stage "${options.stage}"`);
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
