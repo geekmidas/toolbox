@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.8.0
+
+### Minor Changes
+
+- ⬆️ [`5c5d844`](https://github.com/geekmidas/toolbox/commit/5c5d8447d0bab29397879bcd723bf1f44c50e61c) Thanks [@geekmidas](https://github.com/geekmidas)! - Bump version to capture latest version of constructs
+
 ## 1.7.0
 
 ### Minor Changes
