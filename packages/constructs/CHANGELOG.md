@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 1.1.1
+
+### Patch Changes
+
+- 🔥 [`9ac81f2`](https://github.com/geekmidas/toolbox/commit/9ac81f25fbf3676e39580c916dc0085358af99cb) Thanks [@geekmidas](https://github.com/geekmidas)! - Remove subscriber adaptor from root exports
+
 ## 1.1.0
 
 ### Minor Changes
