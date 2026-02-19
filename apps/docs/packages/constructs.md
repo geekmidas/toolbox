@@ -797,6 +797,183 @@ const endpoint = api
   });
 ```
 
+## Cron Jobs
+
+The `c` builder creates scheduled tasks that run on a cron or rate schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
+
+### Basic Cron
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+
+export const dailyCleanup = c
+  .schedule('rate(1 day)')
+  .handle(async ({ logger }) => {
+    logger.info('Running daily cleanup');
+    await cleanupExpiredSessions();
+    return { cleaned: true };
+  });
+```
+
+### Schedule Expressions
+
+Crons accept two schedule formats:
+
+**Rate expressions** — run at a fixed interval:
+
+```typescript
+c.schedule('rate(5 minutes)')
+c.schedule('rate(1 hour)')
+c.schedule('rate(7 days)')
+```
+
+**Cron expressions** — run on a specific schedule (minute, hour, day, month, weekday):
+
+```typescript
+// Every day at midnight
+c.schedule('cron(0 0 * * *)')
+
+// Every Monday at 9am
+c.schedule('cron(0 9 * * MON)')
+
+// Every 15 minutes during business hours on weekdays
+c.schedule('cron(*/15 9-17 * * MON-FRI)')
+
+// First day of every month at noon
+c.schedule('cron(0 12 1 * *)')
+```
+
+### With Services
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+
+export const syncCron = c
+  .services([databaseService, cacheService])
+  .schedule('rate(30 minutes)')
+  .handle(async ({ services, logger }) => {
+    const db = services.database;
+    const cache = services.cache;
+
+    const staleRecords = await db
+      .selectFrom('records')
+      .where('updated_at', '<', new Date(Date.now() - 3600000))
+      .selectAll()
+      .execute();
+
+    for (const record of staleRecords) {
+      await cache.delete(`record:${record.id}`);
+    }
+
+    logger.info({ count: staleRecords.length }, 'Cache invalidated');
+    return { invalidated: staleRecords.length };
+  });
+```
+
+### With Input and Output Schemas
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+import { z } from 'zod';
+
+export const reportCron = c
+  .input(z.object({
+    reportType: z.enum(['daily', 'weekly', 'monthly']),
+  }))
+  .output(z.object({
+    generatedAt: z.string(),
+    rowCount: z.number(),
+  }))
+  .schedule('cron(0 6 * * MON)')
+  .handle(async ({ input }) => {
+    const report = await generateReport(input.reportType);
+    return {
+      generatedAt: new Date().toISOString(),
+      rowCount: report.rows.length,
+    };
+  });
+```
+
+### With Database Access
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+
+export const archiveCron = c
+  .services([databaseService])
+  .database(databaseService)
+  .schedule('cron(0 2 * * *)')
+  .handle(async ({ db, logger }) => {
+    const cutoff = new Date(Date.now() - 90 * 24 * 3600000); // 90 days
+
+    const result = await db
+      .deleteFrom('logs')
+      .where('created_at', '<', cutoff)
+      .executeTakeFirst();
+
+    logger.info({ deleted: result.numDeletedRows }, 'Archived old logs');
+    return { deleted: Number(result.numDeletedRows) };
+  });
+```
+
+### With Event Publishing
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+
+export const reminderCron = c
+  .services([databaseService])
+  .publisher(eventPublisherService)
+  .schedule('rate(1 hour)')
+  .handle(async ({ services, publish }) => {
+    const users = await services.database
+      .selectFrom('users')
+      .where('reminder_due', '<', new Date())
+      .selectAll()
+      .execute();
+
+    for (const user of users) {
+      await publish('reminder.due', { userId: user.id });
+    }
+
+    return { notified: users.length };
+  });
+```
+
+### Configuration Options
+
+| Method | Description |
+|--------|-------------|
+| `.schedule(expression)` | Set the cron or rate schedule expression |
+| `.input(schema)` | Validate the input payload with a StandardSchema |
+| `.output(schema)` | Validate the return value with a StandardSchema |
+| `.services(services)` | Inject services into the handler context |
+| `.database(service)` | Set the database service (provides `db` in context) |
+| `.publisher(service)` | Set the event publisher service (provides `publish` in context) |
+| `.logger(logger)` | Set a custom logger instance |
+| `.timeout(ms)` | Set the execution timeout in milliseconds (default: 30000) |
+| `.memorySize(mb)` | Set the memory allocation in MB (AWS Lambda) |
+| `.handle(fn)` | Define the handler function and build the `Cron` instance |
+
+### Project Configuration
+
+Register your cron files in `gkm.config.ts` so the CLI can discover and build them:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  crons: './src/crons/**/*.ts',    // glob pattern for cron files
+  envParser: './src/config/env',
+  logger: './src/logger',
+});
+```
+
+### AWS Lambda Deployment
+
+When building with `gkm build --provider aws-lambda`, each cron is compiled into a separate Lambda handler with its schedule expression included in the build manifest. Use the manifest to configure EventBridge rules in your IaC tool (SST, CDK, Terraform, etc.).
+
 ## Deployment
 
 ### Hono Integration
