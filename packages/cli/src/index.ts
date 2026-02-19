@@ -27,6 +27,7 @@ import {
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
+import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
 const program = new Command();
 
@@ -867,6 +868,23 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await stateDiffCommand(options);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
+program
+	.command('upgrade')
+	.description('Upgrade all @geekmidas packages to their latest versions')
+	.option('--dry-run', 'Show what would be upgraded without making changes')
+	.action(async (options: UpgradeOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await upgradeCommand(options);
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : 'Command failed');
 			process.exit(1);
