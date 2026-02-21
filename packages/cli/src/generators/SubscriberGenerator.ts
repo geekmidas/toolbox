@@ -164,6 +164,7 @@ export const handler = adapter.handler;
  * - sqs://region/account-id/queue-name (SQS queue)
  * - sns://region/account-id/topic-name (SNS topic)
  * - rabbitmq://host:port/queue-name (RabbitMQ)
+ * - pgboss://user:pass@host:port/database (pg-boss / PostgreSQL)
  * - basic://in-memory (In-memory for testing)
  */
 import type { EnvironmentParser } from '@geekmidas/envkit';
