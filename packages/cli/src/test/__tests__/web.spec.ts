@@ -80,7 +80,7 @@ describe('web (frontend) app context', () => {
 
 	it('should not have DATABASE_URL (frontend does not access database)', () => {
 		// Frontend gets secrets mapped without an app-specific DATABASE_URL
-		const secrets = mapSecretsForApp(createFullstackSecrets(), 'web');
+		const _secrets = mapSecretsForApp(createFullstackSecrets(), 'web');
 
 		// No WEB_DATABASE_URL exists, so DATABASE_URL stays as default (api's)
 		// In practice, frontend apps don't use DATABASE_URL at all
