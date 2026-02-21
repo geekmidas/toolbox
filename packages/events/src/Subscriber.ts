@@ -50,6 +50,10 @@ export class Subscriber {
 					await SQSConnection.fromConnectionString(connectionStr);
 				return new SQSSubscriber<TMessage>(connection);
 			}
+			case EventPublisherType.PgBoss: {
+				const { PgBossSubscriber } = await import('./pgboss');
+				return PgBossSubscriber.fromConnectionString<TMessage>(connectionStr);
+			}
 			// Future implementations for EventBridge, Kafka, etc.
 			default:
 				throw new Error(`Unsupported event subscriber type: ${url.protocol}`);
@@ -90,6 +94,13 @@ export class Subscriber {
 				const { SQSConnection } = await import('./sqs');
 				return new SQSSubscriber<TMessage>(
 					connection as InstanceType<typeof SQSConnection>,
+				);
+			}
+			case EventPublisherType.PgBoss: {
+				const { PgBossSubscriber } = await import('./pgboss');
+				const { PgBossConnection } = await import('./pgboss');
+				return new PgBossSubscriber<TMessage>(
+					connection as InstanceType<typeof PgBossConnection>,
 				);
 			}
 			default:

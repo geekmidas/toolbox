@@ -29,6 +29,10 @@ export class EventConnectionFactory {
 				const { SNSConnection } = await import('./sns');
 				return SNSConnection.fromConnectionString(connectionStr);
 			}
+			case EventPublisherType.PgBoss: {
+				const { PgBossConnection } = await import('./pgboss');
+				return PgBossConnection.fromConnectionString(connectionStr);
+			}
 			default:
 				throw new Error(`Unsupported connection type: ${protocol}`);
 		}

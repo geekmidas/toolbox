@@ -35,6 +35,10 @@ export class Publisher {
 				const { SNSPublisher } = await import('./sns');
 				return SNSPublisher.fromConnectionString<TMessage>(connectionStr);
 			}
+			case EventPublisherType.PgBoss: {
+				const { PgBossPublisher } = await import('./pgboss');
+				return PgBossPublisher.fromConnectionString<TMessage>(connectionStr);
+			}
 			// Future implementations for EventBridge, Kafka, etc.
 			default:
 				throw new Error(`Unsupported event publisher type: ${url.protocol}`);
@@ -75,6 +79,13 @@ export class Publisher {
 				const { SNSConnection } = await import('./sns');
 				return new SNSPublisher<TMessage>(
 					connection as InstanceType<typeof SNSConnection>,
+				);
+			}
+			case EventPublisherType.PgBoss: {
+				const { PgBossPublisher } = await import('./pgboss');
+				const { PgBossConnection } = await import('./pgboss');
+				return new PgBossPublisher<TMessage>(
+					connection as InstanceType<typeof PgBossConnection>,
 				);
 			}
 			default:
