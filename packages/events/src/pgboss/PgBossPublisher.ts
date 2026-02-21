@@ -36,9 +36,7 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 		}
 
 		// Batch insert — each JobInsert carries its queue name
-		await boss.insert(
-			messages.map((m) => ({ name: m.type, data: m.payload })),
-		);
+		await boss.insert(messages.map((m) => ({ name: m.type, data: m.payload })));
 	}
 
 	async close(): Promise<void> {

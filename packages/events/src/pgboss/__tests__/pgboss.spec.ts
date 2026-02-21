@@ -51,8 +51,9 @@ describe('PgBossConnection', () => {
 	});
 
 	it('should parse connection string correctly', async () => {
-		const connection =
-			await PgBossConnection.fromConnectionString(PGBOSS_CONNECTION_STRING);
+		const connection = await PgBossConnection.fromConnectionString(
+			PGBOSS_CONNECTION_STRING,
+		);
 
 		expect(connection.isConnected()).toBe(true);
 		expect(connection.instance).toBeDefined();
@@ -97,10 +98,9 @@ describe('PgBossPublisher', () => {
 	});
 
 	it('should create publisher from connection string', async () => {
-		const publisher =
-			await PgBossPublisher.fromConnectionString<TestMessage>(
-				PGBOSS_CONNECTION_STRING,
-			);
+		const publisher = await PgBossPublisher.fromConnectionString<TestMessage>(
+			PGBOSS_CONNECTION_STRING,
+		);
 
 		expect(publisher).toBeInstanceOf(PgBossPublisher);
 	});
@@ -134,9 +134,7 @@ describe('PgBossSubscriber', () => {
 			received.push(message);
 		});
 
-		await publisher.publish([
-			{ type: queueName, payload: { userId: '42' } },
-		]);
+		await publisher.publish([{ type: queueName, payload: { userId: '42' } }]);
 
 		// Wait for pg-boss to poll and deliver
 		await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -176,10 +174,9 @@ describe('PgBossSubscriber', () => {
 	});
 
 	it('should create subscriber from connection string with options', async () => {
-		const subscriber =
-			await PgBossSubscriber.fromConnectionString<TestMessage>(
-				`${PGBOSS_CONNECTION_STRING}&batchSize=10`,
-			);
+		const subscriber = await PgBossSubscriber.fromConnectionString<TestMessage>(
+			`${PGBOSS_CONNECTION_STRING}&batchSize=10`,
+		);
 
 		expect(subscriber).toBeInstanceOf(PgBossSubscriber);
 	});
