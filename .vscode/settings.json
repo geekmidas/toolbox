@@ -42,6 +42,7 @@
 		"openauthjs",
 		"ossp",
 		"paysafe",
+		"pgboss",
 		"pgcrypto",
 		"presigner",
 		"rabbitmq",
