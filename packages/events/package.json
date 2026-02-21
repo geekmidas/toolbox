@@ -27,6 +27,11 @@
 			"types": "./dist/sns/index.d.ts",
 			"import": "./dist/sns/index.mjs",
 			"require": "./dist/sns/index.cjs"
+		},
+		"./pgboss": {
+			"types": "./dist/pgboss/index.d.ts",
+			"import": "./dist/pgboss/index.mjs",
+			"require": "./dist/pgboss/index.cjs"
 		}
 	},
 	"repository": {
@@ -44,7 +49,8 @@
 		"@geekmidas/schema": "workspace:^",
 		"amqplib": "^0.10.3",
 		"@aws-sdk/client-sqs": "~3.908.0",
-		"@aws-sdk/client-sns": "~3.908.0"
+		"@aws-sdk/client-sns": "~3.908.0",
+		"pg-boss": ">=10.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/schema": {
@@ -58,11 +64,15 @@
 		},
 		"@aws-sdk/client-sns": {
 			"optional": true
+		},
+		"pg-boss": {
+			"optional": true
 		}
 	},
 	"devDependencies": {
 		"@geekmidas/schema": "workspace:^",
 		"@types/amqplib": "~0.10.7",
-		"@types/lodash.chunk": "~4.2.0"
+		"@types/lodash.chunk": "~4.2.0",
+		"pg-boss": "^10.0.0"
 	}
 }
