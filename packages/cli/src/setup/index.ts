@@ -11,7 +11,7 @@ import {
 } from '../secrets/storage.js';
 import { isSSMConfigured, pullSecrets, pushSecrets } from '../secrets/sync.js';
 import type { ComposeServiceName } from '../types.js';
-import type { NormalizedWorkspace } from '../workspace/types.js';
+import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
 import {
 	generateFullstackCustomSecrets,
 	writeDockerEnvFromSecrets,
@@ -41,7 +41,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	logger.log('\n🔧 Setting up development environment...\n');
 
 	// 1. Load workspace config
-	let loadedConfig;
+	let loadedConfig: LoadedConfig;
 	try {
 		loadedConfig = await loadWorkspaceConfig();
 	} catch {
