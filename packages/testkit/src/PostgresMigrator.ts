@@ -98,7 +98,15 @@ export abstract class PostgresMigrator {
 			);
 
 			if (result.rowCount === 0) {
-				await db.query(`CREATE DATABASE "${database}"`);
+				try {
+					await db.query(`CREATE DATABASE "${database}"`);
+				} catch (error: any) {
+					// 42P04 = duplicate_database — another process created it between our check and create
+					if (error?.code === '42P04') {
+						return { alreadyExisted: true };
+					}
+					throw error;
+				}
 			}
 
 			return {
