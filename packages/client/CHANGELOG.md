@@ -1,5 +1,12 @@
 # @geekmidas/client
 
+## 3.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`83a24de`](https://github.com/geekmidas/toolbox/commit/83a24de902b3fadd98444cab552ecd84f32b6661)]:
+  - @geekmidas/constructs@2.0.0
+
 ## 2.0.0
 
 ### Patch Changes

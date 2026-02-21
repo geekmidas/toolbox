@@ -1,5 +1,18 @@
 # @geekmidas/constructs
 
+## 2.0.0
+
+### Patch Changes
+
+- ✨ [`83a24de`](https://github.com/geekmidas/toolbox/commit/83a24de902b3fadd98444cab552ecd84f32b6661) Thanks [@geekmidas](https://github.com/geekmidas)! - Add pg-boss event publisher/subscriber, CLI setup and upgrade commands, and secrets sync via AWS SSM
+  - ✨ **@geekmidas/events**: Add pg-boss backend for event publishing and subscribing with connection string support
+  - ✨ **@geekmidas/cli**: Add `gkm setup` command for dev environment initialization, `gkm upgrade` command with workspace detection, and secrets push/pull via AWS SSM Parameter Store
+  - 🐛 **@geekmidas/testkit**: Fix database creation race condition in PostgresMigrator
+  - ✨ **@geekmidas/constructs**: Add integration tests for pg-boss with HonoEndpoint
+
+- Updated dependencies [[`83a24de`](https://github.com/geekmidas/toolbox/commit/83a24de902b3fadd98444cab552ecd84f32b6661)]:
+  - @geekmidas/events@1.1.0
+
 ## 1.1.1
 
 ### Patch Changes
