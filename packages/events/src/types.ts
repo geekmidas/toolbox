@@ -22,6 +22,7 @@ export enum EventPublisherType {
 	SNS = 'sns',
 	Kafka = 'kafka',
 	RabbitMQ = 'rabbitmq',
+	PgBoss = 'pgboss',
 }
 
 /**
