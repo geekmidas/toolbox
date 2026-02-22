@@ -132,6 +132,99 @@ const publisher = await SNSPublisher.create<AppEvents>({
 });
 ```
 
+### pg-boss (PostgreSQL)
+
+pg-boss uses your existing PostgreSQL database as a message queue, so there's no need for a separate message broker.
+
+#### Connection String Format
+
+```
+pgboss://user:pass@host:5432/database?schema=pgboss
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `schema` | PostgreSQL schema for pg-boss tables | `pgboss` |
+| `batchSize` | Messages per poll cycle (subscribers) | - |
+| `pollingIntervalSeconds` | Poll frequency in seconds (subscribers) | `30` |
+
+#### Using Connection Strings
+
+```typescript
+import { Publisher, Subscriber } from '@geekmidas/events';
+
+const publisher = await Publisher.fromConnectionString<AppEvents>(
+  'pgboss://user:pass@localhost:5432/mydb'
+);
+
+const subscriber = await Subscriber.fromConnectionString<AppEvents>(
+  'pgboss://user:pass@localhost:5432/mydb?pollingIntervalSeconds=5&batchSize=10'
+);
+
+await subscriber.subscribe(['user.created'], async (message) => {
+  console.log('User created:', message.payload.userId);
+});
+
+await publisher.publish([
+  { type: 'user.created', payload: { userId: '123', email: 'test@example.com' } },
+]);
+```
+
+#### Direct Instantiation
+
+```typescript
+import {
+  PgBossConnection,
+  PgBossPublisher,
+  PgBossSubscriber,
+} from '@geekmidas/events/pgboss';
+
+const connection = new PgBossConnection({
+  connectionString: 'postgres://user:pass@localhost:5432/mydb',
+  schema: 'pgboss',
+});
+await connection.connect();
+
+const publisher = new PgBossPublisher<AppEvents>(connection);
+const subscriber = new PgBossSubscriber<AppEvents>(connection, {
+  pollingIntervalSeconds: 5,
+  batchSize: 10,
+});
+```
+
+#### Dev Server Integration
+
+`gkm dev` automatically starts pg-boss subscribers when you set the `EVENT_SUBSCRIBER_CONNECTION_STRING` environment variable:
+
+```bash
+EVENT_SUBSCRIBER_CONNECTION_STRING=pgboss://user:pass@localhost:5432/mydb?schema=pgboss
+```
+
+The dev server will discover your subscribers, connect to pg-boss, and begin polling for events in the background. See [Dev Server](#dev-server) for more details.
+
+## Dev Server
+
+When running `gkm dev`, subscribers are automatically started for local development. The CLI discovers all subscriber definitions in your routes, generates setup code, and begins polling for events on server startup.
+
+To enable this, set the connection string in your environment:
+
+```bash
+# .env
+EVENT_SUBSCRIBER_CONNECTION_STRING=pgboss://user:pass@localhost:5432/mydb
+```
+
+Supported connection string protocols:
+
+- `pgboss://` - pg-boss (PostgreSQL)
+- `rabbitmq://` - RabbitMQ
+- `sqs://` - AWS SQS
+- `sns://` - AWS SNS
+- `basic://` - In-memory (for testing)
+
+::: tip
+For AWS-based backends (SQS/SNS), production deployments should use Lambda with event source mappings for proper scaling and dead letter queues. For pg-boss and RabbitMQ, the polling approach is also suitable for production via `gkm build --provider server`.
+:::
+
 ## Integration with Endpoints
 
 ```typescript
