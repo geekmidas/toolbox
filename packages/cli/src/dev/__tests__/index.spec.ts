@@ -12,6 +12,7 @@ import {
 	checkPortConflicts,
 	findAvailablePort,
 	generateAllDependencyEnvVars,
+	generateServerEntryContent,
 	isPortAvailable,
 	loadPortState,
 	loadSecretsForApp,
@@ -1676,5 +1677,53 @@ services:
 
 		const mappings = parseComposePortMappings(composePath);
 		expect(mappings).toEqual([]);
+	});
+});
+
+describe('generateServerEntryContent', () => {
+	it('should use dynamic import for createApp when secrets are provided', () => {
+		const content = generateServerEntryContent({
+			secretsJsonPath: '/tmp/dev-secrets.json',
+		});
+
+		// createApp must be a dynamic import so Credentials are populated first
+		expect(content).toContain("await import('./app.js')");
+		// Must NOT have a static import of createApp
+		expect(content).not.toMatch(/^import.*createApp/m);
+	});
+
+	it('should use dynamic import for createApp without secrets', () => {
+		const content = generateServerEntryContent({});
+
+		expect(content).toContain("await import('./app.js')");
+		expect(content).not.toMatch(/^import.*createApp/m);
+	});
+
+	it('should inject Credentials assignment before dynamic import', () => {
+		const content = generateServerEntryContent({
+			secretsJsonPath: '/tmp/dev-secrets.json',
+		});
+
+		const credentialsAssignIdx = content.indexOf('Object.assign(Credentials');
+		const dynamicImportIdx = content.indexOf("await import('./app.js')");
+
+		expect(credentialsAssignIdx).toBeGreaterThan(-1);
+		expect(dynamicImportIdx).toBeGreaterThan(-1);
+		expect(credentialsAssignIdx).toBeLessThan(dynamicImportIdx);
+	});
+
+	it('should not include credentials injection when no secrets path', () => {
+		const content = generateServerEntryContent({});
+
+		expect(content).not.toContain('Object.assign(Credentials');
+		expect(content).not.toContain('existsSync');
+	});
+
+	it('should use custom app import path when provided', () => {
+		const content = generateServerEntryContent({
+			appImportPath: './custom-app.js',
+		});
+
+		expect(content).toContain("await import('./custom-app.js')");
 	});
 });
