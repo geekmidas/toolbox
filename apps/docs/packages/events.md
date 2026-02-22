@@ -12,7 +12,7 @@ pnpm add @geekmidas/events
 
 - Unified interface for publishing and subscribing
 - Type-safe message types with full TypeScript inference
-- Multiple backends: Basic (in-memory), RabbitMQ, AWS SQS, AWS SNS
+- Multiple backends: Basic (in-memory), RabbitMQ, AWS SQS, AWS SNS, pg-boss (PostgreSQL)
 - Connection string-based configuration
 - Message filtering by event type
 - SNS-SQS integration with automatic queue management
@@ -24,6 +24,7 @@ pnpm add @geekmidas/events
 - `/rabbitmq` - RabbitMQ implementation
 - `/sqs` - AWS SQS implementation
 - `/sns` - AWS SNS implementation
+- `/pgboss` - pg-boss (PostgreSQL) implementation
 
 ## Basic Usage
 
