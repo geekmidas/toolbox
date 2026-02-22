@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.9.1
+
+### Patch Changes
+
+- ✨ [`3d20e46`](https://github.com/geekmidas/toolbox/commit/3d20e46aa2454c322ffa9e482f23c12c9e9686d4) Thanks [@geekmidas](https://github.com/geekmidas)! - Add secret reconsilation and fix bug with dev loading credentials
+
 ## 1.9.0
 
 ### Minor Changes
