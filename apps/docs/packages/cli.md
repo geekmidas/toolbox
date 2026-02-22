@@ -365,6 +365,34 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 - Telescope debugging dashboard integration
 - **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
 - **Dynamic Docker port resolution** — automatically avoids port conflicts between projects
+- **Automatic subscriber startup** — discovers and starts event subscribers in polling mode
+
+#### Subscriber Polling
+
+When running `gkm dev`, any event subscribers defined in your routes are automatically discovered and started in polling mode. The CLI generates a `setupSubscribers()` function that runs on server startup.
+
+To enable subscriber polling, set the `EVENT_SUBSCRIBER_CONNECTION_STRING` environment variable:
+
+```bash
+# .env
+EVENT_SUBSCRIBER_CONNECTION_STRING=pgboss://user:pass@localhost:5432/mydb
+```
+
+The appropriate subscriber backend is selected based on the connection string protocol:
+
+| Protocol | Backend | Description |
+|----------|---------|-------------|
+| `pgboss://` | pg-boss | PostgreSQL-based job queue |
+| `rabbitmq://` | RabbitMQ | AMQP message broker |
+| `sqs://` | AWS SQS | Amazon Simple Queue Service |
+| `sns://` | AWS SNS | Amazon Simple Notification Service |
+| `basic://` | In-memory | For local testing only |
+
+The dev server creates a single shared connection from the connection string, then registers each subscriber to poll for its declared event types. Events are processed one at a time per subscriber. Failed events are retried automatically by the backend.
+
+::: tip
+For AWS-based backends (SQS/SNS), production deployments should use Lambda with event source mappings for proper scaling and dead letter queues. For pg-boss and RabbitMQ, the polling approach used by `gkm dev` is also suitable for production via `gkm build --provider server`.
+:::
 
 ### Test
 
