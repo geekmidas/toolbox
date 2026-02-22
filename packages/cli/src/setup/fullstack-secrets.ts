@@ -57,6 +57,8 @@ export function generateFullstackCustomSecrets(
 	for (const [appName, appConfig] of Object.entries(workspace.apps)) {
 		if (appConfig.type === 'frontend') {
 			frontendPorts.push(appConfig.port);
+			const upperName = appName.toUpperCase();
+			customs[`${upperName}_URL`] = `http://localhost:${appConfig.port}`;
 			continue;
 		}
 
