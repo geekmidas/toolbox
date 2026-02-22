@@ -518,8 +518,27 @@ program
 
 			const { loadWorkspaceConfig } = await import('./config');
 			const { pushSecrets } = await import('./secrets/sync');
+			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
+			const { readStageSecrets, writeStageSecrets } = await import(
+				'./secrets/storage'
+			);
 
 			const { workspace } = await loadWorkspaceConfig();
+
+			const secrets = await readStageSecrets(options.stage, workspace.root);
+			if (secrets) {
+				const result = reconcileMissingSecrets(secrets, workspace);
+				if (result) {
+					await writeStageSecrets(result.secrets, workspace.root);
+					console.log(
+						`  Reconciled ${result.addedKeys.length} missing secret(s):`,
+					);
+					for (const key of result.addedKeys) {
+						console.log(`    + ${key}`);
+					}
+				}
+			}
+
 			await pushSecrets(options.stage, workspace);
 			console.log(`\n✓ Secrets pushed for stage "${options.stage}"`);
 		} catch (error) {
