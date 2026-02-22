@@ -561,13 +561,25 @@ program
 			const { loadWorkspaceConfig } = await import('./config');
 			const { pullSecrets } = await import('./secrets/sync');
 			const { writeStageSecrets } = await import('./secrets/storage');
+			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
 
 			const { workspace } = await loadWorkspaceConfig();
-			const secrets = await pullSecrets(options.stage, workspace);
+			let secrets = await pullSecrets(options.stage, workspace);
 
 			if (!secrets) {
 				console.error(`No remote secrets found for stage "${options.stage}".`);
 				process.exit(1);
+			}
+
+			const result = reconcileMissingSecrets(secrets, workspace);
+			if (result) {
+				secrets = result.secrets;
+				console.log(
+					`  Reconciled ${result.addedKeys.length} missing secret(s):`,
+				);
+				for (const key of result.addedKeys) {
+					console.log(`    + ${key}`);
+				}
 			}
 
 			await writeStageSecrets(secrets, workspace.root);
