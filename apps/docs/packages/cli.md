@@ -588,6 +588,10 @@ The `providers.server.production` configuration controls production build behavi
 | `subscribers` | `'include' \| 'exclude'` | `'exclude'` | Include subscribers in production |
 | `openapi` | `boolean` | `false` | Include OpenAPI docs in production |
 
+::: tip
+When deploying with pg-boss or RabbitMQ via Docker, set `subscribers: 'include'` so the server process polls for events. For AWS-based backends (SQS/SNS), leave it as `'exclude'` and use Lambda with event source mappings instead.
+:::
+
 **Production vs Development:**
 
 | Feature | Development | Production |
