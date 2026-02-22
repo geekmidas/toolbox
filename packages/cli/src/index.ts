@@ -590,6 +590,53 @@ program
 		}
 	});
 
+program
+	.command('secrets:reconcile')
+	.description('Backfill missing custom secrets from workspace config')
+	.option('--stage <stage>', 'Stage name', 'development')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+
+			const { loadWorkspaceConfig } = await import('./config');
+			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
+			const { readStageSecrets, writeStageSecrets } = await import(
+				'./secrets/storage'
+			);
+
+			const { workspace } = await loadWorkspaceConfig();
+			const secrets = await readStageSecrets(options.stage, workspace.root);
+
+			if (!secrets) {
+				console.error(
+					`No secrets found for stage "${options.stage}". Run "gkm secrets:init --stage ${options.stage}" first.`,
+				);
+				process.exit(1);
+			}
+
+			const result = reconcileMissingSecrets(secrets, workspace);
+
+			if (!result) {
+				console.log(`\n✓ Secrets for stage "${options.stage}" are up-to-date`);
+				return;
+			}
+
+			await writeStageSecrets(result.secrets, workspace.root);
+			console.log(
+				`\n✓ Reconciled ${result.addedKeys.length} missing secret(s) for stage "${options.stage}":`,
+			);
+			for (const key of result.addedKeys) {
+				console.log(`    + ${key}`);
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : 'Command failed');
+			process.exit(1);
+		}
+	});
+
 // Deploy command
 program
 	.command('deploy')
