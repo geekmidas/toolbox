@@ -1,5 +1,14 @@
 # @geekmidas/example
 
+## 1.0.22
+
+### Patch Changes
+
+- Updated dependencies [[`83a24de`](https://github.com/geekmidas/toolbox/commit/83a24de902b3fadd98444cab552ecd84f32b6661)]:
+  - @geekmidas/cli@1.9.0
+  - @geekmidas/events@1.1.0
+  - @geekmidas/constructs@2.0.0
+
 ## 1.0.21
 
 ### Patch Changes
