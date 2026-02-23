@@ -13,7 +13,7 @@ pnpm add @geekmidas/cache
 - Type-safe cache with TypeScript generics
 - Consistent async API across all backends
 - TTL (time-to-live) support
-- Multiple implementations: InMemoryCache, UpstashCache, ExpoSecureCache
+- Multiple implementations: InMemoryCache, UpstashCache, FileCache, ExpoSecureCache
 - Easy testing with swappable backends
 
 ## Package Exports
@@ -21,6 +21,7 @@ pnpm add @geekmidas/cache
 - `/` - Core cache interface
 - `/memory` - In-memory cache implementation
 - `/upstash` - Upstash Redis cache
+- `/file` - File-based cache (JSON on disk)
 - `/expo` - Expo Secure Store cache (React Native)
 
 ## Basic Usage
@@ -62,6 +63,30 @@ const cache = new UpstashCache<User>({
 await cache.set('user:123', userData, { ttl: 3600 });
 const user = await cache.get('user:123');
 ```
+
+### File Cache
+
+Persistent file-based cache for CLI tools and build systems:
+
+```typescript
+import { FileCache } from '@geekmidas/cache/file';
+
+// Default path: process.cwd()/.gkm/cache.json
+const cache = new FileCache();
+
+// Custom path and TTL
+const cache = new FileCache({
+  path: '/tmp/my-app/cache.json',
+  ttl: 3600, // 1 hour default TTL
+});
+
+// Same API as other implementations
+await cache.set('build:hash', 'abc123', 300);
+const hash = await cache.get('build:hash');
+const remaining = await cache.ttl('build:hash');
+```
+
+File locking ensures safe concurrent and cross-process writes. Parent directories are created automatically.
 
 ### Expo Secure Store Cache (React Native)
 

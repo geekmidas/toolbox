@@ -6,7 +6,7 @@ A type-safe, flexible caching library for TypeScript applications with support f
 
 - **Type-safe**: Full TypeScript support with generics for strongly-typed cache values
 - **Unified interface**: Common `Cache<T>` interface for all implementations
-- **Multiple backends**: In-memory, Redis (Upstash), and Expo Secure Store implementations
+- **Multiple backends**: In-memory, Redis (Upstash), Expo Secure Store, and file-based implementations
 - **Async API**: Promise-based interface for consistency across implementations
 - **Flexible TTL**: Support for time-to-live across all implementations
 - **Easy testing**: Simple interface makes mocking and testing straightforward
@@ -30,6 +30,8 @@ For React Native support via Expo:
 ```bash
 npm install expo-secure-store
 ```
+
+The file-based cache includes all required dependencies automatically.
 
 ## Quick Start
 
@@ -75,6 +77,35 @@ const user = await cache.get('user:123'); // User | undefined
 
 // Delete
 await cache.delete('user:123');
+```
+
+### File Cache
+
+Persistent file-based cache for CLI tools and build systems. Data is stored as JSON on disk and survives process restarts:
+
+```typescript
+import { FileCache } from '@geekmidas/cache/file';
+
+// Default path: process.cwd()/.gkm/cache.json
+const cache = new FileCache();
+
+// Custom path and TTL
+const cache = new FileCache({
+  path: '/tmp/my-app/cache.json',
+  ttl: 3600, // 1 hour default TTL
+});
+
+// Set a value with TTL (in seconds)
+await cache.set('build:hash', 'abc123', 300);
+
+// Get a value
+const hash = await cache.get('build:hash'); // string | undefined
+
+// Check remaining TTL
+const remaining = await cache.ttl('build:hash'); // seconds
+
+// Delete a value
+await cache.delete('build:hash');
 ```
 
 ## API Reference
@@ -214,6 +245,44 @@ await cache.set('user:1', {
 const user = await cache.get('user:1');
 ```
 
+### FileCache
+
+Persistent file-based cache that stores entries as JSON on disk.
+
+```typescript
+import { FileCache } from '@geekmidas/cache/file';
+
+class FileCache implements Cache
+```
+
+#### Constructor
+
+```typescript
+new FileCache(options?: FileCacheOptions)
+```
+
+- `path`: Path to the cache JSON file (default: `process.cwd()/.gkm/cache.json`)
+- `ttl`: Default TTL in seconds (default: `600`)
+
+#### Features
+
+- ✅ Persistent storage across process restarts
+- ✅ TTL support with automatic expiration
+- ✅ Safe concurrent writes (in-process mutex + cross-process file locking)
+- ✅ Auto-creates parent directories
+- ✅ No external services required
+- ❌ Not suitable for high-throughput applications
+- ❌ Not suitable for multi-machine distributed caching
+
+#### Example
+
+```typescript
+const cache = new FileCache({ path: '/tmp/app-cache.json', ttl: 3600 });
+await cache.set('config', { theme: 'dark' });
+const config = await cache.get('config'); // { theme: 'dark' }
+const remaining = await cache.ttl('config'); // ~3600
+```
+
 ### ExpoSecureCache
 
 Secure storage for React Native apps using Expo SecureStore.
@@ -347,10 +416,14 @@ Create cache instances based on configuration:
 
 ```typescript
 interface CacheConfig {
-  type: 'memory' | 'redis' | 'expo';
+  type: 'memory' | 'redis' | 'file' | 'expo';
   redis?: {
     url: string;
     token: string;
+  };
+  file?: {
+    path?: string;
+    ttl?: number;
   };
 }
 
@@ -361,6 +434,8 @@ function createCache<T>(config: CacheConfig): Cache<T> {
     case 'redis':
       if (!config.redis) throw new Error('Redis config required');
       return new UpstashCache<T>(config.redis.url, config.redis.token);
+    case 'file':
+      return new FileCache(config.file);
     case 'expo':
       return new ExpoSecureCache<T>();
     default:
@@ -477,6 +552,11 @@ describe('UserService', () => {
 - **Pros**: Persistent, distributed, scalable
 - **Cons**: Network latency, external dependency
 - **Best for**: Production, multi-instance apps, shared cache
+
+### FileCache
+- **Pros**: Persistent, no external services, cross-process safe
+- **Cons**: Disk I/O latency, not suitable for high throughput
+- **Best for**: CLI tools, build systems, local development caching
 
 ### ExpoSecureCache
 - **Pros**: Secure, encrypted, persistent on device
