@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
+import { isPartitionedRoutes, type Routes } from '../types.js';
 import type { NormalizedWorkspace } from './types.js';
 
 const logger = console;
@@ -19,12 +20,14 @@ export interface ClientCopyResult {
 
 /**
  * Normalize routes to an array of patterns.
+ * Handles string, string[], and PartitionedRoutes (extracts paths).
  * @internal Exported for use in dev command
  */
-export function normalizeRoutes(
-	routes: string | string[] | undefined,
-): string[] {
+export function normalizeRoutes(routes: Routes | undefined): string[] {
 	if (!routes) return [];
+	if (isPartitionedRoutes(routes)) {
+		return Array.isArray(routes.paths) ? routes.paths : [routes.paths];
+	}
 	return Array.isArray(routes) ? routes : [routes];
 }
 
