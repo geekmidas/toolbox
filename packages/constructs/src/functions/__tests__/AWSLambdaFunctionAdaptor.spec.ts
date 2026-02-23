@@ -2,6 +2,7 @@ import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
+import { serviceContext } from '@geekmidas/services';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
@@ -453,6 +454,60 @@ describe('AWSLambdaFunction', () => {
 			const result = await lambdaHandler({}, createMockContext(), vi.fn());
 
 			expect(result).toEqual({ hasDb: false });
+		});
+	});
+
+	describe('request context', () => {
+		it('should make serviceContext.getLogger() available inside handler', async () => {
+			let contextLogger: any;
+			let contextRequestId: string | undefined;
+
+			const fn = new Function(
+				async () => {
+					contextLogger = serviceContext.getLogger();
+					contextRequestId = serviceContext.getRequestId();
+					return { success: true };
+				},
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new AWSLambdaFunction(envParser, fn);
+			const handler = adaptor.handler;
+
+			const context = createMockContext();
+			await handler({}, context, vi.fn());
+
+			expect(contextLogger).toBeDefined();
+			expect(contextRequestId).toBe('test-request-id');
+		});
+
+		it('should make serviceContext.hasContext() return true inside handler', async () => {
+			let hasContext = false;
+
+			const fn = new Function(
+				async () => {
+					hasContext = serviceContext.hasContext();
+					return { success: true };
+				},
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new AWSLambdaFunction(envParser, fn);
+			const handler = adaptor.handler;
+
+			await handler({}, createMockContext(), vi.fn());
+
+			expect(hasContext).toBe(true);
 		});
 	});
 });
