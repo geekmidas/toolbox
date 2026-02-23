@@ -26,11 +26,13 @@ import {
 	type GeneratedConstruct,
 	SubscriberGenerator,
 } from '../generators';
-import type {
-	BuildOptions,
-	BuildResult,
-	LegacyProvider,
-	RouteInfo,
+import {
+	type BuildOptions,
+	type BuildResult,
+	isPartitionedRoutes,
+	type LegacyProvider,
+	type RouteInfo,
+	type Routes,
 } from '../types';
 import {
 	getAppBuildOrder,
@@ -40,8 +42,10 @@ import {
 import {
 	generateAwsManifest,
 	generateServerManifest,
+	type ManifestField,
 	type ServerAppInfo,
 } from './manifests';
+import { groupInfosByPartition, hasPartitions } from './partitions';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';
 
@@ -258,6 +262,15 @@ async function buildForProvider(
 		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers for ${provider}`,
 	);
 
+	// Assemble manifest fields (flat or partitioned per construct type)
+	const manifestRoutes = assembleManifestField(routes, endpoints);
+	const manifestFunctions = assembleManifestField(functionInfos, functions);
+	const manifestCrons = assembleManifestField(cronInfos, crons);
+	const manifestSubscribers = assembleManifestField(
+		subscriberInfos,
+		subscribers,
+	);
+
 	// Generate provider-specific manifest
 	if (provider === 'server') {
 		// For server, collect actual route metadata from endpoint constructs
@@ -270,6 +283,8 @@ async function buildForProvider(
 			})),
 		);
 
+		const serverRouteField = assembleManifestField(routeMetadata, endpoints);
+
 		const appInfo: ServerAppInfo = {
 			handler: relative(process.cwd(), join(outputDir, 'app.ts')),
 			endpoints: relative(process.cwd(), join(outputDir, 'endpoints.ts')),
@@ -278,8 +293,8 @@ async function buildForProvider(
 		await generateServerManifest(
 			rootOutputDir,
 			appInfo,
-			routeMetadata,
-			subscriberInfos,
+			serverRouteField,
+			manifestSubscribers,
 		);
 
 		// Bundle for production if enabled
@@ -324,10 +339,10 @@ async function buildForProvider(
 		// For AWS providers, generate AWS manifest
 		await generateAwsManifest(
 			rootOutputDir,
-			routes,
-			functionInfos,
-			cronInfos,
-			subscriberInfos,
+			manifestRoutes,
+			manifestFunctions,
+			manifestCrons,
+			manifestSubscribers,
 		);
 	}
 
@@ -503,4 +518,32 @@ function getAppOutputPath(
 		// Backend .gkm output
 		return join(appPath, '.gkm');
 	}
+}
+
+/**
+ * Format routes for logging, handling PartitionedRoutes.
+ */
+function formatRoutes(routes: Routes): string {
+	if (isPartitionedRoutes(routes)) {
+		const paths = Array.isArray(routes.paths)
+			? routes.paths.join(', ')
+			: routes.paths;
+		return `${paths} (partitioned)`;
+	}
+	return Array.isArray(routes) ? routes.join(', ') : routes;
+}
+
+/**
+ * Assemble a ManifestField from build infos and constructs.
+ * If any construct has a partition, returns a Record<string, T[]>.
+ * Otherwise, returns a flat T[].
+ */
+function assembleManifestField<T>(
+	infos: T[],
+	constructs: GeneratedConstruct<any>[],
+): ManifestField<T> {
+	if (!hasPartitions(constructs)) {
+		return infos;
+	}
+	return groupInfosByPartition(infos, constructs);
 }
