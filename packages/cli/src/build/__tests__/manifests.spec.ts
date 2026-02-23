@@ -8,6 +8,7 @@ import type {
 	RouteInfo,
 	SubscriberInfo,
 } from '../../types';
+import type { ManifestField } from '../manifests';
 import { generateAwsManifest, generateServerManifest } from '../manifests';
 
 describe('generateAwsManifest', () => {
@@ -343,4 +344,174 @@ describe('generateServerManifest', () => {
 
 		logSpy.mockRestore();
 	});
+});
+
+describe('generateAwsManifest (partitioned)', () => {
+	itWithDir(
+		'should generate manifest with partitioned routes and flat functions',
+		async ({ dir }) => {
+			const routes: ManifestField<RouteInfo> = {
+				admin: [
+					{
+						path: '/admin/users',
+						method: 'GET',
+						handler: '.gkm/aws/adminGetUsers.handler',
+						authorizer: 'jwt',
+					},
+				],
+				public: [
+					{
+						path: '/users',
+						method: 'GET',
+						handler: '.gkm/aws/getUsers.handler',
+						authorizer: 'none',
+					},
+				],
+			};
+
+			const functions: FunctionInfo[] = [
+				{
+					name: 'processData',
+					handler: '.gkm/aws/processData.handler',
+					timeout: 300,
+					memorySize: 512,
+					environment: [],
+				},
+			];
+
+			await generateAwsManifest(dir, routes, functions, [], []);
+
+			const manifestPath = join(dir, 'manifest', 'aws.ts');
+			const content = await readFile(manifestPath, 'utf-8');
+
+			// Routes should be partitioned (nested object)
+			expect(content).toContain('"admin":');
+			expect(content).toContain('"public":');
+			expect(content).toContain('/admin/users');
+			expect(content).toContain('/users');
+
+			// Functions should be flat (array)
+			expect(content).toContain('processData');
+
+			// Partitioned routes should have partition-aware derived types
+			expect(content).toContain('RoutePartition');
+			expect(content).toContain('keyof typeof manifest.routes');
+
+			// Flat functions should have standard derived types
+			expect(content).toContain(
+				'export type Function = (typeof manifest.functions)[number]',
+			);
+		},
+	);
+
+	itWithDir(
+		'should generate flat manifest when all fields are arrays',
+		async ({ dir }) => {
+			const routes: RouteInfo[] = [
+				{
+					path: '/users',
+					method: 'GET',
+					handler: '.gkm/aws/getUsers.handler',
+					authorizer: 'jwt',
+				},
+			];
+
+			await generateAwsManifest(dir, routes, [], [], []);
+
+			const manifestPath = join(dir, 'manifest', 'aws.ts');
+			const content = await readFile(manifestPath, 'utf-8');
+
+			// Should have flat derived types (no partition types)
+			expect(content).toContain(
+				'export type Route = (typeof manifest.routes)[number]',
+			);
+			expect(content).not.toContain('RoutePartition');
+		},
+	);
+
+	itWithDir(
+		'should filter ALL method from partitioned routes',
+		async ({ dir }) => {
+			const routes: ManifestField<RouteInfo> = {
+				admin: [
+					{
+						path: '/admin/users',
+						method: 'GET',
+						handler: '.gkm/aws/adminGetUsers.handler',
+						authorizer: 'jwt',
+					},
+					{
+						path: '*',
+						method: 'ALL',
+						handler: '.gkm/server/app.ts',
+						authorizer: 'none',
+					},
+				],
+			};
+
+			await generateAwsManifest(dir, routes, [], [], []);
+
+			const manifestPath = join(dir, 'manifest', 'aws.ts');
+			const content = await readFile(manifestPath, 'utf-8');
+
+			expect(content).toContain('/admin/users');
+			expect(content).not.toContain('"ALL"');
+		},
+	);
+});
+
+describe('generateServerManifest (partitioned)', () => {
+	itWithDir(
+		'should generate manifest with partitioned routes',
+		async ({ dir }) => {
+			const appInfo = {
+				handler: '.gkm/server/app.ts',
+				endpoints: '.gkm/server/endpoints.ts',
+			};
+
+			const routes: ManifestField<RouteInfo> = {
+				admin: [
+					{
+						path: '/admin/users',
+						method: 'GET',
+						handler: '',
+						authorizer: 'jwt',
+					},
+				],
+				default: [
+					{
+						path: '/health',
+						method: 'GET',
+						handler: '',
+						authorizer: 'none',
+					},
+				],
+			};
+
+			const subscribers: SubscriberInfo[] = [
+				{
+					name: 'orderHandler',
+					handler: '.gkm/server/orderHandler.ts',
+					subscribedEvents: ['order.created'],
+					timeout: 30,
+					memorySize: 256,
+					environment: [],
+				},
+			];
+
+			await generateServerManifest(dir, appInfo, routes, subscribers);
+
+			const manifestPath = join(dir, 'manifest', 'server.ts');
+			const content = await readFile(manifestPath, 'utf-8');
+
+			// Routes should be partitioned
+			expect(content).toContain('"admin":');
+			expect(content).toContain('"default":');
+			expect(content).toContain('RoutePartition');
+
+			// Subscribers should be flat
+			expect(content).toContain('orderHandler');
+			expect(content).not.toContain('SubscriberPartition');
+		},
+	);
 });
