@@ -40,11 +40,14 @@
 		"access": "public"
 	},
 	"dependencies": {
-		"date-fns": "~4.1.0"
+		"date-fns": "~4.1.0",
+		"proper-lockfile": "^4.1.2"
 	},
-	"devDependencies": {},
 	"peerDependencies": {
 		"@upstash/redis": "~1.35.1",
 		"expo-secure-store": "^14.2.3"
+	},
+	"devDependencies": {
+		"@types/proper-lockfile": "^4.1.4"
 	}
 }
