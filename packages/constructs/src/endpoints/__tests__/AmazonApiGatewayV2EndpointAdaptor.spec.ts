@@ -414,5 +414,79 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				expect(response.multiValueHeaders).toBeUndefined();
 			});
 		});
+
+		describe('request cookies', () => {
+			it('should load cookies from V2 cookies array', async () => {
+				const endpoint = e
+					.get('/test')
+					.output(
+						z.object({ session: z.string(), theme: z.string() }),
+					)
+					.handle(async ({ cookie }) => ({
+						session: cookie('session') ?? '',
+						theme: cookie('theme') ?? '',
+					}));
+
+				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const event = createMockV2Event({
+					cookies: ['session=abc123', 'theme=dark'],
+				});
+
+				const response = await adapter.handler(event, mockContext);
+
+				expect(JSON.parse(response.body!)).toEqual({
+					session: 'abc123',
+					theme: 'dark',
+				});
+			});
+
+			it('should fall back to headers.cookie when cookies array is absent', async () => {
+				const endpoint = e
+					.get('/test')
+					.output(z.object({ session: z.string() }))
+					.handle(async ({ cookie }) => ({
+						session: cookie('session') ?? '',
+					}));
+
+				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const event = createMockV2Event({
+					cookies: undefined,
+					headers: {
+						'content-type': 'application/json',
+						cookie: 'session=from-header',
+					},
+				});
+
+				const response = await adapter.handler(event, mockContext);
+
+				expect(JSON.parse(response.body!)).toEqual({
+					session: 'from-header',
+				});
+			});
+
+			it('should prefer V2 cookies array over headers.cookie', async () => {
+				const endpoint = e
+					.get('/test')
+					.output(z.object({ session: z.string() }))
+					.handle(async ({ cookie }) => ({
+						session: cookie('session') ?? '',
+					}));
+
+				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const event = createMockV2Event({
+					cookies: ['session=from-array'],
+					headers: {
+						'content-type': 'application/json',
+						cookie: 'session=from-header',
+					},
+				});
+
+				const response = await adapter.handler(event, mockContext);
+
+				expect(JSON.parse(response.body!)).toEqual({
+					session: 'from-array',
+				});
+			});
+		});
 	});
 });
