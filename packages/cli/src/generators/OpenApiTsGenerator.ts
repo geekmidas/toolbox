@@ -681,7 +681,7 @@ export function createApi(options: CreateApiOptions) {
 // API Client Factory
 // ============================================================
 
-import { TypedFetcher, type FetcherOptions } from '@geekmidas/client/fetcher';
+import { createTypedFetcher, type FetcherOptions } from '@geekmidas/client/fetcher';
 import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 import type { QueryClient } from '@tanstack/react-query';
 
@@ -713,11 +713,11 @@ export interface CreateApiOptions extends Omit<FetcherOptions, 'baseURL'> {
  */
 export function createApi(options: CreateApiOptions) {
   const { queryClient, ...fetcherOptions } = options;
-  const fetcher = new TypedFetcher<paths>(fetcherOptions);
+  const request = createTypedFetcher<paths>(fetcherOptions);
 
-  const hooks = createEndpointHooks<paths>(fetcher.request.bind(fetcher), { queryClient });
+  const hooks = createEndpointHooks<paths>(request, { queryClient });
 
-  return Object.assign(fetcher.request.bind(fetcher), hooks);
+  return Object.assign(request, hooks);
 }
 `;
 
