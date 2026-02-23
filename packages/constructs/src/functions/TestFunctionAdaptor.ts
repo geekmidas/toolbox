@@ -9,6 +9,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import {
+	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
 	type ServiceRecord,
@@ -153,41 +154,47 @@ export class TestFunctionAdaptor<
 			});
 		}
 
-		// Execute the function
-		const response = await this.fn.fn({
-			input: parsedInput,
-			services,
-			logger,
-			db,
-			auditor,
-		} as any);
+		// Wrap execution in request context for service access via context.getLogger()
+		const requestId = `test-${Date.now()}`;
+		const startTime = Date.now();
 
-		// Parse output if schema is provided
-		const output = await this.fn.parseOutput(response);
+		return runWithRequestContext({ logger, requestId, startTime }, async () => {
+			// Execute the function
+			const response = await this.fn.fn({
+				input: parsedInput,
+				services,
+				logger,
+				db,
+				auditor,
+			} as any);
 
-		// Flush audits if any were recorded
-		if (auditor) {
-			const records = auditor.getRecords();
-			if (records.length > 0) {
-				logger.debug(
-					{ auditCount: records.length },
-					'Flushing function audits',
-				);
-				await auditor.flush();
+			// Parse output if schema is provided
+			const output = await this.fn.parseOutput(response);
+
+			// Flush audits if any were recorded
+			if (auditor) {
+				const records = auditor.getRecords();
+				if (records.length > 0) {
+					logger.debug(
+						{ auditCount: records.length },
+						'Flushing function audits',
+					);
+					await auditor.flush();
+				}
 			}
-		}
 
-		// Register publisher service if provided in context
+			// Register publisher service if provided in context
 
-		await publishEvents(
-			logger,
-			this.serviceDiscovery,
-			this.fn.events,
-			output,
-			this.fn.publisherService,
-		);
+			await publishEvents(
+				logger,
+				this.serviceDiscovery,
+				this.fn.events,
+				output,
+				this.fn.publisherService,
+			);
 
-		return output;
+			return output;
+		}) as Promise<InferStandardSchema<TOutSchema>>;
 	}
 }
 
