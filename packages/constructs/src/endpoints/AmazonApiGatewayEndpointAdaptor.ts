@@ -145,6 +145,11 @@ export abstract class AmazonApiGatewayEndpoint<
 	}
 	abstract getInput(e: TEvent): GetInputResponse;
 
+	protected getCookies(e: TEvent): CookieFn {
+		const headers = e.headers as Record<string, string>;
+		return Endpoint.createCookies(headers?.cookie);
+	}
+
 	private input(): Middleware<TEvent, TInput, TServices, TLogger> {
 		return {
 			before: async (req) => {
@@ -152,7 +157,7 @@ export abstract class AmazonApiGatewayEndpoint<
 					const { body, query, params } = this.getInput(req.event);
 					const headers = req.event.headers as Record<string, string>;
 					const header = Endpoint.createHeaders(headers);
-					const cookie = Endpoint.createCookies(headers.cookie);
+					const cookie = this.getCookies(req.event);
 
 					set(req.event, 'body', await this.endpoint.parseInput(body, 'body'));
 
