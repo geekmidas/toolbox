@@ -6,7 +6,7 @@ import type {
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
-import { ServiceDiscovery } from '@geekmidas/services';
+import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { publishEvents } from '../publisher';
 import type { Subscriber } from './Subscriber';
@@ -72,36 +72,42 @@ export class TestSubscriberAdaptor<
 			return { batchItemFailures: [] } as any;
 		}
 
-		// Execute the subscriber handler
-		const result = await this.subscriber.handler({
-			events: filteredEvents,
-			services,
-			logger,
-		});
+		// Wrap execution in request context for service access via context.getLogger()
+		const requestId = `test-${Date.now()}`;
+		const startTime = Date.now();
 
-		// Validate output if schema is provided
-		let output = result;
-		if (this.subscriber.outputSchema && result) {
-			const validationResult =
-				await this.subscriber.outputSchema['~standard'].validate(result);
+		return runWithRequestContext({ logger, requestId, startTime }, async () => {
+			// Execute the subscriber handler
+			const result = await this.subscriber.handler({
+				events: filteredEvents,
+				services,
+				logger,
+			});
 
-			if (validationResult.issues) {
-				throw new Error('Subscriber output validation failed');
+			// Validate output if schema is provided
+			let output: any = result;
+			if (this.subscriber.outputSchema && result) {
+				const validationResult =
+					await this.subscriber.outputSchema['~standard'].validate(result);
+
+				if (validationResult.issues) {
+					throw new Error('Subscriber output validation failed');
+				}
+
+				output = validationResult.value;
 			}
 
-			output = validationResult.value;
-		}
+			// Publish events if configured
+			await publishEvents(
+				logger,
+				this.serviceDiscovery,
+				this.subscriber.events,
+				output,
+				this.subscriber.publisherService,
+			);
 
-		// Publish events if configured
-		await publishEvents(
-			logger,
-			this.serviceDiscovery,
-			this.subscriber.events,
-			output,
-			this.subscriber.publisherService,
-		);
-
-		return output;
+			return output;
+		}) as Promise<InferStandardSchema<OutSchema>>;
 	}
 
 	private filterEvents(
