@@ -2,6 +2,7 @@ import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
+import { serviceContext } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Subscriber } from '../Subscriber';
@@ -553,6 +554,99 @@ describe('TestSubscriberAdaptor', () => {
 		it('should create default service discovery', () => {
 			const discovery = TestSubscriberAdaptor.getDefaultServiceDiscovery();
 			expect(discovery).toBeDefined();
+		});
+	});
+
+	describe('request context', () => {
+		it('should make serviceContext.getLogger() available inside handler', async () => {
+			let contextLogger: any;
+
+			const subscriber = new SubscriberBuilder()
+				.publisher(TestEventService)
+				.subscribe('user.created')
+				.handle(async ({ events }) => {
+					contextLogger = serviceContext.getLogger();
+					return { processed: events.length };
+				});
+
+			const adaptor = new TestSubscriberAdaptor(subscriber);
+
+			await adaptor.invoke({
+				events: [
+					{
+						type: 'user.created',
+						payload: {
+							userId: '1',
+							email: 'test@example.com',
+							name: 'Test',
+						},
+					},
+				],
+				services: {},
+			});
+
+			expect(contextLogger).toBeDefined();
+		});
+
+		it('should make serviceContext.hasContext() return true inside handler', async () => {
+			let hasContext = false;
+
+			const subscriber = new SubscriberBuilder()
+				.publisher(TestEventService)
+				.subscribe('user.created')
+				.handle(async ({ events }) => {
+					hasContext = serviceContext.hasContext();
+					return { processed: events.length };
+				});
+
+			const adaptor = new TestSubscriberAdaptor(subscriber);
+
+			await adaptor.invoke({
+				events: [
+					{
+						type: 'user.created',
+						payload: {
+							userId: '1',
+							email: 'test@example.com',
+							name: 'Test',
+						},
+					},
+				],
+				services: {},
+			});
+
+			expect(hasContext).toBe(true);
+		});
+
+		it('should provide a request ID starting with test-', async () => {
+			let requestId: string | undefined;
+
+			const subscriber = new SubscriberBuilder()
+				.publisher(TestEventService)
+				.subscribe('user.created')
+				.handle(async ({ events }) => {
+					requestId = serviceContext.getRequestId();
+					return { processed: events.length };
+				});
+
+			const adaptor = new TestSubscriberAdaptor(subscriber);
+
+			await adaptor.invoke({
+				events: [
+					{
+						type: 'user.created',
+						payload: {
+							userId: '1',
+							email: 'test@example.com',
+							name: 'Test',
+						},
+					},
+				],
+				services: {},
+			});
+
+			expect(requestId).toBeDefined();
+			expect(requestId).toMatch(/^test-/);
 		});
 	});
 });
