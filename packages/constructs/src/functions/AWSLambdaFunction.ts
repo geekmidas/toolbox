@@ -9,6 +9,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
+import { runWithRequestContext } from '@geekmidas/services';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler } from 'aws-lambda';
@@ -321,7 +322,7 @@ export class AWSLambdaFunction<
 		const handler = this._handler.bind(this);
 
 		// Apply middleware in order
-		return middy(handler)
+		const chain = middy(handler)
 			.use(this.loggerMiddleware())
 			.use(this.baseInput())
 			.use(this.error())
@@ -329,6 +330,19 @@ export class AWSLambdaFunction<
 			.use(this.database())
 			.use(this.auditor())
 			.use(this.input())
-			.use(this.events()) as unknown as AWSLambdaHandler;
+			.use(this.events());
+
+		// Wrap entire Middy chain in request context for service access
+		const wrappedHandler = async (event: unknown, context: Context) => {
+			const startTime = Date.now();
+			const requestId = context.awsRequestId;
+			const logger = this.fn.logger.child({ requestId }) as TLogger;
+
+			return runWithRequestContext({ logger, requestId, startTime }, () =>
+				chain(event as Parameters<typeof chain>[0], context),
+			);
+		};
+
+		return wrappedHandler as unknown as AWSLambdaHandler;
 	}
 }
