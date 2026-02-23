@@ -194,34 +194,47 @@ function createWrapper() {
 describe('mutation type inference with generated paths', () => {
 	beforeEach(() => {
 		server.use(
-			http.post('https://api.example.com/account/profile', async ({ request }) => {
-				const body = (await request.json()) as any;
-				return HttpResponse.json({ id: '1', ...body });
-			}),
+			http.post(
+				'https://api.example.com/account/profile',
+				async ({ request }) => {
+					const body = (await request.json()) as any;
+					return HttpResponse.json({ id: '1', ...body });
+				},
+			),
 			http.post('https://api.example.com/chats', async ({ request }) => {
 				const body = (await request.json()) as any;
-				return HttpResponse.json({ id: 'chat-1', type: body.type, name: body.name ?? 'New Chat' });
-			}),
-			http.post('https://api.example.com/chats/:chatId/participants', async ({ params, request }) => {
-				const body = (await request.json()) as any;
 				return HttpResponse.json({
-					id: 'p-1',
-					chatId: params.chatId,
-					userId: body.userId,
-					role: body.role,
+					id: 'chat-1',
+					type: body.type,
+					name: body.name ?? 'New Chat',
 				});
 			}),
+			http.post(
+				'https://api.example.com/chats/:chatId/participants',
+				async ({ params, request }) => {
+					const body = (await request.json()) as any;
+					return HttpResponse.json({
+						id: 'p-1',
+						chatId: params.chatId,
+						userId: body.userId,
+						role: body.role,
+					});
+				},
+			),
 			http.delete('https://api.example.com/chats/:id', () => {
 				return HttpResponse.json({ success: true });
 			}),
-			http.patch('https://api.example.com/chats/:id', async ({ params, request }) => {
-				const body = (await request.json()) as any;
-				return HttpResponse.json({
-					id: params.id,
-					name: body.name ?? 'Chat',
-					status: body.status ?? 'Active',
-				});
-			}),
+			http.patch(
+				'https://api.example.com/chats/:id',
+				async ({ params, request }) => {
+					const body = (await request.json()) as any;
+					return HttpResponse.json({
+						id: params.id,
+						name: body.name ?? 'Chat',
+						status: body.status ?? 'Active',
+					});
+				},
+			),
 			http.post('https://api.example.com/chats/:chatId/leave', () => {
 				return HttpResponse.json({ success: true });
 			}),
@@ -238,14 +251,20 @@ describe('mutation type inference with generated paths', () => {
 		result.current.mutate({ body: { type: 'GeneralChat', name: 'Test' } });
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data).toMatchObject({ id: 'chat-1', type: 'GeneralChat' });
+		expect(result.current.data).toMatchObject({
+			id: 'chat-1',
+			type: 'GeneralChat',
+		});
 	});
 
 	it('should resolve body-only mutation args (POST /account/profile)', async () => {
 		const hooks = createEndpointHooks<GeneratedPaths>(createMockFetcher());
-		const { result } = renderHook(() => hooks.useMutation('POST /account/profile'), {
-			wrapper: createWrapper(),
-		});
+		const { result } = renderHook(
+			() => hooks.useMutation('POST /account/profile'),
+			{
+				wrapper: createWrapper(),
+			},
+		);
 
 		result.current.mutate({ body: { email: 'test@test.com', name: 'Test' } });
 
@@ -266,14 +285,20 @@ describe('mutation type inference with generated paths', () => {
 		});
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data).toMatchObject({ chatId: 'chat-1', userId: 'user-1' });
+		expect(result.current.data).toMatchObject({
+			chatId: 'chat-1',
+			userId: 'user-1',
+		});
 	});
 
 	it('should resolve params-only mutation args (DELETE /chats/{id})', async () => {
 		const hooks = createEndpointHooks<GeneratedPaths>(createMockFetcher());
-		const { result } = renderHook(() => hooks.useMutation('DELETE /chats/{id}'), {
-			wrapper: createWrapper(),
-		});
+		const { result } = renderHook(
+			() => hooks.useMutation('DELETE /chats/{id}'),
+			{
+				wrapper: createWrapper(),
+			},
+		);
 
 		result.current.mutate({ params: { id: 'chat-1' } });
 
@@ -283,9 +308,12 @@ describe('mutation type inference with generated paths', () => {
 
 	it('should resolve params+body mutation args (PATCH /chats/{id})', async () => {
 		const hooks = createEndpointHooks<GeneratedPaths>(createMockFetcher());
-		const { result } = renderHook(() => hooks.useMutation('PATCH /chats/{id}'), {
-			wrapper: createWrapper(),
-		});
+		const { result } = renderHook(
+			() => hooks.useMutation('PATCH /chats/{id}'),
+			{
+				wrapper: createWrapper(),
+			},
+		);
 
 		result.current.mutate({
 			params: { id: 'chat-1' },
@@ -293,7 +321,10 @@ describe('mutation type inference with generated paths', () => {
 		});
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data).toMatchObject({ id: 'chat-1', name: 'Renamed Chat' });
+		expect(result.current.data).toMatchObject({
+			id: 'chat-1',
+			name: 'Renamed Chat',
+		});
 	});
 
 	it('should resolve params-only POST mutation args (POST /chats/{chatId}/leave)', async () => {
