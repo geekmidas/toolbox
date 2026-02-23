@@ -116,7 +116,7 @@ export type RoutePath = Route['path'];
 	await writeFile(manifestPath, content);
 
 	logger.log(
-		`Generated AWS manifest with ${awsRoutes.length} routes, ${functions.length} functions, ${crons.length} crons, ${subscribers.length} subscribers`,
+		`Generated AWS manifest with ${countItems(awsRoutes)} routes, ${countItems(functions)} functions, ${countItems(crons)} crons, ${countItems(subscribers)} subscribers`,
 	);
 	logger.log(`Manifest: ${relative(process.cwd(), manifestPath)}`);
 }
