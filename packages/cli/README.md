@@ -1002,14 +1002,22 @@ The following commands are planned for future releases:
 The `gkm.config.ts` file defines how the CLI discovers and processes your endpoints:
 
 ```typescript
+// Construct types accept a string, string[], or partitioned config
+type Routes = string | string[] | PartitionedRoutes;
+
+interface PartitionedRoutes {
+  paths: string | string[];
+  partition: (filepath: string) => string;
+}
+
 interface GkmConfig {
-  routes: string | string[];     // Glob patterns for endpoint files
+  routes: Routes;                // Glob patterns or partitioned config
   envParser: string;             // Path to environment parser
   logger: string;                // Path to logger configuration
-  functions?: string | string[]; // Glob patterns for function files
-  crons?: string | string[];     // Glob patterns for cron files
-  subscribers?: string | string[];// Glob patterns for subscriber files
-  runtime?: 'node' | 'bun';      // Runtime environment (default: 'node')
+  functions?: Routes;            // Glob patterns or partitioned config
+  crons?: Routes;                // Glob patterns or partitioned config
+  subscribers?: Routes;          // Glob patterns or partitioned config
+  runtime?: 'node' | 'bun';     // Runtime environment (default: 'node')
   telescope?: boolean | TelescopeConfig; // Telescope debugging config
 }
 
@@ -1027,7 +1035,7 @@ interface TelescopeConfig {
 
 #### `routes`
 
-Glob pattern(s) to discover endpoint files. Can be a single pattern or array of patterns.
+Glob pattern(s) to discover endpoint files. Can be a single pattern, array of patterns, or a partitioned config:
 
 ```typescript
 // Single pattern
@@ -1039,7 +1047,18 @@ routes: [
   'src/api/**/*.ts',
   'src/handlers/**/*.ts'
 ]
+
+// Partitioned — groups constructs in the generated manifest
+routes: {
+  paths: './src/endpoints/**/*.ts',
+  partition: (filepath) => {
+    const match = filepath.match(/endpoints\/([^/]+)\//);
+    return match?.[1] ?? 'default';
+  },
+}
 ```
+
+The same partitioned format works for `functions`, `crons`, and `subscribers`. When a `partition` callback is provided, the generated manifest groups constructs by partition name (e.g., `manifest.routes.admin`). Without it, manifest fields remain flat arrays.
 
 #### `envParser`
 
@@ -1496,6 +1515,23 @@ export type Subscriber = (typeof manifest.subscribers)[number];
 export type Authorizer = Route['authorizer'];
 export type HttpMethod = Route['method'];
 export type RoutePath = Route['path'];
+```
+
+When routes are partitioned, the manifest groups them by partition name and generates partition-aware types:
+
+```typescript
+export const manifest = {
+  routes: {
+    "admin": [{ path: '/admin/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
+    "default": [{ path: '/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
+  },
+  functions: [...], // flat if not partitioned
+} as const;
+
+// Partition-aware derived types
+export type RoutePartition = keyof typeof manifest.routes;
+export type Route<P extends RoutePartition = RoutePartition> =
+  (typeof manifest.routes)[P][number];
 ```
 
 #### Server Manifest (`.gkm/manifest/server.ts`)

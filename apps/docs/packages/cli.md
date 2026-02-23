@@ -485,7 +485,7 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
-  // Route files (glob pattern)
+  // Route files (glob pattern or partitioned config)
   routes: './src/endpoints/**/*.ts',
 
   // Environment parser module (named export)
@@ -573,6 +573,58 @@ gkm build
 gkm openapi
 gkm dev
 ```
+
+### Partitioned Routes
+
+By default, construct types (`routes`, `functions`, `crons`, `subscribers`) accept a glob string or array of glob strings. To organize constructs into named partitions in the generated manifest, use the object form with a `partition` callback:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  // Partitioned routes — groups by directory name
+  routes: {
+    paths: './src/endpoints/**/*.ts',
+    partition: (filepath) => {
+      const match = filepath.match(/endpoints\/([^/]+)\//);
+      return match?.[1] ?? 'default';
+    },
+  },
+
+  // Partitioned functions
+  functions: {
+    paths: ['./src/functions/**/*.ts'],
+    partition: (filepath) =>
+      filepath.includes('/admin/') ? 'admin' : 'default',
+  },
+
+  // Non-partitioned (legacy format still works)
+  subscribers: './src/subscribers/**/*.ts',
+
+  envParser: './src/config/env#envParser',
+  logger: './src/config/logger#logger',
+});
+```
+
+The `partition` function receives the absolute file path and returns the partition name. The generated manifest will group constructs by partition:
+
+```typescript
+// .gkm/manifest/aws.ts (partitioned)
+export const manifest = {
+  routes: {
+    "admin": [{ path: '/admin/users', method: 'GET', ... }],
+    "default": [{ path: '/users', method: 'GET', ... }],
+  },
+  subscribers: [{ name: 'orderHandler', ... }], // flat (no partition)
+} as const;
+
+// Derived types for partitioned fields
+export type RoutePartition = keyof typeof manifest.routes;
+export type Route<P extends RoutePartition = RoutePartition> =
+  (typeof manifest.routes)[P][number];
+```
+
+When no partition function is provided, the manifest field remains a flat array for backward compatibility.
 
 ### Production Configuration
 
