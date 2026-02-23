@@ -89,15 +89,15 @@ export async function buildCommand(
 	}
 
 	logger.log(`Building with providers: ${resolved.providers.join(', ')}`);
-	logger.log(`Loading routes from: ${config.routes}`);
+	logger.log(`Loading routes from: ${formatRoutes(config.routes)}`);
 	if (config.functions) {
-		logger.log(`Loading functions from: ${config.functions}`);
+		logger.log(`Loading functions from: ${formatRoutes(config.functions)}`);
 	}
 	if (config.crons) {
-		logger.log(`Loading crons from: ${config.crons}`);
+		logger.log(`Loading crons from: ${formatRoutes(config.crons)}`);
 	}
 	if (config.subscribers) {
-		logger.log(`Loading subscribers from: ${config.subscribers}`);
+		logger.log(`Loading subscribers from: ${formatRoutes(config.subscribers)}`);
 	}
 	logger.log(`Using envParser: ${config.envParser}`);
 
