@@ -1,7 +1,9 @@
 import type {
 	QueryClient,
 	UseMutationOptions,
+	UseMutationResult,
 	UseQueryOptions,
+	UseQueryResult,
 } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -74,7 +76,7 @@ export interface EndpointHooks<Paths> {
 	useQuery: <T extends QueryEndpoint<Paths>>(
 		endpoint: T,
 		...args: UseQueryArgs<Paths, T>
-	) => ReturnType<typeof useQuery<ExtractEndpointResponse<Paths, T>, Error>>;
+	) => UseQueryResult<ExtractEndpointResponse<Paths, T>, Error>;
 
 	/**
 	 * Use mutation hook for POST, PUT, PATCH, DELETE endpoints.
@@ -90,12 +92,10 @@ export interface EndpointHooks<Paths> {
 			>,
 			'mutationFn'
 		>,
-	) => ReturnType<
-		typeof useMutation<
-			ExtractEndpointResponse<Paths, T>,
-			Error,
-			FilteredRequestConfig<Paths, T>
-		>
+	) => UseMutationResult<
+		ExtractEndpointResponse<Paths, T>,
+		Error,
+		FilteredRequestConfig<Paths, T>
 	>;
 
 	/**
