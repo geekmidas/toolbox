@@ -419,9 +419,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			it('should load cookies from V2 cookies array', async () => {
 				const endpoint = e
 					.get('/test')
-					.output(
-						z.object({ session: z.string(), theme: z.string() }),
-					)
+					.output(z.object({ session: z.string(), theme: z.string() }))
 					.handle(async ({ cookie }) => ({
 						session: cookie('session') ?? '',
 						theme: cookie('theme') ?? '',
