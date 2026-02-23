@@ -16,31 +16,95 @@ export interface ServerAppInfo {
 	endpoints: string;
 }
 
+/**
+ * A manifest field is either a flat array (no partition) or
+ * an object keyed by partition name (partitioned).
+ */
+export type ManifestField<T> = T[] | Record<string, T[]>;
+
+function isPartitioned<T>(
+	field: ManifestField<T>,
+): field is Record<string, T[]> {
+	return !Array.isArray(field);
+}
+
+/**
+ * Serialize a manifest field to a TypeScript string.
+ * Flat arrays serialize as JSON arrays, partitioned fields as objects of arrays.
+ */
+function serializeField<T>(field: ManifestField<T>, indent = 2): string {
+	if (Array.isArray(field)) {
+		return JSON.stringify(field, null, indent);
+	}
+	// Partitioned: { admin: [...], default: [...] }
+	const entries = Object.entries(field)
+		.map(
+			([key, value]) =>
+				`    ${JSON.stringify(key)}: ${JSON.stringify(value, null, indent)}`,
+		)
+		.join(',\n');
+	return `{\n${entries},\n  }`;
+}
+
+/**
+ * Count total items across a manifest field (flat or partitioned).
+ */
+function countItems<T>(field: ManifestField<T>): number {
+	if (Array.isArray(field)) return field.length;
+	return Object.values(field).reduce((sum, arr) => sum + arr.length, 0);
+}
+
+/**
+ * Generate derived types for a construct field.
+ * @param fieldName - The field name in the manifest (e.g., 'routes')
+ * @param typeName - The exported type name (e.g., 'Route')
+ * @param partitioned - Whether this field is partitioned
+ */
+function generateDerivedType(
+	fieldName: string,
+	typeName: string,
+	partitioned: boolean,
+): string {
+	if (partitioned) {
+		const partitionTypeName = `${typeName}Partition`;
+		return [
+			`export type ${partitionTypeName} = keyof typeof manifest.${fieldName};`,
+			`export type ${typeName}<P extends ${partitionTypeName} = ${partitionTypeName}> = (typeof manifest.${fieldName})[P][number];`,
+		].join('\n');
+	}
+	return `export type ${typeName} = (typeof manifest.${fieldName})[number];`;
+}
+
 export async function generateAwsManifest(
 	outputDir: string,
-	routes: RouteInfo[],
-	functions: FunctionInfo[],
-	crons: CronInfo[],
-	subscribers: SubscriberInfo[],
+	routes: ManifestField<RouteInfo>,
+	functions: ManifestField<FunctionInfo>,
+	crons: ManifestField<CronInfo>,
+	subscribers: ManifestField<SubscriberInfo>,
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
 
 	// Filter out 'ALL' method routes (server-specific)
-	const awsRoutes = routes.filter((r) => r.method !== 'ALL');
+	const awsRoutes = filterAllRoutes(routes);
+
+	const routesPartitioned = isPartitioned(awsRoutes);
+	const functionsPartitioned = isPartitioned(functions);
+	const cronsPartitioned = isPartitioned(crons);
+	const subscribersPartitioned = isPartitioned(subscribers);
 
 	const content = `export const manifest = {
-  routes: ${JSON.stringify(awsRoutes, null, 2)},
-  functions: ${JSON.stringify(functions, null, 2)},
-  crons: ${JSON.stringify(crons, null, 2)},
-  subscribers: ${JSON.stringify(subscribers, null, 2)},
+  routes: ${serializeField(awsRoutes)},
+  functions: ${serializeField(functions)},
+  crons: ${serializeField(crons)},
+  subscribers: ${serializeField(subscribers)},
 } as const;
 
 // Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Function = (typeof manifest.functions)[number];
-export type Cron = (typeof manifest.crons)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+${generateDerivedType('routes', 'Route', routesPartitioned)}
+${generateDerivedType('functions', 'Function', functionsPartitioned)}
+${generateDerivedType('crons', 'Cron', cronsPartitioned)}
+${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
