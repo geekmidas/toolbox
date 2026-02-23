@@ -24,6 +24,11 @@
 			"types": "./dist/expo.d.ts",
 			"import": "./dist/expo.mjs",
 			"require": "./dist/expo.cjs"
+		},
+		"./file": {
+			"types": "./dist/file.d.ts",
+			"import": "./dist/file.mjs",
+			"require": "./dist/file.cjs"
 		}
 	},
 	"repository": {
