@@ -1,5 +1,14 @@
 # @geekmidas/example
 
+## 1.0.24
+
+### Patch Changes
+
+- Updated dependencies [[`be4f7a9`](https://github.com/geekmidas/toolbox/commit/be4f7a9bd5de7f08adbca582916d6902e0c24de2)]:
+  - @geekmidas/cli@1.10.0
+  - @geekmidas/audit@2.0.0
+  - @geekmidas/constructs@3.0.0
+
 ## 1.0.23
 
 ### Patch Changes
