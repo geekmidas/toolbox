@@ -124,36 +124,30 @@ export type RoutePath = Route['path'];
 export async function generateServerManifest(
 	outputDir: string,
 	appInfo: ServerAppInfo,
-	routes: RouteInfo[],
-	subscribers: SubscriberInfo[],
+	routes: ManifestField<RouteInfo>,
+	subscribers: ManifestField<SubscriberInfo>,
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
 
 	// For server, extract route metadata (path, method, authorizer)
-	const serverRoutes = routes
-		.filter((r) => r.method !== 'ALL')
-		.map((r) => ({
-			path: r.path,
-			method: r.method,
-			authorizer: r.authorizer,
-		}));
+	const serverRoutes = mapRouteMetadata(filterAllRoutes(routes));
 
 	// Server subscribers only need name and events
-	const serverSubscribers = subscribers.map((s) => ({
-		name: s.name,
-		subscribedEvents: s.subscribedEvents,
-	}));
+	const serverSubscribers = mapSubscriberMetadata(subscribers);
+
+	const routesPartitioned = isPartitioned(serverRoutes);
+	const subscribersPartitioned = isPartitioned(serverSubscribers);
 
 	const content = `export const manifest = {
   app: ${JSON.stringify(appInfo, null, 2)},
-  routes: ${JSON.stringify(serverRoutes, null, 2)},
-  subscribers: ${JSON.stringify(serverSubscribers, null, 2)},
+  routes: ${serializeField(serverRoutes)},
+  subscribers: ${serializeField(serverSubscribers)},
 } as const;
 
 // Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+${generateDerivedType('routes', 'Route', routesPartitioned)}
+${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
