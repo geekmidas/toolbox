@@ -165,7 +165,70 @@ export type RoutePath = Route['path'];
 	await writeFile(manifestPath, content);
 
 	logger.log(
-		`Generated server manifest with ${serverRoutes.length} routes, ${serverSubscribers.length} subscribers`,
+		`Generated server manifest with ${countItems(serverRoutes)} routes, ${countItems(serverSubscribers)} subscribers`,
 	);
 	logger.log(`Manifest: ${relative(process.cwd(), manifestPath)}`);
+}
+
+/**
+ * Filter out 'ALL' method routes from a manifest field (flat or partitioned).
+ */
+function filterAllRoutes(
+	routes: ManifestField<RouteInfo>,
+): ManifestField<RouteInfo> {
+	if (Array.isArray(routes)) {
+		return routes.filter((r) => r.method !== 'ALL');
+	}
+	const result: Record<string, RouteInfo[]> = {};
+	for (const [partition, partitionRoutes] of Object.entries(routes)) {
+		result[partition] = partitionRoutes.filter((r) => r.method !== 'ALL');
+	}
+	return result;
+}
+
+/**
+ * Map routes to server metadata (path, method, authorizer only).
+ */
+function mapRouteMetadata(
+	routes: ManifestField<RouteInfo>,
+): ManifestField<{ path: string; method: string; authorizer: string }> {
+	const mapFn = (r: RouteInfo) => ({
+		path: r.path,
+		method: r.method,
+		authorizer: r.authorizer,
+	});
+
+	if (Array.isArray(routes)) {
+		return routes.map(mapFn);
+	}
+	const result: Record<
+		string,
+		{ path: string; method: string; authorizer: string }[]
+	> = {};
+	for (const [partition, partitionRoutes] of Object.entries(routes)) {
+		result[partition] = partitionRoutes.map(mapFn);
+	}
+	return result;
+}
+
+/**
+ * Map subscribers to server metadata (name, subscribedEvents only).
+ */
+function mapSubscriberMetadata(
+	subscribers: ManifestField<SubscriberInfo>,
+): ManifestField<{ name: string; subscribedEvents: string[] }> {
+	const mapFn = (s: SubscriberInfo) => ({
+		name: s.name,
+		subscribedEvents: s.subscribedEvents,
+	});
+
+	if (Array.isArray(subscribers)) {
+		return subscribers.map(mapFn);
+	}
+	const result: Record<string, { name: string; subscribedEvents: string[] }[]> =
+		{};
+	for (const [partition, partitionSubs] of Object.entries(subscribers)) {
+		result[partition] = partitionSubs.map(mapFn);
+	}
+	return result;
 }
