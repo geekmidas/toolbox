@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
+import { normalizeRoutes } from '../workspace/client-generator.js';
 import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -155,7 +156,11 @@ export async function sniffAppEnvironment(
 
 	// 4. Route-based apps - load routes and call getEnvironment() on each construct
 	if (app.routes) {
-		const result = await sniffRouteFiles(app.routes, app.path, workspacePath);
+		const result = await sniffRouteFiles(
+			normalizeRoutes(app.routes),
+			app.path,
+			workspacePath,
+		);
 
 		if (logWarnings && result.error) {
 			console.warn(
