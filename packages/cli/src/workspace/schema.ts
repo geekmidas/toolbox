@@ -1,9 +1,19 @@
 import { z } from 'zod/v4';
 
 /**
- * Routes can be a string glob or array of globs.
+ * Routes can be a string glob, array of globs, or a partitioned config
+ * with glob paths and a partition function.
  */
-const RoutesSchema = z.union([z.string(), z.array(z.string())]);
+const RoutesSchema = z.union([
+	z.string(),
+	z.array(z.string()),
+	z.object({
+		paths: z.union([z.string(), z.array(z.string())]),
+		partition: z.custom<(filepath: string) => string>(
+			(val) => typeof val === 'function',
+		),
+	}),
+]);
 
 /**
  * Telescope configuration schema.

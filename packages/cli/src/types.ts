@@ -5,7 +5,23 @@ export type LegacyProvider =
 	| 'aws-apigatewayv2'
 	| 'aws-lambda';
 
-export type Routes = string | string[];
+export interface PartitionedRoutes {
+	paths: string | string[];
+	partition: (filepath: string) => string;
+}
+
+export type Routes = string | string[] | PartitionedRoutes;
+
+export function isPartitionedRoutes(
+	routes: Routes | undefined,
+): routes is PartitionedRoutes {
+	return (
+		typeof routes === 'object' &&
+		routes !== null &&
+		!Array.isArray(routes) &&
+		'paths' in routes
+	);
+}
 
 export interface ProviderConfig {
 	enabled?: boolean;
