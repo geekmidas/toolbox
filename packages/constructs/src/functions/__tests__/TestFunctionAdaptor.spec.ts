@@ -1,6 +1,7 @@
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
+import { serviceContext } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 
@@ -393,6 +394,87 @@ describe.skip('TestFunctionAdaptor', () => {
 					services: {},
 				}),
 			).rejects.toThrow('Function failed');
+		});
+	});
+
+	describe('request context', () => {
+		it('should make serviceContext.getLogger() available inside handler', async () => {
+			let contextLogger: any;
+
+			const fn = new Function(
+				async () => {
+					contextLogger = serviceContext.getLogger();
+					return { success: true };
+				},
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new TestFunctionAdaptor(fn);
+
+			await adaptor.invoke({
+				input: {},
+				services: {},
+			});
+
+			expect(contextLogger).toBeDefined();
+		});
+
+		it('should make serviceContext.hasContext() return true inside handler', async () => {
+			let hasContext = false;
+
+			const fn = new Function(
+				async () => {
+					hasContext = serviceContext.hasContext();
+					return { success: true };
+				},
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new TestFunctionAdaptor(fn);
+
+			await adaptor.invoke({
+				input: {},
+				services: {},
+			});
+
+			expect(hasContext).toBe(true);
+		});
+
+		it('should provide a request ID starting with test-', async () => {
+			let requestId: string | undefined;
+
+			const fn = new Function(
+				async () => {
+					requestId = serviceContext.getRequestId();
+					return { success: true };
+				},
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new TestFunctionAdaptor(fn);
+
+			await adaptor.invoke({
+				input: {},
+				services: {},
+			});
+
+			expect(requestId).toBeDefined();
+			expect(requestId).toMatch(/^test-/);
 		});
 	});
 });
