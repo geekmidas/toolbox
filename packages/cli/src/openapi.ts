@@ -6,6 +6,7 @@ import { loadWorkspaceConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig } from './types.js';
+import { normalizeRoutes } from './workspace/client-generator.js';
 
 interface OpenAPIOptions {
 	cwd?: string;
@@ -141,7 +142,7 @@ export async function openapiCommand(
 				if (app.type !== 'backend' || !app.routes) continue;
 
 				const appPath = join(workspaceRoot, app.path);
-				const routes = Array.isArray(app.routes) ? app.routes : [app.routes];
+				const routes = normalizeRoutes(app.routes);
 				const routesGlob = routes.map((r) => join(appPath, r));
 
 				const gkmConfig: GkmConfig = {
