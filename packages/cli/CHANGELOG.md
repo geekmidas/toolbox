@@ -1,5 +1,14 @@
 # @geekmidas/cli
 
+## 1.10.1
+
+### Patch Changes
+
+- ✨ [`bfc5a4f`](https://github.com/geekmidas/toolbox/commit/bfc5a4f656445bb389b0532e9d3385d2e66a28fe) Thanks [@geekmidas](https://github.com/geekmidas)! - Add function context and suport for partitions
+
+- Updated dependencies [[`bfc5a4f`](https://github.com/geekmidas/toolbox/commit/bfc5a4f656445bb389b0532e9d3385d2e66a28fe)]:
+  - @geekmidas/constructs@3.0.1
+
 ## 1.10.0
 
 ### Minor Changes

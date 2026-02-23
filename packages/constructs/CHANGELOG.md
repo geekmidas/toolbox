@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.1
+
+### Patch Changes
+
+- ✨ [`bfc5a4f`](https://github.com/geekmidas/toolbox/commit/bfc5a4f656445bb389b0532e9d3385d2e66a28fe) Thanks [@geekmidas](https://github.com/geekmidas)! - Add function context and suport for partitions
+
 ## 3.0.0
 
 ### Patch Changes
