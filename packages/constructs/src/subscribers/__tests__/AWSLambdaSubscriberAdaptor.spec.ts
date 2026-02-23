@@ -1,6 +1,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
+import { serviceContext } from '@geekmidas/services';
 import type {
 	Context,
 	SNSEvent,
@@ -949,6 +950,69 @@ describe('AWSLambdaSubscriber', () => {
 			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
 
 			expect(handler).toHaveBeenCalled();
+		});
+	});
+
+	describe('request context', () => {
+		it('should make serviceContext.getLogger() available inside handler', async () => {
+			let contextLogger: any;
+			let contextRequestId: string | undefined;
+
+			const handler = vi.fn(async () => {
+				contextLogger = serviceContext.getLogger();
+				contextRequestId = serviceContext.getRequestId();
+				return {};
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				['user.created'] as any,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adaptor.handler;
+
+			const sqsEvent = createSQSEvent([
+				{ type: 'user.created', payload: { userId: '1' } },
+			]);
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(contextLogger).toBeDefined();
+			expect(contextRequestId).toBe('test-request-id');
+		});
+
+		it('should make serviceContext.hasContext() return true inside handler', async () => {
+			let hasContext = false;
+
+			const handler = vi.fn(async () => {
+				hasContext = serviceContext.hasContext();
+				return {};
+			});
+
+			const subscriber = new Subscriber(
+				handler,
+				30000,
+				['user.created'] as any,
+				undefined,
+				[],
+				logger,
+			);
+
+			const adaptor = new AWSLambdaSubscriber(envParser, subscriber);
+			const lambdaHandler = adaptor.handler;
+
+			const sqsEvent = createSQSEvent([
+				{ type: 'user.created', payload: { userId: '1' } },
+			]);
+
+			await lambdaHandler(sqsEvent, createMockContext(), vi.fn());
+
+			expect(hasContext).toBe(true);
 		});
 	});
 });
