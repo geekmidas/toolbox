@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.3
+
+### Patch Changes
+
+- 🐛 [`6a92fa7`](https://github.com/geekmidas/toolbox/commit/6a92fa737057d77178a4d31480505013fbe033af) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix dev scripts and spawns also when canceling prcocess.
+
 ## 1.10.2
 
 ### Patch Changes
