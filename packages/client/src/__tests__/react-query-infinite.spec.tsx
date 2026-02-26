@@ -439,8 +439,8 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 
 		// Fetch next page to ensure complex objects continue to work
 		if (result.current.hasNextPage) {
-			await waitFor(async () => {
-				await result.current.fetchNextPage();
+			await act(() => result.current.fetchNextPage());
+			await waitFor(() => {
 				expect(result.current.data?.pages).toHaveLength(2);
 			});
 		}
