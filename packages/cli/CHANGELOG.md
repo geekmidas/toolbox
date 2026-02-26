@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.2
+
+### Patch Changes
+
+- 🐛 [`fefefe0`](https://github.com/geekmidas/toolbox/commit/fefefe0e7825d95c333375ea280e9aba23599bf0) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix issue with env loading on docker during setup
+
 ## 1.10.1
 
 ### Patch Changes
