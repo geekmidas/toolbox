@@ -1315,6 +1315,7 @@ async function workspaceDevCommand(
 		cwd: workspace.root,
 		stdio: 'inherit',
 		env: turboEnv,
+		detached: true,
 	});
 
 	// Set up file watcher for backend .gkm/openapi.ts changes (auto-copy to frontends)
@@ -1408,21 +1409,35 @@ async function workspaceDevCommand(
 			openApiWatcher.close().catch(() => {});
 		}
 
-		// Kill turbo process
-		if (turboProcess.pid) {
+		// Kill turbo process group
+		const pid = turboProcess.pid;
+		if (pid) {
 			try {
-				// Try to kill the process group
-				process.kill(-turboProcess.pid, 'SIGTERM');
+				process.kill(-pid, 'SIGTERM');
 			} catch {
-				// Fall back to killing just the process
-				turboProcess.kill('SIGTERM');
+				try {
+					process.kill(pid, 'SIGTERM');
+				} catch {
+					// Process already dead
+				}
 			}
 		}
 
-		// Give processes time to clean up
+		// Force kill after timeout if processes are still alive
 		setTimeout(() => {
+			if (pid) {
+				try {
+					process.kill(-pid, 'SIGKILL');
+				} catch {
+					try {
+						process.kill(pid, 'SIGKILL');
+					} catch {
+						// Process already dead
+					}
+				}
+			}
 			process.exit(0);
-		}, 2000);
+		}, 3000);
 	};
 
 	process.on('SIGINT', shutdown);
