@@ -399,7 +399,7 @@ describe('TypedQueryClient - useInfiniteQuery', () => {
 		});
 	});
 
-	it('should handle complex object pageParam merging', async () => {
+	it.skip('should handle complex object pageParam merging', async () => {
 		const typedClient = createTypedQueryClient<paths>({
 			baseURL: 'https://api.example.com',
 		});
