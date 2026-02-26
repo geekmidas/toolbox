@@ -12,7 +12,8 @@ import {
 	type GetInputResponse,
 	type LoggerContext,
 } from './AmazonApiGatewayEndpointAdaptor';
-import type { Endpoint, EndpointSchemas } from './Endpoint';
+import type { CookieFn, Endpoint, EndpointSchemas } from './Endpoint';
+import { createApiGatewayCookies } from './lazyAccessors';
 import { parseQueryParams } from './parseQueryParams';
 
 export class AmazonApiGatewayV2Endpoint<
@@ -36,6 +37,13 @@ export class AmazonApiGatewayV2Endpoint<
 	TSession,
 	TEventPublisher
 > {
+	override getCookies(e: APIGatewayProxyEventV2): CookieFn {
+		return createApiGatewayCookies(
+			e.cookies,
+			(e.headers as Record<string, string>)?.cookie,
+		);
+	}
+
 	override getInput(e: APIGatewayProxyEventV2): GetInputResponse {
 		// API Gateway V2 handles arrays as comma-separated values
 		const queryParams = e.queryStringParameters || {};

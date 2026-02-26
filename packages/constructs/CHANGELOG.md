@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.2
+
+### Patch Changes
+
+- 🐛 [`317e53e`](https://github.com/geekmidas/toolbox/commit/317e53e91c07bbc23dad3ae81faf573be91cb992) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix v2 cookie loading
+
 ## 3.0.1
 
 ### Patch Changes
