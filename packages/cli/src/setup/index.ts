@@ -10,6 +10,7 @@ import {
 	writeStageSecrets,
 } from '../secrets/storage.js';
 import { isSSMConfigured, pullSecrets, pushSecrets } from '../secrets/sync.js';
+import type { StageSecrets } from '../secrets/types.js';
 import type { ComposeServiceName } from '../types.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
 import {
@@ -112,7 +113,12 @@ async function resolveSecrets(
 		logger.log('🔐 Using existing local secrets');
 		const secrets = await readStageSecrets(stage, workspace.root);
 		if (secrets) {
-			return secrets;
+			// Reconcile: add any missing workspace-derived keys without overwriting
+			const reconciled = reconcileSecrets(secrets, workspace);
+			if (reconciled) {
+				await writeStageSecrets(reconciled, workspace.root);
+			}
+			return reconciled ?? secrets;
 		}
 	}
 
@@ -135,6 +141,45 @@ async function resolveSecrets(
 	// Generate fresh secrets
 	logger.log('🔐 Generating fresh development secrets...');
 	return generateFreshSecrets(stage, workspace, options);
+}
+
+/**
+ * Reconcile existing secrets with expected workspace-derived keys.
+ * Adds missing keys (e.g. BETTER_AUTH_*) without overwriting existing values.
+ * Returns the updated secrets if changes were made, or null if no changes needed.
+ * @internal Exported for testing
+ */
+export function reconcileSecrets(
+	secrets: StageSecrets,
+	workspace: NormalizedWorkspace,
+): StageSecrets | null {
+	const isMultiApp = Object.keys(workspace.apps).length > 1;
+	if (!isMultiApp) {
+		return null;
+	}
+
+	const expected = generateFullstackCustomSecrets(workspace);
+	const missing: Record<string, string> = {};
+
+	for (const [key, value] of Object.entries(expected)) {
+		if (!(key in secrets.custom)) {
+			missing[key] = value;
+		}
+	}
+
+	if (Object.keys(missing).length === 0) {
+		return null;
+	}
+
+	logger.log(
+		`   🔄 Adding missing secrets: ${Object.keys(missing).join(', ')}`,
+	);
+
+	return {
+		...secrets,
+		updatedAt: new Date().toISOString(),
+		custom: { ...secrets.custom, ...missing },
+	};
 }
 
 /**
