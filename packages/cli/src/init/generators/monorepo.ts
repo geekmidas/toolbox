@@ -364,6 +364,7 @@ export default defineWorkspace({
       path: 'apps/auth',
       port: 3002,
       entry: './src/index.ts',
+      framework: 'better-auth',
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
     },
@@ -417,6 +418,12 @@ export default defineWorkspace({
     default: 'dokploy',
   },`;
 	}
+
+	// Always enable secrets for workspace dev environment
+	config += `
+  secrets: {
+    enabled: true,
+  },`;
 
 	config += `
 });
