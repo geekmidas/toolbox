@@ -40,7 +40,7 @@ describe('generateServiceCredentials', () => {
 	it('should generate postgres credentials with defaults', () => {
 		const creds = generateServiceCredentials('postgres');
 
-		expect(creds.host).toBe('postgres');
+		expect(creds.host).toBe('localhost');
 		expect(creds.port).toBe(5432);
 		expect(creds.username).toBe('app');
 		expect(creds.database).toBe('app');
@@ -50,7 +50,7 @@ describe('generateServiceCredentials', () => {
 	it('should generate redis credentials with defaults', () => {
 		const creds = generateServiceCredentials('redis');
 
-		expect(creds.host).toBe('redis');
+		expect(creds.host).toBe('localhost');
 		expect(creds.port).toBe(6379);
 		expect(creds.username).toBe('default');
 		expect(creds.password).toHaveLength(32);
@@ -59,7 +59,7 @@ describe('generateServiceCredentials', () => {
 	it('should generate rabbitmq credentials with defaults', () => {
 		const creds = generateServiceCredentials('rabbitmq');
 
-		expect(creds.host).toBe('rabbitmq');
+		expect(creds.host).toBe('localhost');
 		expect(creds.port).toBe(5672);
 		expect(creds.username).toBe('app');
 		expect(creds.vhost).toBe('/');

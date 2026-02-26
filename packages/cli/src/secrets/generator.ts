@@ -12,24 +12,24 @@ export function generateSecurePassword(length = 32): string {
 		.slice(0, length);
 }
 
-/** Default service configurations */
+/** Default service configurations (localhost for local dev via Docker port mapping) */
 const SERVICE_DEFAULTS: Record<
 	ComposeServiceName,
 	Omit<ServiceCredentials, 'password'>
 > = {
 	postgres: {
-		host: 'postgres',
+		host: 'localhost',
 		port: 5432,
 		username: 'app',
 		database: 'app',
 	},
 	redis: {
-		host: 'redis',
+		host: 'localhost',
 		port: 6379,
 		username: 'default',
 	},
 	rabbitmq: {
-		host: 'rabbitmq',
+		host: 'localhost',
 		port: 5672,
 		username: 'app',
 		vhost: '/',
