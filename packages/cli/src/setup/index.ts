@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
-import { startWorkspaceServices } from '../dev/index.js';
+import { resolveServicePorts, startWorkspaceServices } from '../dev/index.js';
 import { createStageSecrets } from '../secrets/generator.js';
 import {
 	readStageSecrets,
@@ -72,12 +72,13 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		logger.log('📄 Generated docker/.env with database passwords');
 	}
 
-	// 4. Start Docker services
+	// 4. Start Docker services with resolved ports
 	if (!options.skipDocker) {
 		const composeFile = join(workspace.root, 'docker-compose.yml');
 		if (existsSync(composeFile)) {
 			logger.log('');
-			await startWorkspaceServices(workspace);
+			const resolvedPorts = await resolveServicePorts(workspace.root);
+			await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
 		} else {
 			logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
 		}
