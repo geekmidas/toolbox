@@ -24,7 +24,7 @@ import {
 	rewriteUrlsWithPorts,
 	savePortState,
 } from '../../dev/index';
-import { ensureTestDatabase, rewriteDatabaseUrlForTests } from '../index';
+import { rewriteDatabaseUrlForTests } from '../index';
 
 describe('rewriteDatabaseUrlForTests', () => {
 	beforeAll(() => {
@@ -125,39 +125,6 @@ describe('rewriteDatabaseUrlForTests', () => {
 			'postgresql://app:secret@localhost:5432/app',
 		);
 		expect(result).not.toBe(original);
-	});
-});
-
-describe('ensureTestDatabase', () => {
-	beforeAll(() => {
-		vi.spyOn(console, 'log').mockImplementation(() => {});
-	});
-
-	afterAll(() => {
-		vi.restoreAllMocks();
-	});
-
-	it('should do nothing when DATABASE_URL is missing', async () => {
-		// Should resolve without error
-		await ensureTestDatabase({});
-		await ensureTestDatabase({ REDIS_URL: 'redis://localhost:6379' });
-	});
-
-	it('should do nothing when database name is empty', async () => {
-		await ensureTestDatabase({
-			DATABASE_URL: 'postgresql://app:secret@localhost:5432/',
-		});
-	});
-
-	it('should not throw when postgres is unreachable', async () => {
-		// Use a port that's almost certainly not running postgres
-		await ensureTestDatabase({
-			DATABASE_URL: 'postgresql://app:secret@localhost:59999/test_db',
-		});
-		// Should log a warning but not throw
-		expect(console.log).toHaveBeenCalledWith(
-			expect.stringContaining('Could not ensure test database'),
-		);
 	});
 });
 

@@ -81,7 +81,6 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 
 	// 4. Use a separate test database (append _test suffix)
 	secretsEnv = rewriteDatabaseUrlForTests(secretsEnv);
-	await ensureTestDatabase(secretsEnv);
 
 	// 5. Load workspace config + dependency URLs + sniff env vars
 	let dependencyEnv: Record<string, string> = {};
@@ -226,42 +225,3 @@ export function rewriteDatabaseUrlForTests(
 	return result;
 }
 
-/**
- * Ensure the test database exists by connecting to the default database
- * and running CREATE DATABASE IF NOT EXISTS.
- * @internal Exported for testing
- */
-export async function ensureTestDatabase(
-	env: Record<string, string>,
-): Promise<void> {
-	const databaseUrl = env.DATABASE_URL;
-	if (!databaseUrl) return;
-
-	try {
-		const url = new URL(databaseUrl);
-		const testDbName = url.pathname.slice(1);
-		if (!testDbName) return;
-
-		// Connect to the default 'postgres' database to create the test database
-		url.pathname = '/postgres';
-		const { default: pg } = await import('pg');
-		const client = new pg.Client({ connectionString: url.toString() });
-		await client.connect();
-
-		try {
-			await client.query(`CREATE DATABASE "${testDbName}"`);
-			console.log(`  📦 Created test database "${testDbName}"`);
-		} catch (err: unknown) {
-			// 42P04 = database already exists — that's fine
-			if ((err as { code?: string }).code !== '42P04') throw err;
-		} finally {
-			await client.end();
-		}
-	} catch (err) {
-		// Don't fail test startup if we can't create the database
-		// (e.g., postgres not running yet, will fail later with a clear error)
-		console.log(
-			`  ⚠️  Could not ensure test database: ${(err as Error).message}`,
-		);
-	}
-}
