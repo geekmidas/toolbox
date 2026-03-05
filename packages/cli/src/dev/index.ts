@@ -354,13 +354,24 @@ export function rewriteUrlsWithPorts(
 
 	// Build a map of defaultPort → resolvedPort for all changed ports
 	const portReplacements: { defaultPort: number; resolvedPort: number }[] = [];
+	// Collect Docker service names for hostname rewriting
+	const serviceNames = new Set<string>();
 	for (const mapping of mappings) {
+		serviceNames.add(mapping.service);
 		const resolved = ports[mapping.envVar];
 		if (resolved !== undefined) {
 			portReplacements.push({
 				defaultPort: mapping.defaultPort,
 				resolvedPort: resolved,
 			});
+		}
+	}
+
+	// Rewrite _HOST env vars that use Docker service names
+	for (const [key, value] of Object.entries(result)) {
+		if (!key.endsWith('_HOST')) continue;
+		if (serviceNames.has(value)) {
+			result[key] = 'localhost';
 		}
 	}
 
@@ -374,11 +385,17 @@ export function rewriteUrlsWithPorts(
 		}
 	}
 
-	// Rewrite URLs containing default ports
+	// Rewrite URLs: replace Docker service hostnames with localhost and fix ports
 	for (const [key, value] of Object.entries(result)) {
 		if (!key.endsWith('_URL') && key !== 'DATABASE_URL') continue;
 
 		let rewritten = value;
+		for (const name of serviceNames) {
+			rewritten = rewritten.replace(
+				new RegExp(`@${name}:`, 'g'),
+				'@localhost:',
+			);
+		}
 		for (const { defaultPort, resolvedPort } of portReplacements) {
 			rewritten = replacePortInUrl(rewritten, defaultPort, resolvedPort);
 		}
