@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.8
+
+### Patch Changes
+
+- 🐛 [`ef1754d`](https://github.com/geekmidas/toolbox/commit/ef1754dd96cfc0f6e79a04ac9eaff56e37023f0f) Thanks [@geekmidas](https://github.com/geekmidas)! - fix test and dev commands to inject correct creds on compose
+
 ## 1.10.7
 
 ### Patch Changes
