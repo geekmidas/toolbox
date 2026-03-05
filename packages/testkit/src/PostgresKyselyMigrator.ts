@@ -50,15 +50,17 @@ export class PostgresKyselyMigrator extends PostgresMigrator {
 	 * @param options.uri - PostgreSQL connection URI
 	 * @param options.db - Kysely database instance
 	 * @param options.provider - Migration provider for locating migration files
+	 * @param options.afterCreate - Optional hook called after database creation but before migrations
 	 */
 	constructor(
 		private options: {
 			uri: string;
 			db: Kysely<any>;
 			provider: MigrationProvider;
+			afterCreate?: (uri: string) => Promise<void>;
 		},
 	) {
-		super(options.uri);
+		super(options.uri, options.afterCreate);
 	}
 
 	/**
