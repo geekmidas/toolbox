@@ -114,13 +114,24 @@ export function generateConnectionUrls(
 
 /**
  * Create a new StageSecrets object with generated credentials.
+ * @param stage - The deployment stage (e.g., 'development', 'production')
+ * @param services - List of services to generate credentials for
+ * @param options - Optional configuration
+ * @param options.projectName - Project name used to derive the database name (e.g., 'myapp' → 'myapp_dev')
  */
 export function createStageSecrets(
 	stage: string,
 	services: ComposeServiceName[],
+	options?: { projectName?: string },
 ): StageSecrets {
 	const now = new Date().toISOString();
 	const serviceCredentials = generateServicesCredentials(services);
+
+	// Override postgres database name with project-derived name if provided
+	if (options?.projectName && serviceCredentials.postgres) {
+		serviceCredentials.postgres.database = `${options.projectName.replace(/-/g, '_')}_dev`;
+	}
+
 	const urls = generateConnectionUrls(serviceCredentials);
 
 	return {

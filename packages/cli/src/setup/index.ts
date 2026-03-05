@@ -196,7 +196,9 @@ async function generateFreshSecrets(
 	if (workspace.services.cache) serviceNames.push('redis');
 
 	// Create base secrets with service credentials
-	const secrets = createStageSecrets(stage, serviceNames);
+	const secrets = createStageSecrets(stage, serviceNames, {
+		projectName: workspace.name,
+	});
 
 	// Generate fullstack-aware custom secrets
 	const isMultiApp = Object.keys(workspace.apps).length > 1;

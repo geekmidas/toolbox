@@ -331,7 +331,9 @@ export async function initCommand(
 	if (services.db) secretServices.push('postgres');
 	if (services.cache) secretServices.push('redis');
 
-	const devSecrets = createStageSecrets('development', secretServices);
+	const devSecrets = createStageSecrets('development', secretServices, {
+		projectName: name,
+	});
 
 	// Add common custom secrets
 	const customSecrets: Record<string, string> = {

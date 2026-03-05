@@ -86,21 +86,27 @@ export async function secretsInitCommand(
 		);
 	}
 
-	// Generate secrets
-	const secrets = createStageSecrets(stage, services);
-
-	// Detect workspace mode and generate fullstack-aware custom secrets
+	// Detect workspace mode for project name and fullstack secrets
+	let projectName: string | undefined;
+	let workspaceSecrets: Record<string, string> | undefined;
 	try {
 		const loaded = await loadWorkspaceConfig();
+		projectName = loaded.workspace.name;
 		const isMultiApp = Object.keys(loaded.workspace.apps).length > 1;
 
 		if (isMultiApp) {
-			const customSecrets = generateFullstackCustomSecrets(loaded.workspace);
-			secrets.custom = customSecrets;
+			workspaceSecrets = generateFullstackCustomSecrets(loaded.workspace);
 			logger.log('  Detected workspace mode — generating per-app secrets');
 		}
 	} catch {
 		// Not a workspace — single-app mode, skip custom secrets
+	}
+
+	// Generate secrets (with project name so DATABASE_URL matches app-specific URLs)
+	const secrets = createStageSecrets(stage, services, { projectName });
+
+	if (workspaceSecrets) {
+		secrets.custom = workspaceSecrets;
 	}
 
 	// Write to file
