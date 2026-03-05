@@ -191,7 +191,9 @@ describe('generateDockerCompose', () => {
 				services: { postgres: true },
 			});
 
-			expect(yaml).toContain('test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]');
+			expect(yaml).toContain(
+				'test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]',
+			);
 		});
 
 		it('should add depends_on for postgres', () => {

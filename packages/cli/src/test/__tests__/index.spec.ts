@@ -326,4 +326,65 @@ services:
 		// RabbitMQ port rewritten
 		expect(secrets.RABBITMQ_URL).toBe('amqp://app:secret@localhost:5673');
 	});
+
+	it('should preserve root postgres credentials through the pipeline', async () => {
+		writeFileSync(
+			join(testDir, 'docker-compose.yml'),
+			`
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+`,
+		);
+
+		await savePortState(testDir, {
+			POSTGRES_HOST_PORT: 5434,
+		});
+
+		// Simulate toEmbeddableSecrets output for a workspace with app-specific users
+		let secrets: Record<string, string> = {
+			DATABASE_URL: 'postgresql://app:rootpass@postgres:5432/app',
+			API_DATABASE_URL: 'postgresql://api:apipass@localhost:5432/myproject_dev',
+			AUTH_DATABASE_URL:
+				'postgresql://auth:authpass@localhost:5432/myproject_dev',
+			POSTGRES_USER: 'app',
+			POSTGRES_PASSWORD: 'rootpass',
+			POSTGRES_DB: 'app',
+			POSTGRES_HOST: 'postgres',
+			POSTGRES_PORT: '5432',
+		};
+
+		// Apply port + host rewriting
+		const mappings = parseComposePortMappings(
+			join(testDir, 'docker-compose.yml'),
+		);
+		const ports = await loadPortState(testDir);
+		secrets = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: {},
+			ports,
+			mappings,
+		});
+
+		// Apply test database suffix
+		secrets = rewriteDatabaseUrlForTests(secrets);
+
+		// Root credentials should be present and rewritten to localhost
+		expect(secrets.POSTGRES_USER).toBe('app');
+		expect(secrets.POSTGRES_PASSWORD).toBe('rootpass');
+		expect(secrets.POSTGRES_HOST).toBe('localhost');
+		expect(secrets.POSTGRES_PORT).toBe('5434');
+
+		// All DATABASE_URLs should have localhost, resolved port, and _test suffix
+		expect(secrets.DATABASE_URL).toBe(
+			'postgresql://app:rootpass@localhost:5434/app_test',
+		);
+		expect(secrets.API_DATABASE_URL).toBe(
+			'postgresql://api:apipass@localhost:5434/myproject_dev_test',
+		);
+		expect(secrets.AUTH_DATABASE_URL).toBe(
+			'postgresql://auth:authpass@localhost:5434/myproject_dev_test',
+		);
+	});
 });

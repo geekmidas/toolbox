@@ -224,4 +224,3 @@ export function rewriteDatabaseUrlForTests(
 
 	return result;
 }
-
