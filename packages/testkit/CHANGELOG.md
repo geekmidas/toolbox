@@ -1,5 +1,11 @@
 # @geekmidas/testkit
 
+## 1.0.4
+
+### Patch Changes
+
+- ✨ [`7815080`](https://github.com/geekmidas/toolbox/commit/781508030df7f67881f5e79349338f62b35ed684) Thanks [@geekmidas](https://github.com/geekmidas)! - Add after create hook for init scripts
+
 ## 1.0.3
 
 ### Patch Changes
