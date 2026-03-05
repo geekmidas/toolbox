@@ -1263,14 +1263,19 @@ async function workspaceDevCommand(
 	// Resolve dynamic service ports from docker-compose.yml
 	const resolvedPorts = await resolveServicePorts(workspace.root);
 
-	// Start docker-compose services with resolved ports
-	await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
+	// Load secrets BEFORE starting Docker so POSTGRES_USER, POSTGRES_PASSWORD,
+	// etc. are available for docker-compose variable interpolation
+	const rawSecrets = await loadDevSecrets(workspace);
 
-	// Load secrets if enabled, then rewrite URLs with resolved ports
-	const secretsEnv = rewriteUrlsWithPorts(
-		await loadDevSecrets(workspace),
-		resolvedPorts,
+	// Start docker-compose services with resolved ports AND secrets
+	await startWorkspaceServices(
+		workspace,
+		resolvedPorts.dockerEnv,
+		rawSecrets,
 	);
+
+	// Rewrite URLs with resolved ports (hostnames and port numbers)
+	const secretsEnv = rewriteUrlsWithPorts(rawSecrets, resolvedPorts);
 	if (Object.keys(secretsEnv).length > 0) {
 		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
 	}
