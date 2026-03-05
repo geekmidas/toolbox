@@ -105,7 +105,7 @@ services:
 
 	// Add environment variables based on services
 	if (serviceMap.has('postgres')) {
-		yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}
+		yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://\${POSTGRES_USER:-postgres}:\${POSTGRES_PASSWORD:-postgres}@postgres:5432/\${POSTGRES_DB:-app}}
 `;
 	}
 
@@ -156,7 +156,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -335,7 +335,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -480,7 +480,7 @@ function generateAppService(
 	// Add infrastructure service URLs for backend apps
 	if (app.type === 'backend') {
 		if (hasPostgres) {
-			yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}
+			yaml += `      - DATABASE_URL=\${DATABASE_URL:-postgresql://\${POSTGRES_USER:-postgres}:\${POSTGRES_PASSWORD:-postgres}@postgres:5432/\${POSTGRES_DB:-app}}
 `;
 		}
 		if (hasRedis) {

@@ -122,14 +122,14 @@ describe('generateDockerCompose', () => {
 	});
 
 	describe('postgres service', () => {
-		it('should add DATABASE_URL environment variable', () => {
+		it('should add DATABASE_URL environment variable with credential interpolation', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
 				services: { postgres: true },
 			});
 
 			expect(yaml).toContain(
-				'- DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}',
+				'- DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}}',
 			);
 		});
 
@@ -185,13 +185,13 @@ describe('generateDockerCompose', () => {
 			expect(yaml).toContain('postgres_data:');
 		});
 
-		it('should include postgres healthcheck', () => {
+		it('should include postgres healthcheck using POSTGRES_USER', () => {
 			const yaml = generateDockerCompose({
 				...baseOptions,
 				services: { postgres: true },
 			});
 
-			expect(yaml).toContain('test: ["CMD-SHELL", "pg_isready -U postgres"]');
+			expect(yaml).toContain('test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]');
 		});
 
 		it('should add depends_on for postgres', () => {
@@ -801,7 +801,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			expect(yaml).toContain(
-				'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/app}',
+				'DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}}',
 			);
 		});
 
