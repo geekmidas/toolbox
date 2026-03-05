@@ -40,6 +40,18 @@ const logger = console;
  * const cleanup = await migrator.start();
  * // Run tests...
  * await cleanup();
+ *
+ * // With afterCreate hook to create per-app users
+ * import { runInitScript } from '@geekmidas/testkit/postgres';
+ *
+ * const migrator = new PostgresKyselyMigrator({
+ *   uri: 'postgresql://localhost:5432/test_db',
+ *   db,
+ *   provider,
+ *   afterCreate: async (uri) => {
+ *     await runInitScript('docker/postgres/init.sh', uri, env);
+ *   },
+ * });
  * ```
  */
 export class PostgresKyselyMigrator extends PostgresMigrator {
