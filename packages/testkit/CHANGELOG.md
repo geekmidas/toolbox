@@ -1,5 +1,11 @@
 # @geekmidas/testkit
 
+## 1.0.3
+
+### Patch Changes
+
+- ✨ [`e99f8cb`](https://github.com/geekmidas/toolbox/commit/e99f8cbb95fa5b818d94ee99b308c2ac0b239e0b) Thanks [@geekmidas](https://github.com/geekmidas)! - Add initialization scripts for postgres
+
 ## 1.0.2
 
 ### Patch Changes
