@@ -643,9 +643,10 @@ describe('PostgresKyselyMigrator', () => {
 			provider.addMigration('001_use_schema', {
 				up: async (db) => {
 					// Verify schema exists (created by afterCreate)
-					const result = await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app'`.execute(
-						db,
-					);
+					const result =
+						await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app'`.execute(
+							db,
+						);
 					if (result.rows.length === 0) {
 						throw new Error('Expected app schema to exist');
 					}
