@@ -161,7 +161,9 @@ export function generateDockerFiles(
 	}
 
 	// Build docker-compose.yml
-	let dockerCompose = `services:
+	let dockerCompose = `# Use "gkm dev" or "gkm test" to start services.
+# Running "docker compose up" directly will not inject secrets or resolve ports.
+services:
 ${services.join('\n\n')}
 `;
 
