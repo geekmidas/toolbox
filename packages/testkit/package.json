@@ -48,6 +48,11 @@
 			"types": "./dist/benchmark.d.ts",
 			"import": "./dist/benchmark.mjs",
 			"require": "./dist/benchmark.cjs"
+		},
+		"./postgres": {
+			"types": "./dist/initScript.d.ts",
+			"import": "./dist/initScript.mjs",
+			"require": "./dist/initScript.cjs"
 		}
 	},
 	"dependencies": {
