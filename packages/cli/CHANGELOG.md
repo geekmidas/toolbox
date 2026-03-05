@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.6
+
+### Patch Changes
+
+- 🐛 [`d77b70e`](https://github.com/geekmidas/toolbox/commit/d77b70ebf8f68ae39a6daec02023703c2025167b) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix credentials for tests
+
 ## 1.10.5
 
 ### Patch Changes
