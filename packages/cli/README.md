@@ -605,6 +605,47 @@ When files change, the server automatically rebuilds and restarts:
 ✅ Rebuild complete, restarting server...
 ```
 
+### `gkm test`
+
+Run tests with full environment injection — secrets, port mappings, and Docker services.
+
+```bash
+gkm test [options]
+```
+
+**Options:**
+- `--stage <stage>`: Stage to load secrets from (default: `development`)
+- `--run`: Run tests once without watch mode
+- `--watch`: Enable watch mode
+- `--coverage`: Generate coverage report
+- `--ui`: Open Vitest UI
+- `--pattern <pattern>`: Pattern to filter tests
+
+**What it does:**
+
+1. Loads and decrypts secrets from the specified stage
+2. Starts Docker Compose services (postgres, redis, etc.) with secrets injected
+3. Resolves dynamic host ports and rewrites URLs (`@postgres:5432` → `@localhost:5434`)
+4. Appends `_test` suffix to all `DATABASE_URL` values
+5. Creates a credentials preload so `Credentials` from `@geekmidas/envkit` is populated
+6. Spawns Vitest with the full environment
+
+**Example:**
+```bash
+# Run tests in watch mode
+gkm test
+
+# Run tests once
+gkm test --run
+
+# Run with coverage
+gkm test --coverage
+```
+
+> **Why not `docker compose up` directly?**
+>
+> `gkm dev` and `gkm test` decrypt your secrets and pass them as environment variables to `docker compose up`, ensuring credentials and ports are consistent. Running `docker compose up` directly skips this — variables like `${POSTGRES_USER:-postgres}` fall back to defaults that won't match your project credentials.
+
 ### `gkm secrets:init`
 
 Initialize secrets for a deployment stage. Generates secure random passwords for configured Docker Compose services.
