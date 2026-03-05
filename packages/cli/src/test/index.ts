@@ -8,7 +8,9 @@ import {
 	loadEnvFiles,
 	loadPortState,
 	parseComposePortMappings,
+	resolveServicePorts,
 	rewriteUrlsWithPorts,
+	startWorkspaceServices,
 } from '../dev/index';
 import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
 import { getDependencyEnvVars } from '../workspace/index';
