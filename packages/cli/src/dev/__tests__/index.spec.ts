@@ -9,6 +9,7 @@ import type {
 	NormalizedWorkspace,
 } from '../../workspace/index.js';
 import {
+	buildDockerComposeEnv,
 	checkPortConflicts,
 	findAvailablePort,
 	generateAllDependencyEnvVars,
@@ -1751,5 +1752,73 @@ describe('generateServerEntryContent', () => {
 		});
 
 		expect(content).toContain("await import('./custom-app.js')");
+	});
+});
+
+describe('buildDockerComposeEnv', () => {
+	it('should include secrets in the env passed to docker compose', () => {
+		const secretsEnv = {
+			POSTGRES_USER: 'app',
+			POSTGRES_PASSWORD: 'supersecret',
+			POSTGRES_DB: 'myproject_dev',
+		};
+		const portEnv = { POSTGRES_HOST_PORT: '5434' };
+
+		const env = buildDockerComposeEnv(secretsEnv, portEnv);
+
+		expect(env.POSTGRES_USER).toBe('app');
+		expect(env.POSTGRES_PASSWORD).toBe('supersecret');
+		expect(env.POSTGRES_DB).toBe('myproject_dev');
+		expect(env.POSTGRES_HOST_PORT).toBe('5434');
+	});
+
+	it('should include multiple service secrets', () => {
+		const secretsEnv = {
+			POSTGRES_USER: 'app',
+			POSTGRES_PASSWORD: 'dbpass',
+			REDIS_PASSWORD: 'redispass',
+		};
+
+		const env = buildDockerComposeEnv(secretsEnv, {});
+
+		expect(env.POSTGRES_USER).toBe('app');
+		expect(env.POSTGRES_PASSWORD).toBe('dbpass');
+		expect(env.REDIS_PASSWORD).toBe('redispass');
+	});
+
+	it('should let port env override secrets env for same key', () => {
+		const secretsEnv = { POSTGRES_HOST_PORT: '5432' };
+		const portEnv = { POSTGRES_HOST_PORT: '5434' };
+
+		const env = buildDockerComposeEnv(secretsEnv, portEnv);
+
+		expect(env.POSTGRES_HOST_PORT).toBe('5434');
+	});
+
+	it('should work without secrets env', () => {
+		const env = buildDockerComposeEnv(undefined, {
+			POSTGRES_HOST_PORT: '5434',
+		});
+
+		expect(env.POSTGRES_HOST_PORT).toBe('5434');
+	});
+
+	it('should work without any arguments', () => {
+		const env = buildDockerComposeEnv();
+
+		// Should at least have process.env
+		expect(env.PATH).toBeDefined();
+	});
+
+	it('should include process.env as base', () => {
+		const env = buildDockerComposeEnv(
+			{ POSTGRES_USER: 'app' },
+			{ POSTGRES_HOST_PORT: '5434' },
+		);
+
+		// process.env values should be present
+		expect(env.PATH).toBeDefined();
+		// Custom values should override
+		expect(env.POSTGRES_USER).toBe('app');
 	});
 });
