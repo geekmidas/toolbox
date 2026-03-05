@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadWorkspaceAppInfo } from '../config';
 import { sniffAppEnvironment } from '../deploy/sniffer';
 import {
+	createCredentialsPreload,
 	loadEnvFiles,
 	loadPortState,
 	parseComposePortMappings,
@@ -123,6 +125,24 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 
 	console.log('');
 
+	// Write combined secrets to JSON and create credentials preload
+	const allSecrets = { ...secretsEnv, ...dependencyEnv };
+	const gkmDir = join(cwd, '.gkm');
+	await mkdir(gkmDir, { recursive: true });
+	const secretsJsonPath = join(gkmDir, 'test-secrets.json');
+	await writeFile(secretsJsonPath, JSON.stringify(allSecrets, null, 2));
+
+	const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
+	await createCredentialsPreload(preloadPath, secretsJsonPath);
+
+	// Merge NODE_OPTIONS with existing value (if any)
+	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
+	const tsxImport = '--import=tsx';
+	const preloadImport = `--import=${preloadPath}`;
+	const nodeOptions = [existingNodeOptions, tsxImport, preloadImport]
+		.filter(Boolean)
+		.join(' ');
+
 	// Build vitest args
 	const args: string[] = [];
 
@@ -144,16 +164,15 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		args.push(options.pattern);
 	}
 
-	// Run vitest with combined environment
+	// Run vitest with combined environment and credentials preload
 	const vitestProcess = spawn('npx', ['vitest', ...args], {
 		cwd,
 		stdio: 'inherit',
 		env: {
 			...process.env,
-			...secretsEnv,
-			...dependencyEnv,
-			// Ensure NODE_ENV is set to test
+			...allSecrets,
 			NODE_ENV: 'test',
+			NODE_OPTIONS: nodeOptions,
 		},
 	});
 

@@ -1,4 +1,10 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -12,6 +18,7 @@ import {
 	vi,
 } from 'vitest';
 import {
+	createCredentialsPreload,
 	loadPortState,
 	parseComposePortMappings,
 	rewriteUrlsWithPorts,
@@ -272,6 +279,38 @@ services:
 		expect(secrets.DATABASE_URL).toBe(
 			'postgresql://app:secret@localhost:5432/myapp_test',
 		);
+	});
+
+	it('should write test-secrets.json and credentials preload', async () => {
+		const gkmDir = join(testDir, '.gkm');
+		mkdirSync(gkmDir, { recursive: true });
+
+		const secrets = {
+			DATABASE_URL: 'postgresql://app:secret@localhost:5433/myapp_test',
+			JWT_SECRET: 'test-jwt-secret',
+		};
+
+		const secretsJsonPath = join(gkmDir, 'test-secrets.json');
+		writeFileSync(secretsJsonPath, JSON.stringify(secrets, null, 2));
+
+		const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
+		await createCredentialsPreload(preloadPath, secretsJsonPath);
+
+		// Verify secrets JSON was written
+		expect(existsSync(secretsJsonPath)).toBe(true);
+		const written = JSON.parse(readFileSync(secretsJsonPath, 'utf-8'));
+		expect(written.DATABASE_URL).toBe(secrets.DATABASE_URL);
+		expect(written.JWT_SECRET).toBe(secrets.JWT_SECRET);
+
+		// Verify preload script was created with correct content
+		expect(existsSync(preloadPath)).toBe(true);
+		const preloadContent = readFileSync(preloadPath, 'utf-8');
+		expect(preloadContent).toContain(
+			"import { Credentials } from '@geekmidas/envkit/credentials'",
+		);
+		expect(preloadContent).toContain('Object.assign(Credentials');
+		expect(preloadContent).toContain('Object.assign(process.env');
+		expect(preloadContent).toContain(secretsJsonPath);
 	});
 
 	it('should handle worker template with rabbitmq ports', async () => {
