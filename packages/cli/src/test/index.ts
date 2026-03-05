@@ -66,28 +66,28 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		}
 	}
 
-	// 3. Rewrite URLs with resolved Docker ports (from gkm dev)
-	const composePath = join(cwd, 'docker-compose.yml');
-	const mappings = parseComposePortMappings(composePath);
-	if (mappings.length > 0) {
-		const ports = await loadPortState(cwd);
-		if (Object.keys(ports).length > 0) {
-			secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
-				dockerEnv: {},
-				ports,
-				mappings,
-			});
-			console.log(`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`);
-		}
-	}
-
-	// 4. Use a separate test database (append _test suffix)
-	secretsEnv = rewriteDatabaseUrlForTests(secretsEnv);
-
-	// 5. Load workspace config + dependency URLs + sniff env vars
+	// 3. Load workspace config + start Docker services with secrets
 	let dependencyEnv: Record<string, string> = {};
 	try {
 		const appInfo = await loadWorkspaceAppInfo(cwd);
+
+		// Resolve ports and start Docker services with secrets so that
+		// POSTGRES_USER, POSTGRES_PASSWORD, etc. are interpolated correctly
+		const resolvedPorts = await resolveServicePorts(appInfo.workspaceRoot);
+		await startWorkspaceServices(
+			appInfo.workspace,
+			resolvedPorts.dockerEnv,
+			secretsEnv,
+		);
+
+		// Rewrite URLs with resolved Docker ports and hostnames
+		if (resolvedPorts.mappings.length > 0) {
+			secretsEnv = rewriteUrlsWithPorts(secretsEnv, resolvedPorts);
+			console.log(
+				`  🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
+			);
+		}
+
 		dependencyEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
 
 		if (Object.keys(dependencyEnv).length > 0) {
@@ -96,7 +96,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			);
 		}
 
-		// 6. Sniff to detect which env vars the app needs
+		// Sniff to detect which env vars the app needs
 		const sniffed = await sniffAppEnvironment(
 			appInfo.app,
 			appInfo.appName,
@@ -121,8 +121,26 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			);
 		}
 	} catch {
-		// Not in a workspace — continue with just secrets
+		// Not in a workspace — fall back to port state file
+		const composePath = join(cwd, 'docker-compose.yml');
+		const mappings = parseComposePortMappings(composePath);
+		if (mappings.length > 0) {
+			const ports = await loadPortState(cwd);
+			if (Object.keys(ports).length > 0) {
+				secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
+					dockerEnv: {},
+					ports,
+					mappings,
+				});
+				console.log(
+					`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`,
+				);
+			}
+		}
 	}
+
+	// 4. Use a separate test database (append _test suffix)
+	secretsEnv = rewriteDatabaseUrlForTests(secretsEnv);
 
 	console.log('');
 
