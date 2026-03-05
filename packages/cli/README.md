@@ -549,9 +549,11 @@ services: ['postgres', 'redis', 'rabbitmq']
 
 | Service | Default Image | Environment Variables |
 |---------|---------------|----------------------|
-| `postgres` | `postgres:16-alpine` | `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
+| `postgres` | `postgres:18-alpine` | `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
 | `redis` | `redis:7-alpine` | `REDIS_URL` |
 | `rabbitmq` | `rabbitmq:3-management-alpine` | `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` |
+
+> **Note:** Use `gkm dev` or `gkm test` to start services. Running `docker compose up` directly will not inject your encrypted secrets or resolve dynamic ports — variables like `${POSTGRES_USER:-postgres}` will fall back to defaults that won't match your project credentials.
 
 ### `gkm dev`
 
