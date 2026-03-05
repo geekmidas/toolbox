@@ -577,8 +577,12 @@ describe('generateWorkspaceCompose', () => {
 			const workspace = createWorkspace();
 			const yaml = generateWorkspaceCompose(workspace);
 
-			expect(yaml).toContain('# Use "gkm dev" or "gkm test" to start services.');
-			expect(yaml).toContain('# Running "docker compose up" directly will not inject secrets or resolve ports.');
+			expect(yaml).toContain(
+				'# Use "gkm dev" or "gkm test" to start services.',
+			);
+			expect(yaml).toContain(
+				'# Running "docker compose up" directly will not inject secrets or resolve ports.',
+			);
 		});
 
 		it('should include services section', () => {
