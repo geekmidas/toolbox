@@ -57,6 +57,17 @@ const logger = console;
  * const migrator = new MyMigrator('postgresql://localhost:5432/test_db');
  * const cleanup = await migrator.start();
  *
+ * // With afterCreate hook (e.g. run init script to create per-app users)
+ * import { runInitScript } from '@geekmidas/testkit/postgres';
+ *
+ * const migrator = new MyMigrator(
+ *   'postgresql://localhost:5432/test_db',
+ *   async (uri) => {
+ *     await runInitScript('docker/postgres/init.sh', uri, env);
+ *   },
+ * );
+ * const cleanup = await migrator.start();
+ *
  * // Run tests...
  *
  * // Clean up
