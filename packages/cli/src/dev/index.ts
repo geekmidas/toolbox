@@ -1168,11 +1168,12 @@ export async function startWorkspaceServices(
 			return;
 		}
 
-		// Start services with docker-compose
+		// Start services with docker-compose, passing secrets so that
+		// POSTGRES_USER, POSTGRES_PASSWORD, etc. are interpolated correctly
 		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
 			cwd: workspace.root,
 			stdio: 'inherit',
-			env: { ...process.env, ...portEnv },
+			env: buildDockerComposeEnv(secretsEnv, portEnv),
 		});
 
 		logger.log('✅ Services started');
