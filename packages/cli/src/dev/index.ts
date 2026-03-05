@@ -1268,11 +1268,7 @@ async function workspaceDevCommand(
 	const rawSecrets = await loadDevSecrets(workspace);
 
 	// Start docker-compose services with resolved ports AND secrets
-	await startWorkspaceServices(
-		workspace,
-		resolvedPorts.dockerEnv,
-		rawSecrets,
-	);
+	await startWorkspaceServices(workspace, resolvedPorts.dockerEnv, rawSecrets);
 
 	// Rewrite URLs with resolved ports (hostnames and port numbers)
 	const secretsEnv = rewriteUrlsWithPorts(rawSecrets, resolvedPorts);
