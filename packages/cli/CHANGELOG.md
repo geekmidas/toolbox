@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.5
+
+### Patch Changes
+
+- 🐛 [`c97b9db`](https://github.com/geekmidas/toolbox/commit/c97b9db7cb66040b461cd3682f0b82ae2f24bd14) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix credentials embedding
+
 ## 1.10.4
 
 ### Patch Changes
