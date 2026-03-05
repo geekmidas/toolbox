@@ -285,6 +285,111 @@ describe('PostgresMigrator', () => {
 		});
 	});
 
+	describe('afterCreate hook', () => {
+		it('should call afterCreate after database creation and before migrate', async () => {
+			const hookDbName = `test_after_create_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${hookDbName}`;
+			const callOrder: string[] = [];
+
+			const migrator = new TestPostgresMigrator(uri, async (receivedUri) => {
+				callOrder.push('afterCreate');
+				expect(receivedUri).toBe(uri);
+			});
+
+			migrator.addMigration(async () => {
+				callOrder.push('migrate');
+			});
+
+			const cleanup = await migrator.start();
+
+			expect(callOrder).toEqual(['afterCreate', 'migrate']);
+
+			await cleanup();
+		});
+
+		it('should skip afterCreate when not provided', async () => {
+			const noHookDbName = `test_no_hook_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${noHookDbName}`;
+			const migrator = new TestPostgresMigrator(uri);
+
+			const cleanup = await migrator.start();
+
+			expect(migrator.migrateCalled).toBe(true);
+
+			await cleanup();
+		});
+
+		it('should propagate afterCreate errors and not run migrate', async () => {
+			const errorHookDbName = `test_hook_error_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${errorHookDbName}`;
+
+			const migrator = new TestPostgresMigrator(uri, async () => {
+				throw new Error('afterCreate failed');
+			});
+
+			await expect(migrator.start()).rejects.toThrow('afterCreate failed');
+			expect(migrator.migrateCalled).toBe(false);
+
+			// Cleanup the created database
+			const cleanupClient = new Client({
+				host: 'localhost',
+				port: 5432,
+				user: 'geekmidas',
+				password: 'geekmidas',
+				database: 'postgres',
+			});
+			try {
+				await cleanupClient.connect();
+				await cleanupClient.query(
+					`DROP DATABASE IF EXISTS "${errorHookDbName}"`,
+				);
+			} finally {
+				await cleanupClient.end();
+			}
+		});
+
+		it('should allow afterCreate to set up database objects before migrations', async () => {
+			const setupDbName = `test_hook_setup_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${setupDbName}`;
+
+			const migrator = new TestPostgresMigrator(uri, async () => {
+				const client = new Client({
+					host: 'localhost',
+					port: 5432,
+					user: 'geekmidas',
+					password: 'geekmidas',
+					database: setupDbName,
+				});
+				await client.connect();
+				await client.query(
+					"CREATE SCHEMA IF NOT EXISTS app; COMMENT ON SCHEMA app IS 'Created by afterCreate hook';",
+				);
+				await client.end();
+			});
+
+			migrator.addMigration(async () => {
+				// Verify schema exists during migration
+				const client = new Client({
+					host: 'localhost',
+					port: 5432,
+					user: 'geekmidas',
+					password: 'geekmidas',
+					database: setupDbName,
+				});
+				await client.connect();
+				const result = await client.query(
+					"SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app'",
+				);
+				expect(result.rowCount).toBe(1);
+				await client.end();
+			});
+
+			const cleanup = await migrator.start();
+
+			await cleanup();
+		});
+	});
+
 	describe('abstract method', () => {
 		it('should require concrete implementation of migrate method', () => {
 			// TypeScript ensures abstract methods are implemented
