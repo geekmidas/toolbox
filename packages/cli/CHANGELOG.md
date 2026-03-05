@@ -1,5 +1,13 @@
 # @geekmidas/cli
 
+## 1.10.4
+
+### Patch Changes
+
+- 🐛 [`6123575`](https://github.com/geekmidas/toolbox/commit/6123575f05ba5c8563413fffdad67d0e2880fb08) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix config hosts
+
+- 🐛 [`96618ff`](https://github.com/geekmidas/toolbox/commit/96618ff36fd3248bfc29f4517fda79eea4a66dda) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix credentials loading for tests
+
 ## 1.10.3
 
 ### Patch Changes
