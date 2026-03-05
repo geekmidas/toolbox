@@ -68,8 +68,12 @@ export abstract class PostgresMigrator {
 	 * Creates a new PostgresMigrator instance.
 	 *
 	 * @param uri - PostgreSQL connection URI
+	 * @param afterCreate - Optional hook called after database creation but before migrations
 	 */
-	constructor(private uri: string) {}
+	constructor(
+		private uri: string,
+		private afterCreate?: (uri: string) => Promise<void>,
+	) {}
 
 	/**
 	 * Abstract method to be implemented by subclasses.
@@ -161,7 +165,9 @@ export abstract class PostgresMigrator {
 		const { database, db } = await setupClient(this.uri);
 		try {
 			await PostgresMigrator.create(this.uri);
-			// Implement migration logic here
+			if (this.afterCreate) {
+				await this.afterCreate(this.uri);
+			}
 			await this.migrate();
 			logger.log(`Migrating database: ${database}`);
 			// Example: await db.query('CREATE TABLE example (id SERIAL PRIMARY KEY)');
