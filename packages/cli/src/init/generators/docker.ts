@@ -46,15 +46,15 @@ export function generateDockerFiles(
     container_name: ${options.name}-postgres
     restart: unless-stopped${envFile}
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ${options.name.replace(/-/g, '_')}_dev
+      POSTGRES_USER: \${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: \${POSTGRES_DB:-${options.name.replace(/-/g, '_')}_dev}
     ports:
       - '\${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data${initVolume}
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER']
       interval: 5s
       timeout: 5s
       retries: 5`);
