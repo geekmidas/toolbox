@@ -1257,10 +1257,11 @@ describe('rewriteUrlsWithPorts', () => {
 		containerPort: 5672,
 	};
 
-	it('should rewrite DATABASE_URL with resolved postgres port', () => {
+	it('should rewrite DATABASE_URL with resolved postgres port and hostname', () => {
 		const secrets = {
 			DATABASE_URL: 'postgresql://app:pass@postgres:5432/mydb',
 			POSTGRES_PORT: '5432',
+			POSTGRES_HOST: 'postgres',
 			SOME_OTHER: 'value',
 		};
 		const result = rewriteUrlsWithPorts(secrets, {
@@ -1269,9 +1270,10 @@ describe('rewriteUrlsWithPorts', () => {
 			mappings: [pgMapping],
 		});
 		expect(result.DATABASE_URL).toBe(
-			'postgresql://app:pass@postgres:5433/mydb',
+			'postgresql://app:pass@localhost:5433/mydb',
 		);
 		expect(result.POSTGRES_PORT).toBe('5433');
+		expect(result.POSTGRES_HOST).toBe('localhost');
 		expect(result.SOME_OTHER).toBe('value');
 	});
 
@@ -1293,18 +1295,20 @@ describe('rewriteUrlsWithPorts', () => {
 		);
 	});
 
-	it('should rewrite REDIS_URL and REDIS_PORT', () => {
+	it('should rewrite REDIS_URL, REDIS_PORT, and REDIS_HOST', () => {
 		const secrets = {
 			REDIS_URL: 'redis://:pass@redis:6379',
 			REDIS_PORT: '6379',
+			REDIS_HOST: 'redis',
 		};
 		const result = rewriteUrlsWithPorts(secrets, {
 			dockerEnv: { REDIS_HOST_PORT: '6380' },
 			ports: { REDIS_HOST_PORT: 6380 },
 			mappings: [redisMapping],
 		});
-		expect(result.REDIS_URL).toBe('redis://:pass@redis:6380');
+		expect(result.REDIS_URL).toBe('redis://:pass@localhost:6380');
 		expect(result.REDIS_PORT).toBe('6380');
+		expect(result.REDIS_HOST).toBe('localhost');
 	});
 
 	it('should rewrite RABBITMQ_URL and RABBITMQ_PORT', () => {
@@ -1317,7 +1321,7 @@ describe('rewriteUrlsWithPorts', () => {
 			ports: { RABBITMQ_HOST_PORT: 5673 },
 			mappings: [rmqMapping],
 		});
-		expect(result.RABBITMQ_URL).toBe('amqp://app:pass@rabbitmq:5673/%2F');
+		expect(result.RABBITMQ_URL).toBe('amqp://app:pass@localhost:5673/%2F');
 		expect(result.RABBITMQ_PORT).toBe('5673');
 	});
 
@@ -1336,24 +1340,46 @@ describe('rewriteUrlsWithPorts', () => {
 			ports: { POSTGRES_HOST_PORT: 5433, REDIS_HOST_PORT: 6380 },
 			mappings: [pgMapping, redisMapping],
 		});
-		expect(result.DATABASE_URL).toContain(':5433/');
+		expect(result.DATABASE_URL).toBe(
+			'postgresql://app:pass@localhost:5433/mydb',
+		);
 		expect(result.POSTGRES_PORT).toBe('5433');
-		expect(result.REDIS_URL).toContain(':6380');
+		expect(result.REDIS_URL).toBe('redis://:pass@localhost:6380');
 		expect(result.REDIS_PORT).toBe('6380');
 	});
 
-	it('should not modify secrets when ports are defaults', () => {
+	it('should rewrite hostnames even when ports are defaults', () => {
 		const secrets = {
 			DATABASE_URL: 'postgresql://app:pass@postgres:5432/mydb',
 			POSTGRES_PORT: '5432',
+			POSTGRES_HOST: 'postgres',
 		};
 		const result = rewriteUrlsWithPorts(secrets, {
 			dockerEnv: { POSTGRES_HOST_PORT: '5432' },
 			ports: { POSTGRES_HOST_PORT: 5432 },
 			mappings: [pgMapping],
 		});
-		expect(result.DATABASE_URL).toBe(secrets.DATABASE_URL);
+		expect(result.DATABASE_URL).toBe(
+			'postgresql://app:pass@localhost:5432/mydb',
+		);
+		expect(result.POSTGRES_HOST).toBe('localhost');
 		expect(result.POSTGRES_PORT).toBe('5432');
+	});
+
+	it('should not rewrite _HOST vars that are already localhost', () => {
+		const secrets = {
+			DATABASE_URL: 'postgresql://app:pass@localhost:5432/mydb',
+			POSTGRES_HOST: 'localhost',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { POSTGRES_HOST_PORT: '5432' },
+			ports: { POSTGRES_HOST_PORT: 5432 },
+			mappings: [pgMapping],
+		});
+		expect(result.DATABASE_URL).toBe(
+			'postgresql://app:pass@localhost:5432/mydb',
+		);
+		expect(result.POSTGRES_HOST).toBe('localhost');
 	});
 
 	it('should return empty for no mappings', () => {
