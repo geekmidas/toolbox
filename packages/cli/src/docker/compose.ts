@@ -154,7 +154,7 @@ services:
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: \${POSTGRES_DB:-app}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - dbdata:/var/lib/postgresql/18/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -214,7 +214,7 @@ volumes:
 `;
 
 	if (serviceMap.has('postgres')) {
-		yaml += `  postgres_data:
+		yaml += `  dbdata:
 `;
 	}
 
@@ -333,7 +333,7 @@ services:
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: \${POSTGRES_DB:-app}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - dbdata:/var/lib/postgresql/18/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -382,7 +382,7 @@ volumes:
 `;
 
 	if (hasPostgres) {
-		yaml += `  postgres_data:
+		yaml += `  dbdata:
 `;
 	}
 

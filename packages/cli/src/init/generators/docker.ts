@@ -52,13 +52,13 @@ export function generateDockerFiles(
     ports:
       - '\${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data${initVolume}
+      - dbdata:/var/lib/postgresql/18/data${initVolume}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER']
       interval: 5s
       timeout: 5s
       retries: 5`);
-		volumes.push('  postgres_data:');
+		volumes.push('  dbdata:');
 
 		// Generate PostgreSQL init script and .env for fullstack template
 		if (isFullstack && dbApps?.length) {

@@ -181,8 +181,8 @@ describe('generateDockerCompose', () => {
 				services: { postgres: true },
 			});
 
-			expect(yaml).toContain('- postgres_data:/var/lib/postgresql/data');
-			expect(yaml).toContain('postgres_data:');
+			expect(yaml).toContain('- dbdata:/var/lib/postgresql/18/data');
+			expect(yaml).toContain('dbdata:');
 		});
 
 		it('should include postgres healthcheck using POSTGRES_USER', () => {
@@ -373,7 +373,7 @@ describe('generateDockerCompose', () => {
 				services: { postgres: true, redis: true, rabbitmq: true },
 			});
 
-			expect(yaml).toContain('postgres_data:');
+			expect(yaml).toContain('dbdata:');
 			expect(yaml).toContain('redis_data:');
 			expect(yaml).toContain('rabbitmq_data:');
 		});
@@ -845,8 +845,8 @@ describe('generateWorkspaceCompose', () => {
 			});
 			const yaml = generateWorkspaceCompose(workspace);
 
-			expect(yaml).toContain('postgres_data:');
-			expect(yaml).toContain('postgres_data:/var/lib/postgresql/data');
+			expect(yaml).toContain('dbdata:');
+			expect(yaml).toContain('dbdata:/var/lib/postgresql/18/data');
 		});
 
 		it('should add redis_data volume when redis is enabled', () => {
