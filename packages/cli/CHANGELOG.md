@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.7
+
+### Patch Changes
+
+- [`4a65756`](https://github.com/geekmidas/toolbox/commit/4a6575647cb91b8782182ef0d09cfb685565b6ae) Thanks [@geekmidas](https://github.com/geekmidas)! - Phantom push
+
 ## 1.10.6
 
 ### Patch Changes
