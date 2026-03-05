@@ -1112,12 +1112,28 @@ export async function loadSecretsForApp(
 }
 
 /**
+ * Build the environment variables to pass to `docker compose up`.
+ * Merges process.env, secrets, and port mappings so that Docker Compose
+ * can interpolate variables like ${POSTGRES_USER} correctly.
+ * @internal Exported for testing
+ */
+export function buildDockerComposeEnv(
+	secretsEnv?: Record<string, string>,
+	portEnv?: Record<string, string>,
+): Record<string, string | undefined> {
+	return { ...process.env, ...secretsEnv, ...portEnv };
+}
+
+/**
  * Start docker-compose services for the workspace.
+ * Passes both port mappings and secrets to docker-compose so that
+ * variables like POSTGRES_USER/POSTGRES_PASSWORD are available.
  * @internal Exported for testing
  */
 export async function startWorkspaceServices(
 	workspace: NormalizedWorkspace,
 	portEnv?: Record<string, string>,
+	secretsEnv?: Record<string, string>,
 ): Promise<void> {
 	const services = workspace.services;
 	if (!services.db && !services.cache && !services.mail) {
