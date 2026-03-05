@@ -18,9 +18,11 @@ import {
 	vi,
 } from 'vitest';
 import {
+	buildDockerComposeEnv,
 	createCredentialsPreload,
 	loadPortState,
 	parseComposePortMappings,
+	resolveServicePorts,
 	rewriteUrlsWithPorts,
 	savePortState,
 } from '../../dev/index';
@@ -386,5 +388,118 @@ services:
 		expect(secrets.AUTH_DATABASE_URL).toBe(
 			'postgresql://auth:authpass@localhost:5434/myproject_dev_test',
 		);
+	});
+});
+
+describe('test command Docker startup pipeline', () => {
+	let testDir: string;
+
+	beforeAll(() => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+	});
+
+	afterAll(() => {
+		vi.restoreAllMocks();
+	});
+
+	beforeEach(() => {
+		testDir = join(tmpdir(), `gkm-test-docker-${Date.now()}`);
+		mkdirSync(testDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(testDir, { recursive: true, force: true });
+	});
+
+	it('should build docker compose env with secrets so credentials are interpolated', () => {
+		const secretsEnv = {
+			POSTGRES_USER: 'app',
+			POSTGRES_PASSWORD: 'supersecret',
+			POSTGRES_DB: 'myapp',
+		};
+		const portEnv = { POSTGRES_HOST_PORT: '5434' };
+
+		// This is the env that gets passed to `docker compose up -d`
+		const env = buildDockerComposeEnv(secretsEnv, portEnv);
+
+		// Secrets are available so ${POSTGRES_USER:-postgres} resolves correctly
+		expect(env.POSTGRES_USER).toBe('app');
+		expect(env.POSTGRES_PASSWORD).toBe('supersecret');
+		expect(env.POSTGRES_DB).toBe('myapp');
+		expect(env.POSTGRES_HOST_PORT).toBe('5434');
+	});
+
+	it('should resolve ports, rewrite URLs and hostnames, then append _test', async () => {
+		writeFileSync(
+			join(testDir, 'docker-compose.yml'),
+			`
+services:
+  postgres:
+    image: postgres:18
+    ports:
+      - '\${POSTGRES_HOST_PORT:-5432}:5432'
+  redis:
+    image: redis:7
+    ports:
+      - '\${REDIS_HOST_PORT:-6379}:6379'
+`,
+		);
+
+		// Simulate secrets loaded from encrypted store (Docker hostnames)
+		const secretsEnv: Record<string, string> = {
+			DATABASE_URL: 'postgresql://app:supersecret@postgres:5432/myapp',
+			REDIS_URL: 'redis://:redispass@redis:6379',
+			POSTGRES_USER: 'app',
+			POSTGRES_PASSWORD: 'supersecret',
+			POSTGRES_DB: 'myapp',
+			POSTGRES_HOST: 'postgres',
+			POSTGRES_PORT: '5432',
+			REDIS_PASSWORD: 'redispass',
+			REDIS_HOST: 'redis',
+			REDIS_PORT: '6379',
+		};
+
+		// Step 1: Resolve ports
+		const resolvedPorts = await resolveServicePorts(testDir);
+
+		// Step 2: Build env for docker compose (secrets + ports)
+		const dockerEnv = buildDockerComposeEnv(
+			secretsEnv,
+			resolvedPorts.dockerEnv,
+		);
+		expect(dockerEnv.POSTGRES_USER).toBe('app');
+		expect(dockerEnv.POSTGRES_PASSWORD).toBe('supersecret');
+
+		// Step 3: Rewrite URLs with ports and hostnames
+		const rewritten = rewriteUrlsWithPorts(secretsEnv, resolvedPorts);
+
+		// Step 4: Apply test suffix
+		const final = rewriteDatabaseUrlForTests(rewritten);
+
+		// Hostnames should be rewritten to localhost
+		expect(final.POSTGRES_HOST).toBe('localhost');
+		expect(final.REDIS_HOST).toBe('localhost');
+
+		// DATABASE_URL should have localhost and _test suffix
+		expect(final.DATABASE_URL).toContain('@localhost:');
+		expect(final.DATABASE_URL).toMatch(/\/myapp_test$/);
+
+		// REDIS_URL should have localhost
+		expect(final.REDIS_URL).toContain('@localhost:');
+	});
+
+	it('should not default to postgres:postgres when secrets are provided', () => {
+		const secretsEnv = {
+			POSTGRES_USER: 'myapp',
+			POSTGRES_PASSWORD: 'strongpass123',
+		};
+
+		const env = buildDockerComposeEnv(secretsEnv, {});
+
+		// The key assertion: secrets are in env so Docker Compose
+		// ${POSTGRES_USER:-postgres} resolves to 'myapp', not 'postgres'
+		expect(env.POSTGRES_USER).toBe('myapp');
+		expect(env.POSTGRES_PASSWORD).toBe('strongpass123');
 	});
 });
