@@ -577,6 +577,109 @@ describe('PostgresKyselyMigrator', () => {
 		});
 	});
 
+	describe('afterCreate hook', () => {
+		it('should call afterCreate before migrations run', async () => {
+			const hookDbName = `test_kysely_hook_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${hookDbName}`;
+			const callOrder: string[] = [];
+
+			const db = new Kysely<TestSchema>({
+				dialect: new PostgresDialect({
+					pool: new Pool({
+						host: 'localhost',
+						port: 5432,
+						user: 'geekmidas',
+						password: 'geekmidas',
+						database: hookDbName,
+					}),
+				}),
+			});
+
+			const provider = new TestMigrationProvider();
+			provider.addMigration('001_create_table', {
+				up: async (db) => {
+					callOrder.push('migrate');
+					await db.schema
+						.createTable('items')
+						.addColumn('id', 'serial', (col) => col.primaryKey())
+						.execute();
+				},
+			});
+
+			const migrator = new PostgresKyselyMigrator({
+				uri,
+				db,
+				provider,
+				afterCreate: async (receivedUri) => {
+					callOrder.push('afterCreate');
+					expect(receivedUri).toBe(uri);
+				},
+			});
+
+			const cleanup = await migrator.start();
+
+			expect(callOrder).toEqual(['afterCreate', 'migrate']);
+
+			await cleanup();
+		});
+
+		it('should allow creating users and schemas before migrations', async () => {
+			const schemaDbName = `test_kysely_schema_hook_${Date.now()}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${schemaDbName}`;
+
+			const db = new Kysely<TestSchema>({
+				dialect: new PostgresDialect({
+					pool: new Pool({
+						host: 'localhost',
+						port: 5432,
+						user: 'geekmidas',
+						password: 'geekmidas',
+						database: schemaDbName,
+					}),
+				}),
+			});
+
+			const provider = new TestMigrationProvider();
+			provider.addMigration('001_use_schema', {
+				up: async (db) => {
+					// Verify schema exists (created by afterCreate)
+					const result = await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app'`.execute(
+						db,
+					);
+					if (result.rows.length === 0) {
+						throw new Error('Expected app schema to exist');
+					}
+					await db.schema
+						.createTable('items')
+						.addColumn('id', 'serial', (col) => col.primaryKey())
+						.execute();
+				},
+			});
+
+			const migrator = new PostgresKyselyMigrator({
+				uri,
+				db,
+				provider,
+				afterCreate: async () => {
+					const client = new Client({
+						host: 'localhost',
+						port: 5432,
+						user: 'geekmidas',
+						password: 'geekmidas',
+						database: schemaDbName,
+					});
+					await client.connect();
+					await client.query('CREATE SCHEMA IF NOT EXISTS app');
+					await client.end();
+				},
+			});
+
+			const cleanup = await migrator.start();
+
+			await cleanup();
+		});
+	});
+
 	describe('error scenarios', () => {
 		it('should handle provider errors', async () => {
 			const providerErrorDbName = `test_provider_error_${Date.now()}`;
