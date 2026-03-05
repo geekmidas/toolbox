@@ -17,7 +17,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 
 /** Default Docker image versions for services */
 export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
-	postgres: '16-alpine',
+	postgres: '18-alpine',
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
 };
@@ -409,7 +409,7 @@ function getInfraServiceImage(
 	config: boolean | { version?: string; image?: string } | undefined,
 ): string {
 	const defaults: Record<'postgres' | 'redis', string> = {
-		postgres: 'postgres:16-alpine',
+		postgres: 'postgres:18-alpine',
 		redis: 'redis:7-alpine',
 	};
 

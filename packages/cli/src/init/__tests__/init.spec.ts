@@ -545,7 +545,7 @@ describe('initCommand', () => {
 
 			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
 			const content = await readFile(dockerPath, 'utf-8');
-			expect(content).toContain('postgres:16-alpine');
+			expect(content).toContain('postgres:18-alpine');
 			expect(content).toContain("'${POSTGRES_HOST_PORT:-5432}:5432'");
 		});
 

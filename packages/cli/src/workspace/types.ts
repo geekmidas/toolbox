@@ -85,7 +85,7 @@ export type FrontendFramework = 'nextjs' | 'remix' | 'vite';
  * @example
  * ```ts
  * // Use specific version
- * db: { version: '16-alpine' }
+ * db: { version: '18-alpine' }
  *
  * // Use custom image
  * db: { image: 'timescale/timescaledb:latest-pg16' }
@@ -144,7 +144,7 @@ export interface MailServiceConfig extends ServiceImageConfig {
  *
  * // Custom versions
  * services: {
- *   db: { version: '16-alpine' },
+ *   db: { version: '18-alpine' },
  *   cache: { version: '7-alpine' },
  * }
  *

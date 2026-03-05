@@ -42,7 +42,7 @@ export function generateDockerFiles(
 				: '';
 
 		services.push(`  postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: ${options.name}-postgres
     restart: unless-stopped${envFile}
     environment:

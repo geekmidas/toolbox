@@ -792,7 +792,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			expect(yaml).toContain('postgres:');
-			expect(yaml).toContain('image: postgres:16-alpine');
+			expect(yaml).toContain('image: postgres:18-alpine');
 			expect(yaml).toContain('container_name: test-workspace-postgres');
 		});
 
