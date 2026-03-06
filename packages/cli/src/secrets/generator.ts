@@ -124,7 +124,7 @@ export function generateConnectionUrls(
 	}
 
 	if (services.minio) {
-		urls.S3_ENDPOINT = generateMinioEndpoint(services.minio);
+		urls.STORAGE_ENDPOINT = generateMinioEndpoint(services.minio);
 	}
 
 	return urls;

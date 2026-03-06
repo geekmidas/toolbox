@@ -353,19 +353,19 @@ describe('toEmbeddableSecrets', () => {
 				},
 			},
 			urls: {
-				S3_ENDPOINT: 'http://localhost:9000',
+				STORAGE_ENDPOINT: 'http://localhost:9000',
 			},
 			custom: {},
 		};
 
 		const embeddable = toEmbeddableSecrets(secrets);
 
-		expect(embeddable.S3_ENDPOINT).toBe('http://localhost:9000');
-		expect(embeddable.S3_ACCESS_KEY_ID).toBe('myaccesskey');
-		expect(embeddable.S3_SECRET_ACCESS_KEY).toBe('mysecretkey');
-		expect(embeddable.S3_BUCKET).toBe('my-bucket');
-		expect(embeddable.S3_REGION).toBe('eu-west-1');
-		expect(embeddable.S3_FORCE_PATH_STYLE).toBe('true');
+		expect(embeddable.STORAGE_ENDPOINT).toBe('http://localhost:9000');
+		expect(embeddable.STORAGE_ACCESS_KEY_ID).toBe('myaccesskey');
+		expect(embeddable.STORAGE_SECRET_ACCESS_KEY).toBe('mysecretkey');
+		expect(embeddable.STORAGE_BUCKET).toBe('my-bucket');
+		expect(embeddable.STORAGE_REGION).toBe('eu-west-1');
+		expect(embeddable.STORAGE_FORCE_PATH_STYLE).toBe('true');
 	});
 
 	it('should handle all services and custom secrets together', () => {

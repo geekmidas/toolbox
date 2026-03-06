@@ -34,7 +34,7 @@ export interface StageSecrets {
 		DATABASE_URL?: string;
 		REDIS_URL?: string;
 		RABBITMQ_URL?: string;
-		S3_ENDPOINT?: string;
+		STORAGE_ENDPOINT?: string;
 	};
 	/** Custom user-defined secrets */
 	custom: Record<string, string>;

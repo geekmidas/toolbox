@@ -399,7 +399,7 @@ export function rewriteUrlsWithPorts(
 
 	// Rewrite URLs: replace Docker service hostnames with localhost and fix ports
 	for (const [key, value] of Object.entries(result)) {
-		if (!key.endsWith('_URL') && key !== 'DATABASE_URL') continue;
+		if (!key.endsWith('_URL') && !key.endsWith('_ENDPOINT') && key !== 'DATABASE_URL') continue;
 
 		let rewritten = value;
 		for (const name of serviceNames) {

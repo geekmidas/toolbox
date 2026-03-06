@@ -129,8 +129,8 @@ export async function secretsInitCommand(
 	if (secrets.urls.RABBITMQ_URL) {
 		logger.log(`  RABBITMQ_URL: ${maskUrl(secrets.urls.RABBITMQ_URL)}`);
 	}
-	if (secrets.urls.S3_ENDPOINT) {
-		logger.log(`  S3_ENDPOINT: ${secrets.urls.S3_ENDPOINT}`);
+	if (secrets.urls.STORAGE_ENDPOINT) {
+		logger.log(`  STORAGE_ENDPOINT: ${secrets.urls.STORAGE_ENDPOINT}`);
 	}
 
 	if (Object.keys(secrets.custom).length > 0) {
@@ -260,8 +260,8 @@ export async function secretsShowCommand(
 			`  RABBITMQ_URL: ${reveal ? secrets.urls.RABBITMQ_URL : maskUrl(secrets.urls.RABBITMQ_URL)}`,
 		);
 	}
-	if (secrets.urls.S3_ENDPOINT) {
-		logger.log(`  S3_ENDPOINT: ${secrets.urls.S3_ENDPOINT}`);
+	if (secrets.urls.STORAGE_ENDPOINT) {
+		logger.log(`  STORAGE_ENDPOINT: ${secrets.urls.STORAGE_ENDPOINT}`);
 	}
 
 	// Show custom secrets

@@ -259,10 +259,10 @@ describe('generateConnectionUrls', () => {
 		expect(urls.DATABASE_URL).toBeDefined();
 		expect(urls.REDIS_URL).toBeDefined();
 		expect(urls.RABBITMQ_URL).toBeDefined();
-		expect(urls.S3_ENDPOINT).toBe('http://minio:9000');
+		expect(urls.STORAGE_ENDPOINT).toBe('http://minio:9000');
 	});
 
-	it('should generate S3_ENDPOINT for minio', () => {
+	it('should generate STORAGE_ENDPOINT for minio', () => {
 		const urls = generateConnectionUrls({
 			minio: {
 				host: 'localhost',
@@ -273,7 +273,7 @@ describe('generateConnectionUrls', () => {
 			},
 		});
 
-		expect(urls.S3_ENDPOINT).toBe('http://localhost:9000');
+		expect(urls.STORAGE_ENDPOINT).toBe('http://localhost:9000');
 		expect(urls.DATABASE_URL).toBeUndefined();
 	});
 });
@@ -308,11 +308,11 @@ describe('createStageSecrets', () => {
 		expect(secrets.urls.RABBITMQ_URL).toBeDefined();
 	});
 
-	it('should generate S3_ENDPOINT for minio', () => {
+	it('should generate STORAGE_ENDPOINT for minio', () => {
 		const secrets = createStageSecrets('production', ['minio']);
 
 		expect(secrets.services.minio).toBeDefined();
-		expect(secrets.urls.S3_ENDPOINT).toBe('http://localhost:9000');
+		expect(secrets.urls.STORAGE_ENDPOINT).toBe('http://localhost:9000');
 	});
 });
 

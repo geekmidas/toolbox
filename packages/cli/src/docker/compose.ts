@@ -124,12 +124,12 @@ services:
 	}
 
 	if (serviceMap.has('minio')) {
-		yaml += `      - S3_ENDPOINT=\${S3_ENDPOINT:-http://minio:9000}
-      - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
-      - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
-      - S3_BUCKET=\${MINIO_BUCKET:-app}
-      - S3_REGION=\${S3_REGION:-eu-west-1}
-      - S3_FORCE_PATH_STYLE=true
+		yaml += `      - STORAGE_ENDPOINT=\${STORAGE_ENDPOINT:-http://minio:9000}
+      - STORAGE_ACCESS_KEY_ID=\${STORAGE_ACCESS_KEY_ID:-${imageName}}
+      - STORAGE_SECRET_ACCESS_KEY=\${STORAGE_SECRET_ACCESS_KEY:-${imageName}}
+      - STORAGE_BUCKET=\${STORAGE_BUCKET:-${imageName}}
+      - STORAGE_REGION=\${STORAGE_REGION:-eu-west-1}
+      - STORAGE_FORCE_PATH_STYLE=true
 `;
 	}
 
@@ -575,12 +575,12 @@ function generateAppService(
 `;
 		}
 		if (hasMinio) {
-			yaml += `      - S3_ENDPOINT=\${S3_ENDPOINT:-http://minio:9000}
-      - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
-      - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
-      - S3_BUCKET=\${MINIO_BUCKET:-app}
-      - S3_REGION=\${S3_REGION:-eu-west-1}
-      - S3_FORCE_PATH_STYLE=true
+			yaml += `      - STORAGE_ENDPOINT=\${STORAGE_ENDPOINT:-http://minio:9000}
+      - STORAGE_ACCESS_KEY_ID=\${STORAGE_ACCESS_KEY_ID:-${projectName}}
+      - STORAGE_SECRET_ACCESS_KEY=\${STORAGE_SECRET_ACCESS_KEY:-${projectName}}
+      - STORAGE_BUCKET=\${STORAGE_BUCKET:-${projectName}}
+      - STORAGE_REGION=\${STORAGE_REGION:-eu-west-1}
+      - STORAGE_FORCE_PATH_STYLE=true
 `;
 		}
 	}
