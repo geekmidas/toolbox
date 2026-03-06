@@ -633,6 +633,7 @@ describe('generateWorkspaceCompose', () => {
 					path: 'apps/api',
 					port: 3000,
 					dependencies: [],
+					resolvedDeployTarget: 'dokploy',
 				},
 				web: {
 					type: 'frontend',
@@ -640,6 +641,7 @@ describe('generateWorkspaceCompose', () => {
 					port: 3001,
 					dependencies: ['api'],
 					framework: 'nextjs',
+					resolvedDeployTarget: 'dokploy',
 				},
 			},
 			services: {},
@@ -770,12 +772,14 @@ describe('generateWorkspaceCompose', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					auth: {
 						type: 'backend',
 						path: 'apps/auth',
 						port: 3002,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
 						type: 'frontend',
@@ -783,6 +787,7 @@ describe('generateWorkspaceCompose', () => {
 						port: 3001,
 						dependencies: ['api', 'auth'],
 						framework: 'nextjs',
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -800,6 +805,7 @@ describe('generateWorkspaceCompose', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -819,6 +825,7 @@ describe('generateWorkspaceCompose', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -836,6 +843,7 @@ describe('generateWorkspaceCompose', () => {
 						port: 3001,
 						dependencies: [],
 						framework: 'nextjs',
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -863,6 +871,7 @@ describe('generateWorkspaceCompose', () => {
 						path: 'apps/api',
 						port: 3000,
 						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 			});
@@ -979,6 +988,7 @@ describe('generateWorkspaceCompose', () => {
 						port: 3001,
 						dependencies: [],
 						framework: 'nextjs',
+						resolvedDeployTarget: 'dokploy',
 					},
 				},
 				services: { db: true },
