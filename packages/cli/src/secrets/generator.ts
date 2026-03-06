@@ -132,6 +132,11 @@ export function generateConnectionUrls(
 		urls.STORAGE_ENDPOINT = generateMinioEndpoint(services.minio);
 	}
 
+	if (services.mailpit) {
+		urls.SMTP_HOST = services.mailpit.host;
+		urls.SMTP_PORT = String(services.mailpit.port);
+	}
+
 	return urls;
 }
 
