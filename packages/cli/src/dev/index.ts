@@ -274,6 +274,8 @@ export async function resolveServicePorts(
 	const savedState = await loadPortState(workspaceRoot);
 	const dockerEnv: Record<string, string> = {};
 	const ports: PortState = {};
+	// Track ports assigned in this cycle to avoid duplicates
+	const assignedPorts = new Set<number>();
 
 	logger.log('\n🔌 Resolving service ports...');
 
@@ -287,6 +289,7 @@ export async function resolveServicePorts(
 		if (containerPort !== null) {
 			ports[mapping.envVar] = containerPort;
 			dockerEnv[mapping.envVar] = String(containerPort);
+			assignedPorts.add(containerPort);
 			logger.log(
 				`   🔄 ${mapping.service}:${mapping.containerPort}: reusing existing container on port ${containerPort}`,
 			);
@@ -295,19 +298,28 @@ export async function resolveServicePorts(
 
 		// 2. Check saved port state
 		const savedPort = savedState[mapping.envVar];
-		if (savedPort && (await isPortAvailable(savedPort))) {
+		if (
+			savedPort &&
+			!assignedPorts.has(savedPort) &&
+			(await isPortAvailable(savedPort))
+		) {
 			ports[mapping.envVar] = savedPort;
 			dockerEnv[mapping.envVar] = String(savedPort);
+			assignedPorts.add(savedPort);
 			logger.log(
 				`   💾 ${mapping.service}:${mapping.containerPort}: using saved port ${savedPort}`,
 			);
 			continue;
 		}
 
-		// 3. Find available port
-		const resolvedPort = await findAvailablePort(mapping.defaultPort);
+		// 3. Find available port (skipping ports already assigned this cycle)
+		let resolvedPort = await findAvailablePort(mapping.defaultPort);
+		while (assignedPorts.has(resolvedPort)) {
+			resolvedPort = await findAvailablePort(resolvedPort + 1);
+		}
 		ports[mapping.envVar] = resolvedPort;
 		dockerEnv[mapping.envVar] = String(resolvedPort);
+		assignedPorts.add(resolvedPort);
 
 		if (resolvedPort !== mapping.defaultPort) {
 			logger.log(
