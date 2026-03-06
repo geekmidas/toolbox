@@ -10,6 +10,8 @@ export interface ServiceCredentials {
 	database?: string;
 	/** Virtual host (for rabbitmq) */
 	vhost?: string;
+	/** Bucket name (for minio) */
+	bucket?: string;
 }
 
 /** Stage secrets configuration */
@@ -25,12 +27,14 @@ export interface StageSecrets {
 		postgres?: ServiceCredentials;
 		redis?: ServiceCredentials;
 		rabbitmq?: ServiceCredentials;
+		minio?: ServiceCredentials;
 	};
 	/** Generated connection URLs */
 	urls: {
 		DATABASE_URL?: string;
 		REDIS_URL?: string;
 		RABBITMQ_URL?: string;
+		S3_ENDPOINT?: string;
 	};
 	/** Custom user-defined secrets */
 	custom: Record<string, string>;

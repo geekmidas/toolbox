@@ -34,6 +34,12 @@ const SERVICE_DEFAULTS: Record<
 		username: 'app',
 		vhost: '/',
 	},
+	minio: {
+		host: 'localhost',
+		port: 9000,
+		username: 'app',
+		bucket: 'app',
+	},
 };
 
 /**
@@ -90,6 +96,14 @@ export function generateRabbitmqUrl(creds: ServiceCredentials): string {
 }
 
 /**
+ * Generate endpoint URL for MinIO (S3-compatible).
+ */
+export function generateMinioEndpoint(creds: ServiceCredentials): string {
+	const { host, port } = creds;
+	return `http://${host}:${port}`;
+}
+
+/**
  * Generate connection URLs from service credentials.
  */
 export function generateConnectionUrls(
@@ -107,6 +121,10 @@ export function generateConnectionUrls(
 
 	if (services.rabbitmq) {
 		urls.RABBITMQ_URL = generateRabbitmqUrl(services.rabbitmq);
+	}
+
+	if (services.minio) {
+		urls.S3_ENDPOINT = generateMinioEndpoint(services.minio);
 	}
 
 	return urls;
