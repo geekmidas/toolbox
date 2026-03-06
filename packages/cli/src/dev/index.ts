@@ -1165,22 +1165,17 @@ export async function startWorkspaceServices(
 	portEnv?: Record<string, string>,
 	secretsEnv?: Record<string, string>,
 ): Promise<void> {
-	const services = workspace.services;
-	if (!services.db && !services.cache && !services.mail) {
+	const composeFile = join(workspace.root, 'docker-compose.yml');
+	if (!existsSync(composeFile)) {
 		return;
 	}
 
-	const servicesToStart: string[] = [];
+	// Discover all services from docker-compose.yml
+	const allServices = parseComposeServiceNames(composeFile);
 
-	if (services.db) {
-		servicesToStart.push('postgres');
-	}
-	if (services.cache) {
-		servicesToStart.push('redis');
-	}
-	if (services.mail) {
-		servicesToStart.push('mailpit');
-	}
+	// Exclude app services (managed by turbo, not docker)
+	const appNames = new Set(Object.keys(workspace.apps));
+	const servicesToStart = allServices.filter((name) => !appNames.has(name));
 
 	if (servicesToStart.length === 0) {
 		return;
@@ -1189,15 +1184,6 @@ export async function startWorkspaceServices(
 	logger.log(`🐳 Starting services: ${servicesToStart.join(', ')}`);
 
 	try {
-		// Check if docker-compose.yml exists
-		const composeFile = join(workspace.root, 'docker-compose.yml');
-		if (!existsSync(composeFile)) {
-			logger.warn(
-				'⚠️  No docker-compose.yml found. Services will not be started.',
-			);
-			return;
-		}
-
 		// Start services with docker-compose, passing secrets so that
 		// POSTGRES_USER, POSTGRES_PASSWORD, etc. are interpolated correctly
 		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
