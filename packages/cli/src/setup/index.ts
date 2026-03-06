@@ -153,32 +153,60 @@ export function reconcileSecrets(
 	secrets: StageSecrets,
 	workspace: NormalizedWorkspace,
 ): StageSecrets | null {
-	const isMultiApp = Object.keys(workspace.apps).length > 1;
-	if (!isMultiApp) {
-		return null;
-	}
+	let changed = false;
+	let result = { ...secrets };
 
-	const expected = generateFullstackCustomSecrets(workspace);
-	const missing: Record<string, string> = {};
+	// Reconcile service credentials: add missing services
+	const serviceMap: { key: keyof typeof workspace.services; name: ComposeServiceName }[] = [
+		{ key: 'db', name: 'postgres' },
+		{ key: 'cache', name: 'redis' },
+		{ key: 'storage', name: 'minio' },
+	];
 
-	for (const [key, value] of Object.entries(expected)) {
-		if (!(key in secrets.custom)) {
-			missing[key] = value;
+	for (const { key, name } of serviceMap) {
+		if (workspace.services[key] && !result.services[name]) {
+			const creds = generateServiceCredentials(name);
+			result = {
+				...result,
+				services: { ...result.services, [name]: creds },
+			};
+			result.urls = generateConnectionUrls(result.services);
+			logger.log(`   🔄 Adding missing service credentials: ${name}`);
+			changed = true;
 		}
 	}
 
-	if (Object.keys(missing).length === 0) {
+	// Reconcile custom secrets for multi-app workspaces
+	const isMultiApp = Object.keys(workspace.apps).length > 1;
+	if (isMultiApp) {
+		const expected = generateFullstackCustomSecrets(workspace);
+		const missing: Record<string, string> = {};
+
+		for (const [key, value] of Object.entries(expected)) {
+			if (!(key in result.custom)) {
+				missing[key] = value;
+			}
+		}
+
+		if (Object.keys(missing).length > 0) {
+			logger.log(
+				`   🔄 Adding missing secrets: ${Object.keys(missing).join(', ')}`,
+			);
+			result = {
+				...result,
+				custom: { ...result.custom, ...missing },
+			};
+			changed = true;
+		}
+	}
+
+	if (!changed) {
 		return null;
 	}
 
-	logger.log(
-		`   🔄 Adding missing secrets: ${Object.keys(missing).join(', ')}`,
-	);
-
 	return {
-		...secrets,
+		...result,
 		updatedAt: new Date().toISOString(),
-		custom: { ...secrets.custom, ...missing },
 	};
 }
 
