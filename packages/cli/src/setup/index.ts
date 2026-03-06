@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
 import { resolveServicePorts, startWorkspaceServices } from '../dev/index.js';
-import { createStageSecrets } from '../secrets/generator.js';
+import {
+	createStageSecrets,
+	generateConnectionUrls,
+	generateServiceCredentials,
+} from '../secrets/generator.js';
 import {
 	readStageSecrets,
 	secretsExist,
