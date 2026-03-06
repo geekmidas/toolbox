@@ -22,6 +22,7 @@ import {
 	normalizeStudioConfig,
 	normalizeTelescopeConfig,
 	parseComposePortMappings,
+	parseComposeServiceNames,
 	replacePortInUrl,
 	rewriteUrlsWithPorts,
 	savePortState,
@@ -1704,6 +1705,78 @@ services:
 
 		const mappings = parseComposePortMappings(composePath);
 		expect(mappings).toEqual([]);
+	});
+});
+
+describe('parseComposeServiceNames', () => {
+	let testDir: string;
+
+	beforeEach(() => {
+		testDir = join(tmpdir(), `gkm-test-service-names-${Date.now()}`);
+		mkdirSync(testDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(testDir, { recursive: true, force: true });
+	});
+
+	it('should return all service names from docker-compose.yml', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`services:
+  postgres:
+    image: postgres:18-alpine
+  redis:
+    image: redis:7-alpine
+  minio:
+    image: minio/minio:latest
+`,
+		);
+
+		const names = parseComposeServiceNames(composePath);
+		expect(names).toEqual(['postgres', 'redis', 'minio']);
+	});
+
+	it('should return empty array when file does not exist', () => {
+		const names = parseComposeServiceNames(join(testDir, 'missing.yml'));
+		expect(names).toEqual([]);
+	});
+
+	it('should return empty array when no services defined', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(composePath, 'version: "3.8"\n');
+
+		const names = parseComposeServiceNames(composePath);
+		expect(names).toEqual([]);
+	});
+
+	it('should include app and infrastructure services', () => {
+		const composePath = join(testDir, 'docker-compose.yml');
+		writeFileSync(
+			composePath,
+			`services:
+  api:
+    build: .
+  web:
+    build: .
+  postgres:
+    image: postgres:18-alpine
+  redis:
+    image: redis:7-alpine
+  custom-service:
+    image: custom:latest
+`,
+		);
+
+		const names = parseComposeServiceNames(composePath);
+		expect(names).toEqual([
+			'api',
+			'web',
+			'postgres',
+			'redis',
+			'custom-service',
+		]);
 	});
 });
 
