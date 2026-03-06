@@ -13,6 +13,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 	postgres: 'postgres',
 	redis: 'redis',
 	rabbitmq: 'rabbitmq',
+	minio: 'minio/minio',
 };
 
 /** Default Docker image versions for services */
@@ -20,6 +21,7 @@ export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
 	postgres: '18-alpine',
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
+	minio: 'latest',
 };
 
 export interface ComposeOptions {
