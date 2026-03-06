@@ -161,7 +161,10 @@ export function reconcileSecrets(
 	let result = { ...secrets };
 
 	// Reconcile service credentials: add missing services
-	const serviceMap: { key: keyof typeof workspace.services; name: ComposeServiceName }[] = [
+	const serviceMap: {
+		key: keyof typeof workspace.services;
+		name: ComposeServiceName;
+	}[] = [
 		{ key: 'db', name: 'postgres' },
 		{ key: 'cache', name: 'redis' },
 		{ key: 'storage', name: 'minio' },
