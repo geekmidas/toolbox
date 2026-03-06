@@ -251,6 +251,28 @@ services:
 `;
 	}
 
+	const mailpitImage = serviceMap.get('mailpit');
+	if (mailpitImage) {
+		yaml += `
+  mailpit:
+    image: ${mailpitImage}
+    container_name: mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH: \${SMTP_USER:-${imageName}}:\${SMTP_PASS:-${imageName}}
+    ports:
+      - "\${MAILPIT_UI_PORT:-8025}:8025"  # Web UI
+      - "\${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+`;
+	}
+
 	// Add volumes
 	yaml += `
 volumes:
@@ -423,9 +445,16 @@ services:
     image: axllent/mailpit:latest
     container_name: ${workspace.name}-mailpit
     restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH: \${SMTP_USER:-${workspace.name}}:\${SMTP_PASS:-${workspace.name}}
     ports:
-      - "8025:8025"  # Web UI
-      - "1025:1025"  # SMTP
+      - "\${MAILPIT_UI_PORT:-8025}:8025"  # Web UI
+      - "\${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - workspace-network
 `;
