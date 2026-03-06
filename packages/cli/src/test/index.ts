@@ -6,10 +6,10 @@ import { sniffAppEnvironment } from '../deploy/sniffer';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
-	loadPortState,
 	parseComposePortMappings,
 	resolveServicePorts,
 	rewriteUrlsWithPorts,
+	startComposeServices,
 	startWorkspaceServices,
 } from '../dev/index';
 import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
@@ -121,19 +121,17 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			);
 		}
 	} catch {
-		// Not in a workspace — fall back to port state file
+		// Not in a workspace — start Docker services from local docker-compose.yml
 		const composePath = join(cwd, 'docker-compose.yml');
 		const mappings = parseComposePortMappings(composePath);
 		if (mappings.length > 0) {
-			const ports = await loadPortState(cwd);
-			if (Object.keys(ports).length > 0) {
-				secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
-					dockerEnv: {},
-					ports,
-					mappings,
-				});
+			const resolvedPorts = await resolveServicePorts(cwd);
+			await startComposeServices(cwd, resolvedPorts.dockerEnv, secretsEnv);
+
+			if (resolvedPorts.mappings.length > 0) {
+				secretsEnv = rewriteUrlsWithPorts(secretsEnv, resolvedPorts);
 				console.log(
-					`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`,
+					`  🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
 				);
 			}
 		}
