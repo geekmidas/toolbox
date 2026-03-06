@@ -168,6 +168,8 @@ export interface ServicesConfig {
 	cache?: boolean | ServiceImageConfig;
 	/** Mail service (mailpit for dev) */
 	mail?: boolean | MailServiceConfig;
+	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
+	storage?: boolean | ServiceImageConfig;
 }
 
 /**
