@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
+	generateMinioEndpoint,
 	generatePostgresUrl,
 	generateRabbitmqUrl,
 	generateRedisUrl,
@@ -63,6 +64,16 @@ describe('generateServiceCredentials', () => {
 		expect(creds.port).toBe(5672);
 		expect(creds.username).toBe('app');
 		expect(creds.vhost).toBe('/');
+		expect(creds.password).toHaveLength(32);
+	});
+
+	it('should generate minio credentials with defaults', () => {
+		const creds = generateServiceCredentials('minio');
+
+		expect(creds.host).toBe('localhost');
+		expect(creds.port).toBe(9000);
+		expect(creds.username).toBe('app');
+		expect(creds.bucket).toBe('app');
 		expect(creds.password).toHaveLength(32);
 	});
 });
@@ -142,6 +153,33 @@ describe('generateRedisUrl', () => {
 	});
 });
 
+describe('generateMinioEndpoint', () => {
+	it('should generate valid minio endpoint URL', () => {
+		const creds: ServiceCredentials = {
+			host: 'localhost',
+			port: 9000,
+			username: 'app',
+			password: 'secret123',
+			bucket: 'my-bucket',
+		};
+
+		const url = generateMinioEndpoint(creds);
+		expect(url).toBe('http://localhost:9000');
+	});
+
+	it('should use custom host and port', () => {
+		const creds: ServiceCredentials = {
+			host: 'minio.example.com',
+			port: 9090,
+			username: 'app',
+			password: 'secret',
+		};
+
+		const url = generateMinioEndpoint(creds);
+		expect(url).toBe('http://minio.example.com:9090');
+	});
+});
+
 describe('generateRabbitmqUrl', () => {
 	it('should generate valid rabbitmq URL with default vhost', () => {
 		const creds: ServiceCredentials = {
@@ -209,11 +247,34 @@ describe('generateConnectionUrls', () => {
 				password: 'rmq-pass',
 				vhost: '/',
 			},
+			minio: {
+				host: 'minio',
+				port: 9000,
+				username: 'app',
+				password: 'minio-pass',
+				bucket: 'app',
+			},
 		});
 
 		expect(urls.DATABASE_URL).toBeDefined();
 		expect(urls.REDIS_URL).toBeDefined();
 		expect(urls.RABBITMQ_URL).toBeDefined();
+		expect(urls.S3_ENDPOINT).toBe('http://minio:9000');
+	});
+
+	it('should generate S3_ENDPOINT for minio', () => {
+		const urls = generateConnectionUrls({
+			minio: {
+				host: 'localhost',
+				port: 9000,
+				username: 'app',
+				password: 'secret',
+				bucket: 'my-bucket',
+			},
+		});
+
+		expect(urls.S3_ENDPOINT).toBe('http://localhost:9000');
+		expect(urls.DATABASE_URL).toBeUndefined();
 	});
 });
 
@@ -245,6 +306,13 @@ describe('createStageSecrets', () => {
 		expect(secrets.urls.DATABASE_URL).toBeDefined();
 		expect(secrets.urls.REDIS_URL).toBeDefined();
 		expect(secrets.urls.RABBITMQ_URL).toBeDefined();
+	});
+
+	it('should generate S3_ENDPOINT for minio', () => {
+		const secrets = createStageSecrets('production', ['minio']);
+
+		expect(secrets.services.minio).toBeDefined();
+		expect(secrets.urls.S3_ENDPOINT).toBe('http://localhost:9000');
 	});
 });
 
