@@ -54,6 +54,9 @@ function substituteEnvVars(sql: string, env: Record<string, string>): string {
 	let result = sql.replace(/\$\{(\w+)\}/g, (_, name) => env[name] ?? '');
 	// Replace $VAR_NAME syntax (word boundary after)
 	result = result.replace(/\$(\w+)/g, (_, name) => env[name] ?? '');
+	// Unescape bash-escaped dollar signs (\$ → $) AFTER variable substitution
+	// This handles PL/pgSQL dollar-quoting like DO \$\$ ... END \$\$;
+	result = result.replace(/\\\$/g, '$');
 	return result;
 }
 

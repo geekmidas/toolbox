@@ -92,6 +92,30 @@ EOSQL`;
 		expect(blocks[0]).toContain("CREATE USER api WITH PASSWORD ''");
 	});
 
+	it('should unescape bash-escaped dollar signs for PL/pgSQL blocks', () => {
+		const script = `psql <<-EOSQL
+    DO \\$\\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'api') THEN
+            CREATE USER api WITH PASSWORD '$API_DB_PASSWORD';
+        ELSE
+            ALTER USER api WITH PASSWORD '$API_DB_PASSWORD';
+        END IF;
+    END
+    \\$\\$;
+EOSQL`;
+
+		const blocks = parseInitScript(script, {
+			API_DB_PASSWORD: 'secret',
+		});
+
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]).toContain('DO $$');
+		expect(blocks[0]).toContain('END\n    $$;');
+		expect(blocks[0]).toContain("CREATE USER api WITH PASSWORD 'secret'");
+		expect(blocks[0]).not.toContain('\\$');
+	});
+
 	it('should return empty array for script with no heredocs', () => {
 		const script = `#!/bin/bash
 echo "Hello world"
