@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.11
+
+### Patch Changes
+
+- 🐛 [`a0917af`](https://github.com/geekmidas/toolbox/commit/a0917af20fce16ae7482dd3712d11d2d9351c714) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix minio credentials mapping
+
 ## 1.10.10
 
 ### Patch Changes
