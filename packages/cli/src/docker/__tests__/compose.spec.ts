@@ -352,9 +352,15 @@ describe('generateDockerCompose', () => {
 				services: { minio: true },
 			});
 
-			expect(yaml).toContain('- STORAGE_ENDPOINT=${STORAGE_ENDPOINT:-http://minio:9000}');
-			expect(yaml).toContain('- STORAGE_ACCESS_KEY_ID=${STORAGE_ACCESS_KEY_ID:-my-api}');
-			expect(yaml).toContain('- STORAGE_SECRET_ACCESS_KEY=${STORAGE_SECRET_ACCESS_KEY:-my-api}');
+			expect(yaml).toContain(
+				'- STORAGE_ENDPOINT=${STORAGE_ENDPOINT:-http://minio:9000}',
+			);
+			expect(yaml).toContain(
+				'- STORAGE_ACCESS_KEY_ID=${STORAGE_ACCESS_KEY_ID:-my-api}',
+			);
+			expect(yaml).toContain(
+				'- STORAGE_SECRET_ACCESS_KEY=${STORAGE_SECRET_ACCESS_KEY:-my-api}',
+			);
 			expect(yaml).toContain('- STORAGE_BUCKET=${STORAGE_BUCKET:-my-api}');
 			expect(yaml).toContain('- STORAGE_REGION=${STORAGE_REGION:-eu-west-1}');
 			expect(yaml).toContain('- STORAGE_FORCE_PATH_STYLE=true');
@@ -386,8 +392,12 @@ describe('generateDockerCompose', () => {
 				services: { minio: true },
 			});
 
-			expect(yaml).toContain('MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-my-api}');
-			expect(yaml).toContain('MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-my-api}');
+			expect(yaml).toContain(
+				'MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-my-api}',
+			);
+			expect(yaml).toContain(
+				'MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-my-api}',
+			);
 		});
 
 		it('should expose console UI port', () => {
@@ -1045,7 +1055,9 @@ describe('generateWorkspaceCompose', () => {
 			});
 			const yaml = generateWorkspaceCompose(workspace);
 
-			expect(yaml).toContain('STORAGE_ENDPOINT=${STORAGE_ENDPOINT:-http://minio:9000}');
+			expect(yaml).toContain(
+				'STORAGE_ENDPOINT=${STORAGE_ENDPOINT:-http://minio:9000}',
+			);
 			expect(yaml).toContain('STORAGE_FORCE_PATH_STYLE=true');
 		});
 
