@@ -1,5 +1,11 @@
 # @geekmidas/testkit
 
+## 1.0.5
+
+### Patch Changes
+
+- 🐛 [`184c254`](https://github.com/geekmidas/toolbox/commit/184c2547a674d37c48948a9922c947ca98ff1f17) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix script parsing
+
 ## 1.0.4
 
 ### Patch Changes
