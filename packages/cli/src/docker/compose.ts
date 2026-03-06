@@ -14,6 +14,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 	redis: 'redis',
 	rabbitmq: 'rabbitmq',
 	minio: 'minio/minio',
+	mailpit: 'axllent/mailpit',
 };
 
 /** Default Docker image versions for services */
@@ -22,6 +23,7 @@ export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
 	minio: 'latest',
+	mailpit: 'latest',
 };
 
 export interface ComposeOptions {
