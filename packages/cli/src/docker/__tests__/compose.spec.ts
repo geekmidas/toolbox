@@ -354,11 +354,9 @@ describe('generateDockerCompose', () => {
 
 			expect(yaml).toContain('- S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}');
 			expect(yaml).toContain('- S3_ACCESS_KEY_ID=${MINIO_ACCESS_KEY:-app}');
-			expect(yaml).toContain(
-				'- S3_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY:-app}',
-			);
+			expect(yaml).toContain('- S3_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY:-app}');
 			expect(yaml).toContain('- S3_BUCKET=${MINIO_BUCKET:-app}');
-			expect(yaml).toContain('- S3_REGION=${S3_REGION:-us-east-1}');
+			expect(yaml).toContain('- S3_REGION=${S3_REGION:-eu-west-1}');
 			expect(yaml).toContain('- S3_FORCE_PATH_STYLE=true');
 		});
 
@@ -1036,9 +1034,7 @@ describe('generateWorkspaceCompose', () => {
 			});
 			const yaml = generateWorkspaceCompose(workspace);
 
-			expect(yaml).toContain(
-				'S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}',
-			);
+			expect(yaml).toContain('S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}');
 			expect(yaml).toContain('S3_FORCE_PATH_STYLE=true');
 		});
 
