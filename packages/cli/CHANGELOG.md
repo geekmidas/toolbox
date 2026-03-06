@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.9
+
+### Patch Changes
+
+- 🐛 [`4010c0d`](https://github.com/geekmidas/toolbox/commit/4010c0dae742b725c036801a4a5d8b42432fbbfe) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix bug when running gkm dev and test to run all docker services
+
 ## 1.10.8
 
 ### Patch Changes
