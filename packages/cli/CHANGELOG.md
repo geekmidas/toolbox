@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.12
+
+### Patch Changes
+
+- ✨ [`3c920fe`](https://github.com/geekmidas/toolbox/commit/3c920feb4aca4ec3b1a3bab2c88a35be5c986ddd) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix service start on test and also add mailpit env
+
 ## 1.10.11
 
 ### Patch Changes
