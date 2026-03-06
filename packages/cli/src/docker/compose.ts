@@ -395,6 +395,7 @@ services:
 			hasPostgres,
 			hasRedis,
 			hasMinio,
+			hasMail,
 		});
 	}
 
