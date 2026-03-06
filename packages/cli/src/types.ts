@@ -78,7 +78,12 @@ export interface ServiceConfig {
 }
 
 /** Supported docker-compose service names */
-export type ComposeServiceName = 'postgres' | 'redis' | 'rabbitmq' | 'minio';
+export type ComposeServiceName =
+	| 'postgres'
+	| 'redis'
+	| 'rabbitmq'
+	| 'minio'
+	| 'mailpit';
 
 /** Services configuration - can be boolean (use defaults) or object with version */
 export type ComposeServicesConfig = {
