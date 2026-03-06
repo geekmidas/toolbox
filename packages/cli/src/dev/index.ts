@@ -1165,6 +1165,41 @@ export function parseComposeServiceNames(composePath: string): string[] {
  * This ensures manually added services are always started.
  * @internal Exported for testing
  */
+/**
+ * Start docker-compose services for a single-app project (no workspace config).
+ * Starts all services defined in docker-compose.yml.
+ */
+export async function startComposeServices(
+	cwd: string,
+	portEnv?: Record<string, string>,
+	secretsEnv?: Record<string, string>,
+): Promise<void> {
+	const composeFile = join(cwd, 'docker-compose.yml');
+	if (!existsSync(composeFile)) {
+		return;
+	}
+
+	const servicesToStart = parseComposeServiceNames(composeFile);
+	if (servicesToStart.length === 0) {
+		return;
+	}
+
+	logger.log(`🐳 Starting services: ${servicesToStart.join(', ')}`);
+
+	try {
+		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
+			cwd,
+			stdio: 'inherit',
+			env: buildDockerComposeEnv(secretsEnv, portEnv),
+		});
+
+		logger.log('✅ Services started');
+	} catch (error) {
+		logger.error('❌ Failed to start services:', (error as Error).message);
+		throw error;
+	}
+}
+
 export async function startWorkspaceServices(
 	workspace: NormalizedWorkspace,
 	portEnv?: Record<string, string>,
