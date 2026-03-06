@@ -194,6 +194,7 @@ async function generateFreshSecrets(
 	const serviceNames: ComposeServiceName[] = [];
 	if (workspace.services.db) serviceNames.push('postgres');
 	if (workspace.services.cache) serviceNames.push('redis');
+	if (workspace.services.storage) serviceNames.push('minio');
 
 	// Create base secrets with service credentials
 	const secrets = createStageSecrets(stage, serviceNames, {

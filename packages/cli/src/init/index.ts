@@ -330,6 +330,7 @@ export async function initCommand(
 	const secretServices: ComposeServiceName[] = [];
 	if (services.db) secretServices.push('postgres');
 	if (services.cache) secretServices.push('redis');
+	if (services.storage) secretServices.push('minio');
 
 	const devSecrets = createStageSecrets('development', secretServices, {
 		projectName: name,
