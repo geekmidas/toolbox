@@ -1125,9 +1125,27 @@ export function buildDockerComposeEnv(
 }
 
 /**
+ * Parse all service names from a docker-compose.yml file.
+ * @internal Exported for testing
+ */
+export function parseComposeServiceNames(composePath: string): string[] {
+	if (!existsSync(composePath)) {
+		return [];
+	}
+
+	const content = readFileSync(composePath, 'utf-8');
+	const compose = parseYaml(content) as {
+		services?: Record<string, unknown>;
+	};
+
+	return Object.keys(compose?.services ?? {});
+}
+
+/**
  * Start docker-compose services for the workspace.
- * Passes both port mappings and secrets to docker-compose so that
- * variables like POSTGRES_USER/POSTGRES_PASSWORD are available.
+ * Parses the docker-compose.yml to discover all services and starts
+ * everything except app services (which are managed by turbo).
+ * This ensures manually added services are always started.
  * @internal Exported for testing
  */
 export async function startWorkspaceServices(
