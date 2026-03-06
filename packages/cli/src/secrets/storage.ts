@@ -215,6 +215,12 @@ export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 			STORAGE_REGION: 'eu-west-1',
 			STORAGE_FORCE_PATH_STYLE: 'true',
 		}),
+		...(secrets.services.mailpit && {
+			SMTP_HOST: secrets.services.mailpit.host,
+			SMTP_PORT: String(secrets.services.mailpit.port),
+			SMTP_USER: secrets.services.mailpit.username,
+			SMTP_PASS: secrets.services.mailpit.password,
+		}),
 	};
 }
 
