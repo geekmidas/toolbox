@@ -40,6 +40,11 @@ const SERVICE_DEFAULTS: Record<
 		username: 'app',
 		bucket: 'app',
 	},
+	mailpit: {
+		host: 'localhost',
+		port: 1025,
+		username: 'app',
+	},
 };
 
 /**
