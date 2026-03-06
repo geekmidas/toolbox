@@ -129,6 +129,9 @@ export async function secretsInitCommand(
 	if (secrets.urls.RABBITMQ_URL) {
 		logger.log(`  RABBITMQ_URL: ${maskUrl(secrets.urls.RABBITMQ_URL)}`);
 	}
+	if (secrets.urls.S3_ENDPOINT) {
+		logger.log(`  S3_ENDPOINT: ${secrets.urls.S3_ENDPOINT}`);
+	}
 
 	if (Object.keys(secrets.custom).length > 0) {
 		logger.log(`\n  Custom secrets: ${Object.keys(secrets.custom).length}`);
@@ -234,6 +237,9 @@ export async function secretsShowCommand(
 			if (creds.vhost) {
 				logger.log(`    vhost: ${creds.vhost}`);
 			}
+			if (creds.bucket) {
+				logger.log(`    bucket: ${creds.bucket}`);
+			}
 		}
 	}
 
@@ -253,6 +259,9 @@ export async function secretsShowCommand(
 		logger.log(
 			`  RABBITMQ_URL: ${reveal ? secrets.urls.RABBITMQ_URL : maskUrl(secrets.urls.RABBITMQ_URL)}`,
 		);
+	}
+	if (secrets.urls.S3_ENDPOINT) {
+		logger.log(`  S3_ENDPOINT: ${secrets.urls.S3_ENDPOINT}`);
 	}
 
 	// Show custom secrets
