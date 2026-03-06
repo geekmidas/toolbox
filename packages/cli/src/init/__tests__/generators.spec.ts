@@ -253,6 +253,7 @@ describe('generateDockerFiles', () => {
 			"'${MAILPIT_SMTP_HOST_PORT:-1025}:1025'",
 		);
 		expect(files[0].content).toContain("'${MAILPIT_UI_HOST_PORT:-8025}:8025'");
+		expect(files[0].content).toContain('MP_SMTP_AUTH:');
 	});
 });
 
