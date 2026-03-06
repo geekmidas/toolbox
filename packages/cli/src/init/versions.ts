@@ -42,7 +42,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/rate-limit': '~2.0.0',
 	'@geekmidas/schema': '~1.0.0',
 	'@geekmidas/services': '~1.0.1',
-	'@geekmidas/storage': '~2.0.0',
+	'@geekmidas/storage': '~2.0.1',
 	'@geekmidas/studio': '~1.0.0',
 	'@geekmidas/telescope': '~1.0.0',
 	'@geekmidas/testkit': '~1.0.5',
