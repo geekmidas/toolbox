@@ -208,6 +208,13 @@ export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 			RABBITMQ_PORT: String(secrets.services.rabbitmq.port),
 			RABBITMQ_VHOST: secrets.services.rabbitmq.vhost ?? '/',
 		}),
+		...(secrets.services.minio && {
+			S3_ACCESS_KEY_ID: secrets.services.minio.username,
+			S3_SECRET_ACCESS_KEY: secrets.services.minio.password,
+			S3_BUCKET: secrets.services.minio.bucket ?? 'app',
+			S3_REGION: 'eu-west-1',
+			S3_FORCE_PATH_STYLE: 'true',
+		}),
 	};
 }
 

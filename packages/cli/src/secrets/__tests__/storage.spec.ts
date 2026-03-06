@@ -338,6 +338,36 @@ describe('toEmbeddableSecrets', () => {
 		expect(embeddable.RABBITMQ_VHOST).toBe('/myapp');
 	});
 
+	it('should include minio service credentials', () => {
+		const secrets: StageSecrets = {
+			stage: 'production',
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			services: {
+				minio: {
+					host: 'localhost',
+					port: 9000,
+					username: 'myaccesskey',
+					password: 'mysecretkey',
+					bucket: 'my-bucket',
+				},
+			},
+			urls: {
+				S3_ENDPOINT: 'http://localhost:9000',
+			},
+			custom: {},
+		};
+
+		const embeddable = toEmbeddableSecrets(secrets);
+
+		expect(embeddable.S3_ENDPOINT).toBe('http://localhost:9000');
+		expect(embeddable.S3_ACCESS_KEY_ID).toBe('myaccesskey');
+		expect(embeddable.S3_SECRET_ACCESS_KEY).toBe('mysecretkey');
+		expect(embeddable.S3_BUCKET).toBe('my-bucket');
+		expect(embeddable.S3_REGION).toBe('eu-west-1');
+		expect(embeddable.S3_FORCE_PATH_STYLE).toBe('true');
+	});
+
 	it('should handle all services and custom secrets together', () => {
 		const secrets: StageSecrets = {
 			stage: 'production',
