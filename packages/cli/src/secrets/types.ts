@@ -28,6 +28,7 @@ export interface StageSecrets {
 		redis?: ServiceCredentials;
 		rabbitmq?: ServiceCredentials;
 		minio?: ServiceCredentials;
+		mailpit?: ServiceCredentials;
 	};
 	/** Generated connection URLs */
 	urls: {
@@ -35,6 +36,8 @@ export interface StageSecrets {
 		REDIS_URL?: string;
 		RABBITMQ_URL?: string;
 		STORAGE_ENDPOINT?: string;
+		SMTP_HOST?: string;
+		SMTP_PORT?: string;
 	};
 	/** Custom user-defined secrets */
 	custom: Record<string, string>;
