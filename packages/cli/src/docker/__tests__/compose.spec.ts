@@ -945,8 +945,30 @@ describe('generateWorkspaceCompose', () => {
 
 			expect(yaml).toContain('mailpit:');
 			expect(yaml).toContain('image: axllent/mailpit:latest');
-			expect(yaml).toContain('- "8025:8025"'); // Web UI
-			expect(yaml).toContain('- "1025:1025"'); // SMTP
+			expect(yaml).toContain('MP_SMTP_AUTH:');
+			expect(yaml).toContain('${MAILPIT_UI_PORT:-8025}:8025'); // Web UI
+			expect(yaml).toContain('${MAILPIT_SMTP_PORT:-1025}:1025'); // SMTP
+		});
+
+		it('should add SMTP env vars for backend apps when mail is enabled', () => {
+			const workspace = createWorkspace({
+				services: { mail: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toContain('SMTP_HOST=${SMTP_HOST:-mailpit}');
+			expect(yaml).toContain('SMTP_PORT=${SMTP_PORT:-1025}');
+			expect(yaml).toContain('SMTP_USER=');
+			expect(yaml).toContain('SMTP_PASS=');
+		});
+
+		it('should add mailpit to depends_on for backend apps', () => {
+			const workspace = createWorkspace({
+				services: { mail: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toMatch(/mailpit:\s+condition: service_healthy/);
 		});
 
 		it('should add postgres_data volume when postgres is enabled', () => {
