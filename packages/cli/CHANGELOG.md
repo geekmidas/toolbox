@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.10
+
+### Patch Changes
+
+- 🐛 [`71cb452`](https://github.com/geekmidas/toolbox/commit/71cb45209123fdca32ad6aa2e2995daae307848a) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix docker service reconsiliation
+
 ## 1.10.9
 
 ### Patch Changes
