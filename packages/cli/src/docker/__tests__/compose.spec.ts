@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ComposeServiceName } from '../../types';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
 	type ComposeOptions,
@@ -10,7 +11,7 @@ import {
 } from '../compose';
 
 /** Helper to get full default image reference */
-function getDefaultImage(service: 'postgres' | 'redis' | 'rabbitmq'): string {
+function getDefaultImage(service: ComposeServiceName): string {
 	return `${DEFAULT_SERVICE_IMAGES[service]}:${DEFAULT_SERVICE_VERSIONS[service]}`;
 }
 
