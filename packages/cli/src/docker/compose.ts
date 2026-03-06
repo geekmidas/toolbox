@@ -135,6 +135,14 @@ services:
 `;
 	}
 
+	if (serviceMap.has('mailpit')) {
+		yaml += `      - SMTP_HOST=\${SMTP_HOST:-mailpit}
+      - SMTP_PORT=\${SMTP_PORT:-1025}
+      - SMTP_USER=\${SMTP_USER:-${imageName}}
+      - SMTP_PASS=\${SMTP_PASS:-${imageName}}
+`;
+	}
+
 	yaml += `    healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${port}${healthCheckPath}"]
       interval: 30s
