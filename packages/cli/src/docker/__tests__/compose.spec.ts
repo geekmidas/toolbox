@@ -344,6 +344,92 @@ describe('generateDockerCompose', () => {
 		});
 	});
 
+	describe('minio service', () => {
+		it('should add S3 environment variables', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('- S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}');
+			expect(yaml).toContain('- S3_ACCESS_KEY_ID=${MINIO_ACCESS_KEY:-app}');
+			expect(yaml).toContain(
+				'- S3_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY:-app}',
+			);
+			expect(yaml).toContain('- S3_BUCKET=${MINIO_BUCKET:-app}');
+			expect(yaml).toContain('- S3_REGION=${S3_REGION:-us-east-1}');
+			expect(yaml).toContain('- S3_FORCE_PATH_STYLE=true');
+		});
+
+		it('should add minio service definition with default image', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('minio:');
+			expect(yaml).toContain(`image: ${getDefaultImage('minio')}`);
+			expect(yaml).toContain('container_name: minio');
+		});
+
+		it('should use custom minio version', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: { version: 'RELEASE.2024-01-01' } },
+			});
+
+			expect(yaml).toContain('image: minio/minio:RELEASE.2024-01-01');
+		});
+
+		it('should configure minio credentials', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-app}');
+			expect(yaml).toContain('MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-app}');
+		});
+
+		it('should expose console UI port', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('- "9001:9001"');
+		});
+
+		it('should add minio volume', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('- minio_data:/data');
+			expect(yaml).toContain('minio_data:');
+		});
+
+		it('should include minio healthcheck', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('test: ["CMD", "mc", "ready", "local"]');
+		});
+
+		it('should add depends_on for minio', () => {
+			const yaml = generateDockerCompose({
+				...baseOptions,
+				services: { minio: true },
+			});
+
+			expect(yaml).toContain('depends_on:');
+			expect(yaml).toContain('condition: service_healthy');
+		});
+	});
+
 	describe('multiple services', () => {
 		it('should include all services when all specified', () => {
 			const yaml = generateDockerCompose({
@@ -930,6 +1016,57 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			expect(yaml).toContain('image: redis:6-alpine');
+		});
+
+		it('should add minio service when storage is configured', () => {
+			const workspace = createWorkspace({
+				services: { storage: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toContain('minio:');
+			expect(yaml).toContain('image: minio/minio:latest');
+			expect(yaml).toContain('container_name: test-workspace-minio');
+		});
+
+		it('should add S3 env vars for backend apps when minio is enabled', () => {
+			const workspace = createWorkspace({
+				services: { storage: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toContain(
+				'S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}',
+			);
+			expect(yaml).toContain('S3_FORCE_PATH_STYLE=true');
+		});
+
+		it('should add minio_data volume when minio is enabled', () => {
+			const workspace = createWorkspace({
+				services: { storage: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toContain('minio_data:');
+			expect(yaml).toContain('minio_data:/data');
+		});
+
+		it('should add depends_on minio for backend apps', () => {
+			const workspace = createWorkspace({
+				services: { storage: true },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toMatch(/minio:\s+condition: service_healthy/);
+		});
+
+		it('should support custom minio version', () => {
+			const workspace = createWorkspace({
+				services: { storage: { version: 'RELEASE.2024-01-01' } },
+			});
+			const yaml = generateWorkspaceCompose(workspace);
+
+			expect(yaml).toContain('image: minio/minio:RELEASE.2024-01-01');
 		});
 	});
 
