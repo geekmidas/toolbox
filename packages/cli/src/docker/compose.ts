@@ -534,9 +534,11 @@ function generateAppService(
 		hasPostgres: boolean;
 		hasRedis: boolean;
 		hasMinio: boolean;
+		hasMail: boolean;
 	},
 ): string {
-	const { registry, projectName, hasPostgres, hasRedis, hasMinio } = options;
+	const { registry, projectName, hasPostgres, hasRedis, hasMinio, hasMail } =
+		options;
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
 	// Health check path - frontends use /, backends use /health
@@ -589,6 +591,13 @@ function generateAppService(
       - STORAGE_FORCE_PATH_STYLE=true
 `;
 		}
+		if (hasMail) {
+			yaml += `      - SMTP_HOST=\${SMTP_HOST:-mailpit}
+      - SMTP_PORT=\${SMTP_PORT:-1025}
+      - SMTP_USER=\${SMTP_USER:-${projectName}}
+      - SMTP_PASS=\${SMTP_PASS:-${projectName}}
+`;
+		}
 	}
 
 	yaml += `    healthcheck:
@@ -604,6 +613,7 @@ function generateAppService(
 		if (hasPostgres) dependencies.push('postgres');
 		if (hasRedis) dependencies.push('redis');
 		if (hasMinio) dependencies.push('minio');
+		if (hasMail) dependencies.push('mailpit');
 	}
 
 	if (dependencies.length > 0) {
