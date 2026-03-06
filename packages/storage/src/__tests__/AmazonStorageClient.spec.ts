@@ -465,6 +465,32 @@ describe('AmazonStorageClient Integration Tests', () => {
 		});
 	});
 
+	describe('delete', () => {
+		it('should delete an uploaded file', async () => {
+			const key = 'test-files/delete-test.txt';
+			await client.upload(key, testContent, testContentType);
+
+			// Verify file exists
+			const downloadUrl = await client.getDownloadURL({ path: key });
+			const before = await fetch(downloadUrl);
+			expect(before.ok).toBe(true);
+
+			// Delete file
+			await client.delete(key);
+
+			// Verify file is gone
+			const afterUrl = await client.getDownloadURL({ path: key });
+			const after = await fetch(afterUrl);
+			expect(after.status).toBe(404);
+		});
+
+		it('should not throw when deleting a non-existent file', async () => {
+			await expect(
+				client.delete('non-existent/file.txt'),
+			).resolves.not.toThrow();
+		});
+	});
+
 	describe('getVersionDownloadURL', () => {
 		it('should generate version-specific download URL', async () => {
 			const versionKey = 'test-files/version-download.txt';
