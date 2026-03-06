@@ -128,7 +128,7 @@ services:
       - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
       - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
       - S3_BUCKET=\${MINIO_BUCKET:-app}
-      - S3_REGION=\${S3_REGION:-us-east-1}
+      - S3_REGION=\${S3_REGION:-eu-west-1}
       - S3_FORCE_PATH_STYLE=true
 `;
 	}
@@ -579,7 +579,7 @@ function generateAppService(
       - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
       - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
       - S3_BUCKET=\${MINIO_BUCKET:-app}
-      - S3_REGION=\${S3_REGION:-us-east-1}
+      - S3_REGION=\${S3_REGION:-eu-west-1}
       - S3_FORCE_PATH_STYLE=true
 `;
 		}
