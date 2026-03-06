@@ -1,5 +1,11 @@
 # @geekmidas/storage
 
+## 2.0.1
+
+### Patch Changes
+
+- ✨ [`d19d376`](https://github.com/geekmidas/toolbox/commit/d19d376738017d21f5df1e814fd9898b610554df) Thanks [@geekmidas](https://github.com/geekmidas)! - Add delete for storage client
+
 ## 2.0.0
 
 ### Patch Changes
