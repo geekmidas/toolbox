@@ -123,6 +123,16 @@ services:
 `;
 	}
 
+	if (serviceMap.has('minio')) {
+		yaml += `      - S3_ENDPOINT=\${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
+      - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
+      - S3_BUCKET=\${MINIO_BUCKET:-app}
+      - S3_REGION=\${S3_REGION:-us-east-1}
+      - S3_FORCE_PATH_STYLE=true
+`;
+	}
+
 	yaml += `    healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${port}${healthCheckPath}"]
       interval: 30s
@@ -212,6 +222,32 @@ services:
 `;
 	}
 
+	const minioImage = serviceMap.get('minio');
+	if (minioImage) {
+		yaml += `
+  minio:
+    image: ${minioImage}
+    container_name: minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/\${MINIO_BUCKET:-app} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: \${MINIO_ACCESS_KEY:-app}
+      MINIO_ROOT_PASSWORD: \${MINIO_SECRET_KEY:-app}
+    ports:
+      - "9001:9001"  # Console UI
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+`;
+	}
+
 	// Add volumes
 	yaml += `
 volumes:
@@ -229,6 +265,11 @@ volumes:
 
 	if (serviceMap.has('rabbitmq')) {
 		yaml += `  rabbitmq_data:
+`;
+	}
+
+	if (serviceMap.has('minio')) {
+		yaml += `  minio_data:
 `;
 	}
 
@@ -307,10 +348,12 @@ export function generateWorkspaceCompose(
 	const hasPostgres = services.db !== undefined && services.db !== false;
 	const hasRedis = services.cache !== undefined && services.cache !== false;
 	const hasMail = services.mail !== undefined && services.mail !== false;
+	const hasMinio = services.storage !== undefined && services.storage !== false;
 
 	// Get image versions from config
 	const postgresImage = getInfraServiceImage('postgres', services.db);
 	const redisImage = getInfraServiceImage('redis', services.cache);
+	const minioImage = getInfraServiceImage('minio', services.storage);
 
 	let yaml = `# Docker Compose for ${workspace.name} workspace
 # Use "gkm dev" or "gkm test" to start services.
@@ -325,6 +368,7 @@ services:
 			registry,
 			hasPostgres,
 			hasRedis,
+			hasMinio,
 		});
 	}
 
@@ -383,6 +427,31 @@ services:
 `;
 	}
 
+	if (hasMinio) {
+		yaml += `
+  minio:
+    image: ${minioImage}
+    container_name: ${workspace.name}-minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/\${MINIO_BUCKET:-app} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: \${MINIO_ACCESS_KEY:-app}
+      MINIO_ROOT_PASSWORD: \${MINIO_SECRET_KEY:-app}
+    ports:
+      - "9001:9001"  # Console UI
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workspace-network
+`;
+	}
+
 	// Add volumes section
 	yaml += `
 volumes:
@@ -395,6 +464,11 @@ volumes:
 
 	if (hasRedis) {
 		yaml += `  redis_data:
+`;
+	}
+
+	if (hasMinio) {
+		yaml += `  minio_data:
 `;
 	}
 
@@ -412,12 +486,13 @@ networks:
  * Get infrastructure service image with version.
  */
 function getInfraServiceImage(
-	serviceName: 'postgres' | 'redis',
+	serviceName: 'postgres' | 'redis' | 'minio',
 	config: boolean | { version?: string; image?: string } | undefined,
 ): string {
-	const defaults: Record<'postgres' | 'redis', string> = {
+	const defaults: Record<'postgres' | 'redis' | 'minio', string> = {
 		postgres: 'postgres:18-alpine',
 		redis: 'redis:7-alpine',
+		minio: 'minio/minio:latest',
 	};
 
 	if (!config || config === true) {
@@ -429,8 +504,12 @@ function getInfraServiceImage(
 			return config.image;
 		}
 		if (config.version) {
-			const baseImage = serviceName === 'postgres' ? 'postgres' : 'redis';
-			return `${baseImage}:${config.version}`;
+			const baseImages: Record<'postgres' | 'redis' | 'minio', string> = {
+				postgres: 'postgres',
+				redis: 'redis',
+				minio: 'minio/minio',
+			};
+			return `${baseImages[serviceName]}:${config.version}`;
 		}
 	}
 
@@ -448,9 +527,10 @@ function generateAppService(
 		registry?: string;
 		hasPostgres: boolean;
 		hasRedis: boolean;
+		hasMinio: boolean;
 	},
 ): string {
-	const { registry, hasPostgres, hasRedis } = options;
+	const { registry, hasPostgres, hasRedis, hasMinio } = options;
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
 	// Health check path - frontends use /, backends use /health
@@ -494,6 +574,15 @@ function generateAppService(
 			yaml += `      - REDIS_URL=\${REDIS_URL:-redis://redis:6379}
 `;
 		}
+		if (hasMinio) {
+			yaml += `      - S3_ENDPOINT=\${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY:-app}
+      - S3_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY:-app}
+      - S3_BUCKET=\${MINIO_BUCKET:-app}
+      - S3_REGION=\${S3_REGION:-us-east-1}
+      - S3_FORCE_PATH_STYLE=true
+`;
+		}
 	}
 
 	yaml += `    healthcheck:
@@ -508,6 +597,7 @@ function generateAppService(
 	if (app.type === 'backend') {
 		if (hasPostgres) dependencies.push('postgres');
 		if (hasRedis) dependencies.push('redis');
+		if (hasMinio) dependencies.push('minio');
 	}
 
 	if (dependencies.length > 0) {
