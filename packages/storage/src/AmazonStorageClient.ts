@@ -1,4 +1,5 @@
 import {
+	DeleteObjectCommand,
 	GetObjectCommand,
 	ListObjectVersionsCommand,
 	PutObjectCommand,
@@ -167,6 +168,15 @@ export class AmazonStorageClient implements StorageClient {
 		};
 
 		const command = new PutObjectCommand(params);
+
+		await this.client.send(command);
+	}
+
+	async delete(key: string): Promise<void> {
+		const command = new DeleteObjectCommand({
+			Bucket: this.bucket,
+			Key: key,
+		});
 
 		await this.client.send(command);
 	}

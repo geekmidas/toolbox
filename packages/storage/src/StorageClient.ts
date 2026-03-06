@@ -67,6 +67,12 @@ export interface StorageClient {
 		params: GetUploadParams,
 		expiresIn?: number,
 	): Promise<GetUploadResponse>;
+	/**
+	 * Delete a file from storage.
+	 *
+	 * @param key - The key (path) of the file to delete.
+	 */
+	delete(key: string): Promise<void>;
 }
 
 export interface GetUploadParams {
