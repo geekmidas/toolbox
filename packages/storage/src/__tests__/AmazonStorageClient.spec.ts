@@ -328,7 +328,7 @@ describe('AmazonStorageClient Integration Tests', () => {
 
 	describe('cache functionality', () => {
 		it('should cache download URLs', async () => {
-			const cache = new InMemoryCache<string>();
+			const cache = new InMemoryCache();
 			const clientWithCache = AmazonStorageClient.create({
 				bucket: testBucket,
 				region: 'us-east-1',
@@ -358,7 +358,7 @@ describe('AmazonStorageClient Integration Tests', () => {
 		});
 
 		it('should respect cache expiration based on URL expiry', async () => {
-			const cache = new InMemoryCache<string>();
+			const cache = new InMemoryCache();
 			const clientWithCache = AmazonStorageClient.create({
 				bucket: testBucket,
 				region: 'us-east-1',
@@ -392,7 +392,7 @@ describe('AmazonStorageClient Integration Tests', () => {
 		});
 
 		it('should use cached URL when available', async () => {
-			const cache = new InMemoryCache<string>();
+			const cache = new InMemoryCache();
 			const clientWithCache = AmazonStorageClient.create({
 				bucket: testBucket,
 				region: 'us-east-1',
@@ -443,7 +443,7 @@ describe('AmazonStorageClient Integration Tests', () => {
 		});
 
 		it('should pass cache to constructor', () => {
-			const cache = new InMemoryCache<string>();
+			const cache = new InMemoryCache();
 			const s3Client = new S3Client({
 				region: 'us-east-1',
 				credentials: {
