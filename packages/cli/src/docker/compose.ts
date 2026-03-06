@@ -230,12 +230,13 @@ services:
     container_name: minio
     restart: unless-stopped
     entrypoint: sh
-    command: -c 'mkdir -p /data/\${MINIO_BUCKET:-app} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    command: -c 'mkdir -p /data/\${STORAGE_BUCKET:-${imageName}} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
     environment:
-      MINIO_ROOT_USER: \${MINIO_ACCESS_KEY:-app}
-      MINIO_ROOT_PASSWORD: \${MINIO_SECRET_KEY:-app}
+      MINIO_ROOT_USER: \${STORAGE_ACCESS_KEY_ID:-${imageName}}
+      MINIO_ROOT_PASSWORD: \${STORAGE_SECRET_ACCESS_KEY:-${imageName}}
     ports:
-      - "9001:9001"  # Console UI
+      - "\${MINIO_API_PORT:-9000}:9000"
+      - "\${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -366,6 +367,7 @@ services:
 	for (const [appName, app] of apps) {
 		yaml += generateAppService(appName, app, apps, {
 			registry,
+			projectName: workspace.name,
 			hasPostgres,
 			hasRedis,
 			hasMinio,
@@ -434,12 +436,13 @@ services:
     container_name: ${workspace.name}-minio
     restart: unless-stopped
     entrypoint: sh
-    command: -c 'mkdir -p /data/\${MINIO_BUCKET:-app} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    command: -c 'mkdir -p /data/\${STORAGE_BUCKET:-${workspace.name}} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
     environment:
-      MINIO_ROOT_USER: \${MINIO_ACCESS_KEY:-app}
-      MINIO_ROOT_PASSWORD: \${MINIO_SECRET_KEY:-app}
+      MINIO_ROOT_USER: \${STORAGE_ACCESS_KEY_ID:-${workspace.name}}
+      MINIO_ROOT_PASSWORD: \${STORAGE_SECRET_ACCESS_KEY:-${workspace.name}}
     ports:
-      - "9001:9001"  # Console UI
+      - "\${MINIO_API_PORT:-9000}:9000"
+      - "\${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -525,12 +528,13 @@ function generateAppService(
 	allApps: [string, NormalizedAppConfig][],
 	options: {
 		registry?: string;
+		projectName: string;
 		hasPostgres: boolean;
 		hasRedis: boolean;
 		hasMinio: boolean;
 	},
 ): string {
-	const { registry, hasPostgres, hasRedis, hasMinio } = options;
+	const { registry, projectName, hasPostgres, hasRedis, hasMinio } = options;
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
 	// Health check path - frontends use /, backends use /health

@@ -145,9 +145,15 @@ export function createStageSecrets(
 	const now = new Date().toISOString();
 	const serviceCredentials = generateServicesCredentials(services);
 
-	// Override postgres database name with project-derived name if provided
-	if (options?.projectName && serviceCredentials.postgres) {
-		serviceCredentials.postgres.database = `${options.projectName.replace(/-/g, '_')}_dev`;
+	// Override service defaults with project-derived names if provided
+	if (options?.projectName) {
+		if (serviceCredentials.postgres) {
+			serviceCredentials.postgres.database = `${options.projectName.replace(/-/g, '_')}_dev`;
+		}
+		if (serviceCredentials.minio) {
+			serviceCredentials.minio.bucket = options.projectName;
+			serviceCredentials.minio.username = options.projectName;
+		}
 	}
 
 	const urls = generateConnectionUrls(serviceCredentials);

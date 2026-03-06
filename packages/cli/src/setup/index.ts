@@ -173,6 +173,11 @@ export function reconcileSecrets(
 	for (const { key, name } of serviceMap) {
 		if (workspace.services[key] && !result.services[name]) {
 			const creds = generateServiceCredentials(name);
+			// Override defaults with project-derived names
+			if (name === 'minio') {
+				creds.bucket = workspace.name;
+				creds.username = workspace.name;
+			}
 			result = {
 				...result,
 				services: { ...result.services, [name]: creds },

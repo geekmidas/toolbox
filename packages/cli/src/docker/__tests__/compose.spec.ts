@@ -396,7 +396,8 @@ describe('generateDockerCompose', () => {
 				services: { minio: true },
 			});
 
-			expect(yaml).toContain('- "9001:9001"');
+			expect(yaml).toContain('- "${MINIO_API_PORT:-9000}:9000"');
+			expect(yaml).toContain('- "${MINIO_CONSOLE_PORT:-9001}:9001"');
 		});
 
 		it('should add minio volume', () => {

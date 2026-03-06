@@ -151,9 +151,9 @@ describe('reconcileSecrets', () => {
 		expect(result!.services.minio).toBeDefined();
 		expect(result!.services.minio!.host).toBe('localhost');
 		expect(result!.services.minio!.port).toBe(9000);
-		expect(result!.services.minio!.bucket).toBe('app');
+		expect(result!.services.minio!.bucket).toBe('test-project');
 		expect(result!.services.minio!.password).toHaveLength(32);
-		expect(result!.urls.S3_ENDPOINT).toBe('http://localhost:9000');
+		expect(result!.urls.STORAGE_ENDPOINT).toBe('http://localhost:9000');
 		// Existing postgres should be preserved
 		expect(result!.services.postgres).toEqual(secrets.services.postgres);
 	});
@@ -175,7 +175,7 @@ describe('reconcileSecrets', () => {
 			password: 'mysecret',
 			bucket: 'my-bucket',
 		};
-		secrets.urls.S3_ENDPOINT = 'http://localhost:9000';
+		secrets.urls.STORAGE_ENDPOINT = 'http://localhost:9000';
 
 		const result = reconcileSecrets(secrets, workspace);
 
