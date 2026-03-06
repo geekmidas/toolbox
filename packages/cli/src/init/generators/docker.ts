@@ -156,8 +156,7 @@ export function generateDockerFiles(
       - '\${MAILPIT_SMTP_HOST_PORT:-1025}:1025'
       - '\${MAILPIT_UI_HOST_PORT:-8025}:8025'
     environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1`);
+      MP_SMTP_AUTH: \${SMTP_USER:-${options.name}}:\${SMTP_PASS:-${options.name}}`);
 	}
 
 	// Build docker-compose.yml
