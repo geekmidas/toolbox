@@ -158,6 +158,41 @@ describe('reconcileSecrets', () => {
 		expect(result!.services.postgres).toEqual(secrets.services.postgres);
 	});
 
+	it('should add missing mailpit credentials when mail service is enabled', () => {
+		const workspace = createWorkspace({
+			services: { db: true, mail: true },
+		});
+		// Secrets only have postgres, not mailpit
+		const secrets = createSecrets({
+			NODE_ENV: 'development',
+			PORT: '3000',
+			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
+			API_DB_PASSWORD: 'pass',
+			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
+			AUTH_DB_PASSWORD: 'pass',
+			WEB_URL: 'http://localhost:3002',
+			BETTER_AUTH_SECRET: 'existing',
+			BETTER_AUTH_URL: 'http://localhost:3001',
+			BETTER_AUTH_TRUSTED_ORIGINS:
+				'http://localhost:3000,http://localhost:3001,http://localhost:3002',
+			AUTH_PORT: '3001',
+			AUTH_URL: 'http://localhost:3001',
+		});
+
+		const result = reconcileSecrets(secrets, workspace);
+
+		expect(result).not.toBeNull();
+		expect(result!.services.mailpit).toBeDefined();
+		expect(result!.services.mailpit!.host).toBe('localhost');
+		expect(result!.services.mailpit!.port).toBe(1025);
+		expect(result!.services.mailpit!.username).toBeDefined();
+		expect(result!.services.mailpit!.password).toHaveLength(32);
+		expect(result!.urls.SMTP_HOST).toBe('localhost');
+		expect(result!.urls.SMTP_PORT).toBe('1025');
+		// Existing postgres should be preserved
+		expect(result!.services.postgres).toEqual(secrets.services.postgres);
+	});
+
 	it('should not regenerate credentials for existing services', () => {
 		const workspace = createWorkspace({
 			services: { db: true, storage: true },
