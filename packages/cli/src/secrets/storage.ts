@@ -220,6 +220,8 @@ export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 			SMTP_PORT: String(secrets.services.mailpit.port),
 			SMTP_USER: secrets.services.mailpit.username,
 			SMTP_PASS: secrets.services.mailpit.password,
+			SMTP_SECURE: 'false',
+			MAIL_FROM: 'noreply@localhost',
 		}),
 	};
 }

@@ -140,6 +140,8 @@ services:
       - SMTP_PORT=\${SMTP_PORT:-1025}
       - SMTP_USER=\${SMTP_USER:-${imageName}}
       - SMTP_PASS=\${SMTP_PASS:-${imageName}}
+      - SMTP_SECURE=\${SMTP_SECURE:-false}
+      - MAIL_FROM=\${MAIL_FROM:-noreply@localhost}
 `;
 	}
 
@@ -634,6 +636,8 @@ function generateAppService(
       - SMTP_PORT=\${SMTP_PORT:-1025}
       - SMTP_USER=\${SMTP_USER:-${projectName}}
       - SMTP_PASS=\${SMTP_PASS:-${projectName}}
+      - SMTP_SECURE=\${SMTP_SECURE:-false}
+      - MAIL_FROM=\${MAIL_FROM:-noreply@localhost}
 `;
 		}
 	}
