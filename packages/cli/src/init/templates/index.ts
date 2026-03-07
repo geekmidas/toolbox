@@ -38,6 +38,7 @@ export interface ServicesSelection {
 	db: boolean;
 	cache: boolean;
 	mail: boolean;
+	storage: boolean;
 }
 
 /**
@@ -246,6 +247,11 @@ export const servicesChoices = [
 		title: 'Mailpit',
 		value: 'mail',
 		description: 'Email testing service (dev only)',
+	},
+	{
+		title: 'MinIO',
+		value: 'storage',
+		description: 'S3-compatible object storage (dev only)',
 	},
 ];
 

@@ -181,12 +181,13 @@ export async function initCommand(
 
 	// Parse services selection
 	const servicesArray: string[] = options.yes
-		? ['db', 'cache', 'mail']
+		? ['db', 'cache', 'mail', 'storage']
 		: answers.services || [];
 	const services: ServicesSelection = {
 		db: servicesArray.includes('db'),
 		cache: servicesArray.includes('cache'),
 		mail: servicesArray.includes('mail'),
+		storage: servicesArray.includes('storage'),
 	};
 
 	const pkgManager: PackageManager = options.pm
