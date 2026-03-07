@@ -6,6 +6,7 @@ import { sniffAppEnvironment } from '../deploy/sniffer';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
+	loadPortState,
 	parseComposePortMappings,
 	resolveServicePorts,
 	rewriteUrlsWithPorts,
@@ -133,6 +134,19 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 				console.log(
 					`  🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
 				);
+			} else {
+				// Fallback to saved port state from a previous gkm dev run
+				const ports = await loadPortState(cwd);
+				if (Object.keys(ports).length > 0) {
+					secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
+						dockerEnv: {},
+						ports,
+						mappings,
+					});
+					console.log(
+						`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`,
+					);
+				}
 			}
 		}
 	}
