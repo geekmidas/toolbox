@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.15
+
+### Patch Changes
+
+- ✨ [`619e4e6`](https://github.com/geekmidas/toolbox/commit/619e4e6e3de73c0266008e9747d7bd735e214216) Thanks [@geekmidas](https://github.com/geekmidas)! - Add default MAIL_FROM and SMTP_SECURE
+
 ## 1.10.14
 
 ### Patch Changes
