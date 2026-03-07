@@ -264,9 +264,7 @@ describe('generateDockerFiles', () => {
 		const files = generateDockerFiles(options, minimalTemplate);
 		expect(files[0].content).toContain('minio');
 		expect(files[0].content).toContain('minio/minio:latest');
-		expect(files[0].content).toContain(
-			"'${MINIO_API_HOST_PORT:-9000}:9000'",
-		);
+		expect(files[0].content).toContain("'${MINIO_API_HOST_PORT:-9000}:9000'");
 		expect(files[0].content).toContain(
 			"'${MINIO_CONSOLE_HOST_PORT:-9001}:9001'",
 		);
