@@ -168,6 +168,7 @@ export function reconcileSecrets(
 		{ key: 'db', name: 'postgres' },
 		{ key: 'cache', name: 'redis' },
 		{ key: 'storage', name: 'minio' },
+		{ key: 'mail', name: 'mailpit' },
 	];
 
 	for (const { key, name } of serviceMap) {
@@ -235,6 +236,7 @@ async function generateFreshSecrets(
 	if (workspace.services.db) serviceNames.push('postgres');
 	if (workspace.services.cache) serviceNames.push('redis');
 	if (workspace.services.storage) serviceNames.push('minio');
+	if (workspace.services.mail) serviceNames.push('mailpit');
 
 	// Create base secrets with service credentials
 	const secrets = createStageSecrets(stage, serviceNames, {
