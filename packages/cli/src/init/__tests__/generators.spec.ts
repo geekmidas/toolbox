@@ -25,7 +25,7 @@ const baseOptions: TemplateOptions = {
 	apiPath: '',
 	packageManager: 'pnpm',
 	deployTarget: 'dokploy',
-	services: { db: true, cache: true, mail: false },
+	services: { db: true, cache: true, mail: false, storage: false },
 };
 
 describe('generatePackageJson', () => {
@@ -245,7 +245,7 @@ describe('generateDockerFiles', () => {
 	it('should include mailpit with dynamic ports when mail is enabled', () => {
 		const options = {
 			...baseOptions,
-			services: { db: true, cache: true, mail: true },
+			services: { ...baseOptions.services, mail: true },
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		expect(files[0].content).toContain('mailpit');
@@ -254,6 +254,50 @@ describe('generateDockerFiles', () => {
 		);
 		expect(files[0].content).toContain("'${MAILPIT_UI_HOST_PORT:-8025}:8025'");
 		expect(files[0].content).toContain('MP_SMTP_AUTH:');
+	});
+
+	it('should include minio with dynamic ports when storage is enabled', () => {
+		const options = {
+			...baseOptions,
+			services: { ...baseOptions.services, storage: true },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		expect(files[0].content).toContain('minio');
+		expect(files[0].content).toContain('minio/minio:latest');
+		expect(files[0].content).toContain(
+			"'${MINIO_API_HOST_PORT:-9000}:9000'",
+		);
+		expect(files[0].content).toContain(
+			"'${MINIO_CONSOLE_HOST_PORT:-9001}:9001'",
+		);
+		expect(files[0].content).toContain('MINIO_ROOT_USER:');
+		expect(files[0].content).toContain('MINIO_ROOT_PASSWORD:');
+		expect(files[0].content).toContain('minio_data:');
+	});
+
+	it('should include all services when all are enabled', () => {
+		const options = {
+			...baseOptions,
+			services: { db: true, cache: true, mail: true, storage: true },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		expect(files[0].content).toContain('postgres');
+		expect(files[0].content).toContain('redis');
+		expect(files[0].content).toContain('mailpit');
+		expect(files[0].content).toContain('minio');
+	});
+
+	it('should not include disabled services', () => {
+		const options = {
+			...baseOptions,
+			database: false,
+			services: { db: false, cache: false, mail: false, storage: false },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		expect(files[0].content).not.toContain('postgres');
+		expect(files[0].content).toContain('redis'); // redis is always included
+		expect(files[0].content).not.toContain('mailpit');
+		expect(files[0].content).not.toContain('minio');
 	});
 });
 
