@@ -159,6 +159,30 @@ export function generateDockerFiles(
       MP_SMTP_AUTH: \${SMTP_USER:-${options.name}}:\${SMTP_PASS:-${options.name}}`);
 	}
 
+	// MinIO for S3-compatible object storage
+	if (options.services?.storage) {
+		services.push(`  minio:
+    image: minio/minio:latest
+    container_name: ${options.name}-minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/\${STORAGE_BUCKET:-${options.name}} && /usr/bin/docker-entrypoint.sh server --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: \${STORAGE_ACCESS_KEY_ID:-${options.name}}
+      MINIO_ROOT_PASSWORD: \${STORAGE_SECRET_ACCESS_KEY:-${options.name}}
+    ports:
+      - '\${MINIO_API_HOST_PORT:-9000}:9000'
+      - '\${MINIO_CONSOLE_HOST_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5`);
+		volumes.push('  minio_data:');
+	}
+
 	// Build docker-compose.yml
 	let dockerCompose = `# Use "gkm dev" or "gkm test" to start services.
 # Running "docker compose up" directly will not inject secrets or resolve ports.
