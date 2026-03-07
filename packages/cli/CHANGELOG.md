@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.14
+
+### Patch Changes
+
+- 🐛 Fix smtp resolution ports
+
 ## 1.10.13
 
 ### Patch Changes

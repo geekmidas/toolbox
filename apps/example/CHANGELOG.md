@@ -1,5 +1,12 @@
 # @geekmidas/example
 
+## 1.0.39
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cli@1.10.14
+
 ## 1.0.38
 
 ### Patch Changes
