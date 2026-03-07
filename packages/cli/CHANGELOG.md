@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.13
+
+### Patch Changes
+
+- ✨ [`a2738e2`](https://github.com/geekmidas/toolbox/commit/a2738e23c47ab4291284d7c1abffb97f9665cfe5) Thanks [@geekmidas](https://github.com/geekmidas)! - Add mailpit credentails to reconsiliation
+
 ## 1.10.12
 
 ### Patch Changes
