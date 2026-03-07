@@ -946,8 +946,8 @@ describe('generateWorkspaceCompose', () => {
 			expect(yaml).toContain('mailpit:');
 			expect(yaml).toContain('image: axllent/mailpit:latest');
 			expect(yaml).toContain('MP_SMTP_AUTH:');
-			expect(yaml).toContain('${MAILPIT_UI_PORT:-8025}:8025'); // Web UI
-			expect(yaml).toContain('${MAILPIT_SMTP_PORT:-1025}:1025'); // SMTP
+			expect(yaml).toContain('${MAILPIT_PORT:-8025}:8025'); // Web UI / API
+			expect(yaml).toContain('${SMTP_PORT:-1025}:1025'); // SMTP
 		});
 
 		it('should add SMTP env vars for backend apps when mail is enabled', () => {

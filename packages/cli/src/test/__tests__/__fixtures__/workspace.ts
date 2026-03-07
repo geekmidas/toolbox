@@ -99,6 +99,6 @@ services:
   mailpit:
     image: axllent/mailpit
     ports:
-      - '\${MAILPIT_SMTP_PORT:-1025}:1025'
-      - '\${MAILPIT_UI_PORT:-8025}:8025'
+      - '\${SMTP_PORT:-1025}:1025'
+      - '\${MAILPIT_PORT:-8025}:8025'
 `;

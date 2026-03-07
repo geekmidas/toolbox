@@ -249,10 +249,8 @@ describe('generateDockerFiles', () => {
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		expect(files[0].content).toContain('mailpit');
-		expect(files[0].content).toContain(
-			"'${MAILPIT_SMTP_HOST_PORT:-1025}:1025'",
-		);
-		expect(files[0].content).toContain("'${MAILPIT_UI_HOST_PORT:-8025}:8025'");
+		expect(files[0].content).toContain("'${SMTP_PORT:-1025}:1025'");
+		expect(files[0].content).toContain("'${MAILPIT_PORT:-8025}:8025'");
 		expect(files[0].content).toContain('MP_SMTP_AUTH:');
 	});
 

@@ -1467,8 +1467,8 @@ services:
   mailpit:
     image: axllent/mailpit
     ports:
-      - '\${MAILPIT_SMTP_PORT:-1025}:1025'
-      - '\${MAILPIT_UI_PORT:-8025}:8025'
+      - '\${SMTP_PORT:-1025}:1025'
+      - '\${MAILPIT_PORT:-8025}:8025'
 `,
 		);
 
@@ -1488,13 +1488,13 @@ services:
 			},
 			{
 				service: 'mailpit',
-				envVar: 'MAILPIT_SMTP_PORT',
+				envVar: 'SMTP_PORT',
 				defaultPort: 1025,
 				containerPort: 1025,
 			},
 			{
 				service: 'mailpit',
-				envVar: 'MAILPIT_UI_PORT',
+				envVar: 'MAILPIT_PORT',
 				defaultPort: 8025,
 				containerPort: 8025,
 			},

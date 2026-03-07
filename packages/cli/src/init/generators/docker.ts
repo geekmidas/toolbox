@@ -153,8 +153,8 @@ export function generateDockerFiles(
     container_name: ${options.name}-mailpit
     restart: unless-stopped
     ports:
-      - '\${MAILPIT_SMTP_HOST_PORT:-1025}:1025'
-      - '\${MAILPIT_UI_HOST_PORT:-8025}:8025'
+      - '\${SMTP_PORT:-1025}:1025'
+      - '\${MAILPIT_PORT:-8025}:8025'
     environment:
       MP_SMTP_AUTH: \${SMTP_USER:-${options.name}}:\${SMTP_PASS:-${options.name}}`);
 	}
