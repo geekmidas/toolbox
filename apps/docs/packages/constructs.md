@@ -850,7 +850,241 @@ const endpoint = e
   });
 ```
 
-The `.publisher()` method accepts an event publisher service that implements the `@geekmidas/events` publisher interface.
+The `.publisher()` method accepts an event publisher service that implements the `@geekmidas/events` publisher interface. See [Defining a Publisher Service](#defining-a-publisher-service) below for how to create one.
+
+### Defining a Publisher Service
+
+The publisher service follows the standard service pattern. It wraps a `Publisher` from `@geekmidas/events` and uses `EVENT_PUBLISHER_CONNECTION_STRING` to connect to the correct backend:
+
+```typescript
+import type { Service } from '@geekmidas/services';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import { Publisher } from '@geekmidas/events';
+
+// 1. Define your event types
+type AppEvents =
+  | PublishableMessage<'user.created', { userId: string; email: string }>
+  | PublishableMessage<'order.placed', { orderId: string; total: number }>
+  | PublishableMessage<'notification.sent', { userId: string; type: string }>;
+
+// 2. Create the publisher service
+const eventPublisherService = {
+  serviceName: 'eventPublisher' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      connectionString: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
+    })).parse();
+
+    return Publisher.fromConnectionString<AppEvents>(config.connectionString);
+  },
+} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
+
+// 3. Use with endpoints
+const createUser = e
+  .post('/users')
+  .publisher(eventPublisherService)
+  .output(userSchema)
+  .event({
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+  })
+  .handle(async ({ body }) => {
+    return await createUser(body);
+  });
+```
+
+The connection string protocol determines which backend is used (`pgboss://`, `rabbitmq://`, `sns://`, `sqs://`, `basic://`). When using `services.events` in your workspace config, the CLI auto-generates this env var.
+
+### Factory-Level Publisher
+
+Set a default publisher on the factory so all endpoints inherit it:
+
+```typescript
+const api = new EndpointFactory()
+  .services([databaseService])
+  .publisher(eventPublisherService);
+
+// All endpoints can use .event() without specifying .publisher()
+const createOrder = api
+  .post('/orders')
+  .event({
+    type: 'order.placed',
+    payload: (response) => ({ orderId: response.id, total: response.total }),
+  })
+  .handle(async ({ body }) => { /* ... */ });
+```
+
+## Event Subscribers
+
+The `s` builder creates event subscribers that react to published events. Subscribers receive batches of events and can use services, logging, and even publish follow-up events.
+
+### Basic Subscriber
+
+```typescript
+import { s } from '@geekmidas/constructs/subscribers';
+
+export const onUserCreated = s
+  .subscribe('user.created')
+  .handle(async ({ events, logger }) => {
+    for (const event of events) {
+      logger.info({ userId: event.payload.userId }, 'Processing new user');
+      await sendWelcomeEmail(event.payload.email);
+    }
+  });
+```
+
+### With Services
+
+```typescript
+export const onOrderPlaced = s
+  .services([databaseService, emailService])
+  .subscribe('order.placed')
+  .handle(async ({ events, services, logger }) => {
+    for (const event of events) {
+      const order = await services.database
+        .selectFrom('orders')
+        .where('id', '=', event.payload.orderId)
+        .selectAll()
+        .executeTakeFirstOrThrow();
+
+      await services.email.send('order-confirmation', {
+        to: order.customerEmail,
+        props: { orderId: order.id, total: order.total },
+      });
+
+      logger.info({ orderId: order.id }, 'Order confirmation sent');
+    }
+  });
+```
+
+### Subscribing to Multiple Events
+
+```typescript
+export const onUserEvents = s
+  .subscribe(['user.created', 'user.updated'])
+  .handle(async ({ events, logger }) => {
+    for (const event of events) {
+      if (event.type === 'user.created') {
+        // TypeScript narrows payload to { userId: string; email: string }
+        await indexNewUser(event.payload.userId);
+      } else {
+        // event.type === 'user.updated'
+        await reindexUser(event.payload.userId);
+      }
+    }
+  });
+```
+
+### With Publisher (Chaining Events)
+
+Subscribers can publish follow-up events using a publisher service:
+
+```typescript
+export const onUserCreated = s
+  .publisher(eventPublisherService)
+  .subscribe('user.created')
+  .handle(async ({ events, publish }) => {
+    for (const event of events) {
+      await createUserProfile(event.payload.userId);
+
+      // Publish a follow-up event
+      await publish('notification.sent', {
+        userId: event.payload.userId,
+        type: 'welcome',
+      });
+    }
+  });
+```
+
+### Configuration Options
+
+| Method | Description |
+|--------|-------------|
+| `.subscribe(events)` | Event type(s) to listen for (string or string array) |
+| `.services(services)` | Inject services into the handler context |
+| `.publisher(service)` | Set publisher service (provides `publish` in context) |
+| `.output(schema)` | Validate the return value with a StandardSchema |
+| `.logger(logger)` | Set a custom logger instance |
+| `.timeout(ms)` | Set execution timeout in milliseconds |
+| `.handle(fn)` | Define the handler function and build the `Subscriber` instance |
+
+### Handler Context
+
+The handler receives:
+
+```typescript
+{
+  events: Array<{ type: string; payload: T }>;  // Batch of events (type-safe)
+  services: ServiceRecord;                       // Registered services
+  logger: Logger;                                // Logger instance
+  publish: (type, payload) => Promise<void>;     // If .publisher() is set
+}
+```
+
+### How Subscribers Run
+
+**Development (`gkm dev`):**
+The CLI scans your routes for exported `Subscriber` instances, generates polling code, and starts listening on server startup. It uses `EVENT_SUBSCRIBER_CONNECTION_STRING` to connect. See [Events: Dev Server](/packages/events#dev-server) for details.
+
+**Production (AWS Lambda):**
+Each subscriber is compiled into a Lambda handler via `AWSLambdaSubscriber`. The handler parses SQS/SNS events, filters to subscribed types, and invokes the handler. Configure event source mappings in your IaC tool.
+
+```typescript
+import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { onUserCreated } from './subscribers/userEvents';
+
+const envParser = new EnvironmentParser(process.env);
+const adaptor = new AWSLambdaSubscriber(envParser, onUserCreated);
+
+export const handler = adaptor.handler;
+```
+
+**Production (Server):**
+When building with `gkm build --provider server`, subscribers are included in the generated server and poll using the configured connection string.
+
+### Testing Subscribers
+
+```typescript
+import { TestSubscriberAdaptor } from '@geekmidas/constructs/testing';
+import { describe, it, expect } from 'vitest';
+
+describe('onUserCreated subscriber', () => {
+  it('should send welcome email', async () => {
+    const adaptor = new TestSubscriberAdaptor(onUserCreated);
+
+    const result = await adaptor.invoke({
+      events: [
+        {
+          type: 'user.created',
+          payload: { userId: '123', email: 'test@example.com' },
+        },
+      ],
+    });
+
+    // Assert side effects (email sent, etc.)
+  });
+});
+```
+
+### Project Configuration
+
+Register subscriber files in `gkm.config.ts` so the CLI can discover them:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  subscribers: './src/subscribers/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+});
+```
+
+::: tip
+Subscribers can also be co-located with endpoints in the same route files. The CLI discovers all exported `Subscriber` instances regardless of file location.
+:::
 
 ## Cron Jobs
 
