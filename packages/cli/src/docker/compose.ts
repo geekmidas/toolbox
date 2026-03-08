@@ -425,6 +425,11 @@ export function generateWorkspaceCompose(
 	const hasRedis = services.cache !== undefined && services.cache !== false;
 	const hasMail = services.mail !== undefined && services.mail !== false;
 	const hasMinio = services.storage !== undefined && services.storage !== false;
+	const eventsBackend = services.events;
+	const hasLocalStack = eventsBackend === 'sns';
+	const hasRabbitMQ =
+		eventsBackend === 'rabbitmq' ||
+		(services as Record<string, unknown>).rabbitmq !== undefined;
 
 	// Get image versions from config
 	const postgresImage = getInfraServiceImage('postgres', services.db);
@@ -447,6 +452,7 @@ services:
 			hasRedis,
 			hasMinio,
 			hasMail,
+			eventsBackend,
 		});
 	}
 
@@ -538,6 +544,55 @@ services:
 `;
 	}
 
+	if (hasLocalStack) {
+		yaml += `
+  localstack:
+    image: localstack/localstack:latest
+    container_name: ${workspace.name}-localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
+      AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}
+    ports:
+      - "\${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workspace-network
+`;
+	}
+
+	if (hasRabbitMQ) {
+		yaml += `
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ${workspace.name}-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: \${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "\${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "\${RABBITMQ_MGMT_HOST_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workspace-network
+`;
+	}
+
 	// Add volumes section
 	yaml += `
 volumes:
@@ -555,6 +610,16 @@ volumes:
 
 	if (hasMinio) {
 		yaml += `  minio_data:
+`;
+	}
+
+	if (hasLocalStack) {
+		yaml += `  localstack_data:
+`;
+	}
+
+	if (hasRabbitMQ) {
+		yaml += `  rabbitmq_data:
 `;
 	}
 
