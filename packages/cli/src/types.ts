@@ -77,7 +77,15 @@ export interface ServiceConfig {
 	version?: string;
 }
 
-/** Supported event backend types */
+/**
+ * Supported event backend types.
+ *
+ * - `pgboss`: Reuses PostgreSQL with a dedicated user/schema. Auto-enables db service.
+ * - `sns`: Adds LocalStack container with SNS+SQS services.
+ * - `rabbitmq`: Adds RabbitMQ container.
+ *
+ * All backends generate EVENT_PUBLISHER_CONNECTION_STRING and EVENT_SUBSCRIBER_CONNECTION_STRING.
+ */
 export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
 
 /** Supported docker-compose service names */

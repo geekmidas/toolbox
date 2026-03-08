@@ -159,6 +159,15 @@ export interface MailServiceConfig extends ServiceImageConfig {
  *   cache: true,
  *   mail: true,  // Mailpit in dev
  * }
+ *
+ * // With event backend
+ * services: {
+ *   db: true,
+ *   cache: true,
+ *   events: 'pgboss',    // reuses postgres (auto-enables db)
+ *   // events: 'sns',    // adds LocalStack container
+ *   // events: 'rabbitmq', // adds RabbitMQ container
+ * }
  * ```
  */
 export interface ServicesConfig {
@@ -754,7 +763,7 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	shared?: SharedConfig;
 	/** Deployment configuration */
 	deploy?: DeployConfig;
-	/** Development services (db, cache, mail) */
+	/** Development services (db, cache, mail, storage, events) */
 	services?: ServicesConfig;
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
@@ -889,7 +898,7 @@ export interface WorkspaceConfig {
 	/** Default deployment configuration */
 	deploy?: DeployConfig;
 
-	/** Development services (db, cache, mail) */
+	/** Development services (db, cache, mail, storage, events) */
 	services?: ServicesConfig;
 
 	/** Encrypted secrets configuration */
