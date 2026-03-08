@@ -291,7 +291,7 @@ gkm docker [options]
 
 Options:
   --compose              Generate docker-compose.yml
-  --services <list>      Include services: postgres, redis, rabbitmq
+  --services <list>      Include services: postgres, redis, rabbitmq, minio, mailpit, localstack
 ```
 
 ### Secrets Management

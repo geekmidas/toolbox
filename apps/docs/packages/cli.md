@@ -476,6 +476,17 @@ When services are configured, the following are auto-generated:
 - PostgreSQL: `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.
 - Redis: `REDIS_URL`, `REDIS_PASSWORD`, etc.
 - RabbitMQ: `RABBITMQ_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, etc.
+- MinIO: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_ENDPOINT`, etc.
+- Mailpit: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `MAIL_FROM`
+
+**Event Backend Credentials:**
+
+When `services.events` is configured, additional credentials are generated:
+- **pgboss**: `PGBOSS_DB_HOST`, `PGBOSS_DB_PORT`, `PGBOSS_DB_USER`, `PGBOSS_DB_PASSWORD`, `PGBOSS_DB_NAME`
+- **sns**: `AWS_ACCESS_KEY_ID` (LSIA-prefixed), `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ENDPOINT_URL`
+- **rabbitmq**: Uses the RabbitMQ service credentials
+
+All event backends generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING` for use with `@geekmidas/events`.
 
 ## Configuration File
 
@@ -739,7 +750,9 @@ The `docker` configuration controls Docker file generation:
 | `postgres` | PostgreSQL 17 | `DATABASE_URL` |
 | `redis` | Redis 7 | `REDIS_URL` |
 | `rabbitmq` | RabbitMQ 3 | `RABBITMQ_URL` |
-| `mailpit` | Mailpit SMTP | `SMTP_HOST`, `SMTP_PORT` |
+| `minio` | MinIO S3-compatible storage | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY` |
+| `mailpit` | Mailpit SMTP | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` |
+| `localstack` | AWS LocalStack (SNS+SQS) | `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID` |
 
 **Example docker-compose.yml with services:**
 
@@ -1019,6 +1032,8 @@ export default defineWorkspace({
     db: { version: '16-alpine' },
     cache: true,
     mail: true,
+    storage: true,
+    events: 'pgboss', // or 'sns' or 'rabbitmq'
   },
 
   deploy: {
@@ -1084,7 +1099,20 @@ auth: {
 |---------|-----|---------------|----------------------|
 | PostgreSQL | `db` | `postgres:18-alpine` | `DATABASE_URL` |
 | Redis | `cache` | `redis:8-alpine` | `REDIS_URL` |
-| Mailpit | `mail` | `axllent/mailpit` | `SMTP_HOST`, `SMTP_PORT` |
+| Mailpit | `mail` | `axllent/mailpit` | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` |
+| MinIO | `storage` | `minio/minio:latest` | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` |
+
+### Events Configuration
+
+| Backend | Key | Infrastructure | Environment Variables |
+|---------|-----|---------------|----------------------|
+| pg-boss | `events: 'pgboss'` | Reuses PostgreSQL (auto-enables `db`) | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING`, `PGBOSS_DB_*` |
+| AWS SNS | `events: 'sns'` | LocalStack container (SNS+SQS) | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING`, `AWS_*` |
+| RabbitMQ | `events: 'rabbitmq'` | RabbitMQ container | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING` |
+
+::: tip
+**pgboss** is recommended for most projects — it reuses your existing PostgreSQL database with a dedicated `pgboss` user and schema, so there's no extra infrastructure to manage. Use **sns** for AWS-native projects, or **rabbitmq** for high-throughput messaging.
+:::
 
 ### State Providers
 
