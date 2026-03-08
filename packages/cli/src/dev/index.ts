@@ -412,6 +412,7 @@ export function rewriteUrlsWithPorts(
 		if (
 			!key.endsWith('_URL') &&
 			!key.endsWith('_ENDPOINT') &&
+			!key.endsWith('_CONNECTION_STRING') &&
 			key !== 'DATABASE_URL'
 		)
 			continue;
