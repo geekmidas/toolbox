@@ -229,6 +229,10 @@ gkm exec --app web -- next build
 gkm exec --stage production -- vitest run
 ```
 
+**Credentials Injection:**
+
+The `exec` command decrypts secrets and injects them via `globalThis.__gkm_credentials__` (using a Node.js preload script) and `process.env`. This ensures credentials are available in both CJS and ESM module copies — important for tools like `kysely-ctl` that may load modules via a different module system.
+
 **Injected Environment Variables:**
 
 The `exec` command injects environment variables based on the workspace config:

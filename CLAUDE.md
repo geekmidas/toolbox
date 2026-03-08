@@ -545,6 +545,9 @@ Command-line tools for building, development, and deployment.
 - Auto-discovery of endpoints via glob patterns
 - Environment and logger configuration
 - Server hooks for custom middleware and routes (`beforeSetup`, `afterSetup`)
+- Encrypted secrets management (`gkm secrets:init/set/show/rotate`)
+- Event backend integration (pgboss, SNS via LocalStack, RabbitMQ)
+- Docker compose generation with service dependencies
 
 **Usage Pattern:**
 ```bash
@@ -562,7 +565,41 @@ gkm build --provider server
 
 # Generate OpenAPI specification
 gkm openapi --output src/api.ts
+
+# Secrets management
+gkm secrets:init --stage development
+gkm secrets:set --stage development
+gkm secrets:show --stage development
+gkm secrets:rotate --stage development
 ```
+
+**Events Backend Configuration:**
+
+The CLI supports three event backends via `services.events` in workspace config:
+
+- **pgboss**: Reuses PostgreSQL with a dedicated `pgboss` user and schema. Auto-enables `db` service. Generates `PGBOSS_DB_*` environment variables.
+- **sns**: Adds a LocalStack container (SNS+SQS services). Generates `AWS_*` environment variables with `LSIA`-prefixed access keys (per LocalStack credential spec).
+- **rabbitmq**: Adds a RabbitMQ container. Generates `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`.
+
+All backends generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING` for use with `@geekmidas/events`.
+
+```typescript
+// gkm.workspace.ts
+import { defineWorkspace } from '@geekmidas/cli';
+
+export default defineWorkspace({
+  apps: { /* ... */ },
+  services: {
+    db: true,
+    cache: true,
+    events: 'pgboss', // or 'sns' or 'rabbitmq'
+  },
+});
+```
+
+**Credentials Injection (CJS/ESM safe):**
+
+`gkm dev` and `gkm exec` inject secrets via `globalThis.__gkm_credentials__` rather than mutating the `Credentials` export directly. This ensures credentials are available in both CJS and ESM module copies. The `Credentials` object from `@geekmidas/envkit/credentials` checks `globalThis.__gkm_credentials__` first, then falls back to build-time encrypted credentials.
 
 #### @geekmidas/storage
 Cloud storage abstraction with S3 implementation.
@@ -1389,10 +1426,12 @@ Each package uses subpath exports for better tree-shaking:
 - `gkm build` - Build for production (server or AWS Lambda)
 - `gkm openapi` - Generate OpenAPI specification
 - `gkm generate:react-query` - Generate React Query hooks
-- `gkm init` - Scaffold new projects with templates
+- `gkm init` - Scaffold new projects with templates (supports events backend selection)
 - `gkm deploy` - Deploy to providers (Docker, Dokploy, AWS)
 - `gkm secrets:init/set/show/rotate` - Secrets management
 - `gkm docker` - Generate Docker files
+- `gkm exec` - Run commands with decrypted secrets injected via `globalThis.__gkm_credentials__`
+- `gkm setup` - Reconcile secrets and services (handles events backend changes)
 
 ### @geekmidas/client
 - `/` - Core client types
