@@ -1406,6 +1406,52 @@ describe('rewriteUrlsWithPorts', () => {
 		expect(result.POSTGRES_HOST).toBe('localhost');
 	});
 
+	it('should rewrite EVENT_PUBLISHER_CONNECTION_STRING and EVENT_SUBSCRIBER_CONNECTION_STRING', () => {
+		const secrets = {
+			EVENT_PUBLISHER_CONNECTION_STRING:
+				'pgboss://pgboss:pass@localhost:5432/mydb?schema=pgboss',
+			EVENT_SUBSCRIBER_CONNECTION_STRING:
+				'pgboss://pgboss:pass@localhost:5432/mydb?schema=pgboss',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { POSTGRES_HOST_PORT: '5433' },
+			ports: { POSTGRES_HOST_PORT: 5433 },
+			mappings: [pgMapping],
+		});
+		expect(result.EVENT_PUBLISHER_CONNECTION_STRING).toBe(
+			'pgboss://pgboss:pass@localhost:5433/mydb?schema=pgboss',
+		);
+		expect(result.EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
+			'pgboss://pgboss:pass@localhost:5433/mydb?schema=pgboss',
+		);
+	});
+
+	it('should rewrite SNS connection strings with encoded endpoint port', () => {
+		const localstackMapping = {
+			service: 'localstack',
+			envVar: 'LOCALSTACK_PORT',
+			defaultPort: 4566,
+			containerPort: 4566,
+		};
+		const secrets = {
+			EVENT_PUBLISHER_CONNECTION_STRING:
+				'sns://LSIAkey:secret@localhost:4566?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4566',
+			EVENT_SUBSCRIBER_CONNECTION_STRING:
+				'sqs://LSIAkey:secret@localhost:4566?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4566',
+		};
+		const result = rewriteUrlsWithPorts(secrets, {
+			dockerEnv: { LOCALSTACK_PORT: '4567' },
+			ports: { LOCALSTACK_PORT: 4567 },
+			mappings: [localstackMapping],
+		});
+		expect(result.EVENT_PUBLISHER_CONNECTION_STRING).toBe(
+			'sns://LSIAkey:secret@localhost:4567?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4567',
+		);
+		expect(result.EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
+			'sqs://LSIAkey:secret@localhost:4567?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4567',
+		);
+	});
+
 	it('should return empty for no mappings', () => {
 		const result = rewriteUrlsWithPorts(
 			{},
