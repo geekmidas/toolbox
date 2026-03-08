@@ -39,37 +39,52 @@ my-monorepo/
 
 ```typescript
 // gkm.config.ts (root)
-import { defineConfig } from '@geekmidas/cli/config';
+import { defineWorkspace } from '@geekmidas/cli/config';
 
-export default defineConfig({
-  // Workspace mode configuration
-  workspace: {
-    // Apps to orchestrate
-    apps: {
-      api: {
-        path: 'apps/api',
-        type: 'backend',
-        port: 3000,
-      },
-      web: {
-        path: 'apps/web',
-        type: 'frontend',
-        port: 3001,
-        dependsOn: ['api'], // Start after API is ready
-      },
-      admin: {
-        path: 'apps/admin',
-        type: 'frontend',
-        port: 3002,
-        dependsOn: ['api'],
-      },
+export default defineWorkspace({
+  name: 'my-monorepo',
+
+  apps: {
+    api: {
+      path: 'apps/api',
+      type: 'backend',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
     },
+    web: {
+      type: 'frontend',
+      path: 'apps/web',
+      port: 3001,
+      framework: 'nextjs',
+      dependencies: ['api'],
+    },
+    admin: {
+      type: 'frontend',
+      path: 'apps/admin',
+      port: 3002,
+      framework: 'nextjs',
+      dependencies: ['api'],
+    },
+  },
 
-    // Shared environment
-    env: ['.env', '.env.local'],
+  services: {
+    db: true,
+    cache: true,
+    mail: true,
+    events: 'pgboss', // or 'sns' or 'rabbitmq'
+  },
+
+  deploy: {
+    default: 'dokploy',
   },
 });
 ```
+
+::: tip
+Use `defineWorkspace()` (not `defineConfig()`) for multi-app workspaces. The `defineWorkspace()` helper provides type-safe dependency validation — `dependencies` values are checked against the app names in your config.
+:::
 
 ### App-Specific Configuration
 
@@ -141,27 +156,31 @@ When your frontend depends on the API, the CLI can automatically regenerate the 
 
 ```typescript
 // gkm.config.ts (root)
-export default defineConfig({
-  workspace: {
-    apps: {
-      api: {
-        path: 'apps/api',
-        type: 'backend',
-        port: 3000,
-      },
-      web: {
-        path: 'apps/web',
-        type: 'frontend',
-        port: 3001,
-        dependsOn: ['api'],
-        // Auto-regenerate client when API changes
-        client: {
-          output: './src/api/client.ts',
-          format: 'react-query',
-        },
+import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  apps: {
+    api: {
+      path: 'apps/api',
+      type: 'backend',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+    },
+    web: {
+      type: 'frontend',
+      path: 'apps/web',
+      port: 3001,
+      framework: 'nextjs',
+      dependencies: ['api'],
+      // Auto-regenerate client when API changes
+      client: {
+        output: './src/api',
       },
     },
   },
+  services: { db: true },
 });
 ```
 
@@ -394,11 +413,9 @@ Only share code that's truly reused:
 Always declare dependencies between apps:
 
 ```typescript
-workspace: {
-  apps: {
-    web: {
-      dependsOn: ['api'], // Explicit
-    },
+apps: {
+  web: {
+    dependencies: ['api'], // Explicit
   },
 }
 ```
