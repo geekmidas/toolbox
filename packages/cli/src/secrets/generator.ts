@@ -229,16 +229,29 @@ export function generateConnectionUrls(
 }
 
 /**
+ * Generate LocalStack service credentials with LSIA-prefixed access key.
+ */
+export function generateLocalStackCredentials(): ServiceCredentials {
+	const defaults = SERVICE_DEFAULTS.localstack;
+	return {
+		...defaults,
+		password: generateSecurePassword(),
+		accessKeyId: generateLocalStackAccessKeyId(),
+	};
+}
+
+/**
  * Create a new StageSecrets object with generated credentials.
  * @param stage - The deployment stage (e.g., 'development', 'production')
  * @param services - List of services to generate credentials for
  * @param options - Optional configuration
  * @param options.projectName - Project name used to derive the database name (e.g., 'myapp' → 'myapp_dev')
+ * @param options.eventsBackend - Event backend type (pgboss, sns, rabbitmq)
  */
 export function createStageSecrets(
 	stage: string,
 	services: ComposeServiceName[],
-	options?: { projectName?: string },
+	options?: { projectName?: string; eventsBackend?: EventsBackend },
 ): StageSecrets {
 	const now = new Date().toISOString();
 	const serviceCredentials = generateServicesCredentials(services);
@@ -254,12 +267,30 @@ export function createStageSecrets(
 		}
 	}
 
-	const urls = generateConnectionUrls(serviceCredentials);
+	// Generate event-specific credentials
+	const eventsBackend = options?.eventsBackend;
+	if (eventsBackend === 'pgboss' && serviceCredentials.postgres) {
+		// pgboss reuses postgres host/port/database but with dedicated user
+		serviceCredentials.pgboss = {
+			...PGBOSS_DEFAULTS,
+			password: generateSecurePassword(),
+			host: serviceCredentials.postgres.host,
+			port: serviceCredentials.postgres.port,
+			database: serviceCredentials.postgres.database,
+		};
+	}
+	if (eventsBackend === 'sns') {
+		// LocalStack credentials with LSIA-prefixed access key
+		serviceCredentials.localstack = generateLocalStackCredentials();
+	}
+
+	const urls = generateConnectionUrls(serviceCredentials, eventsBackend);
 
 	return {
 		stage,
 		createdAt: now,
 		updatedAt: now,
+		eventsBackend,
 		services: serviceCredentials,
 		urls,
 		custom: {},
