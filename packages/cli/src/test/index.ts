@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadWorkspaceAppInfo } from '../config';
-import { sniffAppEnvironment } from '../deploy/sniffer';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
@@ -12,7 +11,8 @@ import {
 	rewriteUrlsWithPorts,
 	startComposeServices,
 	startWorkspaceServices,
-} from '../dev/index';
+} from '../credentials';
+import { sniffAppEnvironment } from '../deploy/sniffer';
 import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
 import { getDependencyEnvVars } from '../workspace/index';
 
