@@ -1,3 +1,4 @@
+import type { EventsBackend } from '../../types.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -64,13 +65,16 @@ export function generateDockerFiles(
 		if (isFullstack && dbApps?.length) {
 			files.push({
 				path: 'docker/postgres/init.sh',
-				content: generatePostgresInitScript(dbApps),
+				content: generatePostgresInitScript(
+					dbApps,
+					options.services?.events,
+				),
 			});
 
 			// Generate .env file for docker-compose (contains db passwords)
 			files.push({
 				path: 'docker/.env',
-				content: generateDockerEnv(dbApps),
+				content: generateDockerEnv(dbApps, options.services?.events),
 			});
 		}
 	}
@@ -181,6 +185,53 @@ export function generateDockerFiles(
       timeout: 5s
       retries: 5`);
 		volumes.push('  minio_data:');
+	}
+
+	// LocalStack for SNS events
+	if (options.services?.events === 'sns') {
+		services.push(`  localstack:
+    image: localstack/localstack:latest
+    container_name: ${options.name}-localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
+      AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}
+    ports:
+      - '\${LOCALSTACK_PORT:-4566}:4566'
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:4566/_localstack/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5`);
+		volumes.push('  localstack_data:');
+	}
+
+	// RabbitMQ for rabbitmq events (when not already added by worker template)
+	if (options.services?.events === 'rabbitmq' && !hasWorker) {
+		services.push(`  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ${options.name}-rabbitmq
+    restart: unless-stopped
+    ports:
+      - '\${RABBITMQ_HOST_PORT:-5672}:5672'
+      - '\${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'check_running']
+      interval: 10s
+      timeout: 5s
+      retries: 5`);
+		if (!volumes.includes('  rabbitmq_data:')) {
+			volumes.push('  rabbitmq_data:');
+		}
 	}
 
 	// Build docker-compose.yml
