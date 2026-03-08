@@ -2259,10 +2259,15 @@ export async function execCommand(
 
 	// Resolve actual Docker ports from running containers (not just saved state)
 	const resolvedPorts = await resolveServicePorts(secretsRoot);
-	if (resolvedPorts.mappings.length > 0 && Object.keys(resolvedPorts.ports).length > 0) {
+	if (
+		resolvedPorts.mappings.length > 0 &&
+		Object.keys(resolvedPorts.ports).length > 0
+	) {
 		const rewritten = rewriteUrlsWithPorts(credentials, resolvedPorts);
 		Object.assign(credentials, rewritten);
-		logger.log(`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`);
+		logger.log(
+			`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
+		);
 	}
 
 	// Inject dependency URLs (works for both frontend and backend apps)
