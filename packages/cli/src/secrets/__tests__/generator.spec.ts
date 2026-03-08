@@ -503,15 +503,15 @@ describe('generateEventConnectionStrings', () => {
 	});
 
 	it('should throw if pgboss credentials missing', () => {
-		expect(() =>
-			generateEventConnectionStrings('pgboss', {}),
-		).toThrow('pgboss credentials required');
+		expect(() => generateEventConnectionStrings('pgboss', {})).toThrow(
+			'pgboss credentials required',
+		);
 	});
 
 	it('should throw if localstack credentials missing', () => {
-		expect(() =>
-			generateEventConnectionStrings('sns', {}),
-		).toThrow('localstack credentials required');
+		expect(() => generateEventConnectionStrings('sns', {})).toThrow(
+			'localstack credentials required',
+		);
 	});
 });
 
@@ -524,9 +524,7 @@ describe('createStageSecrets with events', () => {
 		expect(secrets.eventsBackend).toBe('pgboss');
 		expect(secrets.services.pgboss).toBeDefined();
 		expect(secrets.services.pgboss!.username).toBe('pgboss');
-		expect(secrets.services.pgboss!.host).toBe(
-			secrets.services.postgres!.host,
-		);
+		expect(secrets.services.pgboss!.host).toBe(secrets.services.postgres!.host);
 		expect(secrets.services.pgboss!.database).toBe(
 			secrets.services.postgres!.database,
 		);
@@ -546,12 +544,8 @@ describe('createStageSecrets with events', () => {
 		expect(secrets.eventsBackend).toBe('sns');
 		expect(secrets.services.localstack).toBeDefined();
 		expect(secrets.services.localstack!.accessKeyId).toMatch(/^LSIA/);
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'sns://',
-		);
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'sqs://',
-		);
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('sns://');
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain('sqs://');
 	});
 
 	it('should use rabbitmq credentials when eventsBackend is rabbitmq', () => {
@@ -560,9 +554,7 @@ describe('createStageSecrets with events', () => {
 		});
 
 		expect(secrets.eventsBackend).toBe('rabbitmq');
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'amqp://',
-		);
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('amqp://');
 		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
 			'amqp://',
 		);
@@ -572,11 +564,7 @@ describe('createStageSecrets with events', () => {
 		const secrets = createStageSecrets('development', ['postgres']);
 
 		expect(secrets.eventsBackend).toBeUndefined();
-		expect(
-			secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING,
-		).toBeUndefined();
-		expect(
-			secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING,
-		).toBeUndefined();
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toBeUndefined();
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
 	});
 });

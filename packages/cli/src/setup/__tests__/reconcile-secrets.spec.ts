@@ -376,12 +376,8 @@ describe('reconcileSecrets - events', () => {
 		expect(result!.eventsBackend).toBe('sns');
 		expect(result!.services.localstack).toBeDefined();
 		expect(result!.services.localstack!.accessKeyId).toMatch(/^LSIA/);
-		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'sns://',
-		);
-		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'sqs://',
-		);
+		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('sns://');
+		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain('sqs://');
 	});
 
 	it('should add rabbitmq credentials when events is rabbitmq', () => {
@@ -395,9 +391,7 @@ describe('reconcileSecrets - events', () => {
 		expect(result).not.toBeNull();
 		expect(result!.eventsBackend).toBe('rabbitmq');
 		expect(result!.services.rabbitmq).toBeDefined();
-		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'amqp://',
-		);
+		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('amqp://');
 	});
 
 	it('should not add duplicate pgboss credentials when already present', () => {
