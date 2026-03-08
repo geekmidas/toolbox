@@ -111,6 +111,25 @@ interface Logger {
 }
 ```
 
+## Log Redaction
+
+The `/redact` export provides a standard list of sensitive field paths for use with Pino's redaction feature:
+
+```typescript
+import { DEFAULT_REDACT_PATHS } from '@geekmidas/logger/redact';
+import pino from 'pino';
+
+const logger = pino({
+  redact: DEFAULT_REDACT_PATHS,
+});
+
+// Sensitive fields are automatically redacted:
+// password, token, secret, authorization, cookie,
+// credit card numbers, SSNs, connection strings, etc.
+logger.info({ user: { password: 'secret123' } }, 'User data');
+// Output: { user: { password: '[REDACTED]' } }
+```
+
 ## Usage with Endpoints
 
 ```typescript
