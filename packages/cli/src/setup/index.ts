@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
-import { resolveServicePorts, startWorkspaceServices } from '../dev/index.js';
+import { resolveServicePorts, startWorkspaceServices } from '../credentials/index.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
