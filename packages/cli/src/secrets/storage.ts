@@ -223,6 +223,16 @@ export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 			SMTP_SECURE: 'false',
 			MAIL_FROM: 'noreply@localhost',
 		}),
+		...(secrets.services.localstack && {
+			AWS_ACCESS_KEY_ID: secrets.services.localstack.accessKeyId ?? secrets.services.localstack.username,
+			AWS_SECRET_ACCESS_KEY: secrets.services.localstack.password,
+			AWS_REGION: secrets.services.localstack.region ?? 'us-east-1',
+			AWS_ENDPOINT_URL: `http://${secrets.services.localstack.host}:${secrets.services.localstack.port}`,
+		}),
+		...(secrets.services.pgboss && {
+			PGBOSS_DB_USER: secrets.services.pgboss.username,
+			PGBOSS_DB_PASSWORD: secrets.services.pgboss.password,
+		}),
 	};
 }
 
