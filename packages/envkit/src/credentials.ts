@@ -61,6 +61,15 @@ export function decryptCredentials(
  * ```
  */
 export const Credentials: Record<string, string> = (() => {
+	// Dev mode: check if gkm exec/dev preload injected credentials via globalThis
+	// This survives CJS/ESM module duplication where Object.assign on the
+	// export would only mutate one copy of the module's Credentials object.
+	const injected = (globalThis as Record<string, unknown>)
+		.__gkm_credentials__ as Record<string, string> | undefined;
+	if (injected) {
+		return injected;
+	}
+
 	// Development mode - no credentials embedded at build time
 	if (
 		typeof __GKM_ENCRYPTED_CREDENTIALS__ === 'undefined' ||

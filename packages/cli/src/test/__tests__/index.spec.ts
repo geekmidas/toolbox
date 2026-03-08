@@ -274,10 +274,7 @@ services:
 		// Verify preload script was created with correct content
 		expect(existsSync(preloadPath)).toBe(true);
 		const preloadContent = readFileSync(preloadPath, 'utf-8');
-		expect(preloadContent).toContain(
-			"import { Credentials } from '@geekmidas/envkit/credentials'",
-		);
-		expect(preloadContent).toContain('Object.assign(Credentials');
+		expect(preloadContent).toContain('__gkm_credentials__');
 		expect(preloadContent).toContain('Object.assign(process.env');
 		expect(preloadContent).toContain(secretsJsonPath);
 	});

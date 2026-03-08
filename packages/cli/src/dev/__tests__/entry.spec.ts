@@ -97,11 +97,9 @@ describe('createEntryWrapper', () => {
 
 		const content = await readFile(wrapperPath, 'utf-8');
 
-		expect(content).toContain(
-			"import { Credentials } from '@geekmidas/envkit/credentials'",
-		);
+		expect(content).toContain('globalThis.__gkm_credentials__');
 		expect(content).toContain(secretsPath);
-		expect(content).toContain('Object.assign(Credentials');
+		expect(content).toContain('Object.assign(process.env');
 		expect(content).toContain("await import('/path/to/entry.ts')");
 	});
 
@@ -114,7 +112,7 @@ describe('createEntryWrapper', () => {
 
 		const content = await readFile(wrapperPath, 'utf-8');
 
-		const credentialsIndex = content.indexOf('Credentials');
+		const credentialsIndex = content.indexOf('__gkm_credentials__');
 		const importIndex = content.indexOf("await import('/path/to/entry.ts')");
 
 		expect(credentialsIndex).toBeGreaterThan(-1);

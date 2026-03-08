@@ -1623,17 +1623,16 @@ export function findSecretsRoot(startDir: string): string {
  * @internal
  */
 function generateCredentialsInjection(secretsJsonPath: string): string {
-	return `import { Credentials } from '@geekmidas/envkit/credentials';
-import { existsSync, readFileSync } from 'node:fs';
+	return `import { existsSync, readFileSync } from 'node:fs';
 
-// Inject dev secrets into Credentials and process.env
+// Inject dev secrets via globalThis and process.env
+// Using globalThis.__gkm_credentials__ avoids CJS/ESM interop issues where
+// Object.assign on the Credentials export only mutates one module copy.
 const secretsPath = '${secretsJsonPath}';
 if (existsSync(secretsPath)) {
   const secrets = JSON.parse(readFileSync(secretsPath, 'utf-8'));
-  Object.assign(Credentials, secrets);
+  globalThis.__gkm_credentials__ = secrets;
   Object.assign(process.env, secrets);
-  // Debug: uncomment to verify preload is running
-  // console.log('[gkm preload] Injected', Object.keys(secrets).length, 'credentials');
 }
 `;
 }
@@ -1958,13 +1957,14 @@ export function generateServerEntryContent(options: {
 	} = options;
 
 	const credentialsInjection = secretsJsonPath
-		? `import { Credentials } from '@geekmidas/envkit/credentials';
-import { existsSync, readFileSync } from 'node:fs';
+		? `import { existsSync, readFileSync } from 'node:fs';
 
-// Inject dev secrets into Credentials (must happen before app import)
+// Inject dev secrets via globalThis (must happen before app import)
 const secretsPath = '${secretsJsonPath}';
 if (existsSync(secretsPath)) {
-  Object.assign(Credentials, JSON.parse(readFileSync(secretsPath, 'utf-8')));
+  const __secrets = JSON.parse(readFileSync(secretsPath, 'utf-8'));
+  globalThis.__gkm_credentials__ = __secrets;
+  Object.assign(process.env, __secrets);
 }
 
 `

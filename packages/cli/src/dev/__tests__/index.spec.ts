@@ -1799,23 +1799,23 @@ describe('generateServerEntryContent', () => {
 		expect(content).not.toMatch(/^import.*createApp/m);
 	});
 
-	it('should inject Credentials assignment before dynamic import', () => {
+	it('should inject credentials via globalThis before dynamic import', () => {
 		const content = generateServerEntryContent({
 			secretsJsonPath: '/tmp/dev-secrets.json',
 		});
 
-		const credentialsAssignIdx = content.indexOf('Object.assign(Credentials');
+		const credentialsIdx = content.indexOf('__gkm_credentials__');
 		const dynamicImportIdx = content.indexOf("await import('./app.js')");
 
-		expect(credentialsAssignIdx).toBeGreaterThan(-1);
+		expect(credentialsIdx).toBeGreaterThan(-1);
 		expect(dynamicImportIdx).toBeGreaterThan(-1);
-		expect(credentialsAssignIdx).toBeLessThan(dynamicImportIdx);
+		expect(credentialsIdx).toBeLessThan(dynamicImportIdx);
 	});
 
 	it('should not include credentials injection when no secrets path', () => {
 		const content = generateServerEntryContent({});
 
-		expect(content).not.toContain('Object.assign(Credentials');
+		expect(content).not.toContain('__gkm_credentials__');
 		expect(content).not.toContain('existsSync');
 	});
 
