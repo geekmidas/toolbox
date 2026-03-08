@@ -349,9 +349,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     DO \\$\\$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'pgboss') THEN
-            CREATE USER pgboss WITH PASSWORD '\$PGBOSS_DB_PASSWORD';
+            CREATE USER pgboss WITH PASSWORD '$PGBOSS_DB_PASSWORD';
         ELSE
-            ALTER USER pgboss WITH PASSWORD '\$PGBOSS_DB_PASSWORD';
+            ALTER USER pgboss WITH PASSWORD '$PGBOSS_DB_PASSWORD';
         END IF;
     END
     \\$\\$;
