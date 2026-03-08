@@ -147,6 +147,14 @@ services:
 `;
 	}
 
+	if (serviceMap.has('localstack')) {
+		yaml += `      - AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID:-localstack}
+      - AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY:-localstack}
+      - AWS_REGION=\${AWS_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=\${AWS_ENDPOINT_URL:-http://localstack:4566}
+`;
+	}
+
 	yaml += `    healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${port}${healthCheckPath}"]
       interval: 30s
@@ -608,10 +616,18 @@ function generateAppService(
 		hasRedis: boolean;
 		hasMinio: boolean;
 		hasMail: boolean;
+		eventsBackend?: import('../types').EventsBackend;
 	},
 ): string {
-	const { registry, projectName, hasPostgres, hasRedis, hasMinio, hasMail } =
-		options;
+	const {
+		registry,
+		projectName,
+		hasPostgres,
+		hasRedis,
+		hasMinio,
+		hasMail,
+		eventsBackend,
+	} = options;
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
 	// Health check path - frontends use /, backends use /health
@@ -672,6 +688,18 @@ function generateAppService(
       - SMTP_SECURE=\${SMTP_SECURE:-false}
       - MAIL_FROM=\${MAIL_FROM:-noreply@localhost}
 `;
+		}
+		if (eventsBackend) {
+			yaml += `      - EVENT_PUBLISHER_CONNECTION_STRING=\${EVENT_PUBLISHER_CONNECTION_STRING}
+      - EVENT_SUBSCRIBER_CONNECTION_STRING=\${EVENT_SUBSCRIBER_CONNECTION_STRING}
+`;
+			if (eventsBackend === 'sns') {
+				yaml += `      - AWS_ACCESS_KEY_ID=\${AWS_ACCESS_KEY_ID:-localstack}
+      - AWS_SECRET_ACCESS_KEY=\${AWS_SECRET_ACCESS_KEY:-localstack}
+      - AWS_REGION=\${AWS_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=\${AWS_ENDPOINT_URL:-http://localstack:4566}
+`;
+			}
 		}
 	}
 
