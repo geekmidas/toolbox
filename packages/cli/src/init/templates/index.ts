@@ -263,7 +263,8 @@ export const eventsBackendChoices = [
 	{
 		title: 'pg-boss',
 		value: 'pgboss' as const,
-		description: 'PostgreSQL-based job queue (reuses postgres, no extra container)',
+		description:
+			'PostgreSQL-based job queue (reuses postgres, no extra container)',
 	},
 	{
 		title: 'SNS/SQS',
