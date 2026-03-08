@@ -295,6 +295,66 @@ describe('generateDockerFiles', () => {
 		expect(files[0].content).not.toContain('mailpit');
 		expect(files[0].content).not.toContain('minio');
 	});
+
+	it('should include localstack when events is sns', () => {
+		const options = {
+			...baseOptions,
+			services: { db: true, cache: true, mail: false, storage: false, events: 'sns' as const },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		const compose = files[0].content;
+		expect(compose).toContain('localstack');
+		expect(compose).toContain('SERVICES: sns,sqs');
+		expect(compose).toContain('LOCALSTACK_PORT');
+	});
+
+	it('should include rabbitmq when events is rabbitmq', () => {
+		const options = {
+			...baseOptions,
+			services: { db: true, cache: true, mail: false, storage: false, events: 'rabbitmq' as const },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		const compose = files[0].content;
+		expect(compose).toContain('rabbitmq');
+		expect(compose).toContain('RABBITMQ_HOST_PORT');
+	});
+
+	it('should not add extra container for pgboss events', () => {
+		const options = {
+			...baseOptions,
+			services: { db: true, cache: true, mail: false, storage: false, events: 'pgboss' as const },
+		};
+		const files = generateDockerFiles(options, minimalTemplate);
+		const compose = files[0].content;
+		expect(compose).not.toContain('localstack');
+		// pgboss reuses postgres, no separate container
+	});
+
+	it('should generate idempotent postgres init script with pgboss', () => {
+		const options = {
+			...baseOptions,
+			template: 'fullstack' as const,
+			monorepo: true,
+			apiPath: 'apps/api',
+			services: { db: true, cache: true, mail: false, storage: false, events: 'pgboss' as const },
+		};
+		const dbApps = [
+			{ name: 'api', password: 'api-pass' },
+			{ name: 'auth', password: 'auth-pass' },
+		];
+		const files = generateDockerFiles(options, apiTemplate, dbApps);
+		const initScript = files.find((f) => f.path === 'docker/postgres/init.sh');
+		expect(initScript).toBeDefined();
+		expect(initScript!.content).toContain('IF NOT EXISTS');
+		expect(initScript!.content).toContain('pgboss');
+		expect(initScript!.content).toContain('PGBOSS_DB_PASSWORD');
+		expect(initScript!.content).toContain('CREATE SCHEMA IF NOT EXISTS pgboss');
+
+		// Docker env should include pgboss password
+		const envFile = files.find((f) => f.path === 'docker/.env');
+		expect(envFile).toBeDefined();
+		expect(envFile!.content).toContain('PGBOSS_DB_PASSWORD');
+	});
 });
 
 describe('generateMonorepoFiles', () => {
