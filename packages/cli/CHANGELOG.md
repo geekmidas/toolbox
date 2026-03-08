@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.17
+
+### Patch Changes
+
+- 🐛 [`94a25c0`](https://github.com/geekmidas/toolbox/commit/94a25c01ee2a0313eb01260055e4988b20c64dc4) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix exec command credentials resolution
+
 ## 1.10.16
 
 ### Patch Changes
