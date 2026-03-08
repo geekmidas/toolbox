@@ -6,6 +6,8 @@ import { resolveServicePorts, startWorkspaceServices } from '../dev/index.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
+	generateLocalStackCredentials,
+	generateSecurePassword,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
 import {
@@ -183,10 +185,72 @@ export function reconcileSecrets(
 				...result,
 				services: { ...result.services, [name]: creds },
 			};
-			result.urls = generateConnectionUrls(result.services);
+			result.urls = generateConnectionUrls(
+				result.services,
+				result.eventsBackend,
+			);
 			logger.log(`   🔄 Adding missing service credentials: ${name}`);
 			changed = true;
 		}
+	}
+
+	// Reconcile events backend
+	const eventsBackend = workspace.services.events;
+	if (eventsBackend && result.eventsBackend !== eventsBackend) {
+		result.eventsBackend = eventsBackend;
+
+		// Add pgboss credentials if needed
+		if (eventsBackend === 'pgboss' && !result.services.pgboss) {
+			result = {
+				...result,
+				services: {
+					...result.services,
+					pgboss: {
+						host: result.services.postgres?.host ?? 'localhost',
+						port: result.services.postgres?.port ?? 5432,
+						username: 'pgboss',
+						password: generateSecurePassword(),
+						database:
+							result.services.postgres?.database ?? 'app',
+					},
+				},
+			};
+			logger.log('   🔄 Adding missing service credentials: pgboss');
+			changed = true;
+		}
+
+		// Add localstack credentials if needed
+		if (eventsBackend === 'sns' && !result.services.localstack) {
+			result = {
+				...result,
+				services: {
+					...result.services,
+					localstack: generateLocalStackCredentials(),
+				},
+			};
+			logger.log('   🔄 Adding missing service credentials: localstack');
+			changed = true;
+		}
+
+		// Add rabbitmq credentials if needed (for rabbitmq events)
+		if (eventsBackend === 'rabbitmq' && !result.services.rabbitmq) {
+			result = {
+				...result,
+				services: {
+					...result.services,
+					rabbitmq: generateServiceCredentials('rabbitmq'),
+				},
+			};
+			logger.log('   🔄 Adding missing service credentials: rabbitmq');
+			changed = true;
+		}
+
+		// Regenerate URLs with new events backend
+		result.urls = generateConnectionUrls(
+			result.services,
+			eventsBackend,
+		);
+		changed = true;
 	}
 
 	// Reconcile custom secrets for multi-app workspaces
