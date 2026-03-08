@@ -41,6 +41,14 @@ The init command guides you through project setup:
 | `fullstack` | API + Next.js frontend | + Better Auth, db, cache, web app, shared models |
 | `api` | Backend API | + db, cache, services, JWT auth utilities |
 | `serverless` | AWS Lambda | + cloud, Lambda adapters |
+| `worker` | Background job processing | + events, subscribers, crons |
+
+::: info
+The interactive prompt shows **API** and **Fullstack** by default. Use `--template` to select other templates directly:
+```bash
+gkm init my-worker --template worker --yes
+```
+:::
 
 ### Quick Start (Non-Interactive)
 
