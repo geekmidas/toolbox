@@ -211,6 +211,15 @@ export function generateConnectionUrls(
 		urls.STORAGE_ENDPOINT = generateMinioEndpoint(services.minio);
 	}
 
+	if (eventsBackend) {
+		const eventUrls = generateEventConnectionStrings(
+			eventsBackend,
+			services,
+		);
+		urls.EVENT_PUBLISHER_CONNECTION_STRING = eventUrls.publisher;
+		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = eventUrls.subscriber;
+	}
+
 	if (services.mailpit) {
 		urls.SMTP_HOST = services.mailpit.host;
 		urls.SMTP_PORT = String(services.mailpit.port);
@@ -283,6 +292,6 @@ export function rotateServicePassword(
 		...secrets,
 		updatedAt: new Date().toISOString(),
 		services: newServices,
-		urls: generateConnectionUrls(newServices),
+		urls: generateConnectionUrls(newServices, secrets.eventsBackend),
 	};
 }
