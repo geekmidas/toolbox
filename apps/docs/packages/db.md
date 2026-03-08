@@ -134,6 +134,40 @@ const databaseService = {
 } satisfies Service<'database', Kysely<Database>>;
 ```
 
+## Cursor-Based Pagination
+
+The `/kysely/pagination` export provides cursor-based pagination for Kysely queries:
+
+```typescript
+import { paginatedSearch, encodeCursor, decodeCursor } from '@geekmidas/db/kysely/pagination';
+
+const result = await paginatedSearch({
+  query: db.selectFrom('users').selectAll(),
+  cursor: requestCursor, // from previous page, or undefined for first page
+  limit: 20,
+  orderBy: 'created_at',
+  direction: 'desc',
+});
+
+// result: {
+//   items: User[],
+//   total: number,
+//   hasMore: boolean,
+//   cursor: string | null  // pass to next request
+// }
+```
+
+You can also transform rows before returning:
+
+```typescript
+const result = await paginatedSearch({
+  query: db.selectFrom('users').selectAll(),
+  limit: 10,
+  orderBy: 'id',
+  mapRow: (row) => ({ ...row, displayName: `${row.firstName} ${row.lastName}` }),
+});
+```
+
 ## Row Level Security (RLS)
 
 PostgreSQL Row Level Security allows you to restrict which rows users can access based on session variables. The `withRlsContext` helper sets these variables within a transaction.
