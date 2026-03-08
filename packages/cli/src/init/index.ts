@@ -24,9 +24,11 @@ import { generateSourceFiles } from './generators/source.js';
 import { generateTestFiles } from './generators/test.js';
 import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
+import type { EventsBackend } from '../types.js';
 import {
 	type DeployTarget,
 	deployTargetChoices,
+	eventsBackendChoices,
 	getTemplate,
 	isFullstackTemplate,
 	loggerTypeChoices,
@@ -112,6 +114,13 @@ export async function initCommand(
 			},
 			{
 				type: options.yes ? null : 'select',
+				name: 'eventsBackend',
+				message: 'Event backend:',
+				choices: eventsBackendChoices,
+				initial: 0,
+			},
+			{
+				type: options.yes ? null : 'select',
 				name: 'packageManager',
 				message: 'Package manager:',
 				choices: packageManagerChoices,
@@ -183,12 +192,24 @@ export async function initCommand(
 	const servicesArray: string[] = options.yes
 		? ['db', 'cache', 'mail', 'storage']
 		: answers.services || [];
+
+	// Determine events backend (default to pgboss for fullstack with --yes)
+	const eventsBackend: EventsBackend | undefined = options.yes
+		? (isFullstack ? 'pgboss' : undefined)
+		: answers.eventsBackend;
+
 	const services: ServicesSelection = {
 		db: servicesArray.includes('db'),
 		cache: servicesArray.includes('cache'),
 		mail: servicesArray.includes('mail'),
 		storage: servicesArray.includes('storage'),
+		events: eventsBackend,
 	};
+
+	// pgboss requires postgres
+	if (services.events === 'pgboss') {
+		services.db = true;
+	}
 
 	const pkgManager: PackageManager = options.pm
 		? options.pm
@@ -333,9 +354,12 @@ export async function initCommand(
 	if (services.cache) secretServices.push('redis');
 	if (services.storage) secretServices.push('minio');
 	if (services.mail) secretServices.push('mailpit');
+	if (services.events === 'sns') secretServices.push('localstack');
+	if (services.events === 'rabbitmq') secretServices.push('rabbitmq');
 
 	const devSecrets = createStageSecrets('development', secretServices, {
 		projectName: name,
+		eventsBackend: services.events,
 	});
 
 	// Add common custom secrets
