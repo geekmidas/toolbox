@@ -801,6 +801,57 @@ const endpoint = api
   });
 ```
 
+### Event Publishing
+
+Endpoints can declare events that are published automatically after the handler returns:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+
+const createOrder = e
+  .post('/orders')
+  .services([databaseService])
+  .publisher(eventPublisherService)
+  .body(orderSchema)
+  .output(orderResponseSchema)
+  .events([
+    {
+      type: 'order.created',
+      payload: (response) => ({
+        orderId: response.id,
+        total: response.total,
+      }),
+    },
+  ])
+  .handle(async ({ body, services }) => {
+    return await services.database
+      .insertInto('orders')
+      .values(body)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  });
+```
+
+You can also publish events manually inside the handler using the `publish` function:
+
+```typescript
+const endpoint = e
+  .post('/transfers')
+  .publisher(eventPublisherService)
+  .handle(async ({ body, publish }) => {
+    const result = await processTransfer(body);
+
+    await publish('transfer.completed', {
+      transferId: result.id,
+      amount: result.amount,
+    });
+
+    return result;
+  });
+```
+
+The `.publisher()` method accepts an event publisher service that implements the `@geekmidas/events` publisher interface.
+
 ## Cron Jobs
 
 The `c` builder creates scheduled tasks that run on a cron or rate schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
