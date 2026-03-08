@@ -336,6 +336,11 @@ volumes:
 `;
 	}
 
+	if (serviceMap.has('localstack')) {
+		yaml += `  localstack_data:
+`;
+	}
+
 	// Add networks
 	yaml += `
 networks:
