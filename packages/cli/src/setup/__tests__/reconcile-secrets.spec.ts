@@ -340,3 +340,95 @@ describe('generateFullstackCustomSecrets', () => {
 		expect(result.BETTER_AUTH_TRUSTED_ORIGINS).toBeUndefined();
 	});
 });
+
+describe('reconcileSecrets - events', () => {
+	it('should add pgboss credentials when events is pgboss', () => {
+		const workspace = createWorkspace({
+			services: { db: true, cache: false, events: 'pgboss' },
+		});
+		const secrets = createSecrets();
+
+		const result = reconcileSecrets(secrets, workspace);
+
+		expect(result).not.toBeNull();
+		expect(result!.eventsBackend).toBe('pgboss');
+		expect(result!.services.pgboss).toBeDefined();
+		expect(result!.services.pgboss!.username).toBe('pgboss');
+		expect(result!.services.pgboss!.host).toBe('localhost');
+		expect(result!.services.pgboss!.database).toBe('test_dev');
+		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
+		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
+	});
+
+	it('should add localstack credentials when events is sns', () => {
+		const workspace = createWorkspace({
+			services: { db: true, cache: false, events: 'sns' },
+		});
+		const secrets = createSecrets();
+
+		const result = reconcileSecrets(secrets, workspace);
+
+		expect(result).not.toBeNull();
+		expect(result!.eventsBackend).toBe('sns');
+		expect(result!.services.localstack).toBeDefined();
+		expect(result!.services.localstack!.accessKeyId).toMatch(/^LSIA/);
+		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'sns://',
+		);
+		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'sqs://',
+		);
+	});
+
+	it('should add rabbitmq credentials when events is rabbitmq', () => {
+		const workspace = createWorkspace({
+			services: { db: true, cache: false, events: 'rabbitmq' },
+		});
+		const secrets = createSecrets();
+
+		const result = reconcileSecrets(secrets, workspace);
+
+		expect(result).not.toBeNull();
+		expect(result!.eventsBackend).toBe('rabbitmq');
+		expect(result!.services.rabbitmq).toBeDefined();
+		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'amqp://',
+		);
+	});
+
+	it('should not add duplicate pgboss credentials when already present', () => {
+		const workspace = createWorkspace({
+			services: { db: true, cache: false, events: 'pgboss' },
+		});
+		const secrets: StageSecrets = {
+			...createSecrets(),
+			eventsBackend: 'pgboss',
+			services: {
+				...createSecrets().services,
+				pgboss: {
+					host: 'localhost',
+					port: 5432,
+					username: 'pgboss',
+					password: 'existing-pass',
+					database: 'test_dev',
+				},
+			},
+			urls: {
+				...createSecrets().urls,
+				EVENT_PUBLISHER_CONNECTION_STRING: 'pgboss://existing',
+				EVENT_SUBSCRIBER_CONNECTION_STRING: 'pgboss://existing',
+			},
+		};
+
+		const result = reconcileSecrets(secrets, workspace);
+
+		// pgboss credentials should be preserved (not regenerated)
+		if (result) {
+			expect(result.services.pgboss!.password).toBe('existing-pass');
+		}
+	});
+});
