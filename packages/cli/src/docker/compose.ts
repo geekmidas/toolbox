@@ -717,6 +717,8 @@ function generateAppService(
 		if (hasRedis) dependencies.push('redis');
 		if (hasMinio) dependencies.push('minio');
 		if (hasMail) dependencies.push('mailpit');
+		if (eventsBackend === 'sns') dependencies.push('localstack');
+		if (eventsBackend === 'rabbitmq') dependencies.push('rabbitmq');
 	}
 
 	if (dependencies.length > 0) {
