@@ -1,5 +1,11 @@
 # @geekmidas/envkit
 
+## 1.0.4
+
+### Patch Changes
+
+- 🐛 [`a483d4c`](https://github.com/geekmidas/toolbox/commit/a483d4c193d27673ccad2aeed6f56b1c5708b5b4) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix credentials injection to work with esm/cjs
+
 ## 1.0.3
 
 ### Patch Changes
