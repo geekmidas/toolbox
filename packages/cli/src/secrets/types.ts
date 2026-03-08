@@ -1,4 +1,4 @@
-import type { ComposeServiceName } from '../types';
+import type { ComposeServiceName, EventsBackend } from '../types';
 
 /** Credentials for a specific service */
 export interface ServiceCredentials {
@@ -12,6 +12,10 @@ export interface ServiceCredentials {
 	vhost?: string;
 	/** Bucket name (for minio) */
 	bucket?: string;
+	/** Access key ID (for localstack) */
+	accessKeyId?: string;
+	/** Region (for localstack) */
+	region?: string;
 }
 
 /** Stage secrets configuration */
@@ -22,6 +26,8 @@ export interface StageSecrets {
 	createdAt: string;
 	/** ISO timestamp when secrets were last updated */
 	updatedAt: string;
+	/** Event backend type (if events are enabled) */
+	eventsBackend?: EventsBackend;
 	/** Service-specific credentials */
 	services: {
 		postgres?: ServiceCredentials;
@@ -29,6 +35,8 @@ export interface StageSecrets {
 		rabbitmq?: ServiceCredentials;
 		minio?: ServiceCredentials;
 		mailpit?: ServiceCredentials;
+		localstack?: ServiceCredentials;
+		pgboss?: ServiceCredentials;
 	};
 	/** Generated connection URLs */
 	urls: {
@@ -38,6 +46,8 @@ export interface StageSecrets {
 		STORAGE_ENDPOINT?: string;
 		SMTP_HOST?: string;
 		SMTP_PORT?: string;
+		EVENT_PUBLISHER_CONNECTION_STRING?: string;
+		EVENT_SUBSCRIBER_CONNECTION_STRING?: string;
 	};
 	/** Custom user-defined secrets */
 	custom: Record<string, string>;
