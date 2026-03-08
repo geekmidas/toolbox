@@ -246,10 +246,7 @@ export function reconcileSecrets(
 		}
 
 		// Regenerate URLs with new events backend
-		result.urls = generateConnectionUrls(
-			result.services,
-			eventsBackend,
-		);
+		result.urls = generateConnectionUrls(result.services, eventsBackend);
 		changed = true;
 	}
 
@@ -302,8 +299,7 @@ async function generateFreshSecrets(
 	if (workspace.services.storage) serviceNames.push('minio');
 	if (workspace.services.mail) serviceNames.push('mailpit');
 	if (workspace.services.events === 'sns') serviceNames.push('localstack');
-	if (workspace.services.events === 'rabbitmq')
-		serviceNames.push('rabbitmq');
+	if (workspace.services.events === 'rabbitmq') serviceNames.push('rabbitmq');
 
 	// Create base secrets with service credentials
 	const secrets = createStageSecrets(stage, serviceNames, {

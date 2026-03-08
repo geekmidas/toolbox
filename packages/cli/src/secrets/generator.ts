@@ -160,9 +160,7 @@ export function generateEventConnectionStrings(
 		case 'sns': {
 			const creds = services.localstack;
 			if (!creds) {
-				throw new Error(
-					'localstack credentials required for sns events',
-				);
+				throw new Error('localstack credentials required for sns events');
 			}
 			const endpoint = `http://${creds.host}:${creds.port}`;
 			const region = creds.region ?? 'us-east-1';
@@ -176,9 +174,7 @@ export function generateEventConnectionStrings(
 		case 'rabbitmq': {
 			const creds = services.rabbitmq;
 			if (!creds) {
-				throw new Error(
-					'rabbitmq credentials required for rabbitmq events',
-				);
+				throw new Error('rabbitmq credentials required for rabbitmq events');
 			}
 			const url = generateRabbitmqUrl(creds);
 			return { publisher: url, subscriber: url };
@@ -212,10 +208,7 @@ export function generateConnectionUrls(
 	}
 
 	if (eventsBackend) {
-		const eventUrls = generateEventConnectionStrings(
-			eventsBackend,
-			services,
-		);
+		const eventUrls = generateEventConnectionStrings(eventsBackend, services);
 		urls.EVENT_PUBLISHER_CONNECTION_STRING = eventUrls.publisher;
 		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = eventUrls.subscriber;
 	}

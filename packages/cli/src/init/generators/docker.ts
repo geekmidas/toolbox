@@ -65,10 +65,7 @@ export function generateDockerFiles(
 		if (isFullstack && dbApps?.length) {
 			files.push({
 				path: 'docker/postgres/init.sh',
-				content: generatePostgresInitScript(
-					dbApps,
-					options.services?.events,
-				),
+				content: generatePostgresInitScript(dbApps, options.services?.events),
 			});
 
 			// Generate .env file for docker-compose (contains db passwords)
