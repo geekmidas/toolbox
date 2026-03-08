@@ -18,10 +18,6 @@ class TestPostgresMigrator extends PostgresMigrator {
 	public migrateError?: Error;
 	public customMigrations: Array<() => Promise<void>> = [];
 
-	constructor(uri: string, afterCreate?: (uri: string) => Promise<void>) {
-		super(uri, afterCreate);
-	}
-
 	async migrate(): Promise<void> {
 		this.migrateCalled = true;
 		if (this.migrateError) {
