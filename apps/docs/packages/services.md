@@ -118,6 +118,32 @@ export const endpoint = e
   });
 ```
 
+## Package Exports
+
+| Export | Description |
+|--------|-------------|
+| `/` | `Service` interface, `ServiceDiscovery`, `ServiceRegisterOptions` |
+| `/context` | `serviceContext` singleton and `runWithRequestContext` for AsyncLocalStorage-based request context |
+
+## Request Context
+
+The `/context` export provides AsyncLocalStorage-based request context that services can access to get the current request's logger and ID:
+
+```typescript
+import { serviceContext, runWithRequestContext } from '@geekmidas/services/context';
+
+// Establish context for a request (done automatically by framework adapters)
+await runWithRequestContext(
+  { requestId: 'req-123', logger, startTime: Date.now() },
+  async () => {
+    // Inside this callback, any code can access the context:
+    const logger = serviceContext.getLogger();
+    const reqId = serviceContext.getRequestId();
+    const hasCtx = serviceContext.hasContext();
+  }
+);
+```
+
 ## Service Interface
 
 ```typescript
