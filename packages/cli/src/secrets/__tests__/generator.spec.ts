@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
+	generateEventConnectionStrings,
+	generateLocalStackAccessKeyId,
+	generateLocalStackCredentials,
 	generateMinioEndpoint,
+	generatePgBossUrl,
 	generatePostgresUrl,
 	generateRabbitmqUrl,
 	generateRedisUrl,
@@ -383,5 +387,196 @@ describe('rotateServicePassword', () => {
 
 		expect(rotated.services.redis).toEqual(original.services.redis);
 		expect(rotated.services.rabbitmq).toEqual(original.services.rabbitmq);
+	});
+});
+
+describe('generateLocalStackAccessKeyId', () => {
+	it('should start with LSIA prefix', () => {
+		const keyId = generateLocalStackAccessKeyId();
+		expect(keyId).toMatch(/^LSIA/);
+	});
+
+	it('should be at least 20 characters', () => {
+		const keyId = generateLocalStackAccessKeyId();
+		expect(keyId.length).toBeGreaterThanOrEqual(20);
+	});
+
+	it('should generate unique keys', () => {
+		const key1 = generateLocalStackAccessKeyId();
+		const key2 = generateLocalStackAccessKeyId();
+		expect(key1).not.toBe(key2);
+	});
+});
+
+describe('generatePgBossUrl', () => {
+	it('should generate pgboss connection URL', () => {
+		const creds: ServiceCredentials = {
+			host: 'localhost',
+			port: 5432,
+			username: 'pgboss',
+			password: 'secret',
+			database: 'myapp_dev',
+		};
+
+		const url = generatePgBossUrl(creds);
+		expect(url).toBe(
+			'pgboss://pgboss:secret@localhost:5432/myapp_dev?schema=pgboss',
+		);
+	});
+
+	it('should encode special characters in password', () => {
+		const creds: ServiceCredentials = {
+			host: 'localhost',
+			port: 5432,
+			username: 'pgboss',
+			password: 'p@ss/word',
+			database: 'app',
+		};
+
+		const url = generatePgBossUrl(creds);
+		expect(url).toContain('p%40ss%2Fword');
+	});
+});
+
+describe('generateLocalStackCredentials', () => {
+	it('should generate credentials with LSIA-prefixed access key', () => {
+		const creds = generateLocalStackCredentials();
+		expect(creds.accessKeyId).toMatch(/^LSIA/);
+		expect(creds.host).toBe('localhost');
+		expect(creds.port).toBe(4566);
+		expect(creds.region).toBe('us-east-1');
+		expect(creds.password).toHaveLength(32);
+	});
+});
+
+describe('generateEventConnectionStrings', () => {
+	it('should generate pgboss connection strings', () => {
+		const services: StageSecrets['services'] = {
+			pgboss: {
+				host: 'localhost',
+				port: 5432,
+				username: 'pgboss',
+				password: 'secret',
+				database: 'myapp_dev',
+			},
+		};
+
+		const result = generateEventConnectionStrings('pgboss', services);
+		expect(result.publisher).toContain('pgboss://');
+		expect(result.subscriber).toContain('pgboss://');
+		expect(result.publisher).toBe(result.subscriber);
+	});
+
+	it('should generate sns/sqs connection strings', () => {
+		const services: StageSecrets['services'] = {
+			localstack: {
+				host: 'localhost',
+				port: 4566,
+				username: 'localstack',
+				password: 'secret',
+				accessKeyId: 'LSIAtest1234567890xx',
+				region: 'us-east-1',
+			},
+		};
+
+		const result = generateEventConnectionStrings('sns', services);
+		expect(result.publisher).toContain('sns://');
+		expect(result.subscriber).toContain('sqs://');
+		expect(result.publisher).toContain('LSIAtest1234567890xx');
+	});
+
+	it('should generate rabbitmq connection strings', () => {
+		const services: StageSecrets['services'] = {
+			rabbitmq: {
+				host: 'localhost',
+				port: 5672,
+				username: 'app',
+				password: 'secret',
+				vhost: '/',
+			},
+		};
+
+		const result = generateEventConnectionStrings('rabbitmq', services);
+		expect(result.publisher).toContain('amqp://');
+		expect(result.subscriber).toContain('amqp://');
+		expect(result.publisher).toBe(result.subscriber);
+	});
+
+	it('should throw if pgboss credentials missing', () => {
+		expect(() =>
+			generateEventConnectionStrings('pgboss', {}),
+		).toThrow('pgboss credentials required');
+	});
+
+	it('should throw if localstack credentials missing', () => {
+		expect(() =>
+			generateEventConnectionStrings('sns', {}),
+		).toThrow('localstack credentials required');
+	});
+});
+
+describe('createStageSecrets with events', () => {
+	it('should create pgboss credentials when eventsBackend is pgboss', () => {
+		const secrets = createStageSecrets('development', ['postgres'], {
+			eventsBackend: 'pgboss',
+		});
+
+		expect(secrets.eventsBackend).toBe('pgboss');
+		expect(secrets.services.pgboss).toBeDefined();
+		expect(secrets.services.pgboss!.username).toBe('pgboss');
+		expect(secrets.services.pgboss!.host).toBe(
+			secrets.services.postgres!.host,
+		);
+		expect(secrets.services.pgboss!.database).toBe(
+			secrets.services.postgres!.database,
+		);
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
+	});
+
+	it('should create localstack credentials when eventsBackend is sns', () => {
+		const secrets = createStageSecrets('development', [], {
+			eventsBackend: 'sns',
+		});
+
+		expect(secrets.eventsBackend).toBe('sns');
+		expect(secrets.services.localstack).toBeDefined();
+		expect(secrets.services.localstack!.accessKeyId).toMatch(/^LSIA/);
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'sns://',
+		);
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'sqs://',
+		);
+	});
+
+	it('should use rabbitmq credentials when eventsBackend is rabbitmq', () => {
+		const secrets = createStageSecrets('development', ['rabbitmq'], {
+			eventsBackend: 'rabbitmq',
+		});
+
+		expect(secrets.eventsBackend).toBe('rabbitmq');
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'amqp://',
+		);
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'amqp://',
+		);
+	});
+
+	it('should not create event URLs without eventsBackend', () => {
+		const secrets = createStageSecrets('development', ['postgres']);
+
+		expect(secrets.eventsBackend).toBeUndefined();
+		expect(
+			secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING,
+		).toBeUndefined();
+		expect(
+			secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING,
+		).toBeUndefined();
 	});
 });
