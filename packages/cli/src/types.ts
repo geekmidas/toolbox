@@ -77,13 +77,17 @@ export interface ServiceConfig {
 	version?: string;
 }
 
+/** Supported event backend types */
+export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
+
 /** Supported docker-compose service names */
 export type ComposeServiceName =
 	| 'postgres'
 	| 'redis'
 	| 'rabbitmq'
 	| 'minio'
-	| 'mailpit';
+	| 'mailpit'
+	| 'localstack';
 
 /** Services configuration - can be boolean (use defaults) or object with version */
 export type ComposeServicesConfig = {

@@ -170,6 +170,8 @@ export interface ServicesConfig {
 	mail?: boolean | MailServiceConfig;
 	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
 	storage?: boolean | ServiceImageConfig;
+	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */
+	events?: import('../types.js').EventsBackend;
 }
 
 /**

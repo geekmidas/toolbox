@@ -39,6 +39,7 @@ export interface ServicesSelection {
 	cache: boolean;
 	mail: boolean;
 	storage: boolean;
+	events?: import('../../types.js').EventsBackend;
 }
 
 /**
@@ -252,6 +253,32 @@ export const servicesChoices = [
 		title: 'MinIO',
 		value: 'storage',
 		description: 'S3-compatible object storage (dev only)',
+	},
+];
+
+/**
+ * Event backend choices for prompts
+ */
+export const eventsBackendChoices = [
+	{
+		title: 'pg-boss',
+		value: 'pgboss' as const,
+		description: 'PostgreSQL-based job queue (reuses postgres, no extra container)',
+	},
+	{
+		title: 'SNS/SQS',
+		value: 'sns' as const,
+		description: 'AWS SNS+SQS via LocalStack for local dev',
+	},
+	{
+		title: 'RabbitMQ',
+		value: 'rabbitmq' as const,
+		description: 'AMQP message broker',
+	},
+	{
+		title: 'None',
+		value: undefined,
+		description: 'Skip event backend',
 	},
 ];
 
