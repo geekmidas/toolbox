@@ -282,12 +282,16 @@ ${envVars.join('\n')}
 }
 
 /**
- * Generate PostgreSQL init shell script that creates per-app users with separate schemas
- * Uses environment variables for passwords (more secure than hardcoded values)
+ * Generate PostgreSQL init shell script that creates per-app users with separate schemas.
+ * Uses idempotent DO blocks so the script can be re-run safely.
  * - api user: uses public schema
  * - auth user: uses auth schema with search_path=auth
+ * - pgboss user: uses pgboss schema (when events === 'pgboss')
  */
-function generatePostgresInitScript(apps: DatabaseAppConfig[]): string {
+function generatePostgresInitScript(
+	apps: DatabaseAppConfig[],
+	eventsBackend?: EventsBackend,
+): string {
 	const userCreations = apps.map((app) => {
 		const userName = app.name.replace(/-/g, '_');
 		const envVar = `${app.name.toUpperCase()}_DB_PASSWORD`;
@@ -295,25 +299,39 @@ function generatePostgresInitScript(apps: DatabaseAppConfig[]): string {
 		const schemaName = isApi ? 'public' : userName;
 
 		if (isApi) {
-			// API user uses public schema
 			return `
-# Create ${app.name} user (uses public schema)
+# Create ${app.name} user (uses public schema) - idempotent
 echo "Creating user ${userName}..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE USER ${userName} WITH PASSWORD '$${envVar}';
+    DO \\$\\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${userName}') THEN
+            CREATE USER ${userName} WITH PASSWORD '$${envVar}';
+        ELSE
+            ALTER USER ${userName} WITH PASSWORD '$${envVar}';
+        END IF;
+    END
+    \\$\\$;
     GRANT ALL ON SCHEMA public TO ${userName};
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${userName};
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${userName};
 EOSQL
 `;
 		}
-		// Other users get their own schema with search_path
 		return `
-# Create ${app.name} user with dedicated schema
+# Create ${app.name} user with dedicated schema - idempotent
 echo "Creating user ${userName} with schema ${schemaName}..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE USER ${userName} WITH PASSWORD '$${envVar}';
-    CREATE SCHEMA ${schemaName} AUTHORIZATION ${userName};
+    DO \\$\\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${userName}') THEN
+            CREATE USER ${userName} WITH PASSWORD '$${envVar}';
+        ELSE
+            ALTER USER ${userName} WITH PASSWORD '$${envVar}';
+        END IF;
+    END
+    \\$\\$;
+    CREATE SCHEMA IF NOT EXISTS ${schemaName} AUTHORIZATION ${userName};
     ALTER USER ${userName} SET search_path TO ${schemaName};
     GRANT USAGE ON SCHEMA ${schemaName} TO ${userName};
     GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO ${userName};
@@ -324,14 +342,52 @@ EOSQL
 `;
 	});
 
+	// Add pgboss user and schema if events backend is pgboss
+	let pgbossBlock = '';
+	if (eventsBackend === 'pgboss') {
+		pgbossBlock = `
+# Create pgboss user with dedicated schema - idempotent
+echo "Creating pgboss user and schema..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    DO \\$\\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'pgboss') THEN
+            CREATE USER pgboss WITH PASSWORD '\$PGBOSS_DB_PASSWORD';
+        ELSE
+            ALTER USER pgboss WITH PASSWORD '\$PGBOSS_DB_PASSWORD';
+        END IF;
+    END
+    \\$\\$;
+    CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION pgboss;
+    ALTER USER pgboss SET search_path TO pgboss;
+    GRANT USAGE ON SCHEMA pgboss TO pgboss;
+    GRANT ALL ON ALL TABLES IN SCHEMA pgboss TO pgboss;
+    GRANT ALL ON ALL SEQUENCES IN SCHEMA pgboss TO pgboss;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT ALL ON TABLES TO pgboss;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT ALL ON SEQUENCES TO pgboss;
+EOSQL
+`;
+	}
+
+	// Add extensions
+	const extensions = `
+# Create extensions
+echo "Creating extensions..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS citext;
+EOSQL
+`;
+
 	return `#!/bin/bash
 set -e
 
-# Auto-generated PostgreSQL init script
+# Auto-generated PostgreSQL init script (idempotent - safe to re-run)
 # Creates per-app users with separate schemas in a single database
 # - api: uses public schema
-# - auth: uses auth schema (search_path=auth)
-${userCreations.join('\n')}
+# - auth: uses auth schema (search_path=auth)${eventsBackend === 'pgboss' ? '\n# - pgboss: uses pgboss schema for event processing' : ''}
+${extensions}
+${userCreations.join('\n')}${pgbossBlock}
 echo "Database initialization complete!"
 `;
 }
