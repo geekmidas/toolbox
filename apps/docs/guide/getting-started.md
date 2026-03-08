@@ -147,9 +147,24 @@ export default defineWorkspace({
   services: {
     db: true,
     cache: true,
+    mail: true,       // Mailpit in dev, SMTP in production
+    storage: true,    // MinIO in dev, S3 in production
+    events: 'pgboss', // pgboss | sns | rabbitmq
   },
 });
 ```
+
+### Services
+
+| Service | Config Key | Dev Container | Production |
+|---------|-----------|---------------|------------|
+| PostgreSQL | `db` | `postgres:18-alpine` | Provisioned DB |
+| Redis | `cache` | `redis:8-alpine` | Provisioned cache |
+| Mail | `mail` | Mailpit (SMTP testing) | SMTP provider |
+| Storage | `storage` | MinIO (S3-compatible) | AWS S3 |
+| Events | `events: 'pgboss'` | Reuses PostgreSQL | Reuses PostgreSQL |
+| Events | `events: 'sns'` | LocalStack (SNS+SQS) | AWS SNS+SQS |
+| Events | `events: 'rabbitmq'` | RabbitMQ container | Provisioned RabbitMQ |
 
 ### App Types
 
