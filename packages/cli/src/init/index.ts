@@ -9,7 +9,7 @@ import {
 	generateDbPassword,
 	generateDbUrl,
 } from '../setup/fullstack-secrets.js';
-import type { ComposeServiceName } from '../types.js';
+import type { ComposeServiceName, EventsBackend } from '../types.js';
 import { generateAuthAppFiles } from './generators/auth.js';
 import { generateConfigFiles } from './generators/config.js';
 import {
@@ -24,7 +24,6 @@ import { generateSourceFiles } from './generators/source.js';
 import { generateTestFiles } from './generators/test.js';
 import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
-import type { EventsBackend } from '../types.js';
 import {
 	type DeployTarget,
 	deployTargetChoices,
