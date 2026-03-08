@@ -403,6 +403,8 @@ Type-safe environment configuration parser using Zod validation.
 - Path-based access using lodash
 - Aggregated error reporting
 - Type inference from schema
+- Encrypted credentials support with build-time injection
+- CJS/ESM-safe credential injection via `globalThis.__gkm_credentials__`
 
 **Usage Pattern:**
 ```typescript
@@ -414,6 +416,20 @@ const config = new EnvironmentParser(process.env)
     database: {
       url: get('DATABASE_URL').string().url()
     }
+  }))
+  .parse();
+```
+
+**Credentials (for production builds):**
+```typescript
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { Credentials } from '@geekmidas/envkit/credentials';
+
+// Credentials are decrypted at runtime using GKM_MASTER_KEY,
+// or populated via globalThis.__gkm_credentials__ in dev mode
+const config = new EnvironmentParser({...process.env, ...Credentials})
+  .create((get) => ({
+    database: { url: get('DATABASE_URL').string() },
   }))
   .parse();
 ```
@@ -1409,6 +1425,7 @@ Each package uses subpath exports for better tree-shaking:
 
 ### @geekmidas/envkit
 - `/` - EnvironmentParser and core types
+- `/credentials` - Credentials object (build-time encrypted or dev-mode injected via globalThis)
 - `/sst` - SST environment integration
 - `/sniffer` - Environment variable detection utilities
 

@@ -42,9 +42,13 @@ export function decryptCredentials(
 /**
  * Credentials object for use with EnvironmentParser.
  *
- * In development mode (no embedded credentials), this returns an empty object.
- * In production mode, it decrypts embedded credentials using the GKM_MASTER_KEY
- * environment variable.
+ * Resolution order:
+ * 1. **Dev mode (gkm dev/exec)**: Checks `globalThis.__gkm_credentials__` for
+ *    credentials injected by the CLI preload script. This approach survives
+ *    CJS/ESM module duplication (where mutating the export would only affect one copy).
+ * 2. **Production mode**: Decrypts build-time embedded credentials using the
+ *    `GKM_MASTER_KEY` environment variable (AES-256-GCM).
+ * 3. **Fallback**: Returns empty object (allows graceful fallback to process.env).
  *
  * @example
  * ```typescript
