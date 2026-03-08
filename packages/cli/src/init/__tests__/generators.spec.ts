@@ -299,7 +299,13 @@ describe('generateDockerFiles', () => {
 	it('should include localstack when events is sns', () => {
 		const options = {
 			...baseOptions,
-			services: { db: true, cache: true, mail: false, storage: false, events: 'sns' as const },
+			services: {
+				db: true,
+				cache: true,
+				mail: false,
+				storage: false,
+				events: 'sns' as const,
+			},
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		const compose = files[0].content;
@@ -311,7 +317,13 @@ describe('generateDockerFiles', () => {
 	it('should include rabbitmq when events is rabbitmq', () => {
 		const options = {
 			...baseOptions,
-			services: { db: true, cache: true, mail: false, storage: false, events: 'rabbitmq' as const },
+			services: {
+				db: true,
+				cache: true,
+				mail: false,
+				storage: false,
+				events: 'rabbitmq' as const,
+			},
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		const compose = files[0].content;
@@ -322,7 +334,13 @@ describe('generateDockerFiles', () => {
 	it('should not add extra container for pgboss events', () => {
 		const options = {
 			...baseOptions,
-			services: { db: true, cache: true, mail: false, storage: false, events: 'pgboss' as const },
+			services: {
+				db: true,
+				cache: true,
+				mail: false,
+				storage: false,
+				events: 'pgboss' as const,
+			},
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		const compose = files[0].content;
@@ -336,7 +354,13 @@ describe('generateDockerFiles', () => {
 			template: 'fullstack' as const,
 			monorepo: true,
 			apiPath: 'apps/api',
-			services: { db: true, cache: true, mail: false, storage: false, events: 'pgboss' as const },
+			services: {
+				db: true,
+				cache: true,
+				mail: false,
+				storage: false,
+				events: 'pgboss' as const,
+			},
 		};
 		const dbApps = [
 			{ name: 'api', password: 'api-pass' },
