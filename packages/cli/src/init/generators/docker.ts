@@ -260,11 +260,19 @@ ${volumes.join('\n')}
 /**
  * Generate .env file for docker-compose with database passwords
  */
-function generateDockerEnv(apps: DatabaseAppConfig[]): string {
+function generateDockerEnv(
+	apps: DatabaseAppConfig[],
+	eventsBackend?: EventsBackend,
+): string {
 	const envVars = apps.map((app) => {
 		const envVar = `${app.name.toUpperCase()}_DB_PASSWORD`;
 		return `${envVar}=${app.password}`;
 	});
+
+	// Add pgboss password if events backend is pgboss
+	if (eventsBackend === 'pgboss') {
+		envVars.push(`PGBOSS_DB_PASSWORD=pgboss-dev-password`);
+	}
 
 	return `# Auto-generated docker environment file
 # Contains database passwords for docker-compose postgres init
