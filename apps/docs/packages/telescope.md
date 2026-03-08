@@ -26,16 +26,19 @@ pnpm add @geekmidas/telescope
 | Export | Description |
 |--------|-------------|
 | `/` | Core `Telescope` class and `InMemoryStorage` |
-| `/hono` | Hono middleware and dashboard UI |
+| `/hono` | Hono middleware and dashboard UI (alias for `/server/hono`) |
+| `/server/hono` | Hono middleware (`createMiddleware`, `createUI`) |
 | `/storage/memory` | In-memory storage (development) |
 | `/storage/kysely` | Kysely storage (PostgreSQL, MySQL, SQLite) |
-| `/logger/pino` | Pino transport for log capture |
-| `/logger/console` | TelescopeLogger for ConsoleLogger |
+| `/logger/pino` | Pino transport for log capture (`createPinoTransport`) |
+| `/logger/console` | `TelescopeLogger` for ConsoleLogger |
 | `/lambda` | AWS Lambda adapter and Middy middleware |
 | `/core` | Core utilities and flush functions |
-| `/metrics` | MetricsAggregator for analytics |
+| `/metrics` | `MetricsAggregator` for analytics |
 | `/otlp` | OpenTelemetry receiver |
+| `/otlp/hono` | OpenTelemetry Hono middleware |
 | `/instrumentation` | OpenTelemetry setup utilities |
+| `/instrumentation/hono` | OpenTelemetry Hono instrumentation |
 
 ## Quick Start with Hono
 
