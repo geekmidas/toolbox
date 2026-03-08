@@ -258,26 +258,190 @@ Supported connection string protocols:
 For AWS-based backends (SQS/SNS), production deployments should use Lambda with event source mappings for proper scaling and dead letter queues. For pg-boss and RabbitMQ, the polling approach is also suitable for production via `gkm build --provider server`.
 :::
 
-## Integration with Endpoints
+## Integration with Constructs
+
+The `@geekmidas/constructs` package provides builders for both publishing events (from endpoints, crons, and functions) and subscribing to events. This section covers the end-to-end flow.
+
+### Defining a Publisher Service
+
+Both publishers and subscribers use a service that wraps the `Publisher`/`Subscriber` from `@geekmidas/events`. The service reads the connection string from environment variables:
+
+```typescript
+import type { Service } from '@geekmidas/services';
+import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import { Publisher } from '@geekmidas/events';
+
+// Define all event types in one place
+type AppEvents =
+  | PublishableMessage<'user.created', { userId: string; email: string }>
+  | PublishableMessage<'user.updated', { userId: string; changes: string[] }>
+  | PublishableMessage<'order.placed', { orderId: string; total: number }>;
+
+// Create the publisher service
+const eventPublisherService = {
+  serviceName: 'eventPublisher' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      connectionString: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
+    })).parse();
+
+    return Publisher.fromConnectionString<AppEvents>(config.connectionString);
+  },
+} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
+```
+
+### Publishing from Endpoints
+
+Use `.publisher()` and `.event()` on endpoint or factory builders:
 
 ```typescript
 import { e } from '@geekmidas/constructs/endpoints';
 
-const endpoint = e
+// Declarative — events published automatically after handler returns
+const createUser = e
   .post('/users')
-  .body(UserSchema)
-  .output(UserResponseSchema)
-  .events([
-    {
-      type: 'user.created',
-      payload: (response) => ({
-        userId: response.id,
-        email: response.email,
-      }),
-    },
-  ])
+  .publisher(eventPublisherService)
+  .body(userSchema)
+  .output(userResponseSchema)
+  .event({
+    type: 'user.created',
+    payload: (response) => ({ userId: response.id, email: response.email }),
+    when: (response) => response.verified, // optional condition
+  })
   .handle(async ({ body }) => {
-    // Create user...
-    return { id: '123', ...body };
+    return await insertUser(body);
+  });
+
+// Manual — publish inside the handler
+const transferFunds = e
+  .post('/transfers')
+  .publisher(eventPublisherService)
+  .handle(async ({ body, publish }) => {
+    const result = await processTransfer(body);
+    await publish('order.placed', { orderId: result.id, total: result.amount });
+    return result;
+  });
+```
+
+### Subscribing to Events
+
+Use the `s` builder from `@geekmidas/constructs/subscribers`:
+
+```typescript
+import { s } from '@geekmidas/constructs/subscribers';
+
+export const onUserCreated = s
+  .services([databaseService, emailService])
+  .publisher(eventPublisherService) // optional, for chaining events
+  .subscribe('user.created')
+  .handle(async ({ events, services, logger }) => {
+    for (const event of events) {
+      await services.email.send('welcome', { to: event.payload.email });
+      logger.info({ userId: event.payload.userId }, 'Welcome email sent');
+    }
+  });
+```
+
+See the [Constructs: Event Subscribers](/packages/constructs#event-subscribers) section for full subscriber builder documentation, including testing.
+
+### End-to-End Flow
+
+Here's how events flow through the system:
+
+```
+1. Endpoint handler returns response
+         │
+2. Framework publishes declared events via Publisher
+   (using EVENT_PUBLISHER_CONNECTION_STRING)
+         │
+3. Events arrive at the backend (pgboss queue, RabbitMQ exchange,
+   SNS topic, SQS queue, or in-memory)
+         │
+4. Subscriber receives events:
+   - Dev: CLI polls via EVENT_SUBSCRIBER_CONNECTION_STRING
+   - Prod (Lambda): SQS/SNS event source mapping triggers handler
+   - Prod (Server): Built-in polling loop
+         │
+5. Subscriber handler processes events, optionally publishes
+   follow-up events via its own publisher
+```
+
+### Resolution: How Connection Strings Get Set
+
+When you configure `services.events` in your workspace:
+
+```typescript
+// gkm.config.ts
+export default defineWorkspace({
+  services: {
+    db: true,
+    events: 'pgboss', // or 'sns' or 'rabbitmq'
+  },
+});
+```
+
+The CLI automatically:
+1. Adds the appropriate containers to `docker-compose.yml`
+2. Generates credentials (passwords, access keys)
+3. Sets `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING` in your environment
+4. For **pgboss**: creates a dedicated PostgreSQL user and schema via an init script
+5. For **sns**: adds a LocalStack container; connection strings use `sns://` protocol
+6. For **rabbitmq**: adds a RabbitMQ container with management plugin
+
+Your publisher and subscriber services read these env vars via `envParser`, so the same code works across all backends — only the connection string changes.
+
+### Example: Complete Event System
+
+```typescript
+// src/events/types.ts — shared event types
+import type { PublishableMessage } from '@geekmidas/events';
+
+export type AppEvents =
+  | PublishableMessage<'user.created', { userId: string; email: string }>
+  | PublishableMessage<'user.updated', { userId: string }>;
+
+// src/services/eventPublisher.ts — publisher service
+import { Publisher } from '@geekmidas/events';
+import type { Service } from '@geekmidas/services';
+import type { EventPublisher } from '@geekmidas/events';
+import type { AppEvents } from '../events/types';
+
+export const eventPublisherService = {
+  serviceName: 'eventPublisher' as const,
+  async register(envParser) {
+    const config = envParser.create((get) => ({
+      url: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
+    })).parse();
+    return Publisher.fromConnectionString<AppEvents>(config.url);
+  },
+} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
+
+// src/endpoints/users.ts — endpoint that publishes
+import { e } from '@geekmidas/constructs/endpoints';
+import { eventPublisherService } from '../services/eventPublisher';
+
+export const createUser = e
+  .post('/users')
+  .publisher(eventPublisherService)
+  .body(createUserSchema)
+  .output(userSchema)
+  .event({
+    type: 'user.created',
+    payload: (res) => ({ userId: res.id, email: res.email }),
+  })
+  .handle(async ({ body }) => {
+    return await db.insertInto('users').values(body).returningAll().executeTakeFirstOrThrow();
+  });
+
+// src/subscribers/userEvents.ts — subscriber that reacts
+import { s } from '@geekmidas/constructs/subscribers';
+
+export const onUserCreated = s
+  .services([emailService])
+  .subscribe('user.created')
+  .handle(async ({ events, services }) => {
+    for (const event of events) {
+      await services.email.send('welcome', { to: event.payload.email });
+    }
   });
 ```
