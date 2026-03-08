@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ComposeServiceName } from '../types';
+import type { ComposeServiceName, EventsBackend } from '../types';
 import type { ServiceCredentials, StageSecrets } from './types';
 
 /**
@@ -45,6 +45,20 @@ const SERVICE_DEFAULTS: Record<
 		port: 1025,
 		username: 'app',
 	},
+	localstack: {
+		host: 'localhost',
+		port: 4566,
+		username: 'localstack',
+		region: 'us-east-1',
+	},
+};
+
+/** Default credentials for pgboss (not a Docker service, reuses postgres) */
+const PGBOSS_DEFAULTS: Omit<ServiceCredentials, 'password'> = {
+	host: 'localhost',
+	port: 5432,
+	username: 'pgboss',
+	database: 'app',
 };
 
 /**
@@ -109,10 +123,75 @@ export function generateMinioEndpoint(creds: ServiceCredentials): string {
 }
 
 /**
+ * Generate a LocalStack-compatible access key ID.
+ * Must start with 'LSIA' prefix and be at least 20 characters.
+ * @see https://docs.localstack.cloud/aws/capabilities/config/credentials/
+ */
+export function generateLocalStackAccessKeyId(): string {
+	const suffix = randomBytes(12).toString('base64url').slice(0, 16);
+	return `LSIA${suffix}`;
+}
+
+/**
+ * Generate connection URL for pg-boss (uses PostgreSQL protocol).
+ * Format: pgboss://user:pass@host:port/db?schema=pgboss
+ */
+export function generatePgBossUrl(creds: ServiceCredentials): string {
+	const { username, password, host, port, database } = creds;
+	return `pgboss://${username}:${encodeURIComponent(password)}@${host}:${port}/${database}?schema=pgboss`;
+}
+
+/**
+ * Generate event connection strings based on the events backend.
+ */
+export function generateEventConnectionStrings(
+	eventsBackend: EventsBackend,
+	services: StageSecrets['services'],
+): { publisher: string; subscriber: string } {
+	switch (eventsBackend) {
+		case 'pgboss': {
+			const creds = services.pgboss;
+			if (!creds) {
+				throw new Error('pgboss credentials required for pgboss events');
+			}
+			const url = generatePgBossUrl(creds);
+			return { publisher: url, subscriber: url };
+		}
+		case 'sns': {
+			const creds = services.localstack;
+			if (!creds) {
+				throw new Error(
+					'localstack credentials required for sns events',
+				);
+			}
+			const endpoint = `http://${creds.host}:${creds.port}`;
+			const region = creds.region ?? 'us-east-1';
+			const accessKeyId = creds.accessKeyId ?? creds.username;
+			const secretKey = encodeURIComponent(creds.password);
+			return {
+				publisher: `sns://${accessKeyId}:${secretKey}@${creds.host}:${creds.port}?region=${region}&endpoint=${encodeURIComponent(endpoint)}`,
+				subscriber: `sqs://${accessKeyId}:${secretKey}@${creds.host}:${creds.port}?region=${region}&endpoint=${encodeURIComponent(endpoint)}`,
+			};
+		}
+		case 'rabbitmq': {
+			const creds = services.rabbitmq;
+			if (!creds) {
+				throw new Error(
+					'rabbitmq credentials required for rabbitmq events',
+				);
+			}
+			const url = generateRabbitmqUrl(creds);
+			return { publisher: url, subscriber: url };
+		}
+	}
+}
+
+/**
  * Generate connection URLs from service credentials.
  */
 export function generateConnectionUrls(
 	services: StageSecrets['services'],
+	eventsBackend?: EventsBackend,
 ): StageSecrets['urls'] {
 	const urls: StageSecrets['urls'] = {};
 
