@@ -1237,6 +1237,28 @@ describe('replacePortInUrl', () => {
 		// Only the :5432 before / should be replaced
 		expect(result).toBe('postgresql://app:pass5432@localhost:5433/db5432');
 	});
+
+	it('should replace port followed by query string', () => {
+		const url = 'pgboss://pgboss:pass@localhost:5432/mydb?schema=pgboss';
+		expect(replacePortInUrl(url, 5432, 5433)).toBe(
+			'pgboss://pgboss:pass@localhost:5433/mydb?schema=pgboss',
+		);
+	});
+
+	it('should replace port in SNS URL with query params and no path', () => {
+		const url = 'sns://key:secret@localhost:4566?region=us-east-1';
+		expect(replacePortInUrl(url, 4566, 4567)).toBe(
+			'sns://key:secret@localhost:4567?region=us-east-1',
+		);
+	});
+
+	it('should replace URL-encoded port in query params', () => {
+		const url =
+			'sns://key:secret@localhost:4566?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4566';
+		expect(replacePortInUrl(url, 4566, 4567)).toBe(
+			'sns://key:secret@localhost:4567?region=us-east-1&endpoint=http%3A%2F%2Flocalhost%3A4567',
+		);
+	});
 });
 
 describe('rewriteUrlsWithPorts', () => {
