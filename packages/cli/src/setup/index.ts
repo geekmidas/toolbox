@@ -210,8 +210,7 @@ export function reconcileSecrets(
 						port: result.services.postgres?.port ?? 5432,
 						username: 'pgboss',
 						password: generateSecurePassword(),
-						database:
-							result.services.postgres?.database ?? 'app',
+						database: result.services.postgres?.database ?? 'app',
 					},
 				},
 			};
