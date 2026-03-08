@@ -348,7 +348,17 @@ export function replacePortInUrl(
 	newPort: number,
 ): string {
 	if (oldPort === newPort) return url;
-	return url.replace(new RegExp(`:${oldPort}(?=/|$)`, 'g'), `:${newPort}`);
+	// Replace literal :port (in authority section)
+	let result = url.replace(
+		new RegExp(`:${oldPort}(?=[/?#]|$)`, 'g'),
+		`:${newPort}`,
+	);
+	// Replace URL-encoded :port (e.g., in query params like endpoint=http%3A%2F%2Flocalhost%3A4566)
+	result = result.replace(
+		new RegExp(`%3A${oldPort}(?=[%/?#&]|$)`, 'gi'),
+		`%3A${newPort}`,
+	);
+	return result;
 }
 
 /**
