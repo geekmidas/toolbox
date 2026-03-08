@@ -301,10 +301,14 @@ async function generateFreshSecrets(
 	if (workspace.services.cache) serviceNames.push('redis');
 	if (workspace.services.storage) serviceNames.push('minio');
 	if (workspace.services.mail) serviceNames.push('mailpit');
+	if (workspace.services.events === 'sns') serviceNames.push('localstack');
+	if (workspace.services.events === 'rabbitmq')
+		serviceNames.push('rabbitmq');
 
 	// Create base secrets with service credentials
 	const secrets = createStageSecrets(stage, serviceNames, {
 		projectName: workspace.name,
+		eventsBackend: workspace.services.events,
 	});
 
 	// Generate fullstack-aware custom secrets
