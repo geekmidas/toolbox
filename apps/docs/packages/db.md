@@ -18,7 +18,11 @@ pnpm add @geekmidas/db
 
 ## Package Exports
 
-- `/kysely` - Kysely transaction utilities, DatabaseConnection type, and RLS helpers
+| Export | Description |
+|--------|-------------|
+| `/kysely` | Transaction utilities (`withTransaction`), `DatabaseConnection` type, RLS helpers (`withRlsContext`) |
+| `/kysely/pagination` | Cursor-based pagination (`paginatedSearch`, `encodeCursor`, `decodeCursor`) |
+| `/rls` | Row Level Security types and utilities |
 
 ## Basic Usage
 

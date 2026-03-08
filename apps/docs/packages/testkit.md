@@ -19,6 +19,21 @@ pnpm add -D @geekmidas/testkit
 - ✅ Complex seed scenarios
 - ✅ Enhanced faker with timestamps, sequences, and coordinates
 
+## Package Exports
+
+| Export | Description |
+|--------|-------------|
+| `/kysely` | `KyselyFactory` - database factories for Kysely |
+| `/objection` | Factory for Objection.js |
+| `/faker` | Enhanced faker with timestamps, sequences, coordinates, prices |
+| `/timer` | Async wait utilities for testing |
+| `/os` | Directory operation helpers for tests |
+| `/aws` | AWS testing utilities |
+| `/logger` | Logger testing utilities |
+| `/better-auth` | Better Auth testing utilities |
+| `/benchmark` | Test data generators for benchmarks |
+| `/postgres` | `runInitScript` - parse and execute PostgreSQL init scripts |
+
 ## Kysely Factory
 
 ### Builders

@@ -18,12 +18,16 @@ pnpm add @geekmidas/client
 
 ## Package Exports
 
-- `/` - Core client types
-- `/fetcher` - Typed fetcher implementation
-- `/infer` - Type inference utilities
-- `/react-query` - React Query integration
-- `/openapi` - OpenAPI client utilities
-- `/types` - Type definitions
+| Export | Description |
+|--------|-------------|
+| `/` | Core client types |
+| `/fetcher` | Typed fetcher implementation |
+| `/infer` | Type inference utilities |
+| `/react-query` | React Query integration |
+| `/openapi` | OpenAPI client utilities |
+| `/types` | Type definitions |
+| `/auth-fetcher` | Auth-aware fetcher with per-endpoint security strategies (Bearer, API key, AWS IAM) |
+| `/endpoint-hooks` | `createEndpointHooks` - React Query hooks generated from typed fetcher |
 
 ## Basic Usage
 

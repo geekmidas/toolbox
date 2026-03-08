@@ -18,9 +18,12 @@ pnpm add @geekmidas/logger
 
 ## Package Exports
 
-- `/` - Logger interface
-- `/pino` - Pino logger implementation
-- `/console` - Console logger implementation
+| Export | Description |
+|--------|-------------|
+| `/` | Logger interface and types |
+| `/pino` | Pino logger implementation |
+| `/console` | Console logger implementation |
+| `/redact` | `DEFAULT_REDACT_PATHS` - standard sensitive field paths for log redaction |
 
 ## Basic Usage
 

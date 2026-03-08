@@ -28,13 +28,17 @@ pnpm add @geekmidas/constructs
 
 ## Package Exports
 
-- `/endpoints` - HTTP endpoint builder and types
-- `/functions` - Cloud function builder
-- `/crons` - Scheduled task builder
-- `/subscribers` - Event subscriber builder
-- `/hono` - Hono framework adapter
-- `/aws` - AWS Lambda adaptors (API Gateway v1/v2)
-- `/testing` - Testing utilities
+| Export | Description |
+|--------|-------------|
+| `/` | Core types and utilities |
+| `/endpoints` | HTTP endpoint builder (`e`, `EndpointFactory`) and types |
+| `/functions` | Cloud function builder (`f`) |
+| `/crons` | Scheduled task builder (`c`) |
+| `/subscribers` | Event subscriber builder (`s`) |
+| `/types` | Type definitions |
+| `/hono` | Hono framework adapter (`HonoEndpoint`) |
+| `/aws` | AWS Lambda adaptors (API Gateway v1/v2) |
+| `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`) |
 
 ## Basic Usage
 
