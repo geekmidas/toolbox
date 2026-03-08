@@ -285,6 +285,32 @@ services:
 `;
 	}
 
+	const localstackImage = serviceMap.get('localstack');
+	if (localstackImage) {
+		yaml += `
+  localstack:
+    image: ${localstackImage}
+    container_name: localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
+      AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}
+    ports:
+      - "\${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+`;
+	}
+
 	// Add volumes
 	yaml += `
 volumes:
