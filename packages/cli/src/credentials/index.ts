@@ -710,9 +710,10 @@ export async function prepareEntryCredentials(options: {
 	let workspaceAppPort: number | undefined;
 	let secretsRoot: string = cwd;
 	let appName: string | undefined;
+	let appInfo: WorkspaceAppInfo | undefined;
 
 	try {
-		const appInfo = await loadWorkspaceAppInfo(cwd);
+		appInfo = await loadWorkspaceAppInfo(cwd);
 		workspaceAppPort = appInfo.app.port;
 		secretsRoot = appInfo.workspaceRoot;
 		appName = appInfo.appName;
@@ -729,7 +730,11 @@ export async function prepareEntryCredentials(options: {
 	const resolvedPort = options.explicitPort ?? workspaceAppPort ?? 3000;
 
 	// Load secrets and inject PORT
-	const credentials = await loadSecretsForApp(secretsRoot, appName);
+	const credentials = await loadSecretsForApp(
+		secretsRoot,
+		appName,
+		options.stages,
+	);
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);
@@ -765,6 +770,24 @@ export async function prepareEntryCredentials(options: {
 			}
 
 			resolvedPorts = { dockerEnv: {}, ports, mappings };
+		}
+
+		// Start Docker services if requested (between port resolution and URL rewriting)
+		// Docker needs raw secrets (POSTGRES_USER, etc.) + resolved port env for compose interpolation
+		if (options.startDocker) {
+			if (appInfo) {
+				await startWorkspaceServices(
+					appInfo.workspace,
+					resolvedPorts.dockerEnv,
+					credentials,
+				);
+			} else {
+				await startComposeServices(
+					secretsRoot,
+					resolvedPorts.dockerEnv,
+					credentials,
+				);
+			}
 		}
 
 		if (Object.keys(resolvedPorts.ports).length > 0) {
