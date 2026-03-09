@@ -44,10 +44,7 @@ export function createDockerCompose(
 	writeFileSync(join(root, 'docker-compose.yml'), content);
 }
 
-export function createPortState(
-	ports: Record<string, number>,
-	root: string,
-) {
+export function createPortState(ports: Record<string, number>, root: string) {
 	const dir = join(root, '.gkm');
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, 'ports.json'), JSON.stringify(ports, null, 2));

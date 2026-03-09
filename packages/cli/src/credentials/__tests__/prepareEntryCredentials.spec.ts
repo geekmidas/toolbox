@@ -50,9 +50,7 @@ describe('prepareEntryCredentials', () => {
 
 		const result = await prepareEntryCredentials({ cwd: testDir });
 
-		expect(result.credentials.DATABASE_URL).toBe(
-			'postgresql://localhost/mydb',
-		);
+		expect(result.credentials.DATABASE_URL).toBe('postgresql://localhost/mydb');
 		expect(result.credentials.API_KEY).toBe('secret');
 	});
 
