@@ -1,20 +1,12 @@
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { loadWorkspaceAppInfo } from '../config';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
-	loadPortState,
-	parseComposePortMappings,
-	resolveServicePorts,
-	rewriteUrlsWithPorts,
-	startComposeServices,
-	startWorkspaceServices,
+	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
-import { readStageSecrets, toEmbeddableSecrets } from '../secrets/storage';
-import { getDependencyEnvVars } from '../workspace/index';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -47,124 +39,55 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		console.log(`  📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	// 2. Load and decrypt secrets
-	let secretsEnv: Record<string, string> = {};
-	try {
-		const secrets = await readStageSecrets(stage);
-		if (secrets) {
-			secretsEnv = toEmbeddableSecrets(secrets);
-			console.log(
-				`  🔐 Loaded ${Object.keys(secretsEnv).length} secrets from ${stage}`,
-			);
-		} else {
-			console.log(`  No secrets found for ${stage}`);
-		}
-	} catch (error) {
-		if (error instanceof Error && error.message.includes('key not found')) {
-			console.log(`  Decryption key not found for ${stage}`);
-		} else {
-			throw error;
-		}
-	}
+	// 2. Prepare credentials: loads secrets, resolves Docker ports,
+	//    starts services, rewrites URLs, injects dependency URLs
+	const result = await prepareEntryCredentials({
+		stages: [stage],
+		startDocker: true,
+		secretsFileName: 'test-secrets.json',
+		resolveDockerPorts: 'full',
+	});
 
-	// 3. Load workspace config + start Docker services with secrets
-	let dependencyEnv: Record<string, string> = {};
-	try {
-		const appInfo = await loadWorkspaceAppInfo(cwd);
+	let finalCredentials = { ...result.credentials };
 
-		// Resolve ports and start Docker services with secrets so that
-		// POSTGRES_USER, POSTGRES_PASSWORD, etc. are interpolated correctly
-		const resolvedPorts = await resolveServicePorts(appInfo.workspaceRoot);
-		await startWorkspaceServices(
-			appInfo.workspace,
-			resolvedPorts.dockerEnv,
-			secretsEnv,
-		);
-
-		// Rewrite URLs with resolved Docker ports and hostnames
-		if (resolvedPorts.mappings.length > 0) {
-			secretsEnv = rewriteUrlsWithPorts(secretsEnv, resolvedPorts);
-			console.log(
-				`  🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-			);
-		}
-
-		dependencyEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
-
-		if (Object.keys(dependencyEnv).length > 0) {
-			console.log(
-				`  🔗 Loaded ${Object.keys(dependencyEnv).length} dependency URL(s)`,
-			);
-		}
-
-		// Sniff to detect which env vars the app needs
+	// 3. Sniff env vars to filter only what the app needs (workspace only)
+	if (result.appInfo) {
 		const sniffed = await sniffAppEnvironment(
-			appInfo.app,
-			appInfo.appName,
-			appInfo.workspaceRoot,
+			result.appInfo.app,
+			result.appInfo.appName,
+			result.appInfo.workspaceRoot,
 			{ logWarnings: false },
 		);
 
-		// Filter to only include what the app needs
 		if (sniffed.requiredEnvVars.length > 0) {
 			const needed = new Set(sniffed.requiredEnvVars);
-			const allEnv = { ...secretsEnv, ...dependencyEnv };
-			const filteredEnv: Record<string, string> = {};
-			for (const [key, value] of Object.entries(allEnv)) {
+			const filtered: Record<string, string> = {};
+			for (const [key, value] of Object.entries(finalCredentials)) {
 				if (needed.has(key)) {
-					filteredEnv[key] = value;
+					filtered[key] = value;
 				}
 			}
-			secretsEnv = {};
-			dependencyEnv = filteredEnv;
+			finalCredentials = filtered;
 			console.log(
 				`  🔍 Sniffed ${sniffed.requiredEnvVars.length} required env var(s)`,
 			);
 		}
-	} catch {
-		// Not in a workspace — start Docker services from local docker-compose.yml
-		const composePath = join(cwd, 'docker-compose.yml');
-		const mappings = parseComposePortMappings(composePath);
-		if (mappings.length > 0) {
-			const resolvedPorts = await resolveServicePorts(cwd);
-			await startComposeServices(cwd, resolvedPorts.dockerEnv, secretsEnv);
-
-			if (resolvedPorts.mappings.length > 0) {
-				secretsEnv = rewriteUrlsWithPorts(secretsEnv, resolvedPorts);
-				console.log(
-					`  🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-				);
-			} else {
-				// Fallback to saved port state from a previous gkm dev run
-				const ports = await loadPortState(cwd);
-				if (Object.keys(ports).length > 0) {
-					secretsEnv = rewriteUrlsWithPorts(secretsEnv, {
-						dockerEnv: {},
-						ports,
-						mappings,
-					});
-					console.log(
-						`  🔌 Applied ${Object.keys(ports).length} port mapping(s)`,
-					);
-				}
-			}
-		}
 	}
 
-	// 4. Use a separate test database (append _test suffix)
-	secretsEnv = rewriteDatabaseUrlForTests(secretsEnv);
+	// 4. Rewrite DATABASE_URL for test isolation (append _test suffix)
+	finalCredentials = rewriteDatabaseUrlForTests(finalCredentials);
 
 	console.log('');
 
-	// Write combined secrets to JSON and create credentials preload
-	const allSecrets = { ...secretsEnv, ...dependencyEnv };
-	const gkmDir = join(cwd, '.gkm');
-	await mkdir(gkmDir, { recursive: true });
-	const secretsJsonPath = join(gkmDir, 'test-secrets.json');
-	await writeFile(secretsJsonPath, JSON.stringify(allSecrets, null, 2));
+	// 5. Write final credentials and create preload script
+	await writeFile(
+		result.secretsJsonPath,
+		JSON.stringify(finalCredentials, null, 2),
+	);
 
+	const gkmDir = join(cwd, '.gkm');
 	const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
-	await createCredentialsPreload(preloadPath, secretsJsonPath);
+	await createCredentialsPreload(preloadPath, result.secretsJsonPath);
 
 	// Merge NODE_OPTIONS with existing value (if any)
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
@@ -201,7 +124,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		stdio: 'inherit',
 		env: {
 			...process.env,
-			...allSecrets,
+			...finalCredentials,
 			NODE_ENV: 'test',
 			NODE_OPTIONS: nodeOptions,
 		},
