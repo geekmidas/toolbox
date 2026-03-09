@@ -800,23 +800,18 @@ export async function prepareEntryCredentials(options: {
 	}
 
 	// Inject dependency URLs (works for both frontend and backend apps)
-	try {
-		const appInfo = await loadWorkspaceAppInfo(cwd);
-		if (appInfo.appName) {
-			const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
-			Object.assign(credentials, depEnv);
-		}
-	} catch {
-		// Not in a workspace — skip dependency URL injection
+	if (appInfo?.appName) {
+		const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
+		Object.assign(credentials, depEnv);
 	}
 
 	// Write secrets to temp JSON file (always write since we have PORT)
 	// Use app-specific filename to avoid race conditions when running multiple apps via turbo
 	const secretsDir = join(secretsRoot, '.gkm');
 	await mkdir(secretsDir, { recursive: true });
-	const secretsFileName = appName
-		? `dev-secrets-${appName}.json`
-		: 'dev-secrets.json';
+	const secretsFileName =
+		options.secretsFileName ??
+		(appName ? `dev-secrets-${appName}.json` : 'dev-secrets.json');
 	const secretsJsonPath = join(secretsDir, secretsFileName);
 	await writeFile(secretsJsonPath, JSON.stringify(credentials, null, 2));
 
@@ -826,5 +821,6 @@ export async function prepareEntryCredentials(options: {
 		secretsJsonPath,
 		appName,
 		secretsRoot,
+		appInfo,
 	};
 }
