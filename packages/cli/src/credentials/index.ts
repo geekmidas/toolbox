@@ -5,7 +5,11 @@ import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 import { parse as parseYaml } from 'yaml';
-import { getAppNameFromCwd, loadWorkspaceAppInfo } from '../config';
+import {
+	getAppNameFromCwd,
+	loadWorkspaceAppInfo,
+	type WorkspaceAppInfo,
+} from '../config';
 import {
 	readStageSecrets,
 	secretsExist,
@@ -530,10 +534,8 @@ export async function startWorkspaceServices(
 export async function loadSecretsForApp(
 	secretsRoot: string,
 	appName?: string,
+	stages: string[] = ['dev', 'development'],
 ): Promise<Record<string, string>> {
-	// Try 'dev' stage first, then 'development'
-	const stages = ['dev', 'development'];
-
 	let secrets: Record<string, string> = {};
 
 	for (const stage of stages) {
@@ -673,6 +675,8 @@ export interface EntryCredentialsResult {
 	appName: string | undefined;
 	/** Secrets root directory */
 	secretsRoot: string;
+	/** Workspace app info (if in a workspace) */
+	appInfo?: WorkspaceAppInfo;
 }
 
 /**
@@ -681,14 +685,23 @@ export interface EntryCredentialsResult {
  * injects PORT, dependency URLs, and writes credentials JSON.
  *
  * @param options.resolveDockerPorts - How to resolve Docker ports:
- *   - `'full'` (default): probe running containers, saved state, then find available ports. Used by dev.
+ *   - `'full'` (default): probe running containers, saved state, then find available ports. Used by dev/test.
  *   - `'readonly'`: check running containers and saved state only, never probe for new ports. Used by exec.
+ * @param options.stages - Secret stages to try, in order. Default: ['dev', 'development'].
+ * @param options.startDocker - Start Docker Compose services after port resolution. Default: false.
+ * @param options.secretsFileName - Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json'.
  * @internal Exported for testing
  */
 export async function prepareEntryCredentials(options: {
 	explicitPort?: number;
 	cwd?: string;
 	resolveDockerPorts?: 'full' | 'readonly';
+	/** Secret stages to try, in order. Default: ['dev', 'development'] */
+	stages?: string[];
+	/** Start Docker Compose services after port resolution. Default: false */
+	startDocker?: boolean;
+	/** Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json' */
+	secretsFileName?: string;
 }): Promise<EntryCredentialsResult> {
 	const cwd = options.cwd ?? process.cwd();
 	const portMode = options.resolveDockerPorts ?? 'full';
