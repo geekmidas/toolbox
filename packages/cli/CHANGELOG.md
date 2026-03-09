@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.18
+
+### Patch Changes
+
+- 🐛 [`70a63e5`](https://github.com/geekmidas/toolbox/commit/70a63e57e1867c88b79c66fe979c613ce2272d54) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix exec command to resolve the correct credentials
+
 ## 1.10.17
 
 ### Patch Changes
