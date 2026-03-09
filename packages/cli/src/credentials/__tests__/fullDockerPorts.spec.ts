@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	afterEach,
-	beforeEach,
 	describe as baseDescribe,
+	beforeEach,
 	expect,
 	it,
 } from 'vitest';
