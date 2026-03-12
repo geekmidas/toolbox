@@ -110,12 +110,12 @@ describe('TypedFetcher', () => {
 		});
 
 		expect(mockFetch).toHaveBeenCalledWith(
-			'https://api.example.com/search?tags=nodejs&tags=typescript&tags=javascript',
+			'https://api.example.com/search?tags%5B%5D=nodejs&tags%5B%5D=typescript&tags%5B%5D=javascript',
 			expect.any(Object),
 		);
 	});
 
-	it('should handle object query parameters with dot notation', async () => {
+	it('should handle object query parameters with bracket notation', async () => {
 		// Mock fetch to capture the request URL
 		const mockFetch = vi.fn().mockResolvedValue({
 			ok: true,
@@ -141,7 +141,7 @@ describe('TypedFetcher', () => {
 		});
 
 		expect(mockFetch).toHaveBeenCalledWith(
-			'https://api.example.com/products?filter.category=electronics&filter.minPrice=100&filter.maxPrice=500&sort=price',
+			'https://api.example.com/products?filter%5Bcategory%5D=electronics&filter%5BminPrice%5D=100&filter%5BmaxPrice%5D=500&sort=price',
 			expect.any(Object),
 		);
 	});
@@ -175,10 +175,26 @@ describe('TypedFetcher', () => {
 			} as any,
 		});
 
-		expect(mockFetch).toHaveBeenCalledWith(
-			'https://api.example.com/advanced-search?user.roles=admin&user.roles=moderator&user.roles=user&user.status=active&settings.notifications.types=email&settings.notifications.types=sms&settings.notifications.types=push&settings.notifications.enabled=true',
-			expect.any(Object),
-		);
+		// qs uses bracket notation: user[roles][]=admin&user[status]=active etc.
+		const calledUrl = mockFetch.mock.calls[0][0] as string;
+		const url = new URL(calledUrl);
+		expect(url.pathname).toBe('/advanced-search');
+
+		// Verify the query string can be parsed back to the original object
+		const qs = await import('qs');
+		const parsed = qs.default.parse(url.search.slice(1));
+		expect(parsed).toEqual({
+			user: {
+				roles: ['admin', 'moderator', 'user'],
+				status: 'active',
+			},
+			settings: {
+				notifications: {
+					types: ['email', 'sms', 'push'],
+					enabled: 'true',
+				},
+			},
+		});
 	});
 
 	it('should handle 404 errors', async () => {
