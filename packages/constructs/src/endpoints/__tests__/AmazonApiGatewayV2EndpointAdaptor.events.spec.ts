@@ -635,7 +635,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 		expect(mockPublisher.publish).not.toHaveBeenCalled();
 	});
 
-	it('should handle comma-separated array query parameters', async () => {
+	it('should handle bracket notation array query parameters', async () => {
 		const mockPublisher: EventPublisher<TestEvent> = {
 			publish: vi.fn().mockResolvedValue(undefined),
 		};
@@ -702,8 +702,10 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 				},
 			},
 			pathParameters: { id: '123' },
+			rawQueryString:
+				'tags%5B%5D=javascript&tags%5B%5D=typescript&tags%5B%5D=nodejs',
 			queryStringParameters: {
-				tags: 'javascript, typescript, nodejs', // V2 handles arrays as comma-separated
+				'tags[]': 'javascript,typescript,nodejs',
 			},
 		});
 		const context = createMockContext();

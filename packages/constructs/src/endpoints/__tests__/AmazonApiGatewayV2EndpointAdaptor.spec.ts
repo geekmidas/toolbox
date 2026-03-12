@@ -139,7 +139,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 		});
 
-		it('should handle array query parameters (comma-separated)', async () => {
+		it('should handle array query parameters with bracket notation', async () => {
 			const endpoint = e
 				.get('/search')
 				.query(
@@ -164,9 +164,10 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			const event = createMockV2Event({
 				routeKey: 'GET /search',
 				rawPath: '/search',
-				rawQueryString: 'tags=nodejs,typescript,javascript&limit=20',
+				rawQueryString:
+					'tags%5B%5D=nodejs&tags%5B%5D=typescript&tags%5B%5D=javascript&limit=20',
 				queryStringParameters: {
-					tags: 'nodejs,typescript,javascript',
+					'tags[]': 'nodejs,typescript,javascript',
 					limit: '20',
 				},
 			});
@@ -182,7 +183,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 		});
 
-		it('should handle object query parameters with dot notation', async () => {
+		it('should handle object query parameters with bracket notation', async () => {
 			const endpoint = e
 				.get('/search')
 				.query(
@@ -210,10 +211,11 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			const event = createMockV2Event({
 				routeKey: 'GET /search',
 				rawPath: '/search',
-				rawQueryString: 'filter.category=electronics&filter.active=true',
+				rawQueryString:
+					'filter%5Bcategory%5D=electronics&filter%5Bactive%5D=true',
 				queryStringParameters: {
-					'filter.category': 'electronics',
-					'filter.active': 'true',
+					'filter[category]': 'electronics',
+					'filter[active]': 'true',
 				},
 			});
 
