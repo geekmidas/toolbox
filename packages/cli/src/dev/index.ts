@@ -290,6 +290,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	let secretsRoot: string = process.cwd(); // Where .gkm/secrets/ lives
 	let workspaceAppName: string | undefined; // Set if in workspace mode
 	let workspaceAppPort: number | undefined; // Port from workspace config
+	let workspace: NormalizedWorkspace | undefined; // Set if in workspace mode
 
 	if (appName) {
 		// Try to load app-specific config from workspace
@@ -300,6 +301,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			secretsRoot = appConfig.workspaceRoot;
 			workspaceAppName = appConfig.appName;
 			workspaceAppPort = appConfig.app.port;
+			workspace = appConfig.workspace;
 			logger.log(
 				`📦 Running app: ${appConfig.appName} on port ${workspaceAppPort}`,
 			);
