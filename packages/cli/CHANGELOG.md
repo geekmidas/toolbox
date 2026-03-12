@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.20
+
+### Patch Changes
+
+- 🐛 [`02991d4`](https://github.com/geekmidas/toolbox/commit/02991d410c4f2fab5fbaa568300e5d8943b3ba45) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix dev command port credentials resolution
+
 ## 1.10.19
 
 ### Patch Changes
