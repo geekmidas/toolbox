@@ -57,16 +57,18 @@
 		"access": "public"
 	},
 	"dependencies": {
-		"@standard-schema/spec": "^1.0.0"
+		"@standard-schema/spec": "^1.0.0",
+		"qs": "~6.15.0"
 	},
 	"devDependencies": {
 		"@geekmidas/constructs": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
 		"@tanstack/react-query": "~5.90.16",
-		"@testing-library/jest-dom": "~6.6.3",
 		"@testing-library/dom": "~10.4.0",
+		"@testing-library/jest-dom": "~6.6.3",
 		"@testing-library/react": "~16.3.0",
 		"@testing-library/react-hooks": "~8.0.1",
+		"@types/qs": "~6.15.0",
 		"@types/react": "~19.1.8",
 		"@types/react-dom": "~19.1.6",
 		"jsdom": "~26.1.0",
