@@ -138,36 +138,78 @@ const databaseService = {
 
 ## Cursor-Based Pagination
 
+### Kysely
+
 The `/kysely/pagination` export provides cursor-based pagination for Kysely queries:
 
 ```typescript
-import { paginatedSearch, encodeCursor, decodeCursor } from '@geekmidas/db/kysely/pagination';
+import { paginatedSearch, Direction } from '@geekmidas/db/kysely/pagination';
 
 const result = await paginatedSearch({
   query: db.selectFrom('users').selectAll(),
   cursor: requestCursor, // from previous page, or undefined for first page
   limit: 20,
-  orderBy: 'created_at',
-  direction: 'desc',
+  cursorField: 'createdAt',
+  cursorDirection: Direction.Desc,
 });
 
 // result: {
 //   items: User[],
-//   total: number,
-//   hasMore: boolean,
-//   cursor: string | null  // pass to next request
+//   pagination: {
+//     total: number,
+//     hasMore: boolean,
+//     cursor?: string  // pass to next request
+//   }
 // }
 ```
 
-You can also transform rows before returning:
+`mapRow` is optional. When omitted, items are returned as raw row objects:
 
 ```typescript
 const result = await paginatedSearch({
   query: db.selectFrom('users').selectAll(),
   limit: 10,
-  orderBy: 'id',
   mapRow: (row) => ({ ...row, displayName: `${row.firstName} ${row.lastName}` }),
 });
+```
+
+### Objection.js
+
+The `/objection/pagination` export provides the same cursor-based pagination for Objection.js models:
+
+```typescript
+import { paginatedSearch, Direction } from '@geekmidas/db/objection/pagination';
+
+const result = await paginatedSearch({
+  query: User.query(trx).where('orgId', orgId).withGraphFetched('roles'),
+  cursor: requestCursor,
+  limit: 20,
+  cursorField: 'createdAt',
+  cursorDirection: Direction.Desc,
+});
+
+// result.items are User model instances with roles loaded
+```
+
+`mapRow` is optional. When omitted, items are returned as Objection model instances:
+
+```typescript
+const result = await paginatedSearch({
+  query: User.query(trx).where('active', true),
+  limit: 10,
+  mapRow: (user) => ({ id: user.id, displayName: user.fullName }),
+});
+```
+
+### Shared Utilities
+
+Both Kysely and Objection pagination re-export `encodeCursor` and `decodeCursor` from `/pagination` for manual cursor handling:
+
+```typescript
+import { encodeCursor, decodeCursor } from '@geekmidas/db/pagination';
+
+const encoded = encodeCursor(new Date('2024-01-15'));  // base64url string
+const decoded = decodeCursor(encoded);                  // Date object
 ```
 
 ## Row Level Security (RLS)
