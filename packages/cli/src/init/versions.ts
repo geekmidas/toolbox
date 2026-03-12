@@ -33,7 +33,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/client': '~4.0.0',
 	'@geekmidas/cloud': '~1.0.0',
 	'@geekmidas/constructs': '~3.0.2',
-	'@geekmidas/db': '~1.0.0',
+	'@geekmidas/db': '~1.0.1',
 	'@geekmidas/emailkit': '~1.0.0',
 	'@geekmidas/envkit': '~1.0.4',
 	'@geekmidas/errors': '~1.0.0',
