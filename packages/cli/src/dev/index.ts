@@ -432,7 +432,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	if (Object.keys(appSecrets).length > 0) {
 		const secretsDir = join(secretsRoot, '.gkm');
 		await mkdir(secretsDir, { recursive: true });
-		secretsJsonPath = join(secretsDir, 'dev-secrets.json');
+		const secretsFileName = workspaceAppName
+			? `dev-secrets-${workspaceAppName}.json`
+			: 'dev-secrets.json';
+		secretsJsonPath = join(secretsDir, secretsFileName);
 		await writeFile(secretsJsonPath, JSON.stringify(appSecrets, null, 2));
 		logger.log(`🔐 Loaded ${Object.keys(appSecrets).length} secret(s)`);
 	}
