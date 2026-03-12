@@ -626,7 +626,7 @@ describe('HonoEndpointAdaptor', () => {
 	});
 
 	describe('query parameter handling', () => {
-		it('should handle array query parameters', async () => {
+		it('should handle array query parameters with bracket notation', async () => {
 			const querySchema = z.object({
 				tags: z.array(z.string()),
 				limit: z.coerce.number().default(10),
@@ -663,7 +663,7 @@ describe('HonoEndpointAdaptor', () => {
 			adaptor.addRoute(serviceDiscovery, app);
 
 			const response = await app.request(
-				'/search?tags=nodejs&tags=typescript&tags=javascript&limit=20',
+				'/search?tags[]=nodejs&tags[]=typescript&tags[]=javascript&limit=20',
 			);
 
 			expect(response.status).toBe(200);
@@ -673,7 +673,7 @@ describe('HonoEndpointAdaptor', () => {
 			});
 		});
 
-		it('should handle object query parameters with dot notation', async () => {
+		it('should handle object query parameters with bracket notation', async () => {
 			const querySchema = z.object({
 				filter: z.object({
 					category: z.string(),
@@ -718,7 +718,7 @@ describe('HonoEndpointAdaptor', () => {
 			adaptor.addRoute(serviceDiscovery, app);
 
 			const response = await app.request(
-				'/products?filter.category=electronics&filter.active=true&filter.minPrice=100&sort=price',
+				'/products?filter[category]=electronics&filter[active]=true&filter[minPrice]=100&sort=price',
 			);
 
 			expect(response.status).toBe(200);
