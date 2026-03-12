@@ -1,9 +1,11 @@
+import qs from 'qs';
+
 /**
  * Parse query parameters from a flat object into a nested structure
- * Handles arrays (multiple values with same key) and objects (dot notation)
+ * Uses qs bracket notation for standard interoperability
  *
  * @example
- * parseQueryParams({ 'tags': ['a', 'b'], 'filter.name': 'john' })
+ * parseQueryParams({ 'tags[]': ['a', 'b'], 'filter[name]': 'john' })
  * // Returns: { tags: ['a', 'b'], filter: { name: 'john' } }
  */
 export function parseQueryParams(
@@ -13,41 +15,18 @@ export function parseQueryParams(
 		return {};
 	}
 
-	const result: Record<string, any> = {};
-
+	// Reconstruct a query string from the flat object so qs can parse bracket notation
+	const parts: string[] = [];
 	for (const [key, value] of Object.entries(queryParams)) {
-		if (value === undefined) {
-			continue;
-		}
-
-		// Check if the key contains dot notation
-		if (key.includes('.')) {
-			const parts = key.split('.');
-			let current = result;
-
-			// Navigate/create the nested structure
-			for (let i = 0; i < parts.length - 1; i++) {
-				const part = parts[i];
-				if (!part) continue;
-				if (
-					!current[part] ||
-					typeof current[part] !== 'object' ||
-					Array.isArray(current[part])
-				) {
-					current[part] = {};
-				}
-				current = current[part];
+		if (value === undefined) continue;
+		if (Array.isArray(value)) {
+			for (const v of value) {
+				parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
 			}
-
-			// Set the final value
-			const lastPart = parts[parts.length - 1];
-			if (!lastPart) continue;
-			current[lastPart] = value;
 		} else {
-			// Simple key, just assign the value
-			result[key] = value;
+			parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
 		}
 	}
 
-	return result;
+	return qs.parse(parts.join('&')) as Record<string, any>;
 }
