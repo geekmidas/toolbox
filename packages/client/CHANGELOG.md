@@ -1,5 +1,14 @@
 # @geekmidas/client
 
+## 4.0.1
+
+### Patch Changes
+
+- [`a39b41f`](https://github.com/geekmidas/toolbox/commit/a39b41fae9c6cfbde8e6d78bf5a11fbb9e59f67d) Thanks [@geekmidas](https://github.com/geekmidas)! - Use qs to process query params instead of custom solution
+
+- Updated dependencies [[`a39b41f`](https://github.com/geekmidas/toolbox/commit/a39b41fae9c6cfbde8e6d78bf5a11fbb9e59f67d)]:
+  - @geekmidas/constructs@3.0.3
+
 ## 4.0.0
 
 ### Patch Changes

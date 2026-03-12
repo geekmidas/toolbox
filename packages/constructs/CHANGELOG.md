@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.3
+
+### Patch Changes
+
+- [`a39b41f`](https://github.com/geekmidas/toolbox/commit/a39b41fae9c6cfbde8e6d78bf5a11fbb9e59f67d) Thanks [@geekmidas](https://github.com/geekmidas)! - Use qs to process query params instead of custom solution
+
 ## 3.0.2
 
 ### Patch Changes
