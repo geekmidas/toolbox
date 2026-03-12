@@ -1,53 +1,16 @@
 import type { Context } from 'hono';
+import qs from 'qs';
 
 /**
- * Parse Hono query parameters to handle arrays and nested objects
- * Hono provides c.req.queries() for arrays, but we need to handle dot notation for objects
+ * Parse Hono query parameters using qs bracket notation
+ * Supports nested objects, arrays, and deep nesting via standard bracket syntax
  */
 export function parseHonoQuery(c: Context): Record<string, any> {
-	const allParams = c.req.query();
-	const result: Record<string, any> = {};
-
-	// First, handle all query parameters
-	for (const [key, value] of Object.entries(allParams)) {
-		if (key.includes('.')) {
-			// Handle dot notation for objects
-			const parts = key.split('.');
-			let current = result;
-
-			// Navigate/create the nested structure
-			for (let i = 0; i < parts.length - 1; i++) {
-				const part = parts[i];
-				if (!part) continue;
-				if (
-					!current[part] ||
-					typeof current[part] !== 'object' ||
-					Array.isArray(current[part])
-				) {
-					current[part] = {};
-				}
-				current = current[part];
-			}
-
-			// Set the final value, checking for arrays in nested keys
-			const lastPart = parts[parts.length - 1];
-			if (!lastPart) continue;
-			const multipleValues = c.req.queries(key);
-			if (multipleValues && multipleValues.length > 1) {
-				current[lastPart] = multipleValues;
-			} else {
-				current[lastPart] = value;
-			}
-		} else {
-			// For regular keys, check if there are multiple values
-			const multipleValues = c.req.queries(key);
-			if (multipleValues && multipleValues.length > 1) {
-				result[key] = multipleValues;
-			} else {
-				result[key] = value;
-			}
-		}
+	const url = c.req.url;
+	const queryIndex = url.indexOf('?');
+	if (queryIndex === -1) {
+		return {};
 	}
-
-	return result;
+	const queryString = url.slice(queryIndex + 1);
+	return qs.parse(queryString) as Record<string, any>;
 }
