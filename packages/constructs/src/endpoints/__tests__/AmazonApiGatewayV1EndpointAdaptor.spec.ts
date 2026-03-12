@@ -775,7 +775,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 	});
 
 	describe('combined inputs', () => {
-		it('should handle array query parameters', async () => {
+		it('should handle array query parameters with bracket notation', async () => {
 			const querySchema = z.object({
 				tags: z.array(z.string()),
 				page: z.coerce.number().default(1),
@@ -808,9 +808,9 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
-				queryStringParameters: { tags: 'nodejs', page: '2' },
+				queryStringParameters: { 'tags[]': 'nodejs', page: '2' },
 				multiValueQueryStringParameters: {
-					tags: ['nodejs', 'typescript', 'javascript'],
+					'tags[]': ['nodejs', 'typescript', 'javascript'],
 					page: ['2'],
 				},
 			});
@@ -825,7 +825,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			});
 		});
 
-		it('should handle object query parameters with dot notation', async () => {
+		it('should handle object query parameters with bracket notation', async () => {
 			const querySchema = z.object({
 				filter: z.object({
 					name: z.string(),
@@ -867,9 +867,9 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 
 			const event = createMockV1Event({
 				queryStringParameters: {
-					'filter.name': 'john',
-					'filter.status': 'active',
-					'filter.priority': '1',
+					'filter[name]': 'john',
+					'filter[status]': 'active',
+					'filter[priority]': '1',
 					sort: 'priority',
 				},
 			});
