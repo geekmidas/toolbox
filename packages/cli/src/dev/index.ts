@@ -428,9 +428,26 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Determine runtime (default to node)
 	const runtime: Runtime = config.runtime ?? 'node';
 
-	// Load secrets for dev mode and write to JSON file
+	// Load secrets for dev mode, resolve Docker ports, and write to JSON file
 	let secretsJsonPath: string | undefined;
 	const appSecrets = await loadSecretsForApp(secretsRoot, workspaceAppName);
+
+	// Resolve Docker service ports and rewrite connection URLs
+	const resolvedPorts = await resolveServicePorts(secretsRoot);
+	if (Object.keys(resolvedPorts.ports).length > 0) {
+		const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
+		Object.assign(appSecrets, rewritten);
+		logger.log(
+			`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
+		);
+	}
+
+	// Inject dependency URLs if in workspace mode
+	if (workspace && workspaceAppName) {
+		const depEnv = getDependencyEnvVars(workspace, workspaceAppName);
+		Object.assign(appSecrets, depEnv);
+	}
+
 	if (Object.keys(appSecrets).length > 0) {
 		const secretsDir = join(secretsRoot, '.gkm');
 		await mkdir(secretsDir, { recursive: true });
