@@ -21,7 +21,9 @@ pnpm add @geekmidas/db
 | Export | Description |
 |--------|-------------|
 | `/kysely` | Transaction utilities (`withTransaction`), `DatabaseConnection` type, RLS helpers (`withRlsContext`) |
-| `/kysely/pagination` | Cursor-based pagination (`paginatedSearch`, `encodeCursor`, `decodeCursor`) |
+| `/kysely/pagination` | Cursor-based pagination for Kysely (`paginatedSearch`, `encodeCursor`, `decodeCursor`) |
+| `/objection/pagination` | Cursor-based pagination for Objection.js models (`paginatedSearch`, `encodeCursor`, `decodeCursor`) |
+| `/pagination` | Shared pagination types and utilities (`Direction`, `PaginationResult`, `encodeCursor`, `decodeCursor`) |
 | `/rls` | Row Level Security types and utilities |
 
 ## Basic Usage
