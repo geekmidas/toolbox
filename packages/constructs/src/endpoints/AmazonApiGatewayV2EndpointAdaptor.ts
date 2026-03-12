@@ -4,6 +4,7 @@ import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { APIGatewayProxyEventV2, Context } from 'aws-lambda';
+import qs from 'qs';
 import type { HttpMethod } from '../types';
 import {
 	AmazonApiGatewayEndpoint,
@@ -12,7 +13,6 @@ import {
 	type GetInputResponse,
 	type LoggerContext,
 } from './AmazonApiGatewayEndpointAdaptor';
-import qs from 'qs';
 import type { CookieFn, Endpoint, EndpointSchemas } from './Endpoint';
 import { createApiGatewayCookies } from './lazyAccessors';
 
