@@ -1,31 +1,19 @@
 import type { SelectQueryBuilder } from 'kysely';
+import {
+	Direction,
+	decodeCursor,
+	encodeCursor,
+	type PaginationResult,
+} from '../pagination';
 
-/**
- * Sort direction for cursor-based pagination.
- */
-export enum Direction {
-	Asc = 'asc',
-	Desc = 'desc',
-}
-
-/**
- * Result of a paginated query.
- */
-export interface PaginationResult<TItem> {
-	items: TItem[];
-	pagination: {
-		total: number;
-		hasMore: boolean;
-		cursor?: string;
-	};
-}
+export { Direction, decodeCursor, encodeCursor, type PaginationResult };
 
 /**
  * Options for paginated search.
  */
 export interface PaginatedSearchOptions<
 	TRow,
-	TMapRow extends (row: TRow) => unknown,
+	TMapRow extends (row: TRow) => unknown = (row: TRow) => TRow,
 > {
 	/** The base Kysely query to paginate */
 	query: SelectQueryBuilder<any, any, TRow>;
@@ -33,8 +21,8 @@ export interface PaginatedSearchOptions<
 	cursor?: string;
 	/** Maximum number of items per page (default: 20) */
 	limit?: number;
-	/** Function to transform each row to the output format */
-	mapRow: TMapRow;
+	/** Function to transform each row to the output format (default: identity) */
+	mapRow?: TMapRow;
 	/** Field to use for cursor pagination (default: 'id') */
 	cursorField?: string;
 	/** Sort direction for cursor field (default: Direction.Asc) */
@@ -50,19 +38,23 @@ export interface PaginatedSearchOptions<
  *
  * @example
  * ```typescript
+ * // With mapRow
  * const result = await paginatedSearch({
  *   query: db.selectFrom('users').selectAll(),
- *   cursor: previousCursor,
  *   limit: 20,
  *   mapRow: (row) => ({ id: row.id, name: row.name }),
- *   cursorField: 'id',
- *   cursorDirection: Direction.Asc,
+ * });
+ *
+ * // Without mapRow — items are the raw row type
+ * const result = await paginatedSearch({
+ *   query: db.selectFrom('users').selectAll(),
+ *   limit: 20,
  * });
  * ```
  */
 export async function paginatedSearch<
 	TRow extends Record<string, unknown>,
-	TMapRow extends (row: TRow) => unknown,
+	TMapRow extends (row: TRow) => unknown = (row: TRow) => TRow,
 >({
 	query,
 	cursor,
@@ -105,7 +97,8 @@ export async function paginatedSearch<
 	const nextCursor =
 		hasMore && lastRow ? String(lastRow[cursorField]) : undefined;
 
-	const items = (await Promise.all(rows.map(mapRow))) as Awaited<
+	const mapper = mapRow ?? ((row: TRow) => row);
+	const items = (await Promise.all(rows.map(mapper))) as Awaited<
 		ReturnType<TMapRow>
 	>[];
 
@@ -117,34 +110,4 @@ export async function paginatedSearch<
 			cursor: nextCursor,
 		},
 	};
-}
-
-/**
- * Encode a cursor value for safe URL transmission.
- * Supports various types: string, number, Date, etc.
- */
-export function encodeCursor(value: unknown): string {
-	const payload = {
-		v: value instanceof Date ? value.toISOString() : value,
-		t: value instanceof Date ? 'date' : typeof value,
-	};
-	return Buffer.from(JSON.stringify(payload)).toString('base64url');
-}
-
-/**
- * Decode a cursor string back to its original value.
- */
-export function decodeCursor(cursor: string): unknown {
-	try {
-		const json = Buffer.from(cursor, 'base64url').toString('utf-8');
-		const payload = JSON.parse(json);
-
-		if (payload.t === 'date') {
-			return new Date(payload.v);
-		}
-
-		return payload.v;
-	} catch {
-		throw new Error('Invalid cursor format');
-	}
 }
