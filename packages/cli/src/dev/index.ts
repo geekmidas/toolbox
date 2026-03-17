@@ -572,7 +572,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				logger.log('✅ Rebuild complete, restarting server...');
 				await devServer.restart();
 			} catch (error) {
-				logger.error('❌ Rebuild failed:', (error as Error).message);
+				const err = error as Error;
+				logger.error(`❌ Rebuild failed: ${err.message}`);
+				if (err.stack) {
+					logger.error(err.stack);
+				}
 			}
 		}, 300);
 	});
