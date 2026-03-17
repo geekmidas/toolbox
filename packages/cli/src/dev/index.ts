@@ -1288,7 +1288,11 @@ class EntryRunner {
 		await new Promise((resolve) => setTimeout(resolve, 500));
 
 		if (this.isRunning) {
-			logger.log(`\n🎉 Running at http://localhost:${this.port}`);
+			logger.log('');
+			logger.log(
+				`  \x1b[32m✓ Ready\x1b[0m at \x1b[36mhttp://localhost:${this.port}\x1b[0m`,
+			);
+			logger.log('');
 		}
 	}
 
@@ -1407,6 +1411,7 @@ class DevServer {
 	private serverProcess: ChildProcess | null = null;
 	private isRunning = false;
 	private actualPort: number;
+	private startTime = Date.now();
 
 	constructor(
 		private provider: LegacyProvider,
@@ -1423,6 +1428,7 @@ class DevServer {
 	}
 
 	async start(): Promise<void> {
+		this.startTime = Date.now();
 		if (this.isRunning) {
 			await this.stop();
 		}
@@ -1459,7 +1465,7 @@ class DevServer {
 		// Create server entry file
 		await this.createServerEntry();
 
-		logger.log(`\n✨ Starting server on port ${this.actualPort}...`);
+		logger.log(`\n⏳ Starting server...`);
 
 		// Start the server using tsx (TypeScript execution)
 		// Use detached: true so we can kill the entire process tree
@@ -1490,22 +1496,33 @@ class DevServer {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
 		if (this.isRunning) {
-			logger.log(`\n🎉 Server running at http://localhost:${this.actualPort}`);
+			const base = `http://localhost:${this.actualPort}`;
+			const lines: string[] = [`  Local:     ${base}`];
 			if (this.enableOpenApi) {
-				logger.log(
-					`📚 API Docs available at http://localhost:${this.actualPort}/__docs`,
-				);
+				lines.push(`  API Docs:  ${base}/__docs`);
 			}
 			if (this.telescope) {
-				logger.log(
-					`🔭 Telescope available at http://localhost:${this.actualPort}${this.telescope.path}`,
-				);
+				lines.push(`  Telescope: ${base}${this.telescope.path}`);
 			}
 			if (this.studio) {
-				logger.log(
-					`🗄️  Studio available at http://localhost:${this.actualPort}${this.studio.path}`,
-				);
+				lines.push(`  Studio:    ${base}${this.studio.path}`);
 			}
+
+			const maxLen = Math.max(...lines.map((l) => l.length));
+			const pad = (s: string) => s.padEnd(maxLen);
+			const border = '─'.repeat(maxLen + 2);
+
+			logger.log('');
+			logger.log(
+				`  \x1b[32m✓ Ready\x1b[0m in ${((Date.now() - this.startTime) / 1000).toFixed(1)}s`,
+			);
+			logger.log('');
+			logger.log(`  ┌${border}┐`);
+			for (const line of lines) {
+				logger.log(`  │ ${pad(line)} │`);
+			}
+			logger.log(`  └${border}┘`);
+			logger.log('');
 		}
 	}
 
