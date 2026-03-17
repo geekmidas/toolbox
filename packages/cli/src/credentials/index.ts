@@ -717,11 +717,8 @@ export async function prepareEntryCredentials(options: {
 		workspaceAppPort = appInfo.app.port;
 		secretsRoot = appInfo.workspaceRoot;
 		appName = appInfo.appName;
-	} catch (error) {
-		// Not in a workspace - use defaults
-		logger.log(
-			`⚠️  Could not load workspace config: ${(error as Error).message}`,
-		);
+	} catch {
+		// Not in a workspace - use defaults (expected for non-gkm apps using gkm exec)
 		secretsRoot = findSecretsRoot(cwd);
 		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
