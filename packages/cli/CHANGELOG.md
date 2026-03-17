@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.21
+
+### Patch Changes
+
+- ✨ [`9b56519`](https://github.com/geekmidas/toolbox/commit/9b5651989ccd1ca55c8b7150647c850eda056213) Thanks [@geekmidas](https://github.com/geekmidas)! - Add debugging and complete traces
+
 ## 1.10.20
 
 ### Patch Changes
