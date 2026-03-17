@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.22
+
+### Patch Changes
+
+- 🐛 [`acfc00a`](https://github.com/geekmidas/toolbox/commit/acfc00a0ec99691e978c3d0978f3ec63e1ec9869) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix tsx loader for loading extentionless typescript files
+
 ## 1.10.21
 
 ### Patch Changes
