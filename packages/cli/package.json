@@ -32,7 +32,7 @@
 		}
 	},
 	"bin": {
-		"gkm": "./dist/index.cjs"
+		"gkm": "./bin/gkm.mjs"
 	},
 	"scripts": {
 		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
