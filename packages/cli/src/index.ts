@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import pkg from '../package.json';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import { buildCommand } from './build/index';
+import { enableDebug, formatError } from './debug';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
@@ -35,7 +36,12 @@ program
 	.name('gkm')
 	.description('GeekMidas backend framework CLI')
 	.version(pkg.version)
-	.option('--cwd <path>', 'Change working directory');
+	.option('--cwd <path>', 'Change working directory')
+	.option('--debug', 'Enable debug mode (verbose errors with stack traces)')
+	.hook('preAction', () => {
+		const opts = program.opts();
+		if (opts.debug) enableDebug();
+	});
 
 program
 	.command('init')
@@ -58,7 +64,7 @@ program
 			}
 			await initCommand(name, options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -78,7 +84,7 @@ program
 			}
 			await setupCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -152,9 +158,7 @@ program
 					});
 				}
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Command failed',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -193,9 +197,7 @@ program
 					watch: options.watch,
 				});
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Command failed',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -213,7 +215,7 @@ program
 			}
 			await execCommand(commandArgs);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -235,7 +237,7 @@ program
 			}
 			await testCommand({ ...options, pattern });
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -284,7 +286,7 @@ program
 			}
 			await openapiCommand({});
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -308,9 +310,7 @@ program
 				}
 				await generateReactQueryCommand(options);
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Command failed',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -334,7 +334,7 @@ program
 			}
 			await dockerCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -393,9 +393,7 @@ program
 					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
 				}
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Command failed',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -415,7 +413,7 @@ program
 			}
 			await secretsInitCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -439,9 +437,7 @@ program
 				}
 				await secretsSetCommand(key, value, options);
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Command failed',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -460,7 +456,7 @@ program
 			}
 			await secretsShowCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -481,7 +477,7 @@ program
 			}
 			await secretsRotateCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -500,7 +496,7 @@ program
 			}
 			await secretsImportCommand(file, options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -542,7 +538,7 @@ program
 			await pushSecrets(options.stage, workspace);
 			console.log(`\n✓ Secrets pushed for stage "${options.stage}"`);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -585,7 +581,7 @@ program
 			await writeStageSecrets(secrets, workspace.root);
 			console.log(`\n✓ Secrets pulled for stage "${options.stage}"`);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -632,7 +628,7 @@ program
 				console.log(`    + ${key}`);
 			}
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -683,7 +679,7 @@ program
 					skipBuild: options.skipBuild,
 				});
 			} catch (error) {
-				console.error(error instanceof Error ? error.message : 'Deploy failed');
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -723,11 +719,7 @@ program
 					registryId: options.registryId,
 				});
 			} catch (error) {
-				console.error(
-					error instanceof Error
-						? error.message
-						: 'Failed to initialize deployment',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -779,9 +771,7 @@ program
 					});
 				}
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Failed to list resources',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -815,9 +805,7 @@ program
 					endpoint: options.endpoint,
 				});
 			} catch (error) {
-				console.error(
-					error instanceof Error ? error.message : 'Failed to login',
-				);
+				console.error(formatError(error));
 				process.exit(1);
 			}
 		},
@@ -843,9 +831,7 @@ program
 				service: options.service as 'dokploy' | 'all',
 			});
 		} catch (error) {
-			console.error(
-				error instanceof Error ? error.message : 'Failed to logout',
-			);
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -863,9 +849,7 @@ program
 
 			await whoamiCommand();
 		} catch (error) {
-			console.error(
-				error instanceof Error ? error.message : 'Failed to get status',
-			);
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -886,7 +870,7 @@ program
 			}
 			await statePullCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -906,7 +890,7 @@ program
 			}
 			await statePushCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -927,7 +911,7 @@ program
 			}
 			await stateShowCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -947,7 +931,7 @@ program
 			}
 			await stateDiffCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
@@ -964,7 +948,7 @@ program
 			}
 			await upgradeCommand(options);
 		} catch (error) {
-			console.error(error instanceof Error ? error.message : 'Command failed');
+			console.error(formatError(error));
 			process.exit(1);
 		}
 	});
