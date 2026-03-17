@@ -94,10 +94,12 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 					}
 				}
 			} catch (error) {
-				logger.warn(`Failed to load ${f}:`, (error as Error).message);
-				throw new Error(
-					'Failed to load constructs. Please check the logs for details.',
-				);
+				const err = error as Error;
+				logger.error(`Failed to load ${f}: ${err.message}`);
+				if (err.stack) {
+					logger.error(err.stack);
+				}
+				throw error;
 			}
 		}
 
