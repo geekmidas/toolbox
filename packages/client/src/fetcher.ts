@@ -150,10 +150,14 @@ export class TypedFetcher<Paths> {
 
 export function createTypedFetcher<Paths>(options?: FetcherOptions) {
 	const fetcher = new TypedFetcher<Paths>(options);
-	return <T extends TypedEndpoint<Paths>>(
+	const fn = <T extends TypedEndpoint<Paths>>(
 		endpoint: T,
 		config?: FilteredRequestConfig<Paths, T>,
 	) => fetcher.request(endpoint, config);
+
+	fn.wrap = () => fetcher.wrap();
+
+	return fn;
 }
 
 export type FetchFn = typeof fetch;
