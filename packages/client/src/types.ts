@@ -209,3 +209,14 @@ export interface FetcherOptions {
 	onError?: (error: Error) => void | Promise<void>;
 	fetch?: typeof fetch;
 }
+
+export type WrappedResult<T> =
+	| { data: T; error: null }
+	| { data: null; error: unknown };
+
+export type WrappedApiFunction<Paths> = <T extends TypedEndpoint<Paths>>(
+	endpoint: T,
+	...args: IsConfigRequired<Paths, T> extends true
+		? [config: FilteredRequestConfig<Paths, T>]
+		: [config?: FilteredRequestConfig<Paths, T>]
+) => Promise<WrappedResult<ExtractEndpointResponse<Paths, T>>>;
