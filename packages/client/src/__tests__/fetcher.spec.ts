@@ -382,6 +382,90 @@ describe('TypedFetcher', () => {
 		});
 	});
 
+	describe('wrap', () => {
+		it('should return { data, error: null } on success', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap();
+
+			const result = await wrappedClient('GET /users');
+
+			expect(result.error).toBeNull();
+			expect(result.data).toEqual({
+				users: [
+					{ id: '1', name: 'John Doe', email: 'john@example.com' },
+					{ id: '2', name: 'Jane Smith', email: 'jane@example.com' },
+				],
+			});
+		});
+
+		it('should return { data: null, error } on failure', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap();
+
+			const result = await wrappedClient('GET /users/{id}', {
+				params: { id: '404' },
+			});
+
+			expect(result.data).toBeNull();
+			expect(result.error).toBeInstanceOf(Response);
+			const response = result.error as Response;
+			expect(response.status).toBe(404);
+		});
+
+		it('should return { data: null, error } on 500 errors', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap();
+
+			const result = await wrappedClient('GET /error');
+
+			expect(result.data).toBeNull();
+			expect(result.error).toBeInstanceOf(Response);
+			const response = result.error as Response;
+			expect(response.status).toBe(500);
+		});
+
+		it('should work with path params and body', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap();
+
+			const result = await wrappedClient('PUT /users/{id}', {
+				params: { id: '456' },
+				body: { name: 'Updated Name' },
+			});
+
+			expect(result.error).toBeNull();
+			expect(result.data).toEqual({
+				id: '456',
+				name: 'Updated Name',
+				email: 'john@example.com',
+			});
+		});
+
+		it('should still call onError handler', async () => {
+			const onError = vi.fn();
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+				onError,
+			});
+			const wrappedClient = client.wrap();
+
+			const result = await wrappedClient('GET /users/{id}', {
+				params: { id: '404' },
+			});
+
+			expect(result.data).toBeNull();
+			expect(onError).toHaveBeenCalledWith(expect.any(Response));
+		});
+	});
+
 	it('should URL encode special characters in path parameters', async () => {
 		// Mock fetch to verify the actual URL being called
 		const mockFetch = vi.fn(async (url: string) => {
