@@ -6,9 +6,10 @@ import type {
 	FilteredRequestConfig,
 	ParseEndpoint,
 	TypedEndpoint,
+	WrappedResult,
 } from './types';
 
-export type { FetcherOptions } from './types';
+export type { FetcherOptions, WrappedResult } from './types';
 
 export class TypedFetcher<Paths> {
 	private baseURL: string;
