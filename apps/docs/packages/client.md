@@ -74,6 +74,45 @@ const newUser = await fetcher('POST /users', {
 });
 ```
 
+### Wrapped Fetcher (No-Throw)
+
+Use `.wrap()` to create a client that never throws — instead returning `{ data, error }`:
+
+```typescript
+import { createTypedFetcher } from '@geekmidas/client/fetcher';
+import type { paths } from './openapi-types';
+
+const client = createTypedFetcher<paths>({
+  baseURL: 'https://api.example.com',
+});
+
+const wrappedClient = client.wrap();
+
+// Never throws — errors are returned as values
+const { data, error } = await wrappedClient('GET /users/{id}', {
+  params: { id: '123' },
+});
+
+if (error) {
+  // error is the Response object for HTTP errors, or an Error for network failures
+  console.error('Request failed:', error);
+  return;
+}
+
+// data is fully typed as the endpoint response
+console.log(data.name);
+```
+
+The wrapped client has the same type-safe API as the regular client. The return type is a discriminated union, so checking `error` automatically narrows the type of `data`:
+
+```typescript
+type WrappedResult<T> =
+  | { data: T; error: null }
+  | { data: null; error: unknown };
+```
+
+Interceptors like `onRequest`, `onResponse`, and `onError` still run as usual — `.wrap()` only changes how errors surface to the caller.
+
 ### React Query Integration
 
 ```typescript
