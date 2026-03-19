@@ -1,5 +1,11 @@
 # @geekmidas/client
 
+## 4.0.2
+
+### Patch Changes
+
+- ✨ [`414e7e1`](https://github.com/geekmidas/toolbox/commit/414e7e1f8ca038e397a5533279bf3a2f6f193a6d) Thanks [@geekmidas](https://github.com/geekmidas)! - Add .wrap on the fetch client for no throw handling
+
 ## 4.0.1
 
 ### Patch Changes
