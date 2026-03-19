@@ -128,6 +128,17 @@ export class TypedFetcher<Paths> {
 		}
 	}
 
+	wrap() {
+		return <T extends TypedEndpoint<Paths>>(
+			endpoint: T,
+			config?: FilteredRequestConfig<Paths, T>,
+		): Promise<WrappedResult<ExtractEndpointResponse<Paths, T>>> =>
+			this.request(endpoint, config).then(
+				(data) => ({ data, error: null }),
+				(error) => ({ data: null, error }),
+			);
+	}
+
 	private parseEndpoint<T extends EndpointString>(
 		endpoint: T,
 	): ParseEndpoint<T> {
