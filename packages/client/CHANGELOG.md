@@ -1,5 +1,11 @@
 # @geekmidas/client
 
+## 4.0.3
+
+### Patch Changes
+
+- ✨ [`54589f8`](https://github.com/geekmidas/toolbox/commit/54589f89d4707c287a133be5c7dbb224b86d630c) Thanks [@geekmidas](https://github.com/geekmidas)! - Add ok discriminator for wrapped clients
+
 ## 4.0.2
 
 ### Patch Changes
