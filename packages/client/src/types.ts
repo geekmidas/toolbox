@@ -211,8 +211,8 @@ export interface FetcherOptions {
 }
 
 export type WrappedResult<T> =
-	| { data: T; error: null }
-	| { data: null; error: unknown };
+	| { ok: true; data: T }
+	| { ok: false; error: unknown };
 
 export type WrappedApiFunction<Paths> = <T extends TypedEndpoint<Paths>>(
 	endpoint: T,

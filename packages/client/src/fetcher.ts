@@ -135,8 +135,8 @@ export class TypedFetcher<Paths> {
 			config?: FilteredRequestConfig<Paths, T>,
 		): Promise<WrappedResult<ExtractEndpointResponse<Paths, T>>> =>
 			this.request(endpoint, config).then(
-				(data) => ({ data, error: null }),
-				(error) => ({ data: null, error }),
+				(data) => ({ ok: true as const, data }),
+				(error) => ({ ok: false as const, error }),
 			);
 	}
 
