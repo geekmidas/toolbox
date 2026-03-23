@@ -93,22 +93,22 @@ const { data, error } = await wrappedClient('GET /users/{id}', {
   params: { id: '123' },
 });
 
-if (error) {
-  // error is the Response object for HTTP errors, or an Error for network failures
-  console.error('Request failed:', error);
+if (!result.ok) {
+  // only `error` exists on the failure branch
+  console.error('Request failed:', result.error);
   return;
 }
 
-// data is fully typed as the endpoint response
-console.log(data.name);
+// only `data` exists on the success branch, fully typed
+console.log(result.data.name);
 ```
 
-The wrapped client has the same type-safe API as the regular client. The return type is a discriminated union, so checking `error` automatically narrows the type of `data`:
+The `ok` field acts as a discriminator — each branch only has the relevant property:
 
 ```typescript
 type WrappedResult<T> =
-  | { data: T; error: null }
-  | { data: null; error: unknown };
+  | { ok: true; data: T }
+  | { ok: false; error: unknown };
 ```
 
 Interceptors like `onRequest`, `onResponse`, and `onError` still run as usual — `.wrap()` only changes how errors surface to the caller.
