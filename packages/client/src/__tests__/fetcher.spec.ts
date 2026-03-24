@@ -477,6 +477,64 @@ describe('TypedFetcher', () => {
 			expect('data' in result).toBe(false);
 			expect(onError).toHaveBeenCalledWith(expect.any(Response));
 		});
+
+		it('should transform error with callback', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap(async (error) => {
+				const response = error as Response;
+				const body = await response.json();
+				return { status: response.status, message: body.message };
+			});
+
+			const result = await wrappedClient('GET /users/{id}', {
+				params: { id: '404' },
+			});
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error).toEqual({
+					status: 404,
+					message: 'User not found',
+				});
+			}
+		});
+
+		it('should infer error type from transformer', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+			const wrappedClient = client.wrap(async (error) => {
+				const response = error as Response;
+				return { status: response.status, message: 'something went wrong' };
+			});
+
+			const result = await wrappedClient('GET /error');
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error.status).toBe(500);
+				expect(result.error.message).toBe('something went wrong');
+			}
+		});
+
+		it('should preserve extra properties on wrapped function', async () => {
+			const client = createTypedFetcher<paths>({
+				baseURL: 'https://api.example.com',
+			});
+
+			// Simulate attaching hooks (like useQuery/useMutation)
+			const mockUseQuery = vi.fn();
+			const mockUseMutation = vi.fn();
+			(client as any).useQuery = mockUseQuery;
+			(client as any).useMutation = mockUseMutation;
+
+			const wrappedClient = client.wrap();
+
+			expect((wrappedClient as any).useQuery).toBe(mockUseQuery);
+			expect((wrappedClient as any).useMutation).toBe(mockUseMutation);
+		});
 	});
 
 	it('should URL encode special characters in path parameters', async () => {
