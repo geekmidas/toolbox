@@ -1,6 +1,7 @@
 import qs from 'qs';
 import type {
 	EndpointString,
+	ErrorTransformer,
 	ExtractEndpointResponse,
 	FetcherOptions,
 	FilteredRequestConfig,
@@ -129,14 +130,17 @@ export class TypedFetcher<Paths> {
 		}
 	}
 
-	wrap() {
+	wrap<E = unknown>(onError?: ErrorTransformer<E>) {
 		return <T extends TypedEndpoint<Paths>>(
 			endpoint: T,
 			config?: FilteredRequestConfig<Paths, T>,
-		): Promise<WrappedResult<ExtractEndpointResponse<Paths, T>>> =>
+		): Promise<WrappedResult<ExtractEndpointResponse<Paths, T>, E>> =>
 			this.request(endpoint, config).then(
 				(data) => ({ ok: true as const, data }),
-				(error) => ({ ok: false as const, error }),
+				async (error) => ({
+					ok: false as const,
+					error: onError ? await onError(error) : (error as E),
+				}),
 			);
 	}
 

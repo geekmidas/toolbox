@@ -210,13 +210,17 @@ export interface FetcherOptions {
 	fetch?: typeof fetch;
 }
 
-export type WrappedResult<T> =
+export type WrappedResult<T, E = unknown> =
 	| { ok: true; data: T }
-	| { ok: false; error: unknown };
+	| { ok: false; error: E };
 
-export type WrappedApiFunction<Paths> = <T extends TypedEndpoint<Paths>>(
+export type ErrorTransformer<E> = (error: unknown) => E | Promise<E>;
+
+export type WrappedApiFunction<Paths, E = unknown> = <
+	T extends TypedEndpoint<Paths>,
+>(
 	endpoint: T,
 	...args: IsConfigRequired<Paths, T> extends true
 		? [config: FilteredRequestConfig<Paths, T>]
 		: [config?: FilteredRequestConfig<Paths, T>]
-) => Promise<WrappedResult<ExtractEndpointResponse<Paths, T>>>;
+) => Promise<WrappedResult<ExtractEndpointResponse<Paths, T>, E>>;
