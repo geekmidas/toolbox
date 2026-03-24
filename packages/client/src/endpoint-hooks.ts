@@ -1,11 +1,14 @@
 import type {
 	QueryClient,
+	QueryFunctionContext,
+	UseInfiniteQueryOptions,
+	UseInfiniteQueryResult,
 	UseMutationOptions,
 	UseMutationResult,
 	UseQueryOptions,
 	UseQueryResult,
 } from '@tanstack/react-query';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type {
 	ExtractEndpointResponse,
@@ -99,6 +102,52 @@ export interface EndpointHooks<Paths> {
 	>;
 
 	/**
+	 * Use infinite query hook for paginated GET endpoints.
+	 */
+	useInfiniteQuery: <
+		T extends QueryEndpoint<Paths>,
+		TPageData = ExtractEndpointResponse<Paths, T>,
+		TPageParam = unknown,
+	>(
+		endpoint: T,
+		options: Omit<
+			UseInfiniteQueryOptions<
+				TPageData,
+				Error,
+				{ pages: TPageData[]; pageParams: TPageParam[] },
+				unknown[],
+				TPageParam
+			>,
+			'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
+		> & {
+			getNextPageParam: (
+				lastPage: TPageData,
+				allPages: TPageData[],
+				lastPageParam: TPageParam,
+				allPageParams: TPageParam[],
+			) => TPageParam | undefined;
+			initialPageParam: TPageParam;
+		},
+		config?: FilteredRequestConfig<Paths, T>,
+	) => UseInfiniteQueryResult<
+		{ pages: TPageData[]; pageParams: TPageParam[] },
+		Error
+	>;
+
+	/**
+	 * Invalidate queries for a specific endpoint.
+	 */
+	invalidateQueries: <T extends QueryEndpoint<Paths>>(
+		endpoint: T,
+		config?: FilteredRequestConfig<Paths, T>,
+	) => Promise<void>;
+
+	/**
+	 * Invalidate all queries in the cache.
+	 */
+	invalidateAllQueries: () => Promise<void>;
+
+	/**
 	 * Build a query key for manual cache operations
 	 */
 	buildQueryKey: <T extends QueryEndpoint<Paths>>(
@@ -124,7 +173,7 @@ export interface EndpointHooks<Paths> {
  */
 export function createEndpointHooks<Paths>(
 	fetcher: TypedApiFunction<Paths>,
-	_options: CreateEndpointHooksOptions = {},
+	options: CreateEndpointHooksOptions = {},
 ): EndpointHooks<Paths> {
 	return {
 		useQuery: <T extends QueryEndpoint<Paths>>(
@@ -197,6 +246,99 @@ export function createEndpointHooks<Paths>(
 				Error,
 				FilteredRequestConfig<Paths, T>
 			>(memoizedOptions);
+		},
+
+		useInfiniteQuery: <
+			T extends QueryEndpoint<Paths>,
+			TPageData = ExtractEndpointResponse<Paths, T>,
+			TPageParam = unknown,
+		>(
+			endpoint: T,
+			options: Omit<
+				UseInfiniteQueryOptions<
+					TPageData,
+					Error,
+					{ pages: TPageData[]; pageParams: TPageParam[] },
+					unknown[],
+					TPageParam
+				>,
+				'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
+			> & {
+				getNextPageParam: (
+					lastPage: TPageData,
+					allPages: TPageData[],
+					lastPageParam: TPageParam,
+					allPageParams: TPageParam[],
+				) => TPageParam | undefined;
+				initialPageParam: TPageParam;
+			},
+			config?: FilteredRequestConfig<Paths, T>,
+		) => {
+			const queryKey = buildQueryKey(endpoint, config);
+
+			const memoizedOptions = useMemo(
+				() => ({
+					queryKey,
+					queryFn: ({
+						pageParam,
+					}: QueryFunctionContext<unknown[], TPageParam>) => {
+						let mergedConfig = config;
+						if (pageParam !== undefined && config) {
+							const pageQuery =
+								typeof pageParam === 'object' ? pageParam : { page: pageParam };
+							mergedConfig = {
+								...config,
+								query: { ...(config as any).query, ...pageQuery },
+							} as any;
+						} else if (pageParam !== undefined && !config) {
+							const pageQuery =
+								typeof pageParam === 'object' ? pageParam : { page: pageParam };
+							mergedConfig = { query: pageQuery } as any;
+						}
+						return (
+							fetcher as (
+								endpoint: T,
+								config?: unknown,
+							) => Promise<ExtractEndpointResponse<Paths, T>>
+						)(endpoint, mergedConfig) as Promise<TPageData>;
+					},
+					...options,
+				}),
+				[endpoint, config, fetcher, queryKey, options],
+			);
+
+			return useInfiniteQuery<
+				TPageData,
+				Error,
+				{ pages: TPageData[]; pageParams: TPageParam[] },
+				unknown[],
+				TPageParam
+			>(memoizedOptions);
+		},
+
+		invalidateQueries: <T extends QueryEndpoint<Paths>>(
+			endpoint: T,
+			config?: FilteredRequestConfig<Paths, T>,
+		) => {
+			if (!options.queryClient) {
+				throw new Error(
+					'queryClient is required for invalidateQueries. Pass it to createEndpointHooks options.',
+				);
+			}
+			const queryKey = buildQueryKey(endpoint, config);
+			return options.queryClient.invalidateQueries({
+				queryKey,
+				exact: !!config,
+			});
+		},
+
+		invalidateAllQueries: () => {
+			if (!options.queryClient) {
+				throw new Error(
+					'queryClient is required for invalidateAllQueries. Pass it to createEndpointHooks options.',
+				);
+			}
+			return options.queryClient.invalidateQueries();
 		},
 
 		buildQueryKey,
