@@ -76,7 +76,7 @@ const newUser = await fetcher('POST /users', {
 
 ### Wrapped Fetcher (No-Throw)
 
-Use `.wrap()` to create a client that never throws — instead returning `{ data, error }`:
+Use `.wrap()` to create a client that never throws — instead returning `{ ok, data }` or `{ ok, error }`:
 
 ```typescript
 import { createTypedFetcher } from '@geekmidas/client/fetcher';
@@ -88,8 +88,7 @@ const client = createTypedFetcher<paths>({
 
 const wrappedClient = client.wrap();
 
-// Never throws — errors are returned as values
-const { data, error } = await wrappedClient('GET /users/{id}', {
+const result = await wrappedClient('GET /users/{id}', {
   params: { id: '123' },
 });
 
@@ -103,12 +102,48 @@ if (!result.ok) {
 console.log(result.data.name);
 ```
 
-The `ok` field acts as a discriminator — each branch only has the relevant property:
+#### Error Transformer
+
+Pass a callback to `.wrap()` to transform errors into a typed shape. The error type is inferred from the callback return:
 
 ```typescript
-type WrappedResult<T> =
+const wrappedClient = client.wrap(async (error) => {
+  const res = error as Response;
+  const body = await res.json();
+  return { status: res.status, message: body.message };
+});
+
+const result = await wrappedClient('GET /users/{id}', {
+  params: { id: '123' },
+});
+
+if (!result.ok) {
+  // result.error is typed as { status: number; message: string }
+  console.error(result.error.status, result.error.message);
+}
+```
+
+Without a callback, `error` defaults to `unknown`.
+
+#### Preserving Properties
+
+`.wrap()` copies any extra properties (like `useQuery`, `useMutation`) from the original client to the wrapped function, so hooks survive wrapping:
+
+```typescript
+const client = createTypedFetcher<paths>(options);
+const hooks = createEndpointHooks<paths>(client);
+Object.assign(client, hooks);
+
+const wrappedClient = client.wrap();
+// wrappedClient.useQuery and wrappedClient.useMutation still work
+```
+
+#### Type Reference
+
+```typescript
+type WrappedResult<T, E = unknown> =
   | { ok: true; data: T }
-  | { ok: false; error: unknown };
+  | { ok: false; error: E };
 ```
 
 Interceptors like `onRequest`, `onResponse`, and `onError` still run as usual — `.wrap()` only changes how errors surface to the caller.
