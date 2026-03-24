@@ -1,5 +1,11 @@
 # @geekmidas/client
 
+## 4.0.4
+
+### Patch Changes
+
+- ✨ [`6f8f28a`](https://github.com/geekmidas/toolbox/commit/6f8f28a1317c0b519fd2067a2cd39b73c0585755) Thanks [@geekmidas](https://github.com/geekmidas)! - Add method preservation on the client and add query helpers to hooks
+
 ## 4.0.3
 
 ### Patch Changes
