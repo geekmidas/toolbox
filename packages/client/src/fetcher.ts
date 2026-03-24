@@ -160,7 +160,16 @@ export function createTypedFetcher<Paths>(options?: FetcherOptions) {
 		config?: FilteredRequestConfig<Paths, T>,
 	) => fetcher.request(endpoint, config);
 
-	fn.wrap = () => fetcher.wrap();
+	fn.wrap = <E = unknown>(onError?: ErrorTransformer<E>) => {
+		const wrapped = fetcher.wrap(onError);
+		// Preserve extra properties (e.g. useQuery, useMutation) on the wrapped fn
+		for (const key of Object.keys(fn)) {
+			if (key !== 'wrap') {
+				(wrapped as any)[key] = (fn as any)[key];
+			}
+		}
+		return wrapped;
+	};
 
 	return fn;
 }
