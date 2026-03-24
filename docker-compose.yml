@@ -69,7 +69,7 @@ services:
       retries: 3
       start_period: 30s
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:3.5.0
     ports:
       - "4566:4566" # LocalStack Gateway
     environment:
