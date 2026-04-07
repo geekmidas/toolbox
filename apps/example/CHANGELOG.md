@@ -1,5 +1,12 @@
 # @geekmidas/example
 
+## 1.0.51
+
+### Patch Changes
+
+- Updated dependencies [[`fba83f3`](https://github.com/geekmidas/toolbox/commit/fba83f3ceee1d058874e62b31e38a9da205a6742)]:
+  - @geekmidas/constructs@3.0.5
+
 ## 1.0.50
 
 ### Patch Changes

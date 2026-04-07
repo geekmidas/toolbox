@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.5
+
+### Patch Changes
+
+- [`fba83f3`](https://github.com/geekmidas/toolbox/commit/fba83f3ceee1d058874e62b31e38a9da205a6742) Thanks [@geekmidas](https://github.com/geekmidas)! - Release constructs
+
 ## 3.0.4
 
 ### Patch Changes
