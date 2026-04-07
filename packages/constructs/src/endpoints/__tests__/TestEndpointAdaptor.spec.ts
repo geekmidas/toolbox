@@ -375,6 +375,145 @@ describe('TestEndpointAdaptor', () => {
 		});
 	});
 
+	describe('authorization with body, query, and params', () => {
+		it('should pass body to authorize function', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const endpoint = e
+				.post('/resources')
+				.body(z.object({ role: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await adapter.request({
+				body: { role: 'admin' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toMatchObject({
+				body: { role: 'admin' },
+			});
+		});
+
+		it('should pass query to authorize function', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const endpoint = e
+				.get('/resources')
+				.query(z.object({ tenant: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await adapter.request({
+				query: { tenant: 'acme' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toMatchObject({
+				query: { tenant: 'acme' },
+			});
+		});
+
+		it('should pass params to authorize function', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const endpoint = e
+				.get('/resources/:id')
+				.params(z.object({ id: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await adapter.request({
+				params: { id: 'res-123' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toMatchObject({
+				params: { id: 'res-123' },
+			});
+		});
+
+		it('should pass body, query, and params together to authorize', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const endpoint = e
+				.post('/orgs/:orgId/members')
+				.params(z.object({ orgId: z.string() }))
+				.query(z.object({ notify: z.string() }))
+				.body(z.object({ userId: z.string(), role: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await adapter.request({
+				params: { orgId: 'org-1' },
+				query: { notify: 'true' },
+				body: { userId: 'user-1', role: 'editor' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			const ctx = authorizeSpy.mock.calls[0][0];
+			expect(ctx).toMatchObject({
+				body: { userId: 'user-1', role: 'editor' },
+				query: { notify: 'true' },
+				params: { orgId: 'org-1' },
+			});
+		});
+
+		it('should reject when authorize uses body to deny', async () => {
+			const endpoint = e
+				.post('/resources')
+				.body(z.object({ role: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(({ body }) => body.role === 'admin')
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await expect(
+				adapter.request({
+					body: { role: 'viewer' },
+					services: mockServices,
+					headers: { host: 'example.com' },
+				}),
+			).rejects.toThrow('Unauthorized');
+		});
+
+		it('should allow when authorize uses body to allow', async () => {
+			const endpoint = e
+				.post('/resources')
+				.body(z.object({ role: z.string() }))
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(({ body }) => body.role === 'admin')
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			const result = await adapter.request({
+				body: { role: 'admin' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(result).toEqual({ ok: true });
+		});
+	});
+
 	describe('response handling', () => {
 		it('should set response cookies', async () => {
 			const endpoint = e

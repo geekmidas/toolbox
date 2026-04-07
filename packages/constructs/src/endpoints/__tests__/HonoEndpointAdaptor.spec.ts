@@ -996,6 +996,111 @@ describe('HonoEndpointAdaptor', () => {
 			const response = await app.request('/protected');
 			expect(response.status).toBe(500);
 		});
+
+		it('should pass body to authorize function', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const bodySchema = z.object({ role: z.string() });
+
+			const endpoint = new Endpoint({
+				route: '/protected',
+				method: 'POST',
+				fn: async () => ({ success: true }),
+				input: { body: bodySchema },
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: authorizeSpy,
+				description: undefined,
+			});
+
+			const adaptor = new HonoEndpoint(endpoint);
+			const app = new Hono();
+
+			adaptor.addRoute(serviceDiscovery, app);
+
+			const response = await app.request('/protected', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ role: 'admin' }),
+			});
+
+			expect(response.status).toBe(200);
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toMatchObject({
+				body: { role: 'admin' },
+			});
+		});
+
+		it('should pass params to authorize function', async () => {
+			const authorizeSpy = vi.fn(() => true);
+			const paramsSchema = z.object({ id: z.string() });
+
+			const endpoint = new Endpoint({
+				route: '/resources/:id',
+				method: 'GET',
+				fn: async () => ({ success: true }),
+				input: { params: paramsSchema },
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: authorizeSpy,
+				description: undefined,
+			});
+
+			const adaptor = new HonoEndpoint(endpoint);
+			const app = new Hono();
+
+			adaptor.addRoute(serviceDiscovery, app);
+
+			const response = await app.request('/resources/res-42');
+
+			expect(response.status).toBe(200);
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toMatchObject({
+				params: { id: 'res-42' },
+			});
+		});
+
+		it('should deny request when authorize uses body to reject', async () => {
+			const bodySchema = z.object({ role: z.string() });
+
+			const endpoint = new Endpoint({
+				route: '/admin',
+				method: 'POST',
+				fn: async () => ({ success: true }),
+				input: { body: bodySchema },
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: ({ body }: any) => body?.role === 'admin',
+				description: undefined,
+			});
+
+			const adaptor = new HonoEndpoint(endpoint);
+			const app = new Hono();
+
+			adaptor.addRoute(serviceDiscovery, app);
+
+			const response = await app.request('/admin', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ role: 'viewer' }),
+			});
+
+			expect(response.status).toBe(401);
+		});
 	});
 
 	describe('output validation', () => {
