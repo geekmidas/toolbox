@@ -403,7 +403,11 @@ describe('EndpointBuilder', () => {
 				.query(z.object({ verbose: z.string() }))
 				.params(z.object({ id: z.string() }))
 				.authorize(({ body, query, params }) => {
-					return body.role === 'admin' && params.id !== '' && query.verbose === 'true';
+					return (
+						body.role === 'admin' &&
+						params.id !== '' &&
+						query.verbose === 'true'
+					);
 				})
 				.handle(async () => ({}));
 

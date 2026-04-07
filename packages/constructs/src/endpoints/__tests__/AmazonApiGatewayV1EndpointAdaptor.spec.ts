@@ -93,9 +93,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 
 			const event = createMockV1Event({
 				headers: { 'Content-Type': 'application/json' },
-				body: Buffer.from(JSON.stringify({ name: 'test' })).toString(
-					'base64',
-				),
+				body: Buffer.from(JSON.stringify({ name: 'test' })).toString('base64'),
 				isBase64Encoded: true,
 			});
 

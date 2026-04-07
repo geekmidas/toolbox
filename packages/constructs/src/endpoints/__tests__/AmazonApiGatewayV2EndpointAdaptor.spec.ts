@@ -574,11 +574,7 @@ describe('AmazonApiGatewayEndpoint.decodeBody', () => {
 	});
 
 	it('should JSON.parse when content-type is application/json', () => {
-		const result = decodeBody(
-			'{"name":"test"}',
-			false,
-			'application/json',
-		);
+		const result = decodeBody('{"name":"test"}', false, 'application/json');
 		expect(result).toEqual({ name: 'test' });
 	});
 
@@ -627,11 +623,7 @@ describe('AmazonApiGatewayEndpoint.decodeBody', () => {
 	});
 
 	it('should not JSON.parse a string that happens to be valid JSON when content-type is not JSON', () => {
-		const result = decodeBody(
-			'{"looks":"like json"}',
-			false,
-			'text/plain',
-		);
+		const result = decodeBody('{"looks":"like json"}', false, 'text/plain');
 		expect(result).toBe('{"looks":"like json"}');
 	});
 });
