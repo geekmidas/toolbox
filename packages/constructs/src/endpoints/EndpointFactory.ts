@@ -988,7 +988,7 @@ export class EndpointFactory<
 		>(fullPath, method);
 
 		if (this.defaultAuthorizeFn) {
-			builder._authorize = this.defaultAuthorizeFn;
+			builder._authorize = this.defaultAuthorizeFn as any;
 		}
 		if (this.defaultServices.length) {
 			// Create a copy to avoid sharing references between builders
