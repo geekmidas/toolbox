@@ -145,6 +145,34 @@ export abstract class AmazonApiGatewayEndpoint<
 	}
 	abstract getInput(e: TEvent): GetInputResponse;
 
+	/**
+	 * Decodes the raw body from an API Gateway event.
+	 * Uses Content-Type to decide parsing strategy (like Express/Fastify/Hono):
+	 * - `application/json` (or missing) → JSON.parse the decoded string
+	 * - Anything else → return decoded string as-is, let the schema handle it
+	 *
+	 * Defaults to JSON when no Content-Type is provided for backwards compatibility.
+	 */
+	static decodeBody(
+		body: string | undefined | null,
+		isBase64Encoded: boolean | undefined,
+		contentType: string | undefined,
+	): any {
+		if (!body) return undefined;
+
+		const raw = isBase64Encoded
+			? Buffer.from(body, 'base64').toString('utf-8')
+			: body;
+
+		const isJson =
+			!contentType || contentType.toLowerCase().includes('application/json');
+		if (isJson) {
+			return JSON.parse(raw);
+		}
+
+		return raw;
+	}
+
 	protected getCookies(e: TEvent): CookieFn {
 		const headers = e.headers as Record<string, string>;
 		return Endpoint.createCookies(headers?.cookie);
