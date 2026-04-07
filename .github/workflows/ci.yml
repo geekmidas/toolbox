@@ -34,7 +34,9 @@ jobs:
           node-version: 22
           cache: "pnpm"
           registry-url: https://registry.npmjs.org
-      - name: Ensure npm supports trusted publishing
+      - name: Install npm 10.9.0
+        run: npm install -g npm@10.9.0
+      - name: Upgrade npm to latest
         run: npm install -g npm@latest
 
       - name: Install dependencies
