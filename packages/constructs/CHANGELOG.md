@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.4
+
+### Patch Changes
+
+- ✨ [`f005956`](https://github.com/geekmidas/toolbox/commit/f005956573aac6bcdfcc95d2a31c17cf5b9688d4) Thanks [@geekmidas](https://github.com/geekmidas)! - Add params to authorize and decode content type on routes
+
 ## 3.0.3
 
 ### Patch Changes
