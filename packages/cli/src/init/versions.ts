@@ -30,7 +30,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/audit': '~2.0.0',
 	'@geekmidas/auth': '~2.0.0',
 	'@geekmidas/cache': '~1.1.0',
-	'@geekmidas/client': '~4.0.3',
+	'@geekmidas/client': '~4.0.4',
 	'@geekmidas/cloud': '~1.0.0',
 	'@geekmidas/constructs': '~3.0.3',
 	'@geekmidas/db': '~1.0.1',
