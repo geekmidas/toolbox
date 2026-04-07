@@ -216,6 +216,9 @@ export class TestEndpointAdaptor<
 				services: ctx.services,
 				logger,
 				session,
+				body,
+				query,
+				params,
 			});
 
 			if (!isAuthorized) {

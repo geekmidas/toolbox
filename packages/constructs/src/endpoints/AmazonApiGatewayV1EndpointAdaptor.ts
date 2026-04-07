@@ -59,7 +59,11 @@ export class AmazonApiGatewayV1Endpoint<
 		}
 
 		return {
-			body: e.body ? JSON.parse(e.body) : undefined,
+			body: AmazonApiGatewayEndpoint.decodeBody(
+				e.body,
+				e.isBase64Encoded,
+				e.headers?.['Content-Type'] ?? e.headers?.['content-type'],
+			),
 			query: parseQueryParams(mergedParams),
 			params: e.pathParameters || {},
 		};

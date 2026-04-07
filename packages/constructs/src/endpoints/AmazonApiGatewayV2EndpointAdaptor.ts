@@ -45,8 +45,14 @@ export class AmazonApiGatewayV2Endpoint<
 	}
 
 	override getInput(e: APIGatewayProxyEventV2): GetInputResponse {
+		const raw = AmazonApiGatewayEndpoint.decodeBody(
+			e.body,
+			e.isBase64Encoded,
+			e.headers?.['content-type'],
+		);
+
 		return {
-			body: e.body ? JSON.parse(e.body) : undefined,
+			body: raw,
 			query: qs.parse(e.rawQueryString) as Record<string, any>,
 			params: e.pathParameters || {},
 		};

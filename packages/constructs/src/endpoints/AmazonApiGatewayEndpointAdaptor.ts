@@ -258,7 +258,10 @@ export abstract class AmazonApiGatewayEndpoint<
 					services,
 					logger,
 					session,
-				});
+					body: (req.event as any).body,
+					query: (req.event as any).query,
+					params: (req.event as any).params,
+				} as any);
 
 				if (!isAuthorized) {
 					logger.warn('Unauthorized access attempt');

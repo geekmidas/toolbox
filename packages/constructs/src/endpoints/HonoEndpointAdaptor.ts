@@ -393,6 +393,15 @@ export class HonoEndpoint<
 							services,
 							logger,
 							session,
+							body: features.hasBodyValidation
+								? (c.req.valid as any)('json')
+								: undefined,
+							query: features.hasQueryValidation
+								? (c.req.valid as any)('query')
+								: undefined,
+							params: features.hasParamValidation
+								? (c.req.valid as any)('param')
+								: undefined,
 						});
 
 						if (!isAuthorized) {
