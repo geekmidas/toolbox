@@ -63,7 +63,7 @@ export class EndpointBuilder<
 	protected _memorySize?: number;
 	_getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
 		({}) as TSession;
-	_authorize: AuthorizeFn<TServices, TLogger, TSession> = () => true;
+	_authorize: AuthorizeFn<TServices, TLogger, TSession, TInput> = () => true;
 	_rateLimit?: RateLimitConfig;
 	_availableAuthorizers: Authorizer[] = [];
 	_authorizerName?: TAuthorizers[number];
@@ -260,6 +260,11 @@ export class EndpointBuilder<
 	> {
 		this.schemas.params = schema as unknown as T;
 		// @ts-expect-error
+		return this;
+	}
+
+	authorize(fn: AuthorizeFn<TServices, TLogger, TSession, TInput>): this {
+		this._authorize = fn;
 		return this;
 	}
 
