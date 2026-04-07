@@ -45,6 +45,120 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 		envParser = new EnvironmentParser({});
 	});
 
+	describe('getInput', () => {
+		it('should parse JSON body when content-type is application/json', () => {
+			const endpoint = new Endpoint({
+				route: '/test',
+				method: 'GET',
+				fn: async () => ({ success: true }),
+				input: {},
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: undefined,
+				description: 'Test endpoint',
+			});
+			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+
+			const event = createMockV1Event({
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: 'test' }),
+			});
+
+			const result = adapter.getInput(event);
+			expect(result.body).toEqual({ name: 'test' });
+		});
+
+		it('should decode base64-encoded JSON body', () => {
+			const endpoint = new Endpoint({
+				route: '/test',
+				method: 'GET',
+				fn: async () => ({ success: true }),
+				input: {},
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: undefined,
+				description: 'Test endpoint',
+			});
+			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+
+			const event = createMockV1Event({
+				headers: { 'Content-Type': 'application/json' },
+				body: Buffer.from(JSON.stringify({ name: 'test' })).toString(
+					'base64',
+				),
+				isBase64Encoded: true,
+			});
+
+			const result = adapter.getInput(event);
+			expect(result.body).toEqual({ name: 'test' });
+		});
+
+		it('should return raw string for non-JSON content-type', () => {
+			const endpoint = new Endpoint({
+				route: '/test',
+				method: 'POST',
+				fn: async () => ({ success: true }),
+				input: {},
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: undefined,
+				description: 'Test endpoint',
+			});
+			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+
+			const event = createMockV1Event({
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'amount=100&currency=ZAR',
+			});
+
+			const result = adapter.getInput(event);
+			expect(result.body).toBe('amount=100&currency=ZAR');
+		});
+
+		it('should decode base64 and return string for form-urlencoded content', () => {
+			const endpoint = new Endpoint({
+				route: '/test',
+				method: 'POST',
+				fn: async () => ({ success: true }),
+				input: {},
+				output: z.object({ success: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: undefined,
+				description: 'Test endpoint',
+			});
+			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+
+			const event = createMockV1Event({
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: Buffer.from('amount=100&currency=ZAR').toString('base64'),
+				isBase64Encoded: true,
+			});
+
+			const result = adapter.getInput(event);
+			expect(result.body).toBe('amount=100&currency=ZAR');
+		});
+	});
+
 	describe('handler', () => {
 		it('should handle a simple GET request', async () => {
 			const endpoint = new Endpoint({

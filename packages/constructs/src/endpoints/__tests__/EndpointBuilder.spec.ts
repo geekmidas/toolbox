@@ -379,6 +379,37 @@ describe('EndpointBuilder', () => {
 			expect(endpoint.authorize).toBe(customAuth);
 		});
 
+		it('should set authorize via .authorize() method', () => {
+			const authFn = () => true;
+			const builder = new EndpointBuilder('/test', 'GET');
+			const result = builder.authorize(authFn);
+
+			expect(result).toBe(builder);
+			expect((builder as any)._authorize).toBe(authFn);
+		});
+
+		it('should pass .authorize() function to endpoint', () => {
+			const authFn = async () => false;
+			const endpoint = new EndpointBuilder('/test', 'POST')
+				.authorize(authFn)
+				.handle(async () => ({}));
+
+			expect(endpoint.authorize).toBe(authFn);
+		});
+
+		it('should chain .authorize() with body, query, and params', () => {
+			const endpoint = new EndpointBuilder('/users/:id', 'POST')
+				.body(z.object({ role: z.string() }))
+				.query(z.object({ verbose: z.string() }))
+				.params(z.object({ id: z.string() }))
+				.authorize(({ body, query, params }) => {
+					return body.role === 'admin' && params.id !== '' && query.verbose === 'true';
+				})
+				.handle(async () => ({}));
+
+			expect(endpoint.authorize).toBeDefined();
+		});
+
 		it('should allow setting custom session extractor', () => {
 			const customSession = async () => ({ userId: '123', role: 'admin' });
 			const builder = new EndpointBuilder('/test', 'GET');

@@ -3,6 +3,7 @@ import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { AmazonApiGatewayEndpoint } from '../AmazonApiGatewayEndpointAdaptor';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 import { e } from '../EndpointFactory';
 
@@ -34,6 +35,78 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				query: { foo: 'bar', baz: 'qux' },
 				params: { id: '123' },
 			});
+		});
+
+		it('should parse JSON body when content-type is application/json', () => {
+			const endpoint = e.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+			const event = createMockV2Event({
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ name: 'test' }),
+			});
+
+			const result = adapter.getInput(event);
+
+			expect(result.body).toEqual({ name: 'test' });
+		});
+
+		it('should decode base64-encoded JSON body', () => {
+			const endpoint = e.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+			const event = createMockV2Event({
+				headers: { 'content-type': 'application/json' },
+				body: Buffer.from(JSON.stringify({ name: 'test' })).toString('base64'),
+				isBase64Encoded: true,
+			});
+
+			const result = adapter.getInput(event);
+
+			expect(result.body).toEqual({ name: 'test' });
+		});
+
+		it('should return base64-decoded string for non-JSON content-type', () => {
+			const endpoint = e.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+			const event = createMockV2Event({
+				headers: { 'content-type': 'application/x-www-form-urlencoded' },
+				body: Buffer.from('amount=100&currency=ZAR').toString('base64'),
+				isBase64Encoded: true,
+			});
+
+			const result = adapter.getInput(event);
+
+			expect(result.body).toBe('amount=100&currency=ZAR');
+		});
+
+		it('should return raw string when content-type is not JSON', () => {
+			const endpoint = e.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+			const event = createMockV2Event({
+				headers: { 'content-type': 'text/plain' },
+				body: 'plain-text-body',
+			});
+
+			const result = adapter.getInput(event);
+
+			expect(result.body).toBe('plain-text-body');
+		});
+
+		it('should default to JSON parsing when no content-type header', () => {
+			const endpoint = e.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+
+			const event = createMockV2Event({
+				headers: {},
+				body: JSON.stringify({ name: 'test' }),
+			});
+
+			const result = adapter.getInput(event);
+
+			expect(result.body).toEqual({ name: 'test' });
 		});
 
 		it('should handle missing body, query, and params', () => {
@@ -488,5 +561,77 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				});
 			});
 		});
+	});
+});
+
+describe('AmazonApiGatewayEndpoint.decodeBody', () => {
+	const decodeBody = AmazonApiGatewayEndpoint.decodeBody;
+
+	it('should return undefined for null/undefined body', () => {
+		expect(decodeBody(undefined, false, 'application/json')).toBeUndefined();
+		expect(decodeBody(null, false, 'application/json')).toBeUndefined();
+		expect(decodeBody('', false, 'application/json')).toBeUndefined();
+	});
+
+	it('should JSON.parse when content-type is application/json', () => {
+		const result = decodeBody(
+			'{"name":"test"}',
+			false,
+			'application/json',
+		);
+		expect(result).toEqual({ name: 'test' });
+	});
+
+	it('should JSON.parse when content-type includes application/json with charset', () => {
+		const result = decodeBody(
+			'{"name":"test"}',
+			false,
+			'application/json; charset=utf-8',
+		);
+		expect(result).toEqual({ name: 'test' });
+	});
+
+	it('should decode base64 then JSON.parse for base64-encoded JSON', () => {
+		const encoded = Buffer.from('{"name":"test"}').toString('base64');
+		const result = decodeBody(encoded, true, 'application/json');
+		expect(result).toEqual({ name: 'test' });
+	});
+
+	it('should return raw string for non-JSON content-type', () => {
+		const result = decodeBody(
+			'amount=100&currency=ZAR',
+			false,
+			'application/x-www-form-urlencoded',
+		);
+		expect(result).toBe('amount=100&currency=ZAR');
+	});
+
+	it('should decode base64 and return string for non-JSON content-type', () => {
+		const encoded = Buffer.from('amount=100&currency=ZAR').toString('base64');
+		const result = decodeBody(
+			encoded,
+			true,
+			'application/x-www-form-urlencoded',
+		);
+		expect(result).toBe('amount=100&currency=ZAR');
+	});
+
+	it('should return raw string for text/plain', () => {
+		const result = decodeBody('hello world', false, 'text/plain');
+		expect(result).toBe('hello world');
+	});
+
+	it('should default to JSON parsing when content-type is undefined', () => {
+		const result = decodeBody('{"name":"test"}', false, undefined);
+		expect(result).toEqual({ name: 'test' });
+	});
+
+	it('should not JSON.parse a string that happens to be valid JSON when content-type is not JSON', () => {
+		const result = decodeBody(
+			'{"looks":"like json"}',
+			false,
+			'text/plain',
+		);
+		expect(result).toBe('{"looks":"like json"}');
 	});
 });
