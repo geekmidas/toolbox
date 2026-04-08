@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.23
+
+### Patch Changes
+
+- 🐛 [`61ae404`](https://github.com/geekmidas/toolbox/commit/61ae404061a1061c4a724d0f187764475903b625) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix tsx import
+
 ## 1.10.22
 
 ### Patch Changes
