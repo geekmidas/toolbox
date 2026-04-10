@@ -44,6 +44,15 @@ describe('StorageClient', () => {
 
 			expect(fileWithName.path).toBe('test/path.txt');
 			expect(fileWithName.name).toBe('display-name.txt');
+
+			const fileWithDisposition: import('../StorageClient').File = {
+				path: 'test/path.txt',
+				disposition: 'inline',
+				responseContentType: 'application/pdf',
+			};
+
+			expect(fileWithDisposition.disposition).toBe('inline');
+			expect(fileWithDisposition.responseContentType).toBe('application/pdf');
 		});
 
 		it('should define GetUploadParams interface correctly', () => {
