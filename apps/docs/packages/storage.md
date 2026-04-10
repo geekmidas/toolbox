@@ -54,13 +54,29 @@ await storage.upload('images/photo.jpg', imageBuffer, 'image/jpeg', {
 ### Download Files
 
 ```typescript
-// Get file as buffer
-const buffer = await storage.download('documents/report.pdf');
-
 // Get presigned download URL
 const url = await storage.getDownloadURL({
   path: 'documents/report.pdf',
-  expiresIn: 3600, // 1 hour
+});
+
+// Download as attachment with a custom filename
+const attachmentUrl = await storage.getDownloadURL({
+  path: 'documents/report.pdf',
+  name: 'Q4-Report.pdf',
+  // disposition defaults to 'attachment' when name is set
+});
+
+// Display inline in the browser (e.g. images, PDFs)
+const inlineUrl = await storage.getDownloadURL({
+  path: 'images/photo.jpg',
+  disposition: 'inline',
+});
+
+// Override the response content type
+const previewUrl = await storage.getDownloadURL({
+  path: 'documents/report.pdf',
+  disposition: 'inline',
+  responseContentType: 'application/pdf',
 });
 ```
 
@@ -132,8 +148,10 @@ interface StorageClient {
 }
 
 interface File {
-  name?: string;  // Optional filename for Content-Disposition
-  path: string;   // S3 key
+  path: string;                // S3 key
+  name?: string;               // Filename for Content-Disposition header
+  disposition?: 'inline' | 'attachment'; // Default: 'attachment' when name is set
+  responseContentType?: string; // Override the response Content-Type
 }
 
 interface GetUploadParams {
