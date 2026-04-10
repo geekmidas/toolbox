@@ -166,22 +166,23 @@ const endpoint = e
 
 #### Using Cookies for Authentication
 
-Combine cookie reading with session management:
+Combine cookie reading with session management by calling `.session()` on the factory:
 
 ```typescript
-const protectedEndpoint = e
-  .get('/profile')
-  .getSession(async ({ cookie, services }) => {
+const sessionRouter = e
+  .services([AuthService])
+  .session(async ({ cookie, services }) => {
     const sessionToken = cookie('session');
     if (!sessionToken) {
-      return null;
+      throw new ForbiddenError('No active session');
     }
 
     return await services.auth.verifySession(sessionToken);
-  })
-  .authorize(({ session }) => {
-    return session !== null;
-  })
+  });
+
+// Endpoints created from sessionRouter automatically have session available
+const profileEndpoint = sessionRouter
+  .get('/profile')
   .handle(async ({ session }) => {
     return {
       userId: session.userId,
