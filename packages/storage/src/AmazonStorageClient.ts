@@ -55,18 +55,29 @@ export class AmazonStorageClient implements StorageClient {
 		readonly cache?: Cache,
 	) {}
 
-	getVersionDownloadURL(file: File, versionId: string): Promise<string> {
-		const ResponseContentDisposition = file.name
-			? `attachment; filename=${encodeURIComponent(file.name)}`
+	private createGetObjectCommand(
+		file: File,
+		overrides?: { VersionId?: string },
+	): GetObjectCommand {
+		const disposition =
+			file.disposition ?? (file.name ? 'attachment' : undefined);
+		const ResponseContentDisposition = disposition
+			? file.name
+				? `${disposition}; filename=${encodeURIComponent(file.name)}`
+				: disposition
 			: undefined;
 
-		const command = new GetObjectCommand({
+		return new GetObjectCommand({
 			Bucket: this.bucket,
 			Key: file.path,
 			ResponseContentDisposition,
-			VersionId: versionId,
+			ResponseContentType: file.responseContentType,
+			...overrides,
 		});
+	}
 
+	getVersionDownloadURL(file: File, versionId: string): Promise<string> {
+		const command = this.createGetObjectCommand(file, { VersionId: versionId });
 		return getSignedUrl(this.client, command, { expiresIn: 60 * 60 * 24 });
 	}
 
@@ -92,16 +103,7 @@ export class AmazonStorageClient implements StorageClient {
 			return cachedURL;
 		}
 
-		const ResponseContentDisposition = file.name
-			? `attachment; filename=${encodeURIComponent(file.name)}`
-			: undefined;
-
-		const command = new GetObjectCommand({
-			Bucket: this.bucket,
-			Key: file.path,
-			ResponseContentDisposition,
-		});
-
+		const command = this.createGetObjectCommand(file);
 		const url = await getSignedUrl(this.client, command, { expiresIn });
 		const cacheExpiration = Math.max(expiresIn - 60, 0);
 
