@@ -385,20 +385,79 @@ const uploadEndpoint = e
 
 ### Authorization and Sessions
 
+`.session()` is called on the **factory** to create a session-enabled router. The session callback receives `header`, `cookie`, `services`, and `db` (when a database is configured). Throw an error to reject unauthorized requests.
+
 ```typescript
-const protectedEndpoint = e
-  .get('/protected')
-  .getSession(async ({ header, services }) => {
-    const token = header('authorization')?.replace('Bearer ', '');
-    if (!token) return null;
+import { e } from '@geekmidas/constructs/endpoints';
+import { ForbiddenError } from '@geekmidas/errors';
+
+// Create a factory with services and database
+const r = e
+  .services([AuthService])
+  .database(DatabaseService);
+
+// Create a session-enabled router
+const sessionRouter = r
+  .session(async ({ header, services, db, cookie }) => {
+    const token = cookie('session_token') || header('authorization');
+    if (!token) {
+      throw new ForbiddenError('No active session');
+    }
 
     return await services.auth.verifyToken(token);
-  })
-  .authorize(({ session }) => {
-    return session !== null;
-  })
+  });
+
+// Endpoints created from sessionRouter have session in their context
+const protectedEndpoint = sessionRouter
+  .get('/protected')
   .handle(async ({ session }) => {
     return { userId: session.id };
+  });
+```
+
+#### Authorization
+
+`.authorize()` adds an authorization check that runs **after** session extraction and input validation, but **before** the handler. It can be set on the factory (applies to all endpoints) or on individual endpoints. The callback returns a `boolean` or `Promise<boolean>` — returning `false` results in a `401 Unauthorized` response.
+
+The authorize context includes `session`, `services`, `logger`, `header`, `cookie`, and validated request input (`body`, `query`, `params`) when schemas are defined:
+
+```typescript
+// Factory-level: applies to all endpoints created from this factory
+const adminRouter = sessionRouter
+  .authorize(({ session }) => session.role === 'admin');
+
+const adminEndpoint = adminRouter
+  .post('/admin/action')
+  .handle(async ({ session }) => {
+    return { status: 'ok' };
+  });
+```
+
+```typescript
+// Endpoint-level: authorize based on request input
+const updateEndpoint = sessionRouter
+  .post('/orgs/:orgId/members')
+  .params(z.object({ orgId: z.string() }))
+  .body(z.object({ userId: z.string(), role: z.string() }))
+  .authorize(({ session, body, params }) => {
+    // Check the user has permission for this org and role assignment
+    return session.orgs.includes(params.orgId) && body.role !== 'owner';
+  })
+  .handle(async ({ body, params }) => {
+    return { ok: true };
+  });
+```
+
+```typescript
+// Async authorization with service lookups
+const resourceEndpoint = sessionRouter
+  .get('/resources/:id')
+  .params(z.object({ id: z.string() }))
+  .authorize(async ({ session, params, services }) => {
+    return await services.permissions.canAccess(session.userId, params.id);
+  })
+  .handle(async ({ params, services }) => {
+    return await services.resources.getById(params.id);
   });
 ```
 
