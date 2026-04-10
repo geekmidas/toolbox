@@ -94,4 +94,15 @@ export type GetUploadResponse = {
 export interface File {
 	name?: string;
 	path: string;
+	/**
+	 * Override the Content-Type of the response.
+	 * Useful when the stored object's content type differs from what the browser should receive.
+	 */
+	responseContentType?: string;
+	/**
+	 * Control how the browser handles the file.
+	 * - `'attachment'` — prompts download (default when `name` is set)
+	 * - `'inline'` — displays in the browser
+	 */
+	disposition?: 'inline' | 'attachment';
 }
