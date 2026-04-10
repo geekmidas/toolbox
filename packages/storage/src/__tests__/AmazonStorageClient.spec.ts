@@ -77,6 +77,62 @@ describe('AmazonStorageClient Integration Tests', () => {
 			);
 		});
 
+		it('should generate download URL with inline disposition', async () => {
+			const key = 'test-files/inline-file.txt';
+			await client.upload(key, testContent, testContentType);
+
+			const downloadUrl = await client.getDownloadURL({
+				path: key,
+				disposition: 'inline',
+			});
+
+			expect(downloadUrl).toContain('response-content-disposition=inline');
+		});
+
+		it('should generate download URL with inline disposition and filename', async () => {
+			const key = 'test-files/inline-named.txt';
+			await client.upload(key, testContent, testContentType);
+
+			const downloadUrl = await client.getDownloadURL({
+				path: key,
+				name: 'preview.txt',
+				disposition: 'inline',
+			});
+
+			expect(downloadUrl).toContain(
+				'response-content-disposition=inline%3B%20filename%3Dpreview.txt',
+			);
+		});
+
+		it('should generate download URL with response content type override', async () => {
+			const key = 'test-files/content-type-override.bin';
+			await client.upload(key, testContent, 'application/octet-stream');
+
+			const downloadUrl = await client.getDownloadURL({
+				path: key,
+				responseContentType: 'application/pdf',
+				disposition: 'inline',
+			});
+
+			expect(downloadUrl).toContain(
+				'response-content-type=application%2Fpdf',
+			);
+		});
+
+		it('should default to attachment disposition when name is set', async () => {
+			const key = 'test-files/default-disposition.txt';
+			await client.upload(key, testContent, testContentType);
+
+			const downloadUrl = await client.getDownloadURL({
+				path: key,
+				name: 'download.txt',
+			});
+
+			expect(downloadUrl).toContain(
+				'response-content-disposition=attachment%3B%20filename%3Ddownload.txt',
+			);
+		});
+
 		it('should handle binary data upload', async () => {
 			const binaryKey = 'test-files/binary.bin';
 			const binaryData = Buffer.from([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello" in bytes
@@ -511,6 +567,22 @@ describe('AmazonStorageClient Integration Tests', () => {
 			expect(downloadUrl).toContain('X-Amz-Algorithm=AWS4-HMAC-SHA256');
 			expect(downloadUrl).toContain(
 				'response-content-disposition=attachment%3B%20filename%3Dversioned-file.txt',
+			);
+		});
+
+		it('should generate version URL with inline disposition', async () => {
+			const versionKey = 'test-files/version-inline.txt';
+			const versionId = 'test-version-id';
+
+			await client.upload(versionKey, testContent, testContentType);
+
+			const downloadUrl = await client.getVersionDownloadURL(
+				{ path: versionKey, name: 'inline-file.txt', disposition: 'inline' },
+				versionId,
+			);
+
+			expect(downloadUrl).toContain(
+				'response-content-disposition=inline%3B%20filename%3Dinline-file.txt',
 			);
 		});
 
