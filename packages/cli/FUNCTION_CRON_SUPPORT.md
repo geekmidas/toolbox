@@ -58,7 +58,7 @@ For fine-grained control over providers:
 Functions are standalone Lambda handlers that can be triggered by various AWS services:
 
 ```typescript
-import { f } from '@geekmidas/api/function';
+import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 
 export const processOrder = f
@@ -95,7 +95,7 @@ export const processOrder = f
 Crons are scheduled functions that run on a regular basis:
 
 ```typescript
-import { cron } from '@geekmidas/api/cron';
+import { cron } from '@geekmidas/constructs/crons';
 
 // Using cron expression (runs daily at 9 AM UTC)
 export const dailyReport = cron

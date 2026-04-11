@@ -214,7 +214,7 @@ await start({
 All endpoints are fully type-safe with Zod validation:
 
 ```typescript
-import { e } from '@geekmidas/api/server';
+import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
 export const createUser = e

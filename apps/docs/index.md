@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: Type-Safe APIs
-    details: Build REST APIs with full TypeScript type inference using @geekmidas/api
+    details: Build REST APIs with full TypeScript type inference using @geekmidas/constructs
   - title: Testing Utilities
     details: Comprehensive testing factories and utilities with @geekmidas/testkit
   - title: Environment Config
