@@ -197,29 +197,33 @@ export function reconcileSecrets(
 		}
 	}
 
+	// Always add pgboss credentials when postgres is available
+	if (result.services.postgres && !result.services.pgboss) {
+		result = {
+			...result,
+			services: {
+				...result.services,
+				pgboss: {
+					host: result.services.postgres.host,
+					port: result.services.postgres.port,
+					username: 'pgboss',
+					password: generateSecurePassword(),
+					database: result.services.postgres.database ?? 'app',
+				},
+			},
+		};
+		result.urls = generateConnectionUrls(
+			result.services,
+			result.eventsBackend,
+		);
+		logger.log('   🔄 Adding missing service credentials: pgboss');
+		changed = true;
+	}
+
 	// Reconcile events backend
 	const eventsBackend = workspace.services.events;
 	if (eventsBackend && result.eventsBackend !== eventsBackend) {
 		result.eventsBackend = eventsBackend;
-
-		// Add pgboss credentials if needed
-		if (eventsBackend === 'pgboss' && !result.services.pgboss) {
-			result = {
-				...result,
-				services: {
-					...result.services,
-					pgboss: {
-						host: result.services.postgres?.host ?? 'localhost',
-						port: result.services.postgres?.port ?? 5432,
-						username: 'pgboss',
-						password: generateSecurePassword(),
-						database: result.services.postgres?.database ?? 'app',
-					},
-				},
-			};
-			logger.log('   🔄 Adding missing service credentials: pgboss');
-			changed = true;
-		}
 
 		// Add localstack credentials if needed
 		if (eventsBackend === 'sns' && !result.services.localstack) {

@@ -211,6 +211,11 @@ export function generateConnectionUrls(
 		const eventUrls = generateEventConnectionStrings(eventsBackend, services);
 		urls.EVENT_PUBLISHER_CONNECTION_STRING = eventUrls.publisher;
 		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = eventUrls.subscriber;
+	} else if (services.pgboss) {
+		// Default to pgboss when credentials exist but no explicit events backend
+		const pgbossUrl = generatePgBossUrl(services.pgboss);
+		urls.EVENT_PUBLISHER_CONNECTION_STRING = pgbossUrl;
+		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = pgbossUrl;
 	}
 
 	if (services.mailpit) {
@@ -260,10 +265,10 @@ export function createStageSecrets(
 		}
 	}
 
-	// Generate event-specific credentials
-	const eventsBackend = options?.eventsBackend;
-	if (eventsBackend === 'pgboss' && serviceCredentials.postgres) {
-		// pgboss reuses postgres host/port/database but with dedicated user
+	// Always create pgboss credentials when postgres is available.
+	// pgboss reuses postgres host/port/database but with a dedicated user,
+	// so subscribers work out of the box without explicit events config.
+	if (serviceCredentials.postgres && !serviceCredentials.pgboss) {
 		serviceCredentials.pgboss = {
 			...PGBOSS_DEFAULTS,
 			password: generateSecurePassword(),
@@ -272,6 +277,9 @@ export function createStageSecrets(
 			database: serviceCredentials.postgres.database,
 		};
 	}
+
+	// Generate event-specific credentials
+	const eventsBackend = options?.eventsBackend;
 	if (eventsBackend === 'sns') {
 		// LocalStack credentials with LSIA-prefixed access key
 		serviceCredentials.localstack = generateLocalStackCredentials();

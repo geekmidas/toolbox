@@ -560,11 +560,16 @@ describe('createStageSecrets with events', () => {
 		);
 	});
 
-	it('should not create event URLs without eventsBackend', () => {
+	it('should default event URLs to pgboss when postgres is present without explicit eventsBackend', () => {
 		const secrets = createStageSecrets('development', ['postgres']);
 
 		expect(secrets.eventsBackend).toBeUndefined();
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toBeUndefined();
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
+		expect(secrets.services.pgboss).toBeDefined();
+		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
+		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
+			'pgboss://',
+		);
 	});
 });
