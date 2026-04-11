@@ -184,16 +184,15 @@ export async function setupSubscribers(
   envParser: EnvironmentParser<any>,
   logger: Logger,
 ): Promise<void> {
+  if (subscribers.length === 0) {
+    return;
+  }
+
   logger.info('Setting up subscribers in polling mode (local development)');
 
   const config = envParser.create((get) => ({
-    connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string().optional(),
+    connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string(),
   })).parse();
-
-  if (!config.connectionString) {
-    logger.warn('EVENT_SUBSCRIBER_CONNECTION_STRING not configured, skipping subscriber setup');
-    return;
-  }
 
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
