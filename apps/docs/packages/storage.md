@@ -54,7 +54,7 @@ await storage.upload('images/photo.jpg', imageBuffer, 'image/jpeg', {
 ### Download Files
 
 ```typescript
-// Get presigned download URL
+ // Get presigned download URL
 const url = await storage.getDownloadURL({
   path: 'documents/report.pdf',
 });
