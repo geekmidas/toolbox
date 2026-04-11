@@ -10,6 +10,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 	}
 
 	const packageName = `@${options.name}/web`;
+	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
 	const uiPackage = `@${options.name}/ui`;
 
@@ -26,6 +27,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
+			[apiPackage]: 'workspace:*',
 			[modelsPackage]: 'workspace:*',
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
@@ -54,7 +56,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['${modelsPackage}', '${uiPackage}'],
+  transpilePackages: ['${apiPackage}', '${modelsPackage}', '${uiPackage}'],
 };
 
 export default nextConfig;
@@ -94,6 +96,7 @@ export default nextConfig;
 			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*', '../../packages/ui/src/*'],
+				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi.ts'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[`${uiPackage}`]: ['../../packages/ui/src'],
@@ -103,6 +106,7 @@ export default nextConfig;
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
 		exclude: ['node_modules'],
 		references: [
+			{ path: '../../apps/api' },
 			{ path: '../../packages/ui' },
 			{ path: '../../packages/models' },
 		],
@@ -195,8 +199,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 `;
 
-	// API client setup - uses createApi with shared QueryClient
-	const apiIndexTs = `import { createApi } from './api.ts';
+	// API client setup - imports directly from the API package export
+	const apiIndexTs = `import { createApi } from '${apiPackage}/client';
 import { getQueryClient } from '~/lib/query-client.ts';
 import { clientConfig } from '~/config/client.ts';
 
