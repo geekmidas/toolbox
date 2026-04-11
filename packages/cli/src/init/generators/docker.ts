@@ -266,10 +266,8 @@ function generateDockerEnv(
 		return `${envVar}=${app.password}`;
 	});
 
-	// Add pgboss password if events backend is pgboss
-	if (eventsBackend === 'pgboss') {
-		envVars.push(`PGBOSS_DB_PASSWORD=pgboss-dev-password`);
-	}
+	// Always include pgboss password for the dedicated pgboss user
+	envVars.push(`PGBOSS_DB_PASSWORD=pgboss-dev-password`);
 
 	return `# Auto-generated docker environment file
 # Contains database passwords for docker-compose postgres init
@@ -339,10 +337,10 @@ EOSQL
 `;
 	});
 
-	// Add pgboss user and schema if events backend is pgboss
-	let pgbossBlock = '';
-	if (eventsBackend === 'pgboss') {
-		pgbossBlock = `
+	// Always add pgboss user and schema.
+	// pgboss reuses the same database with a dedicated user/schema,
+	// so subscribers work out of the box without explicit events config.
+	const pgbossBlock = `
 # Create pgboss user with dedicated schema - idempotent
 echo "Creating pgboss user and schema..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
@@ -364,7 +362,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT ALL ON SEQUENCES TO pgboss;
 EOSQL
 `;
-	}
 
 	// Add extensions
 	const extensions = `
@@ -382,7 +379,8 @@ set -e
 # Auto-generated PostgreSQL init script (idempotent - safe to re-run)
 # Creates per-app users with separate schemas in a single database
 # - api: uses public schema
-# - auth: uses auth schema (search_path=auth)${eventsBackend === 'pgboss' ? '\n# - pgboss: uses pgboss schema for event processing' : ''}
+# - auth: uses auth schema (search_path=auth)
+# - pgboss: uses pgboss schema for event processing
 ${extensions}
 ${userCreations.join('\n')}${pgbossBlock}
 echo "Database initialization complete!"
