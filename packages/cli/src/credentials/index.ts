@@ -804,15 +804,16 @@ export async function prepareEntryCredentials(options: {
 	}
 
 	// Default event connection strings to pgboss when postgres is available.
-	// This lets subscribers work out of the box during dev without explicit events config.
+	// Normally these come from secrets (gkm setup always creates pgboss credentials),
+	// but this handles old secrets files that predate the pgboss default.
 	if (
 		!credentials.EVENT_PUBLISHER_CONNECTION_STRING &&
 		!credentials.EVENT_SUBSCRIBER_CONNECTION_STRING &&
-		credentials.POSTGRES_USER
+		credentials.PGBOSS_DB_USER
 	) {
 		const pgbossUrl = generatePgBossUrl({
-			username: credentials.POSTGRES_USER,
-			password: credentials.POSTGRES_PASSWORD ?? '',
+			username: credentials.PGBOSS_DB_USER,
+			password: credentials.PGBOSS_DB_PASSWORD ?? '',
 			host: credentials.POSTGRES_HOST ?? 'localhost',
 			port: Number(credentials.POSTGRES_PORT ?? '5432'),
 			database: credentials.POSTGRES_DB ?? 'app',
