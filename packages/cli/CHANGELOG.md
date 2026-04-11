@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.27
+
+### Patch Changes
+
+- 🐛 [`bead80b`](https://github.com/geekmidas/toolbox/commit/bead80b78437f616c593c521a39a22155de3c498) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix recociliation to have pg boss
+
 ## 1.10.26
 
 ### Patch Changes

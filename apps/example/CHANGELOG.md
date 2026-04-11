@@ -1,5 +1,12 @@
 # @geekmidas/example
 
+## 1.0.56
+
+### Patch Changes
+
+- Updated dependencies [[`bead80b`](https://github.com/geekmidas/toolbox/commit/bead80b78437f616c593c521a39a22155de3c498)]:
+  - @geekmidas/cli@1.10.27
+
 ## 1.0.55
 
 ### Patch Changes
