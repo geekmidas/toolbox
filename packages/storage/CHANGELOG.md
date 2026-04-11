@@ -1,5 +1,11 @@
 # @geekmidas/storage
 
+## 2.0.2
+
+### Patch Changes
+
+- ✨ [`f843d08`](https://github.com/geekmidas/toolbox/commit/f843d08e512d5d5410fb93376a8b9b127434ff39) Thanks [@geekmidas](https://github.com/geekmidas)! - Add response type and content dispotion
+
 ## 2.0.1
 
 ### Patch Changes

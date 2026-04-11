@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.24
+
+### Patch Changes
+
+- 🐛 [`b3565b8`](https://github.com/geekmidas/toolbox/commit/b3565b89e57f100157faf82d89077c3d24df78fd) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix exec script to load mjs instead of ts
+
 ## 1.10.23
 
 ### Patch Changes
