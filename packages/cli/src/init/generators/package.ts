@@ -76,10 +76,7 @@ export function generatePackageJson(
 		private: true,
 		type: 'module',
 		exports: {
-			'./client': {
-				types: OPENAPI_OUTPUT_PATH,
-				import: OPENAPI_OUTPUT_PATH,
-			},
+			'./client': OPENAPI_OUTPUT_PATH,
 		},
 		scripts,
 		dependencies: sortObject(dependencies),
