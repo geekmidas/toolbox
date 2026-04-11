@@ -77,10 +77,13 @@ export async function execCommand(
 
 	logger.log(`🚀 Running: ${[cmd, ...args].join(' ')}`);
 
-	// Merge NODE_OPTIONS with existing value (if any)
-	// The preload is .mjs so no tsx loader needed — safe for frameworks
-	// like Next.js whose workers inherit NODE_OPTIONS.
-	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
+	// Build NODE_OPTIONS for the child process.
+	// Strip any --import flags from the inherited NODE_OPTIONS — the gkm binary
+	// adds --import=tsx for itself, but the spawned command (e.g. next, prisma)
+	// doesn't need it and it breaks frameworks that spawn their own workers.
+	const existingNodeOptions = (process.env.NODE_OPTIONS ?? '')
+		.replace(/--import[= ]\S+/g, '')
+		.trim();
 	const preloadImport = `--import=${preloadPath}`;
 
 	const nodeOptions = [existingNodeOptions, preloadImport]
