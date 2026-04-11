@@ -55,11 +55,6 @@ import type {
 	TelescopeConfig,
 } from '../types';
 import {
-	copyAllClients,
-	copyClientToFrontends,
-	getBackendOpenApiPath,
-} from '../workspace/client-generator.js';
-import {
 	getAppBuildOrder,
 	getDependencyEnvVars,
 	type NormalizedWorkspace,
@@ -850,14 +845,9 @@ async function workspaceDevCommand(
 		logger.log('✅ Frontend apps validated');
 	}
 
-	// Copy initial clients from backends to frontends
-	if (frontendApps.length > 0 && backendApps.length > 0) {
-		const clientResults = await copyAllClients(workspace);
-		const copiedCount = clientResults.filter((r) => r.success).length;
-		if (copiedCount > 0) {
-			logger.log(`\n📦 Copied ${copiedCount} API client(s)`);
-		}
-	}
+	// Frontend apps import API clients directly from backend packages
+	// (e.g. import { createApi } from '@myapp/api/client')
+	// No file copying needed — pnpm workspace resolution handles it.
 
 	// Resolve dynamic service ports from docker-compose.yml
 	const resolvedPorts = await resolveServicePorts(workspace.root);
@@ -952,83 +942,8 @@ async function workspaceDevCommand(
 		detached: true,
 	});
 
-	// Set up file watcher for backend .gkm/openapi.ts changes (auto-copy to frontends)
-	let openApiWatcher: ReturnType<typeof chokidar.watch> | null = null;
-
-	if (frontendApps.length > 0 && backendApps.length > 0) {
-		// Collect all backend openapi.ts file paths to watch
-		const openApiPaths: { path: string; appName: string }[] = [];
-
-		for (const [appName] of backendApps) {
-			const openApiPath = getBackendOpenApiPath(workspace, appName);
-			if (openApiPath) {
-				openApiPaths.push({ path: openApiPath, appName });
-			}
-		}
-
-		if (openApiPaths.length > 0) {
-			logger.log(
-				`\n👀 Watching ${openApiPaths.length} backend OpenAPI spec(s) for changes`,
-			);
-
-			// Create a map for quick lookup of app name from path
-			const pathToApp = new Map(openApiPaths.map((p) => [p.path, p.appName]));
-
-			openApiWatcher = chokidar.watch(
-				openApiPaths.map((p) => p.path),
-				{
-					persistent: true,
-					ignoreInitial: true,
-					// Watch parent directory too since file may not exist yet
-					depth: 0,
-				},
-			);
-
-			let copyTimeout: NodeJS.Timeout | null = null;
-
-			const handleChange = async (changedPath: string) => {
-				// Debounce to handle rapid changes
-				if (copyTimeout) {
-					clearTimeout(copyTimeout);
-				}
-
-				copyTimeout = setTimeout(async () => {
-					const backendAppName = pathToApp.get(changedPath);
-					if (!backendAppName) {
-						return;
-					}
-
-					logger.log(`\n🔄 OpenAPI spec changed for ${backendAppName}`);
-
-					try {
-						const results = await copyClientToFrontends(
-							workspace,
-							backendAppName,
-							{ silent: true },
-						);
-						for (const result of results) {
-							if (result.success) {
-								logger.log(
-									`   📦 Copied client to ${result.frontendApp} (${result.endpointCount} endpoints)`,
-								);
-							} else if (result.error) {
-								logger.error(
-									`   ❌ Failed to copy client to ${result.frontendApp}: ${result.error}`,
-								);
-							}
-						}
-					} catch (error) {
-						logger.error(
-							`   ❌ Failed to copy clients: ${(error as Error).message}`,
-						);
-					}
-				}, 200); // 200ms debounce
-			};
-
-			openApiWatcher.on('change', handleChange);
-			openApiWatcher.on('add', handleChange);
-		}
-	}
+	// No file watcher needed — frontend apps import API clients directly
+	// from backend packages via workspace dependencies.
 
 	// Handle graceful shutdown
 	let isShuttingDown = false;
@@ -1037,11 +952,6 @@ async function workspaceDevCommand(
 		isShuttingDown = true;
 
 		logger.log('\n🛑 Shutting down workspace...');
-
-		// Close OpenAPI watcher
-		if (openApiWatcher) {
-			openApiWatcher.close().catch(() => {});
-		}
 
 		// Kill turbo process group
 		const pid = turboProcess.pid;
@@ -1085,11 +995,6 @@ async function workspaceDevCommand(
 		});
 
 		turboProcess.on('exit', (code) => {
-			// Close watcher on exit
-			if (openApiWatcher) {
-				openApiWatcher.close().catch(() => {});
-			}
-
 			if (code !== null && code !== 0) {
 				reject(new Error(`Turbo exited with code ${code}`));
 			} else {
