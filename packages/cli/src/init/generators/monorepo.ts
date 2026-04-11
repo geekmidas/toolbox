@@ -378,9 +378,6 @@ export default defineWorkspace({
         client: './src/config/client.ts',
         server: './src/config/server.ts',
       },
-      client: {
-        output: './src/api',
-      },
     },
   },
   shared: {
