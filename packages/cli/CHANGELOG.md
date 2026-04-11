@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.26
+
+### Patch Changes
+
+- 🐛 [`5691cdf`](https://github.com/geekmidas/toolbox/commit/5691cdfc8298e8f943de8b3541b8e79ce64edccd) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix subsciber defaults
+
 ## 1.10.25
 
 ### Patch Changes
