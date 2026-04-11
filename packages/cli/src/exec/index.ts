@@ -61,34 +61,29 @@ export async function execCommand(
 	}
 
 	// Create preload script that injects Credentials
-	// Create in cwd so package resolution works (finds node_modules in app directory)
+	// Written as .mjs (plain ESM) so it doesn't need tsx — this avoids
+	// breaking frameworks like Next.js whose workers inherit NODE_OPTIONS.
 	const preloadDir = join(cwd, '.gkm');
 	await mkdir(preloadDir, { recursive: true });
-	const preloadPath = join(preloadDir, 'credentials-preload.ts');
+	const preloadPath = join(preloadDir, 'credentials-preload.mjs');
 	await createCredentialsPreload(preloadPath, secretsJsonPath);
 
 	// Build command
-	const [cmd, ...rawArgs] = commandArgs;
+	const [cmd, ...args] = commandArgs;
 
 	if (!cmd) {
 		throw new Error('No command specified');
 	}
 
-	// Replace template variables in command args (e.g. $PORT -> resolved port)
-	const args = rawArgs.map((arg) =>
-		arg.replace(/\$PORT\b/g, credentials.PORT ?? '3000'),
-	);
-
 	logger.log(`🚀 Running: ${[cmd, ...args].join(' ')}`);
 
 	// Merge NODE_OPTIONS with existing value (if any)
-	// Add tsx loader first so our .ts preload can be loaded
+	// The preload is .mjs so no tsx loader needed — safe for frameworks
+	// like Next.js whose workers inherit NODE_OPTIONS.
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
-	const tsxImport = '--import=tsx';
 	const preloadImport = `--import=${preloadPath}`;
 
-	// Build NODE_OPTIONS: existing + tsx loader + our preload
-	const nodeOptions = [existingNodeOptions, tsxImport, preloadImport]
+	const nodeOptions = [existingNodeOptions, preloadImport]
 		.filter(Boolean)
 		.join(' ');
 
