@@ -239,10 +239,11 @@ export const createUser = e
 Subscribers process events from various sources:
 
 ```typescript
-import { SubscriberBuilder } from '@geekmidas/api/subscriber';
+import { s } from '@geekmidas/constructs/subscribers';
 
-export const userEventsSubscriber = new SubscriberBuilder()
-  .subscribe(['user.created', 'user.updated'])
+export const userEventsSubscriber = s
+  .subscribe('user.created')
+  .subscribe('user.updated')
   .timeout(30000)
   .handle(async ({ events, logger }) => {
     for (const event of events) {
