@@ -212,10 +212,7 @@ export function reconcileSecrets(
 				},
 			},
 		};
-		result.urls = generateConnectionUrls(
-			result.services,
-			result.eventsBackend,
-		);
+		result.urls = generateConnectionUrls(result.services, result.eventsBackend);
 		logger.log('   🔄 Adding missing service credentials: pgboss');
 		changed = true;
 	}
