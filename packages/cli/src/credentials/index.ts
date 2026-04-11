@@ -15,6 +15,7 @@ import {
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
+import { generatePgBossUrl } from '../secrets/generator.js';
 import { getDependencyEnvVars } from '../workspace/index.js';
 
 const logger = console;
@@ -800,6 +801,24 @@ export async function prepareEntryCredentials(options: {
 	if (appInfo?.appName) {
 		const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
 		Object.assign(credentials, depEnv);
+	}
+
+	// Default event connection strings to pgboss when postgres is available.
+	// This lets subscribers work out of the box during dev without explicit events config.
+	if (
+		!credentials.EVENT_PUBLISHER_CONNECTION_STRING &&
+		!credentials.EVENT_SUBSCRIBER_CONNECTION_STRING &&
+		credentials.POSTGRES_USER
+	) {
+		const pgbossUrl = generatePgBossUrl({
+			username: credentials.POSTGRES_USER,
+			password: credentials.POSTGRES_PASSWORD ?? '',
+			host: credentials.POSTGRES_HOST ?? 'localhost',
+			port: Number(credentials.POSTGRES_PORT ?? '5432'),
+			database: credentials.POSTGRES_DB ?? 'app',
+		});
+		credentials.EVENT_PUBLISHER_CONNECTION_STRING = pgbossUrl;
+		credentials.EVENT_SUBSCRIBER_CONNECTION_STRING = pgbossUrl;
 	}
 
 	// Write secrets to temp JSON file (always write since we have PORT)
