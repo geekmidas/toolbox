@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.28
+
+### Patch Changes
+
+- 🔥 [`9e8f923`](https://github.com/geekmidas/toolbox/commit/9e8f9239798649bedeb16906ed83d0b71065c917) Thanks [@geekmidas](https://github.com/geekmidas)! - Remove client generation from cli
+
 ## 1.10.27
 
 ### Patch Changes
