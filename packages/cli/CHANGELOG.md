@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.25
+
+### Patch Changes
+
+- 🐛 [`26765a3`](https://github.com/geekmidas/toolbox/commit/26765a3d1ce6a568e609011ab218455a1062dd2c) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix node options on exec
+
 ## 1.10.24
 
 ### Patch Changes
