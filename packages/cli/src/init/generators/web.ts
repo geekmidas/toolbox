@@ -20,7 +20,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 		private: true,
 		type: 'module',
 		scripts: {
-			dev: 'gkm exec -- next dev --turbopack -p $PORT',
+			dev: 'gkm exec -- next dev --turbopack',
 			build: 'gkm exec -- next build',
 			start: 'next start',
 			typecheck: 'tsc --noEmit',
