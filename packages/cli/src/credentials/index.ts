@@ -10,12 +10,12 @@ import {
 	loadWorkspaceAppInfo,
 	type WorkspaceAppInfo,
 } from '../config';
+import { generatePgBossUrl } from '../secrets/generator.js';
 import {
 	readStageSecrets,
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
-import { generatePgBossUrl } from '../secrets/generator.js';
 import { getDependencyEnvVars } from '../workspace/index.js';
 
 const logger = console;
