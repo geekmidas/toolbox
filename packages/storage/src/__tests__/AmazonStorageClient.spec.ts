@@ -114,9 +114,7 @@ describe('AmazonStorageClient Integration Tests', () => {
 				disposition: 'inline',
 			});
 
-			expect(downloadUrl).toContain(
-				'response-content-type=application%2Fpdf',
-			);
+			expect(downloadUrl).toContain('response-content-type=application%2Fpdf');
 		});
 
 		it('should default to attachment disposition when name is set', async () => {
