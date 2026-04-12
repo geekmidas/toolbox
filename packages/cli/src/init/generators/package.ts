@@ -1,4 +1,5 @@
 import {
+	ENDPOINTS_OUTPUT_PATH,
 	type GeneratedFile,
 	OPENAPI_OUTPUT_PATH,
 	type TemplateConfig,
@@ -78,6 +79,7 @@ export function generatePackageJson(
 		type: 'module',
 		exports: {
 			'./client': OPENAPI_OUTPUT_PATH,
+			'./endpoints': ENDPOINTS_OUTPUT_PATH,
 		},
 		scripts,
 		dependencies: sortObject(dependencies),
