@@ -18,6 +18,31 @@ export function generateTestFiles(
 	}
 
 	return [
+		// kysely.config.ts - Kysely CLI configuration for migrations
+		{
+			path: 'kysely.config.ts',
+			content: `import { Credentials } from '@geekmidas/envkit/credentials';
+import { PostgresDialect } from 'kysely';
+import { defineConfig } from 'kysely-ctl';
+import pg from 'pg';
+
+export default defineConfig({
+  dialect: new PostgresDialect({
+    pool: new pg.Pool({
+      password: Credentials.POSTGRES_PASSWORD,
+      user: Credentials.POSTGRES_USER,
+      database: Credentials.POSTGRES_DB,
+      port: Number(Credentials.POSTGRES_PORT),
+      host: Credentials.POSTGRES_HOST,
+    }),
+  }),
+  migrations: {
+    migrationFolder: './src/db/migrations',
+  },
+});
+`,
+		},
+
 		// test/config.ts - Wraps vitest `it` with transaction auto-rollback
 		{
 			path: 'test/config.ts',
