@@ -814,13 +814,15 @@ describe('generateTestFiles', () => {
 		expect(configFile!.content).toContain('~/services/database.ts');
 	});
 
-	it('should use PostgresKyselyMigrator in globalSetup', () => {
+	it('should use PostgresKyselyMigrator with runInitScript in globalSetup', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
 		const setupFile = files.find((f) => f.path === 'test/globalSetup.ts');
 		expect(setupFile).toBeDefined();
 		expect(setupFile!.content).toContain('PostgresKyselyMigrator');
-		expect(setupFile!.content).toContain('_test');
-		expect(setupFile!.content).toContain('migrateToLatest');
+		expect(setupFile!.content).toContain('runInitScript');
+		expect(setupFile!.content).toContain('afterCreate');
+		expect(setupFile!.content).toContain('Credentials');
+		expect(setupFile!.content).toContain('PGBOSS_DB_PASSWORD');
 	});
 
 	it('should use KyselyFactory in factory files', () => {
