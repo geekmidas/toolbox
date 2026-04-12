@@ -1525,7 +1525,7 @@ describe('Simple Endpoint', () => {
 });
 ```
 
-### Frontend Integration Testing with MSW
+## Frontend Integration Testing with MSW
 
 Use `createMswHandlers` to test frontend code against real backend endpoints — with full validation, authorization, and session handling — without running an HTTP server.
 
