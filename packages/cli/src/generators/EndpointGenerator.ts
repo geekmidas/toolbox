@@ -305,7 +305,7 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import type { Hono } from 'hono';
 ${endpointImports}
 
-const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>[] = [
+export const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>[] = [
   ${allExportNames.join(',\n  ')}
 ];
 
