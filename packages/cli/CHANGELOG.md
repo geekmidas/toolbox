@@ -1,5 +1,14 @@
 # @geekmidas/cli
 
+## 1.10.29
+
+### Patch Changes
+
+- ✨ [`3941ae6`](https://github.com/geekmidas/toolbox/commit/3941ae6c9027fddb32999b9f98af813a12867877) Thanks [@geekmidas](https://github.com/geekmidas)! - Add db to authorizer
+
+- Updated dependencies [[`3941ae6`](https://github.com/geekmidas/toolbox/commit/3941ae6c9027fddb32999b9f98af813a12867877)]:
+  - @geekmidas/constructs@3.0.6
+
 ## 1.10.28
 
 ### Patch Changes
