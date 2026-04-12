@@ -1529,14 +1529,14 @@ describe('Simple Endpoint', () => {
 
 Use `createMswHandlers` to test frontend code against real backend endpoints — with full validation, authorization, and session handling — without running an HTTP server.
 
-#### How It Works
+### How It Works
 
 1. The API app exports its endpoint constructs via `@myapp/api/endpoints`
 2. The web app creates MSW handlers from those endpoints
 3. Each test registers an isolated context (services, database transaction, etc.)
 4. MSW intercepts fetch requests and routes them through Hono's `app.request()`
 
-#### Setup
+### Setup
 
 **API app** — export endpoints from `package.json`:
 
@@ -1567,7 +1567,7 @@ export const mswServer = setupServer(...handlers);
 export { registerContext, TEST_CONTEXT_HEADER };
 ```
 
-#### Writing Tests
+### Writing Tests
 
 Each test registers its own context with `registerContext()`. The context ID is sent via the `x-test-context-id` header so concurrent tests are isolated.
 
@@ -1603,7 +1603,7 @@ it('should render users list', async ({ db }) => {
 });
 ```
 
-#### Context Isolation
+### Context Isolation
 
 Each call to `registerContext()` creates an isolated `ServiceDiscovery` instance. This means:
 
@@ -1628,7 +1628,7 @@ registerContext(contextId, {
 });
 ```
 
-#### API
+### API
 
 | Export | Description |
 |--------|-------------|
