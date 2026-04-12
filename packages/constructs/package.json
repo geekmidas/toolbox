@@ -93,6 +93,7 @@
 		"better-auth": "~1.4.18",
 		"kysely": "~0.28.8",
 		"pg": "~8.16.3",
+		"msw": "~2.10.3",
 		"zod": "~4.1.13"
 	},
 	"peerDependencies": {
@@ -108,7 +109,8 @@
 		"@geekmidas/services": "workspace:^",
 		"@middy/core": ">=6.3.1",
 		"@types/aws-lambda": ">=8.10.92",
-		"hono": ">=4.8.2"
+		"hono": ">=4.8.2",
+		"msw": ">=2.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/audit": {
@@ -148,6 +150,9 @@
 			"optional": true
 		},
 		"hono": {
+			"optional": true
+		},
+		"msw": {
 			"optional": true
 		}
 	}
