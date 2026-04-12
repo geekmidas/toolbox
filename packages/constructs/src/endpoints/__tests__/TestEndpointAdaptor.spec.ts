@@ -512,6 +512,60 @@ describe('TestEndpointAdaptor', () => {
 
 			expect(result).toEqual({ ok: true });
 		});
+
+		it('should pass db to authorize when database is configured', async () => {
+			const mockDb = {
+				query: vi.fn().mockResolvedValue([{ allowed: true }]),
+			};
+
+			const DatabaseService = {
+				serviceName: 'database' as const,
+				register: vi.fn().mockResolvedValue(mockDb),
+			};
+
+			const authorizeSpy = vi.fn(({ db }) => {
+				return db.query !== undefined;
+			});
+
+			const endpoint = e
+				.get('/protected')
+				.database(DatabaseService)
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			const result = await adapter.request({
+				services: mockServices,
+				headers: { host: 'example.com' },
+				database: mockDb,
+			});
+
+			expect(result).toEqual({ ok: true });
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).toHaveProperty('db', mockDb);
+		});
+
+		it('should not include db in authorize when database is not configured', async () => {
+			const authorizeSpy = vi.fn(() => true);
+
+			const endpoint = e
+				.get('/public')
+				.output(z.object({ ok: z.boolean() }))
+				.authorize(authorizeSpy)
+				.handle(() => ({ ok: true }));
+
+			const adapter = new TestEndpointAdaptor(endpoint);
+
+			await adapter.request({
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(authorizeSpy).toHaveBeenCalledTimes(1);
+			expect(authorizeSpy.mock.calls[0][0]).not.toHaveProperty('db');
+		});
 	});
 
 	describe('response handling', () => {
