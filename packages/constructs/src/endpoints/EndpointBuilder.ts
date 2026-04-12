@@ -63,7 +63,8 @@ export class EndpointBuilder<
 	protected _memorySize?: number;
 	_getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
 		({}) as TSession;
-	_authorize: AuthorizeFn<TServices, TLogger, TSession, TInput> = () => true;
+	_authorize: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase> =
+		() => true;
 	_rateLimit?: RateLimitConfig;
 	_availableAuthorizers: Authorizer[] = [];
 	_authorizerName?: TAuthorizers[number];
@@ -263,7 +264,9 @@ export class EndpointBuilder<
 		return this;
 	}
 
-	authorize(fn: AuthorizeFn<TServices, TLogger, TSession, TInput>): this {
+	authorize(
+		fn: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase>,
+	): this {
 		this._authorize = fn;
 		return this;
 	}

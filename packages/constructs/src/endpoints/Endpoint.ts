@@ -113,8 +113,13 @@ export class Endpoint<
 	public getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
 		({}) as TSession;
 	/** Function to determine if the request is authorized */
-	public authorize: AuthorizeFn<TServices, TLogger, TSession, TInput> = () =>
-		true;
+	public authorize: AuthorizeFn<
+		TServices,
+		TLogger,
+		TSession,
+		TInput,
+		TDatabase
+	> = () => true;
 	/** Optional rate limiting configuration */
 	public rateLimit?: RateLimitConfig;
 	/** Optional authorizer for this endpoint */
@@ -750,7 +755,9 @@ export interface EndpointOptions<
 		TAuditAction
 	>;
 	/** Optional authorization check function */
-	authorize: AuthorizeFn<TServices, TLogger, TSession, TInput> | undefined;
+	authorize:
+		| AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase>
+		| undefined;
 	/** Optional description for documentation */
 	description: string | undefined;
 	/** Optional tags for OpenAPI documentation */
@@ -815,13 +822,15 @@ export type AuthorizeContext<
 	TLogger extends Logger = Logger,
 	TSession = unknown,
 	TInput extends EndpointSchemas | undefined = undefined,
+	TDatabase = undefined,
 > = {
 	services: ServiceRecord<TServices>;
 	logger: TLogger;
 	header: HeaderFn;
 	cookie: CookieFn;
 	session: TSession;
-} & InferComposableStandardSchema<TInput>;
+} & InferComposableStandardSchema<TInput> &
+	SessionDatabaseContext<TDatabase>;
 /**
  * Function type for endpoint authorization checks.
  *
@@ -844,8 +853,9 @@ export type AuthorizeFn<
 	TLogger extends Logger = Logger,
 	TSession = unknown,
 	TInput extends EndpointSchemas | undefined = undefined,
+	TDatabase = undefined,
 > = (
-	ctx: AuthorizeContext<TServices, TLogger, TSession, TInput>,
+	ctx: AuthorizeContext<TServices, TLogger, TSession, TInput, TDatabase>,
 ) => Promise<boolean> | boolean;
 
 /**

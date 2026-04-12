@@ -51,7 +51,13 @@ export class EndpointFactory<
 > {
 	private defaultServices: TServices = [] as unknown as TServices;
 	private basePath: TBasePath = '' as TBasePath;
-	private defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
+	private defaultAuthorizeFn?: AuthorizeFn<
+		TServices,
+		TLogger,
+		TSession,
+		undefined,
+		TDatabase
+	>;
 	private defaultEventPublisher:
 		| Service<TEventPublisherServiceName, TEventPublisher>
 		| undefined;
@@ -419,7 +425,7 @@ export class EndpointFactory<
 
 	// Create a new factory with authorization
 	authorize(
-		fn: AuthorizeFn<TServices, TLogger, TSession>,
+		fn: AuthorizeFn<TServices, TLogger, TSession, undefined, TDatabase>,
 	): EndpointFactory<
 		TServices,
 		TBasePath,
@@ -749,7 +755,9 @@ export class EndpointFactory<
 		>({
 			defaultServices: this.defaultServices,
 			basePath: this.basePath,
-			defaultAuthorizeFn: this.defaultAuthorizeFn,
+			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as
+				| AuthorizeFn<TServices, TLogger, TSession, undefined, T>
+				| undefined,
 			defaultLogger: this.defaultLogger,
 			// Reset session extractor when database changes - user should call .session() after .database()
 			// to get proper type inference for the new database type
@@ -1117,7 +1125,13 @@ export interface EndpointFactoryOptions<
 > {
 	defaultServices?: TServices;
 	basePath?: TBasePath;
-	defaultAuthorizeFn?: AuthorizeFn<TServices, TLogger, TSession>;
+	defaultAuthorizeFn?: AuthorizeFn<
+		TServices,
+		TLogger,
+		TSession,
+		undefined,
+		TDatabase
+	>;
 	defaultLogger?: TLogger;
 	defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession, TDatabase>;
 	defaultEventPublisher?: Service<TEventPublisherServiceName, TEventPublisher>;
