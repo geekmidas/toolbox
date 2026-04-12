@@ -107,6 +107,17 @@ export async function writeDockerEnvFromSecrets(
 		key.endsWith('_DB_PASSWORD'),
 	);
 
+	// Always include pgboss password when pgboss credentials exist
+	if (
+		secrets.services.pgboss &&
+		!dbPasswordEntries.some(([key]) => key === 'PGBOSS_DB_PASSWORD')
+	) {
+		dbPasswordEntries.push([
+			'PGBOSS_DB_PASSWORD',
+			secrets.services.pgboss.password,
+		]);
+	}
+
 	if (dbPasswordEntries.length === 0) {
 		return;
 	}
