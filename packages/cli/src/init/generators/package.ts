@@ -38,6 +38,7 @@ export function generatePackageJson(
 		devDependencies['@geekmidas/testkit'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
 		devDependencies['@faker-js/faker'] = '~9.8.0';
+		devDependencies['kysely-ctl'] = '~0.10.0';
 		devDependencies['vite-tsconfig-paths'] = '~5.1.0';
 	}
 
