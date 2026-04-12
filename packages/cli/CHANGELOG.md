@@ -1,5 +1,14 @@
 # @geekmidas/cli
 
+## 1.10.30
+
+### Patch Changes
+
+- ✨ [`79e17a8`](https://github.com/geekmidas/toolbox/commit/79e17a84e630f102023005994d9d45b37f7d9d8f) Thanks [@geekmidas](https://github.com/geekmidas)! - Add msw support for construct testing for ui
+
+- Updated dependencies [[`79e17a8`](https://github.com/geekmidas/toolbox/commit/79e17a84e630f102023005994d9d45b37f7d9d8f)]:
+  - @geekmidas/constructs@3.0.7
+
 ## 1.10.29
 
 ### Patch Changes
