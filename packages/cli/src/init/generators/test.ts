@@ -64,36 +64,55 @@ export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
 `,
 		},
 
-		// test/globalSetup.ts - Runs migrations on the test database
-		// Note: gkm test automatically rewrites DATABASE_URL to use a _test
-		// suffixed database and creates it if needed. This setup only runs
-		// migrations.
+		// test/globalSetup.ts - Creates test database, provisions users, runs migrations
 		{
 			path: 'test/globalSetup.ts',
-			content: `import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
+			content: `import fs from 'node:fs/promises';
+import path from 'node:path';
+import { Credentials } from '@geekmidas/envkit/credentials';
 import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
-import type { Database } from '~/services/database.ts';
+import { runInitScript } from '@geekmidas/testkit/postgres';
+import { FileMigrationProvider, Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
 
-export async function setup() {
-  const testUrl = process.env.DATABASE_URL;
-  if (!testUrl) throw new Error('DATABASE_URL is required for tests');
+export default async function globalSetup() {
+  const databaseUrl = Credentials.DATABASE_URL!;
+  const migrationFolder = path.resolve(import.meta.dirname, '../db/migrations');
 
-  // Run migrations on the test database
-  // (gkm test already rewrites DATABASE_URL to point to the _test database)
-  const db = new Kysely<Database>({
+  const db = new Kysely({
     dialect: new PostgresDialect({
-      pool: new pg.Pool({ connectionString: testUrl }),
+      pool: new pg.Pool({ connectionString: databaseUrl }),
     }),
   });
 
   const migrator = new PostgresKyselyMigrator({
+    uri: databaseUrl,
     db,
-    migrationsPath: './src/migrations',
+    afterCreate: async (uri) => {
+      const initScriptPath = path.resolve(process.cwd(), 'docker/postgres/init.sh');
+      const dbUrl = new URL(Credentials.DATABASE_URL!);
+      const apiUrl = new URL(Credentials.API_DATABASE_URL!);
+      const authUrl = new URL(Credentials.AUTH_DATABASE_URL!);
+
+      const env = {
+        POSTGRES_USER: dbUrl.username,
+        POSTGRES_DB: dbUrl.pathname.slice(1),
+        API_DB_PASSWORD: decodeURIComponent(apiUrl.password),
+        AUTH_DB_PASSWORD: decodeURIComponent(authUrl.password),
+        PGBOSS_DB_PASSWORD: Credentials.PGBOSS_DB_PASSWORD ?? 'pgboss-dev-password',
+      };
+
+      await runInitScript(initScriptPath, uri, env);
+    },
+    provider: new FileMigrationProvider({
+      fs,
+      path,
+      migrationFolder,
+    }),
   });
 
-  await migrator.migrateToLatest();
-  await db.destroy();
+  const teardown = await migrator.start();
+  return teardown;
 }
 `,
 		},
