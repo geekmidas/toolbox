@@ -393,6 +393,7 @@ export class HonoEndpoint<
 							services,
 							logger,
 							session,
+							...(rawDb !== undefined && { db: rawDb }),
 							body: features.hasBodyValidation
 								? (c.req.valid as any)('json')
 								: undefined,
@@ -402,7 +403,7 @@ export class HonoEndpoint<
 							params: features.hasParamValidation
 								? (c.req.valid as any)('param')
 								: undefined,
-						});
+						} as any);
 
 						if (!isAuthorized) {
 							logger.warn('Unauthorized access attempt');

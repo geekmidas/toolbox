@@ -216,10 +216,11 @@ export class TestEndpointAdaptor<
 				services: ctx.services,
 				logger,
 				session,
+				...(rawDb !== undefined && { db: rawDb }),
 				body,
 				query,
 				params,
-			});
+			} as any);
 
 			if (!isAuthorized) {
 				logger.warn('Unauthorized access attempt');

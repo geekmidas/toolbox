@@ -258,6 +258,9 @@ export abstract class AmazonApiGatewayEndpoint<
 					services,
 					logger,
 					session,
+					...((req.event as any).db !== undefined && {
+						db: (req.event as any).db,
+					}),
 					body: (req.event as any).body,
 					query: (req.event as any).query,
 					params: (req.event as any).params,
