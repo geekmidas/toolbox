@@ -77,6 +77,35 @@ describe('Endpoint', () => {
 			});
 		});
 
+		it('should use the endpoint responseType as the OpenAPI content key', async () => {
+			const endpoint = new Endpoint({
+				route: '/checkout-page',
+				method: 'GET',
+				description: 'Hosted checkout page',
+				fn: async () => '<html></html>',
+				input: undefined,
+				output: z.string(),
+				authorize: undefined,
+				services: [],
+				status: undefined,
+				getSession: undefined,
+				logger: {} as any,
+				timeout: undefined,
+				memorySize: undefined,
+				responseType: 'text/html',
+			});
+
+			const spec = await endpoint.toOpenApi3Route();
+			const response200 = (spec['/checkout-page'].get.responses?.['200'] ??
+				{}) as any;
+
+			expect(response200.content).toHaveProperty('text/html');
+			expect(response200.content).not.toHaveProperty('application/json');
+			expect(response200.content['text/html'].schema).toMatchObject({
+				type: 'string',
+			});
+		});
+
 		it('should include request body for POST endpoint', async () => {
 			const bodySchema = z.object({
 				name: z.string(),
