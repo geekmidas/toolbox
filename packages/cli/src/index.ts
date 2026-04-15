@@ -107,6 +107,10 @@ program
 	.option('--production', 'Build for production (no dev tools, bundled output)')
 	.option('--skip-bundle', 'Skip bundling step in production build')
 	.option('--stage <stage>', 'Inject encrypted secrets for deployment stage')
+	.option(
+		'--mark-optional',
+		'Suffix optional env vars with ? in manifest envVars field (e.g. PORT?)',
+	)
 	.action(
 		async (options: {
 			provider?: string;
@@ -115,6 +119,7 @@ program
 			production?: boolean;
 			skipBundle?: boolean;
 			stage?: string;
+			markOptional?: boolean;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -133,6 +138,7 @@ program
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
 						stage: options.stage,
+						markOptional: options.markOptional || false,
 					});
 				}
 				// Handle legacy providers option
@@ -146,6 +152,7 @@ program
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
 						stage: options.stage,
+						markOptional: options.markOptional || false,
 					});
 				}
 				// Default to config-driven build
@@ -155,6 +162,7 @@ program
 						production: options.production || false,
 						skipBundle: options.skipBundle || false,
 						stage: options.stage,
+						markOptional: options.markOptional || false,
 					});
 				}
 			} catch (error) {
