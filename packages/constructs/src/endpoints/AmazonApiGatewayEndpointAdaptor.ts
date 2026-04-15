@@ -474,7 +474,15 @@ export abstract class AmazonApiGatewayEndpoint<
 		);
 
 		const { output, metadata } = result;
-		const body = output !== undefined ? JSON.stringify(output) : undefined;
+		const isJsonResponse = this.endpoint.responseType === 'application/json';
+		const body =
+			output === undefined
+				? undefined
+				: isJsonResponse
+					? JSON.stringify(output)
+					: typeof output === 'string'
+						? output
+						: String(output);
 
 		// Store response for middleware access
 		(event as any).__response = output;
@@ -485,9 +493,20 @@ export abstract class AmazonApiGatewayEndpoint<
 			body,
 		};
 
-		// Add custom headers
-		if (metadata.headers && Object.keys(metadata.headers).length > 0) {
-			lambdaResponse.headers = { ...metadata.headers };
+		// Compose headers. For non-JSON responseType, emit a default
+		// Content-Type header which metadata.headers (r.header()) can override.
+		const baseHeaders: Record<string, string> | undefined = isJsonResponse
+			? undefined
+			: { 'content-type': this.endpoint.responseType };
+
+		if (
+			baseHeaders ||
+			(metadata.headers && Object.keys(metadata.headers).length > 0)
+		) {
+			lambdaResponse.headers = {
+				...(baseHeaders ?? {}),
+				...(metadata.headers ?? {}),
+			};
 		}
 
 		// Format cookies as Set-Cookie headers
