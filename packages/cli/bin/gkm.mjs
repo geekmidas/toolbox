@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { register } from 'node:module';
+
 import { pathToFileURL } from 'node:url';
 
 // Register tsx loader hooks BEFORE any .ts imports.
