@@ -60,7 +60,17 @@ export type { SniffResult } from '@geekmidas/envkit/sniffer';
  */
 export interface SniffedEnvironment {
 	appName: string;
+	/**
+	 * All required environment variable names.
+	 * When `SniffAppOptions.markOptional` is true, optional variables are
+	 * suffixed with `?` (e.g. `PORT?`).
+	 */
 	requiredEnvVars: string[];
+	/**
+	 * Subset of variables that are optional (accessed via `.optional()` or
+	 * `.default()`). Always populated regardless of `markOptional`.
+	 */
+	optionalEnvVars: string[];
 }
 
 /**
@@ -69,6 +79,12 @@ export interface SniffedEnvironment {
 export interface SniffAppOptions {
 	/** Whether to log warnings for errors encountered during sniffing. Defaults to true. */
 	logWarnings?: boolean;
+	/**
+	 * When true, optional variables (those with `.optional()` or `.default()`)
+	 * are suffixed with `?` in `requiredEnvVars` (e.g. `PORT?`).
+	 * Defaults to false.
+	 */
+	markOptional?: boolean;
 }
 
 /**
