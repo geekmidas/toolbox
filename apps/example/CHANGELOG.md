@@ -1,5 +1,13 @@
 # @geekmidas/example
 
+## 1.0.60
+
+### Patch Changes
+
+- Updated dependencies [[`56e71bc`](https://github.com/geekmidas/toolbox/commit/56e71bcb57a5305270909f695a4539fa504a463b)]:
+  - @geekmidas/envkit@1.0.5
+  - @geekmidas/cli@1.10.31
+
 ## 1.0.59
 
 ### Patch Changes

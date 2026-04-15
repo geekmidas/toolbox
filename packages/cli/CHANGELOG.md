@@ -1,5 +1,14 @@
 # @geekmidas/cli
 
+## 1.10.31
+
+### Patch Changes
+
+- ✨ [`56e71bc`](https://github.com/geekmidas/toolbox/commit/56e71bcb57a5305270909f695a4539fa504a463b) Thanks [@geekmidas](https://github.com/geekmidas)! - Add optional params support and open api on build
+
+- Updated dependencies [[`56e71bc`](https://github.com/geekmidas/toolbox/commit/56e71bcb57a5305270909f695a4539fa504a463b)]:
+  - @geekmidas/envkit@1.0.5
+
 ## 1.10.30
 
 ### Patch Changes
