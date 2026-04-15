@@ -39,6 +39,7 @@ import {
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import { generateOpenApi, openapiCommand } from '../openapi.js';
 import {
 	generateAwsManifest,
 	generateServerManifest,
@@ -233,12 +234,17 @@ export async function buildCommand(
 			resolved.enableOpenApi,
 			options.skipBundle ?? false,
 			options.stage,
+			optionalVarSet,
 		);
 		// Keep the master key from the server provider
 		if (providerResult.masterKey) {
 			result = providerResult;
 		}
 	}
+
+	// Generate OpenAPI spec as part of the build
+	await generateOpenApi(config, { bustCache: true });
+
 	return result;
 }
 
@@ -515,6 +521,9 @@ export async function workspaceBuildCommand(
 		}
 
 		logger.log(`\n✅ Workspace build complete!`);
+
+		// Generate OpenAPI specs and copy to frontend apps
+		await openapiCommand({ cwd: workspace.root });
 
 		// Summary
 		logger.log(`\n📋 Build Summary:`);
