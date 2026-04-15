@@ -132,11 +132,6 @@ export async function openapiCommand(
 				return;
 			}
 
-			// Find frontend apps with client config
-			const frontendApps = Object.entries(workspace.apps).filter(
-				([_, app]) => app.type === 'frontend' && app.client?.output,
-			);
-
 			// Generate OpenAPI for each backend app
 			for (const [appName, app] of backendApps) {
 				if (app.type !== 'backend' || !app.routes) continue;
@@ -164,35 +159,6 @@ export async function openapiCommand(
 					logger.log(
 						`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`,
 					);
-
-					// Copy to frontend apps that depend on this backend
-					for (const [frontendName, frontendApp] of frontendApps) {
-						if (frontendApp.type !== 'frontend') continue;
-
-						const dependsOnBackend =
-							!frontendApp.dependencies ||
-							frontendApp.dependencies.includes(appName);
-
-						if (dependsOnBackend && frontendApp.client?.output) {
-							const frontendPath = join(workspaceRoot, frontendApp.path);
-							const clientOutputPath = join(
-								frontendPath,
-								frontendApp.client.output,
-								'openapi.ts',
-							);
-
-							await mkdir(dirname(clientOutputPath), { recursive: true });
-
-							// Read the generated content and write to frontend
-							const { readFile } = await import('node:fs/promises');
-							const content = await readFile(result.outputPath, 'utf-8');
-							await writeFile(clientOutputPath, content);
-
-							logger.log(
-								`   → [${frontendName}] ${frontendApp.client.output}/openapi.ts`,
-							);
-						}
-					}
 				}
 			}
 		}
