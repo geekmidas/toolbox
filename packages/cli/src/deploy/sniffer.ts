@@ -113,7 +113,7 @@ export async function sniffAppEnvironment(
 	workspacePath: string,
 	options: SniffAppOptions = {},
 ): Promise<SniffedEnvironment> {
-	const { logWarnings = true } = options;
+	const { logWarnings = true, markOptional = false } = options;
 
 	// 1. Frontend apps - handle dependencies and config sniffing
 	if (app.type === 'frontend') {
@@ -126,6 +126,7 @@ export async function sniffAppEnvironment(
 		// The file calls .parse() at module load, which triggers sniffer to capture vars
 		if (app.config) {
 			const sniffedVars: string[] = [];
+			const sniffedOptional: string[] = [];
 
 			// Collect config paths to sniff
 			const configPaths: string[] = [];
@@ -147,14 +148,20 @@ export async function sniffAppEnvironment(
 				}
 
 				sniffedVars.push(...result.envVars);
+				sniffedOptional.push(...result.optionalEnvVars);
 			}
 
+			const optionalEnvVars = [...new Set(sniffedOptional)];
 			// Combine: dependency vars + sniffed vars (deduplicated)
-			const allVars = [...new Set([...depVars, ...sniffedVars])];
-			return { appName, requiredEnvVars: allVars };
+			const allVars = applyMarkOptional(
+				[...new Set([...depVars, ...sniffedVars])],
+				optionalEnvVars,
+				markOptional,
+			);
+			return { appName, requiredEnvVars: allVars, optionalEnvVars };
 		}
 
-		return { appName, requiredEnvVars: depVars };
+		return { appName, requiredEnvVars: depVars, optionalEnvVars: [] };
 	}
 
 	// 2. Entry apps - import entry file in subprocess to trigger config.parse()
@@ -167,7 +174,15 @@ export async function sniffAppEnvironment(
 			);
 		}
 
-		return { appName, requiredEnvVars: result.envVars };
+		return {
+			appName,
+			requiredEnvVars: applyMarkOptional(
+				result.envVars,
+				result.optionalEnvVars,
+				markOptional,
+			),
+			optionalEnvVars: result.optionalEnvVars,
+		};
 	}
 
 	// 4. Route-based apps - load routes and call getEnvironment() on each construct
@@ -184,7 +199,15 @@ export async function sniffAppEnvironment(
 			);
 		}
 
-		return { appName, requiredEnvVars: result.envVars };
+		return {
+			appName,
+			requiredEnvVars: applyMarkOptional(
+				result.envVars,
+				result.optionalEnvVars,
+				markOptional,
+			),
+			optionalEnvVars: result.optionalEnvVars,
+		};
 	}
 
 	// 5. Apps with envParser but no routes - run sniffer to detect env var usage
@@ -205,11 +228,33 @@ export async function sniffAppEnvironment(
 			}
 		}
 
-		return { appName, requiredEnvVars: result.envVars };
+		return {
+			appName,
+			requiredEnvVars: applyMarkOptional(
+				result.envVars,
+				result.optionalEnvVars,
+				markOptional,
+			),
+			optionalEnvVars: result.optionalEnvVars,
+		};
 	}
 
-	// 5. No env detection method available
-	return { appName, requiredEnvVars: [] };
+	// No env detection method available
+	return { appName, requiredEnvVars: [], optionalEnvVars: [] };
+}
+
+/**
+ * Apply the `?` suffix to optional variables in an env var list.
+ * Only modifies the list when `markOptional` is true and there are optional vars.
+ */
+function applyMarkOptional(
+	envVars: string[],
+	optionalEnvVars: string[],
+	markOptional: boolean,
+): string[] {
+	if (!markOptional || optionalEnvVars.length === 0) return envVars;
+	const optionalSet = new Set(optionalEnvVars);
+	return envVars.map((v) => (optionalSet.has(v) ? `${v}?` : v));
 }
 
 /**
@@ -217,6 +262,7 @@ export async function sniffAppEnvironment(
  */
 interface EntrySniffResult {
 	envVars: string[];
+	optionalEnvVars: string[];
 	error?: Error;
 }
 
@@ -283,6 +329,7 @@ async function sniffEntryFile(
 					const result = JSON.parse(jsonMatch[0]);
 					resolvePromise({
 						envVars: result.envVars || [],
+						optionalEnvVars: result.optionalEnvVars || [],
 						error: result.error ? new Error(result.error) : undefined,
 					});
 					return;
@@ -294,6 +341,7 @@ async function sniffEntryFile(
 			// If we couldn't parse the output, return empty with error info
 			resolvePromise({
 				envVars: [],
+				optionalEnvVars: [],
 				error: new Error(
 					`Failed to sniff entry file (exit code ${code}): ${stderr || stdout || 'No output'}`,
 				),
@@ -303,6 +351,7 @@ async function sniffEntryFile(
 		child.on('error', (err) => {
 			resolvePromise({
 				envVars: [],
+				optionalEnvVars: [],
 				error: err,
 			});
 		});
@@ -336,7 +385,11 @@ async function sniffRouteFiles(
 	const routesArray = Array.isArray(routes) ? routes : [routes];
 	const pattern = routesArray[0];
 	if (!pattern) {
-		return { envVars: [], error: new Error('No route patterns provided') };
+		return {
+			envVars: [],
+			optionalEnvVars: [],
+			error: new Error('No route patterns provided'),
+		};
 	}
 
 	return new Promise((resolvePromise) => {
@@ -380,6 +433,9 @@ async function sniffRouteFiles(
 					const result = JSON.parse(jsonMatch[0]);
 					resolvePromise({
 						envVars: result.envVars || [],
+						// Routes worker uses getEnvironment() which doesn't track
+						// optionality yet — populated when service register() is sniffed
+						optionalEnvVars: result.optionalEnvVars || [],
 						error: result.error ? new Error(result.error) : undefined,
 					});
 					return;
@@ -391,6 +447,7 @@ async function sniffRouteFiles(
 			// If we couldn't parse the output, return empty with error info
 			resolvePromise({
 				envVars: [],
+				optionalEnvVars: [],
 				error: new Error(
 					`Failed to sniff route files (exit code ${code}): ${stderr || stdout || 'No output'}`,
 				),
@@ -400,6 +457,7 @@ async function sniffRouteFiles(
 		child.on('error', (err) => {
 			resolvePromise({
 				envVars: [],
+				optionalEnvVars: [],
 				error: err,
 			});
 		});
@@ -426,7 +484,7 @@ async function sniffEnvParser(
 	// Parse the envParser path: './src/config/env#envParser' or './src/config/env'
 	const [modulePath, exportName = 'default'] = envParserPath.split('#');
 	if (!modulePath) {
-		return { envVars: [], unhandledRejections: [] };
+		return { envVars: [], optionalEnvVars: [], unhandledRejections: [] };
 	}
 
 	// Resolve the full path to the module
@@ -444,7 +502,7 @@ async function sniffEnvParser(
 		console.warn(
 			`[sniffer] Failed to import SnifferEnvironmentParser: ${message}`,
 		);
-		return { envVars: [], unhandledRejections: [] };
+		return { envVars: [], optionalEnvVars: [], unhandledRejections: [] };
 	}
 
 	const sniffer = new SnifferEnvironmentParser();
