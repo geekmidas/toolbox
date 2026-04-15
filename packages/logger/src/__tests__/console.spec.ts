@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConsoleLogger, DEFAULT_LOGGER, createLogger } from '../console';
+import { ConsoleLogger, createLogger, DEFAULT_LOGGER } from '../console';
 import { LogLevel } from '../types';
 
 describe('ConsoleLogger', () => {
