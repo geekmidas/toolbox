@@ -454,9 +454,11 @@ describe('Construct environment getter', () => {
 		});
 
 		it('should handle services that create fire-and-forget rejecting promises (BetterAuth scenario)', async () => {
-			// Simulates the BetterAuth pattern: register() is synchronous but
-			// internally spawns promises (e.g. URL validation) that reject when
-			// given empty/invalid config values from the sniffer.
+			// This test uses the REAL better-auth library to verify that
+			// the sniffer gracefully handles libraries that create internal
+			// fire-and-forget promises which reject on invalid config
+			const { betterAuth } = await import('better-auth');
+
 			const betterAuthService = {
 				serviceName: 'auth' as const,
 				register({ envParser }) {
@@ -468,19 +470,28 @@ describe('Construct environment getter', () => {
 						}))
 						.parse();
 
-					// Simulate BetterAuth's internal fire-and-forget URL validation:
-					// when trustedOrigins is an empty string (sniffer value), new URL('')
-					// throws synchronously inside a Promise that is never awaited.
-					Promise.resolve().then(() => {
-						new URL(config.trustedOrigins); // throws on empty string
+					// When sniffer runs, config values are empty strings
+					// BetterAuth will create fire-and-forget promises that reject
+					// when it tries to validate trustedOrigins with new URL('')
+					const auth = betterAuth({
+						secret: config.secret,
+						baseURL: config.baseURL,
+						trustedOrigins: config.trustedOrigins
+							? config.trustedOrigins.split(',')
+							: [],
+						database: {
+							// Use memory adapter to avoid DB setup
+							type: 'sqlite',
+							url: ':memory:',
+						},
 					});
 
-					return { secret: config.secret, baseURL: config.baseURL };
+					return auth;
 				},
 			} satisfies Service<'auth', any>;
 
-			// Verify env vars are captured even though the internal
-			// fire-and-forget promise rejects on invalid trustedOrigins
+			// Verify env vars are captured even though BetterAuth's internal
+			// fire-and-forget promise will reject on invalid trustedOrigins
 			const result = await sniffService(betterAuthService);
 			expect(result.envVars).toEqual([
 				'BETTER_AUTH_SECRET',
@@ -489,8 +500,13 @@ describe('Construct environment getter', () => {
 			]);
 			// Synchronous registration succeeds
 			expect(result.error).toBeUndefined();
-			// Fire-and-forget rejection is captured
+			// But fire-and-forget rejections are captured from better-auth
 			expect(result.unhandledRejections.length).toBeGreaterThan(0);
+			// Log the actual errors for debugging visibility
+			console.log(
+				'Captured better-auth unhandled rejections:',
+				result.unhandledRejections.map((e) => e.message),
+			);
 
 			// Most importantly: the process should NOT crash from unhandled rejection
 			const fn = f
@@ -560,6 +576,129 @@ describe('Construct environment getter', () => {
 
 			const envVars = await fn.getEnvironment();
 			expect(envVars).toEqual(['VAR_1', 'VAR_2', 'VAR_3']);
+		});
+	});
+
+	describe('markOptional option', () => {
+		const dbService = {
+			serviceName: 'db' as const,
+			register({ envParser }) {
+				return envParser
+					.create((get) => ({
+						url: get('DATABASE_URL').string(),
+						pool: get('DB_POOL_SIZE').string().transform(Number).default(10),
+					}))
+					.parse();
+			},
+		} satisfies Service<'db', any>;
+
+		const authService = {
+			serviceName: 'auth' as const,
+			register({ envParser }) {
+				return envParser
+					.create((get) => ({
+						secret: get('JWT_SECRET').string(),
+						ttl: get('JWT_TTL').string().optional(),
+					}))
+					.parse();
+			},
+		} satisfies Service<'auth', any>;
+
+		it('returns plain var names when markOptional is false (default)', async () => {
+			const fn = f
+				.services([dbService])
+				.handle(async () => ({ success: true }));
+
+			expect(await fn.getEnvironment()).toEqual([
+				'DATABASE_URL',
+				'DB_POOL_SIZE',
+			]);
+			expect(await fn.getEnvironment({ markOptional: false })).toEqual([
+				'DATABASE_URL',
+				'DB_POOL_SIZE',
+			]);
+		});
+
+		it('suffixes optional vars with ? when markOptional is true', async () => {
+			const fn = f
+				.services([dbService])
+				.handle(async () => ({ success: true }));
+
+			expect(await fn.getEnvironment({ markOptional: true })).toEqual([
+				'DATABASE_URL',
+				'DB_POOL_SIZE?',
+			]);
+		});
+
+		it('marks vars with .optional() as optional', async () => {
+			const fn = f
+				.services([authService])
+				.handle(async () => ({ success: true }));
+
+			expect(await fn.getEnvironment({ markOptional: true })).toEqual([
+				'JWT_SECRET',
+				'JWT_TTL?',
+			]);
+		});
+
+		it('marks optional vars across multiple services', async () => {
+			const fn = f
+				.services([dbService, authService])
+				.handle(async () => ({ success: true }));
+
+			expect(await fn.getEnvironment({ markOptional: true })).toEqual([
+				'DATABASE_URL',
+				'DB_POOL_SIZE?',
+				'JWT_SECRET',
+				'JWT_TTL?',
+			]);
+		});
+
+		it('works on Endpoint constructs', async () => {
+			const endpoint = e
+				.services([dbService])
+				.get('/users')
+				.handle(async () => []);
+
+			expect(await endpoint.getEnvironment({ markOptional: true })).toEqual([
+				'DATABASE_URL',
+				'DB_POOL_SIZE?',
+			]);
+		});
+
+		it('works on Cron constructs', async () => {
+			const cron = c
+				.schedule('rate(1 hour)')
+				.services([authService])
+				.handle(async () => {});
+
+			expect(await cron.getEnvironment({ markOptional: true })).toEqual([
+				'JWT_SECRET',
+				'JWT_TTL?',
+			]);
+		});
+
+		it('required-only vars have no ? suffix', async () => {
+			const requiredOnly = {
+				serviceName: 'required' as const,
+				register({ envParser }) {
+					return envParser
+						.create((get) => ({
+							a: get('VAR_A').string(),
+							b: get('VAR_B').string(),
+						}))
+						.parse();
+				},
+			} satisfies Service<'required', any>;
+
+			const fn = f
+				.services([requiredOnly])
+				.handle(async () => ({ success: true }));
+
+			expect(await fn.getEnvironment({ markOptional: true })).toEqual([
+				'VAR_A',
+				'VAR_B',
+			]);
 		});
 	});
 });

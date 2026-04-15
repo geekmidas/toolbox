@@ -130,7 +130,9 @@ export class EndpointGenerator extends ConstructGenerator<
 					),
 					timeout: construct.timeout,
 					memorySize: construct.memorySize,
-					environment: await construct.getEnvironment(),
+					environment: await construct.getEnvironment({
+						markOptional: context.markOptional,
+					}),
 					authorizer: construct.authorizer?.name ?? 'none',
 				};
 
@@ -160,7 +162,9 @@ export class EndpointGenerator extends ConstructGenerator<
 					),
 					timeout: construct.timeout,
 					memorySize: construct.memorySize,
-					environment: await construct.getEnvironment(),
+					environment: await construct.getEnvironment({
+						markOptional: context.markOptional,
+					}),
 					authorizer: construct.authorizer?.name ?? 'none',
 				};
 

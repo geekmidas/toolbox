@@ -90,6 +90,11 @@ export interface BuildContext {
 		redis?: boolean;
 		rabbitmq?: boolean;
 	};
+	/**
+	 * When true, optional env vars get a `?` suffix in each construct's
+	 * environment array (e.g. `PORT?` instead of `PORT`).
+	 */
+	markOptional?: boolean;
 }
 
 export interface ProviderBuildResult {

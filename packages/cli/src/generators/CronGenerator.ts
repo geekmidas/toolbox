@@ -51,7 +51,9 @@ export class CronGenerator extends ConstructGenerator<
 				schedule: construct.schedule || 'rate(1 hour)',
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
-				environment: await construct.getEnvironment(),
+				environment: await construct.getEnvironment({
+					markOptional: context.markOptional,
+				}),
 			});
 
 			logger.log(`Generated cron handler: ${key}`);

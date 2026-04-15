@@ -69,7 +69,9 @@ export class FunctionGenerator extends ConstructGenerator<
 				),
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
-				environment: await construct.getEnvironment(),
+				environment: await construct.getEnvironment({
+					markOptional: context.markOptional,
+				}),
 			});
 
 			logger.log(`Generated function handler: ${key}`);

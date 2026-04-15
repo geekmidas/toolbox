@@ -70,7 +70,9 @@ export class SubscriberGenerator extends ConstructGenerator<
 				subscribedEvents: construct.subscribedEvents || [],
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
-				environment: await construct.getEnvironment(),
+				environment: await construct.getEnvironment({
+					markOptional: context.markOptional,
+				}),
 			});
 
 			logger.log(`Generated subscriber handler: ${key}`);

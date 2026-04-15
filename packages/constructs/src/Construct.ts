@@ -11,8 +11,12 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
 
 // Cache for service environment variables to handle singleton services
-// Key: service class/constructor, Value: array of env var names
-const serviceEnvCache = new Map<Service, string[]>();
+// Stores both the full list and the optional subset so the same sniff result
+// can satisfy both getEnvironment() and getEnvironment({ markOptional: true }).
+const serviceEnvCache = new Map<
+	Service,
+	{ envVars: string[]; optionalEnvVars: string[] }
+>();
 
 /**
  * Noop context for environment sniffing.
@@ -80,6 +84,8 @@ export abstract class Construct<
 	 * Results are cached per service class to handle singleton patterns where
 	 * subsequent register() calls may short-circuit and not access env vars.
 	 *
+	 * @param markOptional - When true, optional vars (those accessed via `.optional()` or
+	 *   `.default()`) are suffixed with `?` in the returned array (e.g. `'PORT?'`).
 	 * @returns Promise that resolves to array of environment variable names, sorted alphabetically
 	 *
 	 * @example
@@ -89,11 +95,16 @@ export abstract class Construct<
 	 *   .get('/users')
 	 *   .handle(async () => []);
 	 *
-	 * const envVars = await endpoint.getEnvironment(); // ['AUTH_SECRET', 'DATABASE_URL']
+	 * await endpoint.getEnvironment();               // ['AUTH_SECRET', 'DATABASE_URL']
+	 * await endpoint.getEnvironment({ markOptional: true }); // ['AUTH_SECRET', 'DATABASE_URL', 'PORT?']
 	 * ```
 	 */
-	async getEnvironment(): Promise<string[]> {
+	async getEnvironment(
+		opts: { markOptional?: boolean } = {},
+	): Promise<string[]> {
+		const { markOptional = false } = opts;
 		const envVars = new Set<string>();
+		const optionalVars = new Set<string>();
 		const services: Service[] = compact([
 			...this.services,
 			this.publisherService,
@@ -107,7 +118,8 @@ export abstract class Construct<
 				// Check cache first - handles singleton services that short-circuit
 				if (serviceEnvCache.has(service)) {
 					const cached = serviceEnvCache.get(service)!;
-					cached.forEach((v) => envVars.add(v));
+					cached.envVars.forEach((v) => envVars.add(v));
+					cached.optionalEnvVars.forEach((v) => optionalVars.add(v));
 					continue;
 				}
 
@@ -131,12 +143,18 @@ export abstract class Construct<
 					);
 				}
 
-				// Cache and collect the env vars
-				serviceEnvCache.set(service, result.envVars);
+				// Cache and collect env vars (both required and optional)
+				serviceEnvCache.set(service, {
+					envVars: result.envVars,
+					optionalEnvVars: result.optionalEnvVars,
+				});
 				result.envVars.forEach((v) => envVars.add(v));
+				result.optionalEnvVars.forEach((v) => optionalVars.add(v));
 			}
 
-			return Array.from(envVars).sort();
+			const sorted = Array.from(envVars).sort();
+			if (!markOptional || optionalVars.size === 0) return sorted;
+			return sorted.map((v) => (optionalVars.has(v) ? `${v}?` : v));
 		} catch (error) {
 			this.logger.error(
 				{ error },
