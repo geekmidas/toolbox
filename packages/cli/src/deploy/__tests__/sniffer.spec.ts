@@ -193,6 +193,126 @@ describe('sniffAppEnvironment', () => {
 			const result = await sniffAppEnvironment(app, 'api', workspacePath);
 
 			expect(result.requiredEnvVars).toEqual([]);
+			expect(result.optionalEnvVars).toEqual([]);
+		});
+	});
+
+	describe('markOptional option', () => {
+		it('returns optionalEnvVars populated from envParser with optional/default vars', async () => {
+			const app = createApp({
+				path: envParserFixturesPath,
+				envParser: './optional-env-parser#envParser',
+			});
+
+			const result = await sniffAppEnvironment(
+				app,
+				'api',
+				envParserFixturesPath,
+				{
+					logWarnings: false,
+				},
+			);
+
+			// All vars present regardless of markOptional
+			expect(result.requiredEnvVars).toContain('DATABASE_URL');
+			expect(result.requiredEnvVars).toContain('API_KEY');
+			expect(result.requiredEnvVars).toContain('LOG_LEVEL');
+			expect(result.requiredEnvVars).toContain('PORT');
+			expect(result.requiredEnvVars).toContain('TIMEOUT');
+
+			// Optional vars populated (no ? suffix since markOptional not set)
+			expect(result.optionalEnvVars).toContain('LOG_LEVEL');
+			expect(result.optionalEnvVars).toContain('PORT');
+			expect(result.optionalEnvVars).toContain('TIMEOUT');
+			expect(result.optionalEnvVars).not.toContain('DATABASE_URL');
+			expect(result.optionalEnvVars).not.toContain('API_KEY');
+		});
+
+		it('suffixes optional vars with ? in requiredEnvVars when markOptional is true', async () => {
+			const app = createApp({
+				path: envParserFixturesPath,
+				envParser: './optional-env-parser#envParser',
+			});
+
+			const result = await sniffAppEnvironment(
+				app,
+				'api',
+				envParserFixturesPath,
+				{
+					logWarnings: false,
+					markOptional: true,
+				},
+			);
+
+			// Required vars unchanged
+			expect(result.requiredEnvVars).toContain('DATABASE_URL');
+			expect(result.requiredEnvVars).toContain('API_KEY');
+
+			// Optional vars suffixed with ?
+			expect(result.requiredEnvVars).toContain('LOG_LEVEL?');
+			expect(result.requiredEnvVars).toContain('PORT?');
+			expect(result.requiredEnvVars).toContain('TIMEOUT?');
+
+			// Plain names not present for optional vars
+			expect(result.requiredEnvVars).not.toContain('LOG_LEVEL');
+			expect(result.requiredEnvVars).not.toContain('PORT');
+			expect(result.requiredEnvVars).not.toContain('TIMEOUT');
+		});
+
+		it('does not add ? suffix when markOptional is false (default)', async () => {
+			const app = createApp({
+				path: envParserFixturesPath,
+				envParser: './optional-env-parser#envParser',
+			});
+
+			const result = await sniffAppEnvironment(
+				app,
+				'api',
+				envParserFixturesPath,
+				{
+					logWarnings: false,
+					markOptional: false,
+				},
+			);
+
+			// No ? suffixes regardless of optionality
+			for (const v of result.requiredEnvVars) {
+				expect(v).not.toMatch(/\?$/);
+			}
+		});
+
+		it('returns empty optionalEnvVars for apps with no optional vars', async () => {
+			const app = createApp({
+				path: envParserFixturesPath,
+				envParser: './valid-env-parser#envParser',
+			});
+
+			const result = await sniffAppEnvironment(
+				app,
+				'api',
+				envParserFixturesPath,
+				{
+					logWarnings: false,
+					markOptional: true,
+				},
+			);
+
+			expect(result.optionalEnvVars).toEqual([]);
+			// No ? suffixes when nothing is optional
+			for (const v of result.requiredEnvVars) {
+				expect(v).not.toMatch(/\?$/);
+			}
+		});
+
+		it('returns empty optionalEnvVars for frontend apps', async () => {
+			const app = createApp({
+				type: 'frontend',
+				dependencies: ['api'],
+			});
+
+			const result = await sniffAppEnvironment(app, 'web', workspacePath);
+
+			expect(result.optionalEnvVars).toEqual([]);
 		});
 	});
 });
@@ -234,16 +354,19 @@ describe('sniffAllApps', () => {
 		expect(results.get('api')).toEqual({
 			appName: 'api',
 			requiredEnvVars: [],
+			optionalEnvVars: [],
 		});
 
 		expect(results.get('auth')).toEqual({
 			appName: 'auth',
 			requiredEnvVars: [],
+			optionalEnvVars: [],
 		});
 
 		expect(results.get('web')).toEqual({
 			appName: 'web',
 			requiredEnvVars: ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL'],
+			optionalEnvVars: [],
 		});
 	});
 
