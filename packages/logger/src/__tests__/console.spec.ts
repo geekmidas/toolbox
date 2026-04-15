@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConsoleLogger, createLogger } from '../console';
+import { ConsoleLogger, DEFAULT_LOGGER, createLogger } from '../console';
 import { LogLevel } from '../types';
 
 describe('ConsoleLogger', () => {
@@ -623,8 +623,6 @@ describe('ConsoleLogger', () => {
 
 	describe('DEFAULT_LOGGER', () => {
 		it('should export default logger instance', () => {
-			const { DEFAULT_LOGGER } = require('../console');
-
 			expect(DEFAULT_LOGGER).toBeDefined();
 			expect(DEFAULT_LOGGER.data).toBeDefined();
 		});

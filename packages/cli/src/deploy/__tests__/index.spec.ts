@@ -1,6 +1,7 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getAppBuildOrder } from '../../workspace/index.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import { DokployApi } from '../dokploy-api';
 import {
@@ -536,8 +537,6 @@ describe('workspaceDeployCommand', () => {
 				},
 			});
 
-			// Import getAppBuildOrder to verify ordering
-			const { getAppBuildOrder } = require('../../workspace/index.js');
 			const order = getAppBuildOrder(workspace);
 
 			// api and auth should come before web
@@ -577,7 +576,6 @@ describe('workspaceDeployCommand', () => {
 				},
 			});
 
-			const { getAppBuildOrder } = require('../../workspace/index.js');
 			const order = getAppBuildOrder(workspace);
 
 			// db -> api -> web
