@@ -115,7 +115,7 @@ export async function openapiCommand(
 				logger.log(`Found ${result.endpointCount} endpoints`);
 			}
 		} else {
-			// Workspace config - generate for each backend app and copy to frontend clients
+			// Workspace config - generate for each backend app
 			const { workspace } = loadedConfig;
 			const workspaceRoot = options.cwd || process.cwd();
 
