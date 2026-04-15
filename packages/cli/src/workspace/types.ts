@@ -400,29 +400,6 @@ export interface SecretsConfig {
 }
 
 /**
- * Client generation configuration for frontend apps.
- *
- * Configures automatic API client generation from OpenAPI specs.
- *
- * @example
- * ```ts
- * // In a frontend app config
- * {
- *   type: 'frontend',
- *   framework: 'nextjs',
- *   dependencies: ['api'],
- *   client: {
- *     output: './src/lib/api',
- *   },
- * }
- * ```
- */
-export interface ClientConfig {
-	/** Output directory for generated client (relative to app path) */
-	output?: string;
-}
-
-/**
  * Base app configuration properties (shared between input and normalized).
  *
  * @example
@@ -597,12 +574,6 @@ interface AppConfigBase {
 	 * @example 'nextjs', 'better-auth', 'hono'
 	 */
 	framework?: BackendFramework | FrontendFramework;
-
-	/**
-	 * Client generation configuration.
-	 * Generates typed API client from backend dependencies.
-	 */
-	client?: ClientConfig;
 
 	/**
 	 * Config file paths for frontend environment sniffing.

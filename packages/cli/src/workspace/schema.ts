@@ -55,13 +55,6 @@ const HooksConfigSchema = z.object({
 });
 
 /**
- * Client generation configuration schema.
- */
-const ClientConfigSchema = z.object({
-	output: z.string().optional(),
-});
-
-/**
  * Auth provider schema.
  * Currently only 'better-auth' is supported.
  */
@@ -577,8 +570,6 @@ const AppConfigSchema = z
 
 		// Framework (backend or frontend)
 		framework: FrameworkSchema.optional(),
-		client: ClientConfigSchema.optional(),
-
 		// Frontend-specific: config file paths for env sniffing (calls .parse() at import)
 		config: z
 			.object({

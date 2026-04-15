@@ -35,7 +35,6 @@ export type {
 	AppInput,
 	AppsRecord,
 	BackendFramework,
-	ClientConfig,
 	ConstrainedApps,
 	DeployConfig,
 	DeployTarget,
