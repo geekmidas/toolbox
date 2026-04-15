@@ -4,235 +4,308 @@
 
 - Node.js >= 22.0.0
 - pnpm >= 10.13.1
+- Docker (for local services — PostgreSQL, Redis, MinIO, etc.)
+
+## Install the CLI
+
+```bash
+pnpm add -g @geekmidas/cli
+```
 
 ## Create a New Project
 
-The fastest way to get started is using the CLI's init command:
-
 ```bash
-# Install CLI globally
-pnpm add -g @geekmidas/cli
-
-# Create a new workspace
 gkm init my-project
 ```
 
 ### Interactive Setup
 
-The init command guides you through project setup:
+The init command walks you through project setup:
 
 ```
-? Template: › (Use arrow keys)
-    Minimal - Basic health endpoint
-  ❯ Fullstack - API + Web with database
-    API - Backend API with auth and database
-    Serverless - AWS Lambda handlers
+? Template:
+  ❯ API        — Single backend API with endpoints
+    Fullstack  — Monorepo with API + Next.js + shared models
 
-? Include Telescope (debugging dashboard)? › Yes
-? Include database support? › Yes
-? Logger: › Pino (recommended)
+? Services (space to select):
+  ◉ PostgreSQL
+  ◉ Redis
+  ◉ Mailpit
+  ◉ MinIO
+
+? Event backend:
+  ❯ pg-boss   — PostgreSQL job queue (no extra container)
+    SNS/SQS   — AWS via LocalStack
+    RabbitMQ  — AMQP broker
+    None
+
+? Deployment target:
+  ❯ Dokploy
+    Configure later
+```
+
+### Quick Start (non-interactive)
+
+```bash
+# All defaults: fullstack template, all services, pgboss, dokploy
+gkm init my-saas --template fullstack --yes
+
+# API-only
+gkm init my-api --template api --yes
 ```
 
 ### Templates
 
-| Template | Description | Includes |
-|----------|-------------|----------|
-| `minimal` | Basic health endpoint | Hono, envkit, logger |
-| `fullstack` | API + Next.js frontend | + Better Auth, db, cache, web app, shared models |
-| `api` | Backend API | + db, cache, services, JWT auth utilities |
-| `serverless` | AWS Lambda | + cloud, Lambda adapters |
-| `worker` | Background job processing | + events, subscribers, crons |
+| Template | Description |
+|----------|-------------|
+| `api` | Single backend API with endpoints, auth, database |
+| `fullstack` | Monorepo — API + Better Auth + Next.js + shared models |
+| `worker` | Background job processing with events, crons, subscribers |
+| `serverless` | AWS Lambda handlers |
+| `minimal` | Health endpoint only |
 
 ::: info
-The interactive prompt shows **API** and **Fullstack** by default. Use `--template` to select other templates directly:
+The interactive prompt shows **API** and **Fullstack** by default. Use `--template` to select others:
 ```bash
 gkm init my-worker --template worker --yes
 ```
 :::
 
-### Quick Start (Non-Interactive)
+---
 
-```bash
-# Create fullstack workspace with defaults
-gkm init my-saas --template fullstack --yes
+## End-to-End: From Init to Running App
 
-# Create API-only project
-gkm init my-api --template api --yes
-```
+This section walks through everything after `gkm init` — how credentials work, how services start, and how your app receives injected environment variables.
 
-## Project Structure
+### 1. What `gkm init` Creates
 
-After initialization, your workspace looks like this (fullstack template):
+After init, your project has encrypted secrets already bootstrapped for the `development` stage:
 
 ```
 my-project/
-├── apps/
-│   ├── api/                    # Backend API
-│   │   ├── src/
-│   │   │   ├── config/
-│   │   │   │   ├── env.ts      # Environment parser
-│   │   │   │   ├── logger.ts   # Logger setup
-│   │   │   │   └── telescope.ts
-│   │   │   └── endpoints/
-│   │   │       └── health.ts   # Health check endpoint
-│   │   └── gkm.config.ts       # App-level config (optional)
-│   ├── auth/                   # Better Auth server (fullstack only)
-│   │   └── src/
-│   │       ├── auth.ts         # Better Auth instance
-│   │       ├── index.ts        # Hono server entry
-│   │       └── config/
-│   │           ├── env.ts
-│   │           └── logger.ts
-│   └── web/                    # Next.js frontend (fullstack only)
-│       └── ...
-├── packages/
-│   └── models/                 # Shared Zod schemas
-├── gkm.config.ts               # Workspace configuration
-├── docker-compose.yml          # Local services
-├── pnpm-workspace.yaml
-└── turbo.json
+├── .gkm/
+│   └── secrets/
+│       └── development.json   # encrypted credentials (safe to commit)
+├── gkm.config.ts              # workspace / app config
+├── docker-compose.yml         # local services
+└── ...
 ```
 
-## Start Development
+The key for decrypting `development.json` is stored separately at:
+
+```
+~/.gkm/my-project/development.key
+```
+
+This key **never** enters source control. The encrypted secrets file can be committed freely.
+
+### 2. What Gets Seeded Automatically
+
+`gkm init` generates and encrypts sane development defaults including:
+
+| Secret | Value |
+|--------|-------|
+| `DATABASE_URL` | `postgres://...@localhost:5432/my-project` |
+| `REDIS_URL` | `redis://localhost:6379` |
+| `STORAGE_ACCESS_KEY_ID` | derived from MinIO default user |
+| `STORAGE_SECRET_ACCESS_KEY` | derived from MinIO default password |
+| `EVENT_PUBLISHER_CONNECTION_STRING` | pgboss connection string |
+| `EVENT_SUBSCRIBER_CONNECTION_STRING` | pgboss connection string |
+| `JWT_SECRET` | randomly generated |
+| `NODE_ENV` | `development` |
+
+You can view them any time:
 
 ```bash
-cd my-project
-
-# Start all apps with hot reload
-gkm dev
-
-# Output:
-# [api] Starting on http://localhost:3000
-# [api] Telescope: http://localhost:3000/__telescope
-# [web] Starting on http://localhost:3001
+gkm secrets:show --stage development
 ```
 
-## Configuration
+### 3. Reconcile Services (First Run)
 
-The generated `gkm.config.ts` defines your workspace (fullstack template):
+Run `gkm setup` once after init (and after changing `services` in the config). It:
+- Starts Docker services with credentials injected from your stage secrets — each project gets its own isolated containers, so multiple projects can run concurrently without port or credential collisions
+- Creates the database, roles, and schemas
+- Sets up pgboss if `events: 'pgboss'`
+- Validates that all required secrets exist
+
+```bash
+gkm setup
+```
+
+### 4. Start the Dev Server
+
+```bash
+gkm dev
+```
+
+`gkm dev` decrypts your stage secrets and **injects them as environment variables** before starting each app and its Docker services. Your code accesses them via `process.env` — no `.env` files needed. Because secrets are injected dynamically, multiple projects can run simultaneously without collisions.
+
+```
+[api]  Decrypting secrets (development)...
+[api]  Starting on http://localhost:3000
+[api]  Telescope: http://localhost:3000/__telescope
+[auth] Starting on http://localhost:3002
+[web]  Waiting for api, auth...
+[web]  Starting on http://localhost:3001
+```
+
+::: tip Multiple projects
+`gkm dev` and `gkm test` each spin up Docker services with project-scoped credentials. Running `gkm dev` in two different projects starts two independent PostgreSQL (and Redis, MinIO, etc.) containers — no manual port mapping needed.
+:::
+
+### 5. How Credential Injection Works
+
+`gkm dev` (and `gkm exec`) use a preload script to inject secrets **before** your app code runs. The flow is:
+
+```
+~/.gkm/my-project/development.key
+         │
+         ▼ decrypt
+.gkm/secrets/development.json
+         │
+         ▼ AES-256-GCM
+globalThis.__gkm_credentials__  (set by preload)
+         │
+         ▼ read by
+@geekmidas/envkit Credentials
+         │
+         ▼ merged into
+EnvironmentParser.parse()
+```
+
+In your app code:
+
+```typescript
+// apps/api/src/config/env.ts
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { Credentials } from '@geekmidas/envkit/credentials';
+
+export const envParser = new EnvironmentParser({
+  ...process.env,
+  ...Credentials,  // ← injected secrets merged here
+});
+
+export const config = envParser
+  .create((get) => ({
+    port: get('PORT').string().transform(Number).default(3000),
+    databaseUrl: get('DATABASE_URL').string().url(),
+    redisUrl: get('REDIS_URL').string(),
+  }))
+  .parse();
+```
+
+`Credentials` resolves (in priority order):
+1. `globalThis.__gkm_credentials__` — set by `gkm dev`/`gkm exec` preload
+2. Build-time decryption via `GKM_MASTER_KEY` — for CI/CD and Docker builds
+3. Empty object — fallback when no credentials are available
+
+::: warning
+Never read secrets with `process.env` directly in production-critical paths. Always go through `EnvironmentParser` with `Credentials` merged in — this ensures the same code works in dev (preload injection) and production (build-time or runtime decryption).
+:::
+
+### 6. Running One-Off Commands with Secrets
+
+Use `gkm exec` to run any command with secrets injected:
+
+```bash
+# Run a migration with DATABASE_URL injected
+gkm exec -- pnpm db:migrate
+
+# Run a script with all dev secrets
+gkm exec -- node scripts/seed.ts
+
+# Open a psql shell with DATABASE_URL injected
+gkm exec -- psql $DATABASE_URL
+```
+
+### 7. Managing Secrets
+
+```bash
+# Add a new secret
+gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
+
+# View all secrets (values masked)
+gkm secrets:show --stage development
+
+# Rotate the encryption key
+gkm secrets:rotate --stage development
+
+# Initialize a new stage (e.g., production)
+gkm secrets:init --stage production
+```
+
+Production secrets use the same encrypted format but get a separate key at `~/.gkm/my-project/production.key`. In CI/CD, provide the key via `GKM_MASTER_KEY`.
+
+---
+
+## Workspace Configuration
+
+The generated `gkm.config.ts` for the fullstack template:
 
 ```typescript
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'my-project',
+  name: 'my-saas',
 
   apps: {
     api: {
-      path: 'apps/api',
       type: 'backend',
+      path: 'apps/api',
       port: 3000,
       routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-      telescope: true,
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
+      openapi: { enabled: true },
     },
     auth: {
-      type: 'auth',
+      type: 'backend',
       path: 'apps/auth',
-      port: 3001,
-      provider: 'better-auth',
+      port: 3002,
       entry: './src/index.ts',
-      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
+      framework: 'better-auth',
+      envParser: './src/config/env#envParser',
+      logger: './src/config/logger#logger',
     },
     web: {
       type: 'frontend',
-      path: 'apps/web',
-      port: 3002,
       framework: 'nextjs',
+      path: 'apps/web',
+      port: 3001,
       dependencies: ['api', 'auth'],
     },
   },
 
+  shared: {
+    packages: ['packages/*'],
+    models: { path: 'packages/models', schema: 'zod' },
+  },
+
   services: {
-    db: true,
-    cache: true,
-    mail: true,       // Mailpit in dev, SMTP in production
-    storage: true,    // MinIO in dev, S3 in production
+    db: true,       // postgres:18-alpine
+    cache: true,    // redis:8-alpine
+    mail: true,     // Mailpit in dev, SMTP in production
+    storage: true,  // MinIO in dev, AWS S3 in production
     events: 'pgboss', // pgboss | sns | rabbitmq
   },
+
+  secrets: { enabled: true },
 });
 ```
 
-### Services
+### Services Reference
 
-| Service | Config Key | Dev Container | Production |
-|---------|-----------|---------------|------------|
-| PostgreSQL | `db` | `postgres:18-alpine` | Provisioned DB |
-| Redis | `cache` | `redis:8-alpine` | Provisioned cache |
-| Mail | `mail` | Mailpit (SMTP testing) | SMTP provider |
-| Storage | `storage` | MinIO (S3-compatible) | AWS S3 |
-| Events | `events: 'pgboss'` | Reuses PostgreSQL | Reuses PostgreSQL |
-| Events | `events: 'sns'` | LocalStack (SNS+SQS) | AWS SNS+SQS |
-| Events | `events: 'rabbitmq'` | RabbitMQ container | Provisioned RabbitMQ |
+| Key | Dev container | Production |
+|-----|---------------|------------|
+| `db: true` | `postgres:18-alpine` | Provisioned PostgreSQL |
+| `cache: true` | `redis:8-alpine` | Provisioned Redis |
+| `mail: true` | Mailpit | SMTP provider |
+| `storage: true` | MinIO | AWS S3 |
+| `events: 'pgboss'` | Reuses PostgreSQL | Reuses PostgreSQL |
+| `events: 'sns'` | LocalStack (SNS+SQS) | AWS SNS+SQS |
+| `events: 'rabbitmq'` | RabbitMQ | Provisioned RabbitMQ |
 
-### App Types
-
-| Type | Description | Key Config |
-|------|-------------|------------|
-| `backend` | API with gkm endpoints | `routes`, `envParser`, `logger` |
-| `auth` | Better Auth server (fullstack template) | `provider`, `entry`, `requiredEnv` |
-| `frontend` | Web application | `framework`, `dependencies` |
-
-### Auth App (Better Auth)
-
-The fullstack template includes a [Better Auth](https://better-auth.com) server with magic link authentication:
-
-```typescript
-auth: {
-  type: 'auth',
-  path: 'apps/auth',
-  port: 3001,
-  provider: 'better-auth',
-  entry: './src/index.ts',
-  requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
-}
-```
-
-The generated auth app uses magic link authentication:
-
-```typescript
-// apps/auth/src/auth.ts
-import { betterAuth } from 'better-auth';
-import { magicLink } from 'better-auth/plugins';
-import pg from 'pg';
-
-export const auth = betterAuth({
-  database: new pg.Pool({ connectionString: process.env.DATABASE_URL }),
-  baseURL: process.env.BETTER_AUTH_URL,
-  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(','),
-  secret: process.env.BETTER_AUTH_SECRET,
-  plugins: [
-    magicLink({
-      sendMagicLink: async ({ email, url }) => {
-        // TODO: Implement email sending
-        console.log('Magic link for', email, ':', url);
-      },
-    }),
-  ],
-});
-```
-
-```typescript
-// apps/auth/src/index.ts
-import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
-import { auth } from './auth.js';
-
-const app = new Hono();
-app.get('/health', (c) => c.json({ status: 'ok' }));
-app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
-
-serve({ fetch: app.fetch, port: 3001 });
-```
-
-**Auto-Injected Environment Variables:**
-
-| Variable | Description |
-|----------|-------------|
-| `BETTER_AUTH_URL` | Derived from app hostname |
-| `BETTER_AUTH_SECRET` | Generated and persisted |
-| `BETTER_AUTH_TRUSTED_ORIGINS` | All frontend URLs |
+---
 
 ## Create Your First Endpoint
 
@@ -251,31 +324,13 @@ export const listUsers = e
   .handle(async () => {
     return [
       { id: '1', name: 'Alice', email: 'alice@example.com' },
-      { id: '2', name: 'Bob', email: 'bob@example.com' },
     ];
-  });
-
-export const createUser = e
-  .post('/users')
-  .body(z.object({
-    name: z.string(),
-    email: z.string().email(),
-  }))
-  .output(z.object({
-    id: z.string(),
-    name: z.string(),
-    email: z.string(),
-  }))
-  .handle(async ({ body }) => {
-    return { id: crypto.randomUUID(), ...body };
   });
 ```
 
-The endpoint is automatically discovered and available at `http://localhost:3000/users`.
+The endpoint is auto-discovered from the `routes` glob and available at `GET /users`.
 
-## Add Services
-
-Inject database, cache, or custom services:
+## Inject Services into Endpoints
 
 ```typescript
 // apps/api/src/services/database.ts
@@ -286,49 +341,25 @@ import pg from 'pg';
 export const databaseService = {
   serviceName: 'db' as const,
   async register(envParser) {
-    const config = envParser.create((get) => ({
-      url: get('DATABASE_URL').string(),
-    })).parse();
-
+    const { databaseUrl } = envParser
+      .create((get) => ({ databaseUrl: get('DATABASE_URL').string() }))
+      .parse();
     return new Kysely({
-      dialect: new PostgresDialect({
-        pool: new pg.Pool({ connectionString: config.url }),
-      }),
+      dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: databaseUrl }) }),
     });
   },
 } satisfies Service<'db', Kysely<Database>>;
-```
 
-```typescript
 // apps/api/src/endpoints/users.ts
-import { e } from '@geekmidas/constructs/endpoints';
-import { databaseService } from '../services/database';
-
 export const listUsers = e
   .get('/users')
   .services([databaseService])
   .handle(async ({ services }) => {
-    return await services.db
-      .selectFrom('users')
-      .selectAll()
-      .execute();
+    return await services.db.selectFrom('users').selectAll().execute();
   });
 ```
 
-## Environment Variables
-
-Secrets are managed with encrypted storage:
-
-```bash
-# Initialize secrets for development
-gkm secrets:init --stage development
-
-# Set a secret
-gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
-
-# View secrets (masked)
-gkm secrets:show --stage development
-```
+---
 
 ## Build for Production
 
@@ -339,13 +370,15 @@ gkm build --provider server --production
 # Generate Docker files
 gkm docker
 
-# Deploy to Dokploy
+# Deploy (Dokploy)
 gkm deploy --stage production
 ```
 
+---
+
 ## Next Steps
 
-- [CLI Reference](/packages/cli) - All CLI commands
-- [Workspaces](/guide/workspaces) - Multi-app configuration
-- [Testing](/guide/testing) - Testing patterns
-- [Deployment](/guide/deployment) - Production deployment
+- [CLI Reference](/packages/cli) — All `gkm` commands
+- [Workspaces](/guide/workspaces) — Multi-app monorepo configuration
+- [Testing](/guide/testing) — Testing patterns
+- [Deployment](/guide/deployment) — Production deployment
