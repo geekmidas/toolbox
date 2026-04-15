@@ -195,6 +195,26 @@ export async function buildCommand(
 	const rootOutputDir = join(process.cwd(), '.gkm');
 	await mkdir(rootOutputDir, { recursive: true });
 
+	// When --mark-optional is set, sniff env vars from the envParser to determine
+	// which are optional. Optional vars get a `?` suffix in each construct's
+	// environment array (e.g. `PORT?` instead of `PORT`).
+	let optionalVarSet: Set<string> | undefined;
+	if (options.markOptional && config.envParser) {
+		try {
+			const { _sniffEnvParser } = await import('../deploy/sniffer.js');
+			const sniffed = await _sniffEnvParser(
+				config.envParser,
+				process.cwd(),
+				process.cwd(),
+			);
+			if (sniffed.optionalEnvVars.length > 0) {
+				optionalVarSet = new Set(sniffed.optionalEnvVars);
+			}
+		} catch {
+			// Non-fatal — constructs are still built without optional markers
+		}
+	}
+
 	// Build for each provider and generate per-provider manifests
 	let result: BuildResult = {};
 	for (const provider of resolved.providers) {
@@ -257,6 +277,29 @@ async function buildForProvider(
 			subscriberGenerator.build(context, subscribers, outputDir, { provider }),
 		],
 	);
+
+	// Apply optional marker (`?` suffix) to env vars in each construct's environment
+	const markEnv = optionalVarSet
+		? (vars: string[] | undefined) =>
+				vars?.map((v) => (optionalVarSet.has(v) ? `${v}?` : v))
+		: (vars: string[] | undefined) => vars;
+
+	const routes = rawRoutes.map((r) => ({
+		...r,
+		environment: markEnv(r.environment),
+	}));
+	const functionInfos = rawFunctions.map((f) => ({
+		...f,
+		environment: markEnv(f.environment),
+	}));
+	const cronInfos = rawCrons.map((c) => ({
+		...c,
+		environment: markEnv(c.environment),
+	}));
+	const subscriberInfos = rawSubscribers.map((s) => ({
+		...s,
+		environment: markEnv(s.environment),
+	}));
 
 	logger.log(
 		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers for ${provider}`,
