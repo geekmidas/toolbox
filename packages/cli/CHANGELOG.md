@@ -1,5 +1,14 @@
 # @geekmidas/cli
 
+## 1.10.33
+
+### Patch Changes
+
+- ✨ [`363c67f`](https://github.com/geekmidas/toolbox/commit/363c67fb3c3406bac6823326ab80ba55bff29e31) Thanks [@geekmidas](https://github.com/geekmidas)! - Add dynamic return types
+
+- Updated dependencies [[`363c67f`](https://github.com/geekmidas/toolbox/commit/363c67fb3c3406bac6823326ab80ba55bff29e31)]:
+  - @geekmidas/constructs@3.0.9
+
 ## 1.10.32
 
 ### Patch Changes
