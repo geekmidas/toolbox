@@ -389,7 +389,13 @@ export default defineWorkspace({
   },`;
 
 	// Add services if any are selected
-	if (services.db || services.cache || services.mail) {
+	if (
+		services.db ||
+		services.cache ||
+		services.mail ||
+		services.storage ||
+		services.events
+	) {
 		config += `
   services: {`;
 		if (services.db) {
@@ -403,6 +409,14 @@ export default defineWorkspace({
 		if (services.mail) {
 			config += `
     mail: true,`;
+		}
+		if (services.storage) {
+			config += `
+    storage: true,`;
+		}
+		if (services.events) {
+			config += `
+    events: '${services.events}',`;
 		}
 		config += `
   },`;
