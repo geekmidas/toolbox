@@ -280,6 +280,7 @@ services:
     restart: unless-stopped
     environment:
       MP_SMTP_AUTH: \${SMTP_USER:-${imageName}}:\${SMTP_PASS:-${imageName}}
+      MP_SMTP_AUTH_ALLOW_INSECURE: true
     ports:
       - "\${MAILPIT_PORT:-8025}:8025"  # Web UI / API
       - "\${SMTP_PORT:-1025}:1025"  # SMTP
@@ -505,6 +506,7 @@ services:
     restart: unless-stopped
     environment:
       MP_SMTP_AUTH: \${SMTP_USER:-${workspace.name}}:\${SMTP_PASS:-${workspace.name}}
+      MP_SMTP_AUTH_ALLOW_INSECURE: true
     ports:
       - "\${MAILPIT_PORT:-8025}:8025"  # Web UI / API
       - "\${SMTP_PORT:-1025}:1025"  # SMTP
