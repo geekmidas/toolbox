@@ -259,7 +259,7 @@ ${volumes.join('\n')}
  */
 function generateDockerEnv(
 	apps: DatabaseAppConfig[],
-	eventsBackend?: EventsBackend,
+	_eventsBackend?: EventsBackend,
 ): string {
 	const envVars = apps.map((app) => {
 		const envVar = `${app.name.toUpperCase()}_DB_PASSWORD`;
@@ -285,7 +285,7 @@ ${envVars.join('\n')}
  */
 function generatePostgresInitScript(
 	apps: DatabaseAppConfig[],
-	eventsBackend?: EventsBackend,
+	_eventsBackend?: EventsBackend,
 ): string {
 	const userCreations = apps.map((app) => {
 		const userName = app.name.replace(/-/g, '_');
