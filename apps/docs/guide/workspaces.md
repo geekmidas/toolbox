@@ -152,48 +152,20 @@ gkm build
 
 ### Auto-Generated API Client
 
-When your frontend depends on the API, the CLI can automatically regenerate the typed client when endpoints change:
+Each backend app exposes its generated OpenAPI client as a package entry point. Frontends import it directly — no copy step needed:
 
 ```typescript
-// gkm.config.ts (root)
-import { defineWorkspace } from '@geekmidas/cli/config';
-
-export default defineWorkspace({
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-    },
-    web: {
-      type: 'frontend',
-      path: 'apps/web',
-      port: 3001,
-      framework: 'nextjs',
-      dependencies: ['api'],
-      // Auto-regenerate client when API changes
-      client: {
-        output: './src/api',
-      },
-    },
-  },
-  services: { db: true },
-});
+// apps/web/src/lib/api.ts
+import { createApi } from '@myapp/api/client';
 ```
 
-### Manual Client Generation
+The `./client` entry point is generated at build time into `.gkm/openapi.ts` and exposed via the backend app's `package.json` exports. TypeScript resolves it through the monorepo's package references.
+
+To regenerate the client after endpoint changes:
 
 ```bash
-# Generate OpenAPI spec from API
-gkm openapi --app api
-
-# Generate React Query hooks for web app
-gkm generate:react-query \
-  --input apps/api/.gkm/openapi.ts \
-  --output apps/web/src/api/hooks.ts
+gkm openapi   # regenerates .gkm/openapi.ts for all backend apps
+gkm build     # also regenerates as part of the build
 ```
 
 ## Shared Packages
