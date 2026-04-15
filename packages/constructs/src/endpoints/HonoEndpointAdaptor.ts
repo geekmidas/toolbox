@@ -69,6 +69,16 @@ interface EndpointFeatures {
 }
 
 /**
+ * Case-insensitive check for a `content-type` header in a metadata headers map.
+ */
+function hasContentTypeHeader(headers: Record<string, string>): boolean {
+	for (const key of Object.keys(headers)) {
+		if (key.toLowerCase() === 'content-type') return true;
+	}
+	return false;
+}
+
+/**
  * Analyze endpoint features at registration time (not per-request)
  */
 function analyzeEndpointFeatures(
@@ -591,8 +601,21 @@ export class HonoEndpoint<
 								logger.info({ status, body: output }, 'Outgoing response');
 							}
 
+							// Respect the endpoint's declared responseType. For JSON (default)
+							// we use c.json() which sets Content-Type and serializes. For any
+							// other type, emit the body as-is and set the header explicitly —
+							// metadata.headers (from r.header()) applied above still wins.
+							if (endpoint.responseType === 'application/json') {
+								// @ts-expect-error
+								return c.json(output, status);
+							}
+							if (
+								!(metadata.headers && hasContentTypeHeader(metadata.headers))
+							) {
+								c.header('content-type', endpoint.responseType);
+							}
 							// @ts-expect-error
-							return c.json(output, status);
+							return c.body(output as any, status);
 						} catch (validationError: any) {
 							logger.error(validationError, 'Output validation failed');
 							const error = wrapError(
