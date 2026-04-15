@@ -332,6 +332,13 @@ export interface BuildOptions {
 	skipBundle?: boolean;
 	/** Stage for secrets injection (e.g., 'production', 'staging') */
 	stage?: string;
+	/**
+	 * When true, optional environment variables (those with `.optional()` or
+	 * `.default()` in the envParser) are suffixed with `?` within each
+	 * construct's `environment` array in the manifest (e.g. `PORT?`).
+	 * Defaults to false.
+	 */
+	markOptional?: boolean;
 }
 
 /** Result from build command when secrets are injected */
