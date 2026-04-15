@@ -57,9 +57,10 @@ async function sniff(): Promise<void> {
 	// Retrieve captured env vars from the global sniffer
 	const sniffer = globalThis.__envSniffer;
 	const envVars = sniffer ? sniffer.getEnvironmentVariables() : [];
+	const optionalEnvVars = sniffer ? sniffer.getOptionalVariables() : [];
 
 	// Output result as JSON
-	console.log(JSON.stringify({ envVars, error }));
+	console.log(JSON.stringify({ envVars, optionalEnvVars, error }));
 }
 
 // Handle unhandled rejections (fire-and-forget promises)
