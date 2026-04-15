@@ -192,11 +192,9 @@ export async function initCommand(
 		? ['db', 'cache', 'mail', 'storage']
 		: answers.services || [];
 
-	// Determine events backend (default to pgboss for fullstack with --yes)
+	// Determine events backend (default to pgboss for all templates with --yes)
 	const eventsBackend: EventsBackend | undefined = options.yes
-		? isFullstack
-			? 'pgboss'
-			: undefined
+		? 'pgboss'
 		: answers.eventsBackend;
 
 	const services: ServicesSelection = {
