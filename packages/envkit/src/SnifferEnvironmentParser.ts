@@ -26,10 +26,12 @@ import {
  */
 export class SnifferEnvironmentParser<_T extends EmptyObject = EmptyObject> {
 	private readonly accessedVars: Set<string> = new Set();
+	private readonly optionalVars: Set<string> = new Set();
 
 	/**
 	 * Wraps a Zod schema to always return mock values.
 	 * This ensures .parse() and .safeParse() never fail.
+	 * Also detects when .optional() or .default() is called to track optional vars.
 	 */
 	private wrapSchema = (schema: z.ZodType, name: string): z.ZodType => {
 		return new Proxy(schema, {
@@ -43,6 +45,11 @@ export class SnifferEnvironmentParser<_T extends EmptyObject = EmptyObject> {
 						success: true as const,
 						data: this.getMockValue(target),
 					});
+				}
+
+				// Detect .optional() or .default() — mark the variable as optional
+				if (prop === 'optional' || prop === 'default') {
+					this.optionalVars.add(name);
 				}
 
 				const originalProp = target[prop as keyof typeof target];
@@ -141,9 +148,24 @@ export class SnifferEnvironmentParser<_T extends EmptyObject = EmptyObject> {
 
 	/**
 	 * Returns all environment variable names that were accessed.
+	 *
+	 * @param opts.markOptional - When true, optional variables (those accessed
+	 *   via `.optional()` or `.default()`) are suffixed with `?` (e.g. `PORT?`).
 	 */
-	getEnvironmentVariables(): string[] {
-		return Array.from(this.accessedVars).sort();
+	getEnvironmentVariables(opts?: { markOptional?: boolean }): string[] {
+		const vars = Array.from(this.accessedVars).sort();
+		if (!opts?.markOptional) return vars;
+		return vars.map((name) =>
+			this.optionalVars.has(name) ? `${name}?` : name,
+		);
+	}
+
+	/**
+	 * Returns all environment variable names that were accessed via
+	 * `.optional()` or `.default()` — i.e. variables that are not required.
+	 */
+	getOptionalVariables(): string[] {
+		return Array.from(this.optionalVars).sort();
 	}
 }
 
@@ -212,8 +234,13 @@ class SnifferConfigParser<
  * Result of sniffing with fire-and-forget handling.
  */
 export interface SniffResult {
-	/** Environment variables that were accessed during sniffing */
+	/** All environment variable names that were accessed during sniffing */
 	envVars: string[];
+	/**
+	 * Subset of envVars that are optional (accessed via `.optional()` or
+	 * `.default()`). These do not need to be present for the app to start.
+	 */
+	optionalEnvVars: string[];
 	/** Error thrown during sniffing (env vars may still be captured) */
 	error?: Error;
 	/** Unhandled promise rejections captured during sniffing */
@@ -300,6 +327,7 @@ export async function sniffWithFireAndForget(
 
 	return {
 		envVars: sniffer.getEnvironmentVariables(),
+		optionalEnvVars: sniffer.getOptionalVariables(),
 		error,
 		unhandledRejections,
 	};
