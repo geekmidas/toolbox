@@ -346,6 +346,72 @@ describe('generateServerManifest', () => {
 	});
 });
 
+describe('generateAwsManifest (optional env vars)', () => {
+	itWithDir(
+		'should preserve ? suffix on optional env vars in route environment',
+		async ({ dir }) => {
+			const routes: RouteInfo[] = [
+				{
+					path: '/users',
+					method: 'GET',
+					handler: '.gkm/aws/getUsers.handler',
+					authorizer: 'none',
+					environment: ['DATABASE_URL', 'PORT?', 'LOG_LEVEL?'],
+				},
+			];
+
+			await generateAwsManifest(dir, routes, [], [], []);
+
+			const content = await readFile(join(dir, 'manifest', 'aws.ts'), 'utf-8');
+
+			expect(content).toContain('"DATABASE_URL"');
+			expect(content).toContain('"PORT?"');
+			expect(content).toContain('"LOG_LEVEL?"');
+		},
+	);
+
+	itWithDir(
+		'should preserve ? suffix on optional env vars in function environment',
+		async ({ dir }) => {
+			const functions: FunctionInfo[] = [
+				{
+					name: 'processData',
+					handler: '.gkm/aws/processData.handler',
+					environment: ['DATABASE_URL', 'TIMEOUT?'],
+				},
+			];
+
+			await generateAwsManifest(dir, [], functions, [], []);
+
+			const content = await readFile(join(dir, 'manifest', 'aws.ts'), 'utf-8');
+
+			expect(content).toContain('"DATABASE_URL"');
+			expect(content).toContain('"TIMEOUT?"');
+		},
+	);
+
+	itWithDir(
+		'should preserve ? suffix on optional env vars in subscriber environment',
+		async ({ dir }) => {
+			const subscribers: SubscriberInfo[] = [
+				{
+					name: 'orderHandler',
+					handler: '.gkm/aws/orderHandler.handler',
+					subscribedEvents: ['order.created'],
+					environment: ['DATABASE_URL', 'RETRY_LIMIT?'],
+				},
+			];
+
+			await generateAwsManifest(dir, [], [], [], subscribers);
+
+			const content = await readFile(join(dir, 'manifest', 'aws.ts'), 'utf-8');
+
+			expect(content).toContain('"DATABASE_URL"');
+			expect(content).toContain('"RETRY_LIMIT?"');
+		},
+	);
+});
+
 describe('generateAwsManifest (partitioned)', () => {
 	itWithDir(
 		'should generate manifest with partitioned routes and flat functions',
