@@ -343,6 +343,135 @@ describe('SnifferEnvironmentParser', () => {
 		});
 	});
 
+	describe('Optional variable tracking', () => {
+		it('should track variables accessed with .optional() as optional', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('REQUIRED_VAR').string(),
+				optional: get('OPTIONAL_VAR').string().optional(),
+			}));
+
+			expect(sniffer.getOptionalVariables()).toEqual(['OPTIONAL_VAR']);
+		});
+
+		it('should track variables accessed with .default() as optional', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('REQUIRED_VAR').string(),
+				withDefault: get('DEFAULT_VAR').string().default('fallback'),
+			}));
+
+			expect(sniffer.getOptionalVariables()).toEqual(['DEFAULT_VAR']);
+		});
+
+		it('should track variables with .default() after .transform() as optional', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				port: get('PORT').string().transform(Number).default(3000),
+			}));
+
+			expect(sniffer.getOptionalVariables()).toEqual(['PORT']);
+		});
+
+		it('should not include required variables in getOptionalVariables()', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('DATABASE_URL').string(),
+				optional: get('LOG_LEVEL').string().optional(),
+			}));
+
+			expect(sniffer.getOptionalVariables()).toEqual(['LOG_LEVEL']);
+			expect(sniffer.getOptionalVariables()).not.toContain('DATABASE_URL');
+		});
+
+		it('getEnvironmentVariables({ markOptional: true }) suffixes optional vars with ?', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('DATABASE_URL').string(),
+				apiKey: get('API_KEY').string(),
+				logLevel: get('LOG_LEVEL').string().optional(),
+				port: get('PORT').string().default('3000'),
+			}));
+
+			expect(sniffer.getEnvironmentVariables({ markOptional: true })).toEqual([
+				'API_KEY',
+				'DATABASE_URL',
+				'LOG_LEVEL?',
+				'PORT?',
+			]);
+		});
+
+		it('getEnvironmentVariables() without option returns plain names', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('DATABASE_URL').string(),
+				optional: get('PORT').string().default('3000'),
+			}));
+
+			expect(sniffer.getEnvironmentVariables()).toEqual([
+				'DATABASE_URL',
+				'PORT',
+			]);
+		});
+
+		it('getEnvironmentVariables({ markOptional: false }) returns plain names', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				required: get('DATABASE_URL').string(),
+				optional: get('PORT').string().default('3000'),
+			}));
+
+			expect(sniffer.getEnvironmentVariables({ markOptional: false })).toEqual([
+				'DATABASE_URL',
+				'PORT',
+			]);
+		});
+
+		it('should return empty getOptionalVariables() when all vars are required', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				url: get('DATABASE_URL').string(),
+				key: get('API_KEY').string(),
+			}));
+
+			expect(sniffer.getOptionalVariables()).toEqual([]);
+		});
+
+		it('should handle mix of optional and default across nested config', () => {
+			const sniffer = new SnifferEnvironmentParser();
+
+			sniffer.create((get) => ({
+				database: {
+					url: get('DATABASE_URL').string(),
+					poolSize: get('DB_POOL_SIZE').string().transform(Number).default(10),
+				},
+				cache: {
+					url: get('REDIS_URL').string().optional(),
+					ttl: get('CACHE_TTL').string(),
+				},
+			}));
+
+			expect(sniffer.getOptionalVariables().sort()).toEqual([
+				'DB_POOL_SIZE',
+				'REDIS_URL',
+			]);
+			expect(sniffer.getEnvironmentVariables({ markOptional: true })).toEqual([
+				'CACHE_TTL',
+				'DATABASE_URL',
+				'DB_POOL_SIZE?',
+				'REDIS_URL?',
+			]);
+		});
+	});
+
 	describe('Edge cases', () => {
 		it('should return empty array when no variables accessed', () => {
 			const sniffer = new SnifferEnvironmentParser();
@@ -482,5 +611,34 @@ describe('sniffWithFireAndForget', () => {
 		expect(result.envVars).toEqual([]);
 		expect(result.error).toBeUndefined();
 		expect(result.unhandledRejections).toEqual([]);
+	});
+
+	it('should include optionalEnvVars in result', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			sniffer.create((get) => ({
+				required: get('DATABASE_URL').string(),
+				optional: get('PORT').string().default('3000'),
+				alsoOptional: get('LOG_LEVEL').string().optional(),
+			}));
+		});
+
+		expect(result.envVars).toEqual(['DATABASE_URL', 'LOG_LEVEL', 'PORT']);
+		expect(result.optionalEnvVars).toEqual(['LOG_LEVEL', 'PORT']);
+		expect(result.error).toBeUndefined();
+	});
+
+	it('should return empty optionalEnvVars when all vars are required', async () => {
+		const sniffer = new SnifferEnvironmentParser();
+
+		const result = await sniffWithFireAndForget(sniffer, () => {
+			sniffer.create((get) => ({
+				url: get('DATABASE_URL').string(),
+				key: get('API_KEY').string(),
+			}));
+		});
+
+		expect(result.optionalEnvVars).toEqual([]);
 	});
 });
