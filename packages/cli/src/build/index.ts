@@ -26,6 +26,7 @@ import {
 	type GeneratedConstruct,
 	SubscriberGenerator,
 } from '../generators';
+import { generateOpenApi, openapiCommand } from '../openapi.js';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -39,7 +40,6 @@ import {
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
-import { generateOpenApi, openapiCommand } from '../openapi.js';
 import {
 	generateAwsManifest,
 	generateServerManifest,
