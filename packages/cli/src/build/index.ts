@@ -257,6 +257,7 @@ async function buildForProvider(
 	enableOpenApi: boolean,
 	skipBundle: boolean,
 	stage?: string,
+	optionalVarSet?: Set<string>,
 ): Promise<BuildResult> {
 	const outputDir = join(process.cwd(), '.gkm', provider);
 
@@ -266,7 +267,7 @@ async function buildForProvider(
 	logger.log(`\nGenerating handlers for provider: ${provider}`);
 
 	// Build all constructs in parallel
-	const [routes, functionInfos, cronInfos, subscriberInfos] = await Promise.all(
+	const [rawRoutes, rawFunctions, rawCrons, rawSubscribers] = await Promise.all(
 		[
 			endpointGenerator.build(context, endpoints, outputDir, {
 				provider,
