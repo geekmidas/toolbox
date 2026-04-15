@@ -57,6 +57,7 @@ interface EndpointInfo {
 	description?: string;
 	tags?: string[];
 	operationId?: string;
+	responseType: string;
 }
 
 interface SecuritySchemeInfo {
@@ -132,6 +133,7 @@ export class OpenApiTsGenerator {
 				description: ep.description,
 				tags: ep.tags,
 				operationId: ep.operationId,
+				responseType: ep.responseType ?? 'application/json',
 			};
 		});
 	}
@@ -575,7 +577,7 @@ export class OpenApiTsGenerator {
 		parts.push(`responses: {
         200: {
           content: {
-            'application/json': ${outputName};
+            '${info.responseType}': ${outputName};
           };
         };
       }`);
