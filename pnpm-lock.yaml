@@ -578,6 +578,9 @@ importers:
       '@types/lodash.snakecase':
         specifier: ~4.1.9
         version: 4.1.9
+      '@types/node':
+        specifier: ~22.0.0
+        version: 22.0.3
 
   packages/errors: {}
 
