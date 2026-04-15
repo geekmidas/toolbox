@@ -61,6 +61,7 @@ export class EndpointBuilder<
 	protected _status?: SuccessStatus;
 	protected _tags?: string[];
 	protected _memorySize?: number;
+	protected _responseType: string = 'application/json';
 	_getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
 		({}) as TSession;
 	_authorize: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase> =
@@ -124,6 +125,29 @@ export class EndpointBuilder<
 
 	memorySize(memorySize: number): this {
 		this._memorySize = memorySize;
+		return this;
+	}
+
+	/**
+	 * Set the response content type for this endpoint.
+	 *
+	 * Defaults to `'application/json'`. When set to any other value
+	 * (e.g. `'text/html'`, `'text/plain'`), the response body is emitted
+	 * as-is rather than JSON-serialized, and the `Content-Type` header
+	 * reflects the declared value. Runtime overrides via `r.header()` still win.
+	 *
+	 * @param type - The MIME type to return (e.g. `'text/html'`)
+	 *
+	 * @example
+	 * ```typescript
+	 * e.get('/checkout-page')
+	 *   .output(z.string())
+	 *   .responseType('text/html')
+	 *   .handle(async () => '<html>...</html>');
+	 * ```
+	 */
+	responseType(type: string): this {
+		this._responseType = type;
 		return this;
 	}
 
@@ -728,6 +752,7 @@ export class EndpointBuilder<
 			databaseService: this._databaseService,
 			rlsConfig: this._rlsConfig,
 			rlsBypass: this._rlsBypass,
+			responseType: this._responseType,
 		});
 	}
 }

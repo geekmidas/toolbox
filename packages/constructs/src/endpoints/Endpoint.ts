@@ -107,6 +107,12 @@ export class Endpoint<
 	tags?: string[];
 	/** The HTTP success status code to return (default: 200) */
 	public readonly status: SuccessStatus;
+	/**
+	 * Response content type for this endpoint. Defaults to `'application/json'`.
+	 * Non-JSON types cause adaptors to emit the body as-is with the declared
+	 * Content-Type header instead of JSON-serializing.
+	 */
+	public readonly responseType: string;
 	/** Default headers to apply to all responses */
 	public readonly defaultHeaders: Record<string, string> = {};
 	/** Function to extract session data from the request context */
@@ -465,7 +471,7 @@ export class Endpoint<
 			if (responseSchema) {
 				set(
 					operation,
-					['responses', '200', 'content', 'application/json', 'schema'],
+					['responses', '200', 'content', this.responseType, 'schema'],
 					responseSchema,
 				);
 			}
@@ -606,6 +612,7 @@ export class Endpoint<
 		databaseService,
 		rlsConfig,
 		rlsBypass,
+		responseType,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -642,6 +649,7 @@ export class Endpoint<
 		this.description = description;
 		this.tags = tags;
 		this.status = status;
+		this.responseType = responseType ?? 'application/json';
 		this.endpointFn = fn;
 
 		if (getSession) {
@@ -802,6 +810,11 @@ export interface EndpointOptions<
 	rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	/** Whether to bypass RLS for this endpoint */
 	rlsBypass?: boolean;
+	/**
+	 * Response content type (e.g. `'application/json'`, `'text/html'`).
+	 * Defaults to `'application/json'` when omitted.
+	 */
+	responseType?: string;
 }
 
 /**
