@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/logger",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "A simple and flexible logging library for Node.js and the browser",
 	"private": false,
 	"type": "module",
