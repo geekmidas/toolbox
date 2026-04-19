@@ -85,6 +85,13 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 			absolute: true,
 		});
 
+		// Cache-busted re-imports re-execute user modules, which would try to
+		// re-register Zod schemas with the same `.meta({ id })`. Clear the
+		// global registry once per load to prevent duplicate-id errors.
+		if (bustCache) {
+			clearZodGlobalRegistry();
+		}
+
 		// Load constructs
 		const constructs: GeneratedConstruct<T>[] = [];
 
