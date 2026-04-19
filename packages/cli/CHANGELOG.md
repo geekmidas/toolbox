@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.34
+
+### Patch Changes
+
+- 🐛 [`b8a17e3`](https://github.com/geekmidas/toolbox/commit/b8a17e33de415a5d749297f7840564e824609a92) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix global zod registry and fix this reference on test extensions
+
 ## 1.10.33
 
 ### Patch Changes
