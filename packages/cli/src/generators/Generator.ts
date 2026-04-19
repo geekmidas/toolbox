@@ -9,6 +9,26 @@ import {
 	type Routes,
 } from '../types';
 
+/**
+ * Zod v4 maintains a process-wide registry of schemas registered via
+ * `.meta({ id })`. When we cache-bust user module imports (by appending a
+ * `?t=timestamp` query), those modules re-execute and try to register the
+ * same ids again, which throws `ID X already exists in the registry`.
+ *
+ * Clearing the registry in the CLI process is safe: the user's running
+ * server lives in a subprocess and has its own isolated registry.
+ *
+ * Exported for tests.
+ */
+export function clearZodGlobalRegistry(): void {
+	const registry = (
+		globalThis as { __zod_globalRegistry?: { clear?: () => void } }
+	).__zod_globalRegistry;
+	if (registry && typeof registry.clear === 'function') {
+		registry.clear();
+	}
+}
+
 export interface GeneratorOptions {
 	provider?: LegacyProvider;
 	[key: string]: any;
