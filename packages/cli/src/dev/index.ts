@@ -55,6 +55,7 @@ import type {
 	TelescopeConfig,
 } from '../types';
 import {
+	type FrontendFramework,
 	getAppBuildOrder,
 	getDependencyEnvVars,
 	type NormalizedWorkspace,
@@ -641,13 +642,79 @@ export function checkPortConflicts(
 }
 
 /**
- * Next.js config file patterns to check.
+ * Per-framework validation spec for supported frontend frameworks.
  */
-const NEXTJS_CONFIG_FILES = [
-	'next.config.js',
-	'next.config.ts',
-	'next.config.mjs',
-];
+interface FrontendFrameworkSpec {
+	displayName: string;
+	configFiles: string[];
+	dependency: string;
+	installCommand: string;
+}
+
+const FRONTEND_FRAMEWORKS: Record<FrontendFramework, FrontendFrameworkSpec> = {
+	nextjs: {
+		displayName: 'Next.js',
+		configFiles: [
+			'next.config.js',
+			'next.config.ts',
+			'next.config.mjs',
+			'next.config.cjs',
+		],
+		dependency: 'next',
+		installCommand: 'pnpm add next react react-dom',
+	},
+	remix: {
+		displayName: 'Remix',
+		configFiles: [
+			'remix.config.js',
+			'remix.config.mjs',
+			'remix.config.ts',
+			'vite.config.js',
+			'vite.config.ts',
+			'vite.config.mjs',
+			'vite.config.cjs',
+		],
+		dependency: '@remix-run/dev',
+		installCommand: 'pnpm add -D @remix-run/dev',
+	},
+	vite: {
+		displayName: 'Vite',
+		configFiles: [
+			'vite.config.js',
+			'vite.config.ts',
+			'vite.config.mjs',
+			'vite.config.cjs',
+		],
+		dependency: 'vite',
+		installCommand: 'pnpm add -D vite',
+	},
+};
+
+/**
+ * Auto-detect the frontend framework by scanning package.json deps and config
+ * files. Dependency match wins over config file match because deps are more
+ * distinctive (a Remix app has both vite.config.ts AND @remix-run/dev).
+ */
+function detectFrontendFramework(
+	fullPath: string,
+	deps: Record<string, string>,
+): FrontendFramework | undefined {
+	const order: FrontendFramework[] = ['nextjs', 'remix', 'vite'];
+	for (const name of order) {
+		if (deps[FRONTEND_FRAMEWORKS[name].dependency]) {
+			return name;
+		}
+	}
+	for (const name of order) {
+		const hasConfig = FRONTEND_FRAMEWORKS[name].configFiles.some((file) =>
+			existsSync(join(fullPath, file)),
+		);
+		if (hasConfig) {
+			return name;
+		}
+	}
+	return undefined;
+}
 
 /**
  * Validation result for a frontend app.
@@ -660,57 +727,86 @@ export interface FrontendValidationResult {
 }
 
 /**
- * Validate a frontend (Next.js) app configuration.
- * Checks for Next.js config file and dependency.
+ * Validate a frontend app configuration.
+ *
+ * If `framework` is provided, validates strictly against that framework's
+ * expected config file and dependency. Otherwise auto-detects the framework
+ * from package.json and config files. If no recognized framework is found, the
+ * app is allowed through with a warning provided it has a `dev` script.
+ *
  * @internal Exported for testing
  */
 export async function validateFrontendApp(
 	appName: string,
 	appPath: string,
 	workspaceRoot: string,
+	framework?: FrontendFramework,
 ): Promise<FrontendValidationResult> {
 	const errors: string[] = [];
 	const warnings: string[] = [];
 	const fullPath = join(workspaceRoot, appPath);
 
-	// Check for Next.js config file
-	const hasConfigFile = NEXTJS_CONFIG_FILES.some((file) =>
-		existsSync(join(fullPath, file)),
-	);
-
-	if (!hasConfigFile) {
-		errors.push(
-			`Next.js config file not found. Expected one of: ${NEXTJS_CONFIG_FILES.join(', ')}`,
-		);
-	}
-
-	// Check for package.json
 	const packageJsonPath = join(fullPath, 'package.json');
-	if (existsSync(packageJsonPath)) {
-		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const pkg = require(packageJsonPath);
-			const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-
-			if (!deps.next) {
-				errors.push(
-					'Next.js not found in dependencies. Run: pnpm add next react react-dom',
-				);
-			}
-
-			// Check for dev script
-			if (!pkg.scripts?.dev) {
-				warnings.push(
-					'No "dev" script found in package.json. Turbo expects a "dev" script to run.',
-				);
-			}
-		} catch {
-			errors.push(`Failed to read package.json at ${packageJsonPath}`);
-		}
-	} else {
+	if (!existsSync(packageJsonPath)) {
 		errors.push(
 			`package.json not found at ${appPath}. Run: pnpm init in the app directory.`,
 		);
+		return { appName, valid: false, errors, warnings };
+	}
+
+	let pkg: {
+		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+		scripts?: Record<string, string>;
+	};
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		pkg = require(packageJsonPath);
+	} catch {
+		errors.push(`Failed to read package.json at ${packageJsonPath}`);
+		return { appName, valid: false, errors, warnings };
+	}
+
+	const deps: Record<string, string> = {
+		...pkg.dependencies,
+		...pkg.devDependencies,
+	};
+
+	const resolvedFramework =
+		framework ?? detectFrontendFramework(fullPath, deps);
+
+	if (resolvedFramework) {
+		const spec = FRONTEND_FRAMEWORKS[resolvedFramework];
+		const hasConfig = spec.configFiles.some((file) =>
+			existsSync(join(fullPath, file)),
+		);
+		if (!hasConfig) {
+			errors.push(
+				`${spec.displayName} config file not found. Expected one of: ${spec.configFiles.join(', ')}`,
+			);
+		}
+		if (!deps[spec.dependency]) {
+			errors.push(
+				`${spec.displayName} not found in dependencies. Run: ${spec.installCommand}`,
+			);
+		}
+	} else {
+		warnings.push(
+			'No recognized frontend framework detected (Next.js, Vite, Remix). ' +
+				'The app will run via its "dev" script. Set `framework` in your app config to enable strict validation.',
+		);
+	}
+
+	if (!pkg.scripts?.dev) {
+		if (resolvedFramework) {
+			warnings.push(
+				'No "dev" script found in package.json. Turbo expects a "dev" script to run.',
+			);
+		} else {
+			errors.push(
+				'No "dev" script found in package.json. Without a recognized framework or a dev script, there is nothing to run.',
+			);
+		}
 	}
 
 	return {
@@ -737,6 +833,7 @@ export async function validateFrontendApps(
 				appName,
 				app.path,
 				workspace.root,
+				app.framework as FrontendFramework | undefined,
 			);
 			results.push(result);
 		}
