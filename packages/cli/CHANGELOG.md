@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.35
+
+### Patch Changes
+
+- ✨ [`b1de1e0`](https://github.com/geekmidas/toolbox/commit/b1de1e01e1181ea5c3edcf7e23dcf3a5128fc0f3) Thanks [@geekmidas](https://github.com/geekmidas)! - Add different framework support
+
 ## 1.10.34
 
 ### Patch Changes
