@@ -1,5 +1,11 @@
 # @geekmidas/envkit
 
+## 1.0.6
+
+### Patch Changes
+
+- ✨ [`e90d1fa`](https://github.com/geekmidas/toolbox/commit/e90d1fa0838769b346a98f0762c77295ef4fd09b) Thanks [@geekmidas](https://github.com/geekmidas)! - Add url support for database
+
 ## 1.0.5
 
 ### Patch Changes
