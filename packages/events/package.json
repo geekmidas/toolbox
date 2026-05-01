@@ -50,7 +50,7 @@
 		"amqplib": "^0.10.3",
 		"@aws-sdk/client-sqs": "~3.908.0",
 		"@aws-sdk/client-sns": "~3.908.0",
-		"pg-boss": ">=10.0.0"
+		"pg-boss": ">=12.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/schema": {
@@ -73,6 +73,6 @@
 		"@geekmidas/schema": "workspace:^",
 		"@types/amqplib": "~0.10.7",
 		"@types/lodash.chunk": "~4.2.0",
-		"pg-boss": "^10.0.0"
+		"pg-boss": "~12.18.1"
 	}
 }
