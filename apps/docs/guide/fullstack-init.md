@@ -20,6 +20,7 @@ Running `gkm init my-app` walks you through these prompts in order:
 | 6 | Telescope | Yes / No | Yes |
 | 7 | Logger | Pino (recommended), Console | Pino |
 | 8 | Routes structure | Centralized (endpoints), Centralized (routes), Domain-based | Centralized (endpoints) |
+| 9 | Frontend framework *(fullstack only)* | **Next.js**, **TanStack Start**, **Expo** | Next.js |
 
 All prompts can be skipped with `--yes` to use defaults:
 
@@ -30,6 +31,18 @@ gkm init my-app --template fullstack --yes
 ::: info
 Selecting **Fullstack** automatically enables monorepo mode. The `--monorepo` flag is not needed.
 :::
+
+## Frontend Framework Choice
+
+Fullstack picks one frontend scaffold; the API + auth services stay the same regardless. Each framework gets its own conventions for client-bundled env vars, which the toolbox honors automatically when generating dependency URLs and Docker build args:
+
+| Framework | App path | Port | Public env prefix | Notes |
+|-----------|----------|------|-------------------|-------|
+| **Next.js** | `apps/web/` | 3001 | `NEXT_PUBLIC_` | App router, React Server Components, standalone Docker output. |
+| **TanStack Start** | `apps/web/` | 3001 | `VITE_` | File-based router on Vite + Nitro. |
+| **Expo** | `apps/app/` | 8081 (Metro) | `EXPO_PUBLIC_` | iOS + Android via expo-router; NativeWind for styling; better-auth Expo client wired in. |
+
+You can still use `framework: 'vite'` or `framework: 'remix'` by editing `gkm.config.ts` after init — the deploy/sniffer pipeline supports them — but `gkm init` only scaffolds the three above.
 
 ## What Gets Generated
 
@@ -70,23 +83,32 @@ my-app/
 │   │   │   └── index.ts         # Hono server entry
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   └── web/                     # Next.js frontend
+│   └── web/                     # Frontend (Next.js OR TanStack Start)
 │       ├── src/
-│       │   ├── app/
-│       │   │   ├── layout.tsx   # Root layout with Providers
-│       │   │   ├── page.tsx     # Home page
-│       │   │   ├── globals.css  # Imports UI package styles
-│       │   │   └── providers.tsx
-│       │   ├── api/
-│       │   │   └── index.ts     # Typed API client
+│       │   ├── app/             # (Next.js) Root layout, page, providers
+│       │   ├── routes/          # (TanStack Start) __root.tsx, index.tsx, …
+│       │   ├── api/index.ts     # Typed API client
 │       │   ├── config/
-│       │   │   ├── client.ts    # NEXT_PUBLIC_* config
+│       │   │   ├── client.ts    # NEXT_PUBLIC_* / VITE_* config
 │       │   │   └── server.ts    # Server-side secrets
 │       │   └── lib/
 │       │       ├── query-client.ts
 │       │       └── auth-client.ts
-│       ├── next.config.ts
-│       ├── postcss.config.mjs
+│       ├── next.config.ts       # (Next.js)
+│       ├── vite.config.ts       # (TanStack Start)
+│       ├── tsconfig.json
+│       └── package.json
+│
+│   # …or, when frontendFramework=expo, instead of apps/web:
+│   └── app/                     # Expo (React Native) app
+│       ├── app/                 # expo-router screens (_layout, index, login)
+│       ├── lib/                 # api, auth-client, query-client
+│       ├── app.config.ts
+│       ├── eas.json             # EAS build profiles + EXPO_PUBLIC_* env
+│       ├── babel.config.js
+│       ├── metro.config.js      # NativeWind integration
+│       ├── tailwind.config.ts
+│       ├── global.css
 │       ├── tsconfig.json
 │       └── package.json
 ├── packages/
@@ -193,9 +215,17 @@ export default defineWorkspace({
       type: 'frontend',
       path: 'apps/web',
       port: 3001,
-      framework: 'nextjs',
+      framework: 'nextjs', // or 'tanstack-start'
       dependencies: ['api', 'auth'],
     },
+    // ...or, when frontendFramework=expo:
+    // app: {
+    //   type: 'frontend',
+    //   path: 'apps/app',
+    //   port: 8081,
+    //   framework: 'expo',
+    //   dependencies: ['api', 'auth'],
+    // },
   },
   services: { db: true, cache: true },
 });
@@ -301,19 +331,47 @@ The Hono entry point mounts auth routes at `/api/auth/*` with CORS for trusted o
 
 **Scripts:** `dev` → `gkm dev --entry ./src/index.ts`, `db:migrate` → `npx @better-auth/cli migrate`, `db:generate` → `npx @better-auth/cli generate`
 
-### 8. Generate Web App (`apps/web`)
+### 8. Generate Frontend App
+
+The frontend scaffold depends on which `frontendFramework` you picked. All three share the same toolbox plumbing — typed API client (`@geekmidas/client`), `EnvironmentParser` for config, better-auth — but use different bundlers and env-var prefixes.
+
+#### Next.js (`apps/web`, default)
 
 A Next.js 16 frontend with React 19, React Query, and better-auth client.
 
-**Key features:**
 - Path aliases: `~/*` → `./src/*`, `@{name}/ui`, `@{name}/models`
 - Tailwind CSS v4 via PostCSS plugin
 - React Query with 60s stale time
 - better-auth client with magic link plugin
-- Separate server and client config files
+- Separate server and client config files (`NEXT_PUBLIC_*` for client)
 - Transpiles workspace packages via `next.config.ts`
 
 **Key dependencies:** `next`, `react`, `react-dom`, `@tanstack/react-query`, `better-auth`, `@geekmidas/client`, `@geekmidas/envkit`, `tailwindcss`
+
+#### TanStack Start (`apps/web`)
+
+A Vite + TanStack Start app with file-based routing via `@tanstack/react-router`.
+
+- File-based routes under `src/routes/` (e.g. `__root.tsx`, `index.tsx`)
+- Vite as the bundler — env vars use the `VITE_` prefix and are read via `import.meta.env`
+- Tailwind CSS v4 via the `@tailwindcss/vite` plugin
+- React Query, better-auth (magic link), typed API client
+- Server-side secrets stay in `src/config/server.ts` (read via `process.env`)
+
+**Key dependencies:** `@tanstack/react-start`, `@tanstack/react-router`, `vite`, `@vitejs/plugin-react`, `@tailwindcss/vite`, `@tanstack/react-query`, `better-auth`, `@geekmidas/client`, `@geekmidas/envkit`
+
+#### Expo (`apps/app`)
+
+A React Native mobile app on Expo SDK 55 with expo-router and NativeWind.
+
+- expo-router screens under `app/` (`_layout.tsx`, `index.tsx`, `login.tsx`)
+- NativeWind for Tailwind-style class names on React Native primitives
+- `@better-auth/expo` client with magic link, backed by `expo-secure-store`
+- React Query for data fetching against the `@{name}/api` typed client
+- Public env vars use the `EXPO_PUBLIC_` prefix and are inlined into the bundle
+- `eas.json` includes dev / preview / production build profiles, each with its own `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_AUTH_URL`
+
+**Key dependencies:** `expo`, `expo-router`, `expo-secure-store`, `@better-auth/expo`, `nativewind`, `react-native`, `@tanstack/react-query`, `@geekmidas/client`
 
 ### 9. Generate UI Package (`packages/ui`)
 
@@ -450,6 +508,7 @@ When running with `--yes`, these defaults are used:
 | Telescope | Enabled |
 | Logger | Pino |
 | Routes structure | Centralized (endpoints) |
+| Frontend framework *(fullstack only)* | Next.js |
 
 ## Team Onboarding
 

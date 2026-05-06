@@ -48,6 +48,14 @@ export interface ServicesSelection {
 }
 
 /**
+ * Frontend framework for the fullstack template's client app.
+ * Limited to the three with first-class scaffolds; the wider
+ * `FrontendFramework` type also covers `vite` and `remix` which
+ * users can configure manually after init.
+ */
+export type FullstackFrontendFramework = 'nextjs' | 'tanstack-start' | 'expo';
+
+/**
  * Options collected from user prompts
  */
 export interface TemplateOptions {
@@ -67,6 +75,8 @@ export interface TemplateOptions {
 	deployTarget: DeployTarget;
 	/** Services selection */
 	services: ServicesSelection;
+	/** Frontend framework (fullstack template only) */
+	frontendFramework?: FullstackFrontendFramework;
 }
 
 /**
@@ -153,6 +163,27 @@ export const allTemplateChoices = [
 		title: 'Worker',
 		value: 'worker' as TemplateName,
 		description: 'Background job processing',
+	},
+];
+
+/**
+ * Frontend framework choices for the fullstack template prompt.
+ */
+export const frontendFrameworkChoices = [
+	{
+		title: 'Next.js',
+		value: 'nextjs' as FullstackFrontendFramework,
+		description: 'React server components, app router (default)',
+	},
+	{
+		title: 'TanStack Start',
+		value: 'tanstack-start' as FullstackFrontendFramework,
+		description: 'File-based router on Vite + Nitro',
+	},
+	{
+		title: 'Expo',
+		value: 'expo' as FullstackFrontendFramework,
+		description: 'React Native mobile app (iOS + Android)',
 	},
 ];
 

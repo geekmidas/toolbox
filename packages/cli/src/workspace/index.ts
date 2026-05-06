@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import type { GkmConfig } from '../types.js';
+import { getPublicEnvPrefix } from './publicEnv.js';
 import {
 	formatValidationErrors,
 	safeValidateWorkspaceConfig,
@@ -17,6 +18,11 @@ import type {
 } from './types.js';
 import { isWorkspaceConfig } from './types.js';
 
+export {
+	getPublicEnvPrefix,
+	PUBLIC_ENV_PREFIXES,
+	stripPublicPrefix,
+} from './publicEnv.js';
 export {
 	formatValidationErrors,
 	getDeployTargetError,
@@ -350,7 +356,12 @@ export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 
 /**
  * Generate environment variables for app dependencies.
- * Each dependency gets both a `{DEP_NAME}_URL` and `NEXT_PUBLIC_{DEP_NAME}_URL` variable.
+ *
+ * Each dependency gets the un-prefixed `{DEP}_URL` (for server-side use) and,
+ * when the consuming app's framework supports a public-var prefix, also the
+ * prefixed form (e.g. `NEXT_PUBLIC_{DEP}_URL` for Next.js, `VITE_{DEP}_URL`
+ * for Vite/TanStack Start). The prefixed form is what gets bundled into the
+ * client at build time.
  */
 export function getDependencyEnvVars(
 	workspace: NormalizedWorkspace,
@@ -361,6 +372,7 @@ export function getDependencyEnvVars(
 	if (!app) return {};
 
 	const env: Record<string, string> = {};
+	const publicPrefix = getPublicEnvPrefix(app.framework);
 
 	for (const depName of app.dependencies) {
 		const dep = workspace.apps[depName];
@@ -368,7 +380,9 @@ export function getDependencyEnvVars(
 			const url = `${urlPrefix}:${dep.port}`;
 			const envKey = `${depName.toUpperCase()}_URL`;
 			env[envKey] = url;
-			env[`NEXT_PUBLIC_${envKey}`] = url;
+			if (publicPrefix) {
+				env[`${publicPrefix}${envKey}`] = url;
+			}
 		}
 	}
 

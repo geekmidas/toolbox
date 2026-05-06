@@ -517,6 +517,34 @@ describe('resolveEnvVar', () => {
 				expect(resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context)).toBeUndefined();
 			});
 		});
+
+		describe('VITE_ prefix', () => {
+			it('should resolve VITE_API_URL from dependencyUrls.api', () => {
+				const context = createContext({
+					dependencyUrls: { api: 'https://api.example.com' },
+				});
+
+				expect(resolveEnvVar('VITE_API_URL', context)).toBe(
+					'https://api.example.com',
+				);
+			});
+
+			it('should resolve all of AUTH_URL, NEXT_PUBLIC_AUTH_URL, and VITE_AUTH_URL to the same value', () => {
+				const context = createContext({
+					dependencyUrls: { auth: 'https://auth.example.com' },
+				});
+
+				expect(resolveEnvVar('AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+				expect(resolveEnvVar('NEXT_PUBLIC_AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+				expect(resolveEnvVar('VITE_AUTH_URL', context)).toBe(
+					'https://auth.example.com',
+				);
+			});
+		});
 	});
 });
 

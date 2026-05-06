@@ -688,6 +688,23 @@ const FRONTEND_FRAMEWORKS: Record<FrontendFramework, FrontendFrameworkSpec> = {
 		dependency: 'vite',
 		installCommand: 'pnpm add -D vite',
 	},
+	'tanstack-start': {
+		displayName: 'TanStack Start',
+		configFiles: [
+			'vite.config.js',
+			'vite.config.ts',
+			'vite.config.mjs',
+			'vite.config.cjs',
+		],
+		dependency: '@tanstack/react-start',
+		installCommand: 'pnpm add @tanstack/react-start @tanstack/react-router',
+	},
+	expo: {
+		displayName: 'Expo',
+		configFiles: ['app.config.ts', 'app.config.js', 'app.json'],
+		dependency: 'expo',
+		installCommand: 'pnpm add expo',
+	},
 };
 
 /**
@@ -699,7 +716,18 @@ function detectFrontendFramework(
 	fullPath: string,
 	deps: Record<string, string>,
 ): FrontendFramework | undefined {
-	const order: FrontendFramework[] = ['nextjs', 'remix', 'vite'];
+	// tanstack-start before vite/remix so its more specific dep wins; vite last
+	// because plain vite is the fallback when neither nextjs/remix/tanstack match.
+	// Order matters: more specific deps win over general ones.
+	// expo first (own dep), then tanstack-start (uses vite), remix (uses vite),
+	// nextjs (own dep), and plain vite last as the fallback.
+	const order: FrontendFramework[] = [
+		'expo',
+		'tanstack-start',
+		'nextjs',
+		'remix',
+		'vite',
+	];
 	for (const name of order) {
 		if (deps[FRONTEND_FRAMEWORKS[name].dependency]) {
 			return name;

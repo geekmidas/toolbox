@@ -61,6 +61,7 @@ import { readStageSecrets } from '../secrets/storage.js';
 import {
 	getAppBuildOrder,
 	getDeployTargetError,
+	getPublicEnvPrefix,
 	isDeployTargetSupported,
 } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
@@ -1661,7 +1662,8 @@ export async function workspaceDeployCommand(
 					dependencyUrls,
 				};
 
-				// Resolve all env vars BEFORE Docker build (NEXT_PUBLIC_* must be present at build time)
+				// Resolve all env vars BEFORE Docker build (public-prefixed vars
+				// must be present at bundler build time so they get inlined).
 				const sniffedVars = sniffedApps.get(appName)?.requiredEnvVars ?? [];
 				const { valid, missing, resolved } = validateEnvVars(
 					sniffedVars,
@@ -1678,14 +1680,18 @@ export async function workspaceDeployCommand(
 					);
 				}
 
-				// Build args: all NEXT_PUBLIC_* vars must be present at Next.js build time
+				// Build args: only the framework's public-prefixed vars get baked
+				// into the bundle. Server-only vars stay as runtime env.
+				const publicPrefix = getPublicEnvPrefix(app.framework);
 				const buildArgs: string[] = [];
 				const publicUrlArgNames: string[] = [];
 
-				for (const [key, value] of Object.entries(resolved)) {
-					if (key.startsWith('NEXT_PUBLIC_')) {
-						buildArgs.push(`${key}=${value}`);
-						publicUrlArgNames.push(key);
+				if (publicPrefix) {
+					for (const [key, value] of Object.entries(resolved)) {
+						if (key.startsWith(publicPrefix)) {
+							buildArgs.push(`${key}=${value}`);
+							publicUrlArgNames.push(key);
+						}
 					}
 				}
 
@@ -1693,7 +1699,7 @@ export async function workspaceDeployCommand(
 					logger.log(`      Build args: ${publicUrlArgNames.join(', ')}`);
 				}
 
-				// Build Docker image with NEXT_PUBLIC_* vars as build args
+				// Build Docker image with public-prefixed vars as build args
 				const imageName = `${workspace.name}-${appName}`;
 				const imageRef = registry
 					? `${registry}/${imageName}:${imageTag}`

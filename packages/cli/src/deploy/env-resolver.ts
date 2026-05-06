@@ -8,6 +8,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { StageSecrets } from '../secrets/types';
+import { stripPublicPrefix } from '../workspace/publicEnv';
 import type { NormalizedAppConfig } from '../workspace/types';
 import {
 	type AppDbCredentials,
@@ -208,17 +209,11 @@ export function resolveEnvVar(
 	}
 
 	// Check dependency URLs (e.g., AUTH_URL -> dependencyUrls.auth)
-	// Also supports NEXT_PUBLIC_ prefix for frontend apps (NEXT_PUBLIC_AUTH_URL -> dependencyUrls.auth)
+	// Also supports any known public prefix (NEXT_PUBLIC_, VITE_, ...) so
+	// VITE_AUTH_URL and NEXT_PUBLIC_AUTH_URL both resolve to dependencyUrls.auth.
 	if (context.dependencyUrls && varName.endsWith('_URL')) {
-		let depName: string;
-
-		if (varName.startsWith('NEXT_PUBLIC_')) {
-			// NEXT_PUBLIC_AUTH_URL -> auth
-			depName = varName.slice(12, -4).toLowerCase();
-		} else {
-			// AUTH_URL -> auth
-			depName = varName.slice(0, -4).toLowerCase();
-		}
+		const stripped = stripPublicPrefix(varName) ?? varName;
+		const depName = stripped.slice(0, -4).toLowerCase();
 
 		if (context.dependencyUrls[depName]) {
 			return context.dependencyUrls[depName];

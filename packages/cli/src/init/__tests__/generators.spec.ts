@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { generateConfigFiles } from '../generators/config.js';
 import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
+import { generateExpoAppFiles } from '../generators/mobile-expo.js';
 import { generateModelsPackage } from '../generators/models.js';
 import { generateMonorepoFiles } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
 import { generateTestFiles } from '../generators/test.js';
 import { generateUiPackageFiles } from '../generators/ui.js';
+import { generateTanStackWebFiles } from '../generators/web-tanstack.js';
 import { apiTemplate } from '../templates/api.js';
 import type { TemplateOptions } from '../templates/index.js';
 import { minimalTemplate } from '../templates/minimal.js';
@@ -428,6 +430,151 @@ describe('generateMonorepoFiles', () => {
 		expect(pkg.scripts.dev).toBe('turbo dev');
 		expect(pkg.scripts.build).toBe('turbo build');
 		expect(pkg.scripts.lint).toBe('biome lint .');
+	});
+});
+
+describe('generateTanStackWebFiles', () => {
+	const fullstackOptions: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+		frontendFramework: 'tanstack-start',
+	};
+
+	it('returns empty array for non-fullstack template', () => {
+		expect(generateTanStackWebFiles(baseOptions)).toHaveLength(0);
+	});
+
+	it('generates the expected file paths', () => {
+		const files = generateTanStackWebFiles(fullstackOptions);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('apps/web/package.json');
+		expect(paths).toContain('apps/web/vite.config.ts');
+		expect(paths).toContain('apps/web/src/router.tsx');
+		expect(paths).toContain('apps/web/src/routes/__root.tsx');
+		expect(paths).toContain('apps/web/src/routes/index.tsx');
+		expect(paths).toContain('apps/web/src/config/client.ts');
+	});
+
+	it('uses VITE_ prefix in client config, not NEXT_PUBLIC_', () => {
+		const files = generateTanStackWebFiles(fullstackOptions);
+		const clientConfig = files.find(
+			(f) => f.path === 'apps/web/src/config/client.ts',
+		);
+		expect(clientConfig).toBeDefined();
+		expect(clientConfig!.content).toContain('VITE_API_URL');
+		expect(clientConfig!.content).toContain('VITE_AUTH_URL');
+		expect(clientConfig!.content).not.toContain('NEXT_PUBLIC_');
+	});
+
+	it('declares tanstack and vite as dependencies', () => {
+		const files = generateTanStackWebFiles(fullstackOptions);
+		const pkg = JSON.parse(
+			files.find((f) => f.path === 'apps/web/package.json')!.content,
+		);
+		expect(pkg.dependencies['@tanstack/react-start']).toBeDefined();
+		expect(pkg.dependencies['@tanstack/react-router']).toBeDefined();
+		expect(pkg.devDependencies.vite).toBeDefined();
+		expect(pkg.dependencies.next).toBeUndefined();
+	});
+});
+
+describe('generateExpoAppFiles', () => {
+	const fullstackOptions: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+		frontendFramework: 'expo',
+	};
+
+	it('returns empty array for non-fullstack template', () => {
+		expect(generateExpoAppFiles(baseOptions)).toHaveLength(0);
+	});
+
+	it('generates the expected Expo file paths', () => {
+		const files = generateExpoAppFiles(fullstackOptions);
+		const paths = files.map((f) => f.path);
+		expect(paths).toContain('apps/app/package.json');
+		expect(paths).toContain('apps/app/app.config.ts');
+		expect(paths).toContain('apps/app/eas.json');
+		expect(paths).toContain('apps/app/babel.config.js');
+		expect(paths).toContain('apps/app/metro.config.js');
+		expect(paths).toContain('apps/app/app/_layout.tsx');
+		expect(paths).toContain('apps/app/app/index.tsx');
+		expect(paths).toContain('apps/app/app/login.tsx');
+		expect(paths).toContain('apps/app/lib/auth-client.ts');
+	});
+
+	it('uses EXPO_PUBLIC_ prefix in config.ts', () => {
+		const files = generateExpoAppFiles(fullstackOptions);
+		const configTs = files.find((f) => f.path === 'apps/app/config.ts');
+		expect(configTs).toBeDefined();
+		expect(configTs!.content).toContain('EXPO_PUBLIC_API_URL');
+		expect(configTs!.content).toContain('EXPO_PUBLIC_AUTH_URL');
+		expect(configTs!.content).not.toContain('VITE_');
+		expect(configTs!.content).not.toContain('NEXT_PUBLIC_');
+	});
+
+	it('seeds eas.json with EXPO_PUBLIC_ env vars per profile', () => {
+		const files = generateExpoAppFiles(fullstackOptions);
+		const eas = JSON.parse(
+			files.find((f) => f.path === 'apps/app/eas.json')!.content,
+		);
+		expect(eas.build.dev.env.EXPO_PUBLIC_API_URL).toBeDefined();
+		expect(eas.build.dev.env.EXPO_PUBLIC_AUTH_URL).toBeDefined();
+	});
+
+	it('declares expo + better-auth/expo as dependencies', () => {
+		const files = generateExpoAppFiles(fullstackOptions);
+		const pkg = JSON.parse(
+			files.find((f) => f.path === 'apps/app/package.json')!.content,
+		);
+		expect(pkg.dependencies.expo).toBeDefined();
+		expect(pkg.dependencies['@better-auth/expo']).toBeDefined();
+		expect(pkg.dependencies['expo-router']).toBeDefined();
+		expect(pkg.dependencies.next).toBeUndefined();
+	});
+});
+
+describe('generateMonorepoFiles - frontendFramework wiring', () => {
+	const fullstackBase: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+	};
+
+	it('emits framework: nextjs by default', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'nextjs' },
+			minimalTemplate,
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'nextjs'");
+		expect(cfg!.content).toContain("path: 'apps/web'");
+	});
+
+	it('emits framework: tanstack-start when selected', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'tanstack-start' },
+			minimalTemplate,
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'tanstack-start'");
+		expect(cfg!.content).toContain("path: 'apps/web'");
+	});
+
+	it('emits framework: expo and apps/app path when selected', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'expo' },
+			minimalTemplate,
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'expo'");
+		expect(cfg!.content).toContain("path: 'apps/app'");
+		expect(cfg!.content).toContain('port: 8081');
 	});
 });
 

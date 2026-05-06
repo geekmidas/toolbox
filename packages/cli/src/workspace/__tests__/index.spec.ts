@@ -604,6 +604,98 @@ describe('getDependencyEnvVars', () => {
 
 		expect(envVars).toEqual({});
 	});
+
+	it('should emit VITE_ prefix for vite apps', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 5173,
+					framework: 'vite',
+					dependencies: ['api'],
+				},
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const workspace = normalizeWorkspace(config, '/project');
+		const envVars = getDependencyEnvVars(workspace, 'web');
+
+		expect(envVars).toEqual({
+			API_URL: 'http://localhost:3000',
+			VITE_API_URL: 'http://localhost:3000',
+		});
+		expect(envVars.NEXT_PUBLIC_API_URL).toBeUndefined();
+	});
+
+	it('should emit VITE_ prefix for tanstack-start apps', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3000,
+					framework: 'tanstack-start',
+					dependencies: ['api', 'auth'],
+				},
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3001,
+					routes: './src/**/*.ts',
+				},
+				auth: {
+					type: 'backend',
+					path: 'apps/auth',
+					port: 3002,
+					entry: './src/index.ts',
+				},
+			},
+		};
+
+		const workspace = normalizeWorkspace(config, '/project');
+		const envVars = getDependencyEnvVars(workspace, 'web');
+
+		expect(envVars).toEqual({
+			API_URL: 'http://localhost:3001',
+			VITE_API_URL: 'http://localhost:3001',
+			AUTH_URL: 'http://localhost:3002',
+			VITE_AUTH_URL: 'http://localhost:3002',
+		});
+	});
+
+	it('should emit only un-prefixed URLs for remix apps', () => {
+		const config: WorkspaceConfig = {
+			apps: {
+				web: {
+					type: 'frontend',
+					path: 'apps/web',
+					port: 3000,
+					framework: 'remix',
+					dependencies: ['api'],
+				},
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3001,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const workspace = normalizeWorkspace(config, '/project');
+		const envVars = getDependencyEnvVars(workspace, 'web');
+
+		expect(envVars).toEqual({
+			API_URL: 'http://localhost:3001',
+		});
+	});
 });
 
 describe('getEndpointForStage', () => {

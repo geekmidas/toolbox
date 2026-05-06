@@ -315,6 +315,47 @@ export default defineConfig({
 }
 
 /**
+ * Generate the frontend app entry for the workspace config based on the
+ * selected `frontendFramework`. Defaults to Next.js for backwards compat.
+ */
+function generateFrontendAppEntry(options: TemplateOptions): string {
+	switch (options.frontendFramework) {
+		case 'tanstack-start':
+			return `web: {
+      type: 'frontend',
+      framework: 'tanstack-start',
+      path: 'apps/web',
+      port: 3001,
+      dependencies: ['api', 'auth'],
+      config: {
+        client: './src/config/client.ts',
+        server: './src/config/server.ts',
+      },
+    },`;
+		case 'expo':
+			return `app: {
+      type: 'frontend',
+      framework: 'expo',
+      path: 'apps/app',
+      port: 8081,
+      dependencies: ['api', 'auth'],
+    },`;
+		default:
+			return `web: {
+      type: 'frontend',
+      framework: 'nextjs',
+      path: 'apps/web',
+      port: 3001,
+      dependencies: ['api', 'auth'],
+      config: {
+        client: './src/config/client.ts',
+        server: './src/config/server.ts',
+      },
+    },`;
+	}
+}
+
+/**
  * Generate gkm.config.ts with defineWorkspace for fullstack template
  */
 function generateWorkspaceConfig(options: TemplateOptions): string {
@@ -368,17 +409,7 @@ export default defineWorkspace({
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
     },
-    web: {
-      type: 'frontend',
-      framework: 'nextjs',
-      path: 'apps/web',
-      port: 3001,
-      dependencies: ['api', 'auth'],
-      config: {
-        client: './src/config/client.ts',
-        server: './src/config/server.ts',
-      },
-    },
+    ${generateFrontendAppEntry(options)}
   },
   shared: {
     packages: ['packages/*'],

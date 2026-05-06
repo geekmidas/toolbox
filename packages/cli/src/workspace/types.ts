@@ -77,7 +77,12 @@ export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
  * }
  * ```
  */
-export type FrontendFramework = 'nextjs' | 'remix' | 'vite';
+export type FrontendFramework =
+	| 'nextjs'
+	| 'remix'
+	| 'vite'
+	| 'tanstack-start'
+	| 'expo';
 
 /**
  * Service image configuration for custom Docker images.
