@@ -1,5 +1,15 @@
 # @geekmidas/cli
 
+## 1.10.36
+
+### Patch Changes
+
+- [`2b83833`](https://github.com/geekmidas/toolbox/commit/2b83833758dce93e37104e7f4a83653000ab027b) Thanks [@geekmidas](https://github.com/geekmidas)! - Support custom environment variables for frontends
+
+- 🐛 [`017e93a`](https://github.com/geekmidas/toolbox/commit/017e93aeaa1edc55a7f1f0520b08e8823e26343c) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix `gkm openapi` failing on workspace builds when an app uses tsconfig path aliases (e.g. `~/*`) defined only in that app's `tsconfig.json`.
+
+  Workspace mode now spawns one subprocess per backend app with `cwd` set to the app's directory, giving each generation its own tsx instance whose tsconfig discovery picks up the app's `paths` aliases. Adds a `--app <name>` flag to `gkm openapi` that the workspace flow uses internally to target a single app.
+
 ## 1.10.35
 
 ### Patch Changes
