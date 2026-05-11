@@ -1,4 +1,4 @@
-import type { BackendFramework, FrontendFramework } from './types.js';
+import type { Framework } from './types.js';
 
 /**
  * All public env-var prefixes the toolbox understands.
@@ -27,9 +27,7 @@ export const PUBLIC_ENV_PREFIXES = [
  * preserve the historical default. Backend apps never read these vars
  * from a bundle, so the prefix only affects scaffolding/symmetry.
  */
-export function getPublicEnvPrefix(
-	framework?: FrontendFramework | BackendFramework,
-): string {
+export function getPublicEnvPrefix(framework?: Framework): string {
 	switch (framework) {
 		case 'vite':
 		case 'tanstack-start':
