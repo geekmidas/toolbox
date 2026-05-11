@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import type { GkmConfig } from '../types.js';
+import { getPublicEnvPrefix } from './publicEnv.js';
 import {
 	formatValidationErrors,
 	safeValidateWorkspaceConfig,
@@ -17,6 +18,11 @@ import type {
 } from './types.js';
 import { isWorkspaceConfig } from './types.js';
 
+export {
+	getPublicEnvPrefix,
+	PUBLIC_ENV_PREFIXES,
+	stripPublicPrefix,
+} from './publicEnv.js';
 export {
 	formatValidationErrors,
 	getDeployTargetError,
@@ -349,33 +355,13 @@ export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 }
 
 /**
- * Public env-var prefix used by an app to expose values to client/device code.
- *
- * Each web/mobile framework has its own convention for which env vars get
- * bundled into the client. Backend apps and Remix (which only exposes vars
- * via loaders) get no prefix — only the bare `{DEP}_URL` is emitted.
- */
-function getPublicEnvPrefix(app: NormalizedAppConfig): string | null {
-	switch (app.framework) {
-		case 'nextjs':
-			return 'NEXT_PUBLIC_';
-		case 'vite':
-		case 'tanstack-start':
-			return 'VITE_';
-		case 'expo':
-			return 'EXPO_PUBLIC_';
-		default:
-			return null;
-	}
-}
-
-/**
  * Generate environment variables for app dependencies.
  *
- * Each dependency gets a `{DEP}_URL` (server-side / build-time). Web and
- * mobile apps additionally get a public-prefixed copy (e.g.
- * `NEXT_PUBLIC_{DEP}_URL`, `VITE_{DEP}_URL`, `EXPO_PUBLIC_{DEP}_URL`) so
- * the value reaches the browser/device bundle.
+ * Each dependency gets the un-prefixed `{DEP}_URL` (for server-side use) and,
+ * when the consuming app's framework supports a public-var prefix, also the
+ * prefixed form (e.g. `NEXT_PUBLIC_{DEP}_URL` for Next.js, `VITE_{DEP}_URL`
+ * for Vite/TanStack Start). The prefixed form is what gets bundled into the
+ * client at build time.
  */
 export function getDependencyEnvVars(
 	workspace: NormalizedWorkspace,
@@ -386,7 +372,7 @@ export function getDependencyEnvVars(
 	if (!app) return {};
 
 	const env: Record<string, string> = {};
-	const publicPrefix = getPublicEnvPrefix(app);
+	const publicPrefix = getPublicEnvPrefix(app.framework);
 
 	for (const depName of app.dependencies) {
 		const dep = workspace.apps[depName];
@@ -402,12 +388,6 @@ export function getDependencyEnvVars(
 
 	return env;
 }
-
-/**
- * Public env-var prefix for an app's framework. Exposed for callers in
- * deploy/sniffer that need to compute the same prefix.
- */
-export { getPublicEnvPrefix };
 
 /**
  * Resolve the Dokploy endpoint for a specific stage.

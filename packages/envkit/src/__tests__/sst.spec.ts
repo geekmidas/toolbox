@@ -140,6 +140,8 @@ describe('sst', () => {
 					DATABASE_PASSWORD: 'password123',
 					DATABASE_PORT: 5432,
 					DATABASE_USERNAME: 'postgres',
+					DATABASE_URL:
+						'postgresql://postgres:password123@localhost:5432/myapp',
 				});
 			});
 
@@ -162,6 +164,8 @@ describe('sst', () => {
 					MAIN_DB_HOST: 'prod.example.com',
 					MAIN_DB_PASSWORD: 'prod-password',
 					MAIN_DB_PORT: 5433,
+					MAIN_DB_URL:
+						'postgresql://prod_user:prod-password@prod.example.com:5433/prod_db',
 					MAIN_DB_USERNAME: 'prod_user',
 				});
 			});
@@ -296,6 +300,8 @@ describe('sst', () => {
 					DATABASE_HOST: 'db.example.com',
 					DATABASE_PASSWORD: 'db-pass',
 					DATABASE_PORT: 5432,
+					DATABASE_URL:
+						'postgresql://app_user:db-pass@db.example.com:5432/app_db',
 					DATABASE_USERNAME: 'app_user',
 					JWT_SECRET: 'jwt-secret',
 					UPLOADS_NAME: 'uploads-bucket',

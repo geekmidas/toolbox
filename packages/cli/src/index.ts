@@ -286,13 +286,17 @@ program
 program
 	.command('openapi')
 	.description('Generate OpenAPI specification from endpoints')
-	.action(async () => {
+	.option(
+		'--app <name>',
+		'Workspace mode: generate for a single named backend app',
+	)
+	.action(async (options: { app?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
 				process.chdir(globalOptions.cwd);
 			}
-			await openapiCommand({});
+			await openapiCommand({ app: options.app });
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

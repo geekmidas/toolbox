@@ -143,6 +143,7 @@ const postgresResolver = (key: string, value: PostgresValue) => ({
 	[`${key}Password`]: value.password,
 	[`${key}Port`]: value.port,
 	[`${key}Username`]: value.username,
+	[`${key}Url`]: `postgresql://${encodeURIComponent(value.username)}:${encodeURIComponent(value.password)}@${value.host}:${value.port}/${value.database}`,
 });
 
 const bucketResolver = (name: string, value: BucketValue) => ({

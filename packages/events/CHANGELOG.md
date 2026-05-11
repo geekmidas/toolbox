@@ -1,5 +1,11 @@
 # @geekmidas/events
 
+## 1.1.1
+
+### Patch Changes
+
+- ⬆️ [`bf6c028`](https://github.com/geekmidas/toolbox/commit/bf6c0286c046794c322ebf7765378fc6ae1f9155) Thanks [@geekmidas](https://github.com/geekmidas)! - Upgrade pg-boss to 12
+
 ## 1.1.0
 
 ### Minor Changes

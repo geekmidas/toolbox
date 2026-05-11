@@ -17,6 +17,7 @@ import {
 	generateDockerFiles,
 } from './generators/docker.js';
 import { generateEnvFiles } from './generators/env.js';
+import { generateExpoAppFiles } from './generators/mobile-expo.js';
 import { generateModelsPackage } from './generators/models.js';
 import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
@@ -24,10 +25,13 @@ import { generateSourceFiles } from './generators/source.js';
 import { generateTestFiles } from './generators/test.js';
 import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
+import { generateTanStackWebFiles } from './generators/web-tanstack.js';
 import {
 	type DeployTarget,
 	deployTargetChoices,
 	eventsBackendChoices,
+	type FullstackFrontendFramework,
+	frontendFrameworkChoices,
 	getTemplate,
 	isFullstackTemplate,
 	loggerTypeChoices,
@@ -154,6 +158,18 @@ export async function initCommand(
 				choices: routesStructureChoices,
 				initial: 0,
 			},
+			{
+				// Only prompt for frontend framework on the fullstack template.
+				type: (_prev, values) =>
+					!options.yes &&
+					(options.template === 'fullstack' || values.template === 'fullstack')
+						? 'select'
+						: null,
+				name: 'frontendFramework',
+				message: 'Frontend framework:',
+				choices: frontendFrameworkChoices,
+				initial: 0,
+			},
 		],
 		{ onCancel },
 	);
@@ -221,6 +237,11 @@ export async function initCommand(
 		: (answers.deployTarget ?? 'dokploy');
 
 	const database = services.db;
+	const frontendFramework: FullstackFrontendFramework | undefined = isFullstack
+		? options.yes
+			? 'nextjs'
+			: (answers.frontendFramework ?? 'nextjs')
+		: undefined;
 	const templateOptions: TemplateOptions = {
 		name,
 		template,
@@ -236,6 +257,7 @@ export async function initCommand(
 		packageManager: pkgManager,
 		deployTarget,
 		services,
+		frontendFramework,
 	};
 
 	const targetDir = join(cwd, name);
@@ -293,8 +315,14 @@ export async function initCommand(
 			]
 		: [];
 
-	// Collect web app files for fullstack template
-	const webAppFiles = isFullstack ? generateWebAppFiles(templateOptions) : [];
+	// Collect frontend app files for fullstack template, dispatched by framework
+	const webAppFiles = isFullstack
+		? frontendFramework === 'tanstack-start'
+			? generateTanStackWebFiles(templateOptions)
+			: frontendFramework === 'expo'
+				? generateExpoAppFiles(templateOptions)
+				: generateWebAppFiles(templateOptions)
+		: [];
 
 	// Collect auth app files for fullstack template
 	const authAppFiles = isFullstack ? generateAuthAppFiles(templateOptions) : [];
@@ -473,7 +501,16 @@ function printNextSteps(
 		console.log(`  │   ├── api/          # Backend API`);
 		if (isFullstackTemplate(options.template)) {
 			console.log(`  │   ├── auth/         # Auth service (better-auth)`);
-			console.log(`  │   └── web/          # Next.js frontend`);
+			switch (options.frontendFramework) {
+				case 'tanstack-start':
+					console.log(`  │   └── web/          # TanStack Start frontend`);
+					break;
+				case 'expo':
+					console.log(`  │   └── app/          # Expo (React Native) app`);
+					break;
+				default:
+					console.log(`  │   └── web/          # Next.js frontend`);
+			}
 		}
 		console.log(`  ├── packages/`);
 		console.log(`  │   ├── models/       # Shared Zod schemas`);

@@ -892,6 +892,125 @@ describe('Workspace Dev Server', () => {
 
 			expect(result.valid).toBe(true);
 		});
+
+		it('should validate a properly configured Vite app', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			writeFileSync(join(appDir, 'vite.config.ts'), 'export default {}');
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					devDependencies: { vite: '^5.0.0' },
+					scripts: { dev: 'vite' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+			expect(result.errors).toHaveLength(0);
+		});
+
+		it('should validate a properly configured Remix app', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			writeFileSync(join(appDir, 'vite.config.ts'), 'export default {}');
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					devDependencies: {
+						'@remix-run/dev': '^2.0.0',
+						vite: '^5.0.0',
+					},
+					scripts: { dev: 'remix vite:dev' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+			expect(result.errors).toHaveLength(0);
+		});
+
+		it('should warn but stay valid for a custom frontend with a dev script', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// No recognized config, no recognized dep — but has a dev script
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { react: '^18.0.0' },
+					scripts: { dev: 'node serve.mjs' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(true);
+			expect(result.errors).toHaveLength(0);
+			expect(result.warnings).toContainEqual(
+				expect.stringContaining('No recognized frontend framework detected'),
+			);
+		});
+
+		it('should error for a custom frontend without a dev script', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { react: '^18.0.0' },
+				}),
+			);
+
+			const result = await validateFrontendApp('web', 'apps/web', testDir);
+
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('No "dev" script found'),
+			);
+		});
+
+		it('should validate strictly against an explicit framework', async () => {
+			const appDir = join(testDir, 'apps/web');
+			mkdirSync(appDir, { recursive: true });
+
+			// Has next.config.js + next dep — auto-detect would say nextjs
+			writeFileSync(join(appDir, 'next.config.js'), 'module.exports = {}');
+			writeFileSync(
+				join(appDir, 'package.json'),
+				JSON.stringify({
+					name: 'web',
+					dependencies: { next: '^14.0.0' },
+					scripts: { dev: 'next dev' },
+				}),
+			);
+
+			// Caller explicitly declares Vite — should fail because vite
+			// config and vite dep are missing.
+			const result = await validateFrontendApp(
+				'web',
+				'apps/web',
+				testDir,
+				'vite',
+			);
+
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('Vite config file not found'),
+			);
+			expect(result.errors).toContainEqual(
+				expect.stringContaining('Vite not found in dependencies'),
+			);
+		});
 	});
 
 	describe('validateFrontendApps', () => {

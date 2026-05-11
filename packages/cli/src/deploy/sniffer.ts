@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
 import { normalizeRoutes } from '../workspace/client-generator.js';
-import { getPublicEnvPrefix } from '../workspace/index.js';
+import { getPublicEnvPrefix } from '../workspace/publicEnv.js';
 import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -116,11 +116,12 @@ export async function sniffAppEnvironment(
 ): Promise<SniffedEnvironment> {
 	const { logWarnings = true, markOptional = false } = options;
 
-	// 1. Web/mobile apps - handle dependencies and config sniffing
+	// 1. Frontend apps - handle dependencies and config sniffing
 	if (app.type === 'web' || app.type === 'mobile') {
-		// Auto-generate {PREFIX}{DEP}_URL from dependencies. Prefix depends
-		// on framework: NEXT_PUBLIC_, VITE_, EXPO_PUBLIC_, or none (Remix).
-		const publicPrefix = getPublicEnvPrefix(app);
+		// Auto-generate {prefix}{DEP}_URL from dependencies, where prefix matches
+		// the framework's public-var convention (NEXT_PUBLIC_, VITE_, ...).
+		// For frameworks without a prefix (e.g. Remix), no dep var is required.
+		const publicPrefix = getPublicEnvPrefix(app.framework);
 		const depVars = publicPrefix
 			? (app.dependencies ?? []).map(
 					(dep) => `${publicPrefix}${dep.toUpperCase()}_URL`,
@@ -570,7 +571,7 @@ export async function sniffAllApps(
 }
 
 // Export for testing
-export {
+export type {
 	sniffEnvParser as _sniffEnvParser,
 	sniffEntryFile as _sniffEntryFile,
 	sniffRouteFiles as _sniffRouteFiles,

@@ -1,5 +1,33 @@
 # @geekmidas/example
 
+## 1.0.67
+
+### Patch Changes
+
+- Updated dependencies [[`2b83833`](https://github.com/geekmidas/toolbox/commit/2b83833758dce93e37104e7f4a83653000ab027b), [`017e93a`](https://github.com/geekmidas/toolbox/commit/017e93aeaa1edc55a7f1f0520b08e8823e26343c)]:
+  - @geekmidas/cli@1.10.36
+
+## 1.0.66
+
+### Patch Changes
+
+- Updated dependencies [[`bf6c028`](https://github.com/geekmidas/toolbox/commit/bf6c0286c046794c322ebf7765378fc6ae1f9155)]:
+  - @geekmidas/events@1.1.1
+
+## 1.0.65
+
+### Patch Changes
+
+- Updated dependencies [[`e90d1fa`](https://github.com/geekmidas/toolbox/commit/e90d1fa0838769b346a98f0762c77295ef4fd09b)]:
+  - @geekmidas/envkit@1.0.6
+
+## 1.0.64
+
+### Patch Changes
+
+- Updated dependencies [[`b1de1e0`](https://github.com/geekmidas/toolbox/commit/b1de1e01e1181ea5c3edcf7e23dcf3a5128fc0f3)]:
+  - @geekmidas/cli@1.10.35
+
 ## 1.0.63
 
 ### Patch Changes

@@ -2,12 +2,6 @@ import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-	generateOpenApi,
-	OPENAPI_OUTPUT_PATH,
-	openapiCommand,
-	resolveOpenApiConfig,
-} from '../openapi';
 import type { GkmConfig } from '../types';
 import {
 	cleanupDir,
@@ -15,6 +9,33 @@ import {
 	createTempDir,
 	createTestFile,
 } from './test-helpers';
+
+const spawnCalls: Array<{ cmd: string; args: string[]; cwd: string }> = [];
+let mockSpawnExitCode = 0;
+
+vi.mock('node:child_process', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('node:child_process')>();
+	return {
+		...actual,
+		spawn: vi.fn((cmd: string, args: string[], opts: any) => {
+			spawnCalls.push({ cmd, args: args ?? [], cwd: opts?.cwd ?? '' });
+			const child: any = {
+				on(event: string, cb: (code?: number) => void) {
+					if (event === 'close') queueMicrotask(() => cb(mockSpawnExitCode));
+					return child;
+				},
+			};
+			return child;
+		}),
+	};
+});
+
+const {
+	generateOpenApi,
+	OPENAPI_OUTPUT_PATH,
+	openapiCommand,
+	resolveOpenApiConfig,
+} = await import('../openapi');
 
 describe('resolveOpenApiConfig', () => {
 	const baseConfig: GkmConfig = {
@@ -483,7 +504,7 @@ describe('openapiCommand - workspace mode', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('should generate OpenAPI for backend app in workspace', async () => {
+	it('should generate OpenAPI for a single app via --app flag', async () => {
 		// Create workspace structure
 		const apiDir = join(tempDir, 'apps/api');
 		await mkdir(apiDir, { recursive: true });
@@ -515,10 +536,11 @@ describe('openapiCommand - workspace mode', () => {
 			}),
 		);
 
-		process.chdir(tempDir);
+		// Subprocess invocation simulated: CWD = appPath, --app passed
+		process.chdir(apiDir);
 		const consoleSpy = vi.spyOn(console, 'log');
 
-		await openapiCommand({ cwd: tempDir });
+		await openapiCommand({ cwd: tempDir, app: 'api' });
 
 		// Should generate OpenAPI in the backend app's .gkm folder
 		const outputPath = join(apiDir, OPENAPI_OUTPUT_PATH);
@@ -531,5 +553,73 @@ describe('openapiCommand - workspace mode', () => {
 		expect(consoleSpy).toHaveBeenCalledWith(
 			expect.stringContaining('[api] Generated OpenAPI'),
 		);
+	});
+
+	it('should throw when --app references unknown app', async () => {
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+				},
+			}),
+		);
+
+		await expect(
+			openapiCommand({ cwd: tempDir, app: 'missing' }),
+		).rejects.toThrow(/App "missing" not found/);
+	});
+
+	it('should spawn one subprocess per backend app in multi-app mode', async () => {
+		// Create workspace with two backend apps
+		const apiDir = join(tempDir, 'apps/api');
+		const adminDir = join(tempDir, 'apps/admin');
+		await mkdir(apiDir, { recursive: true });
+		await mkdir(adminDir, { recursive: true });
+
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+					admin: {
+						type: 'backend',
+						path: 'apps/admin',
+						port: 3001,
+						routes: './src/endpoints/**/*.ts',
+						openapi: { enabled: true },
+					},
+				},
+			}),
+		);
+
+		spawnCalls.length = 0;
+		mockSpawnExitCode = 0;
+
+		await openapiCommand({ cwd: tempDir });
+
+		expect(spawnCalls).toHaveLength(2);
+		expect(spawnCalls[0]?.cwd).toBe(apiDir);
+		expect(spawnCalls[0]?.args).toContain('--app');
+		expect(spawnCalls[0]?.args).toContain('api');
+		expect(spawnCalls[1]?.cwd).toBe(adminDir);
+		expect(spawnCalls[1]?.args).toContain('--app');
+		expect(spawnCalls[1]?.args).toContain('admin');
 	});
 });

@@ -35,9 +35,9 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/constructs': '~3.0.9',
 	'@geekmidas/db': '~1.0.1',
 	'@geekmidas/emailkit': '~1.0.0',
-	'@geekmidas/envkit': '~1.0.5',
+	'@geekmidas/envkit': '~1.0.6',
 	'@geekmidas/errors': '~1.0.0',
-	'@geekmidas/events': '~1.1.0',
+	'@geekmidas/events': '~1.1.1',
 	'@geekmidas/logger': '~1.0.1',
 	'@geekmidas/rate-limit': '~2.0.0',
 	'@geekmidas/schema': '~1.0.0',
@@ -45,7 +45,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/storage': '~2.0.2',
 	'@geekmidas/studio': '~1.0.0',
 	'@geekmidas/telescope': '~1.0.0',
-	'@geekmidas/testkit': '~1.0.5',
+	'@geekmidas/testkit': '~1.0.6',
 	'@geekmidas/cli': CLI_VERSION,
 } as const;
 

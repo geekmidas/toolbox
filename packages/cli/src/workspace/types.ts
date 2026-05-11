@@ -84,11 +84,7 @@ export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
  * }
  * ```
  */
-export type FrontendFramework =
-	| 'nextjs'
-	| 'remix'
-	| 'vite'
-	| 'tanstack-start';
+export type FrontendFramework = 'nextjs' | 'remix' | 'vite' | 'tanstack-start';
 
 /**
  * Mobile framework types.
@@ -109,7 +105,7 @@ export type FrontendFramework =
  * ```
  */
 export type MobileFramework = 'expo';
-
+export type Framework = BackendFramework | FrontendFramework | MobileFramework;
 /**
  * Service image configuration for custom Docker images.
  *
@@ -607,7 +603,7 @@ interface AppConfigBase {
 	 *
 	 * @example 'nextjs', 'better-auth', 'hono', 'expo'
 	 */
-	framework?: BackendFramework | FrontendFramework | MobileFramework;
+	framework?: Framework;
 
 	/**
 	 * Config file paths for frontend environment sniffing.
@@ -936,7 +932,7 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	/** Entry file path for non-gkm apps */
 	entry?: string;
 	/** Framework for the app */
-	framework?: BackendFramework | FrontendFramework | MobileFramework;
+	framework?: Framework;
 	/** Override domain for this app */
 	domain?: AppDomainConfig;
 	/** Required environment variables for entry-based apps */

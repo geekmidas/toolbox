@@ -29,14 +29,18 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 			throw new Error('PgBoss instance not initialized');
 		}
 
-		// Ensure queues exist
-		const queueNames = [...new Set(messages.map((m) => m.type))];
-		for (const name of queueNames) {
-			await boss.createQueue(name);
+		// Group jobs by queue name (v11+ requires per-queue insert calls)
+		const groups = new Map<string, { data: TMessage['payload'] }[]>();
+		for (const m of messages) {
+			const list = groups.get(m.type) ?? [];
+			list.push({ data: m.payload });
+			groups.set(m.type, list);
 		}
 
-		// Batch insert — each JobInsert carries its queue name
-		await boss.insert(messages.map((m) => ({ name: m.type, data: m.payload })));
+		for (const [name, jobs] of groups) {
+			await boss.createQueue(name);
+			await boss.insert(name, jobs);
+		}
 	}
 
 	async close(): Promise<void> {
