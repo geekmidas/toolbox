@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
 import { normalizeRoutes } from '../workspace/client-generator.js';
+import { getPublicEnvPrefix } from '../workspace/index.js';
 import type { NormalizedAppConfig } from '../workspace/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -115,12 +116,16 @@ export async function sniffAppEnvironment(
 ): Promise<SniffedEnvironment> {
 	const { logWarnings = true, markOptional = false } = options;
 
-	// 1. Frontend apps - handle dependencies and config sniffing
-	if (app.type === 'frontend') {
-		// Auto-generate NEXT_PUBLIC_{DEP}_URL from dependencies
-		const depVars = (app.dependencies ?? []).map(
-			(dep) => `NEXT_PUBLIC_${dep.toUpperCase()}_URL`,
-		);
+	// 1. Web/mobile apps - handle dependencies and config sniffing
+	if (app.type === 'web' || app.type === 'mobile') {
+		// Auto-generate {PREFIX}{DEP}_URL from dependencies. Prefix depends
+		// on framework: NEXT_PUBLIC_, VITE_, EXPO_PUBLIC_, or none (Remix).
+		const publicPrefix = getPublicEnvPrefix(app);
+		const depVars = publicPrefix
+			? (app.dependencies ?? []).map(
+					(dep) => `${publicPrefix}${dep.toUpperCase()}_URL`,
+				)
+			: [];
 
 		// If config specified, sniff by importing the file(s)
 		// The file calls .parse() at module load, which triggers sniffer to capture vars

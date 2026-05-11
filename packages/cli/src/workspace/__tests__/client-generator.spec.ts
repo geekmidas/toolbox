@@ -108,7 +108,7 @@ describe('Client Generator', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api', 'auth'],
@@ -147,7 +147,7 @@ describe('Client Generator', () => {
 						// No routes - not an HTTP backend
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api', 'worker'],
@@ -204,21 +204,21 @@ describe('Client Generator', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: ['api'],
 						resolvedDeployTarget: 'dokploy',
 					},
 					admin: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/admin',
 						port: 3002,
 						dependencies: ['api'],
 						resolvedDeployTarget: 'dokploy',
 					},
 					docs: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/docs',
 						port: 3003,
 						dependencies: [], // No API dependency
@@ -291,7 +291,7 @@ describe('Client Generator', () => {
 				root: '/project',
 				apps: {
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3000,
 						dependencies: [],

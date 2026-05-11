@@ -710,7 +710,7 @@ describe('Docker build arg extraction', () => {
 		overrides: Partial<EnvResolverContext> = {},
 	): EnvResolverContext => ({
 		app: {
-			type: 'frontend',
+			type: 'web',
 			path: 'apps/web',
 			port: 3001,
 			dependencies: ['api', 'auth'],

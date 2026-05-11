@@ -34,7 +34,7 @@ export interface AppDeployResult {
 	/** App name */
 	appName: string;
 	/** App type */
-	type: 'backend' | 'frontend';
+	type: 'backend' | 'web' | 'mobile';
 	/** Whether deployment succeeded */
 	success: boolean;
 	/** Dokploy application ID */

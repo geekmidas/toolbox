@@ -1201,11 +1201,22 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	// Separate apps by type for two-phase deployment
 	// ==================================================================
+	// Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
+	// — skip them in the Dokploy deploy phases.
+	const skippedMobileApps = appsToDeployNames.filter(
+		(name) => workspace.apps[name]!.type === 'mobile',
+	);
+	if (skippedMobileApps.length > 0) {
+		logger.log(
+			`\n📱 Skipping ${skippedMobileApps.length} mobile app(s) — deploy via framework toolchain: ${skippedMobileApps.join(', ')}`,
+		);
+	}
+
 	const backendApps = appsToDeployNames.filter(
 		(name) => workspace.apps[name]!.type === 'backend',
 	);
 	const frontendApps = appsToDeployNames.filter(
-		(name) => workspace.apps[name]!.type === 'frontend',
+		(name) => workspace.apps[name]!.type === 'web',
 	);
 
 	// ==================================================================

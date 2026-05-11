@@ -379,7 +379,7 @@ describe('initCommand', () => {
 			expect(content).toContain("name: 'my-fullstack'");
 			expect(content).toContain("type: 'backend'");
 			expect(content).toContain("path: 'apps/api'");
-			expect(content).toContain("type: 'frontend'");
+			expect(content).toContain("type: 'web'");
 			expect(content).toContain("framework: 'nextjs'");
 			expect(content).toContain("path: 'apps/web'");
 			expect(content).toContain("packages: ['packages/*']");

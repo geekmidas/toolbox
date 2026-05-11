@@ -455,13 +455,13 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: [],
 				},
 				admin: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/admin',
 					port: 3002,
 					dependencies: [],
@@ -481,7 +481,7 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3000, // Same port as api!
 					dependencies: [],
@@ -512,13 +512,13 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: [],
 				},
 				admin: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/admin',
 					port: 3001, // Conflicts with web
 					dependencies: [],
@@ -554,7 +554,7 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: [],
@@ -580,7 +580,7 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3002,
 					dependencies: ['api', 'auth'],
@@ -634,7 +634,7 @@ describe('Workspace Dev Server', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: ['api'],
@@ -669,13 +669,13 @@ describe('Workspace Dev Server', () => {
 					dependencies: ['auth'], // Payments depends on auth
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3003,
 					dependencies: ['api', 'auth'], // Web depends on api and auth
 				},
 				admin: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/admin',
 					port: 3004,
 					dependencies: ['api', 'payments'], // Admin depends on api and payments
@@ -937,7 +937,7 @@ describe('Workspace Dev Server', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: ['api'],

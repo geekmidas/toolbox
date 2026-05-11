@@ -64,20 +64,51 @@ export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
  * ```ts
  * // Next.js app
  * {
- *   type: 'frontend',
+ *   type: 'web',
  *   framework: 'nextjs',
  *   port: 3000,
  * }
  *
  * // Vite SPA
  * {
- *   type: 'frontend',
+ *   type: 'web',
  *   framework: 'vite',
  *   port: 5173,
  * }
+ *
+ * // TanStack Start (Vite-based, full-stack)
+ * {
+ *   type: 'web',
+ *   framework: 'tanstack-start',
+ *   port: 3000,
+ * }
  * ```
  */
-export type FrontendFramework = 'nextjs' | 'remix' | 'vite';
+export type FrontendFramework =
+	| 'nextjs'
+	| 'remix'
+	| 'vite'
+	| 'tanstack-start';
+
+/**
+ * Mobile framework types.
+ *
+ * Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
+ * rather than Docker/Dokploy. Only build-time public env vars
+ * (e.g. `EXPO_PUBLIC_*`) reach the device — server secrets are dropped.
+ *
+ * @example
+ * ```ts
+ * {
+ *   type: 'mobile',
+ *   framework: 'expo',
+ *   path: 'apps/mobile',
+ *   port: 8081,
+ *   dependencies: ['api'],
+ * }
+ * ```
+ */
+export type MobileFramework = 'expo';
 
 /**
  * Service image configuration for custom Docker images.
@@ -426,7 +457,7 @@ export interface SecretsConfig {
  *
  * // Frontend app
  * web: {
- *   type: 'frontend',
+ *   type: 'web',
  *   path: 'apps/web',
  *   port: 3002,
  *   framework: 'nextjs',
@@ -438,10 +469,12 @@ interface AppConfigBase {
 	/**
 	 * App type.
 	 * - 'backend': Server-side app (API, auth service, etc.)
-	 * - 'frontend': Client-side app (Next.js, Vite, etc.)
+	 * - 'web': Client-side web app (Next.js, Vite, TanStack Start, etc.)
+	 * - 'mobile': Native mobile app (Expo). Built/deployed via its own
+	 *   toolchain (e.g. EAS Build) — Docker/Dokploy steps are skipped.
 	 * @default 'backend'
 	 */
-	type?: 'backend' | 'frontend';
+	type?: 'backend' | 'web' | 'mobile';
 
 	/**
 	 * Path to the app relative to workspace root.
@@ -569,11 +602,12 @@ interface AppConfigBase {
 	 * Framework for the app.
 	 *
 	 * Backend frameworks: 'hono', 'better-auth', 'express', 'fastify'
-	 * Frontend frameworks: 'nextjs', 'remix', 'vite'
+	 * Frontend frameworks: 'nextjs', 'remix', 'vite', 'tanstack-start'
+	 * Mobile frameworks: 'expo'
 	 *
-	 * @example 'nextjs', 'better-auth', 'hono'
+	 * @example 'nextjs', 'better-auth', 'hono', 'expo'
 	 */
-	framework?: BackendFramework | FrontendFramework;
+	framework?: BackendFramework | FrontendFramework | MobileFramework;
 
 	/**
 	 * Config file paths for frontend environment sniffing.
@@ -581,18 +615,21 @@ interface AppConfigBase {
 	 * Points to file(s) that call EnvironmentParser.parse() at import time.
 	 * The sniffer imports these files and captures all env vars accessed.
 	 *
-	 * Dependencies are auto-generated as NEXT_PUBLIC_{DEP}_URL variables.
+	 * Dependencies are auto-generated as public-prefixed URL vars based on
+	 * the app's framework (e.g. `NEXT_PUBLIC_{DEP}_URL` for Next.js,
+	 * `VITE_{DEP}_URL` for Vite/TanStack Start, `EXPO_PUBLIC_{DEP}_URL`
+	 * for Expo).
 	 *
 	 * @example
 	 * ```ts
 	 * config: {
-	 *   client: './src/config/client.ts',  // NEXT_PUBLIC_* vars for browser
-	 *   server: './src/config/server.ts',  // Server-only vars for SSR
+	 *   client: './src/config/client.ts',  // public-prefixed vars for browser
+	 *   server: './src/config/server.ts',  // server-only vars for SSR
 	 * }
 	 * ```
 	 */
 	config?: {
-		/** Client-side config (NEXT_PUBLIC_* vars, available in browser) */
+		/** Client-side config (public-prefixed vars, available in browser/device) */
 		client?: string;
 		/** Server-side config (all env vars, for SSR/API routes) */
 		server?: string;
@@ -648,7 +685,7 @@ interface AppConfigBase {
  *   web: {
  *     path: 'apps/web',
  *     port: 3002,
- *     type: 'frontend',
+ *     type: 'web',
  *     dependencies: ['api', 'auth'],  // ✓ Valid
  *     // dependencies: ['invalid'],   // ✗ Type error
  *   },
@@ -708,7 +745,7 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
  *       routes: './src/endpoints/**\/*.ts',
  *     },
  *     web: {
- *       type: 'frontend',
+ *       type: 'web',
  *       path: 'apps/web',
  *       port: 3001,
  *       framework: 'nextjs',
@@ -818,7 +855,7 @@ export type WorkspaceConfigInput<
  *
  *     // Next.js frontend
  *     web: {
- *       type: 'frontend',
+ *       type: 'web',
  *       path: 'apps/web',
  *       port: 3002,
  *       framework: 'nextjs',
@@ -887,7 +924,7 @@ export interface WorkspaceConfig {
  */
 export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	/** App type (always defined after normalization) */
-	type: 'backend' | 'frontend';
+	type: 'backend' | 'web' | 'mobile';
 	/** Path to the app */
 	path: string;
 	/** Development server port */
@@ -899,7 +936,7 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	/** Entry file path for non-gkm apps */
 	entry?: string;
 	/** Framework for the app */
-	framework?: BackendFramework | FrontendFramework;
+	framework?: BackendFramework | FrontendFramework | MobileFramework;
 	/** Override domain for this app */
 	domain?: AppDomainConfig;
 	/** Required environment variables for entry-based apps */

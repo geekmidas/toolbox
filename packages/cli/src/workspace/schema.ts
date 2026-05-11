@@ -55,12 +55,6 @@ const HooksConfigSchema = z.object({
 });
 
 /**
- * Auth provider schema.
- * Currently only 'better-auth' is supported.
- */
-const AuthProviderSchema = z.enum(['better-auth']);
-
-/**
  * Backend framework schema for non-gkm apps.
  */
 const BackendFrameworkSchema = z.enum([
@@ -73,15 +67,37 @@ const BackendFrameworkSchema = z.enum([
 /**
  * Frontend framework schema.
  */
-const FrontendFrameworkSchema = z.enum(['nextjs', 'remix', 'vite']);
+const FrontendFrameworkSchema = z.enum([
+	'nextjs',
+	'remix',
+	'vite',
+	'tanstack-start',
+]);
 
 /**
- * Combined framework schema (backend or frontend).
+ * Mobile framework schema.
+ */
+const MobileFrameworkSchema = z.enum(['expo']);
+
+/**
+ * Combined framework schema (backend, frontend, or mobile).
  */
 const FrameworkSchema = z.union([
 	BackendFrameworkSchema,
 	FrontendFrameworkSchema,
+	MobileFrameworkSchema,
 ]);
+
+/** Frontend framework values, kept in sync with FrontendFrameworkSchema. */
+const FRONTEND_FRAMEWORKS = [
+	'nextjs',
+	'remix',
+	'vite',
+	'tanstack-start',
+] as const;
+
+/** Mobile framework values, kept in sync with MobileFrameworkSchema. */
+const MOBILE_FRAMEWORKS = ['expo'] as const;
 
 /**
  * Deploy target schema.
@@ -543,7 +559,7 @@ const StateConfigSchema = z.union([
 const AppConfigSchema = z
 	.object({
 		// Core properties
-		type: z.enum(['backend', 'frontend', 'auth']).optional().default('backend'),
+		type: z.enum(['backend', 'web', 'mobile']).optional().default('backend'),
 		path: z.string().min(1, 'App path is required'),
 		port: z.number().int().positive('Port must be a positive integer'),
 		dependencies: z.array(z.string()).optional(),
@@ -568,48 +584,51 @@ const AppConfigSchema = z
 		// Entry point for non-gkm apps (used by dev and docker build)
 		entry: z.string().optional(),
 
-		// Framework (backend or frontend)
+		// Framework (backend, web, or mobile)
 		framework: FrameworkSchema.optional(),
-		// Frontend-specific: config file paths for env sniffing (calls .parse() at import)
+		// Web/mobile: config file paths for env sniffing (calls .parse() at import)
 		config: z
 			.object({
 				client: z.string().optional(),
 				server: z.string().optional(),
 			})
 			.optional(),
-
-		// Auth-specific
-		provider: AuthProviderSchema.optional(),
 	})
 	// Note: routes is optional for backend apps - some backends like auth servers don't use routes
 	.refine(
 		(data) => {
-			// Frontend apps must have a frontend framework
-			if (data.type === 'frontend') {
-				const frontendFrameworks = ['nextjs', 'remix', 'vite'];
-				if (!data.framework || !frontendFrameworks.includes(data.framework)) {
+			// Web apps must have a web framework
+			if (data.type === 'web') {
+				if (
+					!data.framework ||
+					!(FRONTEND_FRAMEWORKS as readonly string[]).includes(data.framework)
+				) {
 					return false;
 				}
 			}
 			return true;
 		},
 		{
-			message:
-				'Frontend apps must have a valid frontend framework (nextjs, remix, vite)',
+			message: `Web apps must have a valid web framework (${FRONTEND_FRAMEWORKS.join(', ')})`,
 			path: ['framework'],
 		},
 	)
 	.refine(
 		(data) => {
-			// Auth apps must have provider
-			if (data.type === 'auth' && !data.provider) {
-				return false;
+			// Mobile apps must have a mobile framework
+			if (data.type === 'mobile') {
+				if (
+					!data.framework ||
+					!(MOBILE_FRAMEWORKS as readonly string[]).includes(data.framework)
+				) {
+					return false;
+				}
 			}
 			return true;
 		},
 		{
-			message: 'Auth apps must have provider defined',
-			path: ['provider'],
+			message: `Mobile apps must have a valid mobile framework (${MOBILE_FRAMEWORKS.join(', ')})`,
+			path: ['framework'],
 		},
 	);
 

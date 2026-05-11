@@ -103,13 +103,13 @@ describe('Workspace Build Command', () => {
 		it('should have correct structure for failed build', () => {
 			const result: AppBuildResult = {
 				appName: 'web',
-				type: 'frontend',
+				type: 'web',
 				success: false,
 				error: 'Build failed',
 			};
 
 			expect(result.appName).toBe('web');
-			expect(result.type).toBe('frontend');
+			expect(result.type).toBe('web');
 			expect(result.success).toBe(false);
 			expect(result.error).toBe('Build failed');
 			expect(result.outputPath).toBeUndefined();
@@ -137,14 +137,14 @@ describe('Workspace Build Command', () => {
 						routes: './src/**/*.ts',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api', 'auth'],
 						framework: 'nextjs',
 					},
 					admin: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/admin',
 						port: 3003,
 						dependencies: ['api'],
@@ -159,7 +159,7 @@ describe('Workspace Build Command', () => {
 
 			const apps = Object.entries(workspace.apps);
 			const backendApps = apps.filter(([, app]) => app.type === 'backend');
-			const frontendApps = apps.filter(([, app]) => app.type === 'frontend');
+			const frontendApps = apps.filter(([, app]) => app.type === 'web');
 
 			expect(backendApps).toHaveLength(2);
 			expect(frontendApps).toHaveLength(2);
@@ -181,7 +181,7 @@ describe('Workspace Build Command', () => {
 						dependencies: [],
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: [],
@@ -207,7 +207,7 @@ describe('Workspace Build Command', () => {
 			const frontendOutputPath = join(
 				workspace.root,
 				frontendApp.path,
-				frontendApp.type === 'frontend' ? '.next' : '.gkm',
+				frontendApp.type === 'web' ? '.next' : '.gkm',
 			);
 			expect(frontendOutputPath).toBe('/workspace/apps/web/.next');
 		});

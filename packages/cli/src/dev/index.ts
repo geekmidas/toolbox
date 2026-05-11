@@ -732,7 +732,7 @@ export async function validateFrontendApps(
 	const results: FrontendValidationResult[] = [];
 
 	for (const [appName, app] of Object.entries(workspace.apps)) {
-		if (app.type === 'frontend') {
+		if (app.type === 'web') {
 			const result = await validateFrontendApp(
 				appName,
 				app.path,
@@ -795,13 +795,19 @@ async function workspaceDevCommand(
 		([_, app]) => app.type === 'backend',
 	);
 	const frontendApps = Object.entries(workspace.apps).filter(
-		([_, app]) => app.type === 'frontend',
+		([_, app]) => app.type === 'web',
+	);
+	const mobileApps = Object.entries(workspace.apps).filter(
+		([_, app]) => app.type === 'mobile',
 	);
 
 	logger.log(`\n🚀 Starting workspace: ${workspace.name}`);
-	logger.log(
-		`   ${backendApps.length} backend app(s), ${frontendApps.length} frontend app(s)`,
-	);
+	const counts = [
+		`${backendApps.length} backend`,
+		`${frontendApps.length} web`,
+	];
+	if (mobileApps.length > 0) counts.push(`${mobileApps.length} mobile`);
+	logger.log(`   ${counts.join(', ')} app(s)`);
 
 	// Check for port conflicts
 	const conflicts = checkPortConflicts(workspace);
@@ -905,8 +911,14 @@ async function workspaceDevCommand(
 			app.dependencies.length > 0
 				? ` (depends on: ${app.dependencies.join(', ')})`
 				: '';
+		const icon =
+			app.type === 'backend'
+				? '🔧'
+				: app.type === 'mobile'
+					? '📱'
+					: '🌐';
 		logger.log(
-			`   ${app.type === 'backend' ? '🔧' : '🌐'} ${appName} → http://localhost:${app.port}${deps}`,
+			`   ${icon} ${appName} → http://localhost:${app.port}${deps}`,
 		);
 	}
 

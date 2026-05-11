@@ -1,3 +1,4 @@
+import { getPublicEnvPrefix } from '../workspace/index.js';
 import type {
 	DokployWorkspaceConfig,
 	NormalizedAppConfig,
@@ -71,7 +72,7 @@ export function isMainFrontendApp(
 	app: NormalizedAppConfig,
 	allApps: Record<string, NormalizedAppConfig>,
 ): boolean {
-	if (app.type !== 'frontend') {
+	if (app.type !== 'web') {
 		return false;
 	}
 
@@ -82,7 +83,7 @@ export function isMainFrontendApp(
 
 	// Otherwise, check if this is the first frontend
 	for (const [name, a] of Object.entries(allApps)) {
-		if (a.type === 'frontend') {
+		if (a.type === 'web') {
 			return name === appName;
 		}
 	}
@@ -91,9 +92,13 @@ export function isMainFrontendApp(
 }
 
 /**
- * Generate public URL build args for a frontend app based on its dependencies.
+ * Generate public URL build args for a web/mobile app based on its dependencies.
  *
- * @param app - The frontend app configuration
+ * The prefix is chosen by the app's framework (NEXT_PUBLIC_, VITE_,
+ * EXPO_PUBLIC_, or none for Remix). Apps without a public prefix get no
+ * build args — they should fetch URLs at runtime instead.
+ *
+ * @param app - The web/mobile app configuration
  * @param deployedUrls - Map of app name to deployed public URL
  * @returns Array of build args like 'NEXT_PUBLIC_API_URL=https://api.example.com'
  */
@@ -101,14 +106,14 @@ export function generatePublicUrlBuildArgs(
 	app: NormalizedAppConfig,
 	deployedUrls: Record<string, string>,
 ): string[] {
-	const buildArgs: string[] = [];
+	const prefix = getPublicEnvPrefix(app);
+	if (!prefix) return [];
 
+	const buildArgs: string[] = [];
 	for (const dep of app.dependencies) {
 		const publicUrl = deployedUrls[dep];
 		if (publicUrl) {
-			// Convert app name to UPPER_SNAKE_CASE for env var
-			const envVarName = `NEXT_PUBLIC_${dep.toUpperCase()}_URL`;
-			buildArgs.push(`${envVarName}=${publicUrl}`);
+			buildArgs.push(`${prefix}${dep.toUpperCase()}_URL=${publicUrl}`);
 		}
 	}
 
@@ -118,9 +123,12 @@ export function generatePublicUrlBuildArgs(
 /**
  * Get public URL arg names from app dependencies.
  *
- * @param app - The frontend app configuration
- * @returns Array of arg names like 'NEXT_PUBLIC_API_URL'
+ * @param app - The web/mobile app configuration
+ * @returns Array of arg names like 'NEXT_PUBLIC_API_URL', or [] for frameworks
+ *   without a public prefix (e.g. Remix).
  */
 export function getPublicUrlArgNames(app: NormalizedAppConfig): string[] {
-	return app.dependencies.map((dep) => `NEXT_PUBLIC_${dep.toUpperCase()}_URL`);
+	const prefix = getPublicEnvPrefix(app);
+	if (!prefix) return [];
+	return app.dependencies.map((dep) => `${prefix}${dep.toUpperCase()}_URL`);
 }

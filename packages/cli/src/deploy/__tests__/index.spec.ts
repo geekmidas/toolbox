@@ -430,7 +430,7 @@ describe('workspaceDeployCommand', () => {
 					resolvedDeployTarget: 'dokploy',
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: ['api'],
@@ -527,7 +527,7 @@ describe('workspaceDeployCommand', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api', 'auth'],
@@ -566,7 +566,7 @@ describe('workspaceDeployCommand', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api'],
@@ -614,7 +614,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const app = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3000,
 				dependencies: ['api', 'auth'],
@@ -645,7 +645,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const app = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3000,
 				dependencies: ['api', 'auth'], // wants both api and auth
@@ -719,7 +719,7 @@ describe('workspaceDeployCommand', () => {
 		it('should inject DATABASE_URL for backend apps', () => {
 			const workspaceName = 'test-workspace';
 			const hasPostgres = true;
-			const appType: 'backend' | 'frontend' = 'backend';
+			const appType: 'backend' | 'web' = 'backend';
 
 			const envVars: string[] = [];
 
@@ -735,7 +735,7 @@ describe('workspaceDeployCommand', () => {
 
 		it('should not inject DATABASE_URL for frontend apps', () => {
 			const hasPostgres = true;
-			const appType = 'frontend' as 'backend' | 'frontend';
+			const appType = 'web' as 'backend' | 'web';
 
 			const envVars: string[] = [];
 
@@ -794,7 +794,7 @@ describe('workspaceDeployCommand', () => {
 		it('should have correct structure for failed AppDeployResult', () => {
 			const failedResult = {
 				appName: 'web',
-				type: 'frontend' as const,
+				type: 'web' as const,
 				success: false,
 				error: 'Build failed',
 			};
@@ -809,7 +809,7 @@ describe('workspaceDeployCommand', () => {
 					{ appName: 'api', type: 'backend' as const, success: true },
 					{
 						appName: 'web',
-						type: 'frontend' as const,
+						type: 'web' as const,
 						success: false,
 						error: 'Failed',
 					},
@@ -834,7 +834,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const webApp = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3000,
 				dependencies: ['api', 'auth'],
@@ -873,7 +873,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const webApp = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3001,
 				dependencies: ['api', 'payments'],
@@ -922,7 +922,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const webApp = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3001,
 				dependencies: ['api', 'auth'],
@@ -997,7 +997,7 @@ describe('workspaceDeployCommand', () => {
 
 			// Step 2: Deploy web (depends on api)
 			const webApp = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3001,
 				dependencies: ['api'],
@@ -1048,7 +1048,7 @@ describe('workspaceDeployCommand', () => {
 			};
 
 			const webApp = {
-				type: 'frontend' as const,
+				type: 'web' as const,
 				path: 'apps/web',
 				port: 3000,
 				dependencies: ['api', 'auth', 'notifications'],

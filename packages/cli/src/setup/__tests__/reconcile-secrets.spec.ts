@@ -29,7 +29,7 @@ function createWorkspace(
 				dependencies: [],
 			},
 			web: {
-				type: 'frontend',
+				type: 'web',
 				port: 3002,
 				root: '/tmp/test-project/apps/web',
 				packageName: '@test/web',
@@ -333,7 +333,7 @@ describe('generateFullstackCustomSecrets', () => {
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					port: 3001,
 					root: '/tmp/test-project/apps/web',
 					path: 'apps/web',

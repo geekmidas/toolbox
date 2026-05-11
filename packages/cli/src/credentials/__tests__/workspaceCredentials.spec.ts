@@ -45,7 +45,7 @@ describe('workspace credentials', () => {
 				{
 					api: { type: 'backend', path: 'apps/api', port: 3001 },
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						dependencies: ['api'],

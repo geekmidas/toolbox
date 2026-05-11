@@ -32,7 +32,7 @@ describe('sniffAppEnvironment', () => {
 
 	describe('frontend apps', () => {
 		it('should return empty env vars for frontend apps with no dependencies', async () => {
-			const app = createApp({ type: 'frontend', dependencies: [] });
+			const app = createApp({ type: 'web', dependencies: [] });
 
 			const result = await sniffAppEnvironment(app, 'web', workspacePath);
 
@@ -42,7 +42,7 @@ describe('sniffAppEnvironment', () => {
 
 		it('should return NEXT_PUBLIC_{DEP}_URL for frontend dependencies', async () => {
 			const app = createApp({
-				type: 'frontend',
+				type: 'web',
 				dependencies: ['api', 'auth'],
 			});
 
@@ -56,7 +56,7 @@ describe('sniffAppEnvironment', () => {
 
 		it('should generate uppercase dep names in NEXT_PUBLIC_{DEP}_URL', async () => {
 			const app = createApp({
-				type: 'frontend',
+				type: 'web',
 				dependencies: ['payments-service', 'notification_api'],
 			});
 
@@ -73,7 +73,7 @@ describe('sniffAppEnvironment', () => {
 		describe('config sniffing', () => {
 			it('should sniff env vars from config.client path', async () => {
 				const app = createApp({
-					type: 'frontend',
+					type: 'web',
 					path: fixturesPath,
 					dependencies: [],
 					config: {
@@ -90,7 +90,7 @@ describe('sniffAppEnvironment', () => {
 
 			it('should sniff env vars from config.server path', async () => {
 				const app = createApp({
-					type: 'frontend',
+					type: 'web',
 					path: fixturesPath,
 					dependencies: [],
 					config: {
@@ -107,7 +107,7 @@ describe('sniffAppEnvironment', () => {
 
 			it('should combine vars from both config.client and config.server', async () => {
 				const app = createApp({
-					type: 'frontend',
+					type: 'web',
 					path: fixturesPath,
 					dependencies: ['api'],
 					config: {
@@ -129,7 +129,7 @@ describe('sniffAppEnvironment', () => {
 
 			it('should deduplicate vars from both config files', async () => {
 				const app = createApp({
-					type: 'frontend',
+					type: 'web',
 					path: fixturesPath,
 					dependencies: [],
 					config: {
@@ -306,7 +306,7 @@ describe('sniffAppEnvironment', () => {
 
 		it('returns empty optionalEnvVars for frontend apps', async () => {
 			const app = createApp({
-				type: 'frontend',
+				type: 'web',
 				dependencies: ['api'],
 			});
 
@@ -339,7 +339,7 @@ describe('sniffAllApps', () => {
 				// No entry, routes, or envParser - will return empty
 			},
 			web: {
-				type: 'frontend',
+				type: 'web',
 				path: 'apps/web',
 				port: 3001,
 				dependencies: ['api', 'auth'],

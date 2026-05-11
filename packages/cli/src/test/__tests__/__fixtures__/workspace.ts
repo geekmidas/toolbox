@@ -57,7 +57,7 @@ export function createFullstackWorkspace(): ReturnType<
 					dependencies: [],
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					framework: 'nextjs',

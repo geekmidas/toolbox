@@ -406,7 +406,7 @@ describe('getAppGkmConfig', () => {
 		const config: WorkspaceConfig = {
 			apps: {
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					framework: 'nextjs',
@@ -444,7 +444,7 @@ describe('getAppBuildOrder', () => {
 		const config: WorkspaceConfig = {
 			apps: {
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					framework: 'nextjs',
@@ -509,7 +509,7 @@ describe('getDependencyEnvVars', () => {
 		const config: WorkspaceConfig = {
 			apps: {
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					framework: 'nextjs',
@@ -545,7 +545,7 @@ describe('getDependencyEnvVars', () => {
 		const config: WorkspaceConfig = {
 			apps: {
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					framework: 'nextjs',

@@ -647,7 +647,7 @@ describe('generateWorkspaceCompose', () => {
 					resolvedDeployTarget: 'dokploy',
 				},
 				web: {
-					type: 'frontend',
+					type: 'web',
 					path: 'apps/web',
 					port: 3001,
 					dependencies: ['api'],
@@ -793,7 +793,7 @@ describe('generateWorkspaceCompose', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: ['api', 'auth'],
@@ -849,7 +849,7 @@ describe('generateWorkspaceCompose', () => {
 			const workspace = createWorkspace({
 				apps: {
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: [],
@@ -1016,7 +1016,7 @@ describe('generateWorkspaceCompose', () => {
 			const workspace = createWorkspace({
 				apps: {
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						dependencies: [],

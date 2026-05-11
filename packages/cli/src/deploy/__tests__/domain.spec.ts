@@ -55,7 +55,7 @@ describe('resolveHost', () => {
 	});
 
 	it('should return base domain for main frontend app', () => {
-		const app = createApp({ type: 'frontend' });
+		const app = createApp({ type: 'web' });
 		const host = resolveHost('web', app, 'production', dokployConfig, true);
 		expect(host).toBe('myapp.com');
 	});
@@ -100,7 +100,7 @@ describe('resolveHost', () => {
 });
 
 describe('isMainFrontendApp', () => {
-	const createApp = (type: 'backend' | 'frontend'): NormalizedAppConfig => ({
+	const createApp = (type: 'backend' | 'web'): NormalizedAppConfig => ({
 		type,
 		path: 'apps/test',
 		port: 3000,
@@ -111,7 +111,7 @@ describe('isMainFrontendApp', () => {
 	it('should return false for backend apps', () => {
 		const apps = {
 			api: createApp('backend'),
-			web: createApp('frontend'),
+			web: createApp('web'),
 		};
 		expect(isMainFrontendApp('api', apps.api, apps)).toBe(false);
 	});
@@ -119,8 +119,8 @@ describe('isMainFrontendApp', () => {
 	it('should return true for app named "web" if it is frontend', () => {
 		const apps = {
 			api: createApp('backend'),
-			web: createApp('frontend'),
-			admin: createApp('frontend'),
+			web: createApp('web'),
+			admin: createApp('web'),
 		};
 		expect(isMainFrontendApp('web', apps.web, apps)).toBe(true);
 	});
@@ -128,8 +128,8 @@ describe('isMainFrontendApp', () => {
 	it('should return true for first frontend app when no "web" app', () => {
 		const apps = {
 			api: createApp('backend'),
-			dashboard: createApp('frontend'),
-			admin: createApp('frontend'),
+			dashboard: createApp('web'),
+			admin: createApp('web'),
 		};
 		expect(isMainFrontendApp('dashboard', apps.dashboard, apps)).toBe(true);
 		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(false);
@@ -138,22 +138,22 @@ describe('isMainFrontendApp', () => {
 	it('should return false for non-first frontend when no "web" app', () => {
 		const apps = {
 			api: createApp('backend'),
-			dashboard: createApp('frontend'),
-			admin: createApp('frontend'),
+			dashboard: createApp('web'),
+			admin: createApp('web'),
 		};
 		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(false);
 	});
 
 	it('should return false when no frontend apps in allApps (edge case)', () => {
 		// Edge case: checking a frontend app against an empty allApps
-		const frontendApp = createApp('frontend');
+		const frontendApp = createApp('web');
 		expect(isMainFrontendApp('myapp', frontendApp, {})).toBe(false);
 	});
 });
 
 describe('generatePublicUrlBuildArgs', () => {
 	const createApp = (dependencies: string[]): NormalizedAppConfig => ({
-		type: 'frontend',
+		type: 'web',
 		path: 'apps/web',
 		port: 3001,
 		dependencies,
@@ -214,7 +214,7 @@ describe('generatePublicUrlBuildArgs', () => {
 
 describe('getPublicUrlArgNames', () => {
 	const createApp = (dependencies: string[]): NormalizedAppConfig => ({
-		type: 'frontend',
+		type: 'web',
 		path: 'apps/web',
 		port: 3001,
 		dependencies,

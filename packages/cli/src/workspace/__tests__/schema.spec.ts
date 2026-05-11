@@ -47,7 +47,7 @@ describe('WorkspaceConfigSchema', () => {
 						openapi: { enabled: true, title: 'My API' },
 					},
 					web: {
-						type: 'frontend' as const,
+						type: 'web' as const,
 						path: 'apps/web',
 						port: 3001,
 						framework: 'nextjs' as const,
@@ -82,7 +82,7 @@ describe('WorkspaceConfigSchema', () => {
 
 			expect(result.name).toBe('my-saas');
 			expect(result.apps.api.type).toBe('backend');
-			expect(result.apps.web.type).toBe('frontend');
+			expect(result.apps.web.type).toBe('web');
 			expect(result.apps.web.dependencies).toEqual(['api']);
 			expect(result.shared?.packages).toEqual(['packages/*']);
 			expect(result.deploy?.default).toBe('dokploy');
@@ -163,7 +163,7 @@ describe('WorkspaceConfigSchema', () => {
 			const config = {
 				apps: {
 					web: {
-						type: 'frontend' as const,
+						type: 'web' as const,
 						path: 'apps/web',
 						port: 3001,
 						// Missing framework
@@ -197,7 +197,7 @@ describe('WorkspaceConfigSchema', () => {
 			const config = {
 				apps: {
 					web: {
-						type: 'frontend' as const,
+						type: 'web' as const,
 						path: 'apps/web',
 						port: 3001,
 						framework: 'nextjs' as const,
@@ -558,7 +558,7 @@ describe('WorkspaceConfigSchema', () => {
 						provider: 'better-auth' as const,
 					},
 					web: {
-						type: 'frontend' as const,
+						type: 'web' as const,
 						path: 'apps/web',
 						port: 3001,
 						framework: 'nextjs' as const,

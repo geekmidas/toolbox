@@ -19,7 +19,7 @@ function createMultiAppWorkspace(
 				resolvedDeployTarget: 'dokploy',
 			},
 			web: {
-				type: 'frontend',
+				type: 'web',
 				path: 'apps/web',
 				port: 3001,
 				dependencies: ['api'],

@@ -55,25 +55,28 @@ export function shouldRegenerateClient(
 }
 
 /**
- * Get backend apps that a frontend depends on.
+ * Get backend apps that a web/mobile client depends on.
  */
 export function getBackendDependencies(
 	workspace: NormalizedWorkspace,
-	frontendAppName: string,
+	clientAppName: string,
 ): string[] {
-	const frontendApp = workspace.apps[frontendAppName];
-	if (!frontendApp || frontendApp.type !== 'frontend') {
+	const clientApp = workspace.apps[clientAppName];
+	if (
+		!clientApp ||
+		(clientApp.type !== 'web' && clientApp.type !== 'mobile')
+	) {
 		return [];
 	}
 
-	return frontendApp.dependencies.filter((dep) => {
+	return clientApp.dependencies.filter((dep) => {
 		const depApp = workspace.apps[dep];
 		return depApp?.type === 'backend' && depApp.routes;
 	});
 }
 
 /**
- * Get frontend apps that depend on a backend app.
+ * Get web/mobile apps that depend on a backend app.
  */
 export function getDependentFrontends(
 	workspace: NormalizedWorkspace,
@@ -82,7 +85,10 @@ export function getDependentFrontends(
 	const dependentApps: string[] = [];
 
 	for (const [appName, app] of Object.entries(workspace.apps)) {
-		if (app.type === 'frontend' && app.dependencies.includes(backendAppName)) {
+		if (
+			(app.type === 'web' || app.type === 'mobile') &&
+			app.dependencies.includes(backendAppName)
+		) {
 			dependentApps.push(appName);
 		}
 	}

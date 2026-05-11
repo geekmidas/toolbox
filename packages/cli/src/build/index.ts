@@ -362,7 +362,7 @@ async function buildForProvider(
  */
 export interface AppBuildResult {
 	appName: string;
-	type: 'backend' | 'frontend';
+	type: 'backend' | 'web' | 'mobile';
 	success: boolean;
 	outputPath?: string;
 	error?: string;
@@ -415,7 +415,7 @@ export async function workspaceBuildCommand(
 	const results: AppBuildResult[] = [];
 	const apps = Object.entries(workspace.apps);
 	const backendApps = apps.filter(([, app]) => app.type === 'backend');
-	const frontendApps = apps.filter(([, app]) => app.type === 'frontend');
+	const frontendApps = apps.filter(([, app]) => app.type === 'web');
 
 	logger.log(`\n🏗️  Building workspace: ${workspace.name}`);
 	logger.log(
@@ -486,7 +486,12 @@ export async function workspaceBuildCommand(
 		// Summary
 		logger.log(`\n📋 Build Summary:`);
 		for (const result of results) {
-			const icon = result.type === 'backend' ? '⚙️' : '🌐';
+			const icon =
+				result.type === 'backend'
+					? '⚙️'
+					: result.type === 'mobile'
+						? '📱'
+						: '🌐';
 			logger.log(
 				`   ${icon} ${result.appName}: ${result.outputPath || 'built'}`,
 			);
@@ -522,13 +527,24 @@ function getAppOutputPath(
 ): string {
 	const appPath = join(workspace.root, app.path);
 
-	if (app.type === 'frontend') {
-		// Next.js standalone output
-		return join(appPath, '.next');
-	} else {
-		// Backend .gkm output
-		return join(appPath, '.gkm');
+	if (app.type === 'mobile') {
+		// Mobile builds are produced by the framework's own toolchain
+		// (e.g. EAS Build) — no local output path.
+		return '';
 	}
+	if (app.type === 'web') {
+		switch (app.framework) {
+			case 'vite':
+			case 'tanstack-start':
+				return join(appPath, 'dist');
+			case 'remix':
+				return join(appPath, 'build');
+			default:
+				return join(appPath, '.next');
+		}
+	}
+	// Backend .gkm output
+	return join(appPath, '.gkm');
 }
 
 /**

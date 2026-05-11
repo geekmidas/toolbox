@@ -927,3 +927,138 @@ ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "index.mjs"]
 `;
 }
+
+/**
+ * Generate a Dockerfile for Node-based SSR web frameworks (TanStack Start,
+ * Remix). Builds with turbo, then runs the framework's production start
+ * script via `npm start`.
+ *
+ * Public URL build args are declared so framework bundlers (Vite, Vinxi)
+ * can inline them at build time. Per-framework prefix is the caller's job.
+ * @internal Exported for testing
+ */
+export function generateNodeWebDockerfile(
+	options: FrontendDockerfileOptions,
+): string {
+	const {
+		baseImage,
+		port,
+		appPath,
+		turboPackage,
+		packageManager,
+		publicUrlArgs = [],
+	} = options;
+
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+	const startCmd = packageManager === 'pnpm' ? 'pnpm start' : `${pm.lockfile.startsWith('package-lock') ? 'npm' : packageManager} start`;
+
+	const argDecls = publicUrlArgs.map((a) => `ARG ${a}=""`).join('\n');
+	const envDecls = publicUrlArgs.map((a) => `ENV ${a}=$${a}`).join('\n');
+
+	return `# syntax=docker/dockerfile:1
+# Node SSR web Dockerfile (TanStack Start / Remix) with turbo prune
+
+FROM ${baseImage} AS pruner
+WORKDIR /app
+${installPm}
+COPY . .
+RUN ${turboCmd} prune ${turboPackage} --docker
+
+FROM ${baseImage} AS deps
+WORKDIR /app
+${installPm}
+COPY --from=pruner /app/out/${pm.lockfile} ./
+COPY --from=pruner /app/out/json/ ./
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
+
+FROM deps AS builder
+WORKDIR /app
+${argDecls}
+${envDecls}
+COPY --from=pruner /app/out/full/ ./
+COPY --from=pruner /app/tsconfig.* ./
+RUN ${turboCmd} run build --filter=${turboPackage}
+
+FROM ${baseImage} AS runner
+WORKDIR /app
+RUN apk add --no-cache tini
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 app
+
+# Copy the whole built workspace — frameworks differ on output paths
+COPY --from=builder --chown=app:nodejs /app/ ./
+
+ENV NODE_ENV=production
+ENV PORT=${port}
+ENV HOSTNAME="0.0.0.0"
+
+USER app
+EXPOSE ${port}
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["sh", "-c", "cd ${appPath} && ${startCmd}"]
+`;
+}
+
+/**
+ * Generate a Dockerfile for Vite SPA apps. Builds the static bundle with
+ * turbo, then serves it via nginx.
+ * @internal Exported for testing
+ */
+export function generateViteStaticDockerfile(
+	options: FrontendDockerfileOptions,
+): string {
+	const {
+		baseImage,
+		port,
+		appPath,
+		turboPackage,
+		packageManager,
+		publicUrlArgs = [],
+	} = options;
+
+	const pm = getPmConfig(packageManager);
+	const installPm = pm.install ? `RUN ${pm.install}` : '';
+	const turboInstallCmd = getTurboInstallCmd(packageManager);
+	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
+
+	const argDecls = publicUrlArgs.map((a) => `ARG ${a}=""`).join('\n');
+	const envDecls = publicUrlArgs.map((a) => `ENV ${a}=$${a}`).join('\n');
+
+	return `# syntax=docker/dockerfile:1
+# Vite SPA Dockerfile — builds static assets, serves via nginx
+
+FROM ${baseImage} AS pruner
+WORKDIR /app
+${installPm}
+COPY . .
+RUN ${turboCmd} prune ${turboPackage} --docker
+
+FROM ${baseImage} AS deps
+WORKDIR /app
+${installPm}
+COPY --from=pruner /app/out/${pm.lockfile} ./
+COPY --from=pruner /app/out/json/ ./
+RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
+    ${turboInstallCmd}
+
+FROM deps AS builder
+WORKDIR /app
+${argDecls}
+${envDecls}
+COPY --from=pruner /app/out/full/ ./
+COPY --from=pruner /app/tsconfig.* ./
+RUN ${turboCmd} run build --filter=${turboPackage}
+
+FROM nginx:alpine AS runner
+COPY --from=builder /app/${appPath}/dist /usr/share/nginx/html
+RUN printf 'server {\\n  listen ${port};\\n  root /usr/share/nginx/html;\\n  index index.html;\\n  location / { try_files $uri $uri/ /index.html; }\\n}\\n' \\
+    > /etc/nginx/conf.d/default.conf
+EXPOSE ${port}
+CMD ["nginx", "-g", "daemon off;"]
+`;
+}

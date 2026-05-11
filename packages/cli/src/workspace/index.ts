@@ -105,7 +105,7 @@ function validateDependencies<TApps extends AppsRecord>(apps: TApps): void {
  *       logger: './src/logger',
  *     },
  *     web: {
- *       type: 'frontend',
+ *       type: 'web',
  *       framework: 'nextjs',
  *       path: 'apps/web',
  *       port: 3001,
@@ -349,8 +349,33 @@ export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 }
 
 /**
+ * Public env-var prefix used by an app to expose values to client/device code.
+ *
+ * Each web/mobile framework has its own convention for which env vars get
+ * bundled into the client. Backend apps and Remix (which only exposes vars
+ * via loaders) get no prefix — only the bare `{DEP}_URL` is emitted.
+ */
+function getPublicEnvPrefix(app: NormalizedAppConfig): string | null {
+	switch (app.framework) {
+		case 'nextjs':
+			return 'NEXT_PUBLIC_';
+		case 'vite':
+		case 'tanstack-start':
+			return 'VITE_';
+		case 'expo':
+			return 'EXPO_PUBLIC_';
+		default:
+			return null;
+	}
+}
+
+/**
  * Generate environment variables for app dependencies.
- * Each dependency gets both a `{DEP_NAME}_URL` and `NEXT_PUBLIC_{DEP_NAME}_URL` variable.
+ *
+ * Each dependency gets a `{DEP}_URL` (server-side / build-time). Web and
+ * mobile apps additionally get a public-prefixed copy (e.g.
+ * `NEXT_PUBLIC_{DEP}_URL`, `VITE_{DEP}_URL`, `EXPO_PUBLIC_{DEP}_URL`) so
+ * the value reaches the browser/device bundle.
  */
 export function getDependencyEnvVars(
 	workspace: NormalizedWorkspace,
@@ -361,6 +386,7 @@ export function getDependencyEnvVars(
 	if (!app) return {};
 
 	const env: Record<string, string> = {};
+	const publicPrefix = getPublicEnvPrefix(app);
 
 	for (const depName of app.dependencies) {
 		const dep = workspace.apps[depName];
@@ -368,12 +394,20 @@ export function getDependencyEnvVars(
 			const url = `${urlPrefix}:${dep.port}`;
 			const envKey = `${depName.toUpperCase()}_URL`;
 			env[envKey] = url;
-			env[`NEXT_PUBLIC_${envKey}`] = url;
+			if (publicPrefix) {
+				env[`${publicPrefix}${envKey}`] = url;
+			}
 		}
 	}
 
 	return env;
 }
+
+/**
+ * Public env-var prefix for an app's framework. Exposed for callers in
+ * deploy/sniffer that need to compute the same prefix.
+ */
+export { getPublicEnvPrefix };
 
 /**
  * Resolve the Dokploy endpoint for a specific stage.

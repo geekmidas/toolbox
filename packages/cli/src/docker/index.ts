@@ -9,6 +9,7 @@ import {
 	generateMinimalDockerCompose,
 	generateWorkspaceCompose,
 } from './compose';
+import { getPublicUrlArgNames } from '../deploy/domain.js';
 import {
 	detectPackageManager,
 	findLockfilePath,
@@ -18,7 +19,9 @@ import {
 	generateEntryDockerfile,
 	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
+	generateNodeWebDockerfile,
 	generateSlimDockerfile,
+	generateViteStaticDockerfile,
 	hasTurboConfig,
 	isMonorepo,
 	resolveDockerConfig,
@@ -342,7 +345,7 @@ async function pushDockerImage(
  */
 export interface AppDockerResult {
 	appName: string;
-	type: 'backend' | 'frontend';
+	type: 'backend' | 'web' | 'mobile';
 	dockerfile: string;
 	imageName: string;
 }
@@ -396,6 +399,15 @@ export async function workspaceDockerCommand(
 
 	// Generate Dockerfile for each app
 	for (const [appName, app] of apps) {
+		// Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
+		// — no Docker image is produced.
+		if (app.type === 'mobile') {
+			logger.log(
+				`\n   📱 Skipping Docker for ${appName} (mobile app — deploy via framework toolchain)`,
+			);
+			continue;
+		}
+
 		const appPath = app.path;
 		const fullAppPath = join(workspace.root, appPath);
 
@@ -411,16 +423,31 @@ export async function workspaceDockerCommand(
 
 		let dockerfile: string;
 
-		if (app.type === 'frontend') {
-			// Generate Next.js Dockerfile
-			dockerfile = generateNextjsDockerfile({
+		if (app.type === 'web') {
+			const publicUrlArgs = getPublicUrlArgNames(app);
+			const webOpts = {
 				imageName,
 				baseImage: 'node:22-alpine',
 				port: app.port,
 				appPath,
 				turboPackage,
 				packageManager,
-			});
+				publicUrlArgs,
+			};
+
+			switch (app.framework) {
+				case 'vite':
+					dockerfile = generateViteStaticDockerfile(webOpts);
+					break;
+				case 'tanstack-start':
+				case 'remix':
+					dockerfile = generateNodeWebDockerfile(webOpts);
+					break;
+				default:
+					// nextjs (and any unspecified web framework — schema requires
+					// a valid framework, so this is just a default).
+					dockerfile = generateNextjsDockerfile(webOpts);
+			}
 		} else if (app.entry) {
 			// Backend with custom entry point - use tsdown bundling
 			dockerfile = generateEntryDockerfile({
@@ -479,7 +506,12 @@ export async function workspaceDockerCommand(
 	);
 	logger.log('\n📋 Build commands:');
 	for (const result of results) {
-		const icon = result.type === 'backend' ? '⚙️' : '🌐';
+		const icon =
+			result.type === 'backend'
+				? '⚙️'
+				: result.type === 'mobile'
+					? '📱'
+					: '🌐';
 		logger.log(
 			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
 		);

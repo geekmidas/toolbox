@@ -359,7 +359,12 @@ function printSummary(workspace: NormalizedWorkspace, stage: string): void {
 
 	logger.log('📋 Apps:');
 	for (const [name, app] of Object.entries(workspace.apps)) {
-		const icon = app.type === 'frontend' ? '🌐' : '🔧';
+		const icon =
+			app.type === 'web'
+				? '🌐'
+				: app.type === 'mobile'
+					? '📱'
+					: '🔧';
 		logger.log(`   ${icon} ${name} → http://localhost:${app.port}`);
 	}
 

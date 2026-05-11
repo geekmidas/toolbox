@@ -444,8 +444,10 @@ export function generateWorkspaceCompose(
 services:
 `;
 
-	// Generate service for each app
+	// Generate service for each app (mobile apps deploy via their own
+	// toolchain — no compose service)
 	for (const [appName, app] of apps) {
+		if (app.type === 'mobile') continue;
 		yaml += generateAppService(appName, app, apps, {
 			registry,
 			projectName: workspace.name,
@@ -698,9 +700,9 @@ function generateAppService(
 	const imageRef = registry ? `\${REGISTRY:-${registry}}/` : '';
 
 	// Health check path - frontends use /, backends use /health
-	const healthCheckPath = app.type === 'frontend' ? '/' : '/health';
+	const healthCheckPath = app.type === 'web' ? '/' : '/health';
 	const healthCheckCmd =
-		app.type === 'frontend'
+		app.type === 'web'
 			? `["CMD", "wget", "-q", "--spider", "http://localhost:${app.port}/"]`
 			: `["CMD", "wget", "-q", "--spider", "http://localhost:${app.port}${healthCheckPath}"]`;
 

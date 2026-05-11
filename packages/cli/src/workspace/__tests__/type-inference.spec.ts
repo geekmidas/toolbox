@@ -14,7 +14,7 @@ describe('Type Inference', () => {
 						routes: './src/**/*.ts',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3001,
 						framework: 'nextjs',
@@ -46,7 +46,7 @@ describe('Type Inference', () => {
 						routes: './src/**/*.ts',
 					},
 					web: {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3002,
 						framework: 'nextjs',
@@ -69,7 +69,7 @@ describe('Type Inference', () => {
 							routes: './src/**/*.ts',
 						},
 						web: {
-							type: 'frontend',
+							type: 'web',
 							path: 'apps/web',
 							port: 3001,
 							framework: 'nextjs',
@@ -186,14 +186,14 @@ describe('Type Inference', () => {
 						dependencies: ['user-service'],
 					},
 					'web-app': {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/web',
 						port: 3003,
 						framework: 'nextjs',
 						dependencies: ['api-gateway'],
 					},
 					'admin-dashboard': {
-						type: 'frontend',
+						type: 'web',
 						path: 'apps/admin',
 						port: 3004,
 						framework: 'nextjs',

@@ -369,7 +369,7 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
     web: {
-      type: 'frontend',
+      type: 'web',
       framework: 'nextjs',
       path: 'apps/web',
       port: 3001,

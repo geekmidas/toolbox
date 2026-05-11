@@ -55,10 +55,16 @@ export function generateFullstackCustomSecrets(
 	const frontendPorts: number[] = [];
 
 	for (const [appName, appConfig] of Object.entries(workspace.apps)) {
-		if (appConfig.type === 'frontend') {
+		if (appConfig.type === 'web') {
 			frontendPorts.push(appConfig.port);
 			const upperName = appName.toUpperCase();
 			customs[`${upperName}_URL`] = `http://localhost:${appConfig.port}`;
+			continue;
+		}
+
+		// Mobile apps (Expo, etc.) don't run on a host port the backend
+		// cares about for CORS, and don't need DB credentials.
+		if (appConfig.type === 'mobile') {
 			continue;
 		}
 

@@ -76,7 +76,7 @@ export function createWorkspaceConfig(
 			const deps = app.dependencies
 				? `dependencies: [${app.dependencies.map((d) => `'${d}'`).join(', ')}],`
 				: '';
-			if (app.type === 'frontend') {
+			if (app.type === 'web') {
 				const framework = app.framework ?? 'nextjs';
 				return `    ${name}: {
       type: '${app.type}',
