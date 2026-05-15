@@ -73,6 +73,8 @@
 		"@geekmidas/schema": "workspace:^",
 		"@types/amqplib": "~0.10.7",
 		"@types/lodash.chunk": "~4.2.0",
+		"@types/pg": "~8.15.6",
+		"pg": "~8.20.0",
 		"pg-boss": "~12.18.1"
 	}
 }

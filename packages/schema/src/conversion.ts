@@ -140,6 +140,31 @@ export async function getZodMetadata(
 	return undefined;
 }
 
+/**
+ * Return JSON Schema for every schema registered in zod v4's global registry
+ * via `.meta({ id })`. Returns an empty object when zod v4 is unavailable or
+ * no schemas are registered.
+ *
+ * `unrepresentable: 'any'` keeps a single unrepresentable schema from
+ * collapsing the whole result.
+ */
+export async function getRegisteredZodJsonSchemas(): Promise<
+	Record<string, any>
+> {
+	try {
+		const { z } = await import('zod/v4').catch(() => ({ z: null as any }));
+		if (!z?.toJSONSchema || !z.globalRegistry) {
+			return {};
+		}
+		const result = z.toJSONSchema(z.globalRegistry, {
+			unrepresentable: 'any',
+		});
+		return (result?.schemas ?? {}) as Record<string, any>;
+	} catch {
+		return {};
+	}
+}
+
 export async function getSchemaMetadata(
 	schema: StandardSchemaV1,
 ): Promise<SchemaMeta | undefined> {

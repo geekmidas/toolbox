@@ -1,5 +1,6 @@
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
+	getRegisteredZodJsonSchemas,
 	getSchemaMetadata,
 	StandardSchemaJsonSchema,
 } from '@geekmidas/schema/conversion';
@@ -311,6 +312,27 @@ export class OpenApiTsGenerator {
 					}
 				}
 			}
+		}
+
+		// Pull in every schema registered via `.meta({ id })` in zod's global
+		// registry, even when no endpoint references it directly. This makes
+		// derived schemas like `UserSchema.pick(...)` discoverable through the
+		// named parent type without requiring the parent to be wired into an
+		// endpoint.
+		const registrySchemas = await getRegisteredZodJsonSchemas();
+		for (const [rawName, rawSchema] of Object.entries(registrySchemas)) {
+			const defName = this.pascalCase(rawName);
+			if (collectedDefs.has(defName) || generatedNames.has(defName)) {
+				continue;
+			}
+			const {
+				id: _id,
+				$defs: _defs,
+				...rest
+			} = rawSchema as JsonSchema & {
+				id?: string;
+			};
+			collectedDefs.set(defName, rest as JsonSchema);
 		}
 
 		// Generate interfaces for collected $defs (nested schemas with .meta({ id: 'X' }))

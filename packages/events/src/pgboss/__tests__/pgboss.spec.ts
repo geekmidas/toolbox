@@ -3,6 +3,7 @@ import type { PublishableMessage } from '../../types';
 import { PgBossConnection } from '../PgBossConnection';
 import { PgBossPublisher } from '../PgBossPublisher';
 import { PgBossSubscriber } from '../PgBossSubscriber';
+import { dropSchemas } from './setup';
 
 type TestMessage =
 	| PublishableMessage<'user.created', { userId: string }>
@@ -11,6 +12,18 @@ type TestMessage =
 const POSTGRES_URL = 'postgres://geekmidas:geekmidas@localhost:5432/geekmidas';
 const PGBOSS_CONNECTION_STRING =
 	'pgboss://geekmidas:geekmidas@localhost:5432/geekmidas?schema=pgboss_test';
+
+const TEST_SCHEMAS = [
+	'pgboss_conn_test',
+	'pgboss_conn_test2',
+	'pgboss_test',
+	'pgboss_pub_test',
+	'pgboss_sub_test',
+];
+
+beforeAll(async () => {
+	await dropSchemas(POSTGRES_URL, TEST_SCHEMAS);
+});
 
 const uniqueQueue = () =>
 	`test-${Date.now()}-${Math.random().toString(36).substring(7)}`;

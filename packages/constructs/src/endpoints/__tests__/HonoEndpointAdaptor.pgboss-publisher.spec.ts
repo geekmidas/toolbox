@@ -8,6 +8,7 @@ import {
 import type { Service } from '@geekmidas/services';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
+import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { e } from '../EndpointFactory';
@@ -18,18 +19,33 @@ type OrderEvent =
 	| PublishableMessage<'notification.sent', { orderId: string; type: string }>;
 
 const POSTGRES_URL = 'postgres://geekmidas:geekmidas@localhost:5432/geekmidas';
+const TEST_SCHEMA = 'pgboss_hono_publisher_test';
 
 const uniqueQueue = () =>
 	`test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+// Drop the test schema before pg-boss runs. Without this, a stale schema left
+// behind by an older pg-boss version trips v12's migrator because it sees the
+// `version` table but not the new `job_common` table.
+async function dropTestSchema() {
+	const client = new Client({ connectionString: POSTGRES_URL });
+	await client.connect();
+	try {
+		await client.query(`DROP SCHEMA IF EXISTS "${TEST_SCHEMA}" CASCADE`);
+	} finally {
+		await client.end();
+	}
+}
 
 describe('HonoEndpoint with PgBoss Publisher', () => {
 	let connection: PgBossConnection;
 	let envParser: EnvironmentParser<{}>;
 
 	beforeAll(async () => {
+		await dropTestSchema();
 		connection = new PgBossConnection({
 			connectionString: POSTGRES_URL,
-			schema: 'pgboss_hono_publisher_test',
+			schema: TEST_SCHEMA,
 		});
 		await connection.connect();
 		envParser = new EnvironmentParser({});
