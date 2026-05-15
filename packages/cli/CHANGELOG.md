@@ -1,5 +1,11 @@
 # @geekmidas/cli
 
+## 1.10.38
+
+### Patch Changes
+
+- 🐛 [`54b8743`](https://github.com/geekmidas/toolbox/commit/54b87433ba969a03afe56de0dba7c0173d15dbc9) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix `gkm openapi` workspace-mode generation when invoked from a directory other than the workspace root. The command now derives the workspace root from the loaded config, so subprocess-per-app generation works regardless of where the command is invoked from (previously the subprocess used CWD and silently no-op'd or failed with `spawn node ENOENT`).
+
 ## 1.10.37
 
 ### Patch Changes
