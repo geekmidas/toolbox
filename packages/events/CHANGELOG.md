@@ -1,5 +1,14 @@
 # @geekmidas/events
 
+## 1.1.2
+
+### Patch Changes
+
+- 🐛 [`aeba918`](https://github.com/geekmidas/toolbox/commit/aeba918fc258f6ccdb96b8273b2bc01bd2190553) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix schema, openapi generation and events testkit
+
+- Updated dependencies [[`aeba918`](https://github.com/geekmidas/toolbox/commit/aeba918fc258f6ccdb96b8273b2bc01bd2190553)]:
+  - @geekmidas/schema@1.0.1
+
 ## 1.1.1
 
 ### Patch Changes

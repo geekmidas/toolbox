@@ -1,5 +1,14 @@
 # @geekmidas/example
 
+## 1.0.68
+
+### Patch Changes
+
+- Updated dependencies [[`aeba918`](https://github.com/geekmidas/toolbox/commit/aeba918fc258f6ccdb96b8273b2bc01bd2190553)]:
+  - @geekmidas/constructs@3.0.10
+  - @geekmidas/events@1.1.2
+  - @geekmidas/cli@1.10.37
+
 ## 1.0.67
 
 ### Patch Changes

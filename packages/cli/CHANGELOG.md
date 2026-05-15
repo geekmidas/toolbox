@@ -1,5 +1,15 @@
 # @geekmidas/cli
 
+## 1.10.37
+
+### Patch Changes
+
+- 🐛 [`aeba918`](https://github.com/geekmidas/toolbox/commit/aeba918fc258f6ccdb96b8273b2bc01bd2190553) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix schema, openapi generation and events testkit
+
+- Updated dependencies [[`aeba918`](https://github.com/geekmidas/toolbox/commit/aeba918fc258f6ccdb96b8273b2bc01bd2190553)]:
+  - @geekmidas/constructs@3.0.10
+  - @geekmidas/schema@1.0.1
+
 ## 1.10.36
 
 ### Patch Changes
