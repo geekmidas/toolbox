@@ -3,13 +3,13 @@ import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
+import { getPublicUrlArgNames } from '../deploy/domain.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
 	generateDockerCompose,
 	generateMinimalDockerCompose,
 	generateWorkspaceCompose,
 } from './compose';
-import { getPublicUrlArgNames } from '../deploy/domain.js';
 import {
 	detectPackageManager,
 	findLockfilePath,
@@ -507,11 +507,7 @@ export async function workspaceDockerCommand(
 	logger.log('\n📋 Build commands:');
 	for (const result of results) {
 		const icon =
-			result.type === 'backend'
-				? '⚙️'
-				: result.type === 'mobile'
-					? '📱'
-					: '🌐';
+			result.type === 'backend' ? '⚙️' : result.type === 'mobile' ? '📱' : '🌐';
 		logger.log(
 			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
 		);

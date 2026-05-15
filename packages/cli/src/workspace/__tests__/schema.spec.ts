@@ -479,53 +479,50 @@ describe('WorkspaceConfigSchema', () => {
 	});
 
 	describe('auth app configuration', () => {
-		it('should accept auth app with provider', () => {
+		it('should accept auth app as backend with better-auth framework', () => {
 			const config = {
 				apps: {
 					auth: {
-						type: 'auth' as const,
+						type: 'backend' as const,
 						path: 'apps/auth',
 						port: 3002,
-						provider: 'better-auth' as const,
+						framework: 'better-auth' as const,
 					},
 				},
 			};
 
 			const result = validateWorkspaceConfig(config);
 
-			expect(result.apps.auth.type).toBe('auth');
-			expect(result.apps.auth.provider).toBe('better-auth');
+			expect(result.apps.auth.type).toBe('backend');
+			expect(result.apps.auth.framework).toBe('better-auth');
 		});
 
-		it('should reject auth app without provider', () => {
+		it('should accept auth backend without explicit framework', () => {
+			// Backend type defaults are permissive — framework is optional.
 			const config = {
 				apps: {
 					auth: {
-						type: 'auth' as const,
+						type: 'backend' as const,
 						path: 'apps/auth',
 						port: 3002,
-						// Missing provider
 					},
 				},
 			};
 
-			const result = safeValidateWorkspaceConfig(config);
+			const result = validateWorkspaceConfig(config);
 
-			expect(result.success).toBe(false);
-			if (result.error) {
-				const formatted = formatValidationErrors(result.error);
-				expect(formatted).toContain('Auth apps must have provider defined');
-			}
+			expect(result.apps.auth.type).toBe('backend');
+			expect(result.apps.auth.framework).toBeUndefined();
 		});
 
-		it('should allow auth app with backend properties', () => {
+		it('should allow auth backend with additional backend properties', () => {
 			const config = {
 				apps: {
 					auth: {
-						type: 'auth' as const,
+						type: 'backend' as const,
 						path: 'apps/auth',
 						port: 3002,
-						provider: 'better-auth' as const,
+						framework: 'better-auth' as const,
 						envParser: './src/config/env',
 						logger: './src/logger',
 						telescope: true,
@@ -535,12 +532,12 @@ describe('WorkspaceConfigSchema', () => {
 
 			const result = validateWorkspaceConfig(config);
 
-			expect(result.apps.auth.type).toBe('auth');
+			expect(result.apps.auth.framework).toBe('better-auth');
 			expect(result.apps.auth.envParser).toBe('./src/config/env');
 			expect(result.apps.auth.telescope).toBe(true);
 		});
 
-		it('should validate fullstack workspace with auth app', () => {
+		it('should validate fullstack workspace with auth backend', () => {
 			const config = {
 				name: 'fullstack-app',
 				apps: {
@@ -552,10 +549,10 @@ describe('WorkspaceConfigSchema', () => {
 						dependencies: ['auth'],
 					},
 					auth: {
-						type: 'auth' as const,
+						type: 'backend' as const,
 						path: 'apps/auth',
 						port: 3002,
-						provider: 'better-auth' as const,
+						framework: 'better-auth' as const,
 					},
 					web: {
 						type: 'web' as const,
@@ -570,18 +567,18 @@ describe('WorkspaceConfigSchema', () => {
 			const result = validateWorkspaceConfig(config);
 
 			expect(result.apps.api.dependencies).toEqual(['auth']);
-			expect(result.apps.auth.type).toBe('auth');
+			expect(result.apps.auth.framework).toBe('better-auth');
 			expect(result.apps.web.dependencies).toEqual(['api', 'auth']);
 		});
 
-		it('should reject invalid auth provider', () => {
+		it('should reject auth backend with invalid framework value', () => {
 			const config = {
 				apps: {
 					auth: {
-						type: 'auth' as const,
+						type: 'backend' as const,
 						path: 'apps/auth',
 						port: 3002,
-						provider: 'invalid-provider',
+						framework: 'invalid-framework',
 					},
 				},
 			};

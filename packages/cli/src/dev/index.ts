@@ -1037,14 +1037,8 @@ async function workspaceDevCommand(
 				? ` (depends on: ${app.dependencies.join(', ')})`
 				: '';
 		const icon =
-			app.type === 'backend'
-				? '🔧'
-				: app.type === 'mobile'
-					? '📱'
-					: '🌐';
-		logger.log(
-			`   ${icon} ${appName} → http://localhost:${app.port}${deps}`,
-		);
+			app.type === 'backend' ? '🔧' : app.type === 'mobile' ? '📱' : '🌐';
+		logger.log(`   ${icon} ${appName} → http://localhost:${app.port}${deps}`);
 	}
 
 	// Find the config file path for GKM_CONFIG_PATH

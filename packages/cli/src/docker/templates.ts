@@ -953,7 +953,10 @@ export function generateNodeWebDockerfile(
 	const installPm = pm.install ? `RUN ${pm.install}` : '';
 	const turboInstallCmd = getTurboInstallCmd(packageManager);
 	const turboCmd = packageManager === 'pnpm' ? 'pnpm dlx turbo' : 'npx turbo';
-	const startCmd = packageManager === 'pnpm' ? 'pnpm start' : `${pm.lockfile.startsWith('package-lock') ? 'npm' : packageManager} start`;
+	const startCmd =
+		packageManager === 'pnpm'
+			? 'pnpm start'
+			: `${pm.lockfile.startsWith('package-lock') ? 'npm' : packageManager} start`;
 
 	const argDecls = publicUrlArgs.map((a) => `ARG ${a}=""`).join('\n');
 	const envDecls = publicUrlArgs.map((a) => `ENV ${a}=$${a}`).join('\n');

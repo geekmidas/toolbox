@@ -571,7 +571,7 @@ export async function sniffAllApps(
 }
 
 // Export for testing
-export type {
+export {
 	sniffEnvParser as _sniffEnvParser,
 	sniffEntryFile as _sniffEntryFile,
 	sniffRouteFiles as _sniffRouteFiles,

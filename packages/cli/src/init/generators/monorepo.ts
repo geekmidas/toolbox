@@ -322,7 +322,7 @@ function generateFrontendAppEntry(options: TemplateOptions): string {
 	switch (options.frontendFramework) {
 		case 'tanstack-start':
 			return `web: {
-      type: 'frontend',
+      type: 'web',
       framework: 'tanstack-start',
       path: 'apps/web',
       port: 3001,
@@ -334,7 +334,7 @@ function generateFrontendAppEntry(options: TemplateOptions): string {
     },`;
 		case 'expo':
 			return `app: {
-      type: 'frontend',
+      type: 'mobile',
       framework: 'expo',
       path: 'apps/app',
       port: 8081,
@@ -342,7 +342,7 @@ function generateFrontendAppEntry(options: TemplateOptions): string {
     },`;
 		default:
 			return `web: {
-      type: 'frontend',
+      type: 'web',
       framework: 'nextjs',
       path: 'apps/web',
       port: 3001,

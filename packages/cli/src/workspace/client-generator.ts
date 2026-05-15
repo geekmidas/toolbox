@@ -62,10 +62,7 @@ export function getBackendDependencies(
 	clientAppName: string,
 ): string[] {
 	const clientApp = workspace.apps[clientAppName];
-	if (
-		!clientApp ||
-		(clientApp.type !== 'web' && clientApp.type !== 'mobile')
-	) {
+	if (!clientApp || (clientApp.type !== 'web' && clientApp.type !== 'mobile')) {
 		return [];
 	}
 

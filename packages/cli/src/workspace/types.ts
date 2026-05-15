@@ -12,9 +12,25 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
-import type { BackupsConfig, DnsConfig, DnsProvider } from './schema.js';
+import type {
+	BackendFramework,
+	BackupsConfig,
+	DnsConfig,
+	DnsProvider,
+	Framework,
+	FrontendFramework,
+	MobileFramework,
+} from './schema.js';
 
-export type { BackupsConfig, DnsConfig, DnsProvider };
+export type {
+	BackendFramework,
+	BackupsConfig,
+	DnsConfig,
+	DnsProvider,
+	Framework,
+	FrontendFramework,
+	MobileFramework,
+};
 
 /**
  * Deploy target for an app.
@@ -33,79 +49,6 @@ export type { BackupsConfig, DnsConfig, DnsProvider };
  */
 export type DeployTarget = 'dokploy' | 'vercel' | 'cloudflare';
 
-/**
- * Backend framework types for apps that don't use gkm routes.
- *
- * Used with `entry` to specify the framework for proper Docker builds.
- *
- * @example
- * ```ts
- * // Better Auth server
- * {
- *   entry: './src/index.ts',
- *   framework: 'better-auth',
- *   port: 3001,
- * }
- *
- * // Hono app without gkm routes
- * {
- *   entry: './src/server.ts',
- *   framework: 'hono',
- *   port: 3000,
- * }
- * ```
- */
-export type BackendFramework = 'hono' | 'better-auth' | 'express' | 'fastify';
-
-/**
- * Frontend framework types.
- *
- * @example
- * ```ts
- * // Next.js app
- * {
- *   type: 'web',
- *   framework: 'nextjs',
- *   port: 3000,
- * }
- *
- * // Vite SPA
- * {
- *   type: 'web',
- *   framework: 'vite',
- *   port: 5173,
- * }
- *
- * // TanStack Start (Vite-based, full-stack)
- * {
- *   type: 'web',
- *   framework: 'tanstack-start',
- *   port: 3000,
- * }
- * ```
- */
-export type FrontendFramework = 'nextjs' | 'remix' | 'vite' | 'tanstack-start';
-
-/**
- * Mobile framework types.
- *
- * Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
- * rather than Docker/Dokploy. Only build-time public env vars
- * (e.g. `EXPO_PUBLIC_*`) reach the device — server secrets are dropped.
- *
- * @example
- * ```ts
- * {
- *   type: 'mobile',
- *   framework: 'expo',
- *   path: 'apps/mobile',
- *   port: 8081,
- *   dependencies: ['api'],
- * }
- * ```
- */
-export type MobileFramework = 'expo';
-export type Framework = BackendFramework | FrontendFramework | MobileFramework;
 /**
  * Service image configuration for custom Docker images.
  *

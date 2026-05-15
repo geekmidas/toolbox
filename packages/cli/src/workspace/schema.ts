@@ -57,7 +57,7 @@ const HooksConfigSchema = z.object({
 /**
  * Backend framework schema for non-gkm apps.
  */
-const BackendFrameworkSchema = z.enum([
+export const BackendFrameworkSchema = z.enum([
 	'hono',
 	'better-auth',
 	'express',
@@ -65,9 +65,34 @@ const BackendFrameworkSchema = z.enum([
 ]);
 
 /**
+ * Backend framework types for apps that don't use gkm routes.
+ * Derived from {@link BackendFrameworkSchema}.
+ *
+ * Used with `entry` to specify the framework for proper Docker builds.
+ *
+ * @example
+ * ```ts
+ * // Better Auth server
+ * {
+ *   entry: './src/index.ts',
+ *   framework: 'better-auth',
+ *   port: 3001,
+ * }
+ *
+ * // Hono app without gkm routes
+ * {
+ *   entry: './src/server.ts',
+ *   framework: 'hono',
+ *   port: 3000,
+ * }
+ * ```
+ */
+export type BackendFramework = z.infer<typeof BackendFrameworkSchema>;
+
+/**
  * Frontend framework schema.
  */
-const FrontendFrameworkSchema = z.enum([
+export const FrontendFrameworkSchema = z.enum([
 	'nextjs',
 	'remix',
 	'vite',
@@ -75,18 +100,73 @@ const FrontendFrameworkSchema = z.enum([
 ]);
 
 /**
+ * Frontend framework types. Derived from {@link FrontendFrameworkSchema}.
+ *
+ * @example
+ * ```ts
+ * // Next.js app
+ * {
+ *   type: 'web',
+ *   framework: 'nextjs',
+ *   port: 3000,
+ * }
+ *
+ * // Vite SPA
+ * {
+ *   type: 'web',
+ *   framework: 'vite',
+ *   port: 5173,
+ * }
+ *
+ * // TanStack Start (Vite-based, full-stack)
+ * {
+ *   type: 'web',
+ *   framework: 'tanstack-start',
+ *   port: 3000,
+ * }
+ * ```
+ */
+export type FrontendFramework = z.infer<typeof FrontendFrameworkSchema>;
+
+/**
  * Mobile framework schema.
  */
-const MobileFrameworkSchema = z.enum(['expo']);
+export const MobileFrameworkSchema = z.enum(['expo']);
+
+/**
+ * Mobile framework types. Derived from {@link MobileFrameworkSchema}.
+ *
+ * Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
+ * rather than Docker/Dokploy. Only build-time public env vars
+ * (e.g. `EXPO_PUBLIC_*`) reach the device — server secrets are dropped.
+ *
+ * @example
+ * ```ts
+ * {
+ *   type: 'mobile',
+ *   framework: 'expo',
+ *   path: 'apps/mobile',
+ *   port: 8081,
+ *   dependencies: ['api'],
+ * }
+ * ```
+ */
+export type MobileFramework = z.infer<typeof MobileFrameworkSchema>;
 
 /**
  * Combined framework schema (backend, frontend, or mobile).
  */
-const FrameworkSchema = z.union([
+export const FrameworkSchema = z.union([
 	BackendFrameworkSchema,
 	FrontendFrameworkSchema,
 	MobileFrameworkSchema,
 ]);
+
+/**
+ * Any framework value across backend, frontend, or mobile.
+ * Derived from {@link FrameworkSchema}.
+ */
+export type Framework = z.infer<typeof FrameworkSchema>;
 
 /** Frontend framework values, kept in sync with FrontendFrameworkSchema. */
 const FRONTEND_FRAMEWORKS = [
