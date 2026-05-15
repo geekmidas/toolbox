@@ -74,4 +74,25 @@ describe('OpenApiTsGenerator — zod global registry', () => {
 		expect(content).toMatch(/export interface Foo\b/);
 		expect(content).toMatch(/export interface Bar\b/);
 	});
+
+	it('references one registered schema from another via the parent type', async () => {
+		const UserSchema = z
+			.object({ id: z.string(), email: z.string() })
+			.meta({ id: 'User' });
+
+		z.object({ user: UserSchema, role: z.string() }).meta({ id: 'UserRole' });
+
+		const endpoint = e
+			.get('/ping')
+			.output(z.object({ ok: z.boolean() }))
+			.handle(async () => ({ ok: true }));
+
+		const generator = new OpenApiTsGenerator();
+		const content = await generator.generate([endpoint as any]);
+
+		expect(content).toMatch(/export interface User\b/);
+		expect(content).toMatch(/export interface UserRole\b/);
+		// `user` inside UserRole should reference the named User type, not inline.
+		expect(content).toMatch(/user:\s*User\b/);
+	});
 });
