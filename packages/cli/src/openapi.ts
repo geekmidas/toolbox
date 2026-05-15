@@ -127,7 +127,11 @@ export async function openapiCommand(
 		} else {
 			// Workspace config - generate for each backend app
 			const { workspace } = loadedConfig;
-			const workspaceRoot = options.cwd || process.cwd();
+			// Always derive the workspace root from the loaded config rather than
+			// CWD. Subprocesses run with CWD set to an app directory, and falling
+			// back to CWD there causes `join(workspaceRoot, app.path)` to point at
+			// a non-existent nested path (e.g. `apps/api/apps/api`).
+			const workspaceRoot = workspace.root;
 
 			// Find backend apps with openapi enabled
 			const backendApps = Object.entries(workspace.apps).filter(
