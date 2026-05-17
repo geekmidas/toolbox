@@ -140,7 +140,7 @@ describe('MswEndpointAdaptor', () => {
 		expect(body.name).toBe('Test User');
 	});
 
-	it('should return 401 when authorization fails', async () => {
+	it('should return 403 when authorization fails', async () => {
 		const contextId = crypto.randomUUID();
 		registerContext(contextId, {});
 
@@ -151,7 +151,7 @@ describe('MswEndpointAdaptor', () => {
 			},
 		});
 
-		expect(response.status).toBe(401);
+		expect(response.status).toBe(403);
 	});
 
 	it('should return 200 when authorization passes', async () => {

@@ -823,13 +823,13 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 
 			const response = await handler(event, context);
 
-			expect(response.statusCode).toBe(401);
+			expect(response.statusCode).toBe(403);
 			const body = JSON.parse(response.body!);
 			expect(body).toMatchObject({
-				message: 'Unauthorized access to the endpoint',
+				message: 'Forbidden access to the endpoint',
 			});
 			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'Unauthorized access attempt',
+				'Forbidden access attempt',
 			);
 		});
 
@@ -879,9 +879,9 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			});
 			const invalidResponse = await handler(invalidEvent, context);
 			const invalidResponseBody = JSON.parse(invalidResponse.body!);
-			expect(invalidResponse.statusCode).toBe(401);
+			expect(invalidResponse.statusCode).toBe(403);
 			expect(invalidResponseBody).toMatchObject({
-				message: 'Unauthorized access to the endpoint',
+				message: 'Forbidden access to the endpoint',
 			});
 		});
 	});

@@ -801,7 +801,7 @@ describe('HonoEndpointAdaptor', () => {
 			expect(await response.json()).toEqual({ success: true });
 		});
 
-		it('should return 401 when authorize returns false', async () => {
+		it('should return 403 when authorize returns false', async () => {
 			const endpoint = new Endpoint({
 				route: '/protected',
 				method: 'GET',
@@ -827,10 +827,10 @@ describe('HonoEndpointAdaptor', () => {
 			adaptor.addRoute(serviceDiscovery, app);
 
 			const response = await app.request('/protected');
-			expect(response.status).toBe(401);
-			expect(await response.json()).toEqual({ error: 'Unauthorized' });
+			expect(response.status).toBe(403);
+			expect(await response.json()).toEqual({ error: 'Forbidden' });
 			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'Unauthorized access attempt',
+				'Forbidden access attempt',
 			);
 		});
 
@@ -873,8 +873,8 @@ describe('HonoEndpointAdaptor', () => {
 			const invalidResponse = await app.request('/protected', {
 				headers: { Authorization: 'Bearer invalid-token' },
 			});
-			expect(invalidResponse.status).toBe(401);
-			expect(await invalidResponse.json()).toEqual({ error: 'Unauthorized' });
+			expect(invalidResponse.status).toBe(403);
+			expect(await invalidResponse.json()).toEqual({ error: 'Forbidden' });
 		});
 
 		it('should authorize with services available', async () => {
@@ -924,7 +924,7 @@ describe('HonoEndpointAdaptor', () => {
 			const invalidResponse = await app.request('/protected', {
 				headers: { Authorization: 'Bearer invalid-token' },
 			});
-			expect(invalidResponse.status).toBe(401);
+			expect(invalidResponse.status).toBe(403);
 		});
 
 		it('should authorize with session', async () => {
@@ -966,7 +966,7 @@ describe('HonoEndpointAdaptor', () => {
 
 			// Test with no token (no session)
 			const noTokenResponse = await app.request('/protected');
-			expect(noTokenResponse.status).toBe(401);
+			expect(noTokenResponse.status).toBe(403);
 		});
 
 		it('should handle authorization errors', async () => {
@@ -1099,7 +1099,7 @@ describe('HonoEndpointAdaptor', () => {
 				body: JSON.stringify({ role: 'viewer' }),
 			});
 
-			expect(response.status).toBe(401);
+			expect(response.status).toBe(403);
 		});
 	});
 

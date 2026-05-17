@@ -5,7 +5,7 @@ import type {
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { UnauthorizedError } from '@geekmidas/errors';
+import { ForbiddenError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type {
@@ -223,9 +223,9 @@ export class TestEndpointAdaptor<
 			} as any);
 
 			if (!isAuthorized) {
-				logger.warn('Unauthorized access attempt');
-				throw new UnauthorizedError(
-					'Unauthorized access to the endpoint',
+				logger.warn('Forbidden access attempt');
+				throw new ForbiddenError(
+					'Forbidden access to the endpoint',
 					'You do not have permission to access this resource.',
 				);
 			}

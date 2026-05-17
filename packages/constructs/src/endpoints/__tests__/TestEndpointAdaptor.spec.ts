@@ -491,7 +491,7 @@ describe('TestEndpointAdaptor', () => {
 					services: mockServices,
 					headers: { host: 'example.com' },
 				}),
-			).rejects.toThrow('Unauthorized');
+			).rejects.toThrow('Forbidden');
 		});
 
 		it('should allow when authorize uses body to allow', async () => {

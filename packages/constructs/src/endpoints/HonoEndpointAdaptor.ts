@@ -416,8 +416,8 @@ export class HonoEndpoint<
 						} as any);
 
 						if (!isAuthorized) {
-							logger.warn('Unauthorized access attempt');
-							return c.json({ error: 'Unauthorized' }, 401);
+							logger.warn('Forbidden access attempt');
+							return c.json({ error: 'Forbidden' }, 403);
 						}
 
 						// Check rate limit only if configured
