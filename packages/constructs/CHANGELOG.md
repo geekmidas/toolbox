@@ -1,5 +1,11 @@
 # @geekmidas/constructs
 
+## 3.0.11
+
+### Patch Changes
+
+- [`fb1e721`](https://github.com/geekmidas/toolbox/commit/fb1e721ec38c1b328d41466564c6fa1c9305e80b) Thanks [@geekmidas](https://github.com/geekmidas)! - Return 403 Forbidden instead of 401 Unauthorized when an endpoint's `.authorize()` returns false. Authorization runs after `getSession()`, so by the time it rejects, the caller is already identified — 403 is the correct semantic. Callers that want 401 for missing authentication should throw `UnauthorizedError` from `getSession()` (or `.authorize()`) directly.
+
 ## 3.0.10
 
 ### Patch Changes
