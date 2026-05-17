@@ -829,9 +829,7 @@ describe('HonoEndpointAdaptor', () => {
 			const response = await app.request('/protected');
 			expect(response.status).toBe(403);
 			expect(await response.json()).toEqual({ error: 'Forbidden' });
-			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'Forbidden access attempt',
-			);
+			expect(mockLogger.warn).toHaveBeenCalledWith('Forbidden access attempt');
 		});
 
 		it('should handle async authorize functions with headers', async () => {

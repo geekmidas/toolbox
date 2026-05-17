@@ -828,9 +828,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			expect(body).toMatchObject({
 				message: 'Forbidden access to the endpoint',
 			});
-			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'Forbidden access attempt',
-			);
+			expect(mockLogger.warn).toHaveBeenCalledWith('Forbidden access attempt');
 		});
 
 		it('should handle async authorize functions', async () => {
