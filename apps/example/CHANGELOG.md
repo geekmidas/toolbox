@@ -1,5 +1,22 @@
 # @geekmidas/example
 
+## 1.0.71
+
+### Patch Changes
+
+- Updated dependencies [[`d70c6c0`](https://github.com/geekmidas/toolbox/commit/d70c6c0aeb8a79da2473ac77dbd8255a4a2f5651)]:
+  - @geekmidas/audit@2.0.1
+  - @geekmidas/cli@1.10.39
+  - @geekmidas/constructs@3.0.12
+  - @geekmidas/db@1.0.2
+  - @geekmidas/envkit@1.0.7
+  - @geekmidas/errors@1.0.1
+  - @geekmidas/events@1.1.3
+  - @geekmidas/logger@1.0.2
+  - @geekmidas/services@1.0.2
+  - @geekmidas/studio@1.0.1
+  - @geekmidas/telescope@1.0.1
+
 ## 1.0.70
 
 ### Patch Changes

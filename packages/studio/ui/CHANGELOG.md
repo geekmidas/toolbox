@@ -1,5 +1,12 @@
 # @geekmidas/studio-ui
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [[`d70c6c0`](https://github.com/geekmidas/toolbox/commit/d70c6c0aeb8a79da2473ac77dbd8255a4a2f5651)]:
+  - @geekmidas/ui@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
