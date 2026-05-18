@@ -5,54 +5,104 @@
 	"type": "module",
 	"exports": {
 		"./objection": {
-			"types": "./dist/objection.d.ts",
-			"import": "./dist/objection.mjs",
-			"require": "./dist/objection.cjs"
+			"import": {
+				"types": "./dist/objection.d.mts",
+				"default": "./dist/objection.mjs"
+			},
+			"require": {
+				"types": "./dist/objection.d.cts",
+				"default": "./dist/objection.cjs"
+			}
 		},
 		"./timer": {
-			"types": "./dist/timer.d.ts",
-			"import": "./dist/timer.mjs",
-			"require": "./dist/timer.cjs"
+			"import": {
+				"types": "./dist/timer.d.mts",
+				"default": "./dist/timer.mjs"
+			},
+			"require": {
+				"types": "./dist/timer.d.cts",
+				"default": "./dist/timer.cjs"
+			}
 		},
 		"./kysely": {
-			"types": "./dist/kysely.d.ts",
-			"import": "./dist/kysely.mjs",
-			"require": "./dist/kysely.cjs"
+			"import": {
+				"types": "./dist/kysely.d.mts",
+				"default": "./dist/kysely.mjs"
+			},
+			"require": {
+				"types": "./dist/kysely.d.cts",
+				"default": "./dist/kysely.cjs"
+			}
 		},
 		"./os": {
-			"types": "./dist/os/index.d.ts",
-			"import": "./dist/os/index.mjs",
-			"require": "./dist/os/index.cjs"
+			"import": {
+				"types": "./dist/os/index.d.mts",
+				"default": "./dist/os/index.mjs"
+			},
+			"require": {
+				"types": "./dist/os/index.d.cts",
+				"default": "./dist/os/index.cjs"
+			}
 		},
 		"./faker": {
-			"types": "./dist/faker.d.ts",
-			"import": "./dist/faker.mjs",
-			"require": "./dist/faker.cjs"
+			"import": {
+				"types": "./dist/faker.d.mts",
+				"default": "./dist/faker.mjs"
+			},
+			"require": {
+				"types": "./dist/faker.d.cts",
+				"default": "./dist/faker.cjs"
+			}
 		},
 		"./aws": {
-			"types": "./dist/aws.d.ts",
-			"import": "./dist/aws.mjs",
-			"require": "./dist/aws.cjs"
+			"import": {
+				"types": "./dist/aws.d.mts",
+				"default": "./dist/aws.mjs"
+			},
+			"require": {
+				"types": "./dist/aws.d.cts",
+				"default": "./dist/aws.cjs"
+			}
 		},
 		"./logger": {
-			"types": "./dist/logger.d.ts",
-			"import": "./dist/logger.mjs",
-			"require": "./dist/logger.cjs"
+			"import": {
+				"types": "./dist/logger.d.mts",
+				"default": "./dist/logger.mjs"
+			},
+			"require": {
+				"types": "./dist/logger.d.cts",
+				"default": "./dist/logger.cjs"
+			}
 		},
 		"./better-auth": {
-			"types": "./dist/better-auth.d.ts",
-			"import": "./dist/better-auth.mjs",
-			"require": "./dist/better-auth.cjs"
+			"import": {
+				"types": "./dist/better-auth.d.mts",
+				"default": "./dist/better-auth.mjs"
+			},
+			"require": {
+				"types": "./dist/better-auth.d.cts",
+				"default": "./dist/better-auth.cjs"
+			}
 		},
 		"./benchmark": {
-			"types": "./dist/benchmark.d.ts",
-			"import": "./dist/benchmark.mjs",
-			"require": "./dist/benchmark.cjs"
+			"import": {
+				"types": "./dist/benchmark.d.mts",
+				"default": "./dist/benchmark.mjs"
+			},
+			"require": {
+				"types": "./dist/benchmark.d.cts",
+				"default": "./dist/benchmark.cjs"
+			}
 		},
 		"./postgres": {
-			"types": "./dist/initScript.d.ts",
-			"import": "./dist/initScript.mjs",
-			"require": "./dist/initScript.cjs"
+			"import": {
+				"types": "./dist/initScript.d.mts",
+				"default": "./dist/initScript.mjs"
+			},
+			"require": {
+				"types": "./dist/initScript.d.cts",
+				"default": "./dist/initScript.cjs"
+			}
 		}
 	},
 	"dependencies": {

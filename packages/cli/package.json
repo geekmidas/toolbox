@@ -6,29 +6,54 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./config": {
-			"types": "./dist/config.d.ts",
-			"import": "./dist/config.mjs",
-			"require": "./dist/config.cjs"
+			"import": {
+				"types": "./dist/config.d.mts",
+				"default": "./dist/config.mjs"
+			},
+			"require": {
+				"types": "./dist/config.d.cts",
+				"default": "./dist/config.cjs"
+			}
 		},
 		"./workspace": {
-			"types": "./dist/workspace/index.d.ts",
-			"import": "./dist/workspace/index.mjs",
-			"require": "./dist/workspace/index.cjs"
+			"import": {
+				"types": "./dist/workspace/index.d.mts",
+				"default": "./dist/workspace/index.mjs"
+			},
+			"require": {
+				"types": "./dist/workspace/index.d.cts",
+				"default": "./dist/workspace/index.cjs"
+			}
 		},
 		"./openapi": {
-			"types": "./dist/openapi.d.ts",
-			"import": "./dist/openapi.mjs",
-			"require": "./dist/openapi.cjs"
+			"import": {
+				"types": "./dist/openapi.d.mts",
+				"default": "./dist/openapi.mjs"
+			},
+			"require": {
+				"types": "./dist/openapi.d.cts",
+				"default": "./dist/openapi.cjs"
+			}
 		},
 		"./openapi-react-query": {
-			"types": "./dist/openapi-react-query.d.ts",
-			"import": "./dist/openapi-react-query.mjs",
-			"require": "./dist/openapi-react-query.cjs"
+			"import": {
+				"types": "./dist/openapi-react-query.d.mts",
+				"default": "./dist/openapi-react-query.mjs"
+			},
+			"require": {
+				"types": "./dist/openapi-react-query.d.cts",
+				"default": "./dist/openapi-react-query.cjs"
+			}
 		}
 	},
 	"bin": {

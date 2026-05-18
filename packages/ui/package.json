@@ -5,45 +5,85 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./components": {
-			"types": "./dist/components/ui/index.d.ts",
-			"import": "./dist/components/ui/index.js",
-			"require": "./dist/components/ui/index.cjs"
+			"import": {
+				"types": "./dist/components/ui/index.d.mts",
+				"default": "./dist/components/ui/index.mjs"
+			},
+			"require": {
+				"types": "./dist/components/ui/index.d.cts",
+				"default": "./dist/components/ui/index.cjs"
+			}
 		},
 		"./layout": {
-			"types": "./dist/components/layout/index.d.ts",
-			"import": "./dist/components/layout/index.js",
-			"require": "./dist/components/layout/index.cjs"
+			"import": {
+				"types": "./dist/components/layout/index.d.mts",
+				"default": "./dist/components/layout/index.mjs"
+			},
+			"require": {
+				"types": "./dist/components/layout/index.d.cts",
+				"default": "./dist/components/layout/index.cjs"
+			}
 		},
 		"./data-display": {
-			"types": "./dist/components/data-display/index.d.ts",
-			"import": "./dist/components/data-display/index.js",
-			"require": "./dist/components/data-display/index.cjs"
+			"import": {
+				"types": "./dist/components/data-display/index.d.mts",
+				"default": "./dist/components/data-display/index.mjs"
+			},
+			"require": {
+				"types": "./dist/components/data-display/index.d.cts",
+				"default": "./dist/components/data-display/index.cjs"
+			}
 		},
 		"./feedback": {
-			"types": "./dist/components/feedback/index.d.ts",
-			"import": "./dist/components/feedback/index.js",
-			"require": "./dist/components/feedback/index.cjs"
+			"import": {
+				"types": "./dist/components/feedback/index.d.mts",
+				"default": "./dist/components/feedback/index.mjs"
+			},
+			"require": {
+				"types": "./dist/components/feedback/index.d.cts",
+				"default": "./dist/components/feedback/index.cjs"
+			}
 		},
 		"./hooks": {
-			"types": "./dist/hooks/index.d.ts",
-			"import": "./dist/hooks/index.js",
-			"require": "./dist/hooks/index.cjs"
+			"import": {
+				"types": "./dist/hooks/index.d.mts",
+				"default": "./dist/hooks/index.mjs"
+			},
+			"require": {
+				"types": "./dist/hooks/index.d.cts",
+				"default": "./dist/hooks/index.cjs"
+			}
 		},
 		"./lib/utils": {
-			"types": "./dist/lib/utils.d.ts",
-			"import": "./dist/lib/utils.js",
-			"require": "./dist/lib/utils.cjs"
+			"import": {
+				"types": "./dist/lib/utils.d.mts",
+				"default": "./dist/lib/utils.mjs"
+			},
+			"require": {
+				"types": "./dist/lib/utils.d.cts",
+				"default": "./dist/lib/utils.cjs"
+			}
 		},
 		"./styles": "./src/styles/globals.css",
 		"./theme": {
-			"types": "./dist/styles/theme.d.ts",
-			"import": "./dist/styles/theme.js",
-			"require": "./dist/styles/theme.cjs"
+			"import": {
+				"types": "./dist/styles/theme.d.mts",
+				"default": "./dist/styles/theme.mjs"
+			},
+			"require": {
+				"types": "./dist/styles/theme.d.cts",
+				"default": "./dist/styles/theme.cjs"
+			}
 		}
 	},
 	"scripts": {

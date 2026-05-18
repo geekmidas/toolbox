@@ -5,49 +5,94 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./server": {
-			"types": "./dist/server.d.ts",
-			"import": "./dist/server.mjs",
-			"require": "./dist/server.cjs"
+			"import": {
+				"types": "./dist/server.d.mts",
+				"default": "./dist/server.mjs"
+			},
+			"require": {
+				"types": "./dist/server.d.cts",
+				"default": "./dist/server.cjs"
+			}
 		},
 		"./client": {
-			"types": "./dist/client.d.ts",
-			"import": "./dist/client.mjs",
-			"require": "./dist/client.cjs"
+			"import": {
+				"types": "./dist/client.d.mts",
+				"default": "./dist/client.mjs"
+			},
+			"require": {
+				"types": "./dist/client.d.cts",
+				"default": "./dist/client.cjs"
+			}
 		},
 		"./jwt": {
-			"types": "./dist/jwt.d.ts",
-			"import": "./dist/jwt.mjs",
-			"require": "./dist/jwt.cjs"
+			"import": {
+				"types": "./dist/jwt.d.mts",
+				"default": "./dist/jwt.mjs"
+			},
+			"require": {
+				"types": "./dist/jwt.d.cts",
+				"default": "./dist/jwt.cjs"
+			}
 		},
 		"./hono/jwt": {
-			"types": "./dist/hono/jwt.d.ts",
-			"import": "./dist/hono/jwt.mjs",
-			"require": "./dist/hono/jwt.cjs"
+			"import": {
+				"types": "./dist/hono/jwt.d.mts",
+				"default": "./dist/hono/jwt.mjs"
+			},
+			"require": {
+				"types": "./dist/hono/jwt.d.cts",
+				"default": "./dist/hono/jwt.cjs"
+			}
 		},
 		"./lambda/jwt": {
-			"types": "./dist/lambda/jwt.d.ts",
-			"import": "./dist/lambda/jwt.mjs",
-			"require": "./dist/lambda/jwt.cjs"
+			"import": {
+				"types": "./dist/lambda/jwt.d.mts",
+				"default": "./dist/lambda/jwt.mjs"
+			},
+			"require": {
+				"types": "./dist/lambda/jwt.d.cts",
+				"default": "./dist/lambda/jwt.cjs"
+			}
 		},
 		"./oidc": {
-			"types": "./dist/oidc.d.ts",
-			"import": "./dist/oidc.mjs",
-			"require": "./dist/oidc.cjs"
+			"import": {
+				"types": "./dist/oidc.d.mts",
+				"default": "./dist/oidc.mjs"
+			},
+			"require": {
+				"types": "./dist/oidc.d.cts",
+				"default": "./dist/oidc.cjs"
+			}
 		},
 		"./hono/oidc": {
-			"types": "./dist/hono/oidc.d.ts",
-			"import": "./dist/hono/oidc.mjs",
-			"require": "./dist/hono/oidc.cjs"
+			"import": {
+				"types": "./dist/hono/oidc.d.mts",
+				"default": "./dist/hono/oidc.mjs"
+			},
+			"require": {
+				"types": "./dist/hono/oidc.d.cts",
+				"default": "./dist/hono/oidc.cjs"
+			}
 		},
 		"./lambda/oidc": {
-			"types": "./dist/lambda/oidc.d.ts",
-			"import": "./dist/lambda/oidc.mjs",
-			"require": "./dist/lambda/oidc.cjs"
+			"import": {
+				"types": "./dist/lambda/oidc.d.mts",
+				"default": "./dist/lambda/oidc.mjs"
+			},
+			"require": {
+				"types": "./dist/lambda/oidc.d.cts",
+				"default": "./dist/lambda/oidc.cjs"
+			}
 		}
 	},
 	"scripts": {

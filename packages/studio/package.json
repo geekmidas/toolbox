@@ -8,19 +8,34 @@
 	},
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./data": {
-			"types": "./dist/data/index.d.ts",
-			"import": "./dist/data/index.mjs",
-			"require": "./dist/data/index.cjs"
+			"import": {
+				"types": "./dist/data/index.d.mts",
+				"default": "./dist/data/index.mjs"
+			},
+			"require": {
+				"types": "./dist/data/index.d.cts",
+				"default": "./dist/data/index.cjs"
+			}
 		},
 		"./server/hono": {
-			"types": "./dist/server/hono.d.ts",
-			"import": "./dist/server/hono.mjs",
-			"require": "./dist/server/hono.cjs"
+			"import": {
+				"types": "./dist/server/hono.d.mts",
+				"default": "./dist/server/hono.mjs"
+			},
+			"require": {
+				"types": "./dist/server/hono.d.cts",
+				"default": "./dist/server/hono.cjs"
+			}
 		}
 	},
 	"repository": {

@@ -6,24 +6,44 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./pino": {
-			"types": "./dist/pino.d.ts",
-			"import": "./dist/pino.mjs",
-			"require": "./dist/pino.cjs"
+			"import": {
+				"types": "./dist/pino.d.mts",
+				"default": "./dist/pino.mjs"
+			},
+			"require": {
+				"types": "./dist/pino.d.cts",
+				"default": "./dist/pino.cjs"
+			}
 		},
 		"./console": {
-			"types": "./dist/console.d.ts",
-			"import": "./dist/console.mjs",
-			"require": "./dist/console.cjs"
+			"import": {
+				"types": "./dist/console.d.mts",
+				"default": "./dist/console.mjs"
+			},
+			"require": {
+				"types": "./dist/console.d.cts",
+				"default": "./dist/console.cjs"
+			}
 		},
 		"./redact": {
-			"types": "./dist/redact-paths.d.ts",
-			"import": "./dist/redact-paths.mjs",
-			"require": "./dist/redact-paths.cjs"
+			"import": {
+				"types": "./dist/redact-paths.d.mts",
+				"default": "./dist/redact-paths.mjs"
+			},
+			"require": {
+				"types": "./dist/redact-paths.d.cts",
+				"default": "./dist/redact-paths.cjs"
+			}
 		}
 	},
 	"repository": {

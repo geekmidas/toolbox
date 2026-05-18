@@ -6,29 +6,54 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./memory": {
-			"types": "./dist/memory.d.ts",
-			"import": "./dist/memory.mjs",
-			"require": "./dist/memory.cjs"
+			"import": {
+				"types": "./dist/memory.d.mts",
+				"default": "./dist/memory.mjs"
+			},
+			"require": {
+				"types": "./dist/memory.d.cts",
+				"default": "./dist/memory.cjs"
+			}
 		},
 		"./upstash": {
-			"types": "./dist/upstash.d.ts",
-			"import": "./dist/upstash.mjs",
-			"require": "./dist/upstash.cjs"
+			"import": {
+				"types": "./dist/upstash.d.mts",
+				"default": "./dist/upstash.mjs"
+			},
+			"require": {
+				"types": "./dist/upstash.d.cts",
+				"default": "./dist/upstash.cjs"
+			}
 		},
 		"./expo": {
-			"types": "./dist/expo.d.ts",
-			"import": "./dist/expo.mjs",
-			"require": "./dist/expo.cjs"
+			"import": {
+				"types": "./dist/expo.d.mts",
+				"default": "./dist/expo.mjs"
+			},
+			"require": {
+				"types": "./dist/expo.d.cts",
+				"default": "./dist/expo.cjs"
+			}
 		},
 		"./file": {
-			"types": "./dist/file.d.ts",
-			"import": "./dist/file.mjs",
-			"require": "./dist/file.cjs"
+			"import": {
+				"types": "./dist/file.d.mts",
+				"default": "./dist/file.mjs"
+			},
+			"require": {
+				"types": "./dist/file.d.cts",
+				"default": "./dist/file.cjs"
+			}
 		}
 	},
 	"repository": {

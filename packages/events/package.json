@@ -4,34 +4,64 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./basic": {
-			"types": "./dist/basic/index.d.ts",
-			"import": "./dist/basic/index.mjs",
-			"require": "./dist/basic/index.cjs"
+			"import": {
+				"types": "./dist/basic/index.d.mts",
+				"default": "./dist/basic/index.mjs"
+			},
+			"require": {
+				"types": "./dist/basic/index.d.cts",
+				"default": "./dist/basic/index.cjs"
+			}
 		},
 		"./rabbitmq": {
-			"types": "./dist/rabbitmq/index.d.ts",
-			"import": "./dist/rabbitmq/index.mjs",
-			"require": "./dist/rabbitmq/index.cjs"
+			"import": {
+				"types": "./dist/rabbitmq/index.d.mts",
+				"default": "./dist/rabbitmq/index.mjs"
+			},
+			"require": {
+				"types": "./dist/rabbitmq/index.d.cts",
+				"default": "./dist/rabbitmq/index.cjs"
+			}
 		},
 		"./sqs": {
-			"types": "./dist/sqs/index.d.ts",
-			"import": "./dist/sqs/index.mjs",
-			"require": "./dist/sqs/index.cjs"
+			"import": {
+				"types": "./dist/sqs/index.d.mts",
+				"default": "./dist/sqs/index.mjs"
+			},
+			"require": {
+				"types": "./dist/sqs/index.d.cts",
+				"default": "./dist/sqs/index.cjs"
+			}
 		},
 		"./sns": {
-			"types": "./dist/sns/index.d.ts",
-			"import": "./dist/sns/index.mjs",
-			"require": "./dist/sns/index.cjs"
+			"import": {
+				"types": "./dist/sns/index.d.mts",
+				"default": "./dist/sns/index.mjs"
+			},
+			"require": {
+				"types": "./dist/sns/index.d.cts",
+				"default": "./dist/sns/index.cjs"
+			}
 		},
 		"./pgboss": {
-			"types": "./dist/pgboss/index.d.ts",
-			"import": "./dist/pgboss/index.mjs",
-			"require": "./dist/pgboss/index.cjs"
+			"import": {
+				"types": "./dist/pgboss/index.d.mts",
+				"default": "./dist/pgboss/index.mjs"
+			},
+			"require": {
+				"types": "./dist/pgboss/index.d.cts",
+				"default": "./dist/pgboss/index.cjs"
+			}
 		}
 	},
 	"repository": {

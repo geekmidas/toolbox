@@ -5,29 +5,54 @@
 	"type": "module",
 	"exports": {
 		"./kysely": {
-			"types": "./dist/kysely.d.ts",
-			"import": "./dist/kysely.mjs",
-			"require": "./dist/kysely.cjs"
+			"import": {
+				"types": "./dist/kysely.d.mts",
+				"default": "./dist/kysely.mjs"
+			},
+			"require": {
+				"types": "./dist/kysely.d.cts",
+				"default": "./dist/kysely.cjs"
+			}
 		},
 		"./kysely/pagination": {
-			"types": "./dist/kysely/pagination.d.ts",
-			"import": "./dist/kysely/pagination.mjs",
-			"require": "./dist/kysely/pagination.cjs"
+			"import": {
+				"types": "./dist/kysely/pagination.d.mts",
+				"default": "./dist/kysely/pagination.mjs"
+			},
+			"require": {
+				"types": "./dist/kysely/pagination.d.cts",
+				"default": "./dist/kysely/pagination.cjs"
+			}
 		},
 		"./pagination": {
-			"types": "./dist/pagination.d.ts",
-			"import": "./dist/pagination.mjs",
-			"require": "./dist/pagination.cjs"
+			"import": {
+				"types": "./dist/pagination.d.mts",
+				"default": "./dist/pagination.mjs"
+			},
+			"require": {
+				"types": "./dist/pagination.d.cts",
+				"default": "./dist/pagination.cjs"
+			}
 		},
 		"./objection/pagination": {
-			"types": "./dist/objection/pagination.d.ts",
-			"import": "./dist/objection/pagination.mjs",
-			"require": "./dist/objection/pagination.cjs"
+			"import": {
+				"types": "./dist/objection/pagination.d.mts",
+				"default": "./dist/objection/pagination.mjs"
+			},
+			"require": {
+				"types": "./dist/objection/pagination.d.cts",
+				"default": "./dist/objection/pagination.cjs"
+			}
 		},
 		"./rls": {
-			"types": "./dist/rls.d.ts",
-			"import": "./dist/rls.mjs",
-			"require": "./dist/rls.cjs"
+			"import": {
+				"types": "./dist/rls.d.mts",
+				"default": "./dist/rls.mjs"
+			},
+			"require": {
+				"types": "./dist/rls.d.cts",
+				"default": "./dist/rls.cjs"
+			}
 		}
 	},
 	"dependencies": {

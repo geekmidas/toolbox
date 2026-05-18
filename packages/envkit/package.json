@@ -5,24 +5,44 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./sst": {
-			"types": "./dist/sst.d.ts",
-			"import": "./dist/sst.mjs",
-			"require": "./dist/sst.cjs"
+			"import": {
+				"types": "./dist/sst.d.mts",
+				"default": "./dist/sst.mjs"
+			},
+			"require": {
+				"types": "./dist/sst.d.cts",
+				"default": "./dist/sst.cjs"
+			}
 		},
 		"./sniffer": {
-			"types": "./dist/SnifferEnvironmentParser.d.ts",
-			"import": "./dist/SnifferEnvironmentParser.mjs",
-			"require": "./dist/SnifferEnvironmentParser.cjs"
+			"import": {
+				"types": "./dist/SnifferEnvironmentParser.d.mts",
+				"default": "./dist/SnifferEnvironmentParser.mjs"
+			},
+			"require": {
+				"types": "./dist/SnifferEnvironmentParser.d.cts",
+				"default": "./dist/SnifferEnvironmentParser.cjs"
+			}
 		},
 		"./credentials": {
-			"types": "./dist/credentials.d.ts",
-			"import": "./dist/credentials.mjs",
-			"require": "./dist/credentials.cjs"
+			"import": {
+				"types": "./dist/credentials.d.mts",
+				"default": "./dist/credentials.mjs"
+			},
+			"require": {
+				"types": "./dist/credentials.d.cts",
+				"default": "./dist/credentials.cjs"
+			}
 		}
 	},
 	"repository": {

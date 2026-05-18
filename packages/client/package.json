@@ -5,44 +5,84 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./fetcher": {
-			"types": "./dist/fetcher.d.ts",
-			"import": "./dist/fetcher.mjs",
-			"require": "./dist/fetcher.cjs"
+			"import": {
+				"types": "./dist/fetcher.d.mts",
+				"default": "./dist/fetcher.mjs"
+			},
+			"require": {
+				"types": "./dist/fetcher.d.cts",
+				"default": "./dist/fetcher.cjs"
+			}
 		},
 		"./infer": {
-			"types": "./dist/infer.d.ts",
-			"import": "./dist/infer.mjs",
-			"require": "./dist/infer.cjs"
+			"import": {
+				"types": "./dist/infer.d.mts",
+				"default": "./dist/infer.mjs"
+			},
+			"require": {
+				"types": "./dist/infer.d.cts",
+				"default": "./dist/infer.cjs"
+			}
 		},
 		"./react-query": {
-			"types": "./dist/react-query.d.ts",
-			"import": "./dist/react-query.mjs",
-			"require": "./dist/react-query.cjs"
+			"import": {
+				"types": "./dist/react-query.d.mts",
+				"default": "./dist/react-query.mjs"
+			},
+			"require": {
+				"types": "./dist/react-query.d.cts",
+				"default": "./dist/react-query.cjs"
+			}
 		},
 		"./openapi": {
-			"types": "./dist/openapi-hooks.d.ts",
-			"import": "./dist/openapi-hooks.mjs",
-			"require": "./dist/openapi-hooks.cjs"
+			"import": {
+				"types": "./dist/openapi-hooks.d.mts",
+				"default": "./dist/openapi-hooks.mjs"
+			},
+			"require": {
+				"types": "./dist/openapi-hooks.d.cts",
+				"default": "./dist/openapi-hooks.cjs"
+			}
 		},
 		"./types": {
-			"types": "./dist/types.d.ts",
-			"import": "./dist/types.mjs",
-			"require": "./dist/types.cjs"
+			"import": {
+				"types": "./dist/types.d.mts",
+				"default": "./dist/types.mjs"
+			},
+			"require": {
+				"types": "./dist/types.d.cts",
+				"default": "./dist/types.cjs"
+			}
 		},
 		"./auth-fetcher": {
-			"types": "./dist/auth-fetcher.d.ts",
-			"import": "./dist/auth-fetcher.mjs",
-			"require": "./dist/auth-fetcher.cjs"
+			"import": {
+				"types": "./dist/auth-fetcher.d.mts",
+				"default": "./dist/auth-fetcher.mjs"
+			},
+			"require": {
+				"types": "./dist/auth-fetcher.d.cts",
+				"default": "./dist/auth-fetcher.cjs"
+			}
 		},
 		"./endpoint-hooks": {
-			"types": "./dist/endpoint-hooks.d.ts",
-			"import": "./dist/endpoint-hooks.mjs",
-			"require": "./dist/endpoint-hooks.cjs"
+			"import": {
+				"types": "./dist/endpoint-hooks.d.mts",
+				"default": "./dist/endpoint-hooks.mjs"
+			},
+			"require": {
+				"types": "./dist/endpoint-hooks.d.cts",
+				"default": "./dist/endpoint-hooks.cjs"
+			}
 		}
 	},
 	"scripts": {

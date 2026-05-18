@@ -6,9 +6,14 @@
 	"type": "module",
 	"exports": {
 		"./*": {
-			"types": "./dist/*.d.ts",
-			"import": "./dist/*.mjs",
-			"require": "./dist/*.cjs"
+			"import": {
+				"types": "./dist/*.d.mts",
+				"default": "./dist/*.mjs"
+			},
+			"require": {
+				"types": "./dist/*.d.cts",
+				"default": "./dist/*.cjs"
+			}
 		}
 	},
 	"repository": {

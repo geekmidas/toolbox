@@ -8,74 +8,144 @@
 	},
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.mjs",
-			"require": "./dist/index.cjs"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		},
 		"./storage/memory": {
-			"types": "./dist/storage/memory.d.ts",
-			"import": "./dist/storage/memory.mjs",
-			"require": "./dist/storage/memory.cjs"
+			"import": {
+				"types": "./dist/storage/memory.d.mts",
+				"default": "./dist/storage/memory.mjs"
+			},
+			"require": {
+				"types": "./dist/storage/memory.d.cts",
+				"default": "./dist/storage/memory.cjs"
+			}
 		},
 		"./storage/kysely": {
-			"types": "./dist/storage/kysely.d.ts",
-			"import": "./dist/storage/kysely.mjs",
-			"require": "./dist/storage/kysely.cjs"
+			"import": {
+				"types": "./dist/storage/kysely.d.mts",
+				"default": "./dist/storage/kysely.mjs"
+			},
+			"require": {
+				"types": "./dist/storage/kysely.d.cts",
+				"default": "./dist/storage/kysely.cjs"
+			}
 		},
 		"./server/hono": {
-			"types": "./dist/server/hono.d.ts",
-			"import": "./dist/server/hono.mjs",
-			"require": "./dist/server/hono.cjs"
+			"import": {
+				"types": "./dist/server/hono.d.mts",
+				"default": "./dist/server/hono.mjs"
+			},
+			"require": {
+				"types": "./dist/server/hono.d.cts",
+				"default": "./dist/server/hono.cjs"
+			}
 		},
 		"./hono": {
-			"types": "./dist/server/hono.d.ts",
-			"import": "./dist/server/hono.mjs",
-			"require": "./dist/server/hono.cjs"
+			"import": {
+				"types": "./dist/server/hono.d.mts",
+				"default": "./dist/server/hono.mjs"
+			},
+			"require": {
+				"types": "./dist/server/hono.d.cts",
+				"default": "./dist/server/hono.cjs"
+			}
 		},
 		"./logger/pino": {
-			"types": "./dist/logger/pino.d.ts",
-			"import": "./dist/logger/pino.mjs",
-			"require": "./dist/logger/pino.cjs"
+			"import": {
+				"types": "./dist/logger/pino.d.mts",
+				"default": "./dist/logger/pino.mjs"
+			},
+			"require": {
+				"types": "./dist/logger/pino.d.cts",
+				"default": "./dist/logger/pino.cjs"
+			}
 		},
 		"./logger/console": {
-			"types": "./dist/logger/console.d.ts",
-			"import": "./dist/logger/console.mjs",
-			"require": "./dist/logger/console.cjs"
+			"import": {
+				"types": "./dist/logger/console.d.mts",
+				"default": "./dist/logger/console.mjs"
+			},
+			"require": {
+				"types": "./dist/logger/console.d.cts",
+				"default": "./dist/logger/console.cjs"
+			}
 		},
 		"./metrics": {
-			"types": "./dist/metrics/index.d.ts",
-			"import": "./dist/metrics/index.mjs",
-			"require": "./dist/metrics/index.cjs"
+			"import": {
+				"types": "./dist/metrics/index.d.mts",
+				"default": "./dist/metrics/index.mjs"
+			},
+			"require": {
+				"types": "./dist/metrics/index.d.cts",
+				"default": "./dist/metrics/index.cjs"
+			}
 		},
 		"./otlp": {
-			"types": "./dist/otlp/index.d.ts",
-			"import": "./dist/otlp/index.mjs",
-			"require": "./dist/otlp/index.cjs"
+			"import": {
+				"types": "./dist/otlp/index.d.mts",
+				"default": "./dist/otlp/index.mjs"
+			},
+			"require": {
+				"types": "./dist/otlp/index.d.cts",
+				"default": "./dist/otlp/index.cjs"
+			}
 		},
 		"./otlp/hono": {
-			"types": "./dist/otlp/hono.d.ts",
-			"import": "./dist/otlp/hono.mjs",
-			"require": "./dist/otlp/hono.cjs"
+			"import": {
+				"types": "./dist/otlp/hono.d.mts",
+				"default": "./dist/otlp/hono.mjs"
+			},
+			"require": {
+				"types": "./dist/otlp/hono.d.cts",
+				"default": "./dist/otlp/hono.cjs"
+			}
 		},
 		"./instrumentation": {
-			"types": "./dist/instrumentation/index.d.ts",
-			"import": "./dist/instrumentation/index.mjs",
-			"require": "./dist/instrumentation/index.cjs"
+			"import": {
+				"types": "./dist/instrumentation/index.d.mts",
+				"default": "./dist/instrumentation/index.mjs"
+			},
+			"require": {
+				"types": "./dist/instrumentation/index.d.cts",
+				"default": "./dist/instrumentation/index.cjs"
+			}
 		},
 		"./instrumentation/hono": {
-			"types": "./dist/instrumentation/hono.d.ts",
-			"import": "./dist/instrumentation/hono.mjs",
-			"require": "./dist/instrumentation/hono.cjs"
+			"import": {
+				"types": "./dist/instrumentation/hono.d.mts",
+				"default": "./dist/instrumentation/hono.mjs"
+			},
+			"require": {
+				"types": "./dist/instrumentation/hono.d.cts",
+				"default": "./dist/instrumentation/hono.cjs"
+			}
 		},
 		"./core": {
-			"types": "./dist/core.d.ts",
-			"import": "./dist/core.mjs",
-			"require": "./dist/core.cjs"
+			"import": {
+				"types": "./dist/core.d.mts",
+				"default": "./dist/core.mjs"
+			},
+			"require": {
+				"types": "./dist/core.d.cts",
+				"default": "./dist/core.cjs"
+			}
 		},
 		"./lambda": {
-			"types": "./dist/adapters/lambda.d.ts",
-			"import": "./dist/adapters/lambda.mjs",
-			"require": "./dist/adapters/lambda.cjs"
+			"import": {
+				"types": "./dist/adapters/lambda.d.mts",
+				"default": "./dist/adapters/lambda.mjs"
+			},
+			"require": {
+				"types": "./dist/adapters/lambda.d.cts",
+				"default": "./dist/adapters/lambda.cjs"
+			}
 		}
 	},
 	"repository": {
