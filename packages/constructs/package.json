@@ -74,6 +74,16 @@
 				"default": "./dist/adaptors/hono.cjs"
 			}
 		},
+		"./trpc": {
+			"import": {
+				"types": "./dist/adaptors/trpc.d.mts",
+				"default": "./dist/adaptors/trpc.mjs"
+			},
+			"require": {
+				"types": "./dist/adaptors/trpc.d.cts",
+				"default": "./dist/adaptors/trpc.cjs"
+			}
+		},
 		"./aws": {
 			"import": {
 				"types": "./dist/adaptors/aws.d.mts",
@@ -135,6 +145,7 @@
 		"@types/lodash.uniqby": "~4.7.9",
 		"@types/pg": "~8.15.6",
 		"@types/qs": "~6.15.0",
+		"@trpc/server": "~11.16.0",
 		"better-auth": "~1.4.18",
 		"kysely": "~0.28.8",
 		"pg": "~8.16.3",
@@ -153,6 +164,7 @@
 		"@geekmidas/schema": "workspace:^",
 		"@geekmidas/services": "workspace:^",
 		"@middy/core": ">=6.3.1",
+		"@trpc/server": ">=11.0.0",
 		"@types/aws-lambda": ">=8.10.92",
 		"hono": ">=4.8.2",
 		"msw": ">=2.0.0"
@@ -189,6 +201,9 @@
 			"optional": true
 		},
 		"@middy/core": {
+			"optional": true
+		},
+		"@trpc/server": {
 			"optional": true
 		},
 		"@types/aws-lambda": {

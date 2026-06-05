@@ -11,6 +11,7 @@ export default defineConfig({
 		'src/adaptors/hono.ts',
 		'src/adaptors/aws.ts',
 		'src/adaptors/testing.ts',
+		'src/adaptors/trpc.ts',
 	],
 	clean: true,
 	outDir: 'dist',

@@ -33,6 +33,7 @@ pnpm add -D @geekmidas/testkit
 | `/better-auth` | Better Auth testing utilities |
 | `/benchmark` | Test data generators for benchmarks |
 | `/postgres` | `runInitScript` - parse and execute PostgreSQL init scripts |
+| `/request-context` | Vitest helpers for running tests inside `runWithRequestContext` |
 
 ## Kysely Factory
 
@@ -180,6 +181,98 @@ it('should create user', async ({ trx }) => {
   // Automatically rolled back after test
 });
 ```
+
+## Request Context
+
+`@geekmidas/services` ships a `serviceContext` singleton backed by `AsyncLocalStorage`. Anything called inside `runWithRequestContext(...)` can read the active logger / request id / start time via `serviceContext.getLogger()`. In production, the construct adaptors (Hono, AWS, tRPC) set this up automatically; in tests, you have to establish the frame yourself or the first `serviceContext.*` call throws.
+
+The `/request-context` entry exposes three helpers for this:
+
+| Helper | Use it when |
+|--------|-------------|
+| `runInRequestContext(fn, opts?)` | You need a context for a single call — registering a service, exercising a unit of code that uses `serviceContext`. |
+| `requestContextFixture(opts?)` | You're building a Vitest fixture and want every test in that `it` to run inside the ALS frame. Marked `auto: true`, so the test doesn't need to destructure it. |
+| `withRequestContext(testApi, opts?)` | You already have a wrapped `TestAPI` (e.g. from `wrapVitestKyselyTransaction`) and want to layer a request context on top. |
+
+All three accept `RequestContextOptions`: `logger`, `requestId`, `startTime`. Any field you omit gets a sensible default (`ConsoleLogger({ app: 'test' })`, `randomUUID()`, `Date.now()`).
+
+### `runInRequestContext`
+
+```typescript
+import { runInRequestContext } from '@geekmidas/testkit/request-context';
+import { ServiceDiscovery } from '@geekmidas/services';
+import { DatabaseService } from '~/services/database';
+
+test('registers services with a context', async () => {
+  await runInRequestContext(async () => {
+    const discovery = ServiceDiscovery.getInstance(envParser);
+    // DatabaseService.register({ context }) can call context.getRequestId()
+    // here because we're inside the ALS frame.
+    const { database } = await discovery.register([DatabaseService]);
+    expect(database).toBeDefined();
+  }, { requestId: 'test-req-1' });
+});
+```
+
+### `requestContextFixture`
+
+Spread into `test.extend({ ... })` and every test runs inside the ALS frame, regardless of whether the test signature destructures `requestContext`.
+
+```typescript
+import { test } from 'vitest';
+import { serviceContext } from '@geekmidas/services';
+import { requestContextFixture } from '@geekmidas/testkit/request-context';
+
+const it = test.extend({
+  ...requestContextFixture({ requestId: 'fixture-req' }),
+});
+
+it('reads the active request id', () => {
+  expect(serviceContext.getRequestId()).toBe('fixture-req');
+});
+
+it('also works without destructuring', ({ requestContext }) => {
+  // The fixture is registered with `auto: true`, so it always runs.
+  expect(requestContext.getRequestId()).toBe('fixture-req');
+});
+```
+
+### `withRequestContext`
+
+Compose on top of another wrapper. Useful with the Kysely transaction wrapper so each test runs inside both a transaction and a request context:
+
+```typescript
+import { test } from 'vitest';
+import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
+import { withRequestContext } from '@geekmidas/testkit/request-context';
+import { serviceContext } from '@geekmidas/services';
+
+const baseIt = wrapVitestKyselyTransaction<Database>(test, {
+  connection: () => db,
+});
+const it = withRequestContext(baseIt, { requestId: 'wrapped-req' });
+
+it('runs inside both a transaction and a request context', async ({ trx }) => {
+  expect(serviceContext.getRequestId()).toBe('wrapped-req');
+
+  const inserted = await trx
+    .insertInto('users')
+    .values({ name: 'Test' })
+    .returningAll()
+    .executeTakeFirst();
+
+  expect(inserted).toBeDefined();
+  // Transaction is rolled back after the test; the ALS frame is cleared.
+});
+```
+
+### Why a fixture (not just `runInRequestContext`)?
+
+Vitest fixtures suspend on `await use(value)` and run the test body from a continuation of the runner's async context — not from inside the fixture's call stack. A scoped `runWithRequestContext(data, () => use(value))` would end its frame the moment control returns to the runner, leaving the test body without context.
+
+`requestContextFixture` and `withRequestContext` instead rely on `enterRequestContext` / `exitRequestContext` (exported from `@geekmidas/services`), which use `AsyncLocalStorage.enterWith` to mutate the current task's store. Async/await preserves that mutation across the suspension, so the test body sees the context. The fixture clears the frame in a `finally` block to keep tests isolated.
+
+You generally won't need to call `enterRequestContext` / `exitRequestContext` directly — reach for `runInRequestContext` for one-offs and the fixture helpers for whole-test setup.
 
 ## Enhanced Faker
 

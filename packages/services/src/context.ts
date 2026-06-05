@@ -89,3 +89,32 @@ export function runWithRequestContext<T>(
 ): T | Promise<T> {
 	return requestContextStorage.run(data, fn);
 }
+
+/**
+ * Mutate the current async task's store so that subsequent code in this task
+ * (and any descendants) sees the supplied request context.
+ *
+ * Unlike `runWithRequestContext`, this does not scope the context to a
+ * callback — useful when the caller can't wrap a function, for example in a
+ * Vitest fixture that suspends on `use()` and yields control to the test
+ * runner before the test body executes.
+ *
+ * **Test setup only.** In production handlers, prefer `runWithRequestContext`
+ * so the frame is automatically cleaned up.
+ */
+export function enterRequestContext(data: RequestContextData): void {
+	requestContextStorage.enterWith(data);
+}
+
+/**
+ * Clear the request context for the current async task. Pairs with
+ * `enterRequestContext`. After calling, `serviceContext.hasContext()` returns
+ * false for the remainder of the current async resource.
+ */
+export function exitRequestContext(): void {
+	// AsyncLocalStorage<T>.enterWith requires T, but Node accepts undefined at
+	// runtime — passing it resets getStore() back to undefined.
+	(requestContextStorage as unknown as AsyncLocalStorage<unknown>).enterWith(
+		undefined,
+	);
+}

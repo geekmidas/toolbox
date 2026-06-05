@@ -103,6 +103,16 @@
 				"types": "./dist/initScript.d.cts",
 				"default": "./dist/initScript.cjs"
 			}
+		},
+		"./request-context": {
+			"import": {
+				"types": "./dist/requestContext.d.mts",
+				"default": "./dist/requestContext.mjs"
+			},
+			"require": {
+				"types": "./dist/requestContext.d.cts",
+				"default": "./dist/requestContext.cjs"
+			}
 		}
 	},
 	"dependencies": {
@@ -111,6 +121,7 @@
 	"devDependencies": {
 		"@geekmidas/envkit": "workspace:^",
 		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/services": "workspace:^",
 		"@types/pg": "~8.15.4"
 	},
 	"repository": {
@@ -124,6 +135,7 @@
 	"peerDependencies": {
 		"@geekmidas/envkit": "workspace:^",
 		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/services": "workspace:^",
 		"kysely": "~0.28.2",
 		"pg": "~8.16.3",
 		"knex": "~3.1.0",
@@ -138,6 +150,9 @@
 			"optional": true
 		},
 		"@geekmidas/logger": {
+			"optional": true
+		},
+		"@geekmidas/services": {
 			"optional": true
 		},
 		"kysely": {
