@@ -124,6 +124,8 @@ export const endpoint = e
 |--------|-------------|
 | `/` | `Service` interface, `ServiceDiscovery`, `ServiceRegisterOptions` |
 | `/context` | `serviceContext` singleton and `runWithRequestContext` for AsyncLocalStorage-based request context |
+| `/trpc` | tRPC middleware factories (`createServicesMiddleware`, `createRequestContextMiddleware`) |
+| `/middy` | Middy middlewares for standalone Lambda handlers (`requestContext`, `addServices`, `withServices`) |
 
 ## Request Context
 
@@ -184,6 +186,110 @@ Guard detached/background work with `serviceContext.hasContext()`.
 
 See [Request-Scoped Logging in Singleton Services](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md)
 for the full problem description and implementation details.
+
+## tRPC Integration
+
+The `/trpc` export provides two middleware factories for integrating services with [tRPC](https://trpc.io). You keep your own `initTRPC` setup and compose only the pieces you want.
+
+| Helper | Purpose |
+|--------|---------|
+| `createServicesMiddleware(t.middleware, envParser?)` | Per-procedure middleware that resolves declared services via `ServiceDiscovery` and merges them onto `ctx`. Wraps the downstream call in `runWithRequestContext` so services can read `serviceContext.getLogger()`. |
+| `createRequestContextMiddleware(t.middleware)` | Sets up the request context (logger / requestId / startTime) without resolving services. |
+
+Initialize tRPC with a context that carries at minimum a `logger`. Optionally include `requestId`, `startTime`, and a `serviceDiscovery` instance to share across procedures.
+
+```typescript
+import { initTRPC } from '@trpc/server';
+import type { Logger } from '@geekmidas/logger';
+import type { ServiceDiscovery } from '@geekmidas/services';
+import {
+  createServicesMiddleware,
+  createRequestContextMiddleware,
+} from '@geekmidas/services/trpc';
+import { envParser } from './env';
+
+export interface Context {
+  logger: Logger;
+  session: { user: { id: string } } | null;
+  serviceDiscovery?: ServiceDiscovery; // optional (overload 2)
+  requestId?: string; // optional — auto-generated when missing
+  startTime?: number;
+}
+
+const t = initTRPC.context<Context>().create();
+export const router = t.router;
+export const baseProcedure = t.procedure;
+
+// Overload 1: pass an EnvironmentParser; services resolve via the singleton.
+export const withServices = createServicesMiddleware(t.middleware, envParser);
+
+// Overload 2: omit envParser; ctx.serviceDiscovery is read at request time.
+// export const withServices = createServicesMiddleware<Context, object>(t.middleware);
+```
+
+Declare the services a procedure needs and they appear on `ctx` keyed by `serviceName`:
+
+```typescript
+export const usersRouter = router({
+  list: baseProcedure
+    .use(withServices([DatabaseService, CacheService]))
+    .query(async ({ ctx }) => {
+      const cached = await ctx.cache.get('users:list');
+      if (cached) return cached;
+      const users = await ctx.database.selectFrom('users').selectAll().execute();
+      await ctx.cache.set('users:list', users, { ttl: 60 });
+      return users;
+    }),
+});
+```
+
+For procedures that don't need services but still want `serviceContext`, use `createRequestContextMiddleware`. `requestId`/`startTime` come from `ctx` when present, otherwise generated (`node:crypto`'s `randomUUID()` and `Date.now()`).
+
+`createServicesMiddleware` tags the inner middleware with the requested service tuple as `_services`, so route generators can introspect a procedure's dependencies by walking its `_middlewares` array.
+
+## Middy Integration
+
+The `/middy` export brings request context and service discovery to **standalone** [Middy](https://middy.js.org) Lambda handlers — functions not built with the `@geekmidas/constructs` Function/Cron constructs.
+
+| Middleware | Purpose |
+|------------|---------|
+| `requestContext({ logger, ... })` | Establishes a request context so `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()` work in the handler and any service it calls. |
+| `addServices([...], { envParser })` | Resolves services and attaches the typed record to `event.services` (matching the `Function`/`Cron` constructs). Pure resolver — pair with `requestContext` if your services read `serviceContext`. Chainable. |
+| `withServices([...], { logger, envParser })` | Batteries-included: `requestContext` + `addServices` in a single `.use(...)`. |
+
+```typescript
+import middy from '@middy/core';
+import { withServices, requestContext } from '@geekmidas/services/middy';
+import { serviceContext } from '@geekmidas/services';
+import { databaseService, cacheService } from './services';
+import { envParser } from './env';
+import { logger } from './logger';
+
+// Services + request context. Resolved instances are typed on `event.services`.
+export const handler = middy(async (event) => {
+  const user = await event.services.database.users.findById(event.id);
+  event.services.cache.set(`user:${event.id}`, user);
+  return user;
+}).use(withServices([databaseService, cacheService], { logger, envParser }));
+
+// Just request context (logger / request id), no services:
+export const ping = middy(async () => {
+  serviceContext.getLogger().info('ping');
+}).use(requestContext({ logger }));
+```
+
+**Options:**
+
+- `logger` (**required** for `requestContext` / `withServices`) — the base logger to derive the per-request child from. The middlewares are generic over `TLogger extends Logger`, so a custom logger type is preserved. There is no implicit default — you decide which logger to use.
+- `getRequestId(event, context)` — derive the request id (defaults to `context.awsRequestId`, always present in a Lambda invocation).
+- `bindings(event, context)` — extra child-logger bindings.
+- `envParser` (**required** for `addServices` / `withServices`) — used to build the `ServiceDiscovery`. `serviceDiscovery` may be passed to override it. There is no implicit `process.env` default.
+
+Type the handler's event with the exported `EventServices<T>` helper when you need it explicitly, e.g. `(event: EventServices<[typeof dbService]> & APIGatewayProxyEvent)`.
+
+::: tip
+These middlewares establish the context with `AsyncLocalStorage.enterWith` (the only option in Middy's `before`/`after` model). `requestContext` always creates a **fresh** context per invocation, so on a warm Lambda one invocation never inherits a previous one's logger. See the [request-scoped logging notes](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md).
+:::
 
 ## Service Interface
 

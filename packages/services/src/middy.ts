@@ -1,16 +1,10 @@
-import { EnvironmentParser } from '@geekmidas/envkit';
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
-import {
-	enterRequestContext,
-	exitRequestContext,
-	type Service,
-	ServiceDiscovery,
-	type ServiceRecord,
-} from '@geekmidas/services';
 import type { MiddlewareObj } from '@middy/core';
 import type { Context } from 'aws-lambda';
-import set from 'lodash.set';
+import { enterRequestContext, exitRequestContext } from './context';
+import { ServiceDiscovery, type ServiceRecord } from './ServiceDiscovery';
+import type { Service } from './types';
 
 /**
  * Middy middleware helpers that bring `@geekmidas/services` request context and
@@ -33,17 +27,18 @@ import set from 'lodash.set';
  */
 
 /**
- * Options shared by the request-context-aware middlewares.
+ * Options for {@link requestContext}. Generic over the logger type so a custom
+ * logger that extends {@link Logger} is preserved rather than widened.
  */
-export interface RequestContextOptions {
+export interface RequestContextOptions<TLogger extends Logger = Logger> {
 	/**
-	 * Base logger to derive the per-request child logger from.
-	 * Defaults to a new {@link ConsoleLogger}.
+	 * Logger to derive the per-request child logger from. Required — the caller
+	 * decides which logger to use (there is no implicit default).
 	 */
-	logger?: Logger;
+	logger: TLogger;
 	/**
 	 * Derive the request id from the event/context.
-	 * Defaults to `context.awsRequestId`, falling back to `crypto.randomUUID()`.
+	 * Defaults to `context.awsRequestId` (always present in a Lambda invocation).
 	 */
 	getRequestId?: (event: unknown, context: Context) => string;
 	/**
@@ -53,14 +48,15 @@ export interface RequestContextOptions {
 }
 
 /**
- * Options for the service-resolving middlewares.
+ * Options for {@link addServices} — how services are resolved. No logger is
+ * needed because resolving services doesn't establish a request context.
  */
-export interface ServiceMiddlewareOptions extends RequestContextOptions {
+export interface ServiceResolverOptions {
 	/**
-	 * Environment parser used to build the default {@link ServiceDiscovery}.
-	 * Defaults to `new EnvironmentParser({ ...process.env })`.
+	 * Environment parser used to build the {@link ServiceDiscovery}. Required —
+	 * the caller supplies the parser (there is no implicit `process.env` default).
 	 */
-	envParser?: EnvironmentParser<{}>;
+	envParser: EnvironmentParser<{}>;
 	/**
 	 * Explicit {@link ServiceDiscovery} to resolve services from. Takes
 	 * precedence over `envParser`.
@@ -68,16 +64,19 @@ export interface ServiceMiddlewareOptions extends RequestContextOptions {
 	serviceDiscovery?: ServiceDiscovery;
 }
 
+/**
+ * Options for {@link withServices}: request context (logger) + service resolution.
+ */
+export type ServiceMiddlewareOptions<TLogger extends Logger = Logger> =
+	RequestContextOptions<TLogger> & ServiceResolverOptions;
+
 function deriveRequestId(
 	options: RequestContextOptions,
 	event: unknown,
-	context: Context | undefined,
+	context: Context,
 ): string {
-	return (
-		options.getRequestId?.(event, context as Context) ??
-		context?.awsRequestId ??
-		crypto.randomUUID()
-	);
+	// Lambda always populates context.awsRequestId; getRequestId can override it.
+	return options.getRequestId?.(event, context) ?? context.awsRequestId;
 }
 
 function buildLogger(
@@ -85,11 +84,11 @@ function buildLogger(
 	options: RequestContextOptions,
 	requestId: string,
 	event: unknown,
-	context: Context | undefined,
+	context: Context,
 ): Logger {
 	return baseLogger.child({
 		requestId,
-		...(options.bindings?.(event, context as Context) ?? {}),
+		...(options.bindings?.(event, context) ?? {}),
 	});
 }
 
@@ -106,17 +105,17 @@ function buildLogger(
  * ```ts
  * import middy from '@middy/core';
  * import { serviceContext } from '@geekmidas/services';
- * import { requestContext } from '@geekmidas/constructs/middy';
+ * import { requestContext } from '@geekmidas/services/middy';
  *
  * export const handler = middy(async () => {
  *   serviceContext.getLogger().info('tick');
- * }).use(requestContext());
+ * }).use(requestContext({ logger }));
  * ```
  */
-export function requestContext(
-	options: RequestContextOptions = {},
+export function requestContext<TLogger extends Logger = Logger>(
+	options: RequestContextOptions<TLogger>,
 ): MiddlewareObj<unknown, unknown, Error, Context> {
-	const baseLogger = options.logger ?? new ConsoleLogger();
+	const baseLogger = options.logger;
 	return {
 		before: (request) => {
 			const { event, context } = request;
@@ -139,12 +138,9 @@ export function requestContext(
 	};
 }
 
-function resolveDiscovery(options: ServiceMiddlewareOptions): ServiceDiscovery {
+function resolveDiscovery(options: ServiceResolverOptions): ServiceDiscovery {
 	return (
-		options.serviceDiscovery ??
-		ServiceDiscovery.getInstance(
-			options.envParser ?? new EnvironmentParser({ ...process.env }),
-		)
+		options.serviceDiscovery ?? ServiceDiscovery.getInstance(options.envParser)
 	);
 }
 
@@ -173,7 +169,7 @@ export type EventServices<T extends Service[]> = {
  * @example
  * ```ts
  * import middy from '@middy/core';
- * import { addServices, requestContext } from '@geekmidas/constructs/middy';
+ * import { addServices, requestContext } from '@geekmidas/services/middy';
  *
  * export const handler = middy(async (event) => {
  *   await event.services.database.users.deletePast();
@@ -185,14 +181,16 @@ export type EventServices<T extends Service[]> = {
  */
 export function addServices<const T extends Service[]>(
 	services: [...T],
-	options: ServiceMiddlewareOptions = {},
+	options: ServiceResolverOptions,
 ): MiddlewareObj<EventServices<T>, unknown, Error, Context> {
 	const discovery = resolveDiscovery(options);
 
 	return {
 		before: async (request) => {
 			const resolved = await discovery.register(services);
-			set(request, 'event.services', resolved);
+			const event = request.event as { services?: Record<string, unknown> };
+			// Merge so chained addServices(...) calls accumulate on event.services.
+			event.services = { ...(event.services ?? {}), ...resolved };
 		},
 	};
 }
@@ -206,7 +204,7 @@ export function addServices<const T extends Service[]>(
  * @example
  * ```ts
  * import middy from '@middy/core';
- * import { withServices } from '@geekmidas/constructs/middy';
+ * import { withServices } from '@geekmidas/services/middy';
  *
  * export const handler = middy(async (event) => {
  *   await event.services.database.users.deletePast();
@@ -214,9 +212,12 @@ export function addServices<const T extends Service[]>(
  * }).use(withServices([databaseService, cacheService], { envParser }));
  * ```
  */
-export function withServices<const T extends Service[]>(
+export function withServices<
+	const T extends Service[],
+	TLogger extends Logger = Logger,
+>(
 	services: [...T],
-	options: ServiceMiddlewareOptions = {},
+	options: ServiceMiddlewareOptions<TLogger>,
 ): [
 	MiddlewareObj<unknown, unknown, Error, Context>,
 	MiddlewareObj<EventServices<T>, unknown, Error, Context>,

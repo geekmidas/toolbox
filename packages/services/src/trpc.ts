@@ -1,15 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import {
-	runWithRequestContext,
-	type Service,
-	ServiceDiscovery,
-	type ServiceRecord,
-} from '@geekmidas/services';
 import type {
 	TRPCMiddlewareBuilder,
 	TRPCMiddlewareFunction,
 } from '@trpc/server';
+import { runWithRequestContext } from './context';
+import { ServiceDiscovery, type ServiceRecord } from './ServiceDiscovery';
+import type { Service } from './types';
 
 /**
  * Shape of `t.middleware` from `@trpc/server`. We accept this rather than the
@@ -75,7 +73,7 @@ export interface ContextWithLogger {
  * @example
  * ```ts
  * import { initTRPC } from '@trpc/server';
- * import { createServicesMiddleware } from '@geekmidas/constructs/trpc';
+ * import { createServicesMiddleware } from '@geekmidas/services/trpc';
  *
  * const t = initTRPC.context<Context>().create();
  * const withServices = createServicesMiddleware(t.middleware, envParser);
@@ -124,7 +122,7 @@ export function createServicesMiddleware<
 						})(),
 				);
 
-			const requestId = ctx.requestId ?? crypto.randomUUID();
+			const requestId = ctx.requestId ?? randomUUID();
 			const startTime = ctx.startTime ?? Date.now();
 
 			return runWithRequestContext(
@@ -166,7 +164,7 @@ export function createServicesMiddleware<
  * `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()`.
  *
  * `requestId` and `startTime` are pulled from the tRPC context when present,
- * otherwise generated (`crypto.randomUUID()` and `Date.now()`).
+ * otherwise generated (`randomUUID()` and `Date.now()`).
  *
  * @example
  * ```ts
@@ -182,7 +180,7 @@ export function createRequestContextMiddleware<
 ): TRPCMiddlewareBuilder<TContext, TMeta, object, unknown> {
 	return mw(async (opts) => {
 		const ctx = opts.ctx as TContext;
-		const requestId = ctx.requestId ?? crypto.randomUUID();
+		const requestId = ctx.requestId ?? randomUUID();
 		const startTime = ctx.startTime ?? Date.now();
 		return runWithRequestContext(
 			{ logger: ctx.logger, requestId, startTime },

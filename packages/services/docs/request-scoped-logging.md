@@ -160,7 +160,7 @@ code:
 - **Constructs** (`Endpoint`, `Function`, `Cron`, `Subscriber`) wrap each
   invocation in `runWithRequestContext` automatically.
 - **Standalone Middy handlers** can opt in with the
-  `@geekmidas/constructs/middy` middlewares (`requestContext`, `addServices`,
+  `@geekmidas/services/middy` middlewares (`requestContext`, `addServices`,
   `withServices`), which establish the context (and optionally resolve services)
   before the handler runs.
 - **Tests** can use `@geekmidas/testkit`'s `runInRequestContext` /

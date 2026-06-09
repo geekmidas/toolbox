@@ -614,7 +614,6 @@ export class HonoEndpoint<
 							) {
 								c.header('content-type', endpoint.responseType);
 							}
-							// @ts-expect-error
 							return c.body(output as any, status);
 						} catch (validationError: any) {
 							logger.error(validationError, 'Output validation failed');

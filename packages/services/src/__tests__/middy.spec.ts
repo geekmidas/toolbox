@@ -1,11 +1,12 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import type { Service } from '@geekmidas/services';
-import { ServiceDiscovery, serviceContext } from '@geekmidas/services';
 import middy from '@middy/core';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { serviceContext } from '../context';
 import { addServices, requestContext, withServices } from '../middy';
+import { ServiceDiscovery } from '../ServiceDiscovery';
+import type { Service } from '../types';
 
 const createMockContext = (): Context =>
 	({
@@ -201,7 +202,12 @@ describe('middy adaptor', () => {
 			const handler = middy(async (event: { services: any }) => {
 				registeredRequestId = event.services.greeter.registeredRequestId;
 				greeting = event.services.greeter.greet();
-			}).use(withServices([new GreeterService()], { envParser }));
+			}).use(
+				withServices([new GreeterService()], {
+					logger: makeSpyLogger(),
+					envParser,
+				}),
+			);
 
 			await invoke(handler);
 
