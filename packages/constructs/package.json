@@ -103,6 +103,16 @@
 				"types": "./dist/adaptors/testing.d.cts",
 				"default": "./dist/adaptors/testing.cjs"
 			}
+		},
+		"./middy": {
+			"import": {
+				"types": "./dist/adaptors/middy.d.mts",
+				"default": "./dist/adaptors/middy.mjs"
+			},
+			"require": {
+				"types": "./dist/adaptors/middy.d.cts",
+				"default": "./dist/adaptors/middy.cjs"
+			}
 		}
 	},
 	"scripts": {
