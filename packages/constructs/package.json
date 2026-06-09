@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/constructs",
-	"version": "3.1.0",
+	"version": "4.0.0",
 	"private": false,
 	"type": "module",
 	"exports": {

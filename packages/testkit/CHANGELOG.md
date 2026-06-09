@@ -1,5 +1,12 @@
 # @geekmidas/testkit
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`811d740`](https://github.com/geekmidas/toolbox/commit/811d740ae3875d59ad1b0dc50261266963c8cb76)]:
+  - @geekmidas/services@1.1.0
+
 ## 1.0.9
 
 ### Patch Changes
