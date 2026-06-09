@@ -1,12 +1,26 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
-import { serviceContext } from '@geekmidas/services';
+import { ServiceDiscovery, serviceContext } from '@geekmidas/services';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { AWSScheduledFunction } from '../AWSScheduledFunction';
 import { CronBuilder } from '../CronBuilder';
+
+/** Spy logger whose `child()` returns itself, so all log calls land on it. */
+function makeSpyLogger(): Logger {
+	const logger: Logger = {
+		trace: vi.fn(),
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		fatal: vi.fn(),
+		child: vi.fn(() => logger),
+	};
+	return logger;
+}
 
 // Minimal EventBridge scheduled-event envelope (no user payload).
 const scheduledEvent = {
@@ -54,6 +68,9 @@ describe('AWSScheduledFunction', () => {
 	let envParser: EnvironmentParser<{}>;
 
 	beforeEach(() => {
+		// ServiceDiscovery is a process-wide singleton that caches resolved
+		// instances; reset so each test (and ordering) starts clean.
+		ServiceDiscovery.reset();
 		envParser = new EnvironmentParser({});
 		vi.clearAllMocks();
 	});
@@ -110,26 +127,25 @@ describe('AWSScheduledFunction', () => {
 
 	it('establishes request context so serviceContext.getLogger() works', async () => {
 		// The cron runs through the same runWithRequestContext wrapper as
-		// functions, so service code can resolve the request-scoped logger.
+		// functions, so service code can resolve the request-scoped logger. We
+		// assert delegation via the cron's own logger rather than spying on the
+		// shared serviceContext proxy (which is a process-wide singleton).
 		let hadContext = false;
-		let loggedThrough = false;
+		const logger = makeSpyLogger();
 
 		const cron = new CronBuilder()
 			.schedule('rate(1 day)')
-			.logger(new ConsoleLogger({ app: 'cron' }))
+			.logger(logger)
 			.handle(async () => {
 				hadContext = serviceContext.hasContext();
-				const logger = serviceContext.getLogger();
-				const spy = vi.spyOn(logger, 'info');
-				logger.info('cron tick');
-				loggedThrough = spy.mock.calls.length > 0;
+				serviceContext.getLogger().info('cron tick');
 			});
 
 		const adapter = new AWSScheduledFunction(envParser, cron);
 		await adapter.handler(scheduledEvent, createMockContext(), vi.fn());
 
 		expect(hadContext).toBe(true);
-		expect(loggedThrough).toBe(true);
+		expect(logger.info).toHaveBeenCalledWith('cron tick');
 		// Context must not leak past the invocation.
 		expect(serviceContext.hasContext()).toBe(false);
 	});
