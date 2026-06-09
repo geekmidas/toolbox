@@ -37,10 +37,10 @@ pnpm add @geekmidas/constructs
 | `/subscribers` | Event subscriber builder (`s`) |
 | `/types` | Type definitions |
 | `/hono` | Hono framework adapter (`HonoEndpoint`) |
-| `/trpc` | tRPC middleware factories (`createServicesMiddleware`, `createRequestContextMiddleware`) |
 | `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSScheduledFunction`) |
-| `/middy` | Middy middlewares for standalone Lambda functions (`requestContext`, `addServices`, `withServices`) |
 | `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`) |
+
+> **Service integrations moved:** the tRPC and Middy middlewares now live in [`@geekmidas/services`](/packages/services) (`@geekmidas/services/trpc`, `@geekmidas/services/middy`) since they depend only on `@geekmidas/services`, not on the constructs.
 
 ## Basic Usage
 
@@ -1325,50 +1325,6 @@ export default defineConfig({
 
 When building with `gkm build --provider aws-lambda`, each cron is compiled into a separate Lambda handler with its schedule expression included in the build manifest. Use the manifest to configure EventBridge rules in your IaC tool (SST, CDK, Terraform, etc.).
 
-## Standalone Middy Functions
-
-The constructs (`Endpoint`, `Function`, `Cron`, `Subscriber`) wire request context and service discovery for you. If you instead hand-write a plain [Middy](https://middy.js.org) Lambda handler, the `@geekmidas/constructs/middy` middlewares give the same support so your service code can resolve the request-scoped logger and injected services.
-
-| Middleware | Purpose |
-|------------|---------|
-| `requestContext(options?)` | Establishes a request context so `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()` work inside the handler and any service it calls. |
-| `addServices([...], options?)` | Resolves an array of services and attaches the typed record to `event.services`. Pair with `requestContext` if your services read `serviceContext`. Chainable. |
-| `withServices([...], options?)` | Batteries-included: request context **and** resolved services in a single `.use(...)`. |
-
-Resolved services are attached to `event.services`, matching how the `Function` and `Cron` constructs expose services.
-
-```typescript
-import middy from '@middy/core';
-import { withServices, requestContext } from '@geekmidas/constructs/middy';
-import { serviceContext } from '@geekmidas/services';
-import { databaseService, cacheService } from './services';
-import { envParser } from './env';
-
-// Services + request context out of the box. Resolved instances are typed
-// on `event.services`.
-export const handler = middy(async (event) => {
-  const user = await event.services.database.users.findById(event.id);
-  event.services.cache.set(`user:${event.id}`, user);
-  return user;
-}).use(withServices([databaseService, cacheService], { envParser }));
-
-// Just request context (logger / request id), no services:
-export const ping = middy(async () => {
-  serviceContext.getLogger().info('ping');
-}).use(requestContext());
-```
-
-**Options** (`RequestContextOptions` / `ServiceMiddlewareOptions`):
-
-- `logger` — base logger to derive the per-request child from (default: `ConsoleLogger`).
-- `getRequestId(event, context)` — derive the request id (default: `context.awsRequestId` or a UUID).
-- `bindings(event, context)` — extra child-logger bindings.
-- `envParser` / `serviceDiscovery` — how services are resolved (default: `ServiceDiscovery.getInstance(new EnvironmentParser(process.env))`).
-
-::: tip
-These middlewares establish the context with `AsyncLocalStorage.enterWith` (the only option in Middy's `before`/`after` model). `requestContext` always creates a **fresh** context per invocation, so on a warm Lambda one invocation never inherits a previous one's logger. See the [request-scoped logging notes](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md).
-:::
-
 ## Deployment
 
 ### Hono Integration
@@ -1429,160 +1385,7 @@ export const handler = adaptor.handler;
 
 ### tRPC Integration
 
-The `/trpc` entry point exposes two middleware factories for integrating `@geekmidas/services` with [tRPC](https://trpc.io). Unlike the endpoint builders under `/endpoints` (which own routing, validation, audits, and the rest), the tRPC adaptor is intentionally minimal — you keep your own `initTRPC` setup and compose only the pieces you want.
-
-| Helper | Purpose |
-|--------|---------|
-| `createServicesMiddleware(t.middleware, envParser?)` | Per-procedure middleware that resolves declared services via `ServiceDiscovery` and merges them onto `ctx`. Also wraps the downstream call in `runWithRequestContext` so services can read `serviceContext.getLogger()`. |
-| `createRequestContextMiddleware(t.middleware)` | Stand-alone middleware that sets up the request context (logger / requestId / startTime) without resolving services. |
-
-#### Why a per-procedure middleware
-
-Services in this stack are typically applied per procedure rather than at the app level — different procedures need different dependencies, and `ServiceDiscovery` resolves the closure of dependencies (including database/event-publisher services) on demand. Declaring services on the procedure also gives external tooling (route generators, OpenAPI emitters) a single place to introspect what each procedure needs.
-
-#### Setup
-
-Initialize tRPC yourself with a context shape that carries at minimum a `logger`. Optionally include `requestId`, `startTime`, and a `serviceDiscovery` instance if you want to share one across procedures.
-
-```typescript
-import { initTRPC } from '@trpc/server';
-import type { Logger } from '@geekmidas/logger';
-import type { ServiceDiscovery } from '@geekmidas/services';
-import {
-  createServicesMiddleware,
-  createRequestContextMiddleware,
-} from '@geekmidas/constructs/trpc';
-import { envParser } from './env';
-
-export interface Context {
-  logger: Logger;
-  session: { user: { id: string } } | null;
-  // Optional — supplied by overload 2 below:
-  serviceDiscovery?: ServiceDiscovery;
-  // Optional — auto-generated when missing:
-  requestId?: string;
-  startTime?: number;
-}
-
-const t = initTRPC.context<Context>().create();
-
-export const router = t.router;
-export const baseProcedure = t.procedure;
-
-// Overload 1: pass an EnvironmentParser; services are resolved via the
-// singleton ServiceDiscovery instance.
-export const withServices = createServicesMiddleware(t.middleware, envParser);
-
-// Overload 2: omit envParser; ctx.serviceDiscovery is read at request time.
-// export const withServices = createServicesMiddleware<Context, object>(t.middleware);
-```
-
-#### Using services on a procedure
-
-Declare the services a procedure needs and they show up on `ctx` keyed by `serviceName`.
-
-```typescript
-import { DatabaseService } from './services/database';
-import { CacheService } from './services/cache';
-
-export const usersRouter = router({
-  list: baseProcedure
-    .use(withServices([DatabaseService, CacheService]))
-    .query(async ({ ctx }) => {
-      const cached = await ctx.cache.get('users:list');
-      if (cached) return cached;
-
-      const users = await ctx.database
-        .selectFrom('users')
-        .selectAll()
-        .execute();
-
-      await ctx.cache.set('users:list', users, { ttl: 60 });
-      return users;
-    }),
-});
-```
-
-Inside any service method invoked from the handler, the request context is available via `serviceContext`:
-
-```typescript
-import { serviceContext } from '@geekmidas/services';
-
-export const DatabaseService = {
-  serviceName: 'database' as const,
-  register({ envParser }) {
-    const db = createDb(envParser);
-    return {
-      async query(sql: string) {
-        // Works because withServices wrapped the procedure in runWithRequestContext.
-        const logger = serviceContext.getLogger();
-        logger.debug({ sql }, 'executing query');
-        return db.raw(sql);
-      },
-    };
-  },
-} satisfies Service<'database', { query: (sql: string) => Promise<unknown> }>;
-```
-
-#### Composing with other middlewares
-
-`withServices` is a normal tRPC middleware — chain it however you like. A common shape is a base procedure that adds a per-request logger, then layered procedures that pull in services and require authentication:
-
-```typescript
-const withRequestLogger = t.middleware(({ ctx, path, type, next }) => {
-  const logger = ctx.logger.child({ router: path, type });
-  return next({ ctx: { ...ctx, logger } });
-});
-
-export const publicProcedure = baseProcedure.use(withRequestLogger);
-
-export const authedProcedure = publicProcedure
-  .use(withServices([DatabaseService]))
-  .use(async ({ ctx, next }) => {
-    if (!ctx.session) {
-      throw new TRPCError({ code: 'UNAUTHORIZED' });
-    }
-    const user = await ctx.database
-      .selectFrom('users')
-      .selectAll()
-      .where('id', '=', ctx.session.user.id)
-      .executeTakeFirst();
-    return next({ ctx: { ...ctx, user } });
-  });
-```
-
-Order matters when child loggers are involved: `withRequestLogger` runs **before** `withServices` so the child logger is the one captured by `runWithRequestContext`. Any further `.use(...)` that creates another child logger after `withServices` won't be reflected inside service methods — those see the logger as of the moment `withServices` ran.
-
-#### Stand-alone request context (no services)
-
-If a procedure doesn't need services but the handler (or libraries it calls) wants to read `serviceContext`, use `createRequestContextMiddleware` instead:
-
-```typescript
-import { serviceContext } from '@geekmidas/services';
-
-const withRequestContext = createRequestContextMiddleware(t.middleware);
-
-export const observabilityProcedure = baseProcedure.use(withRequestContext);
-
-export const ping = observabilityProcedure.query(() => {
-  return {
-    requestId: serviceContext.getRequestId(),
-    uptimeMs: Date.now() - serviceContext.getRequestStartTime(),
-  };
-});
-```
-
-`requestId` and `startTime` are pulled from `ctx` when present, otherwise generated (`crypto.randomUUID()` and `Date.now()`).
-
-#### Tooling hook
-
-`createServicesMiddleware` tags the inner middleware with the requested service tuple as `_services`. Route generators or codegen tools can walk a procedure's `_middlewares` array and read this without executing the middleware:
-
-```typescript
-const builder = withServices([DatabaseService]);
-const last = (builder as any)._middlewares.at(-1);
-console.log(last._services); // [DatabaseService]
-```
+The tRPC middlewares now live in `@geekmidas/services/trpc`. See the [services package docs](/packages/services#trpc-integration).
 
 ## Testing
 

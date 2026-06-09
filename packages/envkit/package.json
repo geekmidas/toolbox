@@ -65,6 +65,6 @@
 		"@types/lodash.get": "~4.4.9",
 		"@types/lodash.set": "~4.3.9",
 		"@types/lodash.snakecase": "~4.1.9",
-		"@types/node": "~22.0.0"
+		"@types/node": "~24.9.1"
 	}
 }

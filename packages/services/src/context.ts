@@ -85,16 +85,18 @@ function createRequestScopedLogger(bindings: object[] = []): Logger {
 			if (prop === 'then' || typeof prop === 'symbol') {
 				return undefined;
 			}
-			const value = (resolve() as Record<string, unknown>)[prop];
+			const value = (resolve() as unknown as Record<string, unknown>)[prop];
 			// Functions are re-resolved at *call* time so detached references
 			// (`const info = logger.info`) still target the current request's
 			// logger. Non-function members (e.g. `level`) forward as their live
 			// value on the current request's logger.
 			return typeof value === 'function'
-				? (...args: unknown[]) =>
-						(resolve() as Record<string, (...a: unknown[]) => unknown>)[prop](
-							...args,
-						)
+				? (...args: unknown[]) => {
+						const fn = (resolve() as unknown as Record<string, unknown>)[
+							prop
+						] as (...a: unknown[]) => unknown;
+						return fn(...args);
+					}
 				: value;
 		},
 		// Keep `'prop' in logger` / hasOwnProperty truthful against the underlying

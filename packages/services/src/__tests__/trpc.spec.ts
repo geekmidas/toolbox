@@ -1,16 +1,14 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import {
-	type Service,
-	ServiceDiscovery,
-	serviceContext,
-} from '@geekmidas/services';
 import { initTRPC } from '@trpc/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { serviceContext } from '../context';
+import { ServiceDiscovery } from '../ServiceDiscovery';
 import {
 	createRequestContextMiddleware,
 	createServicesMiddleware,
 } from '../trpc';
+import type { Service } from '../types';
 
 beforeEach(() => {
 	// ServiceDiscovery is a process-wide singleton that caches resolved

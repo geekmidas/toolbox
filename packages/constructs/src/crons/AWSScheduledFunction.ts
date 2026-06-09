@@ -54,6 +54,7 @@ export class AWSScheduledFunction<
 	TDatabase,
 	TDatabaseServiceName
 > {
+	// biome-ignore lint/complexity/noUselessConstructor: narrows the inherited `Function` parameter to `Cron` for a clearer public API
 	constructor(
 		envParser: EnvironmentParser<{}>,
 		cron: Cron<

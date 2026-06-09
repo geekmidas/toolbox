@@ -23,6 +23,26 @@
 				"types": "./dist/context.d.cts",
 				"default": "./dist/context.cjs"
 			}
+		},
+		"./trpc": {
+			"import": {
+				"types": "./dist/trpc.d.mts",
+				"default": "./dist/trpc.mjs"
+			},
+			"require": {
+				"types": "./dist/trpc.d.cts",
+				"default": "./dist/trpc.cjs"
+			}
+		},
+		"./middy": {
+			"import": {
+				"types": "./dist/middy.d.mts",
+				"default": "./dist/middy.mjs"
+			},
+			"require": {
+				"types": "./dist/middy.d.cts",
+				"default": "./dist/middy.cjs"
+			}
 		}
 	},
 	"scripts": {
@@ -39,7 +59,10 @@
 	"dependencies": {},
 	"peerDependencies": {
 		"@geekmidas/envkit": "workspace:^",
-		"@geekmidas/logger": "workspace:^"
+		"@geekmidas/logger": "workspace:^",
+		"@middy/core": ">=6.3.1",
+		"@trpc/server": ">=11.0.0",
+		"@types/aws-lambda": ">=8.10.92"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/envkit": {
@@ -47,10 +70,23 @@
 		},
 		"@geekmidas/logger": {
 			"optional": true
+		},
+		"@middy/core": {
+			"optional": true
+		},
+		"@trpc/server": {
+			"optional": true
+		},
+		"@types/aws-lambda": {
+			"optional": true
 		}
 	},
 	"devDependencies": {
 		"@geekmidas/envkit": "workspace:^",
-		"@geekmidas/logger": "workspace:^"
+		"@geekmidas/logger": "workspace:^",
+		"@middy/core": "~6.3.2",
+		"@trpc/server": "~11.16.0",
+		"@types/aws-lambda": "~8.10.147",
+		"@types/node": "~24.9.1"
 	}
 }
