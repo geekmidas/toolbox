@@ -1,5 +1,20 @@
 # @geekmidas/constructs
 
+## 3.1.0
+
+### Minor Changes
+
+- ✨ [#4](https://github.com/geekmidas/toolbox/pull/4) [`07093f5`](https://github.com/geekmidas/toolbox/commit/07093f5f911bf1ee48e53275da3cce398cc78ff6) Thanks [@geekmidas](https://github.com/geekmidas)! - Add `@geekmidas/constructs/middy` — Middy middlewares that bring request context and service discovery to standalone Lambda handlers:
+  - `requestContext(options?)` establishes a request context so `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()` work inside the handler and any service it calls.
+  - 🐛 `addServices([...], options?)` resolves services via `ServiceDiscovery` and attaches the typed record to `event.services` (pair with `requestContext`, or use `withServices`, if your services read `serviceContext`).
+  - `withServices([...], options?)` bundles both in a single `.use(...)`.
+
+  Also exports an `EventServices<T>` helper type for typing the handler's event.
+
+### Patch Changes
+
+- ✨ [#4](https://github.com/geekmidas/toolbox/pull/4) [`a20be2f`](https://github.com/geekmidas/toolbox/commit/a20be2faa4795600358904b751fa947d3cbb4c45) Thanks [@geekmidas](https://github.com/geekmidas)! - Add and export `AWSScheduledFunction` from `@geekmidas/constructs/crons` (and `/aws`). The CLI's cron handler generator already imported this adaptor, but it was never implemented, so generated cron handlers failed to load. `AWSScheduledFunction` wraps a `Cron` (which extends `Function`) and reuses the Lambda function execution pipeline, including the `runWithRequestContext` wrapper that powers request-scoped logging.
+
 ## 3.0.14
 
 ### Patch Changes
