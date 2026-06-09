@@ -1,5 +1,14 @@
 # @geekmidas/testkit
 
+## 1.0.9
+
+### Patch Changes
+
+- 🐛 [#3](https://github.com/geekmidas/toolbox/pull/3) [`42fda53`](https://github.com/geekmidas/toolbox/commit/42fda532bdf4489a3352f6a684f5f30beafccedd) Thanks [@geekmidas](https://github.com/geekmidas)! - Fix stale logger from service initialization
+
+- Updated dependencies [[`42fda53`](https://github.com/geekmidas/toolbox/commit/42fda532bdf4489a3352f6a684f5f30beafccedd)]:
+  - @geekmidas/services@1.0.4
+
 ## 1.0.8
 
 ### Patch Changes
