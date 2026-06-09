@@ -144,6 +144,47 @@ await runWithRequestContext(
 );
 ```
 
+### Request-scoped logger in singleton services
+
+Services are **singletons** — `register()` runs once and the instance is cached and
+reused for every request. The per-request logger, however, changes on every request.
+
+To make this safe, `serviceContext.getLogger()` returns a **request-scoped proxy**:
+it re-resolves the current request's logger on every log call. This means a service
+can capture the logger **once** during `register()` and still log against the correct
+per-request logger:
+
+```typescript
+const databaseService = {
+  serviceName: 'database' as const,
+  register({ context }) {
+    // ✅ Safe: getLogger() returns a live proxy, not a frozen logger.
+    //    Each call routes to the CURRENT request's logger.
+    const logger = context.getLogger().child({ svc: 'db' });
+
+    return {
+      async query(sql: string) {
+        logger.debug({ sql }, 'Executing query');
+      },
+    };
+  },
+} satisfies Service<'database', Database>;
+```
+
+::: warning
+Before this proxy existed, capturing `context.getLogger()` in `register()` froze the
+**first** request's logger for the lifetime of the process, so later requests logged
+with the first request's `requestId` and user bindings. The proxy fixes this; just
+make sure you log **through** the value returned by `getLogger()` / `.child()` rather
+than snapshotting a concrete logger elsewhere.
+:::
+
+Calling a log method (or `getLogger()` itself) outside any request context throws.
+Guard detached/background work with `serviceContext.hasContext()`.
+
+See [Request-Scoped Logging in Singleton Services](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md)
+for the full problem description and implementation details.
+
 ## Service Interface
 
 ```typescript

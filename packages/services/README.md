@@ -286,6 +286,30 @@ const db3 = await serviceDiscovery.discover(databaseService);
 console.log(db1 === db2 && db2 === db3); // true
 ```
 
+### Request-Scoped Logging
+
+Because services are singletons, `register()` runs **once** while the per-request
+logger changes on every request. `serviceContext.getLogger()` returns a
+**request-scoped proxy** that re-resolves the current request's logger on each call,
+so a service can safely capture the logger once during `register()` and still log
+against the correct request:
+
+```typescript
+register({ context }) {
+  const logger = context.getLogger().child({ svc: 'db' }); // ✅ safe to capture
+
+  return {
+    async query(sql: string) {
+      logger.debug({ sql }, 'Executing query'); // logs to the CURRENT request
+    },
+  };
+}
+```
+
+See [docs/request-scoped-logging.md](./docs/request-scoped-logging.md) for the full
+problem description (and the bug it prevents: a captured logger freezing the first
+request's `requestId` for every later request).
+
 ## Error Handling
 
 Handle service initialization errors gracefully:

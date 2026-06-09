@@ -62,6 +62,7 @@ describe('createServicesMiddleware (with envParser)', () => {
 			register: () => ({
 				touch() {
 					observedLogger = serviceContext.getLogger();
+					observedLogger.info('touched');
 					return 'ok';
 				},
 			}),
@@ -83,7 +84,10 @@ describe('createServicesMiddleware (with envParser)', () => {
 
 		await caller.createCaller({ logger: requestLogger }).run();
 
-		expect(observedLogger).toBe(requestLogger);
+		// getLogger() returns a request-scoped proxy (not the raw logger), so we
+		// assert it delegates to the request logger rather than checking identity.
+		expect(observedLogger).not.toBeNull();
+		expect(requestLogger.info).toHaveBeenCalledWith('touched');
 	});
 
 	it('throws cleanly when service code runs outside the procedure', () => {
@@ -129,6 +133,7 @@ describe('createRequestContextMiddleware', () => {
 		const caller = t.router({
 			run: t.procedure.use(withRequestContext).query(() => {
 				observed = serviceContext.getLogger();
+				observed.info('handled');
 				return 'done';
 			}),
 		});
@@ -137,7 +142,9 @@ describe('createRequestContextMiddleware', () => {
 		const result = await caller.createCaller({ logger: requestLogger }).run();
 
 		expect(result).toBe('done');
-		expect(observed).toBe(requestLogger);
+		// The request-scoped proxy delegates to ctx.logger.
+		expect(observed).not.toBeNull();
+		expect(requestLogger.info).toHaveBeenCalledWith('handled');
 	});
 
 	it('auto-generates requestId and startTime when ctx does not provide them', async () => {

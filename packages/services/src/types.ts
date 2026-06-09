@@ -9,6 +9,13 @@ import type { Logger } from '@geekmidas/logger';
 export interface ServiceContext {
 	/**
 	 * Get the current request's logger.
+	 *
+	 * Returns a **request-scoped proxy** that re-resolves the underlying logger
+	 * from AsyncLocalStorage on every call. This makes it safe for a singleton
+	 * service to capture the logger once (e.g. during `register()`) and reuse it
+	 * across requests — each log call routes to the current request's logger
+	 * instead of freezing the first request's logger.
+	 *
 	 * @throws Error if called outside a request context
 	 */
 	getLogger(): Logger;
