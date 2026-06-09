@@ -1,3 +1,4 @@
+export { AWSScheduledFunction } from './AWSScheduledFunction';
 export {
 	Cron,
 	type CronExpression,

@@ -151,3 +151,17 @@ Regression coverage lives in
 - `child loggers also follow the current request` — the same guarantee for
   `.child()` proxies.
 - `should delegate to the current request logger` — basic delegation.
+
+## Establishing the context
+
+The request context this relies on is established by the adaptors that run your
+code:
+
+- **Constructs** (`Endpoint`, `Function`, `Cron`, `Subscriber`) wrap each
+  invocation in `runWithRequestContext` automatically.
+- **Standalone Middy handlers** can opt in with the
+  `@geekmidas/constructs/middy` middlewares (`requestContext`, `addServices`,
+  `withServices`), which establish the context (and optionally resolve services)
+  before the handler runs.
+- **Tests** can use `@geekmidas/testkit`'s `runInRequestContext` /
+  `requestContextFixture`.

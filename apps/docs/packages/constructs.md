@@ -33,12 +33,13 @@ pnpm add @geekmidas/constructs
 | `/` | Core types and utilities |
 | `/endpoints` | HTTP endpoint builder (`e`, `EndpointFactory`) and types |
 | `/functions` | Cloud function builder (`f`) |
-| `/crons` | Scheduled task builder (`c`) |
+| `/crons` | Scheduled task builder (`c`) and AWS adaptor (`AWSScheduledFunction`) |
 | `/subscribers` | Event subscriber builder (`s`) |
 | `/types` | Type definitions |
 | `/hono` | Hono framework adapter (`HonoEndpoint`) |
 | `/trpc` | tRPC middleware factories (`createServicesMiddleware`, `createRequestContextMiddleware`) |
-| `/aws` | AWS Lambda adaptors (API Gateway v1/v2) |
+| `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSScheduledFunction`) |
+| `/middy` | Middy middlewares for standalone Lambda functions (`requestContext`, `addServices`, `withServices`) |
 | `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`) |
 
 ## Basic Usage
@@ -1323,6 +1324,50 @@ export default defineConfig({
 ### AWS Lambda Deployment
 
 When building with `gkm build --provider aws-lambda`, each cron is compiled into a separate Lambda handler with its schedule expression included in the build manifest. Use the manifest to configure EventBridge rules in your IaC tool (SST, CDK, Terraform, etc.).
+
+## Standalone Middy Functions
+
+The constructs (`Endpoint`, `Function`, `Cron`, `Subscriber`) wire request context and service discovery for you. If you instead hand-write a plain [Middy](https://middy.js.org) Lambda handler, the `@geekmidas/constructs/middy` middlewares give the same support so your service code can resolve the request-scoped logger and injected services.
+
+| Middleware | Purpose |
+|------------|---------|
+| `requestContext(options?)` | Establishes a request context so `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()` work inside the handler and any service it calls. |
+| `addServices([...], options?)` | Resolves an array of services and attaches the typed record to `event.services`. Pair with `requestContext` if your services read `serviceContext`. Chainable. |
+| `withServices([...], options?)` | Batteries-included: request context **and** resolved services in a single `.use(...)`. |
+
+Resolved services are attached to `event.services`, matching how the `Function` and `Cron` constructs expose services.
+
+```typescript
+import middy from '@middy/core';
+import { withServices, requestContext } from '@geekmidas/constructs/middy';
+import { serviceContext } from '@geekmidas/services';
+import { databaseService, cacheService } from './services';
+import { envParser } from './env';
+
+// Services + request context out of the box. Resolved instances are typed
+// on `event.services`.
+export const handler = middy(async (event) => {
+  const user = await event.services.database.users.findById(event.id);
+  event.services.cache.set(`user:${event.id}`, user);
+  return user;
+}).use(withServices([databaseService, cacheService], { envParser }));
+
+// Just request context (logger / request id), no services:
+export const ping = middy(async () => {
+  serviceContext.getLogger().info('ping');
+}).use(requestContext());
+```
+
+**Options** (`RequestContextOptions` / `ServiceMiddlewareOptions`):
+
+- `logger` — base logger to derive the per-request child from (default: `ConsoleLogger`).
+- `getRequestId(event, context)` — derive the request id (default: `context.awsRequestId` or a UUID).
+- `bindings(event, context)` — extra child-logger bindings.
+- `envParser` / `serviceDiscovery` — how services are resolved (default: `ServiceDiscovery.getInstance(new EnvironmentParser(process.env))`).
+
+::: tip
+These middlewares establish the context with `AsyncLocalStorage.enterWith` (the only option in Middy's `before`/`after` model). `requestContext` always creates a **fresh** context per invocation, so on a warm Lambda one invocation never inherits a previous one's logger. See the [request-scoped logging notes](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md).
+:::
 
 ## Deployment
 
