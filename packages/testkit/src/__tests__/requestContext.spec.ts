@@ -5,7 +5,7 @@ import {
 	ServiceDiscovery,
 	serviceContext,
 } from '@geekmidas/services';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
 	requestContextFixture,
 	runInRequestContext,
@@ -29,11 +29,15 @@ describe('runInRequestContext', () => {
 
 	test('uses caller-supplied logger and request id', async () => {
 		const logger = new ConsoleLogger({ app: 'spec' });
+		const infoSpy = vi.spyOn(logger, 'info');
 		const startTime = Date.now();
 
 		await runInRequestContext(
 			() => {
-				expect(serviceContext.getLogger()).toBe(logger);
+				// getLogger() returns a request-scoped proxy that delegates to the
+				// supplied logger rather than being the same instance.
+				serviceContext.getLogger().info('hi');
+				expect(infoSpy).toHaveBeenCalledWith('hi');
 				expect(serviceContext.getRequestId()).toBe('req-42');
 				expect(serviceContext.getRequestStartTime()).toBe(startTime);
 			},
