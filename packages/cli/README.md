@@ -619,6 +619,7 @@ gkm test [options]
 - `--watch`: Enable watch mode
 - `--coverage`: Generate coverage report
 - `--ui`: Open Vitest UI
+- `--auto-setup`: Generate a fresh stage (secrets + key) from `gkm.config.ts` when none exists — for CI (also via `GKM_AUTO_SETUP`)
 - `--pattern <pattern>`: Pattern to filter tests
 
 **What it does:**
@@ -645,6 +646,19 @@ gkm test --coverage
 > **Why not `docker compose up` directly?**
 >
 > `gkm dev` and `gkm test` decrypt your secrets and pass them as environment variables to `docker compose up`, ensuring credentials and ports are consistent. Running `docker compose up` directly skips this — variables like `${POSTGRES_USER:-postgres}` fall back to defaults that won't match your project credentials.
+
+> **Running in CI:**
+>
+> A fresh CI checkout has no `.gkm/secrets/{stage}.json` and no encryption key (`.env` and `.gkm/` are typically gitignored), so there's nothing to decrypt. Pass `--auto-setup` (or set `GKM_AUTO_SETUP=1`) to regenerate the stage from the committed `gkm.config.ts`:
+>
+> ```yaml
+> env:
+>   GKM_AUTO_SETUP: '1'
+> steps:
+>   - run: gkm test --run
+> ```
+>
+> When no secrets exist for the stage, `gkm test` generates fresh service credentials and a local key, then starts Docker with those values. This is safe for tests — the credentials are ephemeral local service passwords used to bring up the matching containers, so nothing real is committed. It's a no-op when secrets already exist and is scoped to `gkm test` only.
 
 ### `gkm secrets:init`
 

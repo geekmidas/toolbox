@@ -413,6 +413,9 @@ gkm test --stage staging
 
 # Filter tests by pattern
 gkm test users.spec.ts
+
+# Self-provision the stage when none exists (CI)
+gkm test --run --auto-setup
 ```
 
 **Options:**
@@ -424,9 +427,24 @@ gkm test users.spec.ts
 | `--watch` | Enable watch mode |
 | `--coverage` | Generate coverage report |
 | `--ui` | Open Vitest UI |
+| `--auto-setup` | Generate a fresh stage (secrets + key) from `gkm.config.ts` when none exists (also via `GKM_AUTO_SETUP`) |
 | `[pattern]` | Pattern to filter tests |
 
 The test command decrypts secrets from `.gkm/secrets/{stage}.json` and injects them as environment variables before running Vitest.
+
+#### Running in CI
+
+A fresh CI checkout has no `.gkm/secrets/{stage}.json` and no encryption key (both `.env` and `.gkm/` are typically gitignored), so `gkm test` has nothing to decrypt. Pass `--auto-setup` (or set `GKM_AUTO_SETUP=1`) to regenerate the stage from the committed `gkm.config.ts`:
+
+```yaml
+# GitHub Actions
+env:
+  GKM_AUTO_SETUP: '1'
+steps:
+  - run: gkm test --run
+```
+
+When no secrets exist for the stage, `gkm test` generates fresh service credentials and a local encryption key, then starts Docker with those values before running Vitest. This is safe for tests because the credentials are ephemeral local service passwords used to bring up the matching containers — nothing real is committed. The behavior is a no-op when secrets already exist and is scoped to `gkm test` only.
 
 ### Secrets Management
 

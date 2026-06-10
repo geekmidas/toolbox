@@ -288,13 +288,16 @@ export function reconcileSecrets(
 }
 
 /**
- * Generate fresh secrets for the workspace.
+ * Build a fresh StageSecrets object for a workspace: service credentials,
+ * connection URLs, and custom secrets. Pure — does not write to disk or touch
+ * SSM. Service passwords are freshly randomized, so the result must be the same
+ * one used to start the matching Docker containers.
+ * @internal Exported for reuse by `gkm test` auto-setup.
  */
-async function generateFreshSecrets(
+export function createFreshWorkspaceSecrets(
 	stage: string,
 	workspace: NormalizedWorkspace,
-	options: SetupOptions,
-) {
+): StageSecrets {
 	// Determine services from workspace config
 	const serviceNames: ComposeServiceName[] = [];
 	if (workspace.services.db) serviceNames.push('postgres');
@@ -313,8 +316,7 @@ async function generateFreshSecrets(
 	// Generate fullstack-aware custom secrets
 	const isMultiApp = Object.keys(workspace.apps).length > 1;
 	if (isMultiApp) {
-		const customSecrets = generateFullstackCustomSecrets(workspace);
-		secrets.custom = customSecrets;
+		secrets.custom = generateFullstackCustomSecrets(workspace);
 	} else {
 		secrets.custom = {
 			NODE_ENV: 'development',
@@ -323,6 +325,44 @@ async function generateFreshSecrets(
 			JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		};
 	}
+
+	return secrets;
+}
+
+/**
+ * Ensure a usable secret set exists for a stage, generating a fresh one from the
+ * workspace config when none is present. No-op if secrets already exist.
+ *
+ * Powers `gkm test --auto-setup` / `GKM_AUTO_SETUP`: CI can run without a
+ * committed secrets file or a shared encryption key — the stage is regenerated
+ * from the committed `gkm.config.ts`, and `writeStageSecrets` mints a local key.
+ *
+ * @returns true if fresh secrets were generated, false if existing ones were kept
+ */
+export async function ensureStageSecrets(
+	stage: string,
+	cwd: string = process.cwd(),
+): Promise<boolean> {
+	const { workspace } = await loadWorkspaceConfig(cwd);
+
+	if (secretsExist(stage, workspace.root)) {
+		return false;
+	}
+
+	const secrets = createFreshWorkspaceSecrets(stage, workspace);
+	await writeStageSecrets(secrets, workspace.root);
+	return true;
+}
+
+/**
+ * Generate fresh secrets for the workspace.
+ */
+async function generateFreshSecrets(
+	stage: string,
+	workspace: NormalizedWorkspace,
+	options: SetupOptions,
+) {
+	const secrets = createFreshWorkspaceSecrets(stage, workspace);
 
 	// Write secrets
 	await writeStageSecrets(secrets, workspace.root);
