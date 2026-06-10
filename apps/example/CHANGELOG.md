@@ -1,5 +1,12 @@
 # @geekmidas/example
 
+## 1.0.77
+
+### Patch Changes
+
+- Updated dependencies [[`9f02e9c`](https://github.com/geekmidas/toolbox/commit/9f02e9c8419db1e41692e996e177f2473237ca76)]:
+  - @geekmidas/services@1.1.1
+
 ## 1.0.76
 
 ### Patch Changes
