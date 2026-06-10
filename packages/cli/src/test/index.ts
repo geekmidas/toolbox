@@ -21,6 +21,12 @@ export interface TestOptions {
 	ui?: boolean;
 	/** Pattern to filter tests */
 	pattern?: string;
+	/**
+	 * Generate a fresh stage (secrets + encryption key) from the workspace config
+	 * when none exists, instead of requiring committed secrets / a shared key.
+	 * Intended for CI. Also enabled by the GKM_AUTO_SETUP env var.
+	 */
+	autoSetup?: boolean;
 }
 
 /**
@@ -32,6 +38,17 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const cwd = process.cwd();
 
 	console.log(`\n🧪 Running tests with ${stage} environment...\n`);
+
+	// 0. Auto-setup (CI): regenerate a fresh stage from the workspace config when
+	//    none exists, so tests run without committed secrets or a shared key.
+	const autoSetup = options.autoSetup || Boolean(process.env.GKM_AUTO_SETUP);
+	if (autoSetup) {
+		const { ensureStageSecrets } = await import('../setup/index.js');
+		const generated = await ensureStageSecrets(stage, cwd);
+		if (generated) {
+			console.log(`  🔐 Generated fresh ${stage} secrets (auto-setup)`);
+		}
+	}
 
 	// 1. Load .env files
 	const defaultEnv = loadEnvFiles('.env');

@@ -236,6 +236,10 @@ program
 	.option('--watch', 'Enable watch mode')
 	.option('--coverage', 'Generate coverage report')
 	.option('--ui', 'Open Vitest UI')
+	.option(
+		'--auto-setup',
+		'Generate a fresh stage (secrets + key) from the workspace config when none exists (for CI; also via GKM_AUTO_SETUP)',
+	)
 	.argument('[pattern]', 'Pattern to filter tests')
 	.action(async (pattern: string | undefined, options: TestOptions) => {
 		try {
