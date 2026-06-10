@@ -182,6 +182,39 @@ describe('Request Context', () => {
 					expect(requestLogger.info).toHaveBeenCalledWith('detached');
 				});
 
+				it('invokes log methods with the logger as `this` (pino receiver)', async () => {
+					// Real pino reads internal state off the receiver, e.g.
+					// `this[Symbol(pino.msgPrefix)]`. A logger whose methods depend
+					// on `this` must still work through the proxy — calling them
+					// unbound throws "Cannot read properties of undefined".
+					const received: unknown[] = [];
+					const requestLogger = {
+						secret: 'pino-state',
+						info(this: { secret: string }, msg: string) {
+							// Throws if `this` is undefined (the original bug).
+							received.push(`${this.secret}:${msg}`);
+						},
+						child() {
+							return requestLogger;
+						},
+					} as unknown as Logger;
+
+					await runWithRequestContext(
+						{ logger: requestLogger, requestId: 'r', startTime: Date.now() },
+						async () => {
+							// Both direct and detached calls must keep the receiver.
+							serviceContext.getLogger().info('direct');
+							const { info } = serviceContext.getLogger();
+							info('detached');
+						},
+					);
+
+					expect(received).toEqual([
+						'pino-state:direct',
+						'pino-state:detached',
+					]);
+				});
+
 				it('reflects underlying membership via the `in` operator', async () => {
 					const requestLogger = makeExtendedSpyLogger();
 					await runWithRequestContext(

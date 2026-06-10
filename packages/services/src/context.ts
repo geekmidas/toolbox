@@ -92,10 +92,16 @@ function createRequestScopedLogger(bindings: object[] = []): Logger {
 			// value on the current request's logger.
 			return typeof value === 'function'
 				? (...args: unknown[]) => {
-						const fn = (resolve() as unknown as Record<string, unknown>)[
+						// Re-resolve at call time so detached references target the
+						// current request's logger, and invoke with that logger as
+						// `this`: pino's log methods read internal state off the
+						// receiver (`this[Symbol(pino.msgPrefix)]`), so calling them
+						// unbound throws "Cannot read properties of undefined".
+						const resolved = resolve();
+						const fn = (resolved as unknown as Record<string, unknown>)[
 							prop
 						] as (...a: unknown[]) => unknown;
-						return fn(...args);
+						return fn.apply(resolved, args);
 					}
 				: value;
 		},
