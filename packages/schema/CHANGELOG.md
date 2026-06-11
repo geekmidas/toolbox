@@ -1,5 +1,22 @@
 # @geekmidas/schema
 
+## 1.0.3
+
+### Patch Changes
+
+- [#7](https://github.com/geekmidas/toolbox/pull/7) [`e0d06b3`](https://github.com/geekmidas/toolbox/commit/e0d06b38dfd275758f7955f5754900ab78779302) Thanks [@geekmidas](https://github.com/geekmidas)! - feat(constructs): allow endpoint handlers to return the output schema's input type
+
+  Endpoint handlers previously had to return the output schema's _parsed_ type
+  (`InferStandardSchema`). When an output schema coerces its value (e.g. a `Date`
+  serialized to an ISO `string`, or an applied default), that forced handlers to
+  pre-coerce values themselves even though the schema would do it on the way out.
+
+  A new `InferStandardSchemaInput` type is added to `@geekmidas/schema`, exposing a
+  Standard Schema's _input_ type (`StandardSchemaV1.InferInput`). `Endpoint`'s
+  handler return type now uses it, so handlers may return the looser pre-coercion
+  input while consumers (`EndpointOutput` and the generated client) still see the
+  narrower parsed output type.
+
 ## 1.0.2
 
 ### Patch Changes
