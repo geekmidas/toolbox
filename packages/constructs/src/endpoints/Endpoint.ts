@@ -9,6 +9,7 @@ import type { RateLimitConfig } from '@geekmidas/rate-limit';
 import type {
 	InferComposableStandardSchema,
 	InferStandardSchema,
+	InferStandardSchemaInput,
 } from '@geekmidas/schema';
 import {
 	convertSchemaWithComponents,
@@ -367,11 +368,12 @@ export class Endpoint<
 		>,
 		response: ResponseBuilder,
 	): OutSchema extends StandardSchemaV1
-		?
-				| InferStandardSchema<OutSchema>
-				| ResponseWithMetadata<InferStandardSchema<OutSchema>>
-				| Promise<InferStandardSchema<OutSchema>>
-				| Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
+		? // Handler produces the output schema's INPUT type (the schema
+			// may coerce it on the way out — see EndpointHandler).
+				| InferStandardSchemaInput<OutSchema>
+				| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
+				| Promise<InferStandardSchemaInput<OutSchema>>
+				| Promise<ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>>
 		:
 				| any
 				| ResponseWithMetadata<any>
@@ -1241,11 +1243,15 @@ export type EndpointHandler<
 	>,
 	response: ResponseBuilder,
 ) => OutSchema extends StandardSchemaV1
-	?
-			| InferStandardSchema<OutSchema>
-			| ResponseWithMetadata<InferStandardSchema<OutSchema>>
-			| Promise<InferStandardSchema<OutSchema>>
-			| Promise<ResponseWithMetadata<InferStandardSchema<OutSchema>>>
+	? // The handler must produce the schema's INPUT type — the output
+		// schema is allowed to coerce it (e.g. a `Date` → ISO `string`),
+		// so the handler may return the looser input while consumers
+		// (EndpointOutput / the generated client) still see the parsed
+		// output type.
+			| InferStandardSchemaInput<OutSchema>
+			| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
+			| Promise<InferStandardSchemaInput<OutSchema>>
+			| Promise<ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>>
 	:
 			| unknown
 			| ResponseWithMetadata<unknown>
