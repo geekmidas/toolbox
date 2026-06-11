@@ -11,4 +11,5 @@ export type {
 	ComposableStandardSchema,
 	InferComposableStandardSchema,
 	InferStandardSchema,
+	InferStandardSchemaInput,
 } from './types';
