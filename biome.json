@@ -19,7 +19,8 @@
 			"!**/ui-assets.ts",
 			"!**/coverage/**/*",
 			"!**/dist/**/*",
-			"!**/.vitepress/**/*"
+			"!**/.vitepress/**/*",
+			"!**/.sst/**/*"
 		],
 		"maxSize": 2000000
 	},

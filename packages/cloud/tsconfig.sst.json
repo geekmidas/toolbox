@@ -1,0 +1,13 @@
+{
+  "//": "Shared loosened compiler options for type-checking the source-only `src/sst` constructs. Pulling in SST's generated `.sst/platform` also pulls its platform source, which is authored against a much looser config than our strict base — so the strictness knobs are relaxed here to match it. This file carries options only (no `include`); the actual project config is `src/sst/tsconfig.json`, which extends it and is what both the editor and `ts:check:sst` use.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "types": ["node"],
+    "verbatimModuleSyntax": false,
+    "noImplicitOverride": false,
+    "noUncheckedIndexedAccess": false,
+    "strict": false
+  }
+}

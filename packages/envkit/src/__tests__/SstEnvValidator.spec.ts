@@ -143,6 +143,36 @@ describe('SstEnvValidator', () => {
 		});
 	});
 
+	describe('getProvidersForEnvVars (least-privilege filtering)', () => {
+		const validator = new EnvValidator({
+			db: { type: ResourceType.Postgres },
+			uploads: { type: ResourceType.Bucket },
+			apiKey: { type: ResourceType.Secret },
+		});
+
+		it('returns only the links that provide a requested var', () => {
+			expect(validator.getProvidersForEnvVars(['DB_HOST'])).toEqual(['db']);
+		});
+
+		it('returns multiple providers when several match', () => {
+			const providers = validator.getProvidersForEnvVars([
+				'DB_URL',
+				'UPLOADS_NAME',
+			]);
+			expect(providers).toEqual(['db', 'uploads']);
+		});
+
+		it('ignores optional `?` markers', () => {
+			expect(validator.getProvidersForEnvVars(['API_KEY?'])).toEqual([
+				'apiKey',
+			]);
+		});
+
+		it('returns nothing when no link provides the var', () => {
+			expect(validator.getProvidersForEnvVars(['AWS_REGION'])).toEqual([]);
+		});
+	});
+
 	describe('did-you-mean suggestions', () => {
 		const validator = new EnvValidator({
 			db: { type: ResourceType.Postgres },

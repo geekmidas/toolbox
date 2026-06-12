@@ -10,6 +10,7 @@
 		"lint": "biome check .",
 		"fmt": "biome format . --write",
 		"ts:check": "tsc --build",
+		"postinstall": "pnpm --filter @geekmidas/cloud run sst:install",
 		"test": "NODE_OPTIONS=\"--import tsx\" vitest watch",
 		"test:once": "NODE_OPTIONS=\"--import tsx\" vitest run --coverage",
 		"bench": "NODE_OPTIONS=\"--import tsx\" vitest bench",

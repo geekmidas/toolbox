@@ -1,0 +1,5 @@
+{
+  "//": "Project config for the source-only `src/sst` constructs. It lives here (not at the package root) so editors pick it as the NEAREST tsconfig for these files and resolve the ambient `sst`/`aws`/`$util` globals from `.sst/platform` plus node's `process` — the package's main tsconfig.json excludes `src/sst`. Compiler options are shared via `../../tsconfig.sst.json`; this file only adds the file set. Run via `pnpm --filter @geekmidas/cloud ts:check:sst` after `sst install`.",
+  "extends": "../../tsconfig.sst.json",
+  "include": ["**/*", "../../.sst/platform/config.d.ts"]
+}

@@ -23,3 +23,5 @@ can be validated **before** deploy — at `sst.config.ts` synth time.
   `platformEnvVars(platform)` are exported; the caller opts in via
   `new EnvValidator(links, { platform })`. Optional vars are marked with a
   trailing `?`.
+- `getProvidersForEnvVars(requested)` returns the link names that provide a
+  requested var, for least-privilege linking (attach only the links a unit needs).

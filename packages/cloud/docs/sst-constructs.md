@@ -1,6 +1,6 @@
 # `@geekmidas/cloud/sst`
 
-Reusable SST v3 (ion) constructs for building AWS applications: opinionated,
+Reusable SST v4 (ion) constructs for building AWS applications: opinionated,
 linkable wrappers around SST's native components with sensible defaults,
 environment-variable validation, and a shared app/stack context.
 
@@ -49,7 +49,7 @@ message instead of a runtime crash in production. See §7 for the model.
 
 ## 2. Distribution: source-only subpath
 
-In SST v3 (ion) the infra component types are **not published to npm**.
+In SST v4 (ion) the infra component types are **not published to npm**.
 `sst.aws.Function`, `sst.aws.ApiGatewayV2`, `sst.aws.Cron`, `sst.Linkable`,
 `$util`, and `$app` exist only inside `.sst/platform/`, which `sst install`
 generates and exposes as **ambient globals** (`.sst/platform/config.d.ts`
@@ -76,7 +76,7 @@ continues to build to dual ESM/CJS `dist` with generated `.d.ts`.
                  "require": { "types": "./dist/utils/index.d.cts", "default": "./dist/utils/index.cjs" } },
     "./sst":   "./src/sst/index.ts"
   },
-  "peerDependencies": { "sst": "~3.17.23" }
+  "peerDependencies": { "sst": "^4.15.2" }
 }
 ```
 
@@ -341,7 +341,7 @@ const fn = new Function(stack, 'Processor', {
 **Defaults applied**
 
 - Environment: `NODE_ENV`, `SERVICE_NAME`, `STAGE`, `REGION`, `APP_NAME`.
-- `runtime: 'nodejs22.x'`, `logging: { format: 'json' }`.
+- `runtime: 'nodejs24.x'` (overridable), `logging: { format: 'json' }`.
 - `link` resolved from `links` filtered by the requested `envVars`.
 
 **Props (selected)**
@@ -367,15 +367,21 @@ const fn = new Function(stack, 'Processor', {
 
 ## 9. `Api`
 
-Wraps `sst.aws.ApiGatewayV2` (HTTP API) with CORS defaults, a typed route table,
-per-route environment validation, and an optional Route53-backed custom domain.
+Wraps `sst.aws.ApiGatewayV2` (HTTP API) with a typed route table and per-route
+environment validation.
+
+`ApiProps` **extends `sst.aws.ApiGatewayV2Args`**, so every native option
+(`cors`, `domain`, `accessLog`, `transform`, …) passes straight through
+untouched — the construct imposes **no** API-level defaults of its own (CORS,
+origins, etc. are entirely the consumer's call). The route table and
+linking/validation inputs are added on top.
 
 ```ts
 const api = new Api(stack, 'Api', {
   links: [db],
-  domain: 'api.example.com',     // custom domain (Route53)
-  vpc: network.vpc,              // optional
-  allowedOrigins: ['https://app.example.com'],
+  domain: 'api.example.com',     // native ApiGatewayV2Args — passed through
+  vpc: network.vpc,              // optional, applied per route
+  cors: { allowOrigins: ['https://app.example.com'] }, // consumer's choice
   routes: [
     { method: 'GET',  path: '/users', handler: 'src/users.handler',
       environment: ['DATABASE_URL'], authorizer: 'iam' },
@@ -385,12 +391,16 @@ const api = new Api(stack, 'Api', {
 });
 ```
 
-**Defaults**
+**Behaviour**
 
-- CORS: credentials allowed; standard headers/methods; `maxAge: '1 day'`;
-  `allowOrigins` from `allowedOrigins` (default `['*']`).
-- Each route becomes a Lambda with `runtime: 'nodejs22.x'`, env merged from API
-  defaults (`REGION`, `STAGE`, `NODE_ENV`, `APP_NAME`) plus `environment`.
+- API-level args (`cors`, `domain`, `accessLog`, …) are passed through verbatim;
+  nothing is defaulted or overridden at the API level.
+- Each route becomes a Lambda whose runtime defaults to `nodejs24.x` —
+  overridable per route (`route.runtime`) or for the whole API (`runtime`) — with
+  env merged from API defaults (`REGION`, `STAGE`, `NODE_ENV`, `APP_NAME`) plus
+  `environment`.
+- Each route's `link` is filtered to just the linkables that provide one of its
+  required env vars (`EnvValidator.getProvidersForEnvVars`) — least privilege.
 
 **`Route`**
 
@@ -503,13 +513,18 @@ constructs land.
 
 ## 12. Implementation phases
 
-1. **Plumbing** — add the `./sst` export, explicit tsdown entries, and the
-   tsconfig exclude; create an empty `src/sst/index.ts`. Verify the cloud build
-   still succeeds and ignores `src/sst`.
-2. **Foundation** — `App` (with Route53), `Stack`, `Linkable`.
-3. **`Function`** — depended on by both `Cron` and `Api`.
-4. **`Cron`** — smallest consumer of `Function`.
-5. **`Api`** — routes, CORS, validation, custom domain.
-6. **Docs/example** — usage snippets; optionally a reference SST app fixture for
-   CI type-checking (deferred).
+1. **Plumbing** ✓ — `./sst` export, explicit tsdown entries, and the tsconfig
+   exclude; the cloud build still succeeds and ignores `src/sst`.
+2. **Type-check fixture** ✓ — a minimal `sst.config.ts` + a `sst install`
+   postinstall (in the private root `package.json`, so it never runs in
+   consumers) generate `.sst/platform`, and `tsconfig.sst.json` +
+   `pnpm --filter @geekmidas/cloud ts:check:sst` type-check `src/sst` against the
+   real SST v4 globals (the gate filters out SST's platform-internal errors).
+   `.sst/` is gitignored and biome-ignored.
+3. **Foundation** — `App` (with Route53), `Stack`, `Linkable`.
+4. **`Function`** — depended on by both `Cron` and `Api`.
+5. **`Cron`** — smallest consumer of `Function`.
+6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
+   linking, native `ApiGatewayV2Args` passthrough.
+7. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
 </content>

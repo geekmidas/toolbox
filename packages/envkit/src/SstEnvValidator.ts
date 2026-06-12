@@ -277,17 +277,41 @@ export class EnvValidator {
 	readonly linkVars: string[];
 	readonly context?: string;
 	private readonly availableSet: Set<string>;
+	/** Per-link (record key → its env-var keys), for least-privilege filtering. */
+	private readonly linkVarsByName: Map<string, string[]>;
 
 	constructor(links: LinkRecord, options: EnvValidatorOptions = {}) {
 		const { platform, whitelist = [], context } = options;
 		this.context = context;
-		this.linkVars = resolveEnvKeys(links);
+		this.linkVarsByName = new Map(
+			Object.entries(links).map(([name, value]) => [
+				name,
+				resolveEnvKeys({ [name]: value }),
+			]),
+		);
+		this.linkVars = [...this.linkVarsByName.values()].flat();
 		this.availableVars = [
 			...this.linkVars,
 			...(platform ? PLATFORM_ENV_VARS[platform] : []),
 			...whitelist,
 		];
 		this.availableSet = new Set(this.availableVars);
+	}
+
+	/**
+	 * Returns the names of the links that provide at least one of the requested
+	 * variables — so a construct can attach only the links a unit actually needs
+	 * (least privilege) rather than the whole pool. Trailing `?` is ignored.
+	 */
+	getProvidersForEnvVars(requestedEnvVars: readonly string[]): string[] {
+		const requested = new Set(
+			requestedEnvVars.map((v) => (v.endsWith('?') ? v.slice(0, -1) : v)),
+		);
+		const providers: string[] = [];
+		for (const [name, vars] of this.linkVarsByName) {
+			if (vars.some((v) => requested.has(v))) providers.push(name);
+		}
+		return providers;
 	}
 
 	/**
