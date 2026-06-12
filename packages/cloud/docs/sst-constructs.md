@@ -324,42 +324,41 @@ one function rather than a whole stack.
 
 ## 8. `Function`
 
-Wraps `sst.aws.Function` with standard defaults and env-var validation.
+Wraps `sst.aws.Function` with standard env defaults and env-var validation.
+`FunctionProps` **extends `sst.aws.FunctionArgs`**, so every native option
+(`handler`, `name`, `nodejs`, `layers`, `url`, `vpc`, `permissions`, …) passes
+through; the construct adds only the env defaults, runtime/logging defaults, and
+the linking/validation inputs.
 
 ```ts
 const fn = new Function(stack, 'Processor', {
-  handler: 'src/processor.handler',
-  functionName: stack.logicalPrefixedName('processor'),
-  links: [db, topic],
-  envVars: ['DATABASE_URL'],     // validated against links
+  handler: 'src/processor.handler', // native FunctionArgs
+  links: [db, topic],               // pool for validation + linking
+  envVars: ['DATABASE_URL'],        // required; validated against links
   environment: { CUSTOM_VAR: 'value' },
   nodejs: { install: ['some-package'] },
-  layers: ['arn:aws:lambda:...'],
 });
 ```
 
-**Defaults applied**
+**Behaviour**
 
-- Environment: `NODE_ENV`, `SERVICE_NAME`, `STAGE`, `REGION`, `APP_NAME`.
-- `runtime: 'nodejs24.x'` (overridable), `logging: { format: 'json' }`.
-- `link` resolved from `links` filtered by the requested `envVars`.
+- Environment merged over defaults `NODE_ENV`, `SERVICE_NAME` (the construct id),
+  `STAGE`, `REGION`, `APP_NAME` (= `stack.app.name`).
+- `runtime` defaults to `nodejs24.x` and `logging` to `{ format: 'json' }`; both
+  overridable via the native args.
+- `link` is resolved to just the `links` that provide a requested `envVar`
+  (`EnvValidator.getProvidersForEnvVars`) — least privilege; this overrides any
+  native `link` passed through.
 
-**Props (selected)**
+**Added props (on top of `FunctionArgs`)**
 
 | Prop | Type | Notes |
 | --- | --- | --- |
-| `handler` | `` `${string}.handler` `` | Lambda entrypoint. |
-| `functionName` | `string` | Physical name. |
-| `environment` | `Record<string,string>` | Merged over defaults. |
 | `links` | `GkmLinkable[]` | Pool of linkable resources. |
 | `envVars` | `readonly string[]` | Required vars; validated against `links`. |
-| `autoValidate` | `boolean` (default `true`) | Validate in constructor. |
-| `nodejs` | `{ install?: string[]; externals?: string[] }` | Passthrough. |
-| `layers` | `$util.Input<string>[]` | Additional Lambda layers. |
-| `url` | `boolean` | Enable a function URL. |
-| `vpc` | `sst.aws.Vpc` | Optional VPC. |
+| `autoValidate` | `boolean` (default `true`) | Assert `envVars` in the constructor (fails synth before deploy). |
 
-`validate()` re-runs validation and returns the result.
+`validate()` re-runs validation and returns the result (without throwing).
 
 `_type = ResourceType.Function`.
 
@@ -523,7 +522,8 @@ constructs land.
    `.sst/` is gitignored and biome-ignored.
 3. **Foundation** — `App` ✓ (synchronous, caller-resolved hosted zone), `Stack`
    ✓ (via `app.stack(name)`), `Linkable` ✓ (minimal `GkmLinkable`).
-4. **`Function`** — depended on by both `Cron` and `Api`.
+4. **`Function`** ✓ — extends `FunctionArgs`, env defaults + validation,
+   least-privilege linking, `nodejs24.x` default.
 5. **`Cron`** — smallest consumer of `Function`.
 6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
    linking, native `ApiGatewayV2Args` passthrough.
