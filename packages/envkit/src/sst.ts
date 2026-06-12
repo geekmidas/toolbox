@@ -25,6 +25,21 @@ export {
 	type Vpc,
 } from './SstEnvironmentBuilder';
 
+export {
+	AWS_RUNTIME_ENV_VARS,
+	CLOUDFLARE_RUNTIME_ENV_VARS,
+	EnvValidationError,
+	EnvValidator,
+	type EnvValidatorOptions,
+	GCP_RUNTIME_ENV_VARS,
+	type LinkRecord,
+	PLATFORM_ENV_VARS,
+	type Platform,
+	platformEnvVars,
+	resolveEnvKeys,
+	type ValidationResult,
+} from './SstEnvValidator';
+
 // Import for deprecated function
 import {
 	SstEnvironmentBuilder,
