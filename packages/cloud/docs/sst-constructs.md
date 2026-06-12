@@ -521,10 +521,13 @@ constructs land.
    `pnpm --filter @geekmidas/cloud ts:check:sst` type-check `src/sst` against the
    real SST v4 globals (the gate filters out SST's platform-internal errors).
    `.sst/` is gitignored and biome-ignored.
-3. **Foundation** — `App` (with Route53), `Stack`, `Linkable`.
+3. **Foundation** — `App` ✓ (synchronous, caller-resolved hosted zone), `Stack`
+   ✓ (via `app.stack(name)`), `Linkable` ✓ (minimal `GkmLinkable`).
 4. **`Function`** — depended on by both `Cron` and `Api`.
 5. **`Cron`** — smallest consumer of `Function`.
 6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
    linking, native `ApiGatewayV2Args` passthrough.
-7. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
+7. **Testing** — capture real Pulumi state via `@geekmidas/testkit/pulumi` +
+   `/sst`. Design deferred; see [`sst-testing.md`](./sst-testing.md).
+8. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
 </content>

@@ -54,7 +54,7 @@ export class Api<
 			REGION: stack.region,
 			STAGE: stack.stage,
 			NODE_ENV: 'production',
-			APP_NAME: stack.name,
+			APP_NAME: stack.app.name,
 			...apiEnvironment,
 		};
 

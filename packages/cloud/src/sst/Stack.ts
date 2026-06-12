@@ -1,20 +1,52 @@
+import type { App } from './App';
+import { prefixedName } from './naming';
+
 /**
- * The minimal application/stack context the constructs need: identity (name),
- * deployment target (stage, region), and the resource-naming helper.
- *
- * This is the type the `Api`/`Function`/`Cron` constructs accept. The concrete
- * `App` and `Stack` classes (with Route53 resolution and `app.stack(name)`) are
- * the next foundation step — see `packages/cloud/docs/sst-constructs.md` §4–§5.
+ * Stack context: an `App` scoped to a logical stack name. Created via
+ * `app.stack(name)` (see docs §5). Delegates `stage`/`region`/`domain` to the
+ * app and prefixes resource names with the stack name.
  */
-export interface StackType<
+export class Stack<
 	TStage extends string = string,
 	TDomain extends string = string,
 > {
-	readonly name: string;
-	readonly stage: TStage;
-	readonly region: string;
-	readonly domain?: TDomain;
+	constructor(
+		readonly app: App<TStage, TDomain>,
+		/** This stack's logical name (e.g. `api`), used in resource prefixes. */
+		readonly name: string,
+	) {}
 
-	/** Kebab-cased, stage/name-prefixed physical resource name. */
-	logicalPrefixedName(id: string): string;
+	get stage(): TStage {
+		return this.app.stage;
+	}
+
+	get region(): string {
+		return this.app.region;
+	}
+
+	get domain(): TDomain {
+		return this.app.domain;
+	}
+
+	/** Kebab-cased, `{stage}-{stackName}-{resource}` physical name. */
+	logicalPrefixedName(resource: string): string {
+		return prefixedName([this.stage, this.name], resource);
+	}
+
+	select<T>(prodValue: T, other: T): T {
+		return this.app.select(prodValue, other);
+	}
+
+	getSubdomain<TSub extends string>(subdomain: TSub) {
+		return this.app.getSubdomain(subdomain);
+	}
+
+	getURL<TSub extends string>(subdomain?: TSub) {
+		return this.app.getURL(subdomain);
+	}
 }
+
+export type StackType<
+	TStage extends string = string,
+	TDomain extends string = string,
+> = Stack<TStage, TDomain>;
