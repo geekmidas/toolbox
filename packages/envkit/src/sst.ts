@@ -15,6 +15,7 @@ export {
 	type Dynamo,
 	type Function,
 	type Postgres,
+	type Queue,
 	type ResourceProcessor,
 	ResourceType,
 	type Secret,

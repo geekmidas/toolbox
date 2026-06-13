@@ -32,6 +32,20 @@ describe('SstEnvValidator', () => {
 			).toEqual(['UPLOADS_NAME']);
 		});
 
+		it('derives queue keys incl. the publisher connection string', () => {
+			expect(resolveEnvKeys({ orders: { type: ResourceType.Queue } })).toEqual([
+				'ORDERS_URL',
+				'ORDERS_ARN',
+				'ORDERS_PUBLISHER_CONNECTION_STRING',
+			]);
+		});
+
+		it('derives topic keys incl. the publisher connection string', () => {
+			expect(
+				resolveEnvKeys({ events: { type: ResourceType.SnsTopic } }),
+			).toEqual(['EVENTS_ARN', 'EVENTS_PUBLISHER_CONNECTION_STRING']);
+		});
+
 		it('derives no keys for noop resource types', () => {
 			expect(
 				resolveEnvKeys({

@@ -159,6 +159,8 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				EVENTS_TOPIC_ARN: 'arn:aws:sns:us-east-1:123456789:my-topic',
+				EVENTS_TOPIC_PUBLISHER_CONNECTION_STRING:
+					'sns://?topicArn=arn%3Aaws%3Asns%3Aus-east-1%3A123456789%3Amy-topic',
 			});
 		});
 	});
@@ -279,6 +281,8 @@ describe('SstEnvironmentBuilder', () => {
 				JWT_SECRET: 'jwt-secret',
 				UPLOADS_NAME: 'uploads-bucket',
 				EVENTS_ARN: 'arn:aws:sns:us-east-1:123456789:events',
+				EVENTS_PUBLISHER_CONNECTION_STRING:
+					'sns://?topicArn=arn%3Aaws%3Asns%3Aus-east-1%3A123456789%3Aevents',
 				API_VERSION: 'v2',
 			});
 		});
