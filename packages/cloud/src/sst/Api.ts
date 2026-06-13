@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { EnvValidationError } from '@geekmidas/envkit/sst';
+import type { RoutesManifest } from '@geekmidas/manifest';
 import type { Function } from './Function';
 import { type GkmLinkable, ResourceType } from './Linkable';
 import { LinkedEnvironment } from './LinkedEnvironment';
@@ -138,6 +139,8 @@ export class Api<
 					link,
 					runtime: route.runtime ?? apiRuntime,
 					nodejs: route.nodejs,
+					timeout: route.timeout,
+					memory: route.memory,
 				},
 				auth,
 			);
@@ -148,6 +151,35 @@ export class Api<
 		if (failures.length) {
 			throw new Error(failures.map((f) => f.message).join('\n\n'));
 		}
+	}
+
+	/**
+	 * Build an `Api` from a `gkm build` routes manifest: each `RouteInfo` becomes
+	 * a route (env vars, authorizer, timeout/memory mapped). Supply `authorizers`
+	 * (JWT/Lambda settings), `links`, and any native args via `props`.
+	 */
+	static fromManifest<
+		TAuthorizers extends Record<string, unknown> = {},
+		TStage extends string = string,
+		TDomain extends string = string,
+	>(
+		stack: StackType<TStage, TDomain>,
+		id: string,
+		manifest: RoutesManifest,
+		props: Omit<ApiProps<TAuthorizers>, 'routes'> = {},
+	): Api<TAuthorizers, TStage, TDomain> {
+		const routes = manifest.routes.map(
+			(route): Route<AuthorizerName<TAuthorizers>> => ({
+				method: route.method as Route['method'],
+				path: route.path,
+				handler: route.handler,
+				environment: route.environment,
+				authorizer: route.authorizer as AuthorizerName<TAuthorizers>,
+				timeout: route.timeout ? `${route.timeout} seconds` : undefined,
+				memory: route.memorySize ? `${route.memorySize} MB` : undefined,
+			}),
+		);
+		return new Api(stack, id, { ...props, routes } as ApiProps<TAuthorizers>);
 	}
 
 	/** Resolves a route's `authorizer` name to the SST `auth` option. */
@@ -229,6 +261,10 @@ export interface Route<TAuthorizer extends string = 'iam' | 'none'> {
 	nodejs?: { install?: string[]; externals?: string[] };
 	/** Lambda runtime for this route. Overrides the API default (`nodejs24.x`). */
 	runtime?: sst.aws.FunctionArgs['runtime'];
+	/** Lambda timeout for this route, e.g. `30 seconds`. */
+	timeout?: sst.aws.FunctionArgs['timeout'];
+	/** Lambda memory for this route, e.g. `1024 MB`. */
+	memory?: sst.aws.FunctionArgs['memory'];
 }
 
 /**

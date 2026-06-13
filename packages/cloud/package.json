@@ -43,6 +43,7 @@
 	},
 	"dependencies": {
 		"@geekmidas/envkit": "workspace:*",
+		"@geekmidas/manifest": "workspace:*",
 		"lodash.snakecase": "~4.1.1"
 	},
 	"devDependencies": {

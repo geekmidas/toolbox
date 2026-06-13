@@ -554,7 +554,39 @@ constructs land.
    schedule.
 6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
    linking, native `ApiGatewayV2Args` passthrough.
-7. **Testing** — capture real Pulumi state via `@geekmidas/testkit/pulumi` +
+7. **Manifest integrators** ✓ — `Api`/`Function`/`Cron` `fromManifest` factories
+   (§13).
+8. **Testing** — capture real Pulumi state via `@geekmidas/testkit/pulumi` +
    `/sst`. Design deferred; see [`sst-testing.md`](./sst-testing.md).
-8. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
+9. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
+
+---
+
+## 13. Manifest integrators
+
+`gkm build` emits a deployment manifest enumerating a project's routes,
+functions, and crons. Those types live in the dependency-free
+**`@geekmidas/manifest`** package (re-exported by `@geekmidas/cli`), so it is a
+stable JSON contract shared by the producer and these constructs.
+
+Each construct has a static `fromManifest` factory that maps the manifest
+straight into infrastructure — define handlers once, provision with one call:
+
+```ts
+import routesManifest from './.gkm/routes-manifest.json';
+
+const api = Api.fromManifest(stack, 'Api', routesManifest, {
+  links: [db],
+  authorizers: { jwt: { issuer, audiences } }, // jwt/custom settings supplied here
+});
+
+const workers = Function.fromManifest(stack, functionsManifest, { links: [db] });
+const crons   = Cron.fromManifest(stack, cronsManifest, { links: [db] });
+```
+
+Mapping: `RouteInfo` → `Route` (`environment` → `envVars`, `authorizer` →
+authorizer name, `timeout`/`memorySize` → per-route `timeout`/`memory`);
+`FunctionInfo` → `Function`; `CronInfo` → a validated `Function` the `Cron`
+triggers. The `links`/`authorizers` not present in the manifest are supplied via
+`props`. Validated by `src/sst/__type-tests__/manifest.type-test.ts`.
 </content>

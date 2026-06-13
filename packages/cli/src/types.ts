@@ -347,54 +347,16 @@ export interface BuildResult {
 	masterKey?: string;
 }
 
-export interface RouteInfo {
-	path: string;
-	method: string;
-	handler: string;
-	timeout?: number;
-	memorySize?: number;
-	environment?: string[];
-	authorizer: string;
-}
-
-export interface FunctionInfo {
-	name: string;
-	handler: string;
-	timeout?: number;
-	memorySize?: number;
-	environment?: string[];
-}
-
-export interface CronInfo {
-	name: string;
-	handler: string;
-	schedule: string;
-	timeout?: number;
-	memorySize?: number;
-	environment?: string[];
-}
-
-export interface SubscriberInfo {
-	name: string;
-	handler: string;
-	subscribedEvents: string[];
-	timeout?: number;
-	memorySize?: number;
-	environment?: string[];
-}
-
-export interface RoutesManifest {
-	routes: RouteInfo[];
-}
-
-export interface FunctionsManifest {
-	functions: FunctionInfo[];
-}
-
-export interface CronsManifest {
-	crons: CronInfo[];
-}
-
-export interface SubscribersManifest {
-	subscribers: SubscriberInfo[];
-}
+// The deployment manifest types are a shared, dependency-free data contract
+// in `@geekmidas/manifest`, re-exported here for back-compat with existing
+// `@geekmidas/cli` imports.
+export type {
+	CronInfo,
+	CronsManifest,
+	FunctionInfo,
+	FunctionsManifest,
+	RouteInfo,
+	RoutesManifest,
+	SubscriberInfo,
+	SubscribersManifest,
+} from '@geekmidas/manifest';

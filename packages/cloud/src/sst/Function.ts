@@ -1,4 +1,5 @@
 import type { EnvValidator, ValidationResult } from '@geekmidas/envkit/sst';
+import type { FunctionsManifest } from '@geekmidas/manifest';
 import { type GkmLinkable, ResourceType } from './Linkable';
 import { LinkedEnvironment } from './LinkedEnvironment';
 import type { StackType } from './Stack';
@@ -76,6 +77,32 @@ export class Function<
 	/** Re-runs validation and returns the result (does not throw). */
 	validate(): ValidationResult {
 		return this.validator.validate(this.envVars);
+	}
+
+	/**
+	 * Build one `Function` per entry in a `gkm build` functions manifest
+	 * (handler, env vars, timeout/memory mapped). Shared `props` (e.g. `links`)
+	 * apply to every function.
+	 */
+	static fromManifest<
+		TStage extends string = string,
+		TDomain extends string = string,
+	>(
+		stack: StackType<TStage, TDomain>,
+		manifest: FunctionsManifest,
+		props: Omit<FunctionProps, 'handler'> = {},
+	): Function<TStage, TDomain>[] {
+		return manifest.functions.map(
+			(fn) =>
+				new Function(stack, fn.name, {
+					...props,
+					name: fn.name,
+					handler: fn.handler,
+					envVars: fn.environment,
+					timeout: fn.timeout ? `${fn.timeout} seconds` : undefined,
+					memory: fn.memorySize ? `${fn.memorySize} MB` : undefined,
+				}),
+		);
 	}
 }
 

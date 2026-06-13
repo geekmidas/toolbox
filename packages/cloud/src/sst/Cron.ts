@@ -1,4 +1,6 @@
-import type { Function } from './Function';
+import type { CronsManifest } from '@geekmidas/manifest';
+import { Function } from './Function';
+import type { GkmLinkable } from './Linkable';
 import type { StackType } from './Stack';
 
 export type CronExpressionValue = number | '*' | '?' | `${number}/${number}`;
@@ -56,6 +58,39 @@ export class Cron<
 			...cronArgs,
 			schedule,
 			function: processor.arn,
+		});
+	}
+
+	/**
+	 * Build one `Cron` per entry in a `gkm build` crons manifest. Each cron's
+	 * handler becomes a validated `Function` (the cron's target), so pass `links`
+	 * for that function's env validation; remaining `props` are CronV2 args.
+	 */
+	static fromManifest<
+		TStage extends string = string,
+		TDomain extends string = string,
+	>(
+		stack: StackType<TStage, TDomain>,
+		manifest: CronsManifest,
+		props: Omit<CronProps, 'processor' | 'schedule'> & {
+			links?: GkmLinkable[];
+		} = {},
+	): Cron<TStage, TDomain>[] {
+		const { links, ...cronArgs } = props;
+		return manifest.crons.map((cron) => {
+			const processor = new Function(stack, `${cron.name}Function`, {
+				name: cron.name,
+				handler: cron.handler,
+				envVars: cron.environment,
+				links,
+				timeout: cron.timeout ? `${cron.timeout} seconds` : undefined,
+				memory: cron.memorySize ? `${cron.memorySize} MB` : undefined,
+			});
+			return new Cron(stack, cron.name, {
+				...cronArgs,
+				processor,
+				schedule: cron.schedule as CronSchedule,
+			});
 		});
 	}
 }

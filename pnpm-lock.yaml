@@ -247,6 +247,9 @@ importers:
       '@geekmidas/logger':
         specifier: workspace:~
         version: link:../logger
+      '@geekmidas/manifest':
+        specifier: workspace:*
+        version: link:../manifest
       '@geekmidas/schema':
         specifier: workspace:~
         version: link:../schema
@@ -372,6 +375,9 @@ importers:
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
+      '@geekmidas/manifest':
+        specifier: workspace:*
+        version: link:../manifest
       lodash.snakecase:
         specifier: ~4.1.1
         version: 4.1.1
@@ -632,6 +638,8 @@ importers:
       pino-pretty:
         specifier: ~13.1.2
         version: 13.1.2
+
+  packages/manifest: {}
 
   packages/rate-limit:
     devDependencies:
@@ -15972,7 +15980,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
