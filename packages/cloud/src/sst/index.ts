@@ -17,5 +17,7 @@ export {
 } from './Cron';
 export { Function, type FunctionProps } from './Function';
 export { type GkmLinkable, ResourceType } from './Linkable';
+export { Queue, type QueueProps } from './Queue';
 export { Stack, type StackType } from './Stack';
 export { Storage, type StorageProps } from './Storage';
+export { Topic, type TopicProps } from './Topic';
