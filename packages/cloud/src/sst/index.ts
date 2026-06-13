@@ -7,7 +7,7 @@ export {
 	type LambdaAuthorizer,
 	type Route,
 } from './Api';
-export { App, type AppProps } from './App';
+export { App, type AppProps, type StageValues } from './App';
 export {
 	Cron,
 	type CronExpression,

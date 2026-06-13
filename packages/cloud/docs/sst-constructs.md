@@ -185,8 +185,8 @@ const app = new App({
 
 - `hostedZoneId` — the supplied zone id; no internal lookup.
 - `stack(name)` — factory that returns a `Stack` bound to this app (see §5).
-- `select(prodValue, other)` — returns `prodValue` when `stage === 'prod'`,
-  else `other`.
+- `select(values)` — picks a value for the current stage from a by-stage map
+  with a required `default`, e.g. `select({ prod: 'live', default: 'dev' })`.
 - `getSubdomain(sub)` → `` `${sub}.${domain}` ``.
 - `getURL(sub?)` → `` `https://${sub}.${domain}` `` (or `https://${domain}`).
 - `logicalPrefixedName(id)` — kebab-cased, stage/name-prefixed resource name.
@@ -198,9 +198,14 @@ via `app.stack(name)` — a factory on `App` that binds the new stack to its app
 rather than `new Stack(app, name)` directly:
 
 ```ts
+// app = App({ name: 'my-app', stage: 'prod', … })
 const stack = app.stack('api');
-stack.logicalPrefixedName('handler'); // "prod-api-handler"
+stack.logicalPrefixedName('handler'); // "prod-my-app-api-handler"
 ```
+
+`logicalPrefixedName` delegates to the app's scheme and appends the stack name,
+so it is `{stage}-{appName}-{stackName}-{resource}` — the app name keeps
+resources unique across apps that share an account/stage.
 
 `app.stack(name)` is sugar for `new Stack(app, name)`; the constructor stays
 available for cases that need it, but `app.stack(...)` is the intended entry

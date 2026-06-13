@@ -1,5 +1,4 @@
-import type { App } from './App';
-import { prefixedName } from './naming';
+import type { App, StageValues } from './App';
 
 /**
  * Stack context: an `App` scoped to a logical stack name. Created via
@@ -28,13 +27,17 @@ export class Stack<
 		return this.app.domain;
 	}
 
-	/** Kebab-cased, `{stage}-{stackName}-{resource}` physical name. */
+	/**
+	 * Kebab-cased `{stage}-{appName}-{stackName}-{resource}` physical name.
+	 * Delegates to the app's scheme (so the two can't drift) and includes the app
+	 * name so resources stay unique across apps sharing an account/stage.
+	 */
 	logicalPrefixedName(resource: string): string {
-		return prefixedName([this.stage, this.name], resource);
+		return this.app.logicalPrefixedName(`${this.name}-${resource}`);
 	}
 
-	select<T>(prodValue: T, other: T): T {
-		return this.app.select(prodValue, other);
+	select<T>(values: StageValues<TStage, T>): T {
+		return this.app.select(values);
 	}
 
 	getSubdomain<TSub extends string>(subdomain: TSub) {

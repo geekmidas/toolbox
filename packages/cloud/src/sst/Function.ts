@@ -96,7 +96,7 @@ export class Function<
 			(fn) =>
 				new Function(stack, fn.name, {
 					...props,
-					name: fn.name,
+					name: stack.logicalPrefixedName(fn.name),
 					handler: fn.handler,
 					envVars: fn.environment,
 					timeout: fn.timeout ? `${fn.timeout} seconds` : undefined,

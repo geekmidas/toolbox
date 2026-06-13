@@ -79,7 +79,7 @@ export class Cron<
 		const { links, ...cronArgs } = props;
 		return manifest.crons.map((cron) => {
 			const processor = new Function(stack, `${cron.name}Function`, {
-				name: cron.name,
+				name: stack.logicalPrefixedName(cron.name),
 				handler: cron.handler,
 				envVars: cron.environment,
 				links,

@@ -1,6 +1,16 @@
 import { prefixedName } from './naming';
 import { Stack } from './Stack';
 
+/**
+ * A by-stage value map with a required `default` fallback — the argument to
+ * {@link App.select} / {@link Stack.select}. Keys are stages (`TStage`).
+ */
+export type StageValues<TStage extends string, T> = Partial<
+	Record<TStage, T>
+> & {
+	default: T;
+};
+
 export interface AppProps<TStage extends string, TDomain extends string> {
 	/** Application name; part of resource name prefixes. */
 	name: string;
@@ -46,9 +56,12 @@ export class App<
 		return new Stack(this, name);
 	}
 
-	/** Returns `prodValue` when the stage is `prod`, else `other`. */
-	select<T>(prodValue: T, other: T): T {
-		return this.stage === 'prod' ? prodValue : other;
+	/**
+	 * Picks a value for the current stage from a by-stage map, falling back to
+	 * `default`. e.g. `app.select({ prod: 'live', staging: 'test', default: 'dev' })`.
+	 */
+	select<T>(values: StageValues<TStage, T>): T {
+		return values[this.stage] ?? values.default;
 	}
 
 	getSubdomain<TSub extends string>(subdomain: TSub) {
