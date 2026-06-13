@@ -1,5 +1,9 @@
 import type { EnvValidator, ValidationResult } from '@geekmidas/envkit/sst';
-import type { FunctionsManifest } from '@geekmidas/manifest';
+import {
+	type FunctionInfo,
+	flattenManifestField,
+	type ManifestField,
+} from '@geekmidas/manifest';
 import { type GkmLinkable, ResourceType } from './Linkable';
 import { LinkedEnvironment } from './LinkedEnvironment';
 import type { StackType } from './Stack';
@@ -80,19 +84,23 @@ export class Function<
 	}
 
 	/**
-	 * Build one `Function` per entry in a `gkm build` functions manifest
-	 * (handler, env vars, timeout/memory mapped). Shared `props` (e.g. `links`)
-	 * apply to every function.
+	 * Build one `Function` per entry in a `gkm build` manifest's `functions`
+	 * field (flat or partitioned). Shared `props` (e.g. `links`) apply to every
+	 * function.
+	 *
+	 * ```ts
+	 * Function.fromManifest(stack, manifest.functions, { links: [db] });
+	 * ```
 	 */
 	static fromManifest<
 		TStage extends string = string,
 		TDomain extends string = string,
 	>(
 		stack: StackType<TStage, TDomain>,
-		manifest: FunctionsManifest,
+		functions: ManifestField<FunctionInfo>,
 		props: Omit<FunctionProps, 'handler'> = {},
 	): Function<TStage, TDomain>[] {
-		return manifest.functions.map(
+		return flattenManifestField(functions).map(
 			(fn) =>
 				new Function(stack, fn.name, {
 					...props,

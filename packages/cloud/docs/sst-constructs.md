@@ -115,14 +115,22 @@ consuming app):
 
 ```
 packages/cloud/src/sst/
-├── index.ts          # public surface for ./sst
-├── App.ts            # application context (stage, region, domain + Route53)
-├── Stack.ts          # stack context wrapping App
-├── Linkable.ts       # linkable base + ResourceType discriminator
-├── Function.ts       # wraps sst.aws.Function
-├── Api.ts            # wraps sst.aws.ApiGatewayV2
-└── Cron.ts           # wraps sst.aws.CronV2
+├── index.ts            # public surface for ./sst
+├── App.ts              # application context (stage, region, domain, hosted zone)
+├── Stack.ts            # stack context wrapping App
+├── Linkable.ts         # GkmLinkable interface + ResourceType discriminator
+├── LinkedEnvironment.ts# shared env defaults + validation + least-privilege links
+├── naming.ts           # kebab / prefixedName helpers
+├── Function.ts         # wraps sst.aws.Function
+├── Api.ts              # wraps sst.aws.ApiGatewayV2
+├── Cron.ts             # wraps sst.aws.CronV2
+└── Storage.ts          # linkable sst.aws.Bucket (→ @geekmidas/storage)
 ```
+
+> Linkable **resource** constructs (`Storage`, and future `Queue`/`Topic`/
+> `Database`/`Dynamo`/`Secret`/`Network`) follow the same pattern as the compute
+> constructs: `extends sst.aws.<Component> implements GkmLinkable` (set `_id` =
+> the construct name and `_type`). No separate base class is needed.
 
 ### `index.ts`
 
@@ -577,16 +585,21 @@ stable JSON contract shared by the producer and these constructs.
 Each construct has a static `fromManifest` factory that maps the manifest
 straight into infrastructure — define handlers once, provision with one call:
 
-```ts
-import routesManifest from './.gkm/routes-manifest.json';
+`gkm build` writes a single TS module per provider — `export const manifest = {
+routes, functions, crons, subscribers, queues } as const` (item/`Manifest`/
+`ManifestField` types in `@geekmidas/manifest`). Each integrator takes the
+relevant **field** (flat array or partitioned `Record`):
 
-const api = Api.fromManifest(stack, 'Api', routesManifest, {
+```ts
+import { manifest } from './.gkm/manifest/aws';
+
+const api = Api.fromManifest(stack, 'Api', manifest.routes, {
   links: [db],
   authorizers: { jwt: { issuer, audiences } }, // jwt/custom settings supplied here
 });
 
-const workers = Function.fromManifest(stack, functionsManifest, { links: [db] });
-const crons   = Cron.fromManifest(stack, cronsManifest, { links: [db] });
+const workers = Function.fromManifest(stack, manifest.functions, { links: [db] });
+const crons   = Cron.fromManifest(stack, manifest.crons, { links: [db] });
 ```
 
 Mapping: `RouteInfo` → `Route` (`environment` → `envVars`, `authorizer` →
@@ -594,4 +607,56 @@ authorizer name, `timeout`/`memorySize` → per-route `timeout`/`memory`);
 `FunctionInfo` → `Function`; `CronInfo` → a validated `Function` the `Cron`
 triggers. The `links`/`authorizers` not present in the manifest are supplied via
 `props`. Validated by `src/sst/__type-tests__/manifest.type-test.ts`.
+
+---
+
+## 14. Linkable resources & the app-drives-infra principle
+
+The guiding aim: **the application drives the infrastructure.** Handlers and the
+resources they consume are declared in the app (`@geekmidas/constructs` /
+`@geekmidas/services`); `gkm build` captures them in the manifest; the
+`fromManifest` factories provision and wire the infra. Anything infra needs to
+know must therefore flow through the manifest — it can't be invented in
+`sst.config.ts`.
+
+### Linkable resources
+
+Resource constructs are linkable wrappers (`extends sst.aws.<Component>
+implements GkmLinkable`). Linking one to a `Function`/`Api`/`Cron` makes its
+`<NAME>_*` env vars available, validated before deploy.
+
+- **`Storage`** ✓ — `sst.aws.Bucket` (`ResourceType.Bucket`). Resolves a
+  `<NAME>_NAME` env var consumed by `@geekmidas/storage`'s `AmazonStorageClient`
+  (`AmazonStorageClient.create({ bucket: get('UPLOADS_NAME').string() })`). The
+  pattern other resource constructs follow.
+- **Pending**: `Database`/`Postgres`, `Dynamo`, `Secret`, `Network` (VPC),
+  `Topic` (SNS), `Queue` (SQS).
+
+### Subscribers (queue vs topic) — direction
+
+The runtime handler is transport-agnostic (the `@geekmidas/constructs`
+`Subscriber` + its adaptor already parse both SNS and SQS), so queue-vs-topic is
+an infra wiring choice. Decisions:
+
+- **Two constructs**: `TopicSubscriber` (SNS subscription, filtered by the
+  handler's `subscribedEvents`) and `QueueSubscriber` (SQS event-source — a
+  point-to-point worker). The durable `Topic → Queue → Lambda` pattern composes
+  from `Topic` + `Queue` + `QueueSubscriber`.
+- **App-declared transport**: because the app drives infra, the subscriber's
+  source (topic vs queue, and which queue) is declared in the app and recorded
+  in the manifest — `SubscriberInfo` needs a `transport`/`source` field beyond
+  today's `subscribedEvents`. The producer (`gkm build`) and `@geekmidas/events`
+  backend (`sns`/`sqs`) are the source of truth, not `sst.config.ts`.
+- **Open**: whether a queue worker filters by `subscribedEvents` or drains all
+  messages (a true job-queue consumer in `@geekmidas/events`).
+
+### Connection strings with multiple queues/topics
+
+Each messaging linkable's resolver emits a **name-namespaced** connection string
+(`ORDERS_PUBLISHER_CONNECTION_STRING`, `EVENTS_PUBLISHER_CONNECTION_STRING`, …),
+so multiple resources never collide and each auto-publisher reads its own. A
+caller only receives the strings for the resources it's *linked* to. The protocol
+in each string selects the transport (local `pgboss`/localstack vs deployed
+`sqs`/`sns`). Worked through end-to-end in
+[`sst-e2e-example.md`](./sst-e2e-example.md).
 </content>

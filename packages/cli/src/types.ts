@@ -352,11 +352,9 @@ export interface BuildResult {
 // `@geekmidas/cli` imports.
 export type {
 	CronInfo,
-	CronsManifest,
 	FunctionInfo,
-	FunctionsManifest,
+	Manifest,
+	QueueInfo,
 	RouteInfo,
-	RoutesManifest,
 	SubscriberInfo,
-	SubscribersManifest,
 } from '@geekmidas/manifest';

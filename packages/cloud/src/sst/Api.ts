@@ -1,6 +1,10 @@
 import path from 'node:path';
 import { EnvValidationError } from '@geekmidas/envkit/sst';
-import type { RoutesManifest } from '@geekmidas/manifest';
+import {
+	flattenManifestField,
+	type ManifestField,
+	type RouteInfo,
+} from '@geekmidas/manifest';
 import type { Function } from './Function';
 import { type GkmLinkable, ResourceType } from './Linkable';
 import { LinkedEnvironment } from './LinkedEnvironment';
@@ -154,9 +158,15 @@ export class Api<
 	}
 
 	/**
-	 * Build an `Api` from a `gkm build` routes manifest: each `RouteInfo` becomes
-	 * a route (env vars, authorizer, timeout/memory mapped). Supply `authorizers`
-	 * (JWT/Lambda settings), `links`, and any native args via `props`.
+	 * Build an `Api` from a `gkm build` manifest's `routes` field (flat or
+	 * partitioned): each `RouteInfo` becomes a route (env vars, authorizer,
+	 * timeout/memory mapped). Supply `authorizers` (JWT/Lambda settings),
+	 * `links`, and any native args via `props`.
+	 *
+	 * ```ts
+	 * import { manifest } from './.gkm/manifest/aws';
+	 * Api.fromManifest(stack, 'Api', manifest.routes, { links: [db] });
+	 * ```
 	 */
 	static fromManifest<
 		TAuthorizers extends Record<string, unknown> = {},
@@ -165,10 +175,10 @@ export class Api<
 	>(
 		stack: StackType<TStage, TDomain>,
 		id: string,
-		manifest: RoutesManifest,
+		routes: ManifestField<RouteInfo>,
 		props: Omit<ApiProps<TAuthorizers>, 'routes'> = {},
 	): Api<TAuthorizers, TStage, TDomain> {
-		const routes = manifest.routes.map(
+		const routeTable = flattenManifestField(routes).map(
 			(route): Route<AuthorizerName<TAuthorizers>> => ({
 				method: route.method as Route['method'],
 				path: route.path,
@@ -179,7 +189,10 @@ export class Api<
 				memory: route.memorySize ? `${route.memorySize} MB` : undefined,
 			}),
 		);
-		return new Api(stack, id, { ...props, routes } as ApiProps<TAuthorizers>);
+		return new Api(stack, id, {
+			...props,
+			routes: routeTable,
+		} as ApiProps<TAuthorizers>);
 	}
 
 	/** Resolves a route's `authorizer` name to the SST `auth` option. */

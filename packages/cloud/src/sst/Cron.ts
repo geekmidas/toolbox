@@ -1,4 +1,8 @@
-import type { CronsManifest } from '@geekmidas/manifest';
+import {
+	type CronInfo,
+	flattenManifestField,
+	type ManifestField,
+} from '@geekmidas/manifest';
 import { Function } from './Function';
 import type { GkmLinkable } from './Linkable';
 import type { StackType } from './Stack';
@@ -62,22 +66,27 @@ export class Cron<
 	}
 
 	/**
-	 * Build one `Cron` per entry in a `gkm build` crons manifest. Each cron's
-	 * handler becomes a validated `Function` (the cron's target), so pass `links`
-	 * for that function's env validation; remaining `props` are CronV2 args.
+	 * Build one `Cron` per entry in a `gkm build` manifest's `crons` field (flat
+	 * or partitioned). Each cron's handler becomes a validated `Function` (the
+	 * cron's target), so pass `links` for that function's env validation;
+	 * remaining `props` are CronV2 args.
+	 *
+	 * ```ts
+	 * Cron.fromManifest(stack, manifest.crons, { links: [db] });
+	 * ```
 	 */
 	static fromManifest<
 		TStage extends string = string,
 		TDomain extends string = string,
 	>(
 		stack: StackType<TStage, TDomain>,
-		manifest: CronsManifest,
+		crons: ManifestField<CronInfo>,
 		props: Omit<CronProps, 'processor' | 'schedule'> & {
 			links?: GkmLinkable[];
 		} = {},
 	): Cron<TStage, TDomain>[] {
 		const { links, ...cronArgs } = props;
-		return manifest.crons.map((cron) => {
+		return flattenManifestField(crons).map((cron) => {
 			const processor = new Function(stack, `${cron.name}Function`, {
 				name: stack.logicalPrefixedName(cron.name),
 				handler: cron.handler,

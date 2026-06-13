@@ -1,11 +1,8 @@
-// Type-level checks that the `fromManifest` integrators accept the
-// `@geekmidas/manifest` shapes. Checked by `ts:check:sst`; vitest ignores it.
+// Type-level checks that the `fromManifest` integrators accept the unified
+// `gkm build` manifest shape (`export const manifest = { … } as const`) — both
+// the flat and the partitioned `ManifestField` forms. Checked by `ts:check:sst`.
 
-import type {
-	CronsManifest,
-	FunctionsManifest,
-	RoutesManifest,
-} from '@geekmidas/manifest';
+import type { Manifest, ManifestField, RouteInfo } from '@geekmidas/manifest';
 import { Api } from '../Api';
 import { App } from '../App';
 import { Cron } from '../Cron';
@@ -22,7 +19,8 @@ const stack = new App({
 
 const db: GkmLinkable = { _id: 'db', _type: ResourceType.Postgres };
 
-const routesManifest: RoutesManifest = {
+// Mirrors a generated `manifest/aws.ts` — one object, `as const`.
+const manifest = {
 	routes: [
 		{
 			path: '/users/{id}',
@@ -34,24 +32,46 @@ const routesManifest: RoutesManifest = {
 			memorySize: 1024,
 		},
 	],
-};
-export const api = Api.fromManifest(stack, 'Api', routesManifest, {
-	links: [db],
-	authorizers: { jwt: { issuer: 'https://i', audiences: ['a'] } },
-});
-
-const functionsManifest: FunctionsManifest = {
 	functions: [
 		{ name: 'worker', handler: 'worker.handler', environment: ['DB_URL'] },
 	],
-};
-export const workers = Function.fromManifest(stack, functionsManifest, {
-	links: [db],
-});
-
-const cronsManifest: CronsManifest = {
 	crons: [
 		{ name: 'nightly', handler: 'nightly.handler', schedule: 'rate(1 day)' },
 	],
-};
-export const crons = Cron.fromManifest(stack, cronsManifest, { links: [db] });
+} as const satisfies Manifest;
+
+// Each integrator takes the manifest *field*.
+export const api = Api.fromManifest(stack, 'Api', manifest.routes, {
+	links: [db],
+	authorizers: { jwt: { issuer: 'https://i', audiences: ['a'] } },
+});
+export const workers = Function.fromManifest(stack, manifest.functions, {
+	links: [db],
+});
+export const crons = Cron.fromManifest(stack, manifest.crons, { links: [db] });
+
+// The partitioned `ManifestField` form is also accepted.
+const partitionedRoutes = {
+	admin: [
+		{
+			path: '/admin',
+			method: 'GET',
+			handler: 'admin.handler',
+			authorizer: 'iam',
+		},
+	],
+	default: [
+		{
+			path: '/health',
+			method: 'GET',
+			handler: 'health.handler',
+			authorizer: 'none',
+		},
+	],
+} satisfies ManifestField<RouteInfo>;
+export const partitionedApi = Api.fromManifest(
+	stack,
+	'PartApi',
+	partitionedRoutes,
+	{ links: [db] },
+);
