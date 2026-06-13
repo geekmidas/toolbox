@@ -18,3 +18,4 @@ export {
 export { Function, type FunctionProps } from './Function';
 export { type GkmLinkable, ResourceType } from './Linkable';
 export { Stack, type StackType } from './Stack';
+export { Storage, type StorageProps } from './Storage';
