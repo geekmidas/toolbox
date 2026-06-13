@@ -1,16 +1,15 @@
 import path from 'node:path';
-import {
-	EnvValidationError,
-	EnvValidator,
-	type LinkRecord,
-} from '@geekmidas/envkit/sst';
+import { EnvValidationError } from '@geekmidas/envkit/sst';
+import type { Function } from './Function';
 import { type GkmLinkable, ResourceType } from './Linkable';
+import { LinkedEnvironment } from './LinkedEnvironment';
 import type { StackType } from './Stack';
 
 /**
- * `Api` — wraps SST's `sst.aws.ApiGatewayV2` (HTTP API) with CORS defaults, a
- * typed route table, and per-route environment validation that fails at synth
- * time (before deploy) when a route requires variables its links cannot provide.
+ * `Api` — wraps SST's `sst.aws.ApiGatewayV2` (HTTP API) with a typed route
+ * table and per-route environment validation that fails at synth time (before
+ * deploy) when a route requires variables its links cannot provide. Native
+ * `ApiGatewayV2Args` (CORS, domain, …) pass through untouched.
  *
  * NOTE: this module is distributed as raw TypeScript source. It extends the
  * ambient `sst.aws.*` globals that only exist inside an `sst install`ed app, so
@@ -19,6 +18,7 @@ import type { StackType } from './Stack';
  * verified against v4 in a consuming app.
  */
 export class Api<
+		TAuthorizers extends Record<string, unknown> = {},
 		TStage extends string = string,
 		TDomain extends string = string,
 	>
@@ -31,7 +31,11 @@ export class Api<
 		return ResourceType.ApiGatewayV2;
 	}
 
-	constructor(stack: StackType<TStage, TDomain>, id: string, props: ApiProps) {
+	constructor(
+		stack: StackType<TStage, TDomain>,
+		id: string,
+		props: ApiProps<TAuthorizers>,
+	) {
 		const {
 			links = [],
 			routes,
@@ -39,6 +43,7 @@ export class Api<
 			vpc,
 			environment: apiEnvironment,
 			runtime: apiRuntime = 'nodejs24.x',
+			authorizers,
 			...apiArgs
 		} = props;
 
@@ -48,30 +53,50 @@ export class Api<
 
 		this._id = id;
 
+		// Register each declared authorizer and map its name to the created id.
+		// The reserved `jwt` entry is a JWT authorizer; any other name is a Lambda
+		// authorizer (enforced by the `ApiAuthorizers` type via the `handler`).
+		const authorizerIds = new Map<string, $util.Output<string>>();
+		for (const [name, config] of Object.entries(authorizers ?? {}) as [
+			string,
+			JwtAuthorizer | LambdaAuthorizer,
+		][]) {
+			const authorizer =
+				'handler' in config
+					? this.addAuthorizer({
+							name,
+							lambda: {
+								// Accept a handler path, function args, or one of our
+								// `Function` constructs (passed through as its `arn`).
+								function:
+									typeof config.handler === 'object' && 'arn' in config.handler
+										? config.handler.arn
+										: config.handler,
+								identitySources: config.identitySources,
+								payload: config.payload,
+							},
+						})
+					: this.addAuthorizer({
+							name,
+							jwt: {
+								issuer: config.issuer,
+								audiences: config.audiences,
+								identitySource: config.identitySource,
+							},
+						});
+			authorizerIds.set(name, authorizer.id);
+		}
+
 		const relativeRoot = path.relative(process.cwd(), root);
 
 		const environment = {
-			REGION: stack.region,
-			STAGE: stack.stage,
-			NODE_ENV: 'production',
-			APP_NAME: stack.app.name,
+			...LinkedEnvironment.createBaseEnvironment(stack),
 			...apiEnvironment,
 		};
 
-		// Bridge each infra-time link (`_id`/`_type`) to the runtime resolver shape
-		// (`{ type }`) the validator expects, and keep the objects by name so we can
-		// attach only the links a route actually needs (least privilege).
-		const linkByName = new Map<string, GkmLinkable>(
-			links.map((link) => [link._id, link]),
-		);
-		const linkRecord: LinkRecord = Object.fromEntries(
-			links.map((link) => [link._id, { type: link._type }]),
-		);
-
-		// Same links + whitelist for every route, so build the validator once; the
+		// Same links + whitelist for every route, so build the linker once; the
 		// failing route is identified via the per-route error context below.
-		const validator = new EnvValidator(linkRecord, {
-			platform: 'aws',
+		const linked = new LinkedEnvironment(links, {
 			whitelist: Object.keys(environment),
 		});
 
@@ -81,26 +106,28 @@ export class Api<
 			const routeKey = `${route.method} ${route.path}`;
 			const names = route.environment ?? [];
 
-			const result = validator.validate(names);
+			const result = linked.validator.validate(names);
 			if (!result.valid) {
 				failures.push(
 					new EnvValidationError({
 						missing: result.invalidVars,
-						available: validator.availableVars,
-						linkVars: validator.linkVars,
+						available: linked.validator.availableVars,
+						linkVars: linked.validator.linkVars,
 						suggestions: result.suggestions,
 						context: `${id} ${routeKey}`,
 					}),
 				);
 			}
 
-			const link = validator
-				.getProvidersForEnvVars(names)
-				.map((name) => linkByName.get(name))
-				.filter((l): l is GkmLinkable => l !== undefined);
+			const link = linked.resolveLink(names);
 
-			const auth =
-				route.authorizer === 'iam' ? { auth: { iam: true } } : undefined;
+			const auth = Api.buildRouteAuth(
+				route,
+				authorizers as
+					| Record<string, JwtAuthorizer | LambdaAuthorizer>
+					| undefined,
+				authorizerIds,
+			);
 
 			this.route(
 				routeKey,
@@ -122,9 +149,68 @@ export class Api<
 			throw new Error(failures.map((f) => f.message).join('\n\n'));
 		}
 	}
+
+	/** Resolves a route's `authorizer` name to the SST `auth` option. */
+	private static buildRouteAuth(
+		route: Route<string>,
+		authorizers: Record<string, JwtAuthorizer | LambdaAuthorizer> | undefined,
+		authorizerIds: Map<string, $util.Output<string>>,
+	) {
+		const name = route.authorizer;
+		if (!name || name === 'none') return undefined;
+		if (name === 'iam') return { auth: { iam: true } };
+
+		const authorizerId = authorizerIds.get(name);
+		if (!authorizerId) return undefined;
+
+		const config = authorizers?.[name];
+		if (config && 'handler' in config) {
+			return { auth: { lambda: authorizerId } };
+		}
+		const jwt = config as JwtAuthorizer | undefined;
+		return {
+			auth: {
+				jwt: {
+					authorizer: authorizerId,
+					scopes: route.scopes ?? jwt?.scopes,
+				},
+			},
+		};
+	}
 }
 
-export interface Route {
+/** JWT authorizer settings — `issuer` and `audiences` are required. */
+export interface JwtAuthorizer {
+	issuer: $util.Input<string>;
+	audiences: $util.Input<$util.Input<string>[]>;
+	identitySource?: $util.Input<string>;
+	/** Default OAuth scopes required by routes that use this authorizer. */
+	scopes?: string[];
+}
+
+/**
+ * Lambda (request) authorizer — requires a `handler`: a handler path, full
+ * function args, or one of our `Function` constructs.
+ */
+export interface LambdaAuthorizer {
+	handler: string | sst.aws.FunctionArgs | Function;
+	identitySources?: $util.Input<$util.Input<string>[]>;
+	payload?: '1.0' | '2.0';
+}
+
+/**
+ * Authorizer config map. The reserved `jwt` key must be {@link JwtAuthorizer}
+ * settings; every other named authorizer must be a {@link LambdaAuthorizer}
+ * (enforced via the required `handler`).
+ */
+export type ApiAuthorizers<T> = {
+	[K in keyof T]: K extends 'jwt' ? JwtAuthorizer : LambdaAuthorizer;
+};
+
+/** Valid `authorizer` values for a route: the built-ins plus declared names. */
+export type AuthorizerName<T> = 'iam' | 'none' | (keyof T & string);
+
+export interface Route<TAuthorizer extends string = 'iam' | 'none'> {
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'ALL';
 	path: string;
 	/** Handler entrypoint, resolved relative to `root` (default `cwd`). */
@@ -132,12 +218,14 @@ export interface Route {
 	/** Required env vars for this route; validated against `links`. */
 	environment?: readonly string[];
 	/**
-	 * Authorization for this route.
-	 * - `iam`: requires AWS SigV4 signed requests
-	 * - `none` (default): public
-	 * Custom Lambda authorizers are deferred (see docs §11.4).
+	 * Authorization for this route:
+	 * - `iam` — AWS SigV4 signed requests
+	 * - `none` (default) — public
+	 * - a declared authorizer name (`jwt`, or a custom Lambda authorizer)
 	 */
-	authorizer?: 'iam' | 'none';
+	authorizer?: TAuthorizer;
+	/** OAuth scopes for a `jwt` route (overrides the authorizer's defaults). */
+	scopes?: string[];
 	nodejs?: { install?: string[]; externals?: string[] };
 	/** Lambda runtime for this route. Overrides the API default (`nodejs24.x`). */
 	runtime?: sst.aws.FunctionArgs['runtime'];
@@ -146,11 +234,18 @@ export interface Route {
 /**
  * `ApiProps` extends SST's native `sst.aws.ApiGatewayV2Args`, so every native
  * option (`cors`, `domain`, `accessLog`, `transform`, …) passes straight
- * through untouched. We only add the route table and the linking/validation
- * inputs on top.
+ * through untouched. We only add the route table, authorizers, and the
+ * linking/validation inputs on top.
  */
-export interface ApiProps extends sst.aws.ApiGatewayV2Args {
-	routes: Route[];
+export interface ApiProps<TAuthorizers extends Record<string, unknown> = {}>
+	extends sst.aws.ApiGatewayV2Args {
+	routes: Route<AuthorizerName<TAuthorizers>>[];
+	/**
+	 * Named authorizers. The reserved `jwt` key configures a JWT authorizer; any
+	 * other name configures a Lambda authorizer (requires a `handler`). Route
+	 * `authorizer` values are constrained to these names plus `iam`/`none`.
+	 */
+	authorizers?: ApiAuthorizers<TAuthorizers>;
 	/** Pool of linkable resources routes may draw on. */
 	links?: GkmLinkable[];
 	/** Base directory for resolving route `handler` paths. Defaults to `cwd`. */

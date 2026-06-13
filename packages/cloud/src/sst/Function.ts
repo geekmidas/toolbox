@@ -1,9 +1,6 @@
-import {
-	EnvValidator,
-	type LinkRecord,
-	type ValidationResult,
-} from '@geekmidas/envkit/sst';
+import type { EnvValidator, ValidationResult } from '@geekmidas/envkit/sst';
 import { type GkmLinkable, ResourceType } from './Linkable';
+import { LinkedEnvironment } from './LinkedEnvironment';
 import type { StackType } from './Stack';
 
 /**
@@ -49,50 +46,30 @@ export class Function<
 		} = props;
 
 		const mergedEnvironment = {
-			NODE_ENV: 'production',
-			SERVICE_NAME: id,
-			STAGE: stack.stage,
-			REGION: stack.region,
-			APP_NAME: stack.app.name,
+			...LinkedEnvironment.createBaseEnvironment(stack, id),
 			...environment,
 		};
 
-		// Bridge the infra-time links (`_id`/`_type`) to the runtime resolver shape
-		// (`{ type }`) the validator expects, and keep the objects by name so only
-		// the links this function needs are attached (least privilege).
-		const linkByName = new Map<string, GkmLinkable>(
-			links.map((link) => [link._id, link]),
-		);
-		const linkRecord: LinkRecord = Object.fromEntries(
-			links.map((link) => [link._id, { type: link._type }]),
-		);
-
-		const validator = new EnvValidator(linkRecord, {
-			platform: 'aws',
+		const linked = new LinkedEnvironment(links, {
 			whitelist: Object.keys(mergedEnvironment),
 			context: id,
 		});
 		if (autoValidate) {
-			validator.assert(envVars);
+			linked.validator.assert(envVars);
 		}
-
-		const link = validator
-			.getProvidersForEnvVars(envVars)
-			.map((name) => linkByName.get(name))
-			.filter((l): l is GkmLinkable => l !== undefined);
 
 		super(id, {
 			...fnArgs,
 			environment: mergedEnvironment,
 			// Linking is managed via the `links`/`envVars` flow, so this overrides
 			// any native `link` passed through `fnArgs`.
-			link,
+			link: linked.resolveLink(envVars),
 			runtime: runtime ?? 'nodejs24.x',
 			logging: logging ?? { format: 'json' },
 		});
 
 		this._id = id;
-		this.validator = validator;
+		this.validator = linked.validator;
 		this.envVars = envVars;
 	}
 

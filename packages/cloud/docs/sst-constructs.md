@@ -121,7 +121,7 @@ packages/cloud/src/sst/
 ├── Linkable.ts       # linkable base + ResourceType discriminator
 ├── Function.ts       # wraps sst.aws.Function
 ├── Api.ts            # wraps sst.aws.ApiGatewayV2
-└── Cron.ts           # wraps sst.aws.Cron
+└── Cron.ts           # wraps sst.aws.CronV2
 ```
 
 ### `index.ts`
@@ -409,7 +409,28 @@ const api = new Api(stack, 'Api', {
 | `path` | `string` | |
 | `handler` | `string` | Resolved relative to `root` (default `cwd`). |
 | `environment` | `readonly string[]` | Required env vars; validated against `links`. |
-| `authorizer` | `'iam' \| 'none'` | `iam` requires SigV4; `none` is public. |
+| `authorizer` | `'iam' \| 'none' \| <declared>` | Built-ins plus any declared authorizer name (see below). |
+| `scopes` | `string[]` | OAuth scopes for a `jwt` route. |
+
+**Authorizers** — declared in `authorizers` and referenced by name from routes.
+The map is type-enforced: the reserved `jwt` key must carry JWT settings
+(`issuer` + `audiences`); any other name must carry a Lambda authorizer
+`handler`. A route's `authorizer` is constrained at the type level to
+`'iam' | 'none'` plus the declared names — an undeclared name is a compile error.
+
+```ts
+new Api(stack, 'Api', {
+  authorizers: {
+    jwt:      { issuer: 'https://issuer', audiences: ['aud'] }, // JWT
+    employee: { handler: 'src/employee-auth.handler' },         // Lambda
+  },
+  routes: [
+    { method: 'GET', path: '/me',  handler: 'me.handler',  authorizer: 'jwt' },
+    { method: 'GET', path: '/adm', handler: 'adm.handler', authorizer: 'employee' },
+    { method: 'GET', path: '/pub', handler: 'pub.handler' }, // none
+  ],
+});
+```
 
 Per-route env validation runs at construction; missing variables are collected
 and throw a single aggregated error so misconfiguration fails fast at deploy
@@ -421,13 +442,14 @@ time.
 
 ## 10. `Cron`
 
-Wraps `sst.aws.Cron`, invoking a `Function` on a schedule.
+Wraps `sst.aws.CronV2`, invoking a `Function` on a schedule. (`sst.aws.Cron` is
+deprecated in SST v4; `CronProps` extends `sst.aws.CronV2Args`, so `enabled`,
+`timezone`, `transform`, etc. pass through.)
 
 ```ts
 const cron = new Cron(stack, 'Nightly', {
   processor: fn,                         // a Function (or any { arn })
   schedule: 'rate(1 day)',
-  links: [db],
 });
 ```
 
@@ -436,19 +458,20 @@ const cron = new Cron(stack, 'Nightly', {
 ```ts
 type CronExpression = `cron(${CronString})`;     // e.g. cron(0 12 * * ? *)
 type CronRate = `rate(${number} ${'minute'|'minutes'|'hour'|'hours'|'day'|'days'})`;
-type CronSchedule = CronExpression | CronRate;
+type CronAt = `at(${string})`;                   // one-time, e.g. at(2025-06-01T10:00:00)
+type CronSchedule = CronExpression | CronRate | CronAt;
 ```
 
-**Props**
+**Props** (on top of `CronV2Args`)
 
 | Prop | Type | Notes |
 | --- | --- | --- |
-| `processor` | `Function` | Target invoked on schedule. |
-| `schedule` | `CronSchedule` | Cron expression or rate. |
-| `links` | `GkmLinkable[]` | Optional linked resources. |
+| `processor` | `` Function \| { arn } `` | Target invoked on schedule. |
+| `schedule` | `CronSchedule` | `cron(…)`, `rate(…)`, or `at(…)`. |
 
 `Cron` is not `Linkable` — nothing links *to* a cron — so it carries no `_type`
-discriminator (see §11.3).
+discriminator (see §11.3). The earlier `links` prop is dropped (it was a no-op
+when the target is an existing function).
 
 ---
 
@@ -496,11 +519,14 @@ This corrects two earlier drafting errors, fixed below: §9's discriminator is
 `ResourceType.Cron`. A fuller per-construct linkable/validator model is deferred
 until a construct actually needs to surface custom link properties.
 
-### 10.4 Authorizers — `iam` / `none` only; custom authorizers deferred ✓
+### 10.4 Authorizers — `iam` / `none` / `jwt` / named Lambda authorizers ✓
 
-Confirmed. Iteration 1's `Route.authorizer` is `'iam' | 'none'`. Custom
-Lambda/JWT authorizers are out of scope and can extend the union later without
-breaking existing routes.
+Routes support `iam`, `none`, a reserved `jwt` authorizer (JWT settings
+enforced), and any number of named Lambda authorizers (`handler` enforced). The
+`Api` is generic over the declared `authorizers` map (`ApiAuthorizers<T>`), so a
+route's `authorizer` is type-constrained to the built-ins plus the declared
+names — an undeclared name fails to compile. (Validated by
+`src/sst/__type-tests__/authorizers.type-test.ts`.)
 
 ### 10.5 Docs location — design doc here; usage docs in `apps/docs` later ✓
 
@@ -524,7 +550,8 @@ constructs land.
    ✓ (via `app.stack(name)`), `Linkable` ✓ (minimal `GkmLinkable`).
 4. **`Function`** ✓ — extends `FunctionArgs`, env defaults + validation,
    least-privilege linking, `nodejs24.x` default.
-5. **`Cron`** — smallest consumer of `Function`.
+5. **`Cron`** ✓ — wraps `sst.aws.CronV2`, `processor` (a `Function`) on a typed
+   schedule.
 6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
    linking, native `ApiGatewayV2Args` passthrough.
 7. **Testing** — capture real Pulumi state via `@geekmidas/testkit/pulumi` +
