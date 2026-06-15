@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
+import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import {
 	loadAppConfig,
@@ -24,6 +25,7 @@ import {
 	EndpointGenerator,
 	FunctionGenerator,
 	type GeneratedConstruct,
+	QueueGenerator,
 	SubscriberGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
@@ -166,29 +168,33 @@ export async function buildCommand(
 	const functionGenerator = new FunctionGenerator();
 	const cronGenerator = new CronGenerator();
 	const subscriberGenerator = new SubscriberGenerator();
+	const queueGenerator = new QueueGenerator();
 
 	// Load all constructs in parallel
-	const [allEndpoints, allFunctions, allCrons, allSubscribers] =
+	const [allEndpoints, allFunctions, allCrons, allSubscribers, allQueues] =
 		await Promise.all([
 			endpointGenerator.load(config.routes),
 			config.functions ? functionGenerator.load(config.functions) : [],
 			config.crons ? cronGenerator.load(config.crons) : [],
 			config.subscribers ? subscriberGenerator.load(config.subscribers) : [],
+			config.queues ? queueGenerator.load(config.queues) : [],
 		]);
 
 	logger.log(`Found ${allEndpoints.length} endpoints`);
 	logger.log(`Found ${allFunctions.length} functions`);
 	logger.log(`Found ${allCrons.length} crons`);
 	logger.log(`Found ${allSubscribers.length} subscribers`);
+	logger.log(`Found ${allQueues.length} queues`);
 
 	if (
 		allEndpoints.length === 0 &&
 		allFunctions.length === 0 &&
 		allCrons.length === 0 &&
-		allSubscribers.length === 0
+		allSubscribers.length === 0 &&
+		allQueues.length === 0
 	) {
 		logger.log(
-			'No endpoints, functions, crons, or subscribers found to process',
+			'No endpoints, functions, crons, subscribers, or queues found to process',
 		);
 		return {};
 	}
@@ -208,10 +214,12 @@ export async function buildCommand(
 			functionGenerator,
 			cronGenerator,
 			subscriberGenerator,
+			queueGenerator,
 			allEndpoints,
 			allFunctions,
 			allCrons,
 			allSubscribers,
+			allQueues,
 			resolved.enableOpenApi,
 			options.skipBundle ?? false,
 			options.stage,
@@ -236,10 +244,12 @@ async function buildForProvider(
 	functionGenerator: FunctionGenerator,
 	cronGenerator: CronGenerator,
 	subscriberGenerator: SubscriberGenerator,
+	queueGenerator: QueueGenerator,
 	endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
 	functions: GeneratedConstruct<Function<any, any, any, any>>[],
 	crons: GeneratedConstruct<Cron<any, any, any, any>>[],
 	subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+	queues: GeneratedConstruct<Queue<any, any, any, any>>[],
 	enableOpenApi: boolean,
 	skipBundle: boolean,
 	stage?: string,
@@ -254,8 +264,8 @@ async function buildForProvider(
 	// Build all constructs in parallel.
 	// context.markOptional is forwarded to each generator so that
 	// getEnvironment({ markOptional }) produces `VARNAME?` for optional vars.
-	const [routes, functionInfos, cronInfos, subscriberInfos] = await Promise.all(
-		[
+	const [routes, functionInfos, cronInfos, subscriberInfos, queueInfos] =
+		await Promise.all([
 			endpointGenerator.build(context, endpoints, outputDir, {
 				provider,
 				enableOpenApi,
@@ -263,17 +273,18 @@ async function buildForProvider(
 			functionGenerator.build(context, functions, outputDir, { provider }),
 			cronGenerator.build(context, crons, outputDir, { provider }),
 			subscriberGenerator.build(context, subscribers, outputDir, { provider }),
-		],
-	);
+			queueGenerator.build(context, queues, outputDir, { provider }),
+		]);
 
 	logger.log(
-		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers for ${provider}`,
+		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers, ${queueInfos.length} queues for ${provider}`,
 	);
 
 	// Assemble manifest fields (flat or partitioned per construct type)
 	const manifestRoutes = assembleManifestField(routes, endpoints);
 	const manifestFunctions = assembleManifestField(functionInfos, functions);
 	const manifestCrons = assembleManifestField(cronInfos, crons);
+	const manifestQueues = assembleManifestField(queueInfos, queues);
 	const manifestSubscribers = assembleManifestField(
 		subscriberInfos,
 		subscribers,
@@ -303,6 +314,7 @@ async function buildForProvider(
 			appInfo,
 			serverRouteField,
 			manifestSubscribers,
+			manifestQueues,
 		);
 
 		// Bundle for production if enabled
@@ -317,6 +329,7 @@ async function buildForProvider(
 				...functions.map((f) => f.construct),
 				...crons.map((c) => c.construct),
 				...subscribers.map((s) => s.construct),
+				...queues.map((q) => q.construct),
 			];
 
 			// Get docker compose services for auto-populating env vars
@@ -351,6 +364,7 @@ async function buildForProvider(
 			manifestFunctions,
 			manifestCrons,
 			manifestSubscribers,
+			manifestQueues,
 		);
 	}
 

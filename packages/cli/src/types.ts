@@ -239,6 +239,7 @@ export interface GkmConfig {
 	functions?: Routes;
 	crons?: Routes;
 	subscribers?: Routes;
+	queues?: Routes;
 	envParser: string;
 	logger: string;
 	providers?: ProvidersConfig;

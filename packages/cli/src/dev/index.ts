@@ -33,6 +33,7 @@ import {
 	CronGenerator,
 	EndpointGenerator,
 	FunctionGenerator,
+	QueueGenerator,
 	SubscriberGenerator,
 } from '../generators';
 import {
@@ -1148,9 +1149,10 @@ async function buildServer(
 	const functionGenerator = new FunctionGenerator();
 	const cronGenerator = new CronGenerator();
 	const subscriberGenerator = new SubscriberGenerator();
+	const queueGenerator = new QueueGenerator();
 
 	// Load all constructs (resolve paths relative to appRoot)
-	const [allEndpoints, allFunctions, allCrons, allSubscribers] =
+	const [allEndpoints, allFunctions, allCrons, allSubscribers, allQueues] =
 		await Promise.all([
 			endpointGenerator.load(config.routes, appRoot, bustCache),
 			config.functions
@@ -1159,6 +1161,9 @@ async function buildServer(
 			config.crons ? cronGenerator.load(config.crons, appRoot, bustCache) : [],
 			config.subscribers
 				? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
+				: [],
+			config.queues
+				? queueGenerator.load(config.queues, appRoot, bustCache)
 				: [],
 		]);
 
@@ -1175,6 +1180,7 @@ async function buildServer(
 		functionGenerator.build(context, allFunctions, outputDir, { provider }),
 		cronGenerator.build(context, allCrons, outputDir, { provider }),
 		subscriberGenerator.build(context, allSubscribers, outputDir, { provider }),
+		queueGenerator.build(context, allQueues, outputDir, { provider }),
 	]);
 }
 

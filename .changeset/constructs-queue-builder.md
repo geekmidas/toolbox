@@ -1,25 +1,44 @@
 ---
 '@geekmidas/constructs': minor
+'@geekmidas/cli': minor
 ---
 
-feat(constructs): add the `q` queue builder (`@geekmidas/constructs/queue`)
+feat: queue workers (`q`) — producer, runtime adaptors, and `gkm` discovery
 
-Adds a `QueueBuilder` exported as `q`, alongside `e`/`s`/`f`/`c`, for defining a
-point-to-point queue worker — a queue and its single consumer:
+Adds end-to-end support for point-to-point queues, alongside subscribers (`s`):
+
+**`@geekmidas/constructs/queue`** — the `q` builder:
 
 ```ts
 import { q } from '@geekmidas/constructs/queue';
 
 export const orders = q
   .queue('orders')
-  .services([databaseService])           // array; sniffed for required env vars
+  .services([db])              // array; sniffed for required env vars
   .message(z.object({ orderId: z.string() }))
-  .handle(async ({ messages, services }) => { … }); // the one consumer
+  .handle(async ({ messages, services }) => { … }); // the single consumer
 ```
 
-A `Queue` is a `Construct` (`ConstructType.Queue`) that `gkm build` will discover
-into the manifest's `queues` field. Unlike `s` (topic fan-out, filtered by
-`subscribedEvents`), a queue drains every message of its one typed `message`.
+Unlike `s` (topic fan-out, filtered by `subscribedEvents`), a queue drains
+*every* message of its one typed `message`.
 
-The producer-side auto-`publisher` (a `Service` reading the queue's
-`<NAME>_PUBLISHER_CONNECTION_STRING`) and `gkm build` discovery land next.
+- **Producer side** — `orders.publisher`, a ready-to-inject `Service` typed to
+  the queue's message. Drop it into any `.services([...])` and call
+  `services.ordersPublisher.publish([{ type: 'orders', payload }])`. It reads
+  `<NAME>_PUBLISHER_CONNECTION_STRING` and picks its transport from the URL
+  protocol — `pgboss://` locally, `sqs://` deployed — so the same code targets
+  Postgres in dev and SQS in prod. The env requirement is sniffed into the
+  manifest, so infra links exactly that queue with least privilege.
+- **Runtime adaptors** — `AWSLambdaQueue` (`@geekmidas/constructs/aws`, SQS
+  event-source with partial-batch failures) and `TestQueueAdaptor`
+  (`@geekmidas/constructs/testing`).
+
+**`@geekmidas/cli`** — `gkm build`/`gkm dev` discover `q` definitions:
+
+- New `queues: './src/queues/**/*.ts'` config glob.
+- Server / `gkm dev`: an in-process pg-boss poller (`setupQueues()`) runs
+  alongside the Hono server — each queue subscribes by its name on the shared
+  `EVENT_SUBSCRIBER_CONNECTION_STRING`. Queues are background workers, not HTTP
+  routes.
+- AWS: one `AWSLambdaQueue` handler per queue.
+- Queues are recorded in the manifest's `queues` field (`QueueInfo`).

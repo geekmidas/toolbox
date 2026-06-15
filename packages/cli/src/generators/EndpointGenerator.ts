@@ -618,6 +618,7 @@ import { Hono } from 'hono';
 import type { Hono as HonoType } from 'hono';
 import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
+import { setupQueues } from './queues.js';
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${telescopeImports}
@@ -689,6 +690,11 @@ ${afterSetupCall}
       // Start subscribers in background (non-blocking, local development only)
       await setupSubscribers(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
+      });
+
+      // Start queue workers in background (non-blocking, local development only)
+      await setupQueues(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to start queue workers');
       });
 
       logger.info({ port }, 'Starting server');
@@ -800,18 +806,24 @@ export const handler = ${exportName};
 `;
 		}
 
-		// Subscriber setup code
+		// Subscriber + queue setup code (background workers share the same flag)
 		const subscriberSetup = includeSubscribers
 			? `
       // Start subscribers in background
       await setupSubscribers(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
       });
+
+      // Start queue workers in background
+      await setupQueues(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to start queue workers');
+      });
 `
 			: '';
 
 		const subscriberImport = includeSubscribers
-			? `import { setupSubscribers } from './subscribers.js';`
+			? `import { setupSubscribers } from './subscribers.js';
+import { setupQueues } from './queues.js';`
 			: '';
 
 		// Graceful shutdown code

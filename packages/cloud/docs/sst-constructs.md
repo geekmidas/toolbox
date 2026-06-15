@@ -632,23 +632,35 @@ implements GkmLinkable`). Linking one to a `Function`/`Api`/`Cron` makes its
 - **Pending**: `Database`/`Postgres`, `Dynamo`, `Secret`, `Network` (VPC),
   `Topic` (SNS), `Queue` (SQS).
 
-### Subscribers (queue vs topic) — direction
+### Subscribers (topic) vs queues (point-to-point) — direction
 
-The runtime handler is transport-agnostic (the `@geekmidas/constructs`
-`Subscriber` + its adaptor already parse both SNS and SQS), so queue-vs-topic is
-an infra wiring choice. Decisions:
+The runtime handler is transport-agnostic (the adaptors parse both SNS and SQS),
+so the split is modelled in the **app** as two distinct builders:
 
-- **Two constructs**: `TopicSubscriber` (SNS subscription, filtered by the
-  handler's `subscribedEvents`) and `QueueSubscriber` (SQS event-source — a
-  point-to-point worker). The durable `Topic → Queue → Lambda` pattern composes
-  from `Topic` + `Queue` + `QueueSubscriber`.
-- **App-declared transport**: because the app drives infra, the subscriber's
-  source (topic vs queue, and which queue) is declared in the app and recorded
-  in the manifest — `SubscriberInfo` needs a `transport`/`source` field beyond
-  today's `subscribedEvents`. The producer (`gkm build`) and `@geekmidas/events`
-  backend (`sns`/`sqs`) are the source of truth, not `sst.config.ts`.
-- **Open**: whether a queue worker filters by `subscribedEvents` or drains all
-  messages (a true job-queue consumer in `@geekmidas/events`).
+- **`s` — `Subscriber` (topic fan-out)**: many subscribers each filter a stream
+  by their `subscribedEvents`. Infra side: `TopicSubscriber` (SNS subscription).
+- **`q` — `Queue` (point-to-point)**: a queue and its *single* consumer that
+  **drains every message** of its one typed `message` (this resolves the earlier
+  open question — a queue is a true job consumer, not a filtered subscriber).
+  Infra side: `QueueSubscriber` (SQS event-source). The durable
+  `Topic → Queue → Lambda` pattern composes from `Topic` + `Queue` +
+  `QueueSubscriber`.
+
+**Status — app + runtime side built** (`@geekmidas/constructs`):
+
+- `q` builder (`@geekmidas/constructs/queue`) → a `Queue` construct
+  (`ConstructType.Queue`); `gkm build` discovers it into `manifest.queues`
+  (`QueueInfo`).
+- Producer side is the queue's auto-`publisher` — a `Service` reading
+  `<NAME>_PUBLISHER_CONNECTION_STRING`; injected via `.services([queue.publisher])`,
+  so the env requirement is sniffed into the manifest (least-privilege linking).
+- Runtime: `AWSLambdaQueue` (deployed SQS event-source, partial-batch failures)
+  and an in-process pg-boss poller (`setupQueues()`) for `gkm dev` / server.
+  `SubscriberInfo` carries a `transport` (`topic` | `queue`) field.
+
+**Still infra-side (this doc's scope, pending)**: the cloud `TopicSubscriber` /
+`QueueSubscriber` `fromManifest` factories that turn `manifest.queues` /
+`manifest.subscribers` into the SNS subscription / SQS event-source mapping.
 
 ### Connection strings with multiple queues/topics
 

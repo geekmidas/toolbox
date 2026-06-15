@@ -24,6 +24,7 @@ pnpm add @geekmidas/constructs
 - ✅ Row Level Security (RLS) with PostgreSQL
 - ✅ Response handling (cookies, headers, status codes)
 - ✅ Event publishing
+- ✅ Event subscribers (topic fan-out) and queue workers (point-to-point)
 - ✅ Testing utilities
 
 ## Package Exports
@@ -34,11 +35,12 @@ pnpm add @geekmidas/constructs
 | `/endpoints` | HTTP endpoint builder (`e`, `EndpointFactory`) and types |
 | `/functions` | Cloud function builder (`f`) |
 | `/crons` | Scheduled task builder (`c`) and AWS adaptor (`AWSScheduledFunction`) |
-| `/subscribers` | Event subscriber builder (`s`) |
+| `/subscribers` | Event subscriber builder (`s`) — topic fan-out |
+| `/queue` | Queue worker builder (`q`) — point-to-point queue + single consumer |
 | `/types` | Type definitions |
 | `/hono` | Hono framework adapter (`HonoEndpoint`) |
-| `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSScheduledFunction`) |
-| `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`) |
+| `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSLambdaQueue`, `AWSScheduledFunction`) |
+| `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`, `TestSubscriberAdaptor`, `TestQueueAdaptor`) |
 
 > **Service integrations moved:** the tRPC and Middy middlewares now live in [`@geekmidas/services`](/packages/services) (`@geekmidas/services/trpc`, `@geekmidas/services/middy`) since they depend only on `@geekmidas/services`, not on the constructs.
 
@@ -1147,6 +1149,137 @@ export default defineConfig({
 ::: tip
 Subscribers can also be co-located with endpoints in the same route files. The CLI discovers all exported `Subscriber` instances regardless of file location.
 :::
+
+## Queues
+
+A **queue** is point-to-point work distribution: a queue and its *single* consumer. Where a subscriber (`s`) is topic fan-out — many subscribers each filtering a stream by `subscribedEvents` — a queue (`q`) drains *every* message of its one typed `message` and hands it to exactly one handler. Reach for `q` for job/task processing (send an order to be fulfilled), and `s` for broadcasting domain events (notify everyone a user was created).
+
+### Basic Queue
+
+```typescript
+import { q } from '@geekmidas/constructs/queue';
+import { z } from 'zod';
+
+export const ordersQueue = q
+  .queue('orders')
+  .message(z.object({ orderId: z.string() }))
+  .handle(async ({ messages, logger }) => {
+    for (const { orderId } of messages) {
+      logger.info({ orderId }, 'Fulfilling order');
+    }
+  });
+```
+
+### With Services
+
+Services are an **array** (the same shape endpoints/subscribers use) and are sniffed for the env vars they require — those flow into the manifest so infra provisions them:
+
+```typescript
+export const ordersQueue = q
+  .queue('orders')
+  .services([databaseService])
+  .message(z.object({ orderId: z.string() }))
+  .handle(async ({ messages, services }) => {
+    for (const { orderId } of messages) {
+      await services.database.fulfil(orderId);
+    }
+  });
+```
+
+### Sending to a Queue (the auto-publisher)
+
+Every queue exposes a `publisher` — a ready-to-inject `Service` typed to the queue's `message`. Any endpoint, function, or other worker connects to the queue by dropping it into `.services([...])`:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { ordersQueue } from './queues/orders';
+
+export const createOrder = e
+  .post('/orders')
+  .body(z.object({ sku: z.string() }))
+  .services([ordersQueue.publisher]) // producer side
+  .handle(async ({ body, services }) => {
+    const orderId = crypto.randomUUID();
+    // serviceName is `<name>Publisher` → here `ordersPublisher`
+    await services.ordersPublisher.publish([
+      { type: 'orders', payload: { orderId } },
+    ]);
+    return { orderId };
+  });
+```
+
+The publisher reads `ORDERS_PUBLISHER_CONNECTION_STRING` and selects its transport from the URL protocol — `pgboss://` locally, `sqs://` when deployed — so the same code publishes to Postgres in dev and SQS in prod. Because it's a `Service`, the connection-string requirement is sniffed into the manifest and infra links *exactly* that queue with least privilege. Multiple queues never collide: each gets its own `<NAME>_PUBLISHER_CONNECTION_STRING`.
+
+### Configuration Options
+
+| Method | Description |
+|--------|-------------|
+| `.queue(name)` | Queue name — drives the infra queue and its `<NAME>_*` env vars |
+| `.message(schema)` | The typed message (job) payload |
+| `.services([...])` | Services available to the handler (sniffed for env vars) |
+| `.timeout(ms)` | Handler timeout (default `30000`) |
+| `.batchSize(n)` | SQS event-source batch size (deployed) |
+| `.fifo()` | Mark the queue as FIFO (deployed) |
+| `.logger(logger)` | Custom logger |
+
+### How Queues Run
+
+A queue is **not** an HTTP route — it's a background worker, and it runs in three modes:
+
+**Development (`gkm dev`):**
+The CLI generates a `setupQueues()` pg-boss poller that runs **in-process alongside** the Hono server. Each queue subscribes by its **name** on the shared `EVENT_SUBSCRIBER_CONNECTION_STRING` (pg-boss routes by name), so a producer publishing with `pgboss://` reaches it. No SQS or Lambda required locally.
+
+**Production (AWS Lambda):**
+Each queue is compiled into a Lambda handler via `AWSLambdaQueue`, backed by an SQS event-source mapping. The handler unwraps each record's `payload`, validates it against `message`, and hands the batch to the handler. It uses SQS partial-batch responses, so a record that fails validation (or a handler error) is retried without re-processing the rest.
+
+```typescript
+import { AWSLambdaQueue } from '@geekmidas/constructs/aws';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { ordersQueue } from './queues/orders';
+
+const envParser = new EnvironmentParser(process.env);
+const adaptor = new AWSLambdaQueue(envParser, ordersQueue);
+
+export const handler = adaptor.handler;
+```
+
+**Production (Server):**
+With `gkm build --provider server`, queues are included in the generated server and poll using the configured connection string (same as dev).
+
+### Testing Queues
+
+```typescript
+import { TestQueueAdaptor } from '@geekmidas/constructs/testing';
+import { describe, it, expect } from 'vitest';
+
+describe('ordersQueue', () => {
+  it('fulfils each order in the batch', async () => {
+    const adaptor = new TestQueueAdaptor(ordersQueue);
+
+    const result = await adaptor.invoke({
+      messages: [{ orderId: '1' }, { orderId: '2' }],
+    });
+
+    // Assert side effects (orders fulfilled, etc.)
+  });
+});
+```
+
+### Project Configuration
+
+Register queue files in `gkm.config.ts` so the CLI discovers them:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  subscribers: './src/subscribers/**/*.ts',
+  queues: './src/queues/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+});
+```
 
 ## Cron Jobs
 

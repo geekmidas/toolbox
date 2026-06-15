@@ -283,8 +283,9 @@ export default {
 			expect(logSpy).toHaveBeenCalledWith('Found 0 functions');
 			expect(logSpy).toHaveBeenCalledWith('Found 0 crons');
 			expect(logSpy).toHaveBeenCalledWith('Found 0 subscribers');
+			expect(logSpy).toHaveBeenCalledWith('Found 0 queues');
 			expect(logSpy).toHaveBeenCalledWith(
-				'No endpoints, functions, crons, or subscribers found to process',
+				'No endpoints, functions, crons, subscribers, or queues found to process',
 			);
 		} finally {
 			process.chdir(originalCwd);

@@ -6,4 +6,5 @@ export {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
+export { QueueGenerator } from './QueueGenerator';
 export { SubscriberGenerator } from './SubscriberGenerator';
