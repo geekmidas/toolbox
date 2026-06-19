@@ -143,6 +143,85 @@ importers:
         specifier: ~4.20.6
         version: 4.20.6
 
+  apps/kitchen-sink:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ~3.844.0
+        version: 3.844.0(aws-crt@1.27.3)
+      '@aws-sdk/s3-presigned-post':
+        specifier: ^3.844.0
+        version: 3.844.0(aws-crt@1.27.3)
+      '@aws-sdk/s3-request-presigner':
+        specifier: ~3.844.0
+        version: 3.844.0
+      '@geekmidas/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
+      '@geekmidas/cache':
+        specifier: workspace:*
+        version: link:../../packages/cache
+      '@geekmidas/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@geekmidas/constructs':
+        specifier: workspace:*
+        version: link:../../packages/constructs
+      '@geekmidas/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../../packages/envkit
+      '@geekmidas/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
+      '@geekmidas/events':
+        specifier: workspace:*
+        version: link:../../packages/events
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@geekmidas/services':
+        specifier: workspace:*
+        version: link:../../packages/services
+      '@geekmidas/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@geekmidas/studio':
+        specifier: workspace:*
+        version: link:../../packages/studio
+      '@geekmidas/telescope':
+        specifier: workspace:*
+        version: link:../../packages/telescope
+      '@hono/node-server':
+        specifier: ~1.19.5
+        version: 1.19.5(hono@4.8.2)
+      hono:
+        specifier: ^4.7.15
+        version: 4.8.2
+      kysely:
+        specifier: ~0.28.2
+        version: 0.28.8
+      pg:
+        specifier: ~8.16.0
+        version: 8.16.3
+      pino:
+        specifier: ^9.6.0
+        version: 9.14.0
+      zod:
+        specifier: ~4.1.13
+        version: 4.1.13
+    devDependencies:
+      '@types/node':
+        specifier: ~24.9.1
+        version: 24.9.1
+      '@types/pg':
+        specifier: ~8.15.0
+        version: 8.15.6
+      tsx:
+        specifier: ~4.20.6
+        version: 4.20.6
+
   packages/audit:
     dependencies:
       '@standard-schema/spec':
