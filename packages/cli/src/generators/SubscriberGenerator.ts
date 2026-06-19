@@ -68,6 +68,11 @@ export class SubscriberGenerator extends ConstructGenerator<
 					'.handler',
 				),
 				subscribedEvents: construct.subscribedEvents || [],
+				// A subscriber bound to a topic (via `s.topic(topic)`) records the
+				// binding so infra wires the SNS subscription.
+				...(construct.topicName
+					? { transport: 'topic' as const, topic: construct.topicName }
+					: {}),
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
 				environment: await construct.getEnvironment({

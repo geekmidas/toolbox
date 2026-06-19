@@ -240,6 +240,7 @@ export interface GkmConfig {
 	crons?: Routes;
 	subscribers?: Routes;
 	queues?: Routes;
+	topics?: Routes;
 	envParser: string;
 	logger: string;
 	providers?: ProvidersConfig;
@@ -358,4 +359,5 @@ export type {
 	QueueInfo,
 	RouteInfo,
 	SubscriberInfo,
+	TopicInfo,
 } from '@geekmidas/manifest';

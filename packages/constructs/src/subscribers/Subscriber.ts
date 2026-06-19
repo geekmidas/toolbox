@@ -63,6 +63,13 @@ export class Subscriber<
 			TEventPublisherServiceName,
 			TEventPublisher
 		>,
+		/**
+		 * The name of the {@link Topic} this subscriber binds to (via
+		 * `s.topic(topic)`), recorded for the manifest so infra wires the SNS
+		 * subscription. Undefined when the subscriber's events are typed from a
+		 * (hand-written) publisher instead.
+		 */
+		public readonly topicName?: string,
 	) {
 		super(
 			ConstructType.Subscriber,

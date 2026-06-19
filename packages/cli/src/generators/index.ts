@@ -8,3 +8,4 @@ export {
 } from './Generator';
 export { QueueGenerator } from './QueueGenerator';
 export { SubscriberGenerator } from './SubscriberGenerator';
+export { TopicGenerator } from './TopicGenerator';

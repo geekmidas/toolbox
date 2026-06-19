@@ -6,6 +6,7 @@ import type {
 	QueueInfo,
 	RouteInfo,
 	SubscriberInfo,
+	TopicInfo,
 } from '../types';
 
 const logger = console;
@@ -83,6 +84,7 @@ export async function generateAwsManifest(
 	crons: ManifestField<CronInfo>,
 	subscribers: ManifestField<SubscriberInfo>,
 	queues: ManifestField<QueueInfo> = [],
+	topics: ManifestField<TopicInfo> = [],
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -95,6 +97,7 @@ export async function generateAwsManifest(
 	const cronsPartitioned = isPartitioned(crons);
 	const subscribersPartitioned = isPartitioned(subscribers);
 	const queuesPartitioned = isPartitioned(queues);
+	const topicsPartitioned = isPartitioned(topics);
 
 	const content = `export const manifest = {
   routes: ${serializeField(awsRoutes)},
@@ -102,6 +105,7 @@ export async function generateAwsManifest(
   crons: ${serializeField(crons)},
   subscribers: ${serializeField(subscribers)},
   queues: ${serializeField(queues)},
+  topics: ${serializeField(topics)},
 } as const;
 
 // Derived types
@@ -110,6 +114,7 @@ ${generateDerivedType('functions', 'Function', functionsPartitioned)}
 ${generateDerivedType('crons', 'Cron', cronsPartitioned)}
 ${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 ${generateDerivedType('queues', 'Queue', queuesPartitioned)}
+${generateDerivedType('topics', 'Topic', topicsPartitioned)}
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
@@ -121,7 +126,7 @@ export type RoutePath = Route['path'];
 	await writeFile(manifestPath, content);
 
 	logger.log(
-		`Generated AWS manifest with ${countItems(awsRoutes)} routes, ${countItems(functions)} functions, ${countItems(crons)} crons, ${countItems(subscribers)} subscribers, ${countItems(queues)} queues`,
+		`Generated AWS manifest with ${countItems(awsRoutes)} routes, ${countItems(functions)} functions, ${countItems(crons)} crons, ${countItems(subscribers)} subscribers, ${countItems(queues)} queues, ${countItems(topics)} topics`,
 	);
 	logger.log(`Manifest: ${relative(process.cwd(), manifestPath)}`);
 }
@@ -132,6 +137,7 @@ export async function generateServerManifest(
 	routes: ManifestField<RouteInfo>,
 	subscribers: ManifestField<SubscriberInfo>,
 	queues: ManifestField<QueueInfo> = [],
+	topics: ManifestField<TopicInfo> = [],
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -145,21 +151,27 @@ export async function generateServerManifest(
 	// Server queues only need their name (the worker is wired by setupQueues)
 	const serverQueues = mapQueueMetadata(queues);
 
+	// Server topics only need name + events (pg-boss routes by event name locally)
+	const serverTopics = mapTopicMetadata(topics);
+
 	const routesPartitioned = isPartitioned(serverRoutes);
 	const subscribersPartitioned = isPartitioned(serverSubscribers);
 	const queuesPartitioned = isPartitioned(serverQueues);
+	const topicsPartitioned = isPartitioned(serverTopics);
 
 	const content = `export const manifest = {
   app: ${JSON.stringify(appInfo, null, 2)},
   routes: ${serializeField(serverRoutes)},
   subscribers: ${serializeField(serverSubscribers)},
   queues: ${serializeField(serverQueues)},
+  topics: ${serializeField(serverTopics)},
 } as const;
 
 // Derived types
 ${generateDerivedType('routes', 'Route', routesPartitioned)}
 ${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 ${generateDerivedType('queues', 'Queue', queuesPartitioned)}
+${generateDerivedType('topics', 'Topic', topicsPartitioned)}
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
@@ -171,7 +183,7 @@ export type RoutePath = Route['path'];
 	await writeFile(manifestPath, content);
 
 	logger.log(
-		`Generated server manifest with ${countItems(serverRoutes)} routes, ${countItems(serverSubscribers)} subscribers, ${countItems(serverQueues)} queues`,
+		`Generated server manifest with ${countItems(serverRoutes)} routes, ${countItems(serverSubscribers)} subscribers, ${countItems(serverQueues)} queues, ${countItems(serverTopics)} topics`,
 	);
 	logger.log(`Manifest: ${relative(process.cwd(), manifestPath)}`);
 }
@@ -252,6 +264,22 @@ function mapQueueMetadata(
 	const result: Record<string, { name: string }[]> = {};
 	for (const [partition, partitionQueues] of Object.entries(queues)) {
 		result[partition] = partitionQueues.map(mapFn);
+	}
+	return result;
+}
+
+function mapTopicMetadata(
+	topics: ManifestField<TopicInfo>,
+): ManifestField<{ name: string; events: readonly string[] }> {
+	const mapFn = (t: TopicInfo) => ({ name: t.name, events: t.events });
+
+	if (Array.isArray(topics)) {
+		return topics.map(mapFn);
+	}
+	const result: Record<string, { name: string; events: readonly string[] }[]> =
+		{};
+	for (const [partition, partitionTopics] of Object.entries(topics)) {
+		result[partition] = partitionTopics.map(mapFn);
 	}
 	return result;
 }

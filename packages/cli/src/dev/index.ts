@@ -35,6 +35,7 @@ import {
 	FunctionGenerator,
 	QueueGenerator,
 	SubscriberGenerator,
+	TopicGenerator,
 } from '../generators';
 import {
 	generateOpenApi,
@@ -1150,22 +1151,28 @@ async function buildServer(
 	const cronGenerator = new CronGenerator();
 	const subscriberGenerator = new SubscriberGenerator();
 	const queueGenerator = new QueueGenerator();
+	const topicGenerator = new TopicGenerator();
 
 	// Load all constructs (resolve paths relative to appRoot)
-	const [allEndpoints, allFunctions, allCrons, allSubscribers, allQueues] =
-		await Promise.all([
-			endpointGenerator.load(config.routes, appRoot, bustCache),
-			config.functions
-				? functionGenerator.load(config.functions, appRoot, bustCache)
-				: [],
-			config.crons ? cronGenerator.load(config.crons, appRoot, bustCache) : [],
-			config.subscribers
-				? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
-				: [],
-			config.queues
-				? queueGenerator.load(config.queues, appRoot, bustCache)
-				: [],
-		]);
+	const [
+		allEndpoints,
+		allFunctions,
+		allCrons,
+		allSubscribers,
+		allQueues,
+		allTopics,
+	] = await Promise.all([
+		endpointGenerator.load(config.routes, appRoot, bustCache),
+		config.functions
+			? functionGenerator.load(config.functions, appRoot, bustCache)
+			: [],
+		config.crons ? cronGenerator.load(config.crons, appRoot, bustCache) : [],
+		config.subscribers
+			? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
+			: [],
+		config.queues ? queueGenerator.load(config.queues, appRoot, bustCache) : [],
+		config.topics ? topicGenerator.load(config.topics, appRoot, bustCache) : [],
+	]);
 
 	// Ensure .gkm directory exists in app root
 	const outputDir = join(appRoot, '.gkm', provider);
@@ -1181,6 +1188,7 @@ async function buildServer(
 		cronGenerator.build(context, allCrons, outputDir, { provider }),
 		subscriberGenerator.build(context, allSubscribers, outputDir, { provider }),
 		queueGenerator.build(context, allQueues, outputDir, { provider }),
+		topicGenerator.build(context, allTopics, outputDir, { provider }),
 	]);
 }
 

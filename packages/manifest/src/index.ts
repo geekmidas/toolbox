@@ -79,9 +79,24 @@ export interface SubscriberInfo {
 	subscribedEvents: readonly string[];
 	/** Delivery transport — `topic` (SNS fan-out) or `queue` (SQS). */
 	transport?: 'topic' | 'queue';
+	/** The {@link TopicInfo.name} this subscriber binds to (via `s.topic(topic)`). */
+	topic?: string;
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+}
+
+/**
+ * A pub/sub topic — fan-out. A *resource* (no handler): it declares the event
+ * contract; producers publish via the derived publisher and {@link SubscriberInfo}s
+ * bind to it. Infra provisions an SNS topic.
+ */
+export interface TopicInfo {
+	name: string;
+	/** The event type names this topic carries. */
+	events: readonly string[];
+	/** Whether the topic is FIFO. */
+	fifo?: boolean;
 }
 
 /** A queue worker — a queue and its single consumer. */
@@ -108,4 +123,5 @@ export interface Manifest {
 	crons?: ManifestField<CronInfo>;
 	subscribers?: ManifestField<SubscriberInfo>;
 	queues?: ManifestField<QueueInfo>;
+	topics?: ManifestField<TopicInfo>;
 }

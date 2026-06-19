@@ -9,6 +9,7 @@ export default defineConfig({
 		'src/crons/index.ts',
 		'src/subscribers/index.ts',
 		'src/queue/index.ts',
+		'src/topic/index.ts',
 		'src/adaptors/hono.ts',
 		'src/adaptors/aws.ts',
 		'src/adaptors/testing.ts',
