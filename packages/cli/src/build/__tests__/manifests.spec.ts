@@ -168,7 +168,7 @@ describe('generateAwsManifest', () => {
 		await generateAwsManifest(dir, routes, [], [], []);
 
 		expect(logSpy).toHaveBeenCalledWith(
-			'Generated AWS manifest with 1 routes, 0 functions, 0 crons, 0 subscribers, 0 queues',
+			'Generated AWS manifest with 1 routes, 0 functions, 0 crons, 0 subscribers, 0 queues, 0 topics',
 		);
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Manifest:'));
 
@@ -338,7 +338,7 @@ describe('generateServerManifest', () => {
 		await generateServerManifest(dir, appInfo, routes, []);
 
 		expect(logSpy).toHaveBeenCalledWith(
-			'Generated server manifest with 1 routes, 0 subscribers, 0 queues',
+			'Generated server manifest with 1 routes, 0 subscribers, 0 queues, 0 topics',
 		);
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Manifest:'));
 
