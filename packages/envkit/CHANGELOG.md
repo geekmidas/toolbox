@@ -1,5 +1,44 @@
 # @geekmidas/envkit
 
+## 1.1.0
+
+### Minor Changes
+
+- ✨ [#8](https://github.com/geekmidas/toolbox/pull/8) [`7323f34`](https://github.com/geekmidas/toolbox/commit/7323f34176d63170dd53450889ac0b5959420c3c) Thanks [@geekmidas](https://github.com/geekmidas)! - feat(envkit): add Queue resolver and publisher connection strings (sst)
+
+  `@geekmidas/envkit/sst` gains a `Queue` resource type (`ResourceType.Queue` /
+  `SSTQueue`) whose resolver emits `<NAME>_URL`, `<NAME>_ARN`, and a
+  `<NAME>_PUBLISHER_CONNECTION_STRING` (`sqs://?queueUrl=…`). The SNS topic
+  resolver now also emits `<NAME>_PUBLISHER_CONNECTION_STRING` (`sns://?topicArn=…`).
+
+  These name-namespaced connection strings are what `@geekmidas/events`'
+  `Publisher.fromConnectionString` consumes, so a linked queue/topic resolves to a
+  ready-to-use publisher (the protocol selects the transport — SQS/SNS deployed,
+  or a local backend in dev).
+
+- ✨ [#8](https://github.com/geekmidas/toolbox/pull/8) [`79e2929`](https://github.com/geekmidas/toolbox/commit/79e292978d3dbc8927e25814bdb051d1c380600a) Thanks [@geekmidas](https://github.com/geekmidas)! - feat(envkit): add an SST env-var validator to `@geekmidas/envkit/sst`
+
+  Adds `EnvValidator`, `resolveEnvKeys`, and `EnvValidationError` alongside
+  `SstEnvironmentBuilder`, so a deployable unit's required environment variables
+  can be validated **before** deploy — at `sst.config.ts` synth time.
+  - `resolveEnvKeys` derives the env-var keys a set of linked resources will
+    produce by replaying the **same** `sstResolvers` used at runtime (reduced to
+    the resource `type`, so no SST `Output` value is ever read). The infra-time
+    validator and the runtime resolution share a single source of truth — they
+    cannot drift, and there is no parallel suffix table to maintain.
+  - `EnvValidationError` is a structured, catchable error carrying `.missing`,
+    `.available`, `.suggestions`, and `.context`. Its message names the failing
+    unit and gives a nearest-match "did you mean DB_URL?" hint per missing
+    variable (edit-distance + token-overlap).
+  - Platform whitelists are **exported, never assumed** — SST deploys to AWS, GCP,
+    and Cloudflare. `AWS_RUNTIME_ENV_VARS`, `GCP_RUNTIME_ENV_VARS`,
+    `CLOUDFLARE_RUNTIME_ENV_VARS`, the `PLATFORM_ENV_VARS` registry, and
+    `platformEnvVars(platform)` are exported; the caller opts in via
+    `new EnvValidator(links, { platform })`. Optional vars are marked with a
+    trailing `?`.
+  - `getProvidersForEnvVars(requested)` returns the link names that provide a
+    requested var, for least-privilege linking (attach only the links a unit needs).
+
 ## 1.0.7
 
 ### Patch Changes

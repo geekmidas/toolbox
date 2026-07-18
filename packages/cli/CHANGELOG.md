@@ -1,5 +1,137 @@
 # @geekmidas/cli
 
+## 1.12.0
+
+### Minor Changes
+
+- [#8](https://github.com/geekmidas/toolbox/pull/8) [`b004fd8`](https://github.com/geekmidas/toolbox/commit/b004fd8ee74b5f20a047260b16669d16d8fc03b4) Thanks [@geekmidas](https://github.com/geekmidas)! - feat: queue workers (`q`) — producer, runtime adaptors, and `gkm` discovery
+
+  Adds end-to-end support for point-to-point queues, alongside subscribers (`s`):
+
+  **`@geekmidas/constructs/queue`** — the `q` builder:
+
+  ```ts
+  import { q } from '@geekmidas/constructs/queue';
+
+  export const orders = q
+    .queue('orders')
+    .services([db])              // array; sniffed for required env vars
+    .message(z.object({ orderId: z.string() }))
+    .handle(async ({ messages, services }) => { … }); // the single consumer
+  ```
+
+  Unlike `s` (topic fan-out, filtered by `subscribedEvents`), a queue drains
+  _every_ message of its one typed `message`.
+  - **Producer side** — `orders.publisher`, a ready-to-inject `Service` typed to
+    the queue's message. Drop it into any `.services([...])` and call
+    `services.ordersPublisher.publish([{ type: 'orders', payload }])`. It reads
+    `<NAME>_PUBLISHER_CONNECTION_STRING` and picks its transport from the URL
+    protocol — `pgboss://` locally, `sqs://` deployed — so the same code targets
+    Postgres in dev and SQS in prod. The env requirement is sniffed into the
+    manifest, so infra links exactly that queue with least privilege.
+  - **Runtime adaptors** — `AWSLambdaQueue` (`@geekmidas/constructs/aws`, SQS
+    event-source with partial-batch failures) and `TestQueueAdaptor`
+    (`@geekmidas/constructs/testing`).
+
+  **`@geekmidas/cli`** — `gkm build`/`gkm dev` discover `q` definitions:
+  - ✨ New `queues: './src/queues/**/*.ts'` config glob.
+  - Server / `gkm dev`: an in-process pg-boss poller (`setupQueues()`) runs
+    alongside the Hono server — each queue subscribes by its name on the shared
+    `EVENT_SUBSCRIBER_CONNECTION_STRING`. Queues are background workers, not HTTP
+    routes.
+  - AWS: one `AWSLambdaQueue` handler per queue.
+  - Queues are recorded in the manifest's `queues` field (`QueueInfo`).
+
+- ✨ [#8](https://github.com/geekmidas/toolbox/pull/8) [`0dad77e`](https://github.com/geekmidas/toolbox/commit/0dad77e574000e4018033b956ed4bb95935911a5) Thanks [@geekmidas](https://github.com/geekmidas)! - feat(topic): add the `t` topic construct + derived publisher (closes the topic/queue asymmetry)
+
+  Topics now have the same app-driven story queues already had — declare the topic
+  in the app, get a typed publisher for free, and let `gkm build` capture it. This
+  removes the need to hand-write a publisher `Service` (e.g. `EventsService`) to
+  fan events out.
+
+  **`@geekmidas/constructs/topic`** — the `t` builder:
+
+  ```ts
+  import { t } from "@geekmidas/constructs/topic";
+
+  export const userTopic = t.topic("users").events({
+    "user.created": z.object({ userId: z.string(), email: z.string() }),
+    "user.updated": z.object({
+      userId: z.string(),
+      changes: z.array(z.string()),
+    }),
+  });
+  ```
+
+  - A `Topic` is a _resource_ construct (`ConstructType.Topic`) — fan-out, owned by
+    no single handler. It declares the event contract and derives a publisher.
+  - **`userTopic.publisher`** — a derived `Service` typed to the union of the topic's
+    events, reading `<NAME>_PUBLISHER_CONNECTION_STRING` (transport by protocol:
+    `sns://` deployed, `pgboss://` local). Replaces hand-written publisher services.
+    Inject via `.publisher(userTopic.publisher)` (declarative `.event(...)`) or
+    `.services([userTopic.publisher])`.
+  - **`s.topic(userTopic)`** — binds a subscriber to a topic: supplies the
+    subscribable event types/payloads _and_ records the binding for the manifest.
+    A consumer doesn't publish, so this requires **no** publisher connection string
+    (least privilege) — unlike typing via `.publisher(...)`.
+
+  **`@geekmidas/manifest`** — new `TopicInfo` + `manifest.topics`; `SubscriberInfo`
+  gains `topic` (the bound topic name).
+
+  **`@geekmidas/cli`** — `TopicGenerator` discovers `t` topics into `manifest.topics`
+  (a topic has no handler to generate); new `topics` config glob; wired through
+  `gkm build`/`gkm dev` and both manifest writers.
+
+  Hand-written publisher services still work; `t` is the encouraged path.
+
+### Patch Changes
+
+- ✨ [#8](https://github.com/geekmidas/toolbox/pull/8) [`b42e96b`](https://github.com/geekmidas/toolbox/commit/b42e96b9dd28d8926a1253a97aa553bd0e08bf56) Thanks [@geekmidas](https://github.com/geekmidas)! - feat(cloud): add `fromManifest` integrators backed by a shared `@geekmidas/manifest` package
+
+  Introduces `@geekmidas/manifest` — a dependency-free package holding the
+  deployment manifest types (`RouteInfo`/`FunctionInfo`/`CronInfo`/`SubscriberInfo`
+  and their `*Manifest` containers) that `gkm build` emits. `@geekmidas/cli`
+  re-exports these from the shared package (no behaviour change), so producer and
+  consumers share one contract.
+
+  `@geekmidas/cloud/sst` constructs gain static `fromManifest` factories that map
+  a manifest straight into infrastructure:
+  - `Api.fromManifest(stack, id, routesManifest, props)` — one route per
+    `RouteInfo` (env vars, authorizer, timeout/memory mapped); supply
+    `authorizers`/`links`/native args via `props`.
+  - `Function.fromManifest(stack, functionsManifest, props)` — one `Function` per
+    entry.
+  - `Cron.fromManifest(stack, cronsManifest, { links, ... })` — one `Cron` per
+    entry; each handler becomes a validated `Function` the cron triggers.
+
+  `Api` routes also gain per-route `timeout`/`memory` passthrough.
+
+- ✨ [#8](https://github.com/geekmidas/toolbox/pull/8) [`03b08fe`](https://github.com/geekmidas/toolbox/commit/03b08feba2e735539c43f95b77792c18a627b07d) Thanks [@geekmidas](https://github.com/geekmidas)! - refactor(manifest): model the unified `gkm build` manifest and add `QueueInfo`
+
+  `gkm build` emits a single TypeScript module per provider
+  (`export const manifest = { routes, functions, crons, subscribers } as const`),
+  not separate JSON files. `@geekmidas/manifest` now models that:
+  - a unified `Manifest` type plus `ManifestField<T>` (a field is a flat
+    `readonly T[]` or a partitioned `Record<string, readonly T[]>`) and a
+    `flattenManifestField` helper;
+  - the item types (`RouteInfo`/`FunctionInfo`/`CronInfo`/`SubscriberInfo`) gain a
+    new `QueueInfo`, `SubscriberInfo.transport`, and readonly array fields so the
+    `as const` manifest assigns cleanly;
+  - 🔥 the per-unit `*Manifest` wrapper types are removed.
+
+  `@geekmidas/cloud/sst`'s `Api`/`Function`/`Cron` `fromManifest` now take the
+  manifest **field** (`Api.fromManifest(stack, id, manifest.routes, …)`) and
+  flatten the flat-or-partitioned shape. `@geekmidas/cli` re-exports the updated
+  types.
+
+  Also fixes `@geekmidas/events` to externalise `pg-boss` (it was the one
+  transport dep being bundled).
+
+- Updated dependencies [[`b42e96b`](https://github.com/geekmidas/toolbox/commit/b42e96b9dd28d8926a1253a97aa553bd0e08bf56), [`b004fd8`](https://github.com/geekmidas/toolbox/commit/b004fd8ee74b5f20a047260b16669d16d8fc03b4), [`7323f34`](https://github.com/geekmidas/toolbox/commit/7323f34176d63170dd53450889ac0b5959420c3c), [`79e2929`](https://github.com/geekmidas/toolbox/commit/79e292978d3dbc8927e25814bdb051d1c380600a), [`03b08fe`](https://github.com/geekmidas/toolbox/commit/03b08feba2e735539c43f95b77792c18a627b07d), [`0dad77e`](https://github.com/geekmidas/toolbox/commit/0dad77e574000e4018033b956ed4bb95935911a5)]:
+  - @geekmidas/manifest@0.1.0
+  - @geekmidas/constructs@5.0.0
+  - @geekmidas/envkit@1.1.0
+
 ## 1.11.0
 
 ### Minor Changes

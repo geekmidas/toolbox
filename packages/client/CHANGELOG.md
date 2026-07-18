@@ -1,5 +1,12 @@
 # @geekmidas/client
 
+## 7.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`b004fd8`](https://github.com/geekmidas/toolbox/commit/b004fd8ee74b5f20a047260b16669d16d8fc03b4), [`0dad77e`](https://github.com/geekmidas/toolbox/commit/0dad77e574000e4018033b956ed4bb95935911a5)]:
+  - @geekmidas/constructs@5.0.0
+
 ## 6.0.0
 
 ### Patch Changes

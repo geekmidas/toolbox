@@ -1,5 +1,12 @@
 # @geekmidas/rate-limit
 
+## 4.0.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/services@2.0.0
+
 ## 3.0.0
 
 ### Patch Changes
