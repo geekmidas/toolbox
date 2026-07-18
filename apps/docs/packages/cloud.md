@@ -1,6 +1,8 @@
 # @geekmidas/cloud
 
-Cloud infrastructure utilities with SST integration for serverless deployments.
+SST (ion / Pulumi) integration: opinionated, linkable constructs that map 1:1 to
+deployable units and **validate their environment before deploy**, plus the
+runtime helpers that resolve linked resources into environment variables.
 
 ## Installation
 
@@ -8,109 +10,136 @@ Cloud infrastructure utilities with SST integration for serverless deployments.
 pnpm add @geekmidas/cloud
 ```
 
-## Overview
+`@geekmidas/cloud/sst` targets **SST v4** (peer dependency `sst@^4`) and is
+distributed as raw TypeScript source — it extends the ambient `sst.aws.*`
+globals that only exist after `sst install` in your app.
 
-This package provides utilities for working with SST (Serverless Stack) resources in your application code. It bridges the gap between your infrastructure definitions and runtime code.
+## Two halves
 
-## Features
+- **`@geekmidas/cloud/sst`** — the **infra-time** constructs you instantiate in
+  `sst.config.ts` (`App`, `Stack`, `Function`, `Api`, `Cron`).
+- **`@geekmidas/cloud` / `@geekmidas/cloud/utils`** — the **runtime** helpers
+  (`buildResourceEnv`, `ResourceType`) that turn SST `Resource` links into flat
+  environment variables inside a handler.
 
-- SST resource name resolution from outputs
-- Environment variable mapping for cloud resources
-- Fallback support for local development
-- Type-safe resource access
+## Constructs
 
-## Usage
-
-### Getting SST Resources
-
-```typescript
-import { getResourceFromSst, getSstResourceName } from '@geekmidas/cloud/utils';
-
-// Get an SST resource by name
-const bucketName = getResourceFromSst('UploadBucket');
-
-// Get resource with fallback for local development
-const queueUrl = getSstResourceName('TaskQueue', process.env.LOCAL_QUEUE_URL);
-
-// Common pattern for database connection
-const databaseUrl = getResourceFromSst('DatabaseUrl') ?? process.env.DATABASE_URL;
+```ts
+import { App, Api, Function, Cron } from '@geekmidas/cloud/sst';
 ```
 
-### Integration with Services
+### App & Stack
 
-```typescript
-import { getResourceFromSst } from '@geekmidas/cloud/utils';
-import type { Service } from '@geekmidas/services';
-import { S3Client } from '@aws-sdk/client-s3';
+`App` is a plain synchronous construct — resolve the Route53 hosted zone once at
+the call site and pass it in. `app.stack(name)` creates a `Stack` bound to the
+app.
 
-const s3Service = {
-  serviceName: 's3' as const,
-  async register(envParser) {
-    const bucket = getResourceFromSst('UploadBucket');
+```ts
+const { zoneId } = await aws.route53.getZone({ name: 'example.com' });
 
-    if (!bucket) {
-      throw new Error('UploadBucket SST resource not found');
-    }
+const app = new App({
+  name: 'my-app',
+  stage: 'prod',
+  domain: 'example.com',
+  hostedZoneId: zoneId,
+  region: 'us-east-1',
+});
 
-    return new S3Client({
-      // AWS credentials from environment
-    });
-  }
-} satisfies Service<'s3', S3Client>;
+const stack = app.stack('api');
+
+stack.logicalPrefixedName('handler'); // "prod-my-app-api-handler"
+stack.select({ prod: 'live', staging: 'test', default: 'dev' }); // by-stage value
 ```
 
-### With SST Configuration
+`logicalPrefixedName` produces `{stage}-{appName}-{stackName}-{resource}`, so
+names stay unique across apps sharing an account/stage. `select` picks a value
+for the current stage from a by-stage map with a required `default`.
 
-In your SST configuration, resources are automatically exposed:
+### Function
 
-```typescript
-// sst.config.ts
-export default {
-  stacks(app) {
-    app.stack(({ stack }) => {
-      const bucket = new Bucket(stack, 'UploadBucket');
+Extends `sst.aws.FunctionArgs` (native options pass through), merges standard env
+defaults (`NODE_ENV`, `SERVICE_NAME`, `STAGE`, `REGION`, `APP_NAME`), defaults to
+`nodejs24.x` + JSON logging, and **validates `envVars` against `links` at synth
+time** — attaching only the links a function needs (least privilege).
 
-      // Expose to application
-      stack.addOutputs({
-        UploadBucket: bucket.bucketName,
-      });
-    });
-  }
-};
+```ts
+const fn = new Function(stack, 'Processor', {
+  handler: 'src/processor.handler',
+  links: [db, topic],
+  envVars: ['DATABASE_URL'], // validated against links; fails synth if missing
+});
 ```
 
-## API Reference
+If a required variable can't be provided by any link, synth fails with a
+structured error — including a nearest-match "did you mean `DB_URL`?" hint.
 
-### `getResourceFromSst(name: string): string | undefined`
+### Api
 
-Retrieves an SST resource value by name. Returns `undefined` if not found.
+Extends `sst.aws.ApiGatewayV2Args` (CORS / domain / access logs pass through). A
+typed route table with per-route env validation, least-privilege linking, and a
+type-enforced authorizer model.
 
-### `getSstResourceName(name: string, fallback?: string): string | undefined`
-
-Retrieves an SST resource with an optional fallback value for local development.
-
-## Environment Variables
-
-SST automatically sets environment variables for resources. This package reads from:
-
-- `SST_*` prefixed environment variables
-- Standard AWS environment variables
-- Custom resource outputs
-
-## Local Development
-
-For local development without SST, provide fallback values:
-
-```typescript
-const config = {
-  bucket: getResourceFromSst('UploadBucket') ?? 'local-uploads',
-  queue: getResourceFromSst('TaskQueue') ?? 'http://localhost:4566/queue',
-  database: getResourceFromSst('DatabaseUrl') ?? process.env.DATABASE_URL,
-};
+```ts
+const api = new Api(stack, 'Api', {
+  links: [db],
+  authorizers: {
+    jwt:      { issuer: 'https://issuer', audiences: ['aud'] }, // 'jwt' → JWT settings
+    employee: { handler: 'src/employee-auth.handler' },         // custom → Lambda authorizer
+  },
+  routes: [
+    { method: 'GET',  path: '/me',  handler: 'me.handler',  authorizer: 'jwt' },
+    { method: 'GET',  path: '/adm', handler: 'adm.handler', authorizer: 'employee' },
+    { method: 'POST', path: '/pub', handler: 'pub.handler' }, // public (none)
+  ],
+});
 ```
 
-## See Also
+A route's `authorizer` is type-constrained to `'iam' | 'none'` plus the declared
+authorizer names — an undeclared name is a **compile error**. The reserved `jwt`
+key requires JWT settings; any other named authorizer requires a `handler` (which
+also accepts a `Function`).
 
-- [@geekmidas/envkit](/packages/envkit) - Environment configuration
-- [@geekmidas/services](/packages/services) - Service discovery
-- [SST Documentation](https://sst.dev)
+### Cron
+
+Wraps `sst.aws.CronV2` (`sst.aws.Cron` is deprecated in SST v4). `processor` is a
+`Function` (or anything with an `arn`); `schedule` is a typed `rate(…)` /
+`cron(…)` / `at(…)`.
+
+```ts
+const cron = new Cron(stack, 'Nightly', {
+  processor: fn,
+  schedule: 'rate(1 day)',
+});
+```
+
+## From a `gkm build` manifest
+
+`gkm build` emits a deployment manifest enumerating your routes, functions, and
+crons (types in [`@geekmidas/manifest`](https://www.npmjs.com/package/@geekmidas/manifest)).
+Each construct has a static `fromManifest` factory that maps it straight into
+infrastructure — define handlers once, provision with one call:
+
+```ts
+import routes from './.gkm/routes-manifest.json';
+
+const api     = Api.fromManifest(stack, 'Api', routes, { links: [db], authorizers });
+const workers = Function.fromManifest(stack, functionsManifest, { links: [db] });
+const crons   = Cron.fromManifest(stack, cronsManifest, { links: [db] });
+```
+
+## Runtime helpers
+
+```ts
+import { buildResourceEnv } from '@geekmidas/cloud';
+```
+
+`buildResourceEnv` turns a record of SST `Resource` links into flat environment
+variables at runtime, using the shared `ResourceType` vocabulary — the same
+mapping the constructs validate against before deploy.
+
+## See also
+
+- [@geekmidas/constructs](/packages/constructs) — endpoints, functions, crons
+- [@geekmidas/envkit](/packages/envkit) — environment configuration & SST env validation
+- [@geekmidas/services](/packages/services) — service discovery
+- [SST documentation](https://sst.dev)

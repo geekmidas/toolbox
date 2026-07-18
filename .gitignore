@@ -27,6 +27,9 @@ out/
 
 dist
 
+# SST generated platform (from `sst install`)
+.sst/
+
 
 # Debug
 npm-debug.log*

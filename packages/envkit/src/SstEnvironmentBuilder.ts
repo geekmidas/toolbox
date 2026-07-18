@@ -20,6 +20,7 @@ export enum ResourceType {
 	Vpc = 'sst.aws.Vpc',
 	Secret = 'sst.sst.Secret',
 	Dynamo = 'sst.aws.Dynamo',
+	Queue = 'sst.aws.Queue',
 
 	// Modern format (colon notation)
 	SSTSecret = 'sst:sst:Secret',
@@ -29,6 +30,7 @@ export enum ResourceType {
 	SSTBucket = 'sst:aws:Bucket',
 	SnsTopic = 'sst:aws:SnsTopic',
 	SSTDynamo = 'sst:aws:Dynamo',
+	SSTQueue = 'sst:aws:Queue',
 }
 
 /**
@@ -94,6 +96,15 @@ export type SnsTopic = {
 };
 
 /**
+ * AWS SQS Queue resource type.
+ */
+export type Queue = {
+	type: ResourceType.Queue | ResourceType.SSTQueue;
+	url: string;
+	arn: string;
+};
+
+/**
  * AWS DynamoDB Table resource type.
  */
 export type Dynamo = {
@@ -112,6 +123,7 @@ export type SstResource =
 	| Vpc
 	| Secret
 	| SnsTopic
+	| Queue
 	| Dynamo;
 
 // Value types without the `type` key (for resolver parameters)
@@ -119,6 +131,7 @@ type SecretValue = Omit<Secret, 'type'>;
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
+type QueueValue = Omit<Queue, 'type'>;
 type DynamoValue = Omit<Dynamo, 'type'>;
 
 /**
@@ -152,6 +165,17 @@ const bucketResolver = (name: string, value: BucketValue) => ({
 
 const topicResolver = (name: string, value: SnsTopicValue) => ({
 	[`${name}Arn`]: value.arn,
+	// A publisher connection string for `@geekmidas/events` (SNS); region is
+	// resolved from the ARN / AWS_REGION at runtime.
+	[`${name}PublisherConnectionString`]: `sns://?topicArn=${encodeURIComponent(value.arn)}`,
+});
+
+const queueResolver = (name: string, value: QueueValue) => ({
+	[`${name}Url`]: value.url,
+	[`${name}Arn`]: value.arn,
+	// A publisher connection string for `@geekmidas/events` (SQS); region is
+	// resolved from the URL / AWS_REGION at runtime.
+	[`${name}PublisherConnectionString`]: `sqs://?queueUrl=${encodeURIComponent(value.url)}`,
 });
 
 const dynamoResolver = (name: string, value: DynamoValue) => ({
@@ -172,6 +196,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.Postgres]: postgresResolver,
 	[ResourceType.Bucket]: bucketResolver,
 	[ResourceType.Dynamo]: dynamoResolver,
+	[ResourceType.Queue]: queueResolver,
 
 	// Modern format
 	[ResourceType.SSTSecret]: secretResolver,
@@ -181,6 +206,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.SSTApiGatewayV2]: noopResolver,
 	[ResourceType.SnsTopic]: topicResolver,
 	[ResourceType.SSTDynamo]: dynamoResolver,
+	[ResourceType.SSTQueue]: queueResolver,
 };
 
 /**

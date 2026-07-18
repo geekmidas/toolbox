@@ -2,6 +2,14 @@
 	"name": "@geekmidas/cloud",
 	"version": "1.0.1",
 	"type": "module",
+	"files": [
+		"dist",
+		"src/sst"
+	],
+	"scripts": {
+		"sst:install": "sst install",
+		"ts:check:sst": "tsc --noEmit -p src/sst/tsconfig.json 2>&1 | grep -E 'src/sst/.*error TS' && exit 1 || exit 0"
+	},
 	"exports": {
 		".": {
 			"import": {
@@ -22,7 +30,8 @@
 				"types": "./dist/utils/index.d.cts",
 				"default": "./dist/utils/index.cjs"
 			}
-		}
+		},
+		"./sst": "./src/sst/index.ts"
 	},
 	"repository": {
 		"type": "git",
@@ -33,14 +42,18 @@
 		"access": "public"
 	},
 	"dependencies": {
+		"@geekmidas/envkit": "workspace:*",
+		"@geekmidas/manifest": "workspace:*",
 		"lodash.snakecase": "~4.1.1"
 	},
 	"devDependencies": {
 		"@types/lodash.get": "~4.4.9",
 		"@types/lodash.set": "~4.3.9",
-		"@types/lodash.snakecase": "~4.1.9"
+		"@types/lodash.snakecase": "~4.1.9",
+		"@types/node": "~24.9.1",
+		"sst": "4.15.2"
 	},
 	"peerDependencies": {
-		"sst": "~3.17.23"
+		"sst": "^4.15.2"
 	}
 }

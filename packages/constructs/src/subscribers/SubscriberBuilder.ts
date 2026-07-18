@@ -6,6 +6,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { Topic, TopicEvents, TopicMessage } from '../topic/Topic';
 import { Subscriber, type SubscriberHandler } from './Subscriber';
 
 export class SubscriberBuilder<
@@ -22,9 +23,42 @@ export class SubscriberBuilder<
 	private _services: TServices = [] as Service[] as TServices;
 	private _logger: TLogger = DEFAULT_LOGGER;
 	private _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
+	private _topicName?: string;
 
 	constructor() {
 		this._timeout = 30000; // Default timeout
+	}
+
+	/**
+	 * Bind this subscriber to a {@link Topic} — the preferred way to type and wire
+	 * a fan-out consumer. It supplies the subscribable event types (and their
+	 * payloads) from the topic's contract and records the binding for the manifest,
+	 * so infra wires the SNS subscription.
+	 *
+	 * Prefer this over typing via a hand-written publisher service: a consumer does
+	 * not publish, so binding a topic does *not* require the topic's publisher
+	 * connection string (least privilege). Use `.publisher(...)` only when the
+	 * subscriber actually publishes follow-up events.
+	 */
+	topic<TName extends string, TEvents extends TopicEvents>(
+		topic: Topic<TName, TEvents>,
+	): SubscriberBuilder<
+		TServices,
+		TLogger,
+		OutSchema,
+		EventPublisher<TopicMessage<TEvents>>,
+		TEventPublisherServiceName,
+		TSubscribedEvents
+	> {
+		this._topicName = topic.name;
+		return this as unknown as SubscriberBuilder<
+			TServices,
+			TLogger,
+			OutSchema,
+			EventPublisher<TopicMessage<TEvents>>,
+			TEventPublisherServiceName,
+			TSubscribedEvents
+		>;
 	}
 
 	timeout(timeout: number): this {
@@ -135,12 +169,14 @@ export class SubscriberBuilder<
 			this._services,
 			this._logger,
 			this._publisher,
+			this._topicName,
 		);
 
 		// Reset builder state after creating the subscriber to prevent pollution
 		this._services = [] as Service[] as TServices;
 		this._logger = DEFAULT_LOGGER;
 		this._publisher = undefined;
+		this._topicName = undefined;
 		this._subscribedEvents = [] as any;
 		this._timeout = 30000; // Reset to default
 		this.outputSchema = undefined;

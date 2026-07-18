@@ -34,6 +34,26 @@
 				"default": "./dist/functions/index.cjs"
 			}
 		},
+		"./queue": {
+			"import": {
+				"types": "./dist/queue/index.d.mts",
+				"default": "./dist/queue/index.mjs"
+			},
+			"require": {
+				"types": "./dist/queue/index.d.cts",
+				"default": "./dist/queue/index.cjs"
+			}
+		},
+		"./topic": {
+			"import": {
+				"types": "./dist/topic/index.d.mts",
+				"default": "./dist/topic/index.mjs"
+			},
+			"require": {
+				"types": "./dist/topic/index.d.cts",
+				"default": "./dist/topic/index.cjs"
+			}
+		},
 		"./crons": {
 			"import": {
 				"types": "./dist/crons/index.d.mts",

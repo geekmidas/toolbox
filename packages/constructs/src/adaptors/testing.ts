@@ -7,4 +7,5 @@ export {
 } from '../endpoints/MswEndpointAdaptor';
 export { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 export { TestFunctionAdaptor } from '../functions/TestFunctionAdaptor';
+export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';

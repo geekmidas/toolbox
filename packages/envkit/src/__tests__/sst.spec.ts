@@ -171,6 +171,42 @@ describe('sst', () => {
 			});
 		});
 
+		describe('Queue resource', () => {
+			it('emits url, arn, and an SQS publisher connection string', () => {
+				const result = normalizeResourceEnv({
+					orders: {
+						type: ResourceType.Queue,
+						url: 'https://sqs.us-east-1.amazonaws.com/123/shop-orders',
+						arn: 'arn:aws:sqs:us-east-1:123:shop-orders',
+					},
+				});
+
+				expect(result).toEqual({
+					ORDERS_URL: 'https://sqs.us-east-1.amazonaws.com/123/shop-orders',
+					ORDERS_ARN: 'arn:aws:sqs:us-east-1:123:shop-orders',
+					ORDERS_PUBLISHER_CONNECTION_STRING:
+						'sqs://?queueUrl=https%3A%2F%2Fsqs.us-east-1.amazonaws.com%2F123%2Fshop-orders',
+				});
+			});
+		});
+
+		describe('SnsTopic resource', () => {
+			it('emits arn and an SNS publisher connection string', () => {
+				const result = normalizeResourceEnv({
+					events: {
+						type: ResourceType.SnsTopic,
+						arn: 'arn:aws:sns:us-east-1:123:shop-events',
+					},
+				});
+
+				expect(result).toEqual({
+					EVENTS_ARN: 'arn:aws:sns:us-east-1:123:shop-events',
+					EVENTS_PUBLISHER_CONNECTION_STRING:
+						'sns://?topicArn=arn%3Aaws%3Asns%3Aus-east-1%3A123%3Ashop-events',
+				});
+			});
+		});
+
 		describe('Bucket resource', () => {
 			it('should process Bucket resource correctly', () => {
 				const bucket: Bucket = {

@@ -1,0 +1,9 @@
+# Generated files
+.gkm/
+
+# Environment variables
+.env
+.env.local
+
+# Dependencies
+node_modules/
