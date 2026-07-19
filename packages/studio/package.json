@@ -53,7 +53,7 @@
 		"@geekmidas/db": "workspace:^",
 		"@geekmidas/telescope": "workspace:^",
 		"hono": "^4.0.0",
-		"kysely": "^0.28.0"
+		"kysely": ">=0.28.2 <0.30.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/db": {
@@ -71,7 +71,7 @@
 		"@geekmidas/telescope": "workspace:^",
 		"@types/pg": "~8.16.0",
 		"hono": "^4.7.0",
-		"kysely": "~0.28.2",
+		"kysely": "~0.29.4",
 		"pg": "~8.16.3"
 	}
 }

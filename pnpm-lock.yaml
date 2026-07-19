@@ -115,8 +115,8 @@ importers:
         specifier: ^4.7.15
         version: 4.8.2
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       pg:
         specifier: ~8.16.0
         version: 8.16.3
@@ -200,8 +200,8 @@ importers:
         specifier: ^4.7.15
         version: 4.8.2
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       pg:
         specifier: ~8.16.0
         version: 8.16.3
@@ -241,8 +241,8 @@ importers:
         specifier: ~8.15.6
         version: 8.15.6
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       pg:
         specifier: ~8.16.0
         version: 8.16.3
@@ -571,8 +571,8 @@ importers:
         specifier: ~1.4.18
         version: 1.4.18(pg@8.16.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4(vitest@3.2.4))(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))(vue@3.5.18(typescript@5.8.2))
       kysely:
-        specifier: ~0.28.8
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       msw:
         specifier: ~2.10.3
         version: 2.10.3(@types/node@24.9.1)(typescript@5.8.2)
@@ -595,8 +595,8 @@ importers:
         specifier: ~3.1.0
         version: 3.1.0(pg@8.16.3)
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.2
+        specifier: '>=0.28.2 <0.30.0'
+        version: 0.29.4
       objection:
         specifier: ~3.1.5
         version: 3.1.5(knex@3.1.0(pg@8.16.3))
@@ -809,8 +809,8 @@ importers:
         specifier: ^4.7.0
         version: 4.8.2
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       pg:
         specifier: ~8.16.3
         version: 8.16.3
@@ -919,8 +919,8 @@ importers:
         specifier: ^4.7.0
         version: 4.8.2
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.8
+        specifier: ~0.29.4
+        version: 0.29.4
       pino:
         specifier: ^9.6.0
         version: 9.14.0
@@ -977,8 +977,8 @@ importers:
         specifier: ~3.1.0
         version: 3.1.0(pg@8.16.3)
       kysely:
-        specifier: ~0.28.2
-        version: 0.28.2
+        specifier: ~0.29.4
+        version: 0.29.4
       objection:
         specifier: ~3.1.5
         version: 3.1.5(knex@3.1.0(pg@8.16.3))
@@ -8160,13 +8160,13 @@ packages:
       tedious:
         optional: true
 
-  kysely@0.28.2:
-    resolution: {integrity: sha512-4YAVLoF0Sf0UTqlhgQMFU9iQECdah7n+13ANkiuVfRvlK+uI0Etbgd7bVP36dKlG+NXWbhGua8vnGt+sdhvT7A==}
-    engines: {node: '>=18.0.0'}
-
   kysely@0.28.8:
     resolution: {integrity: sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA==}
     engines: {node: '>=20.0.0'}
+
+  kysely@0.29.4:
+    resolution: {integrity: sha512-y5mVgQNkMbs1eK9Xyc0pmNdabN2wHhRYY/5r4W5HrUT1rYCEPeVNSj1RUJeSDKT3U0p+mXCvLgkrFuIafYI6BA==}
+    engines: {node: '>=22.0.0'}
 
   lan-network@0.1.7:
     resolution: {integrity: sha512-mnIlAEMu4OyEvUNdzco9xpuB9YVcPkQec+QsgycBCtPZvEqWPCDPfbAE4OJMdBBWpZWtpCn1xw9jJYlwjWI5zQ==}
@@ -13423,37 +13423,37 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)':
+  '@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)':
     dependencies:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
       '@standard-schema/spec': 1.0.0
       better-call: 1.1.0
       jose: 6.1.2
-      kysely: 0.28.2
+      kysely: 0.29.4
       nanostores: 1.1.0
       zod: 4.1.13
 
-  '@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)':
+  '@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)':
     dependencies:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@standard-schema/spec': 1.0.0
       better-call: 1.1.8(zod@4.3.6)
       jose: 6.1.2
-      kysely: 0.28.8
+      kysely: 0.29.4
       nanostores: 1.1.0
       zod: 4.3.6
 
   '@better-auth/telemetry@1.4.1(@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
     dependencies:
-      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
 
-  '@better-auth/telemetry@1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
+  '@better-auth/telemetry@1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
     dependencies:
-      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
 
@@ -16059,9 +16059,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
@@ -18669,7 +18667,7 @@ snapshots:
 
   better-auth@1.4.1:
     dependencies:
-      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.2)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
       '@better-auth/telemetry': 1.4.1(@better-auth/core@1.4.1(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.18)(better-call@1.1.0)(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
@@ -18685,8 +18683,8 @@ snapshots:
 
   better-auth@1.4.18(pg@8.16.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4(vitest@3.2.4))(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))(vue@3.5.18(typescript@5.8.2)):
     dependencies:
-      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
-      '@better-auth/telemetry': 1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
+      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
+      '@better-auth/telemetry': 1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.0.1
@@ -20236,9 +20234,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  kysely@0.28.2: {}
-
   kysely@0.28.8: {}
+
+  kysely@0.29.4: {}
 
   lan-network@0.1.7: {}
 

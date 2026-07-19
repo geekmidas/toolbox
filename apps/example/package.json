@@ -30,7 +30,7 @@
 		"@hono/node-ws": "^1.0.0",
 		"@hono/swagger-ui": "~0.5.2",
 		"hono": "^4.7.15",
-		"kysely": "~0.28.2",
+		"kysely": "~0.29.4",
 		"pg": "~8.16.0",
 		"pino": "^9.6.0",
 		"pino-abstract-transport": "~3.0.0",
