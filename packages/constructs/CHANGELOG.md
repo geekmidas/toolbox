@@ -1,5 +1,13 @@
 # @geekmidas/constructs
 
+## 6.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`e31a60a`](https://github.com/geekmidas/toolbox/commit/e31a60a971366180a0e7bec6e7da56d8f36aa21f)]:
+  - @geekmidas/db@1.1.0
+  - @geekmidas/audit@2.1.0
+
 ## 5.0.0
 
 ### Minor Changes

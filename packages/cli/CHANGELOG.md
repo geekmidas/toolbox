@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 2.0.0
+
+### Patch Changes
+
+- [#9](https://github.com/geekmidas/toolbox/pull/9) [`e31a60a`](https://github.com/geekmidas/toolbox/commit/e31a60a971366180a0e7bec6e7da56d8f36aa21f) Thanks [@geekmidas](https://github.com/geekmidas)! - Support kysely 0.29.
+
+  kysely 0.29 moved `Migrator` and `FileMigrationProvider` from the root barrel
+  (`'kysely'`) to the `'kysely/migration'` subpath. `@geekmidas/testkit`'s
+  `PostgresKyselyMigrator` now imports `Migrator` from `'kysely/migration'` and
+  its kysely peer becomes `~0.29.4` — consumers must be on kysely 0.29+.
+
+  The library packages that only declare a kysely _peer_ (`db`, `audit`, `studio`,
+  `telescope`) don't touch the moved symbols, so their peer range is _widened_ to
+  `>=0.28.2 <0.30.0` — they now support both 0.28 and 0.29 (non-breaking).
+
+  `@geekmidas/cli`'s scaffolded `test/globalSetup.ts` template now imports
+  `FileMigrationProvider` from `'kysely/migration'` so generated projects work on
+  kysely 0.29.
+
+- Updated dependencies [[`e31a60a`](https://github.com/geekmidas/toolbox/commit/e31a60a971366180a0e7bec6e7da56d8f36aa21f)]:
+  - @geekmidas/telescope@1.1.0
+  - @geekmidas/constructs@6.0.0
+
 ## 1.12.0
 
 ### Minor Changes

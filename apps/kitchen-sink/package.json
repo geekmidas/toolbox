@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/kitchen-sink",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"private": true,
 	"type": "module",
 	"description": "Kitchen-sink example exercising every @geekmidas/toolbox integration point: endpoints, functions, crons, subscribers, queues, services/DI, storage, cache, audit, events, telescope, studio and OpenAPI.",

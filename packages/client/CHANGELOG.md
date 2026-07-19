@@ -1,5 +1,12 @@
 # @geekmidas/client
 
+## 8.0.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@6.0.0
+
 ## 7.0.0
 
 ### Patch Changes
