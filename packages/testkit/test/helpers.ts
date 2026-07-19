@@ -4,10 +4,11 @@ import {
 	CamelCasePlugin,
 	type ControlledTransaction,
 	Kysely,
-	type Migrator,
 	PostgresDialect,
 	sql,
 } from 'kysely';
+// `Migrator` moved to the 'kysely/migration' subpath in kysely 0.29+.
+import type { Migrator } from 'kysely/migration';
 import pg from 'pg';
 import { TEST_DATABASE_CONFIG } from './globalSetup';
 
@@ -254,7 +255,7 @@ export function createTestMigrator(
 		}
 	>,
 ): Migrator {
-	const { Migrator } = require('kysely');
+	const { Migrator } = require('kysely/migration');
 
 	return new Migrator({
 		db,

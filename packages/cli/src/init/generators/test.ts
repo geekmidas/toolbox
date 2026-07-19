@@ -72,7 +72,8 @@ import path from 'node:path';
 import { Credentials } from '@geekmidas/envkit/credentials';
 import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
 import { runInitScript } from '@geekmidas/testkit/postgres';
-import { FileMigrationProvider, Kysely, PostgresDialect } from 'kysely';
+import { Kysely, PostgresDialect } from 'kysely';
+import { FileMigrationProvider } from 'kysely/migration';
 import pg from 'pg';
 
 export default async function globalSetup() {

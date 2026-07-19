@@ -59,7 +59,7 @@
 	"peerDependencies": {
 		"@geekmidas/cache": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
-		"kysely": "^0.28.0"
+		"kysely": ">=0.28.2 <0.30.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/cache": {
@@ -75,7 +75,7 @@
 	"devDependencies": {
 		"@geekmidas/cache": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
-		"kysely": "~0.28.2",
+		"kysely": "~0.29.4",
 		"pg": "~8.16.0",
 		"@types/pg": "~8.15.6"
 	}

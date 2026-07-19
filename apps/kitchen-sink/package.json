@@ -30,7 +30,7 @@
 		"@geekmidas/telescope": "workspace:*",
 		"@hono/node-server": "~1.19.5",
 		"hono": "^4.7.15",
-		"kysely": "~0.28.2",
+		"kysely": "~0.29.4",
 		"pg": "~8.16.0",
 		"pino": "^9.6.0",
 		"zod": "~4.1.13"

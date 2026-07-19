@@ -1,4 +1,7 @@
-import { type Kysely, type MigrationProvider, Migrator } from 'kysely';
+import type { Kysely } from 'kysely';
+// `Migrator` and the `MigrationProvider` type moved from the root barrel ('kysely')
+// to the 'kysely/migration' subpath in kysely 0.29+.
+import { type MigrationProvider, Migrator } from 'kysely/migration';
 import { PostgresMigrator } from './PostgresMigrator';
 
 /**
