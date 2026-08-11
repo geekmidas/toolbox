@@ -1,5 +1,16 @@
 # @geekmidas/storage
 
+## 2.0.4
+
+### Patch Changes
+
+- 🐛 [#11](https://github.com/geekmidas/toolbox/pull/11) [`40f4dc0`](https://github.com/geekmidas/toolbox/commit/40f4dc095911b2223a255029d8f776caf7781309) Thanks [@geekmidas](https://github.com/geekmidas)! - Patch release across all packages to realign published versions with the
+  registry. The previous release only published the four packages that had
+  version bumps; the remaining packages failed with "cannot publish over the
+  previously published versions" because their versions were unchanged.
+- Updated dependencies [[`40f4dc0`](https://github.com/geekmidas/toolbox/commit/40f4dc095911b2223a255029d8f776caf7781309)]:
+  - @geekmidas/cache@1.1.2
+
 ## 2.0.3
 
 ### Patch Changes
