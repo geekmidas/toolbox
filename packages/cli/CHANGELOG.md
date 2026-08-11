@@ -1,5 +1,12 @@
 # @geekmidas/cli
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@7.0.0
+
 ## 2.0.0
 
 ### Patch Changes

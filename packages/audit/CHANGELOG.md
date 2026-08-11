@@ -1,5 +1,23 @@
 # @geekmidas/audit
 
+## 2.2.0
+
+### Minor Changes
+
+- ✨ [#10](https://github.com/geekmidas/toolbox/pull/10) [`ae678fe`](https://github.com/geekmidas/toolbox/commit/ae678fe6fbc89307d052335468f1b955b306a604) Thanks [@geekmidas](https://github.com/geekmidas)! - Add Knex audit storage via a new `@geekmidas/audit/knex` entry point.
+
+  `KnexAuditStorage` mirrors `KyselyAuditStorage` — same config (`db`,
+  `tableName`, `databaseServiceName`, `autoId`), same `query()`/`count()`
+  filters, and the same transaction semantics. A `withAuditableTransaction`
+  helper is included; passing an existing transaction reuses it instead of
+  opening a savepoint, so audits roll back with the outer transaction.
+
+  Because it implements `withTransaction()`, `getDatabase()` and
+  `databaseServiceName`, endpoints wrap handlers and audit flushes in a single
+  transaction with Knex just as they do with Kysely.
+
+  `knex` is an optional peer dependency, so Kysely-only users are unaffected.
+
 ## 2.1.0
 
 ### Minor Changes
