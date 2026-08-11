@@ -27,13 +27,13 @@ export const CLI_VERSION = `~${pkg.version}`;
  * Run: pnpm --filter @geekmidas/cli sync-versions
  */
 export const GEEKMIDAS_VERSIONS = {
-	'@geekmidas/audit': '~2.0.1',
+	'@geekmidas/audit': '~2.1.0',
 	'@geekmidas/auth': '~2.0.1',
 	'@geekmidas/cache': '~1.1.1',
-	'@geekmidas/client': '~7.0.0',
+	'@geekmidas/client': '~8.0.0',
 	'@geekmidas/cloud': '~1.1.0',
-	'@geekmidas/constructs': '~5.0.0',
-	'@geekmidas/db': '~1.0.2',
+	'@geekmidas/constructs': '~6.0.0',
+	'@geekmidas/db': '~1.1.0',
 	'@geekmidas/emailkit': '~1.0.1',
 	'@geekmidas/envkit': '~1.1.0',
 	'@geekmidas/errors': '~1.0.1',
@@ -43,9 +43,9 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/schema': '~1.0.3',
 	'@geekmidas/services': '~2.0.0',
 	'@geekmidas/storage': '~2.0.3',
-	'@geekmidas/studio': '~1.0.1',
-	'@geekmidas/telescope': '~1.0.1',
-	'@geekmidas/testkit': '~3.0.0',
+	'@geekmidas/studio': '~2.0.0',
+	'@geekmidas/telescope': '~1.1.0',
+	'@geekmidas/testkit': '~3.1.0',
 	'@geekmidas/cli': CLI_VERSION,
 } as const;
 
