@@ -23,6 +23,16 @@
 				"default": "./dist/kysely.cjs"
 			}
 		},
+		"./knex": {
+			"import": {
+				"types": "./dist/knex.d.mts",
+				"default": "./dist/knex.mjs"
+			},
+			"require": {
+				"types": "./dist/knex.d.cts",
+				"default": "./dist/knex.cjs"
+			}
+		},
 		"./memory": {
 			"import": {
 				"types": "./dist/memory.d.mts",
@@ -59,7 +69,8 @@
 	"peerDependencies": {
 		"@geekmidas/cache": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
-		"kysely": ">=0.28.2 <0.30.0"
+		"kysely": ">=0.28.2 <0.30.0",
+		"knex": ">=3.0.0 <4.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/cache": {
@@ -70,6 +81,9 @@
 		},
 		"kysely": {
 			"optional": true
+		},
+		"knex": {
+			"optional": true
 		}
 	},
 	"devDependencies": {
@@ -77,6 +91,7 @@
 		"@geekmidas/schema": "workspace:^",
 		"kysely": "~0.29.4",
 		"pg": "~8.16.0",
-		"@types/pg": "~8.15.6"
+		"@types/pg": "~8.15.6",
+		"knex": "~3.1.0"
 	}
 }

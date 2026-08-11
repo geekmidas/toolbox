@@ -1,9 +1,4 @@
-import type {
-	ControlledTransaction,
-	IsolationLevel,
-	Kysely,
-	Transaction,
-} from 'kysely';
+import type { Knex } from 'knex';
 import { nanoid } from 'nanoid';
 import type {
 	AuditQueryOptions,
@@ -15,13 +10,26 @@ import type { AuditRecord } from './types';
 export type { TransactionAwareAuditor };
 
 export interface TransactionSettings {
-	isolationLevel?: IsolationLevel;
+	isolationLevel?: Knex.IsolationLevels;
 }
 
-export type DatabaseConnection<T> =
-	| ControlledTransaction<T>
-	| Kysely<T>
-	| Transaction<T>;
+export type DatabaseConnection = Knex | Knex.Transaction;
+
+/**
+ * Type guard for an active Knex transaction.
+ *
+ * Knex marks transaction instances with `isTransaction`, and a completed
+ * transaction can no longer be used, so a settled transaction is treated as a
+ * plain connection.
+ */
+function isActiveTransaction(
+	connection: DatabaseConnection,
+): connection is Knex.Transaction {
+	return (
+		connection.isTransaction === true &&
+		!(connection as Knex.Transaction).isCompleted()
+	);
+}
 
 /**
  * Execute a callback within a database transaction with automatic audit handling.
@@ -37,7 +45,7 @@ export type DatabaseConnection<T> =
  * If you need all audits to be atomic with your database operations, use manual
  * audits via `auditor.audit()` inside this wrapper.
  *
- * @param db - Database connection (Kysely, Transaction, or ControlledTransaction)
+ * @param db - Database connection (Knex instance or Transaction)
  * @param auditor - Auditor instance that will receive the transaction
  * @param cb - Callback to execute within the transaction
  * @param settings - Optional transaction settings (isolation level)
@@ -45,17 +53,13 @@ export type DatabaseConnection<T> =
  *
  * @example
  * ```typescript
- * import { withAuditableTransaction } from '@geekmidas/audit/kysely';
+ * import { withAuditableTransaction } from '@geekmidas/audit/knex';
  *
  * const result = await withAuditableTransaction(
  *   services.database,
  *   auditor,
  *   async (trx) => {
- *     const user = await trx
- *       .insertInto('users')
- *       .values(data)
- *       .returningAll()
- *       .executeTakeFirstOrThrow();
+ *     const [user] = await trx('users').insert(data).returning('*');
  *
  *     // Manual audits are atomic with the transaction
  *     auditor.audit('user.created', { userId: user.id, email: user.email });
@@ -66,13 +70,13 @@ export type DatabaseConnection<T> =
  * // Audits are automatically flushed inside the transaction before commit
  * ```
  */
-export async function withAuditableTransaction<DB, T>(
-	db: DatabaseConnection<DB>,
-	auditor: TransactionAwareAuditor<Transaction<DB>>,
-	cb: (trx: Transaction<DB>) => Promise<T>,
+export async function withAuditableTransaction<T>(
+	db: DatabaseConnection,
+	auditor: TransactionAwareAuditor<Knex.Transaction>,
+	cb: (trx: Knex.Transaction) => Promise<T>,
 	settings?: TransactionSettings,
 ): Promise<T> {
-	const execute = async (trx: Transaction<DB>): Promise<T> => {
+	const execute = async (trx: Knex.Transaction): Promise<T> => {
 		// Register transaction with auditor
 		auditor.setTransaction(trx);
 
@@ -86,31 +90,36 @@ export async function withAuditableTransaction<DB, T>(
 		return result;
 	};
 
-	// If already in a transaction, just run with it
-	if (db.isTransaction) {
-		return execute(db as Transaction<DB>);
+	// If already in a transaction, just run with it.
+	// Knex would otherwise open a savepoint, which commits independently.
+	if (isActiveTransaction(db)) {
+		return execute(db);
 	}
 
-	const builder = db.transaction();
-
-	if (settings?.isolationLevel) {
-		return builder.setIsolationLevel(settings.isolationLevel).execute(execute);
-	}
-
-	return builder.execute(execute);
+	return db.transaction(execute, settings);
 }
 
 /**
- * Database table interface for audit records.
- * Use this to define your audit_logs table in your Kysely database schema.
+ * Shape of a row in the audit log table.
+ * Use this to describe your audit table when declaring Knex table types.
  *
- * Column names use snake_case to match standard PostgreSQL conventions.
+ * Property names are camelCase to match the Kysely storage. Pair this with
+ * `knexSnakeCaseMappers()` if your database columns are snake_case.
  *
  * @example
  * ```typescript
- * interface Database {
- *   audit_logs: AuditLogTable;
- *   // ... other tables
+ * import { knexSnakeCaseMappers } from 'objection';
+ *
+ * const db = knex({
+ *   client: 'pg',
+ *   connection: process.env.DATABASE_URL,
+ *   ...knexSnakeCaseMappers(),
+ * });
+ *
+ * declare module 'knex/types/tables' {
+ *   interface Tables {
+ *     audit_logs: AuditLogTable;
+ *   }
  * }
  * ```
  */
@@ -132,30 +141,20 @@ export interface AuditLogTable {
 
 /**
  * Insertable version of AuditLogTable where id is optional.
- * Use this when your database auto-generates IDs or when using autoId option.
- *
- * @example
- * ```typescript
- * interface Database {
- *   audit_logs: AuditLogTable;
- * }
- *
- * // For insertions where id is auto-generated
- * type NewAuditLog = InsertableAuditLogTable;
- * ```
+ * Use this when your database auto-generates IDs or when using the autoId option.
  */
 export type InsertableAuditLogTable = Omit<AuditLogTable, 'id'> & {
 	id?: string;
 };
 
 /**
- * Configuration for KyselyAuditStorage.
+ * Configuration for KnexAuditStorage.
  */
-export interface KyselyAuditStorageConfig<DB> {
-	/** Kysely database instance */
-	db: Kysely<DB>;
-	/** Table name for audit logs (must be a key in DB that extends AuditLogTable) */
-	tableName: keyof DB & string;
+export interface KnexAuditStorageConfig {
+	/** Knex database instance */
+	db: Knex;
+	/** Table name for audit logs */
+	tableName: string;
 	/**
 	 * Service name of the database service.
 	 * When set, endpoint adaptors will automatically use the audit transaction as `db`
@@ -172,19 +171,13 @@ export interface KyselyAuditStorageConfig<DB> {
 }
 
 /**
- * Kysely-based audit storage implementation.
- * Stores audit records in a database table using Kysely.
- *
- * @template DB - Your Kysely database schema
+ * Knex-based audit storage implementation.
+ * Stores audit records in a database table using Knex.
  *
  * @example
  * ```typescript
- * interface Database {
- *   audit_logs: AuditLogTable;
- * }
- *
- * const storage = new KyselyAuditStorage({
- *   db: kyselyDb,
+ * const storage = new KnexAuditStorage({
+ *   db: knexDb,
  *   tableName: 'audit_logs',
  * });
  *
@@ -194,13 +187,13 @@ export interface KyselyAuditStorageConfig<DB> {
  * });
  * ```
  */
-export class KyselyAuditStorage<DB> implements AuditStorage {
-	private readonly db: Kysely<DB>;
-	private readonly tableName: keyof DB & string;
+export class KnexAuditStorage implements AuditStorage {
+	private readonly db: Knex;
+	private readonly tableName: string;
 	private readonly autoId: boolean;
 	readonly databaseServiceName?: string;
 
-	constructor(config: KyselyAuditStorageConfig<DB>) {
+	constructor(config: KnexAuditStorageConfig) {
 		this.db = config.db;
 		this.tableName = config.tableName;
 		this.databaseServiceName = config.databaseServiceName;
@@ -212,14 +205,14 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 			return;
 		}
 
-		const db = (trx as Transaction<DB>) ?? this.db;
+		const db = (trx as Knex.Transaction) ?? this.db;
 		const rows = records.map((record) => this.toRow(record));
 
-		await (db as any).insertInto(this.tableName).values(rows).execute();
+		await db(this.tableName).insert(rows);
 	}
 
 	async query(options: AuditQueryOptions): Promise<AuditRecord[]> {
-		let query = (this.db as any).selectFrom(this.tableName).selectAll();
+		let query = this.db(this.tableName).select('*');
 
 		query = this.applyFilters(query, options);
 
@@ -239,57 +232,54 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 			query = query.offset(options.offset);
 		}
 
-		const rows = await query.execute();
+		const rows = await query;
 		return rows.map((row: AuditLogTable) => this.fromRow(row));
 	}
 
 	async count(
 		options: Omit<AuditQueryOptions, 'limit' | 'offset'>,
 	): Promise<number> {
-		let query = (this.db as any)
-			.selectFrom(this.tableName)
-			.select((eb: any) => eb.fn.count('id').as('count'));
+		let query = this.db(this.tableName).count({ count: 'id' });
 
 		query = this.applyFilters(query, options);
 
-		const result = await query.executeTakeFirst();
+		const result = await query.first();
 		return Number(result?.count ?? 0);
 	}
 
 	/**
-	 * Get the Kysely database instance for transactional operations.
+	 * Get the Knex database instance for transactional operations.
 	 * Used by endpoint adaptors to automatically wrap handlers in transactions.
 	 */
-	getDatabase(): Kysely<DB> {
+	getDatabase(): Knex {
 		return this.db;
 	}
 
 	/**
-	 * Execute a callback within a Kysely transaction with automatic audit handling.
+	 * Execute a callback within a Knex transaction with automatic audit handling.
 	 * The auditor is registered with the transaction and audits are flushed
 	 * before the transaction commits.
 	 *
 	 * If the provided db connection is already a transaction, it will be reused
-	 * instead of creating a nested transaction.
+	 * instead of opening a savepoint.
 	 */
 	async withTransaction<T>(
-		auditor: TransactionAwareAuditor<Transaction<DB>>,
+		auditor: TransactionAwareAuditor<Knex.Transaction>,
 		callback: () => Promise<T>,
-		db?: DatabaseConnection<DB>,
+		db?: DatabaseConnection,
 	): Promise<T> {
 		const connection = db ?? this.db;
 
 		// If already in a transaction, reuse it
-		if (connection.isTransaction) {
-			const trx = connection as Transaction<DB>;
-			auditor.setTransaction(trx);
+		if (isActiveTransaction(connection)) {
+			auditor.setTransaction(connection);
 			const result = await callback();
-			await auditor.flush(trx);
+			await auditor.flush(connection);
 			return result;
 		}
 
 		// Create new transaction
-		return connection.transaction().execute(async (trx) => {
+		return connection.transaction(async (trx) => {
 			auditor.setTransaction(trx);
 			const result = await callback();
 			await auditor.flush(trx);
@@ -301,9 +291,9 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 		// Type filter
 		if (options.type !== undefined) {
 			if (Array.isArray(options.type)) {
-				query = query.where('type', 'in', options.type);
+				query = query.whereIn('type', options.type);
 			} else {
-				query = query.where('type', '=', options.type);
+				query = query.where('type', options.type);
 			}
 		}
 
@@ -313,17 +303,17 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 				typeof options.entityId === 'string'
 					? options.entityId
 					: JSON.stringify(options.entityId);
-			query = query.where('entityId', '=', entityId);
+			query = query.where('entityId', entityId);
 		}
 
 		// Table filter
 		if (options.table !== undefined) {
-			query = query.where('table', '=', options.table);
+			query = query.where('table', options.table);
 		}
 
 		// Actor ID filter
 		if (options.actorId !== undefined) {
-			query = query.where('actorId', '=', options.actorId);
+			query = query.where('actorId', options.actorId);
 		}
 
 		// Date range filters
@@ -353,15 +343,17 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 					: typeof record.entityId === 'string'
 						? record.entityId
 						: JSON.stringify(record.entityId),
-			oldValues: record.oldValues ?? null,
-			newValues: record.newValues ?? null,
-			payload: record.payload ?? null,
+			oldValues: this.toJsonColumn(record.oldValues),
+			newValues: this.toJsonColumn(record.newValues),
+			payload: this.toJsonColumn(record.payload),
 			timestamp: record.timestamp,
 			actorId: record.actor?.id ?? null,
 			actorType: record.actor?.type ?? null,
 			actorData:
-				record.actor !== undefined ? this.getActorData(record.actor) : null,
-			metadata: record.metadata ?? null,
+				record.actor !== undefined
+					? this.toJsonColumn(this.getActorData(record.actor))
+					: null,
+			metadata: this.toJsonColumn(record.metadata),
 		} as AuditLogTable;
 	}
 
@@ -388,6 +380,20 @@ export class KyselyAuditStorage<DB> implements AuditStorage {
 			actor,
 			metadata: row.metadata ? this.parseJson(row.metadata) : undefined,
 		};
+	}
+
+	/**
+	 * Serialize a JSON value for insertion.
+	 *
+	 * Unlike Kysely, Knex has no per-column type information to tell a json/jsonb
+	 * column from an object it should bind as a composite value, so plain objects
+	 * are stringified before they reach the driver.
+	 */
+	private toJsonColumn(value: unknown): string | null {
+		if (value === undefined || value === null) {
+			return null;
+		}
+		return JSON.stringify(value);
 	}
 
 	/**

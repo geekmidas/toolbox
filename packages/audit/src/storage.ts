@@ -1,6 +1,34 @@
 import type { AuditableAction, AuditRecord } from './types';
 
 /**
+ * Minimal interface for transaction-aware audit flushing.
+ * Use this when you need to flush audits within a database transaction.
+ *
+ * @template TTransaction - Transaction type (e.g., Kysely `Transaction`, Knex `Transaction`)
+ *
+ * @example
+ * ```typescript
+ * import { withAuditableTransaction } from '@geekmidas/audit/kysely';
+ * import type { TransactionAwareAuditor } from '@geekmidas/audit/kysely';
+ *
+ * const result = await withAuditableTransaction(
+ *   db,
+ *   auditor as TransactionAwareAuditor<Transaction<DB>>,
+ *   async (trx) => {
+ *     // Your transactional operations
+ *     return result;
+ *   },
+ * );
+ * ```
+ */
+export interface TransactionAwareAuditor<TTransaction = unknown> {
+	/** Register the transaction with the auditor for use during flush */
+	setTransaction(trx: TTransaction): void;
+	/** Flush all pending audits, optionally within a transaction */
+	flush(trx?: TTransaction): Promise<void>;
+}
+
+/**
  * Options for querying audit records.
  */
 export interface AuditQueryOptions {
