@@ -10,7 +10,7 @@
 
 - **Type-safe Audit Actions**: Define audit types with TypeScript for compile-time safety
 - **Transactional Support**: Flush audits atomically within database transactions
-- **Flexible Storage**: Pluggable storage interface (Kysely, in-memory, cache)
+- **Flexible Storage**: Pluggable storage interface (Kysely, Knex, in-memory, cache)
 - **Actor Tracking**: Record who performed each action (users, services, systems)
 - **Rich Metadata**: Attach request context, entity references, and custom data
 - **Query Support**: Query audit logs with filters, pagination, and sorting
@@ -66,6 +66,17 @@ interface Database {
 
 const storage = new KyselyAuditStorage<Database>({
   db: kyselyDb,
+  tableName: 'audit_logs',
+});
+```
+
+**For Production (KnexAuditStorage):**
+
+```typescript
+import { KnexAuditStorage } from '@geekmidas/audit/knex';
+
+const storage = new KnexAuditStorage({
+  db: knexDb,
   tableName: 'audit_logs',
 });
 ```
@@ -275,6 +286,67 @@ const count = await storage.count({
 });
 ```
 
+### `KnexAuditStorage`
+
+Built-in Knex storage implementation. It mirrors `KyselyAuditStorage` — same
+config, same `query()`/`count()` filters, same transaction semantics:
+
+```typescript
+import { KnexAuditStorage } from '@geekmidas/audit/knex';
+
+const storage = new KnexAuditStorage({
+  db: knexDb,
+  tableName: 'audit_logs',
+  databaseServiceName: 'database', // Optional: for automatic transaction injection
+  autoId: false, // Optional: let database generate IDs
+});
+
+const audits = await storage.query({
+  type: 'user.created',
+  actorId: 'user-123',
+  from: new Date('2024-01-01'),
+  limit: 100,
+  orderBy: 'timestamp',
+  orderDirection: 'desc',
+});
+
+const count = await storage.count({
+  type: ['user.created', 'user.updated'],
+  actorId: 'user-123',
+});
+```
+
+Column names are camelCase, matching the Kysely storage. If your database uses
+snake_case columns, configure Knex with a case mapper:
+
+```typescript
+import { knexSnakeCaseMappers } from 'objection';
+
+const knexDb = knex({
+  client: 'pg',
+  connection: process.env.DATABASE_URL,
+  ...knexSnakeCaseMappers(),
+});
+```
+
+Transactions work the same way as the Kysely storage:
+
+```typescript
+import { withAuditableTransaction } from '@geekmidas/audit/knex';
+
+const user = await withAuditableTransaction(knexDb, auditor, async (trx) => {
+  const [user] = await trx('users').insert(data).returning('*');
+
+  auditor.audit('user.created', { userId: user.id, email: user.email });
+
+  return user;
+});
+// Audits are flushed inside the transaction, before it commits
+```
+
+Passing a transaction as the first argument reuses it instead of opening a
+savepoint, so audits roll back with the outer transaction.
+
 ### `InMemoryAuditStorage`
 
 Convenience wrapper around `CacheAuditStorage` with `InMemoryCache`. Useful for testing and development:
@@ -332,7 +404,7 @@ await storage.clear();
 
 ## Database Schema
 
-Create an `audit_logs` table for `KyselyAuditStorage`:
+Create an `audit_logs` table for `KyselyAuditStorage` or `KnexAuditStorage`:
 
 ```sql
 CREATE TABLE audit_logs (

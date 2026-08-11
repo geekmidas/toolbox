@@ -12,7 +12,7 @@ pnpm add @geekmidas/audit
 
 - Type-safe audit actions with compile-time validation
 - Transactional support for atomic database writes
-- Pluggable storage backends (Kysely implementation included)
+- Pluggable storage backends (Kysely and Knex implementations included)
 - Actor tracking (users, services, systems)
 - Rich metadata support (request context, entity references)
 - Query and filtering capabilities
@@ -21,6 +21,7 @@ pnpm add @geekmidas/audit
 
 - `/` - Core types, Auditor interface, and DefaultAuditor
 - `/kysely` - KyselyAuditStorage and withAuditableTransaction
+- `/knex` - KnexAuditStorage and withAuditableTransaction
 - `/memory` - InMemoryAuditStorage for development and testing
 - `/cache` - CacheAuditStorage using @geekmidas/cache backends
 
@@ -48,6 +49,22 @@ const storage = new KyselyAuditStorage<Database>({
   tableName: 'audit_logs',
 });
 ```
+
+Or, with Knex:
+
+```typescript
+import { KnexAuditStorage } from '@geekmidas/audit/knex';
+
+const storage = new KnexAuditStorage({
+  db: knexDb,
+  tableName: 'audit_logs',
+});
+```
+
+`KnexAuditStorage` mirrors `KyselyAuditStorage`: same config options, same
+query filters, and the same transaction semantics. Column names are camelCase
+in both; pair Knex with `knexSnakeCaseMappers()` if your columns are
+snake_case.
 
 ### Create and Use Auditor
 
@@ -102,7 +119,7 @@ const result = await withAuditableTransaction(
 
 ## Querying Audit Records
 
-The `query()` and `count()` methods on audit storage let you search, filter, and paginate audit records. Both `KyselyAuditStorage` and `CacheAuditStorage` implement these methods.
+The `query()` and `count()` methods on audit storage let you search, filter, and paginate audit records. `KyselyAuditStorage`, `KnexAuditStorage`, and `CacheAuditStorage` all implement these methods.
 
 ### Basic Query
 
@@ -262,7 +279,7 @@ const endpoint = e
 
 ### Transaction Coordination
 
-When the audit storage uses the same database as the endpoint (via `KyselyAuditStorage`), the framework automatically wraps the handler and audit flush in a single database transaction. Both data changes and audit records commit or roll back together:
+When the audit storage uses the same database as the endpoint (via `KyselyAuditStorage` or `KnexAuditStorage`), the framework automatically wraps the handler and audit flush in a single database transaction. Both data changes and audit records commit or roll back together:
 
 ```typescript
 import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
