@@ -19,6 +19,7 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Getting Started', link: '/guide/getting-started' },
+          { text: 'Constructs Paradigm (RFC)', link: '/guide/constructs-paradigm' },
           { text: 'Fullstack Init', link: '/guide/fullstack-init' },
           { text: 'Development Server', link: '/guide/dev-server' },
           { text: 'Project Structure', link: '/guide/project-structure' },

@@ -6,6 +6,12 @@ This directory contains design documents, architectural decision records (ADRs),
 
 ### Active Planning
 
+- **[Constructs Paradigm: Resources as Constructs](./constructs-paradigm.md)** - Promote resources (bucket, database, cache, secret) to constructs; the `function → resource` dependency edge becomes the single primitive
+  - Status: Draft
+  - Impact: High - Core model change across constructs, manifest, cli, and cloud
+  - Breaking: No - additive; `Service` remains the DI primitive
+  - Supersedes: [Environment Variable Detection](./environment-variable-detection.md) as the long-term direction for env derivation
+
 - **[Dokploy Deployment System](./dokploy-deployment.md)** - Deployment to Dokploy with per-app database isolation, env var detection, and DNS management
   - Status: In Progress
   - Impact: High - Core deployment infrastructure
