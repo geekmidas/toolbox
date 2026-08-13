@@ -1,17 +1,33 @@
 import { defineConfig } from 'vitepress';
 
+// Versioned docs. Each version is a separate build deployed to its own path:
+//   /toolbox/       ← the released line (built from the `v9` branch)
+//   /toolbox/next/  ← in development (built from `main`)
+// `DOCS_BASE` and `DOCS_VERSION` are set per build by .github/workflows/docs.yml;
+// the defaults are for local `pnpm docs:dev`.
+const SITE = 'https://geekmidas.github.io/toolbox';
+const base = process.env.DOCS_BASE ?? '/toolbox/';
+const version = process.env.DOCS_VERSION ?? 'next';
+
+// Cross-version links must be absolute — VitePress prefixes root-relative
+// links with `base`, which would produce /toolbox/toolbox/next/.
+const versions = [
+  { text: 'v9 (current)', link: `${SITE}/` },
+  { text: 'next (v10 alpha)', link: `${SITE}/next/` },
+];
+
 export default defineConfig({
   title: '@geekmidas/toolbox',
   description: 'A TypeScript monorepo for building modern web applications',
 
-  // GitHub Pages deployment
-  base: '/toolbox/',
+  base,
 
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'API Reference', link: '/api/' },
+      { text: version, items: versions },
     ],
 
     sidebar: [
