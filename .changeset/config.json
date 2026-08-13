@@ -2,12 +2,18 @@
 	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
 	"changelog": ["./changelog-gitmoji.cjs", { "repo": "geekmidas/toolbox" }],
 	"commit": false,
-	"fixed": [],
+	"fixed": [["@geekmidas/*"]],
 	"linked": [],
 	"access": "public",
 	"baseBranch": "main",
 	"updateInternalDependencies": "patch",
-	"ignore": ["@geekmidas/docs"],
+	"ignore": [
+		"@geekmidas/docs",
+		"@geekmidas/example",
+		"@geekmidas/kitchen-sink",
+		"@geekmidas/studio-ui",
+		"@geekmidas/telescope-ui"
+	],
 	"___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
 		"onlyUpdatePeerDependentsWhenOutOfRange": true
 	}
