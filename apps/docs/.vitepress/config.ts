@@ -11,9 +11,11 @@ const version = process.env.DOCS_VERSION ?? 'next';
 
 // Cross-version links must be absolute — VitePress prefixes root-relative
 // links with `base`, which would produce /toolbox/toolbox/next/.
+// `next` is not yet a published alpha — it tracks `main`, where the constructs
+// paradigm is being introduced. Relabel once 10.0.0-alpha.0 ships.
 const versions = [
-  { text: 'v9 (current)', link: `${SITE}/` },
-  { text: 'next (v10 alpha)', link: `${SITE}/next/` },
+  { text: 'v9 (released)', link: `${SITE}/` },
+  { text: 'next (in development)', link: `${SITE}/next/` },
 ];
 
 export default defineConfig({
