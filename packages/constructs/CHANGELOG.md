@@ -1,5 +1,35 @@
 # @geekmidas/constructs
 
+## 9.0.2
+
+### Patch Changes
+
+- [#12](https://github.com/geekmidas/toolbox/pull/12) [`d53863a`](https://github.com/geekmidas/toolbox/commit/d53863a84db2e4ab5420e08f79128b637043fc42) Thanks [@geekmidas](https://github.com/geekmidas)! - Align every published package on a single version and keep them in step.
+
+  All packages now share one version, enforced by a changesets `fixed` group. The
+  baseline is 9.0.1 — @geekmidas/client's published version — so nothing moves
+  backwards; this release takes the whole set to 9.0.2 together.
+
+  Independent versions made "which version of the docs applies to me"
+  unanswerable: a reader on constructs@7 and cli@2 was on no version at all. One
+  number per release makes versioned documentation possible, and lets 9 freeze as
+  the current paradigm while the constructs rework is developed against it.
+
+  Every release now publishes every package, and a major anywhere is a major
+  everywhere. Peer ranges get simpler in return.
+
+- Updated dependencies [[`d53863a`](https://github.com/geekmidas/toolbox/commit/d53863a84db2e4ab5420e08f79128b637043fc42)]:
+  - @geekmidas/audit@9.0.2
+  - @geekmidas/cache@9.0.2
+  - @geekmidas/db@9.0.2
+  - @geekmidas/envkit@9.0.2
+  - @geekmidas/errors@9.0.2
+  - @geekmidas/events@9.0.2
+  - @geekmidas/logger@9.0.2
+  - @geekmidas/rate-limit@9.0.2
+  - @geekmidas/schema@9.0.2
+  - @geekmidas/services@9.0.2
+
 ## 7.0.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cache",
-	"version": "9.0.1",
+	"version": "9.0.2",
 	"description": "Unified cache interface with multiple storage implementations",
 	"private": false,
 	"type": "module",

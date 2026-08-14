@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/client",
-	"version": "9.0.1",
+	"version": "9.0.2",
 	"private": false,
 	"type": "module",
 	"exports": {
