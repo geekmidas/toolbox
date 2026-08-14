@@ -27,18 +27,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout released line (v9)
-        uses: actions/checkout@v4
-        with:
-          ref: v9
-          path: released
-          fetch-depth: 0
-
       - name: Checkout in-development line (main)
         uses: actions/checkout@v4
         with:
           ref: main
           path: next
+          fetch-depth: 0
+
+      # The released line lives on `v9`, which is cut after the alignment
+      # release. Until it exists, `main` is published at the root on its own so
+      # the site keeps deploying instead of failing on a missing ref.
+      - name: Does the released line exist?
+        id: released
+        run: |
+          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}" v9 >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No v9 branch yet — publishing main at the site root."
+          fi
+
+      - name: Checkout released line (v9)
+        if: steps.released.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: v9
+          path: released
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -56,6 +70,7 @@ jobs:
       # Each line is a full workspace checkout, so dependencies are installed
       # per line rather than shared — the docs build resolves workspace packages.
       - name: Build released docs
+        if: steps.released.outputs.exists == 'true'
         working-directory: released
         env:
           DOCS_BASE: /toolbox/
@@ -64,10 +79,11 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm docs:build
 
+      # Root path while there is no released line, /next/ once there is one.
       - name: Build in-development docs
         working-directory: next
         env:
-          DOCS_BASE: /toolbox/next/
+          DOCS_BASE: ${{ steps.released.outputs.exists == 'true' && '/toolbox/next/' || '/toolbox/' }}
           DOCS_VERSION: next
         run: |
           pnpm install --frozen-lockfile
@@ -76,9 +92,13 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p dist
-          cp -r released/apps/docs/.vitepress/dist/. dist/
-          mkdir -p dist/next
-          cp -r next/apps/docs/.vitepress/dist/. dist/next/
+          if [ "${{ steps.released.outputs.exists }}" = "true" ]; then
+            cp -r released/apps/docs/.vitepress/dist/. dist/
+            mkdir -p dist/next
+            cp -r next/apps/docs/.vitepress/dist/. dist/next/
+          else
+            cp -r next/apps/docs/.vitepress/dist/. dist/
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
