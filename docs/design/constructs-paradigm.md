@@ -3,7 +3,6 @@
 - **Status**: Draft
 - **Impact**: High — changes the core model of `@geekmidas/constructs`, `@geekmidas/manifest`, `@geekmidas/cli`, and `@geekmidas/cloud`
 - **Breaking**: Nothing stops working. Four deprecations are planned, all warn-and-honour with removal no earlier than a later major: `.services([…])`, the per-kind config globs, `s`/`q.queue()`, and the workspace `services: { db, cache, mail }` block.
-- **Prior art**: [`toolbox-rs`](https://github.com/geekmidas/toolbox-rs) — the Rust port where this model was prototyped. Its *ideas* are adopted; its *patterns* mostly aren't (see [Alternatives](#alternatives-considered)).
 
 ## Overview
 
@@ -149,9 +148,11 @@ export type Declaration =
   | Node & { kind: 'none' };                          // a `fromService` lift
 ```
 
-No `ConstructType` enum, no mutable `Declaration` builder passed in, no
-`absorb()` — those are Rust artifacts (no inheritance, ownership, exhaustive
-`match`). A discriminated union gives exhaustiveness *and* per-kind fields.
+A discriminated union gives exhaustiveness *and* per-kind fields, so there is
+no `ConstructType` enum to keep in sync and no shape that carries fields
+belonging to a different kind. `declare()` **returns** its declarations rather
+than writing into a mutable builder passed in — a value is easier to test and
+compose than a visitor.
 
 Triggered functions **nest inside the surface that triggers them**, so there is
 no `trigger` field — position carries it. `Fn` is the shared shape for anything
@@ -636,7 +637,7 @@ export class ObjectStorage<TName extends string = string>
 
 `declare()` reads `Object.values(this.config)` and `connect()` reads
 `this.config.url` — one object, two callers, so declaring a key you don't read is
-**unrepresentable**. The Rust port's `key()` helper only made drift unlikely.
+**unrepresentable** rather than merely unlikely.
 
 ## Worked Examples
 
@@ -1116,7 +1117,7 @@ partition, and `Queue` is both. And **no barrels at any level**, including
 gating.
 
 The gating mechanism already exists: optional peer dependencies plus subpath
-exports — TypeScript's answer to Rust's cargo features. Clients never depend on
+exports. Clients never depend on
 the framework; `constructs` consumes them.
 
 Three rules keep problem 5 fixed, and a fixture package that installs **only**
@@ -1184,20 +1185,14 @@ cheaply. **Rejected as an endpoint**, adopted as an intermediate state: Phases
 typed against app code, so the rename problem returns, and it inverts the stated
 direction.
 
-**D. Mirror the Rust `Declaration`/`Manifest` walk.** **Rejected as a rewrite,
-adopted as a shape.** The Rust patterns are workarounds for constraints
-TypeScript doesn't have: traits for no-inheritance, a `&mut` visitor for
-ownership, enums for exhaustive `match`, per-kind manifest fields for typed
-access, a `key()` helper because agreement can't be structural.
-
-**E. Ship each construct from its client package** (`@geekmidas/storage/construct`).
+**D. Ship each construct from its client package** (`@geekmidas/storage/construct`).
 **Rejected** — inverts the layering rule, creates a `storage → constructs →
 storage` cycle, and forces splitting out a construct-core package.
 
-**F. Nest children under their surface in the manifest.** **Rejected** — see
+**E. Nest children under their surface in the manifest.** **Rejected** — see
 [The Manifest](#the-manifest).
 
-**G. A separate `WebhookApi`.** **Rejected** — a signature check is an
+**F. A separate `WebhookApi`.** **Rejected** — a signature check is an
 authorizer, and modelling it that way removes the raw-body problem too.
 
 ## Implementation Plan
