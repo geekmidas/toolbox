@@ -2,9 +2,9 @@ name: Continuous Integration
 
 on:
   push:
-    branches: [main]
+    branches: [main, v9]
   pull_request:
-    branches: [main]
+    branches: [main, v9]
   workflow_call:
 
 concurrency:

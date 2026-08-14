@@ -1,10 +1,16 @@
 name: Deploy Docs to GitHub Pages
 
+# Versioned docs. Two builds are assembled into one Pages artifact:
+#   /toolbox/       ← the released line, built from `v9`
+#   /toolbox/next/  ← in development, built from `main`
+# When v10 goes stable, cut a `v10` branch, build it at the root, and move the
+# frozen v9 build to /toolbox/v9/.
 on:
   push:
-    branches: [main]
+    branches: [main, v9]
     paths:
       - 'apps/docs/**'
+      - 'docs/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -21,9 +27,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout released line (v9)
         uses: actions/checkout@v4
         with:
+          ref: v9
+          path: released
+          fetch-depth: 0
+
+      - name: Checkout in-development line (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: next
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -38,16 +53,37 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # Each line is a full workspace checkout, so dependencies are installed
+      # per line rather than shared — the docs build resolves workspace packages.
+      - name: Build released docs
+        working-directory: released
+        env:
+          DOCS_BASE: /toolbox/
+          DOCS_VERSION: v9
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm docs:build
 
-      - name: Build docs
-        run: pnpm docs:build
+      - name: Build in-development docs
+        working-directory: next
+        env:
+          DOCS_BASE: /toolbox/next/
+          DOCS_VERSION: next
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm docs:build
+
+      - name: Assemble site
+        run: |
+          mkdir -p dist
+          cp -r released/apps/docs/.vitepress/dist/. dist/
+          mkdir -p dist/next
+          cp -r next/apps/docs/.vitepress/dist/. dist/next/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/docs/.vitepress/dist
+          path: dist
 
   deploy:
     environment:
