@@ -15,7 +15,16 @@ export {
 	type CronRate,
 	type CronSchedule,
 } from './Cron';
+export { ProvidesMismatch, UnknownDeclarationKind } from './errors';
 export { Function, type FunctionProps } from './Function';
+export {
+	assertProvides,
+	type ComponentOverrides,
+	fromManifest,
+	type Provisioned,
+	type ProvisionedManifest,
+	provisionerFor,
+} from './fromManifest';
 export { type GkmLinkable, ResourceType } from './Linkable';
 export {
 	ObjectStorage,
