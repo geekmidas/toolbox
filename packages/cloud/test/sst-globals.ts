@@ -19,6 +19,11 @@ class StubComponent {
 		this.name = name;
 		this.nodes = { bucket: { region: 'stub-region' } };
 	}
+
+	/** Components override this to widen the payload; the base supplies a name. */
+	getSSTLink() {
+		return { properties: { name: this.name }, include: [] };
+	}
 }
 
 const util = {

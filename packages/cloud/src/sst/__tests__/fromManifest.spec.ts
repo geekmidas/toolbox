@@ -95,6 +95,17 @@ describe('ObjectStorage.provides', () => {
 		);
 	});
 
+	it('widens the link so region survives, without touching permissions', () => {
+		const link = bucket.getSSTLink();
+		// SST's own link carries only `name`; a consumer resolving from the link
+		// alone could not tell which region the bucket is in.
+		expect(link.properties).toMatchObject({
+			name: 'Uploads',
+			region: 'stub-region',
+		});
+		expect(link).toHaveProperty('include');
+	});
+
 	it('agrees with what the construct declared', () => {
 		expect(() =>
 			assertProvides(

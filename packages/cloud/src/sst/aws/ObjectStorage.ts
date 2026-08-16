@@ -39,6 +39,26 @@ export class ObjectStorage<
 	}
 
 	/**
+	 * SST's bucket link carries only `name`, so a consumer resolving from the
+	 * link alone cannot tell which region the bucket is in — and a bucket may not
+	 * be in the reader's. Exposing it here keeps the link self-sufficient, the
+	 * same reason `Queue` adds `arn` to its own.
+	 *
+	 * The permissions `super` includes are untouched: what a link grants stays
+	 * SST's business.
+	 */
+	override getSSTLink() {
+		const link = super.getSSTLink();
+		return {
+			...link,
+			properties: {
+				...link.properties,
+				region: this.nodes.bucket.region,
+			},
+		};
+	}
+
+	/**
 	 * The env this bucket resolves onto anything that depends on it.
 	 *
 	 * Every part of the URL is read off the resource rather than inherited from
