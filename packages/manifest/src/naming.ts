@@ -74,6 +74,19 @@ export function canonicalId(input: string): string {
 const VALID_ID = /^[A-Z][A-Za-z0-9]*$/;
 
 /**
+ * The key a construct is reached under in the service record.
+ *
+ * The runtime twin of `Uncapitalize<TName>`, which types it — they must agree,
+ * so they live next to each other rather than being re-derived by each
+ * construct.
+ *
+ * @example serviceKey('UserUploads') // 'userUploads' → services.userUploads
+ */
+export function serviceKey(id: string): string {
+	return id.charAt(0).toLowerCase() + id.slice(1);
+}
+
+/**
  * The physical name a target provisions a construct under — lowercase kebab,
  * scoped so two stages or apps sharing an account cannot collide.
  *

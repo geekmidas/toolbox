@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidConstructId } from '../errors';
-import { canonicalId, cloudName, environmentCase, provideKey } from '../naming';
+import {
+	canonicalId,
+	cloudName,
+	environmentCase,
+	provideKey,
+	serviceKey,
+} from '../naming';
 
 describe('environmentCase', () => {
 	it.each([
@@ -87,5 +93,23 @@ describe('cloudName', () => {
 
 	it('is lowercase and hyphenated, which S3 and DNS both require', () => {
 		expect(cloudName(scope, 'UserUploads')).toMatch(/^[a-z0-9-]+$/);
+	});
+});
+
+describe('serviceKey', () => {
+	it.each([
+		['Uploads', 'uploads'],
+		['UserUploads', 'userUploads'],
+		['API', 'aPI'], // matches Uncapitalize, which only lowers the first char
+	])('%s → %s', (id, expected) => {
+		expect(serviceKey(id)).toBe(expected);
+	});
+
+	it('agrees with Uncapitalize, which is what types it', () => {
+		// If these diverge, services.<key> is typed as one thing and populated as
+		// another — the failure this pairing exists to prevent.
+		const id = 'UserUploads' as const;
+		const typed: Uncapitalize<typeof id> = 'userUploads';
+		expect(serviceKey(id)).toBe(typed);
 	});
 });

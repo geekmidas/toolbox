@@ -113,6 +113,26 @@
 				"types": "./dist/adaptors/testing.d.cts",
 				"default": "./dist/adaptors/testing.cjs"
 			}
+		},
+		"./construct": {
+			"import": {
+				"types": "./dist/construct-interface.d.mts",
+				"default": "./dist/construct-interface.mjs"
+			},
+			"require": {
+				"types": "./dist/construct-interface.d.cts",
+				"default": "./dist/construct-interface.cjs"
+			}
+		},
+		"./object-storage": {
+			"import": {
+				"types": "./dist/object-storage.d.mts",
+				"default": "./dist/object-storage.mjs"
+			},
+			"require": {
+				"types": "./dist/object-storage.d.cts",
+				"default": "./dist/object-storage.cjs"
+			}
 		}
 	},
 	"scripts": {
@@ -175,7 +195,9 @@
 		"@middy/core": ">=6.3.1",
 		"@types/aws-lambda": ">=8.10.92",
 		"hono": ">=4.8.2",
-		"msw": ">=2.0.0"
+		"msw": ">=2.0.0",
+		"@geekmidas/manifest": "workspace:^",
+		"@geekmidas/storage": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/audit": {
@@ -218,6 +240,12 @@
 			"optional": true
 		},
 		"msw": {
+			"optional": true
+		},
+		"@geekmidas/manifest": {
+			"optional": true
+		},
+		"@geekmidas/storage": {
 			"optional": true
 		}
 	}

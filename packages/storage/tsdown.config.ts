@@ -1,6 +1,15 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
+	entry: ['src/index.ts', 'src/aws.ts'],
+	clean: true,
+	outDir: 'dist',
+	format: ['cjs', 'esm'],
+	sourcemap: true,
+	dts: true,
+	outExtensions: (ctx) => ({
+		js: ctx.format === 'es' ? '.mjs' : '.cjs',
+	}),
 	external: [
 		'@aws-sdk/client-s3',
 		'@aws-sdk/s3-presigned-post',

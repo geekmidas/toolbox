@@ -60,3 +60,23 @@ export class MissingStorageBucket extends StorageUrlError {
 		super(url, 'Storage URL must address a bucket');
 	}
 }
+
+/**
+ * No driver is registered for the URL's scheme.
+ *
+ * Usually means the build pinned a driver for a different target, or an entry
+ * point registered nothing at all — so the registered schemes are carried
+ * alongside, since "what *is* available" is the actionable half.
+ */
+export class UnregisteredStorageScheme extends StorageUrlError {
+	/** The scheme that had no driver, e.g. `'gs:'`. */
+	readonly scheme: string;
+	/** What is registered, so the caller can see what was pinned instead. */
+	readonly registered: readonly string[];
+
+	constructor(url: string, scheme: string, registered: readonly string[]) {
+		super(url, 'No storage driver is registered for this URL scheme');
+		this.scheme = scheme;
+		this.registered = registered;
+	}
+}

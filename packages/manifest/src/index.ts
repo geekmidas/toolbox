@@ -46,6 +46,7 @@ export {
 	cloudName,
 	environmentCase,
 	provideKey,
+	serviceKey,
 } from './naming';
 
 /**
