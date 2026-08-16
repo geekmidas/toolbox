@@ -673,7 +673,8 @@ policies live, so that is where the split earns its place.
 CREATE ROLE app_owner;                          -- migrations
 CREATE ROLE app LOGIN PASSWORD '…';             -- runtime
 CREATE SCHEMA app AUTHORIZATION app_owner;
-ALTER ROLE app SET search_path TO app;
+ALTER ROLE app_owner SET search_path TO app;    -- both, see below
+ALTER ROLE app       SET search_path TO app;
 GRANT USAGE ON SCHEMA app TO app;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA app
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
@@ -774,6 +775,48 @@ second schema in the same database with its own role(s) and its own `AUTH_URL`,
 so the app's role has no grant on the auth tables at all. pg-boss becomes an
 instance of this rather than the hardcoded special case it is today — with a
 single role, which is correct for it.
+
+**Schemas resolve through `search_path` on the role**, not through the
+connection string or client config — so `db.selectFrom('orders')` finds
+`app.orders` with no `withSchema()` call, and a schema tenant works identically
+through its own role. It must be set on **both** roles: migrations run as
+`app_owner`, so without it they create tables on the default path while the
+runtime role looks in `app` and finds nothing — a migration that reports success
+followed by "relation does not exist". The opt-out path has no role to pin, so
+there it moves onto the connection string (`?options=-csearch_path%3Dapp`),
+which is a second reason that path is a downgrade.
+
+**Roles are created by an in-VPC provisioner, triggered as a Pulumi resource.**
+The alternative — `@pulumi/postgresql` resources for roles and schemas — is
+declarative and diffable but requires the Pulumi CLI to reach the database at
+deploy time, which a private RDS does not allow without a bastion. A provisioner
+function is already in the VPC:
+
+```
+sst.aws.Postgres          the instance, master secret
+  → Secret app / app_owner
+  → OrdersProvisioner     in-VPC, linked to all three secrets
+  → aws.lambda.Invocation runs it during `pulumi up`
+  → OrdersMigrator        invoked next
+  → app functions         dependsOn the provisioning invocation
+```
+
+Invoking a Lambda is a control-plane call, so Pulumi can trigger it from
+anywhere; only the *database connection* needs to be inside the VPC. The
+invocation's input is a hash of the desired state — schema name, role names,
+secret versions — so it re-runs when any of those change and is skipped when
+they do not.
+
+Two things follow. **Rotation stops being a two-step procedure**: changing a
+secret changes the invocation's input, the provisioner re-runs, and its
+`ALTER ROLE … WITH PASSWORD` branch syncs the database. And **the provisioner is
+the only thing linked to the master secret** — it is the one component that can
+create or drop, which is the entire point of the split and easy to undo by
+linking master "just for now" to something else.
+
+The cost is that Pulumi does not know the schema exists: no diff, no destroy,
+and removing a tenant leaves it behind. That lands in the destructive-change gap
+already deferred to the manifest-diff work rather than opening a new one.
 
 **It declares two functions of its own.** A database returns three declarations,
 not one — the database, a migrator, and a seeder:
