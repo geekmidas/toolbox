@@ -25,6 +25,7 @@ export type {
 	AllProvidedKeys,
 	ConstructId,
 	ConstructManifest,
+	ConstructName,
 	Declaration,
 	DeclarationKind,
 	DeclarationOf,

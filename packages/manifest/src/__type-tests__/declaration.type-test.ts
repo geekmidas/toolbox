@@ -10,6 +10,7 @@
 import type {
 	AllProvidedKeys,
 	ConstructManifest,
+	ConstructName,
 	DeclarationOf,
 	IdsOf,
 	IdsOfKind,
@@ -61,3 +62,19 @@ const _badKind = {
 	// @ts-expect-error - 'buckets' is not a DeclarationKind
 	Nope: { kind: 'buckets', id: 'Nope' },
 } as const satisfies ConstructManifest;
+
+// A construct name is constrained where it is written.
+declare function named<const S extends string>(id: ConstructName<S>): S;
+
+named('Uploads');
+named('uploads');
+
+// @ts-expect-error - a construct name cannot start with a digit
+named('2fa');
+// @ts-expect-error - a construct name cannot be empty
+named('');
+
+type _Valid = Expect<Equals<ConstructName<'Uploads'>, 'Uploads'>>;
+type _Digit = Expect<
+	Equals<ConstructName<'2fa'>, 'a construct name cannot start with a digit'>
+>;

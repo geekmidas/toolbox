@@ -18,6 +18,27 @@
  */
 export type ConstructId = string;
 
+type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+
+/**
+ * Constrains a construct name at the point it is written.
+ *
+ * Resolves to the name itself when valid, and otherwise to a string explaining
+ * why — so the compiler reports *"not assignable to type 'a construct name
+ * cannot start with a digit'"* rather than the unhelpful `never`.
+ *
+ * Only the cases a template-literal type can see are caught here; `canonicalId`
+ * enforces the rest at runtime, which is also what covers JavaScript callers.
+ *
+ * @example new ObjectStorage('Uploads')  // ok
+ * @example new ObjectStorage('2fa')      // a construct name cannot start with a digit
+ */
+export type ConstructName<S extends string> = S extends ''
+	? 'a construct name cannot be empty'
+	: S extends `${Digit}${string}`
+		? 'a construct name cannot start with a digit'
+		: S;
+
 /** Shared by every declaration. */
 export interface Node {
 	id: ConstructId;
