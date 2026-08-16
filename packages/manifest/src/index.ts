@@ -39,6 +39,12 @@ export type {
 	ProvidesByKind,
 } from './declaration';
 export { PUBLIC } from './declaration';
+export {
+	canonicalId,
+	cloudName,
+	environmentCase,
+	provideKey,
+} from './naming';
 
 /**
  * A manifest field is either a flat list or, when the build is partitioned

@@ -9,7 +9,7 @@ import snakecase from 'lodash.snakecase';
  *
  * @example
  * environmentCase('myVariable') // 'MY_VARIABLE'
- * environmentCase('apiV2') // 'APIV2'
+ * environmentCase('api2') // 'API2'
  */
 export function environmentCase(name: string): string {
 	return snakecase(name)

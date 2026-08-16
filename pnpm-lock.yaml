@@ -721,7 +721,15 @@ importers:
         specifier: ~13.1.2
         version: 13.1.2
 
-  packages/manifest: {}
+  packages/manifest:
+    dependencies:
+      lodash.snakecase:
+        specifier: ~4.1.1
+        version: 4.1.1
+    devDependencies:
+      '@types/lodash.snakecase':
+        specifier: ~4.1.9
+        version: 4.1.9
 
   packages/rate-limit:
     devDependencies:
@@ -13455,7 +13463,7 @@ snapshots:
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.18
 
-  '@better-auth/telemetry@1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0))':
+  '@better-auth/telemetry@1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
     dependencies:
       '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.0
@@ -18688,7 +18696,7 @@ snapshots:
   better-auth@1.4.18(pg@8.16.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4(vitest@3.2.4))(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))(vue@3.5.18(typescript@5.8.2)):
     dependencies:
       '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
-      '@better-auth/telemetry': 1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0))
+      '@better-auth/telemetry': 1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.0.1
