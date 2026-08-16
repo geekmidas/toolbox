@@ -1,5 +1,5 @@
-import { type GkmLinkable, ResourceType } from './Linkable';
-import type { StackType } from './Stack';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import type { StackType } from '../Stack';
 
 /**
  * `Queue` — a linkable SQS queue (wraps `sst.aws.Queue`), the point-to-point

@@ -1,5 +1,5 @@
-import { type GkmLinkable, ResourceType } from './Linkable';
-import type { StackType } from './Stack';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import type { StackType } from '../Stack';
 
 /**
  * `Storage` — a linkable S3 bucket (wraps `sst.aws.Bucket`). Link it to a

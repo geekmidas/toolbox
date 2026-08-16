@@ -4,9 +4,9 @@ import {
 	flattenManifestField,
 	type ManifestField,
 } from '@geekmidas/manifest';
-import { type GkmLinkable, ResourceType } from './Linkable';
-import { LinkedEnvironment } from './LinkedEnvironment';
-import type { StackType } from './Stack';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import { LinkedEnvironment } from '../LinkedEnvironment';
+import type { StackType } from '../Stack';
 
 /**
  * `Function` — wraps SST's `sst.aws.Function` with standard env defaults and

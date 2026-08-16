@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
 import { assertProvides, provisionerFor } from '../fromManifest';
-import { ObjectStorage } from '../ObjectStorage';
 
 /**
  * The decisions, tested as data. Instantiating a component needs Pulumi, so the

@@ -5,10 +5,10 @@ import {
 	type ManifestField,
 	type RouteInfo,
 } from '@geekmidas/manifest';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import { LinkedEnvironment } from '../LinkedEnvironment';
+import type { StackType } from '../Stack';
 import type { Function } from './Function';
-import { type GkmLinkable, ResourceType } from './Linkable';
-import { LinkedEnvironment } from './LinkedEnvironment';
-import type { StackType } from './Stack';
 
 /**
  * `Api` — wraps SST's `sst.aws.ApiGatewayV2` (HTTP API) with a typed route

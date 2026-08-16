@@ -17,9 +17,9 @@ import type {
 	Declaration,
 	DeclarationKind,
 } from '@geekmidas/manifest';
+import { ObjectStorage } from './aws/ObjectStorage';
 import { ProvidesMismatch, UnknownDeclarationKind } from './errors';
 import type { GkmLinkable } from './Linkable';
-import { ObjectStorage } from './ObjectStorage';
 import type { StackType } from './Stack';
 
 /**

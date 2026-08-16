@@ -2,9 +2,9 @@
 // strings validate. Checked by `ts:check:sst`; vitest ignores it.
 
 import { App } from '../App';
-import { Function } from '../Function';
-import { Queue } from '../Queue';
-import { Topic } from '../Topic';
+import { Function } from '../aws/Function';
+import { Queue } from '../aws/Queue';
+import { Topic } from '../aws/Topic';
 
 const stack = new App({
 	name: 'shop',

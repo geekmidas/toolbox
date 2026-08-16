@@ -1,5 +1,5 @@
-import { type GkmLinkable, ResourceType } from './Linkable';
-import type { StackType } from './Stack';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import type { StackType } from '../Stack';
 
 /**
  * `Topic` — a linkable SNS topic (wraps `sst.aws.SnsTopic`), the pub/sub fan-out

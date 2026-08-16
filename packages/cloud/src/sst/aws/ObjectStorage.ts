@@ -1,7 +1,7 @@
 import { provideKey } from '@geekmidas/manifest';
 import { s3Url } from '@geekmidas/storage/aws';
-import { type GkmLinkable, ResourceType } from './Linkable';
-import type { StackType } from './Stack';
+import { type GkmLinkable, ResourceType } from '../Linkable';
+import type { StackType } from '../Stack';
 
 /**
  * `ObjectStorage` — a linkable S3 bucket (wraps `sst.aws.Bucket`), and the

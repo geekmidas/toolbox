@@ -3,9 +3,9 @@ import {
 	flattenManifestField,
 	type ManifestField,
 } from '@geekmidas/manifest';
+import type { GkmLinkable } from '../Linkable';
+import type { StackType } from '../Stack';
 import { Function } from './Function';
-import type { GkmLinkable } from './Linkable';
-import type { StackType } from './Stack';
 
 export type CronExpressionValue = number | '*' | '?' | `${number}/${number}`;
 export type CronExpressionDay =

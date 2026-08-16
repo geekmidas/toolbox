@@ -3,10 +3,10 @@
 // the flat and the partitioned `ManifestField` forms. Checked by `ts:check:sst`.
 
 import type { Manifest, ManifestField, RouteInfo } from '@geekmidas/manifest';
-import { Api } from '../Api';
 import { App } from '../App';
-import { Cron } from '../Cron';
-import { Function } from '../Function';
+import { Api } from '../aws/Api';
+import { Cron } from '../aws/Cron';
+import { Function } from '../aws/Function';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 
 const stack = new App({
