@@ -7,14 +7,14 @@ An implementation walkthrough, not a design argument. It takes one realistic app
 shows the manifest it produces, and walks what `Stack.fromManifest` does with it —
 the point being to find what the manifest needs *before* its shape is frozen.
 
-Findings are collected in [The Delta](#the-delta) at the end. Two of them are
-structural.
+Findings are collected in [The Delta](#the-delta) at the end. One is still
+structural; one has since been resolved in the design doc.
 
 ## The app
 
 ```ts
 // src/resources.ts
-export const uploads    = new ObjectStorage('Uploads');
+export const uploads    = new ObjectStorage('Uploads', { cdn: true });
 export const orders     = new KyselyDatabase<OrdersDB>('Orders');
 export const ordersRead = orders.reader();
 export const authDb     = orders.schema<AuthDB>('Auth');
@@ -49,6 +49,10 @@ export const listOrders  = api.get('/orders')
 // src/api/webhooks.ts
 export const stripeHook = webhooks.post('/stripe').dependsOn([orders]).handle(…);
 
+// src/sites.ts
+export const console = new StaticSite('Console', { subdomain: false })
+  .dependsOn([api, auth, uploads]);
+
 // src/subscribers.ts
 export const sendWelcome = userEvents.name('SendWelcome')
   .on(['user.created']).dependsOn([sendEmail]).handle(…);
@@ -62,16 +66,20 @@ export const dailyReport = c.name('DailyReport')
 
 ```jsonc
 {
-  "Uploads": { "kind": "objects", "provides": ["UPLOADS_URL"] },
+  "Uploads": { "kind": "objects", "cdn": { "subdomain": "uploads" },
+               "provides": ["UPLOADS_URL", "UPLOADS_CDN_URL"] },
 
   "Orders": { "kind": "database", "provides": ["ORDERS_URL"],
-              "schema": "app", "roles": ["app", "app_owner"] },
+              "schema": "app", "roles": ["app", "app_owner"],
+              "migrator": { "id": "OrdersMigrator", "handler": "…", "source": "src/migrations" },
+              "seeder":   { "id": "OrdersSeeder",   "handler": "…", "source": "src/seeds" } },
 
   "OrdersReader": { "kind": "database-reader", "of": "Orders",
                     "provides": ["ORDERS_READER_URL"] },
 
   "Auth": { "kind": "database-schema", "of": "Orders", "schema": "auth",
-            "provides": ["AUTH_URL"], "roles": ["auth", "auth_owner"] },
+            "provides": ["AUTH_URL"], "roles": ["auth", "auth_owner"],
+            "migrator": { "id": "AuthMigrator", "handler": "…", "source": "better-auth" } },
 
   "Api": { "kind": "rest-api", "provides": ["API_URL"],
            "authorizers": ["Auth"],
@@ -113,6 +121,13 @@ export const dailyReport = c.name('DailyReport')
   "SendEmail": { "kind": "function", "handler": "…",
                  "provides": ["SEND_EMAIL_URL"], "requires": [], "dependencies": [] },
 
+  "Console": { "kind": "site", "variant": "static", "path": "apps/console",
+               "subdomain": false, "provides": ["CONSOLE_URL"],
+               "dependencies": [{ "target": "Api",     "kind": "rest-api" },
+                                { "target": "Auth",    "kind": "rest-api" },
+                                { "target": "Uploads", "kind": "objects" }],
+               "requires": ["API_URL", "AUTH_URL", "UPLOADS_CDN_URL"] },
+
   "DailyReport": { "kind": "cron", "handler": "…", "schedule": "0 6 * * *",
                    "dependencies": [{ "target": "OrdersReader", "kind": "database-reader" }],
                    "requires": ["ORDERS_READER_URL"] }
@@ -135,11 +150,12 @@ for (const [id, d] of entries(m)) {
 
 | id | creates |
 |---|---|
-| `Uploads` | `sst.aws.Bucket`, name `prod-myapp-uploads` |
+| `Uploads` | `sst.aws.Bucket` `prod-myapp-uploads`, + CloudFront at `uploads.example.com` |
 | `Orders` | RDS database `orders`; schema `app`; roles `app`, `app_owner`; two secrets |
 | `Api`, `Webhooks` | `sst.aws.ApiGatewayV2` each, domain from the stage's map |
 | `UserEvents` | `sst.aws.SnsTopic` |
 | `ProcessOrder` | `sst.aws.Queue` + DLQ |
+| `Console` | bucket + distribution at the apex, `example.com` |
 
 `OrdersReader` and `Auth` **provision nothing new** — they are views on `Orders`.
 The reader resolves the cluster's reader endpoint; the schema tenant adds a
@@ -156,9 +172,17 @@ Orders  → app schema migrations   (owner: app_owner)
 Auth    → Better Auth's schema    (owner: auth_owner)
 ```
 
-This is a phase of the walk, not a step inside it: it needs the database to
-exist and must complete before a single function is invocable. On AWS it runs
-**inside the VPC** — a one-off task or Lambda, not from CI.
+The migrators are **functions the database declared**, so phase A already created
+them — this phase only invokes them. That is what puts them inside the VPC
+without any special execution path: `OrdersMigrator` is a Lambda in the same
+subnets as everything else.
+
+`OrdersSeeder` is created and **not** invoked. Seeds run on demand (`gkm seed`)
+or in dev; running them automatically is how production data gets overwritten.
+
+The ordering is real and unenforceable by the graph: nothing expresses "invoke
+after create", so it lives in the deploy command. Migrate must complete before a
+single function is invocable.
 
 ### C. Create the functions
 
@@ -206,6 +230,30 @@ Position in the manifest *is* the trigger, so this is a walk of the nesting:
 
 Nothing is searched for. Each surface hands the walk its own children.
 
+### E. Inject site config
+
+A site's values resolve from its edges exactly like a function's, but they are
+written into its artifacts rather than into a Lambda environment. Only values
+marked public may cross:
+
+```ts
+const values = Object.assign({}, ...site.dependencies.map(
+  (d) => pick(provisioned[d.target].provides(), PUBLIC[d.kind])
+));
+```
+
+For `Console` that is `API_URL`, `AUTH_URL`, and `UPLOADS_CDN_URL` — note
+`UPLOADS_URL` is **not** among them, because the bucket URL presigns and stays
+private even though the site depends on the same construct.
+
+How they are written is the variant's business — `config.json` or an inlined
+`window.__GKM__` for `static`, `NEXT_PUBLIC_*` at build for `next`. Same values,
+different serialisation.
+
+A static site has no server half, so nothing resolves the non-public values. That
+is a property of its runtime rather than a rule: the same edge on an SSR site
+would resolve server-side through envkit.
+
 ## The Delta
 
 What the walk needs that the manifest didn't have.
@@ -223,14 +271,20 @@ before children.
 
 It also needs validating: `of` must resolve, and must point at a `database`.
 
-### 2. Migration sets are undeclared — **structural**
+### 2. Migration sets are undeclared — **resolved**
 
-The manifest says a database exists; it doesn't say what to migrate into it, or
-that Better Auth brings its own schema. Phase B currently has to infer both.
+*Was structural.* The manifest said a database existed but not what to migrate
+into it, so phase B had to infer both the migration source and the fact that
+Better Auth brings its own schema.
 
-A database node needs to carry its migration source, and a schema tenant needs
-to say whose migrations own it — the app's are in the project, Better Auth's come
-from the library.
+A database now declares a `migrator` and a `seeder` of its own, each with a
+`source`. They are ordinary functions, created in phase A and invoked in phase B
+— which also dissolves the in-VPC execution question, since a declared function
+is already in the VPC.
+
+What remains is the ordering: "invoke after create" is not a resource, so the
+sequence lives in the deploy command rather than in the dependency graph. That is
+a property of infrastructure-as-code, not a gap in the manifest.
 
 ### 3. `requires` is a check, not an input
 
