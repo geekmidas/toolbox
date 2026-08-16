@@ -229,11 +229,11 @@ triggers.
 
 | trigger | author |
 |---|---|
-| an API | `api.name('createOrder').post('/orders').handle(…)` |
-| a topic | `userEvents.name('sendWelcome').on(['user.created']).handle(…)` |
-| a queue | `q.name('processOrder').message(schema).handle(…)` — one worker, so the queue and its worker are one construct |
-| a schedule | `c.name('dailyReport').schedule('0 6 * * *').handle(…)` |
-| direct invoke | `f.name('sendEmail').input(schema).handle(…)` |
+| an API | `api.post('/orders').handle(…)` — no name; method + path is the identity |
+| a topic | `userEvents.name('SendWelcome').on(['user.created']).handle(…)` |
+| a queue | `q.name('ProcessOrder').message(schema).handle(…)` — one worker, so the queue and its worker are one construct |
+| a schedule | `c.name('DailyReport').schedule('0 6 * * *').handle(…)` |
+| direct invoke | `f.name('SendEmail').input(schema).handle(…)` |
 
 **What retires is `s` and `e`** — subscribers are vended by their topic,
 endpoints by their API. The other helpers stay: `f` and `c` because their
@@ -275,25 +275,55 @@ formatter), so the graph is complete rather than complete-except-the-boring-ones
 
 ### Identity
 
-**`.name()` on every builder.** Replaces `t.topic(name)` and `q.queue(name)`
-(kept as deprecated aliases) and is newly added to `f`, `c`, `e`, which have no
-naming method today. It also resolves a live collision — `t.topic()` sets a name
-while `s.topic()` binds a subscription target.
+**Every construct takes an explicit name — except endpoints, which have none.**
 
-**Ids are camelCase and valid JS identifiers** (`^[a-zA-Z][a-zA-Z0-9]*$`). This
-matches what ships today: `FunctionGenerator` puts the raw export key
-(`sendEmail`) in the manifest, and that *is* the deployed Lambda name. The id is
-the service key directly — no case transform, so no paired type-level and
-runtime helpers to keep in agreement. `environmentCase` (lodash `snakecase` +
-uppercase) yields `SEND_EMAIL`; cloud-specific normalisation (S3 needs
-lowercase) is a one-way adapter concern no type depends on.
+```ts
+export const uploads      = new ObjectStorage('Uploads');
+export const processOrder = q.name('ProcessOrder').message(schema).handle(…);
+export const userEvents   = t.name('UserEvents').events({ … });
 
-Names are **explicit**. Inference from the export key can't cover constructs that
-read their own name at runtime — enumeration is a build-time capability, and in
-Lambda there's no module walk — and inferred names make refactoring a deployment
-event. **Renaming an export already renames deployed infrastructure today**; for
-a resource that would mean destroy-and-recreate. Explicit names stop a refactor
-from being a migration.
+export const createOrder  = api.post('/orders').handle(…);   // no name
+```
+
+An endpoint is the one construct where naming is pure friction, and the one that
+doesn't need it: nothing depends on an endpoint, so it is never an edge target,
+and it already has an identity — its **method and path**. `POST /orders` is
+unique within its API (the validation pass enforces that), stable, and
+meaningful. Changing it *is* an interface change, so the identity moving with it
+is correct rather than surprising.
+
+That identity also supplies the Lambda description — `POST /orders` — which is
+what makes a console list of forty functions navigable.
+
+**Ids canonicalise to PascalCase.** `uploads`, `Uploads`, `user_uploads`, and
+`user-uploads` are the same id — not a collision to detect but the same
+construct, so declaring two of them is a plain duplicate. From that one
+canonical form everything else derives:
+
+| | derivation | example |
+|---|---|---|
+| service key | `Uncapitalize<Id>` | `services.userUploads` |
+| env prefix | `environmentCase(Id)` | `USER_UPLOADS_URL` |
+| cloud name | `{stage}-{app}-{kebab}`, lowercase | `prod-myapp-user-uploads` |
+
+PascalCase earns its place at the type level: the service key is
+`Uncapitalize<TName>`, a **TypeScript intrinsic**, so there is no custom
+transform and no runtime twin to keep in agreement with it. The other two
+derivations are runtime-only and one-way — nothing type-checks against them,
+which is where a lossy transform is affordable.
+
+Explicit names are what keep the type level intact. With a name, `TName` is a
+literal, so `Construct.Name<C>` is checkable and `Construct.ref<typeof x>('Id')`
+rejects a typo in the editor rather than only at the manifest-build reference
+check. Inferring ids from export keys was considered and dropped: it would have
+needed the call site to supply the key (`.dependsOn({ x })` object shorthand) to
+recover the service type, and it still could not restore `Name<C>`.
+
+**On renaming.** Renaming an id renames deployed infrastructure — cheap for a
+function, destructive for a bucket or database. An explicit name does not
+prevent that; a string literal is exactly as easy to edit as a variable. What
+would actually protect you is diffing the built manifest against the last
+deployed one and reporting the cause — noted in *Open Questions* as future work.
 
 ## Configuration
 
@@ -540,7 +570,7 @@ the edge, and designates the primary database.
 ```ts
 const orders = new KyselyDatabase<OrdersDB>('orders');
 
-api.name('createOrder').post('/orders')
+api.post('/orders')
   .database(orders)
   .handle(async ({ db, services }) => {
     await db.selectFrom('orders').selectAll().execute();    // Kysely<OrdersDB>
@@ -567,6 +597,116 @@ but **no `./knex` module**. `KnexDatabase` needs one first (a re-entrant
 than parity work. Objection then comes along free: it resolves its connection at
 query time via `Model.knex()`, so binding models to the proxy makes
 `Order.query()` join the request's transaction with no `trx` argument.
+
+### What a `Database` provisions
+
+A database construct does not hand out the cluster's credentials. It declares a
+**logical database, a schema, and two roles**, and the app connects as the
+narrower of them.
+
+```ts
+const orders = new KyselyDatabase<OrdersDB>('Orders');
+//  database  → orders
+//  schema    → app             (search_path pinned on the role)
+//  roles     → app_owner       (DDL, migrations)
+//              app             (DML only, what the app connects as)
+//  provides  → ORDERS_URL      (the runtime role)
+```
+
+**The schema is `app`, not the construct's id.** It names the *role* the schema
+plays inside the database rather than restating what the database is already
+called, and it reads consistently against its neighbours — `app` alongside
+`auth` and `pgboss` tells you the layout at a glance, where `orders` alongside
+`auth` and `pgboss` does not. It also keeps the application off `public`, whose
+historically loose default grants are a poor place for anything.
+
+**Roles are named after their schema** — `app` and `app_owner`, `auth` and
+`auth_owner`, `pgboss`. No stage or app prefixing: the deployment model gives
+each app and stage its own database instance, so roles, which are cluster-scoped,
+have no one to collide with.
+
+Where the cluster comes from is the adapter's business — an RDS instance on
+`--target=aws`, the postgres container locally. The construct says only that it
+needs a database called `Orders`.
+
+**Two roles wherever RLS is used.** A single role that both owns and runs is
+exactly the configuration where RLS silently does nothing — `ENABLE ROW LEVEL
+SECURITY` does not apply to a table's owner. Splitting owner from runtime makes
+policies apply by default, with no `FORCE ROW LEVEL SECURITY` to remember.
+
+The split is **conditional, not universal**: a schema whose tables carry no
+policies needs one role. pg-boss is the clear case — it owns its queue tables,
+has no RLS, and a second role would be ceremony. The app's own schema is where
+policies live, so that is where the split earns its place.
+
+```sql
+CREATE ROLE app_owner;                          -- migrations
+CREATE ROLE app LOGIN PASSWORD '…';             -- runtime
+CREATE SCHEMA app AUTHORIZATION app_owner;
+ALTER ROLE app SET search_path TO app;
+GRANT USAGE ON SCHEMA app TO app;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA app
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
+```
+
+`FOR ROLE orders_owner` is the easy part to get wrong: without it the default
+privileges apply to tables created by whoever ran the statement rather than by
+the migration role, and new tables are silently unreadable by the app.
+
+**The adapter creates two secrets, and the master stays behind.** SST already
+generates master credentials for the instance; provisioning adds one secret per
+role and composes each URL from the matching one:
+
+| credential | created by | used by |
+|---|---|---|
+| master | SST/RDS | the provisioner only — creating roles and schemas |
+| `app` password | this construct | `ORDERS_URL`, handed to functions |
+| `app_owner` password | this construct | the owner URL, handed to the migration runner |
+
+So no part of the running system holds credentials that can drop a table, and
+nothing outside the provisioner holds the master.
+
+**Opting out** falls back to the master credential in both URLs:
+
+```ts
+new KyselyDatabase<OrdersDB>('Orders', { roles: false });
+```
+
+Useful against a database you do not own, or to get moving before provisioning
+exists. It gives up the DDL/DML split and puts master credentials in the
+function's environment, so it should read as a deliberate downgrade rather than
+a default. One wrinkle it carries: the master user is not the `app` role, so
+`search_path` has to move onto the connection string
+(`?options=-csearch_path%3Dapp`) rather than being pinned on the role.
+
+**Rotation is two secrets, each two-step.** Changing a stored value is not
+enough — `ALTER ROLE … WITH PASSWORD` has to run against the database too, or the
+next connection fails. Worth noting the two rotate independently: the runtime
+password can be rotated without touching migrations, which is the one you would
+want to rotate on a schedule.
+
+**It yields two connection strings, and only one reaches your code.**
+
+| | role | given to |
+|---|---|---|
+| runtime URL | `orders` | functions, via `provides` |
+| owner URL | `orders_owner` | the migration runner only |
+
+That is a security property rather than a convention: a compromised handler
+cannot `DROP TABLE`, because its role holds no such grant, and the cluster's
+master credentials never leave the provisioner.
+
+**Schema tenants are the same mechanism.** `orders.schema<AuthDB>('Auth')` adds a
+second schema in the same database with its own role(s) and its own `AUTH_URL`,
+so the app's role has no grant on the auth tables at all. pg-boss becomes an
+instance of this rather than the hardcoded special case it is today — with a
+single role, which is correct for it.
+
+**Ordering.** Provisioning must run before migrations, which must run before any
+function that depends on the database — and against a managed database that
+means executing **inside the VPC**, since RDS normally has no public route. That
+sequence is the one genuinely new capability this design needs; everything else
+is assembly of things that already exist.
 
 ### Services, loggers, and builders
 
@@ -651,9 +791,9 @@ export const upload = e.post('/upload').services([storageService]).handle(…);
 // + gkm.config.ts: services: { … } for the local MinIO container
 
 // after
-export const uploads = new ObjectStorage('uploads');
+export const uploads = new ObjectStorage('Uploads');
 
-export const upload = api.name('upload').post('/upload')
+export const upload = api.post('/upload')
   .dependsOn([uploads])
   .handle(async ({ body, services }) => services.uploads.put(key, body));
 // sst.config.ts: nothing — bucket, link, env, and IAM all derive
@@ -662,13 +802,13 @@ export const upload = api.name('upload').post('/upload')
 ### A queue and its producer
 
 ```ts
-export const processOrder = q.name('processOrder')
+export const processOrder = q.name('ProcessOrder')
   .message(z.object({ orderId: z.string() }))
   .batchSize(10)
   .dependsOn([ordersDb])
   .handle(async ({ messages, services }) => { … });
 
-export const createOrder = api.name('createOrder').post('/orders')
+export const createOrder = api.post('/orders')
   .dependsOn([ordersDb, processOrder])
   .handle(async ({ body, services }) => {
     const order = await services.ordersDb.insertInto('orders').values(body)
@@ -690,15 +830,15 @@ fire-and-forget returning `void`. The shape tells you the semantics.
 ### Topic fan-out
 
 ```ts
-export const userEvents = t.name('userEvents').events({
+export const userEvents = t.name('UserEvents').events({
   'user.created': z.object({ id: z.string(), email: z.string() }),
   'user.deleted': z.object({ id: z.string() }),
 });
 
-export const sendWelcome = userEvents.name('sendWelcome')
+export const sendWelcome = userEvents.name('SendWelcome')
   .on(['user.created']).dependsOn([emailer]).handle(async ({ event }) => …);
 
-export const provisionWorkspace = userEvents.name('provisionWorkspace')
+export const provisionWorkspace = userEvents.name('ProvisionWorkspace')
   .on(['user.created', 'user.deleted']).dependsOn([ordersDb]).handle(…);
 ```
 
@@ -1133,7 +1273,7 @@ transitive tree into the caller's bundle.
 
 ```ts
 import type { sendEmail } from './send-email';        // erased
-.dependsOn([Construct.ref<typeof sendEmail>('sendEmail')])
+.dependsOn([Construct.ref<typeof sendEmail>('SendEmail')])
 ```
 
 `Construct.ref(sendEmail)` taking the value cannot work: the value import *is*
@@ -1203,7 +1343,8 @@ route uniqueness, cycles). *Touches:* `packages/manifest`, `packages/cli`.
 
 **Phase 1 — the construct interface, and conform the existing constructs.**
 `Construct<TName, TClient>`, `.dependsOn()`, `Construct.fromService()`,
-`.name()` on every builder, immutable builders, `.service` as a field, the
+`.name()` on every builder except endpoints, immutable builders, `.service` as
+a field, the
 sniffer moved out of the base, the single `constructs` glob. `Endpoint` is the
 proof — if the interface can't express it, stop here. *Touches:*
 `packages/constructs`, `packages/cli`.
@@ -1293,24 +1434,29 @@ manifest and deprecate the workspace `services:` block.
    lives elsewhere", and the answer at provider boundaries is *inject a
    credential*, not *derive a role*.
 
-4. **Reader/writer credentials for `Database`.** A Postgres cluster has two
-   endpoints, so `Database` provides **more than one value** — refining the
-   single-`<NAME>_URL` rule to "one per address the construct owns"
-   (`ORDERS_URL` writer, `ORDERS_READER_URL` reader). Three things to settle
-   before Phase 3 hardens:
+4. **Who provisions the read replica?** `orders.reader()` declares a dependency
+   on a reader endpoint but does not say whether the adapter creates a replica or
+   points at an existing one — and on `--target=server` there may be no replica
+   at all, in which case the reader URL should resolve to the writer rather than
+   fail. Everything else about readers is settled: they are a **vended
+   construct** (`Construct<'OrdersReader', Kysely<OrdersDB>>`) providing their own
+   single `ORDERS_READER_URL`, so `provides` needs no second key and the edge
+   needs no `access` attribute. A function depending only on the reader gets
+   read-only IAM — read-only by construction.
 
-   - **Routing must be explicit, not inferred.** Kysely can tell a `selectFrom`
-     from an `insertInto`, so automatic routing looks easy — and is unsafe:
-     replica lag means a read issued just after a write returns stale data, and
-     the failure is invisible at the call site. Default `services.orders` to the
-     writer and require opting in to the replica.
-   - **Inside a transaction, everything is the writer.** Read-your-writes makes
-     any reader routing incorrect once a transaction is open, which the ALS
-     resolver can enforce structurally: if a connection is in the store, use it,
-     full stop.
-   - **The edge could carry intent.** `read` vs `write` is a *declaration*, not
-     a permission, so it fits the model — the adapter maps it to both the
-     endpoint the client gets and the IAM it grants, letting a read-only
-     function be provably read-only. That's a real least-privilege gain, but it
-     is the first edge attribute beyond `target`/`kind`, so it deserves its own
-     decision rather than arriving with the Database work.
+5. **Manifest diffing for renames.** Renaming an id renames deployed
+   infrastructure, destructively for stateful kinds. Diffing the built manifest
+   against the last deployed one would let the build name the cause
+   ("`Uploads` → `UserUploads`: export renamed; this replaces bucket
+   `prod-myapp-uploads`"), which no amount of naming ceremony can do. There is a
+   per-stage state precedent in `deploy/state.ts`, though it stores Dokploy
+   resource ids rather than manifest snapshots. On AWS, Pulumi's preview already
+   shows the destroy/create — what it cannot show is why.
+
+*Settled, previously open:* reader/writer no longer needs an edge attribute (see
+4); RLS and audits apply to the connection passed to `.database()` and nothing
+else — anything obtained through `.dependsOn()` is a raw client you manage
+yourself, the same contract as `db.$pool`. Note that a raw dependency does not
+carry RLS context; a correctly written policy fails closed when the setting is
+absent (`current_setting('app.x', true)` returns NULL), so this is a boundary
+rather than a hole.
