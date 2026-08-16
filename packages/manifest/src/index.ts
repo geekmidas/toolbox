@@ -40,6 +40,7 @@ export type {
 	ProvidesByKind,
 } from './declaration';
 export { PUBLIC } from './declaration';
+export { InvalidConstructId } from './errors';
 export {
 	canonicalId,
 	cloudName,

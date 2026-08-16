@@ -10,6 +10,12 @@
  * Both directions live here so they cannot drift: `parse(build(x))` is `x`.
  */
 
+import {
+	MalformedStorageUrl,
+	MissingStorageBucket,
+	UnexpectedStorageScheme,
+} from './errors';
+
 /** What an S3 URL addresses. Credentials are deliberately absent — see below. */
 export interface S3Address {
 	bucket: string;
@@ -33,7 +39,7 @@ const SCHEME = 's3:';
  */
 export function build(address: S3Address): string {
 	const { bucket, region, endpoint, forcePathStyle } = address;
-	if (!bucket) throw new Error('An s3 URL needs a bucket');
+	if (!bucket) throw new MissingStorageBucket('');
 
 	const url = new URL(`${SCHEME}//${bucket}`);
 	if (region) url.searchParams.set('region', region);
@@ -48,17 +54,15 @@ export function parse(url: string): S3Address {
 	try {
 		parsed = new URL(url);
 	} catch {
-		throw new Error(`Not a valid URL: ${JSON.stringify(url)}`);
+		throw new MalformedStorageUrl(url);
 	}
 
 	if (parsed.protocol !== SCHEME) {
-		throw new Error(
-			`Expected an ${SCHEME}// URL, got ${JSON.stringify(parsed.protocol)}`,
-		);
+		throw new UnexpectedStorageScheme(url, SCHEME, parsed.protocol);
 	}
 
 	const bucket = parsed.hostname;
-	if (!bucket) throw new Error(`No bucket in ${JSON.stringify(url)}`);
+	if (!bucket) throw new MissingStorageBucket(url);
 
 	const region = parsed.searchParams.get('region') ?? undefined;
 	const endpoint = parsed.searchParams.get('endpoint') ?? undefined;

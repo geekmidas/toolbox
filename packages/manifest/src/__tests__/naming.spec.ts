@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { InvalidConstructId } from '../errors';
 import { canonicalId, cloudName, environmentCase, provideKey } from '../naming';
 
 describe('environmentCase', () => {
@@ -53,11 +54,19 @@ describe('canonicalId', () => {
 		['', 'empty'],
 		['---', 'nothing but separators'],
 	])('rejects %s (%s)', (input) => {
-		expect(() => canonicalId(input)).toThrow(/Invalid construct id/);
+		expect(() => canonicalId(input)).toThrow(InvalidConstructId);
 	});
 
-	it('names the input and the rule, so the error is actionable', () => {
-		expect(() => canonicalId('2fa')).toThrow(/"2fa".*start with a letter/s);
+	it('carries the value rather than interpolating it', () => {
+		expect.assertions(3);
+		try {
+			canonicalId('2fa');
+		} catch (error) {
+			const e = error as InvalidConstructId;
+			expect(e.input).toBe('2fa');
+			expect(e.canonical).toBe('2Fa');
+			expect(e.message).toMatch(/must start with a letter/);
+		}
 	});
 
 	it('collapses spellings of the same id to one', () => {

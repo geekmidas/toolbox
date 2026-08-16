@@ -10,6 +10,8 @@
 
 import snakecase from 'lodash.snakecase';
 
+import { InvalidConstructId } from './errors';
+
 /**
  * `UPPER_SNAKE_CASE`, with numbers kept against the word they follow.
  *
@@ -58,14 +60,7 @@ export function canonicalId(input: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
 
-	if (!VALID_ID.test(id)) {
-		throw new Error(
-			`Invalid construct id ${JSON.stringify(input)}: ids must start with a ` +
-				`letter and contain only letters and digits, so that services.<id> is ` +
-				`reachable and the derived env key is well formed` +
-				(id ? ` (got ${JSON.stringify(id)})` : ''),
-		);
-	}
+	if (!VALID_ID.test(id)) throw new InvalidConstructId(input, id);
 	return id;
 }
 

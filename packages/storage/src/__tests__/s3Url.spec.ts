@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import {
+	MalformedStorageUrl,
+	MissingStorageBucket,
+	UnexpectedStorageScheme,
+} from '../errors';
 import { build, parse, type S3Address } from '../s3Url';
 
 describe('s3Url', () => {
@@ -35,15 +40,29 @@ describe('s3Url', () => {
 	});
 
 	it.each([
-		['https://uploads', /Expected an s3/],
-		['not a url', /Not a valid URL/],
-		['s3://', /No bucket/],
-	])('rejects %s', (url, message) => {
-		expect(() => parse(url)).toThrow(message);
+		['https://uploads', UnexpectedStorageScheme],
+		['not a url', MalformedStorageUrl],
+		['s3://', MissingStorageBucket],
+	])('rejects %s with a typed error', (url, expected) => {
+		expect(() => parse(url)).toThrow(expected);
 	});
 
 	it('rejects a build with no bucket', () => {
-		expect(() => build({ bucket: '' })).toThrow(/needs a bucket/);
+		expect(() => build({ bucket: '' })).toThrow(MissingStorageBucket);
+	});
+
+	it('carries the offending value rather than interpolating it', () => {
+		expect.assertions(4);
+		try {
+			parse('https://uploads');
+		} catch (error) {
+			const e = error as UnexpectedStorageScheme;
+			expect(e.url).toBe('https://uploads');
+			expect(e.actual).toBe('https:');
+			expect(e.expected).toBe('s3:');
+			// the message states the rule, so it is the same every time
+			expect(e.message).toBe('Storage URL is for a different provider');
+		}
 	});
 
 	it('omits absent parts rather than emitting empty values', () => {
