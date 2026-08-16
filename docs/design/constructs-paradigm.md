@@ -1212,10 +1212,37 @@ surface never requires reissuing one. Keep that separate from resolution rather
 than using a service that publishes its wildcard private key: fine for local dev
 in principle, awkward to defend, and it stops working if they disappear.
 
-**The shape stays fixed even though the domain does not.** A surface is always
-`{surface}.{domain}`, because surfaces are what map to hostnames in production —
-if local is `api-local.myapp.test` while production is `api.example.com`, the
-cookie and CORS parity this buys starts leaking again.
+**The label is per-construct; the base domain is not.** A construct's subdomain
+defaults to the kebab-case of its id and can be overridden — including to empty,
+which claims the apex, where a site usually belongs:
+
+```ts
+new RestApi('Api')                             // → api.{domain}
+new StaticSite('Console', { subdomain: '' })   // → {domain}
+new StaticSite('Admin', { subdomain: 'admin' })
+```
+
+```
+local                          deployed
+myapp.test                     example.com            Console
+api.myapp.test                 api.example.com        Api
+webhooks.myapp.test            webhooks.example.com   Webhooks
+```
+
+That keeps the D23 split intact — the *label* is structural, since the app's URL
+layout and the links it generates depend on it, while the *base domain* varies by
+stage and resolves at deploy.
+
+What must not vary is the layout between local and deployed. If local is
+`api-local.myapp.test` while production is `api.example.com`, the cookie and CORS
+parity this buys starts leaking again — and cookie sharing in particular depends
+on it: a cookie set at the apex with `Domain=.example.com` reaches
+`api.example.com` only because they share a registrable domain, which is exactly
+the arrangement the local layout has to reproduce.
+
+One deployment wrinkle the apex carries: DNS forbids a CNAME there, so an apex
+site needs an ALIAS/A record rather than the CNAME a subdomain uses. Route53
+handles it, but it is a different record type and worth the adapter knowing.
 
 Two implementation notes: containers do not inherit any of this, since a
 container resolving the name gets *its own* loopback — they need `extra_hosts`
