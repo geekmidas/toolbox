@@ -147,7 +147,7 @@ describe('buildResourceEnv', () => {
 	it('should handle Bucket resource type', () => {
 		const result = buildResourceEnv({
 			uploads: {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'my-uploads-bucket',
 			},
 		});
@@ -160,7 +160,7 @@ describe('buildResourceEnv', () => {
 	it('should handle SSTBucket resource type', () => {
 		const result = buildResourceEnv({
 			assets: {
-				type: ResourceType.SSTBucket,
+				type: ResourceType.SSTObjectStorage,
 				name: 'assets-bucket',
 			},
 		});
@@ -232,7 +232,7 @@ describe('buildResourceEnv', () => {
 				username: 'user',
 			},
 			bucket: {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'my-bucket',
 			},
 		});

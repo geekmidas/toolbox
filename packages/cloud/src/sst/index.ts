@@ -24,7 +24,11 @@ export { Queue, type QueueProps } from './aws/Queue';
 /** @deprecated renamed to `ObjectStorage`, matching the construct that declares it. */
 export { Storage, type StorageProps } from './aws/Storage';
 export { Topic, type TopicProps } from './aws/Topic';
-export { ProvidesMismatch, UnknownDeclarationKind } from './errors';
+export {
+	ProvidesMismatch,
+	UnknownDeclarationKind,
+	UnresolvedDependency,
+} from './errors';
 export {
 	assertProvides,
 	type ComponentOverrides,
@@ -32,6 +36,8 @@ export {
 	type Provisioned,
 	type ProvisionedManifest,
 	provisionerFor,
+	type ResolvedEdges,
+	resolveEdges,
 } from './fromManifest';
 export { type GkmLinkable, ResourceType } from './Linkable';
 export { Stack, type StackType } from './Stack';

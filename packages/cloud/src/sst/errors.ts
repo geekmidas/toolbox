@@ -48,3 +48,18 @@ export class ProvidesMismatch extends Error {
 		this.extra = extra;
 	}
 }
+
+/** A dependency edge pointed at a construct the manifest does not contain. */
+export class UnresolvedDependency extends Error {
+	/** The id the edge named. */
+	readonly target: string;
+	/** What the manifest does contain, so a typo is obvious. */
+	readonly available: readonly string[];
+
+	constructor(target: string, available: readonly string[]) {
+		super('Dependency target is not in the manifest');
+		this.name = 'UnresolvedDependency';
+		this.target = target;
+		this.available = available;
+	}
+}

@@ -26,7 +26,7 @@ export class ObjectStorage<
 	readonly _id!: string;
 
 	get _type() {
-		return ResourceType.Bucket;
+		return ResourceType.ObjectStorage;
 	}
 
 	constructor(

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
-import { assertProvides, provisionerFor } from '../fromManifest';
+import {
+	assertProvides,
+	type ProvisionedManifest,
+	provisionerFor,
+	resolveEdges,
+} from '../fromManifest';
 
 /**
  * The decisions, tested as data. Instantiating a component needs Pulumi, so the
@@ -124,5 +129,85 @@ describe('component settings', () => {
 				cors: [{ allowOrigins: ['*'] }],
 			}),
 		).not.toThrow();
+	});
+});
+
+describe('resolveEdges', () => {
+	const stub = (id: string, keys: string[]) =>
+		({
+			_id: id,
+			_type: 'stub',
+			provides: () => Object.fromEntries(keys.map((k) => [k, `value-of-${k}`])),
+		}) as never;
+
+	const provisioned = {
+		Uploads: stub('Uploads', ['UPLOADS_URL']),
+		Avatars: stub('Avatars', ['AVATARS_URL']),
+		Orders: stub('Orders', ['ORDERS_URL']),
+	} as unknown as ProvisionedManifest;
+
+	it('gives a function what it declared', () => {
+		const { link, environment } = resolveEdges(
+			[{ target: 'Uploads', kind: 'objects' }],
+			provisioned,
+		);
+		expect(link).toHaveLength(1);
+		expect(environment).toEqual({ UPLOADS_URL: 'value-of-UPLOADS_URL' });
+	});
+
+	it('gives it nothing more — the property least privilege depends on', () => {
+		const { link, environment } = resolveEdges(
+			[{ target: 'Uploads', kind: 'objects' }],
+			provisioned,
+		);
+		expect(link.map((l) => l._id)).toEqual(['Uploads']);
+		expect(Object.keys(environment)).not.toContain('AVATARS_URL');
+		expect(Object.keys(environment)).not.toContain('ORDERS_URL');
+	});
+
+	it('is unchanged when an unrelated construct joins the manifest', () => {
+		const before = resolveEdges(
+			[{ target: 'Uploads', kind: 'objects' }],
+			provisioned,
+		);
+		const after = resolveEdges([{ target: 'Uploads', kind: 'objects' }], {
+			...provisioned,
+			Reports: stub('Reports', ['REPORTS_URL']),
+		} as unknown as ProvisionedManifest);
+
+		expect(after.environment).toEqual(before.environment);
+		expect(after.link.map((l) => l._id)).toEqual(before.link.map((l) => l._id));
+	});
+
+	it('composes several edges into one environment', () => {
+		const { environment } = resolveEdges(
+			[
+				{ target: 'Uploads', kind: 'objects' },
+				{ target: 'Orders', kind: 'objects' },
+			],
+			provisioned,
+		);
+		expect(Object.keys(environment).sort()).toEqual([
+			'ORDERS_URL',
+			'UPLOADS_URL',
+		]);
+	});
+
+	it('gives a function with no edges nothing at all', () => {
+		expect(resolveEdges([], provisioned)).toEqual({
+			link: [],
+			environment: {},
+		});
+	});
+
+	it('names what is available when an edge does not resolve', () => {
+		expect.assertions(2);
+		try {
+			resolveEdges([{ target: 'Missing', kind: 'objects' }], provisioned);
+		} catch (error) {
+			const e = error as UnresolvedDependency;
+			expect(e.target).toBe('Missing');
+			expect(e.available).toContain('Uploads');
+		}
 	});
 });

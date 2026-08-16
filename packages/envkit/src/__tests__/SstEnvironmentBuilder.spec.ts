@@ -117,7 +117,7 @@ describe('SstEnvironmentBuilder', () => {
 	describe('Bucket resource', () => {
 		it('should process Bucket resource correctly', () => {
 			const bucket: Bucket = {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'my-s3-bucket',
 			};
 
@@ -132,7 +132,7 @@ describe('SstEnvironmentBuilder', () => {
 
 		it('should process SSTBucket resource correctly', () => {
 			const bucket: Bucket = {
-				type: ResourceType.SSTBucket,
+				type: ResourceType.SSTObjectStorage,
 				name: 'assets-bucket-prod',
 			};
 
@@ -249,7 +249,7 @@ describe('SstEnvironmentBuilder', () => {
 			};
 
 			const bucket: Bucket = {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'uploads-bucket',
 			};
 
@@ -371,7 +371,7 @@ describe('SstEnvironmentBuilder', () => {
 			expect(sstResolvers).toBeDefined();
 			expect(typeof sstResolvers[ResourceType.Secret]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.Postgres]).toBe('function');
-			expect(typeof sstResolvers[ResourceType.Bucket]).toBe('function');
+			expect(typeof sstResolvers[ResourceType.ObjectStorage]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.SnsTopic]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.SSTDynamo]).toBe('function');
 		});
@@ -382,14 +382,14 @@ describe('SstEnvironmentBuilder', () => {
 			expect(ResourceType.ApiGatewayV2).toBe('sst.aws.ApiGatewayV2');
 			expect(ResourceType.Postgres).toBe('sst.aws.Postgres');
 			expect(ResourceType.Function).toBe('sst.aws.Function');
-			expect(ResourceType.Bucket).toBe('sst.aws.Bucket');
+			expect(ResourceType.ObjectStorage).toBe('sst.aws.Bucket');
 			expect(ResourceType.Vpc).toBe('sst.aws.Vpc');
 			expect(ResourceType.Secret).toBe('sst.sst.Secret');
 			expect(ResourceType.SSTSecret).toBe('sst:sst:Secret');
 			expect(ResourceType.SSTFunction).toBe('sst:sst:Function');
 			expect(ResourceType.SSTApiGatewayV2).toBe('sst:aws:ApiGatewayV2');
 			expect(ResourceType.SSTPostgres).toBe('sst:aws:Postgres');
-			expect(ResourceType.SSTBucket).toBe('sst:aws:Bucket');
+			expect(ResourceType.SSTObjectStorage).toBe('sst:aws:Bucket');
 			expect(ResourceType.SnsTopic).toBe('sst:aws:SnsTopic');
 			expect(ResourceType.SSTDynamo).toBe('sst:aws:Dynamo');
 		});

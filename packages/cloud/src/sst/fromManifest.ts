@@ -16,9 +16,14 @@ import type {
 	ConstructManifest,
 	Declaration,
 	DeclarationKind,
+	Dependency,
 } from '@geekmidas/manifest';
 import { ObjectStorage } from './aws/ObjectStorage';
-import { ProvidesMismatch, UnknownDeclarationKind } from './errors';
+import {
+	ProvidesMismatch,
+	UnknownDeclarationKind,
+	UnresolvedDependency,
+} from './errors';
 import type { GkmLinkable } from './Linkable';
 import type { StackType } from './Stack';
 
@@ -133,4 +138,47 @@ export function fromManifest(
 	}
 
 	return provisioned;
+}
+
+/** What one function receives from its edges. */
+export interface ResolvedEdges {
+	/** The components it may reach — SST turns these into IAM. */
+	link: Provisioned[];
+	/** The config it reads, composed from what those components provide. */
+	environment: Record<string, $util.Input<string>>;
+}
+
+/**
+ * Resolve one function's dependencies into what it is given.
+ *
+ * A function is linked to exactly the constructs it declared, never the app's
+ * full set — so least privilege falls out of the edges rather than out of
+ * discipline. Adding an unrelated construct to the manifest cannot widen what
+ * an existing function can reach, which is the property worth testing as an
+ * exclusion.
+ *
+ * Pure: given a provisioned map, this is data in and data out, so the whole
+ * filtering rule is assertable without a deploy.
+ */
+export function resolveEdges(
+	dependencies: readonly Dependency[] = [],
+	provisioned: ProvisionedManifest,
+): ResolvedEdges {
+	const link: Provisioned[] = [];
+	const environment: Record<string, $util.Input<string>> = {};
+
+	for (const dependency of dependencies) {
+		const component = provisioned[dependency.target];
+		if (!component) {
+			throw new UnresolvedDependency(
+				dependency.target,
+				Object.keys(provisioned),
+			);
+		}
+
+		link.push(component);
+		Object.assign(environment, component.provides());
+	}
+
+	return { link, environment };
 }

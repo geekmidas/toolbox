@@ -210,7 +210,7 @@ describe('sst', () => {
 		describe('Bucket resource', () => {
 			it('should process Bucket resource correctly', () => {
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'my-s3-bucket',
 				};
 
@@ -225,7 +225,7 @@ describe('sst', () => {
 
 			it('should process SSTBucket resource correctly', () => {
 				const bucket = {
-					type: ResourceType.SSTBucket as ResourceType.SSTBucket,
+					type: ResourceType.SSTObjectStorage as ResourceType.SSTObjectStorage,
 					name: 'assets-bucket-prod',
 				};
 
@@ -316,7 +316,7 @@ describe('sst', () => {
 				};
 
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'uploads-bucket',
 				};
 
@@ -402,7 +402,7 @@ describe('sst', () => {
 
 			it('should handle multiple underscores and numbers', () => {
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'test-bucket',
 				};
 
@@ -424,14 +424,14 @@ describe('sst', () => {
 			expect(ResourceType.ApiGatewayV2).toBe('sst.aws.ApiGatewayV2');
 			expect(ResourceType.Postgres).toBe('sst.aws.Postgres');
 			expect(ResourceType.Function).toBe('sst.aws.Function');
-			expect(ResourceType.Bucket).toBe('sst.aws.Bucket');
+			expect(ResourceType.ObjectStorage).toBe('sst.aws.Bucket');
 			expect(ResourceType.Vpc).toBe('sst.aws.Vpc');
 			expect(ResourceType.Secret).toBe('sst.sst.Secret');
 			expect(ResourceType.SSTSecret).toBe('sst:sst:Secret');
 			expect(ResourceType.SSTFunction).toBe('sst:sst:Function');
 			expect(ResourceType.SSTApiGatewayV2).toBe('sst:aws:ApiGatewayV2');
 			expect(ResourceType.SSTPostgres).toBe('sst:aws:Postgres');
-			expect(ResourceType.SSTBucket).toBe('sst:aws:Bucket');
+			expect(ResourceType.SSTObjectStorage).toBe('sst:aws:Bucket');
 		});
 	});
 });

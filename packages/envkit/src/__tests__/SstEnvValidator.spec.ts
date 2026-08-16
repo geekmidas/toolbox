@@ -28,7 +28,7 @@ describe('SstEnvValidator', () => {
 
 		it('derives the suffixed key a Bucket link produces', () => {
 			expect(
-				resolveEnvKeys({ uploads: { type: ResourceType.Bucket } }),
+				resolveEnvKeys({ uploads: { type: ResourceType.ObjectStorage } }),
 			).toEqual(['UPLOADS_NAME']);
 		});
 
@@ -79,7 +79,7 @@ describe('SstEnvValidator', () => {
 		it('merges keys across multiple links', () => {
 			const keys = resolveEnvKeys({
 				db: { type: ResourceType.Postgres },
-				cache: { type: ResourceType.Bucket },
+				cache: { type: ResourceType.ObjectStorage },
 			});
 			expect(keys).toContain('DB_HOST');
 			expect(keys).toContain('CACHE_NAME');
@@ -160,7 +160,7 @@ describe('SstEnvValidator', () => {
 	describe('getProvidersForEnvVars (least-privilege filtering)', () => {
 		const validator = new EnvValidator({
 			db: { type: ResourceType.Postgres },
-			uploads: { type: ResourceType.Bucket },
+			uploads: { type: ResourceType.ObjectStorage },
 			apiKey: { type: ResourceType.Secret },
 		});
 

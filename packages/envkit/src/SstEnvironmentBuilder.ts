@@ -16,7 +16,7 @@ export enum ResourceType {
 	ApiGatewayV2 = 'sst.aws.ApiGatewayV2',
 	Postgres = 'sst.aws.Postgres',
 	Function = 'sst.aws.Function',
-	Bucket = 'sst.aws.Bucket',
+	ObjectStorage = 'sst.aws.Bucket',
 	Vpc = 'sst.aws.Vpc',
 	Secret = 'sst.sst.Secret',
 	Dynamo = 'sst.aws.Dynamo',
@@ -27,7 +27,7 @@ export enum ResourceType {
 	SSTFunction = 'sst:sst:Function',
 	SSTApiGatewayV2 = 'sst:aws:ApiGatewayV2',
 	SSTPostgres = 'sst:aws:Postgres',
-	SSTBucket = 'sst:aws:Bucket',
+	SSTObjectStorage = 'sst:aws:Bucket',
 	SnsTopic = 'sst:aws:SnsTopic',
 	SSTDynamo = 'sst:aws:Dynamo',
 	SSTQueue = 'sst:aws:Queue',
@@ -67,7 +67,7 @@ export type Function = {
  * AWS S3 Bucket resource type.
  */
 export type Bucket = {
-	type: ResourceType.Bucket | ResourceType.SSTBucket;
+	type: ResourceType.ObjectStorage | ResourceType.SSTObjectStorage;
 	name: string;
 };
 
@@ -194,13 +194,13 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.Vpc]: noopResolver,
 	[ResourceType.Secret]: secretResolver,
 	[ResourceType.Postgres]: postgresResolver,
-	[ResourceType.Bucket]: bucketResolver,
+	[ResourceType.ObjectStorage]: bucketResolver,
 	[ResourceType.Dynamo]: dynamoResolver,
 	[ResourceType.Queue]: queueResolver,
 
 	// Modern format
 	[ResourceType.SSTSecret]: secretResolver,
-	[ResourceType.SSTBucket]: bucketResolver,
+	[ResourceType.SSTObjectStorage]: bucketResolver,
 	[ResourceType.SSTFunction]: noopResolver,
 	[ResourceType.SSTPostgres]: postgresResolver,
 	[ResourceType.SSTApiGatewayV2]: noopResolver,
