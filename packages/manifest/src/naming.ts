@@ -50,12 +50,33 @@ export function provideKey(id: string, role: string): string {
  * @example canonicalId('user-uploads') // 'UserUploads'
  */
 export function canonicalId(input: string): string {
-	return snakecase(input)
+	// `upperFirst(camelCase(x))` by another route — snakecase is already a
+	// dependency, and adding lodash.camelcase for the same result is not worth it.
+	const id = snakecase(input)
 		.split('_')
 		.filter(Boolean)
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
+
+	if (!VALID_ID.test(id)) {
+		throw new Error(
+			`Invalid construct id ${JSON.stringify(input)}: ids must start with a ` +
+				`letter and contain only letters and digits, so that services.<id> is ` +
+				`reachable and the derived env key is well formed` +
+				(id ? ` (got ${JSON.stringify(id)})` : ''),
+		);
+	}
+	return id;
 }
+
+/**
+ * A canonical id: PascalCase, letters and digits only.
+ *
+ * Narrower than a JavaScript identifier — `_id` and `$ref` are legal JavaScript
+ * and rejected here — because the id also has to survive `environmentCase` into
+ * an env key and `cloudName` into a DNS-safe resource name.
+ */
+const VALID_ID = /^[A-Z][A-Za-z0-9]*$/;
 
 /**
  * The physical name a target provisions a construct under — lowercase kebab,

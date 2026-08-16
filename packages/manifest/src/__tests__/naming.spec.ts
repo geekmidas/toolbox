@@ -48,6 +48,18 @@ describe('canonicalId', () => {
 		}
 	});
 
+	it.each([
+		['2fa', 'a digit cannot start an identifier'],
+		['', 'empty'],
+		['---', 'nothing but separators'],
+	])('rejects %s (%s)', (input) => {
+		expect(() => canonicalId(input)).toThrow(/Invalid construct id/);
+	});
+
+	it('names the input and the rule, so the error is actionable', () => {
+		expect(() => canonicalId('2fa')).toThrow(/"2fa".*start with a letter/s);
+	});
+
 	it('collapses spellings of the same id to one', () => {
 		const ids = ['uploads', 'Uploads', 'UPLOADS'].map(canonicalId);
 		expect(new Set(ids).size).toBe(1);
