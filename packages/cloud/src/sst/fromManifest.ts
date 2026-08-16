@@ -18,12 +18,20 @@ import type {
 	DeclarationKind,
 } from '@geekmidas/manifest';
 import { ProvidesMismatch, UnknownDeclarationKind } from './errors';
+import type { GkmLinkable } from './Linkable';
 import { ObjectStorage } from './ObjectStorage';
 import type { StackType } from './Stack';
 
-/** A provisioned construct: the linkable itself, plus the env it resolves. */
-export interface Provisioned {
-	linkable: { _id: string; _type: unknown };
+/**
+ * A provisioned construct.
+ *
+ * The component *is* the linkable — `link: [bucket]` takes the component
+ * itself — so this extends `GkmLinkable` rather than wrapping one. One edge
+ * yields two things from the same object: `link` grants the IAM and carries the
+ * resource's properties, `provides()` shapes them into the keys the app
+ * declared.
+ */
+export interface Provisioned extends GkmLinkable {
 	provides(): Record<string, $util.Input<string>>;
 }
 

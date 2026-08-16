@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { type ProvidesMismatch, UnknownDeclarationKind } from '../sst/errors';
-import { assertProvides, provisionerFor } from '../sst/fromManifest';
-import { ObjectStorage } from '../sst/ObjectStorage';
+import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
+import { assertProvides, provisionerFor } from '../fromManifest';
+import { ObjectStorage } from '../ObjectStorage';
 
 /**
  * The decisions, tested as data. Instantiating a component needs Pulumi, so the
