@@ -12,6 +12,11 @@ This directory contains design documents, architectural decision records (ADRs),
   - Breaking: No - additive; `Service` remains the DI primitive
   - Supersedes: [Environment Variable Detection](./environment-variable-detection.md) as the long-term direction for env derivation
 
+- **[Deploy Walkthrough: Manifest → SST](./deploy-walkthrough.md)** - Walks what `Stack.fromManifest` does with a realistic app's manifest, to find gaps before the shape is frozen
+  - Status: Draft
+  - Impact: Medium - Validates the manifest contract ahead of implementation
+  - Companion to: [Constructs Paradigm](./constructs-paradigm.md)
+
 - **[Dokploy Deployment System](./dokploy-deployment.md)** - Deployment to Dokploy with per-app database isolation, env var detection, and DNS management
   - Status: In Progress
   - Impact: High - Core deployment infrastructure
