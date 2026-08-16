@@ -360,6 +360,22 @@ This table is the seam between the adapter (which writes the URL) and the client
 (which parses it). Both sides implement against it independently, so it has to be
 pinned before either is built.
 
+A construct may provide more than one URL when it genuinely owns more than one
+address. A CDN is the clearest case, and it is not purely an infra concern — it
+changes what the *client returns*, since `getDownloadURL()` should hand back a
+CDN URL while `getUploadURL()` still presigns against the bucket:
+
+```ts
+new ObjectStorage('Uploads', { cdn: true });
+//  provides → UPLOADS_URL       (writes, presigning)
+//             UPLOADS_CDN_URL   (public reads)
+```
+
+*Whether* there is a CDN is structural and lives in code; the distribution,
+origin access, cache behaviours, TTLs, and invalidation are the adapter's
+business. Locally there is no CloudFront, so `UPLOADS_CDN_URL` resolves to the
+MinIO URL — same shape, different value, no branch in application code.
+
 | kind | scheme | shape | notes |
 |---|---|---|---|
 | `objects` | `s3` / `gs` | `s3://<bucket>?region=<r>` | `?endpoint=` for MinIO |
@@ -702,11 +718,31 @@ so the app's role has no grant on the auth tables at all. pg-boss becomes an
 instance of this rather than the hardcoded special case it is today — with a
 single role, which is correct for it.
 
-**Ordering.** Provisioning must run before migrations, which must run before any
-function that depends on the database — and against a managed database that
-means executing **inside the VPC**, since RDS normally has no public route. That
-sequence is the one genuinely new capability this design needs; everything else
-is assembly of things that already exist.
+**It declares two functions of its own.** A database returns three declarations,
+not one — the database, a migrator, and a seeder:
+
+```
+Orders (database)
+  ├── OrdersMigrator   in-VPC function, owner URL
+  └── OrdersSeeder     in-VPC function, owner URL
+```
+
+Same shape as `Queue` returning the queue plus its worker, and it dissolves the
+in-VPC problem rather than working around it: the migrator *is* in the VPC,
+because it is a function the construct declared. Both get the owner URL; nothing
+else in the system does.
+
+Deploy becomes provision → invoke migrator → deploy the app's functions. Seeds
+stay manual (`gkm seed`) or dev-only — running them automatically is how you
+overwrite production data.
+
+Locally there is no Lambda, so the same migration code runs in-process. Worth
+stating explicitly so the two paths cannot drift: a migration that works locally
+and fails in the VPC is the expensive failure.
+
+**Ordering.** "Invoke after create" is not a resource, so the sequence lives in
+the deploy command rather than in the dependency graph — the one part of this
+that infrastructure-as-code does not express for us.
 
 ### Services, loggers, and builders
 
@@ -932,6 +968,50 @@ explicit origin, which the derived list supplies; and mounting auth on the API
 surface is the better default, since the cookie is then same-origin with the
 calls that use it.
 
+### A site
+
+A frontend is a construct like any other, which removes the last thing that
+needed a parallel mechanism: the `uses` list invented for trusted origins
+becomes an ordinary edge.
+
+```ts
+export const console = new StaticSite('Console', { path: 'apps/console' })
+  .dependsOn([api, auth]);
+```
+
+Four things derive from that edge that are hand-maintained today:
+
+| derived | today |
+|---|---|
+| `VITE_API_URL`, `VITE_AUTH_URL` at build | a `.env` per stage |
+| `api`'s CORS origins | hand-listed |
+| `auth`'s trusted origins | hand-listed |
+| which generated client lands in which app | a manual alias |
+
+It owns an address, so it has a `.service` — useful in the other direction,
+since a transactional email needs the console's URL to build links, which is
+otherwise another hand-maintained variable.
+
+**Its `requires` are build-time, not runtime.** A Lambda reads `ORDERS_URL` when
+it runs; a SPA bakes `VITE_API_URL` into its bundle. So a site's dependencies
+must resolve *before* its build step rather than before its first invocation —
+the only construct where that is true.
+
+That creates an ordering cycle: the API's URL is not known until it is
+provisioned, but the site's build needs it. **A custom domain breaks it** — the
+stage's `domains` map is known ahead of provisioning, so the site builds against
+`https://api.example.com` without waiting. Without one you would have to deploy
+the API, read its generated URL, then build.
+
+Naming follows the existing rule — the framework changes the code you write, so
+it is a second segment: `constructs/site/static`, `/site/tanstack`, `/site/next`,
+each mapping to the SST component that already exists.
+
+Out of scope: **Expo and mobile**, which build to app stores rather than to
+infrastructure — there is no URL and nothing to provision. And SSR variants
+should follow `StaticSite` rather than ship with it: static hosting is stable,
+SSR deploy shapes are not, and each one is maintenance.
+
 ## The Manifest
 
 A map keyed by id. **Anything that can be depended on is top level; anything
@@ -1063,6 +1143,34 @@ With `constructs: 'src/**/*.ts'` the fix is also simpler: watch the root, handle
 `add`/`change`/`unlink`, and re-run discovery plus the validation pass on each
 event. That gives new constructs, deleted constructs, and collision/reference
 errors the moment they're introduced rather than at deploy.
+
+### `gkm dev` orchestrates; it does not run everything
+
+`gkm dev` is for the backend. Sites run their own dev servers — `vite dev`,
+`next dev` — because reimplementing them means tracking frameworks that move
+faster than this one.
+
+At the workspace root it does five things, all derived from the manifest:
+
+1. ensure the local containers declared by the resources are up
+2. provision locally — schemas, roles, buckets — the same step the adapter does remotely
+3. run migrations through the declared migrator, in-process
+4. resolve the manifest, assign a port per surface, compose credentials and env
+5. hand off to `turbo run dev`
+
+Step 4 is where the value is. `gkm` knows `api` is on `:3000` and `webhooks` on
+`:3001`, so a site's `VITE_API_URL` is **derived** rather than written into a
+`.env.local` that drifts. Same derivation as production with different values,
+which is what makes local behaviour predict deployed behaviour.
+
+Each package then runs its own dev task, and each surface watches its own files —
+which is where the `add`/`unlink` fix belongs, rather than in one root watcher.
+
+One constraint worth knowing: a persistent turbo task cannot be depended on by
+another, so a site's `dev` cannot `dependsOn` an API's. Turbo's `with`
+co-schedules them, but there is no guarantee the API is listening before the
+site builds. Irrelevant for a SPA, which fetches at runtime; it matters for SSR
+frameworks that call the API during build.
 
 ## Target Adapters
 
@@ -1203,6 +1311,22 @@ Api.fromManifest(stack, 'Api', manifest.routes, { links: [db] });
 After: `Stack.fromManifest(stack, manifest)` provisions every kind, and each
 route's links, env, and IAM derive from its own `dependencies`.
 
+### Stacks are a deployment boundary, not a grouping
+
+Stacks do not disappear, but they stop meaning "a logical grouping of
+hand-written constructs" — the manifest supplies that. What remains is the
+operational use: a **state and blast-radius boundary**, so that deploying a
+function cannot touch the database.
+
+They are a different axis from surfaces. A surface is a *runtime* grouping
+(which gateway serves what); a stack is a *deployment* one. `Stack` also keeps
+its existing jobs — name prefixing through `logicalPrefixedName`, and delegating
+stage, region, and domain from `App`.
+
+Default is one stack per application. Splitting stateful from stateless is an
+instruction to the adapter, not something the application declares — otherwise
+it is partitioning again under a new name.
+
 ### Filtering: each function gets its dependencies and nothing more
 
 A function is linked to exactly the constructs it declared, never the app's full
@@ -1228,17 +1352,65 @@ and one edge collapses that class of error.
 
 ## Boundaries
 
-### A resource belongs to exactly one app
+### One application, one manifest
 
-There is no cross-app resource reference. If app B needs app A's data, it goes
-through **A's API** — not A's bucket, not A's database.
+There is no `apps: { … }` block and no notion of standalone apps inside a
+workspace. A repository holds **one application made of pieces** — sites,
+surfaces, resources — discovered by one `constructs` glob into one manifest.
 
-Sharing would mean the dependency edge crosses a deploy boundary (so neither
-manifest is self-contained and deploy order starts mattering), schema ownership
-becomes ambient, and derived IAM has to reach across app boundaries. An API
-boundary makes the coupling explicit, versionable, and typed — and this repo
-already generates typed clients for it. The invariant that matters: **every edge
-in an app's manifest points at a construct that app owns.**
+**Surfaces are the deploy granularity**, which is what separate apps were
+really providing. `api`, `webhooks`, and `console` deploy independently without
+a second grouping mechanism competing with the one that already exists.
+
+**A resource belongs to exactly one owner** — that rule survives, relocated from
+"one app" to **one manifest**. Cross-manifest references stop being a convention
+and become unrepresentable: there is no syntax for pointing at a construct in
+another repository. Two genuinely separate systems are two repositories that
+share through APIs, which is where the boundary always belonged.
+
+Sharing a resource across that boundary would mean the dependency edge crosses a
+deploy boundary — so neither side's manifest is self-contained, deploy order
+starts to matter, schema ownership becomes ambient, and derived IAM has to reach
+across accounts. The invariant worth keeping: **every edge points at a construct
+the same manifest owns**, which is what lets a surface deploy on its own.
+
+The monorepo layout is unchanged — `apps/console` is still its own package with
+its own `package.json`. What disappears is the config-level claim that it is a
+separately deployable application.
+
+### Adoptable in pieces
+
+Using the whole framework should be easy; using one part of it should also be
+possible. Every package stands alone, and the framework is the *composition*
+rather than the requirement.
+
+The client packages already have this by construction — `@geekmidas/storage`,
+`db`, and `cache` depend on nothing from `constructs`, so someone who has never
+heard of a construct can use `AmazonStorageClient` with a hand-written config.
+
+**`@geekmidas/cloud` is the one at risk**, because `Stack.fromManifest` is a
+tempting shape to build toward:
+
+```ts
+new ObjectStorage(stack, declaration);              // ✗ framework-only
+new ObjectStorage(stack, 'uploads', { versioned: true });   // ✓ ordinary props
+```
+
+If components take `Declaration`s they stop working in a hand-written
+`sst.config.ts`. So **components take ordinary props and stand alone;
+`fromManifest` is a translation layer over them.** One consequence:
+`assertProvides` is a `fromManifest`-time check rather than something baked into
+the component, since a hand-constructed component has no declaration to compare
+against.
+
+The same applies to `@geekmidas/client` — `createAuthAwareFetcher` works against
+any OpenAPI document, not only one `gkm openapi` produced. Cerberus already
+depends on that, since it bypasses the generated `createApi` to inject its own
+signing `fetch`.
+
+Two fixtures keep this honest, alongside the existing constructs-only one:
+install just `@geekmidas/cloud` and build an `sst.config.ts` from the components
+with no manifest; install just `@geekmidas/storage` and use the client directly.
 
 ### Packaging
 
@@ -1395,8 +1567,11 @@ manifest and deprecate the workspace `services:` block.
   fails to compile; `.database(new KyselyDatabase<OrdersDB>('orders'))` types
   `db` in handler *and* session extractor, with an unknown table failing to
   compile — that's what proves the schema flowed rather than degrading to `any`.
-- **Package isolation.** A fixture installing only `@geekmidas/constructs`,
-  type-checking and importing the root.
+- **Package isolation, three fixtures.** Install only `@geekmidas/constructs` and
+  type-check its root; install only `@geekmidas/cloud` and build an
+  `sst.config.ts` from the components with no manifest; install only
+  `@geekmidas/storage` and use the client with a hand-written config. These are
+  what stop the framework quietly becoming a requirement.
 - **Sniffer regression.** The existing `getEnvironment` suite passes unchanged
   through Phase 5 — proof this stayed additive.
 
