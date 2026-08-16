@@ -1155,22 +1155,73 @@ At the workspace root it does five things, all derived from the manifest:
 1. ensure the local containers declared by the resources are up
 2. provision locally — schemas, roles, buckets — the same step the adapter does remotely
 3. run migrations through the declared migrator, in-process
-4. resolve the manifest, assign a port per surface, compose credentials and env
+4. resolve the manifest, assign an address per surface, compose credentials and env
 5. hand off to `turbo run dev`
 
-Step 4 is where the value is. `gkm` knows `api` is on `:3000` and `webhooks` on
-`:3001`, so a site's `VITE_API_URL` is **derived** rather than written into a
+Step 4 is where the value is. `gkm` knows where `api` and `webhooks` are
+listening, so a site's `VITE_API_URL` is **derived** rather than written into a
 `.env.local` that drifts. Same derivation as production with different values,
 which is what makes local behaviour predict deployed behaviour.
 
 Each package then runs its own dev task, and each surface watches its own files —
 which is where the `add`/`unlink` fix belongs, rather than in one root watcher.
 
+Migrations run the same code locally that the migrator runs in the VPC. Worth
+stating explicitly so the two cannot drift: a migration that works locally and
+fails in the VPC is the expensive failure.
+
 One constraint worth knowing: a persistent turbo task cannot be depended on by
 another, so a site's `dev` cannot `dependsOn` an API's. Turbo's `with`
-co-schedules them, but there is no guarantee the API is listening before the
-site builds. Irrelevant for a SPA, which fetches at runtime; it matters for SSR
+co-schedules them, but there is no guarantee the API is listening before the site
+builds. Irrelevant for a SPA, which fetches at runtime; it matters for SSR
 frameworks that call the API during build.
+
+#### Local addresses
+
+By default a surface is `localhost:3000` — zero setup, works offline. That is
+also where a class of bugs hides until deploy, because `localhost` is not a
+normal origin:
+
+| | `localhost` | real hostnames |
+|---|---|---|
+| `Domain=.example.com` sharing | cannot be exercised | real |
+| `SameSite=None; Secure` | localhost is exempt from `Secure` | real |
+| CORS | same host, so no preflight | real cross-origin |
+
+So the local domain is **yours to choose**, and gkm verifies rather than
+prescribes:
+
+```ts
+// gkm.config.ts
+dev: { domain: 'myapp.test' }     // → api.myapp.test, console.myapp.test
+```
+
+`gkm setup` resolves one of the names. If it already points at loopback there is
+nothing to do; if it does not, it offers to write a delimited block to the hosts
+file — a separate privileged command, never something `gkm dev` escalates to on
+every run. The tradeoff then belongs to your choice rather than to the framework:
+
+| you choose | hosts edit | works offline |
+|---|---|---|
+| `myapp.test` | once | ✅ |
+| `myapp.localtest.me`, `sslip.io` | none — already resolves | ✗ needs DNS |
+| a domain you own, wildcard → `127.0.0.1` | none | ✗ needs DNS |
+
+HTTPS needs a locally trusted certificate — `mkcert "*.{domain}"`, so adding a
+surface never requires reissuing one. Keep that separate from resolution rather
+than using a service that publishes its wildcard private key: fine for local dev
+in principle, awkward to defend, and it stops working if they disappear.
+
+**The shape stays fixed even though the domain does not.** A surface is always
+`{surface}.{domain}`, because surfaces are what map to hostnames in production —
+if local is `api-local.myapp.test` while production is `api.example.com`, the
+cookie and CORS parity this buys starts leaking again.
+
+Two implementation notes: containers do not inherit any of this, since a
+container resolving the name gets *its own* loopback — they need `extra_hosts`
+generated into the compose file. And the parity is only real if the addresses are
+used; if `gkm dev` still prints `localhost:3000` alongside them, people use the
+shorter one and the CORS path stays untested.
 
 ## Target Adapters
 
