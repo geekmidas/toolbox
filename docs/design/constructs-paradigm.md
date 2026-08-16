@@ -366,10 +366,22 @@ changes what the *client returns*, since `getDownloadURL()` should hand back a
 CDN URL while `getUploadURL()` still presigns against the bucket:
 
 ```ts
-new ObjectStorage('Uploads', { cdn: true });
-//  provides → UPLOADS_URL       (writes, presigning)
+new ObjectStorage('Uploads', { cdn: true });                    // → uploads.{domain}
+new ObjectStorage('Uploads', { cdn: { subdomain: 'assets' } }); // → assets.{domain}
+//  provides → UPLOADS_URL       (writes, presigning — never public)
 //             UPLOADS_CDN_URL   (public reads)
 ```
+
+The CDN takes a subdomain like any other addressable construct, defaulting to
+the kebab-case of the id. Two reasons it should not sit on the cloud's assigned
+hostname: **CloudFront signed cookies** only work when the CDN shares a
+registrable domain with the app, since the cookie cannot otherwise reach it; and
+an assigned hostname changes if the distribution is replaced, turning any URL
+you emailed or cached into a dead one.
+
+Whether several CDN-enabled buckets share one distribution with path-based
+origins or get one each is the adapter's call — the declaration is per-construct
+either way.
 
 *Whether* there is a CDN is structural and lives in code; the distribution,
 origin access, cache behaviours, TTLs, and invalidation are the adapter's
@@ -992,16 +1004,49 @@ It owns an address, so it has a `.service` — useful in the other direction,
 since a transactional email needs the console's URL to build links, which is
 otherwise another hand-maintained variable.
 
-**Its `requires` are build-time, not runtime.** A Lambda reads `ORDERS_URL` when
-it runs; a SPA bakes `VITE_API_URL` into its bundle. So a site's dependencies
-must resolve *before* its build step rather than before its first invocation —
-the only construct where that is true.
+#### Injection: one derivation, per-framework delivery
 
-That creates an ordering cycle: the API's URL is not known until it is
-provisioned, but the site's build needs it. **A custom domain breaks it** — the
-stage's `domains` map is known ahead of provisioning, so the site builds against
-`https://api.example.com` without waiting. Without one you would have to deploy
-the API, read its generated URL, then build.
+The *values* a site needs are resolved from its edges like any other construct.
+What varies is how each framework wants them, so the canonical name comes from
+the construct (`API_URL`) and the variant's adapter serialises it:
+
+| variant | client-side | when |
+|---|---|---|
+| `site/static` | `VITE_API_URL`, or `config.json` / inlined `window.__GKM__` | build or deploy |
+| `site/next` | `NEXT_PUBLIC_API_URL` | build |
+| `site/tanstack` | `VITE_API_URL` | build |
+| Expo | `EXPO_PUBLIC_API_URL` | build |
+
+Same pattern as everywhere else: one neutral name, adapter-specific
+serialisation.
+
+**Server-side resolution is not special.** An SSR site's server half reads links
+and `Credentials` through envkit exactly as a function does, so a Next server
+component querying the database directly is ordinary. A static site simply has
+no server half — a property of that variant's runtime, not a different rule.
+
+So there are two injection rules, applied uniformly:
+
+- **public-safe provides** → client-side, prefixed per framework
+- **all provides** → server-side through envkit, wherever a server exists
+
+**The public marking is what keeps credentials out of the bundle.** `VITE_`,
+`NEXT_PUBLIC_`, and `EXPO_PUBLIC_` all mean *shipped to the browser*, so
+`ProvidesByKind` marks which values may be prefixed — a `rest-api` URL and a
+CDN-enabled `objects` URL may; `database`, `cache`, `queue`, `topic`, and
+`secret` may not. `ORDERS_URL` contains credentials and never crosses into a
+bundle.
+
+That marking drives exactly one thing — prefixing. It is not a restriction on
+what a site may depend on, because the server half can legitimately use anything.
+An edge whose value nothing consumes (a database on a static site) is covered by
+the general "declared but unusable" check rather than a rule of its own.
+
+**When values must be available depends on the framework**, not on the design. A
+variant that inlines at build (`NEXT_PUBLIC_*`) needs its inputs before building,
+so a stable custom domain earns its place there — the stage's `domains` map is
+known ahead of provisioning, where a cloud-assigned hostname is not. A variant
+reading deploy-injected config or server-side env does not care.
 
 Naming follows the existing rule — the framework changes the code you write, so
 it is a second segment: `constructs/site/static`, `/site/tanstack`, `/site/next`,
@@ -1213,12 +1258,13 @@ than using a service that publishes its wildcard private key: fine for local dev
 in principle, awkward to defend, and it stops working if they disappear.
 
 **The label is per-construct; the base domain is not.** A construct's subdomain
-defaults to the kebab-case of its id and can be overridden — including to empty,
-which claims the apex, where a site usually belongs:
+defaults to the kebab-case of its id and can be overridden — including to
+`false`, which claims the apex, where a site usually belongs. `false` reads as
+"no subdomain" where an empty string blurs into "unset":
 
 ```ts
 new RestApi('Api')                             // → api.{domain}
-new StaticSite('Console', { subdomain: '' })   // → {domain}
+new StaticSite('Console', { subdomain: false })  // → {domain}  (apex)
 new StaticSite('Admin', { subdomain: 'admin' })
 ```
 
@@ -1281,15 +1327,25 @@ of the values, never their provider syntax.
 ```ts
 // @geekmidas/manifest — type-only, no cloud vocabulary
 export interface ProvidesByKind {
-  objects:    { url: string };
-  database:   { url: string; readerUrl: string };
+  objects:    { url: string; cdnUrl?: string };
+  database:   { url: string };
   cache:      { url: string };
   queue:      { url: string };
   topic:      { url: string };
   'rest-api': { url: string };
 }
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
+
+/** Which values may be shipped to a browser. Drives client-side prefixing only. */
+export const PUBLIC: Record<keyof ProvidesByKind, readonly string[]> = {
+  objects:    ['cdnUrl'],   // the bucket URL presigns; the CDN URL is public
+  'rest-api': ['url'],
+  database:   [], cache: [], queue: [], topic: [],
+};
 ```
+
+A read replica is its own construct (`orders.reader()`) providing its own
+`{ url }`, so `database` needs no second key.
 
 ```ts
 // app — declares the names
