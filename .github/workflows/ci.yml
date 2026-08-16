@@ -71,18 +71,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Consumes any pending changesets. `released` records whether that actually
+      # changed anything — without it, publish runs on every push to main and
+      # npm rejects the unchanged versions, so docs-only commits fail CI.
       - name: Version packages
+        id: version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           pnpm run version
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --staged --quiet || git commit -m "chore: version packages"
-          git push
+          if git diff --staged --quiet; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "No pending changesets — nothing to publish."
+          else
+            git commit -m "chore: version packages"
+            git push
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish packages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: steps.version.outputs.released == 'true'
         run: pnpm changeset publish
