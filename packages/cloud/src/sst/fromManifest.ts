@@ -12,12 +12,14 @@
  * cloud.
  */
 
+import { resolveEnvKeys } from '@geekmidas/envkit/sst';
 import type {
 	ConstructManifest,
 	Declaration,
 	DeclarationKind,
 	Dependency,
 } from '@geekmidas/manifest';
+import { provideKey } from '@geekmidas/manifest';
 import { ObjectStorage } from './aws/ObjectStorage';
 import {
 	ProvidesMismatch,
@@ -28,13 +30,12 @@ import type { GkmLinkable } from './Linkable';
 import type { StackType } from './Stack';
 
 /**
- * A provisioned construct.
+ * A provisioned construct — the component, which *is* the linkable.
  *
- * The component *is* the linkable — `link: [bucket]` takes the component
- * itself — so this extends `GkmLinkable` rather than wrapping one. One edge
- * yields two things from the same object: `link` grants the IAM and carries the
- * resource's properties, `provides()` shapes them into the keys the app
- * declared.
+ * `provides()` returns its values keyed by role. They reach the running code by
+ * being spread into the link's properties, which SST injects and envkit's
+ * resolvers flatten into env; keeping them behind a method is what lets the
+ * contract be asserted at synth without a deploy.
  */
 export interface Provisioned extends GkmLinkable {
 	provides(): Record<string, $util.Input<string>>;
@@ -91,12 +92,13 @@ export function provisionerFor(kind: DeclarationKind): Provisioner {
 }
 
 /**
- * Assert that infra supplies exactly what the app declared.
+ * Assert that a link yields exactly the env keys the app declared.
  *
- * The app↔infra contract is the one guarantee spanning two packages, two build
- * phases, and two authors, and the one a JavaScript consumer gets no compiler
- * help with — so it is checked at synth rather than trusted. Pure, and the
- * reason this is a separate function.
+ * `supplied` comes from `resolveEnvKeys`, which derives the keys a resource type
+ * produces — the same derivation that runs for real. The app↔infra contract is
+ * the one guarantee spanning two packages, two build phases, and two authors,
+ * and the one a JavaScript consumer gets no compiler help with, so it is checked
+ * at synth rather than trusted.
  */
 export function assertProvides(
 	id: string,
@@ -132,7 +134,12 @@ export function fromManifest(
 			overrides[id] ?? {},
 		);
 
-		assertProvides(id, declaration.provides, Object.keys(component.provides()));
+		assertProvides(
+			id,
+			declaration.provides,
+			// A role becomes the env key the app declared: `url` → `UPLOADS_URL`.
+			Object.keys(component.provides()).map((role) => provideKey(id, role)),
+		);
 
 		provisioned[id] = component;
 	}
@@ -142,10 +149,17 @@ export function fromManifest(
 
 /** What one function receives from its edges. */
 export interface ResolvedEdges {
-	/** The components it may reach — SST turns these into IAM. */
+	/** The components it may reach. SST turns these into IAM *and* injects their
+	 * properties, so this is the whole delivery mechanism. */
 	link: Provisioned[];
-	/** The config it reads, composed from what those components provide. */
-	environment: Record<string, $util.Input<string>>;
+	/**
+	 * The env keys those links yield.
+	 *
+	 * Not values: the values are injected at runtime by the link, and a map of
+	 * key→placeholder would be a lie that ships. Keys are what the adapter needs,
+	 * so a function's `requires` can be checked against what its own edges cover.
+	 */
+	envKeys: string[];
 }
 
 /**
@@ -165,7 +179,7 @@ export function resolveEdges(
 	provisioned: ProvisionedManifest,
 ): ResolvedEdges {
 	const link: Provisioned[] = [];
-	const environment: Record<string, $util.Input<string>> = {};
+	const envKeys = new Set<string>();
 
 	for (const dependency of dependencies) {
 		const component = provisioned[dependency.target];
@@ -177,8 +191,12 @@ export function resolveEdges(
 		}
 
 		link.push(component);
-		Object.assign(environment, component.provides());
+		for (const key of resolveEnvKeys({
+			[dependency.target]: { type: component._type as string },
+		})) {
+			envKeys.add(key);
+		}
 	}
 
-	return { link, environment };
+	return { link, envKeys: [...envKeys].sort() };
 }

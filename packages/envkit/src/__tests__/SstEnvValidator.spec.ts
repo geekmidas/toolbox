@@ -26,10 +26,12 @@ describe('SstEnvValidator', () => {
 			);
 		});
 
-		it('derives the suffixed key a Bucket link produces', () => {
+		it('derives the keys an ObjectStorage link produces', () => {
+			// `_URL` is the single value a construct reads; `_NAME` predates it and
+			// is kept for hand-written services.
 			expect(
 				resolveEnvKeys({ uploads: { type: ResourceType.ObjectStorage } }),
-			).toEqual(['UPLOADS_NAME']);
+			).toEqual(['UPLOADS_NAME', 'UPLOADS_URL']);
 		});
 
 		it('derives queue keys incl. the publisher connection string', () => {

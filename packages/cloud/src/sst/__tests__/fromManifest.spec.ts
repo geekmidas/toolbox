@@ -1,3 +1,5 @@
+import { resolveEnvKeys } from '@geekmidas/envkit/sst';
+import { provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
@@ -80,40 +82,42 @@ describe('assertProvides', () => {
 	});
 });
 
-describe('ObjectStorage.provides', () => {
+describe('ObjectStorage', () => {
 	const bucket = new ObjectStorage({} as never, 'Uploads');
 
-	it('keys the url the way the construct declares it', () => {
-		// The construct emits provides: ['UPLOADS_URL']; if these two derivations
-		// ever disagree the app reads an env key infra never set.
-		expect(Object.keys(bucket.provides())).toEqual(['UPLOADS_URL']);
+	it('composes the url from the resource, not the stack', () => {
+		expect(bucket.provides().url).toBe('s3://Uploads?region=stub-region');
 	});
 
-	it('carries the region off the resource, not the stack', () => {
-		expect(bucket.provides().UPLOADS_URL).toBe(
-			's3://Uploads?region=stub-region',
-		);
-	});
-
-	it('widens the link so region survives, without touching permissions', () => {
+	it('carries those values on the link, which is what reaches runtime', () => {
 		const link = bucket.getSSTLink();
-		// SST's own link carries only `name`; a consumer resolving from the link
-		// alone could not tell which region the bucket is in.
 		expect(link.properties).toMatchObject({
 			name: 'Uploads',
-			region: 'stub-region',
+			url: 's3://Uploads?region=stub-region',
 		});
-		expect(link).toHaveProperty('include');
 	});
 
-	it('agrees with what the construct declared', () => {
+	it('leaves the permissions super grants alone', () => {
+		expect(bucket.getSSTLink()).toHaveProperty('include');
+	});
+
+	it('supplies exactly the key the construct declares', () => {
+		// The construct emits provides: ['UPLOADS_URL']; a role becomes that key.
 		expect(() =>
 			assertProvides(
 				'Uploads',
 				['UPLOADS_URL'],
-				Object.keys(bucket.provides()),
+				Object.keys(bucket.provides()).map((role) =>
+					provideKey('Uploads', role),
+				),
 			),
 		).not.toThrow();
+	});
+
+	it('is what envkit flattens into env', () => {
+		expect(resolveEnvKeys({ Uploads: { type: bucket._type } })).toContain(
+			'UPLOADS_URL',
+		);
 	});
 });
 
@@ -144,36 +148,29 @@ describe('component settings', () => {
 });
 
 describe('resolveEdges', () => {
-	const stub = (id: string, keys: string[]) =>
-		({
-			_id: id,
-			_type: 'stub',
-			provides: () => Object.fromEntries(keys.map((k) => [k, `value-of-${k}`])),
-		}) as never;
+	const stub = (id: string) => ({ _id: id, _type: 'sst.aws.Bucket' }) as never;
 
 	const provisioned = {
-		Uploads: stub('Uploads', ['UPLOADS_URL']),
-		Avatars: stub('Avatars', ['AVATARS_URL']),
-		Orders: stub('Orders', ['ORDERS_URL']),
+		Uploads: stub('Uploads'),
+		Avatars: stub('Avatars'),
 	} as unknown as ProvisionedManifest;
 
-	it('gives a function what it declared', () => {
-		const { link, environment } = resolveEdges(
-			[{ target: 'Uploads', kind: 'objects' }],
-			provisioned,
-		);
-		expect(link).toHaveLength(1);
-		expect(environment).toEqual({ UPLOADS_URL: 'value-of-UPLOADS_URL' });
-	});
-
-	it('gives it nothing more — the property least privilege depends on', () => {
-		const { link, environment } = resolveEdges(
+	it('links what the function declared, and yields its keys', () => {
+		const { link, envKeys } = resolveEdges(
 			[{ target: 'Uploads', kind: 'objects' }],
 			provisioned,
 		);
 		expect(link.map((l) => l._id)).toEqual(['Uploads']);
-		expect(Object.keys(environment)).not.toContain('AVATARS_URL');
-		expect(Object.keys(environment)).not.toContain('ORDERS_URL');
+		expect(envKeys).toContain('UPLOADS_URL');
+	});
+
+	it('links nothing more — the property least privilege depends on', () => {
+		const { link, envKeys } = resolveEdges(
+			[{ target: 'Uploads', kind: 'objects' }],
+			provisioned,
+		);
+		expect(link.map((l) => l._id)).not.toContain('Avatars');
+		expect(envKeys.some((k) => k.startsWith('AVATARS'))).toBe(false);
 	});
 
 	it('is unchanged when an unrelated construct joins the manifest', () => {
@@ -183,32 +180,15 @@ describe('resolveEdges', () => {
 		);
 		const after = resolveEdges([{ target: 'Uploads', kind: 'objects' }], {
 			...provisioned,
-			Reports: stub('Reports', ['REPORTS_URL']),
+			Reports: stub('Reports'),
 		} as unknown as ProvisionedManifest);
 
-		expect(after.environment).toEqual(before.environment);
+		expect(after.envKeys).toEqual(before.envKeys);
 		expect(after.link.map((l) => l._id)).toEqual(before.link.map((l) => l._id));
 	});
 
-	it('composes several edges into one environment', () => {
-		const { environment } = resolveEdges(
-			[
-				{ target: 'Uploads', kind: 'objects' },
-				{ target: 'Orders', kind: 'objects' },
-			],
-			provisioned,
-		);
-		expect(Object.keys(environment).sort()).toEqual([
-			'ORDERS_URL',
-			'UPLOADS_URL',
-		]);
-	});
-
 	it('gives a function with no edges nothing at all', () => {
-		expect(resolveEdges([], provisioned)).toEqual({
-			link: [],
-			environment: {},
-		});
+		expect(resolveEdges([], provisioned)).toEqual({ link: [], envKeys: [] });
 	});
 
 	it('names what is available when an edge does not resolve', () => {

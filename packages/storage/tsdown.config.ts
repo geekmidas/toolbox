@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-	entry: ['src/index.ts', 'src/aws.ts'],
+	entry: ['src/index.ts', 'src/aws.ts', 'src/s3Url.ts'],
 	clean: true,
 	outDir: 'dist',
 	format: ['cjs', 'esm'],

@@ -31,6 +31,16 @@
 				"types": "./dist/index.d.cts",
 				"default": "./dist/index.cjs"
 			}
+		},
+		"./s3-url": {
+			"import": {
+				"types": "./dist/s3Url.d.mts",
+				"default": "./dist/s3Url.mjs"
+			},
+			"require": {
+				"types": "./dist/s3Url.d.cts",
+				"default": "./dist/s3Url.cjs"
+			}
 		}
 	},
 	"scripts": {},

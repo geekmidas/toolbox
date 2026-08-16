@@ -69,6 +69,13 @@ export type Function = {
 export type Bucket = {
 	type: ResourceType.ObjectStorage | ResourceType.SSTObjectStorage;
 	name: string;
+	/**
+	 * Supplied by `@geekmidas/cloud`'s ObjectStorage, which widens SST's link to
+	 * carry them — a bucket may not be in the reader's region, and the URL is
+	 * composed where the resource's shape is known.
+	 */
+	region?: string;
+	url?: string;
 };
 
 /**
@@ -161,6 +168,11 @@ const postgresResolver = (key: string, value: PostgresValue) => ({
 
 const bucketResolver = (name: string, value: BucketValue) => ({
 	[`${name}Name`]: value.name,
+	// The single URL a construct reads. Composed by the component, which knows
+	// its own shape; this only renames it into env case. Always emitted, even
+	// when absent, so `resolveEnvKeys` can derive the key from the link's type
+	// alone — a bucket linked without our component yields an empty one.
+	[`${name}Url`]: value.url ?? '',
 });
 
 const topicResolver = (name: string, value: SnsTopicValue) => ({

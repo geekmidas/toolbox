@@ -1,4 +1,3 @@
-import { provideKey } from '@geekmidas/manifest';
 import { s3Url } from '@geekmidas/storage/aws';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import type { StackType } from '../Stack';
@@ -7,10 +6,10 @@ import type { StackType } from '../Stack';
  * `ObjectStorage` — a linkable S3 bucket (wraps `sst.aws.Bucket`), and the
  * infra half of the `objects` construct.
  *
- * The app declares the *names* it provides; this supplies the *values*. Both
- * sides describe the same contract without sharing an implementation — a shared
- * codec would have to contain `bucket` and `region`, which are S3's words, and
- * provider vocabulary in the neutral layer is the thing the design removes.
+ * Its whole contribution is the link. SST injects the linked resource's
+ * properties at runtime and `@geekmidas/envkit`'s resolvers turn them into the
+ * env a construct reads — so composing a URL here would produce a value nothing
+ * ever reads.
  *
  * Usable on its own. `Stack.fromManifest` translates a manifest into these, but
  * the component takes ordinary props so it works in a hand-written
@@ -39,10 +38,28 @@ export class ObjectStorage<
 	}
 
 	/**
-	 * SST's bucket link carries only `name`, so a consumer resolving from the
-	 * link alone cannot tell which region the bucket is in — and a bucket may not
-	 * be in the reader's. Exposing it here keeps the link self-sufficient, the
-	 * same reason `Queue` adds `arn` to its own.
+	 * The values this bucket resolves onto anything that depends on it, keyed by
+	 * role. `provideKey` turns a role into the env key the app declared, so
+	 * `url` here is `UPLOADS_URL` there.
+	 *
+	 * Composed *here* because only the resource knows its own shape: the name may
+	 * be supplied through props or generated, and the region is the bucket's, not
+	 * the reader's. It stays a method rather than being inlined below so the
+	 * contract can be asserted — declared keys against supplied ones — without a
+	 * deploy.
+	 */
+	provides(): Record<string, $util.Input<string>> {
+		return {
+			url: $util
+				.all([this.name, this.nodes.bucket.region])
+				.apply(([bucket, region]) => s3Url.build({ bucket, region })),
+		};
+	}
+
+	/**
+	 * The link carries those values, because the link is what reaches the running
+	 * code: SST injects these properties and envkit's resolvers flatten them into
+	 * env. Composing anywhere else produces a value nothing reads.
 	 *
 	 * The permissions `super` includes are untouched: what a link grants stays
 	 * SST's business.
@@ -51,29 +68,7 @@ export class ObjectStorage<
 		const link = super.getSSTLink();
 		return {
 			...link,
-			properties: {
-				...link.properties,
-				region: this.nodes.bucket.region,
-			},
-		};
-	}
-
-	/**
-	 * The env this bucket resolves onto anything that depends on it.
-	 *
-	 * Every part of the URL is read off the resource rather than inherited from
-	 * the stack: a bucket may live in a different region than the function
-	 * reading it, and `AWS_REGION` in a Lambda is the *function's* region — so
-	 * omitting it breaks cross-region silently, at runtime.
-	 *
-	 * The name comes from the bucket too, not from a recomputed physical name:
-	 * it may be supplied through props or generated, and only the resource knows.
-	 */
-	provides(): Record<string, $util.Input<string>> {
-		return {
-			[provideKey(this._id, 'url')]: $util
-				.all([this.name, this.nodes.bucket.region])
-				.apply(([bucket, region]) => s3Url.build({ bucket, region })),
+			properties: { ...link.properties, ...this.provides() },
 		};
 	}
 }
