@@ -7,8 +7,9 @@ An implementation walkthrough, not a design argument. It takes one realistic app
 shows the manifest it produces, and walks what `Stack.fromManifest` does with it —
 the point being to find what the manifest needs *before* its shape is frozen.
 
-Findings are collected in [The Delta](#the-delta) at the end. One is still
-structural; one has since been resolved in the design doc.
+Findings are collected in [The Delta](#the-delta) at the end. Both structural
+ones have since been resolved in the design doc; the rest stand as recorded
+corrections.
 
 ## The app
 
@@ -258,18 +259,20 @@ would resolve server-side through envkit.
 
 What the walk needs that the manifest didn't have.
 
-### 1. Derived constructs need to name their parent — **structural**
+### 1. Derived constructs need to name their parent — **resolved**
 
-`OrdersReader` and `Auth` are not independent nodes: one is an endpoint on an
-existing cluster, the other a schema inside an existing database. Without a
-parent reference the adapter would provision a second database for each.
+*Was structural.* `OrdersReader` and `Auth` are not independent nodes: one is an
+endpoint on an existing cluster, the other a schema inside an existing database.
+Without a parent reference the adapter would provision a second database for each.
 
-Added above as `"of": "Orders"`, with kinds `database-reader` and
-`database-schema`. This is the first field that makes a top-level node
-*dependent*, and it introduces the phase's only ordering constraint — parents
-before children.
+They now carry `of`, with kinds `database-reader` and `database-schema`, and stay
+top-level so `dependencies[].target` keeps resolving as `m[target]`. What a
+parent may vend is a small table — `database` vends both, `database-schema` vends
+a reader, `database-reader` is terminal — which makes cycles impossible without a
+check and permits `authDb.reader()`.
 
-It also needs validating: `of` must resolve, and must point at a `database`.
+Phase A resolves `of` before the node that names it; the depth bound of two makes
+that a recursive lookup rather than a topological sort.
 
 ### 2. Migration sets are undeclared — **resolved**
 

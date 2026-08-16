@@ -135,6 +135,8 @@ type Fn   = Node & { handler: string; dependencies: Dependency[] };
 export type Declaration =
   | Node & { kind: 'objects';  versioned?: boolean }
   | Node & { kind: 'database'; engine?: 'postgres' }
+  | Node & { kind: 'database-reader'; of: string }
+  | Node & { kind: 'database-schema'; of: string; schema: string }
   | Node & { kind: 'cache' }
   | Node & { kind: 'table' }
   | Node & { kind: 'secret' }
@@ -724,6 +726,49 @@ That is a security property rather than a convention: a compromised handler
 cannot `DROP TABLE`, because its role holds no such grant, and the cluster's
 master credentials never leave the provisioner.
 
+**Derived nodes name their parent.** A reader and a schema tenant are top-level
+entries that provision nothing of their own — one is an endpoint on an existing
+cluster, the other a schema inside an existing database — so each carries
+`of: 'Orders'`. Without it the adapter would provision a second database for
+each.
+
+They stay top-level rather than nesting under the database because
+`dependencies[].target` resolves as `m[target]`. Nesting would force a compound
+reference (`{ target: 'Orders', endpoint: 'reader' }`), which is the edge
+attribute we rejected arriving in another form, and would leave a construct whose
+id is not a key in the map — invisible to collision detection and to every edge.
+
+What each parent may vend is a small table, and it makes cycles impossible
+without a check, since readers are terminal:
+
+| parent | may vend |
+|---|---|
+| `database` | `database-reader`, `database-schema` |
+| `database-schema` | `database-reader` |
+| `database-reader` | — |
+
+So `authDb.reader()` is legal and useful — the `auth` role, its `search_path`,
+pointed at the replica. There is no `writer` node, because the database *is* the
+writer: `orders` defaults to it and `.reader()` is the opt-in, so a replica can
+never be reached by accident.
+
+**A reader adds a third role.** `app_reader`, `SELECT`-only, created on the
+primary so it replicates:
+
+```sql
+CREATE ROLE app_reader LOGIN PASSWORD '…';
+GRANT USAGE ON SCHEMA app TO app_reader;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA app
+  GRANT SELECT ON TABLES TO app_reader;
+```
+
+That is scoped security in the application, not just routing — and it is what
+makes read-only hold **regardless of endpoint**. The reader resolves to a replica
+where one exists and falls back to the writer where none does (`--target=server`,
+dev, a small stage); with grants doing the enforcing, that fallback is safe
+rather than a silently writable connection behind a name that says reader. RLS
+applies to `app_reader` unchanged, since it owns nothing.
+
 **Schema tenants are the same mechanism.** `orders.schema<AuthDB>('Auth')` adds a
 second schema in the same database with its own role(s) and its own `AUTH_URL`,
 so the app's role has no grant on the auth tables at all. pg-boss becomes an
@@ -1142,6 +1187,8 @@ consumers compile unchanged.
   Scope is per app; cross-app is handled by the adapter's `prefixedName`.
 - **Reference integrity** — every `dependencies[].target` resolves to a
   top-level entry in the map.
+- **Derivation** — every `of` resolves, and the `(parent.kind, child.kind)` pair
+  is one the parent may vend.
 - **`requires` ⊆ ⋃ `provides`** across a construct's dependencies — the declared
   contract, enforced. This is what would have caught `function` omitting its own
   `provides`: a consumer would require a key nothing supplies.
@@ -1327,8 +1374,10 @@ of the values, never their provider syntax.
 ```ts
 // @geekmidas/manifest — type-only, no cloud vocabulary
 export interface ProvidesByKind {
-  objects:    { url: string; cdnUrl?: string };
-  database:   { url: string };
+  objects:            { url: string; cdnUrl?: string };
+  database:           { url: string };
+  'database-reader':  { url: string };
+  'database-schema':  { url: string };
   cache:      { url: string };
   queue:      { url: string };
   topic:      { url: string };
@@ -1340,7 +1389,8 @@ export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
 export const PUBLIC: Record<keyof ProvidesByKind, readonly string[]> = {
   objects:    ['cdnUrl'],   // the bucket URL presigns; the CDN URL is public
   'rest-api': ['url'],
-  database:   [], cache: [], queue: [], topic: [],
+  database: [], 'database-reader': [], 'database-schema': [],
+  cache: [], queue: [], topic: [],
 };
 ```
 
