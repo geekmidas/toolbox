@@ -1364,12 +1364,10 @@ class ObjectStorage extends sst.aws.Bucket implements Supplies<'objects'> {
 }
 ```
 
-Adding `readerUrl` to `database` then breaks whichever side hasn't implemented
-it, in both packages, at build. And the env-name mapping falls out of the same
-interface rather than being a second convention:
-`environmentCase(`${id}_${key}`)` gives `url` → `UPLOADS_URL` and `readerUrl` →
-`ORDERS_READER_URL`, so the reader/writer question becomes a one-line change to
-`ProvidesByKind`.
+Adding a key to a kind then breaks whichever side hasn't implemented it, in both
+packages, at build. And the env-name mapping falls out of the same interface
+rather than being a second convention: `environmentCase(`${id}_${key}`)` gives
+`url` → `UPLOADS_URL` and `cdnUrl` → `UPLOADS_CDN_URL`.
 
 How the infra composes the string and how the client parses it stay private to
 each provider pair — `s3://` and `gs://` never enter the contract.
