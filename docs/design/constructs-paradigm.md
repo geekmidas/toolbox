@@ -840,9 +840,11 @@ Locally there is no Lambda, so the same migration code runs in-process. Worth
 stating explicitly so the two paths cannot drift: a migration that works locally
 and fails in the VPC is the expensive failure.
 
-**Ordering.** "Invoke after create" is not a resource, so the sequence lives in
-the deploy command rather than in the dependency graph — the one part of this
-that infrastructure-as-code does not express for us.
+**Ordering** stays in the dependency graph. `aws.lambda.Invocation` is a real
+resource, so "invoke the migrator after the provisioner" is an ordinary
+`dependsOn` rather than a step in a deploy script — and the app's functions
+depend on the migration invocation the same way. Locally the same ordering is a
+sequence in `gkm setup`, since there is no graph to express it in.
 
 ### Services, loggers, and builders
 
@@ -1574,6 +1576,236 @@ reporting stops being silent** — because the filter keys off *sniffed* names, 
 with a permissions error. And `EnvValidationError` guards a narrower gap: it
 exists because required vars and available links are independently maintained,
 and one edge collapses that class of error.
+
+## The Local Target
+
+Local is a target adapter, not a simulation of one. It reads the same
+declarations `fromManifest` reads and produces containers instead of cloud
+resources — same edges, same `provides()` contract, same assertion that what a
+component supplies matches what the app declared.
+
+This matters more than it sounds. The alternative — and what exists today — is a
+hand-written `services: ['postgres', 'minio']` list in the workspace config that
+you keep in step with your code by hand. It is the same triplication the whole
+design exists to remove, in the one place you touch every day.
+
+### Containers are derived, config only overrides
+
+`gkm docker` keeps its templates and its image pinning; what changes is where
+the list comes from:
+
+| today | derived |
+|---|---|
+| `services: ['postgres','minio']`, hand-maintained | a `database` implies Postgres, `objects` implies MinIO |
+| fixed default ports, env-overridable | allocated per project, URL composed from what was allocated |
+| image and version pinning | unchanged — still explicit config |
+| containers no construct implies (mailpit) | unchanged — still explicit config |
+
+The same split as `ComponentOverrides`: neutral facts come from the declaration,
+provider detail from config, escape hatch stays. `services` stops being a list
+you maintain and becomes a list of exceptions.
+
+### Ports are allocated, and that is why several projects can run at once
+
+Publishing `5432:5432` means the second project on your machine cannot start.
+Nothing solves that except giving each project its own ports — and the reason
+that is *possible* here is the single-`<NAME>_URL` rule. The app reads
+`ORDERS_URL`; it never sees a host or a port, so the local target is free to bind
+whatever is available and compose the URL from what it bound. An app that reads
+`DB_HOST` and `DB_PORT` separately can't be moved this way.
+
+A shared cluster with a database per project is the tempting alternative and does
+not survive contact with reality: one project needs `postgis/postgis:17-3.5`,
+another `postgres:18`. One container cannot be both. Projects keep their own
+stacks.
+
+Assignments are **persisted, not recomputed**. A hash of the project name picks a
+starting point unlikely to collide; from then on the assignment is stored, because
+recomputing means adding a construct renumbers its neighbours and every running
+container, saved connection string, and `psql` history goes stale at once.
+Allocation checks what is actually listening, so a collision with another
+project's stack surfaces at reconcile rather than as a failed connection.
+
+### The role DDL belongs to `db`, not to `cloud`
+
+Roles have to exist locally too, or `ORDERS_URL` names a role that is not there.
+The design already says the migrator runs in-process locally and as a Lambda in
+the VPC; the same has to be true of role and schema creation. So the DDL lives in
+`@geekmidas/db`, imported by both the provisioner Lambda and `gkm setup`:
+
+```ts
+// @geekmidas/db/pg/provision
+export function statements(plan: SchemaPlan): string[]   // pure, testable without a database
+export async function apply(master: string, plan: SchemaPlan): Promise<void>
+```
+
+Pure statement generation applied by whichever caller holds the master
+credential. One implementation, so there is nothing for the two paths to disagree
+about — which is what stops "works locally, fails in the VPC".
+
+### Three phases, and only one has side effects
+
+| phase | command | side effects |
+|---|---|---|
+| **declare** | `gkm build`, dev's watcher | none — constructs → manifest, pure |
+| **reconcile** | `gkm setup`, and `gkm dev` on startup | ports, passwords, compose file, containers, roles, env |
+| **run** | `gkm dev`, deployed handlers | reads `<NAME>_URL`; provisions nothing |
+
+Reconcile is **convergent**, so "when does it run" has the comfortable answer:
+whenever, repeatedly. It computes the desired state, compares, applies the
+difference. `gkm setup` is that code invoked explicitly — for CI, for a teammate,
+for reconciling without starting a server.
+
+This is not a new concept in the codebase. `reconcileMissingSecrets` is already
+this; what changes is that it reads the manifest instead of a hand-written list.
+
+### `gkm dev` sets up automatically
+
+It should, and the reason it is safe to is that reconcile's blast radius is
+entirely local: this project's containers, this project's `.gkm/`. Nothing it
+does can reach a cloud. Auto-running a deploy would be indefensible; auto-running
+this is not.
+
+The alternative is that a fresh clone's first experience is `ORDERS_URL is not
+defined`, with a fix you have to already know about — which contradicts the
+zero-config principle directly.
+
+**The line is drawn at data, not at side effects:**
+
+| automatic | never automatic |
+|---|---|
+| allocate ports, generate missing passwords | seed |
+| write the compose file | reset or drop |
+| start containers, wait for health | destructive migrations |
+| create roles, schemas, `search_path` | anything targeting a non-local stage |
+| run **pending** migrations | |
+
+Migrations run because they are forward-only and the local database is
+disposable. Seeds do not, for the reason already given — running them
+automatically is how you overwrite data — and that argument is about intent, so
+it holds locally even though the stakes are lower.
+
+Three things keep it from being annoying:
+
+**A fast path.** Hash the desired plan; if it matches what was recorded and the
+containers are healthy, do nothing. Reconciling on every start is only acceptable
+if the converged case is free. That hash is the same mechanism the deployed side
+uses — `aws.lambda.Invocation` keyed on schema name, role names, and secret
+versions, re-running only when one changes. Both targets should call the *same*
+plan-hash function, so they cannot disagree about what counts as a change.
+
+**Saying what it did.** One line when it acts, silence when it does not:
+
+```
+gkm: provisioned Reports (database, :27438), 2 migrations applied
+```
+
+Silent provisioning is how people stop knowing what state their machine is in.
+
+**An escape hatch and a decent failure.** `--no-setup` for when you are pointed at
+a remote database or already have the stack running, and a sentence rather than a
+socket error when the docker daemon is not up.
+
+One consequence: the watcher must re-reconcile when the manifest changes, and it
+currently misses file `add`/`unlink`. Today that costs a stale route. Here it
+means a newly declared database is never provisioned while the error you see says
+an environment variable is missing. It moves from a known bug to a blocker.
+
+### State lives in the thing it describes
+
+Only two things need to be written down. Everything else already has an owner
+that cannot drift:
+
+| state | where | why |
+|---|---|---|
+| roles and schemas exist | **the database** — queried | a file drifts the first time a volume is dropped |
+| migrations applied | migrations table | already how migrators work |
+| containers, volumes | compose project labels | docker already remembers |
+| generated code, manifest | `.gkm/` | derived; safe to delete at any time |
+| **port assignments** | `.gkm/secrets/<stage>.json` | nothing else remembers, and they must stay stable |
+| **generated passwords** | same file | the database stores only a hash |
+
+Both live in the store that already exists, encrypted, with the key in
+`~/.gkm/<project>/<stage>.key`. No second state file.
+
+Because roles are **queried rather than recorded**, losing the secrets file is
+recoverable rather than corrupting: reconcile regenerates the passwords and runs
+`ALTER ROLE … WITH PASSWORD`, which is the identical code path as rotation. The
+rare path is exercised by the common one. Ports are reallocated, which recreates
+the containers, but volumes are keyed to the project rather than the port, so the
+data survives.
+
+**One breaking change.** `StageSecrets.services` is keyed by container —
+`{ postgres?, redis?, minio? }` — which cannot express two databases and cannot
+express a schema tenant at all. `Orders`, an `Auth` tenant, and pg-boss are three
+role sets in one container. It becomes keyed by construct id:
+
+```ts
+services: Record<string, ConstructCredentials>   // 'Orders', 'Auth', 'Uploads'
+ports:    Record<string, number>                 // same keys
+```
+
+Fine on the v10 line, but it wants a read-old/write-new migration so nobody's
+`development.json` is silently orphaned.
+
+### Encryption in dev, and being able to read your own state
+
+The encryption currently buys less than it appears to. The key sits next to the
+ciphertext, same machine, same user, no passphrase — so it is not defending
+against local compromise, it is not disk-at-rest protection, and it is not what
+prevents an accidental commit, since `.gkm` being gitignored does that. For a
+generated password to a container bound to localhost, it protects nothing.
+
+It stays anyway, for a reason that is not uniformity: **dev secret files
+routinely hold real third-party credentials.** A Stripe test key is a live
+credential; an OpenAI key in dev is the same key as anywhere else. The store
+cannot know what a human pasted into it, so it assumes the worst.
+
+What changes is that entries record **provenance**:
+
+```ts
+interface SecretEntry {
+  value: string;
+  origin: 'generated' | 'supplied';   // reconcile made it, or a human did
+}
+```
+
+Generated local values then print in full — they are useless off your machine and
+you need to paste them into `psql` — while supplied values mask unless
+`--reveal`. Today `--reveal` is one switch over both, which is why encryption
+feels like it is in the way: it is not, the reader is too blunt.
+
+### `gkm status`
+
+`gkm secrets:show` answers "what secrets exist". Nothing answers "what state is
+my machine in", which is the question you actually have — and it is a question
+only the manifest can answer, because it is about constructs:
+
+```
+$ gkm status
+development · 3 constructs · stack healthy
+
+Orders           database          :27431   ✓ healthy
+  ORDERS_URL     postgres://app:hunter2@localhost:27431/orders
+  roles          app, app_owner    migrations  7 applied
+Auth             database-schema   → Orders
+  AUTH_URL       postgres://auth:s3cret@localhost:27431/orders
+Uploads          objects           :27433   ✓ healthy
+  UPLOADS_URL    s3://uploads?endpoint=http%3A%2F%2Flocalhost%3A27433
+
+supplied secrets  STRIPE_SECRET_KEY, OPENAI_API_KEY   (--reveal to show)
+```
+
+What exists, what port it got, whether it is up, the URL to paste, and what
+`Auth` hangs off. `--json` to pipe it. It reads the cached manifest and warns
+rather than rebuilding when stale.
+
+Values print in full for local stages and mask for every other one. Printing a
+production password because someone ran `gkm status --stage prod` on a shared
+screen is the failure worth designing out.
+
+Not `gkm credentials` — that name is taken by the Dokploy login store, and two
+meanings of the word is one too many.
 
 ## Boundaries
 
