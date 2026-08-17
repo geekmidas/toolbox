@@ -26,10 +26,15 @@ export type {
 	ConstructId,
 	ConstructManifest,
 	ConstructName,
+	DatabaseDeclaration,
+	DatabaseReaderDeclaration,
+	DatabaseSchemaDeclaration,
 	Declaration,
 	DeclarationKind,
 	DeclarationOf,
 	Dependency,
+	DerivedDeclaration,
+	DerivedKind,
 	Fn,
 	IdsOf,
 	IdsOfKind,
@@ -39,8 +44,13 @@ export type {
 	Provides,
 	ProvidesByKind,
 } from './declaration';
-export { PUBLIC } from './declaration';
-export { InvalidConstructId } from './errors';
+export { DERIVES_FROM, PUBLIC } from './declaration';
+export { assertDerivations, isDerived, provisionOrder } from './derive';
+export {
+	IllegalDerivation,
+	InvalidConstructId,
+	UnknownParent,
+} from './errors';
 export {
 	canonicalId,
 	cloudName,

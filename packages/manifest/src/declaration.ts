@@ -88,11 +88,82 @@ export interface ObjectsDeclaration extends Node {
 }
 
 /**
+ * A logical database, its schema, and the roles that reach it.
+ *
+ * Provides one key — the *runtime* role's URL. The owner URL exists but is
+ * deliberately absent from `provides`: it is wired by the adapter straight into
+ * the migrator and seeder this construct declares, so no edge in any manifest
+ * can name it and nothing else can be granted it by mistake.
+ */
+export interface DatabaseDeclaration extends Node {
+	kind: 'database';
+	engine?: 'postgres';
+	/**
+	 * The schema, pinned on both roles' `search_path`. Names the role the schema
+	 * plays rather than restating the database's own name, so `app` reads
+	 * correctly beside `auth` and `pgboss`.
+	 */
+	schema?: string;
+	/**
+	 * Whether to provision the owner/runtime role split. Off falls back to the
+	 * cluster's master credential in both URLs — a deliberate downgrade, not a
+	 * default. See `roles: false` in the design doc.
+	 */
+	roles?: boolean;
+}
+
+/**
+ * A read-only endpoint on an existing database or schema.
+ *
+ * Provisions no cluster of its own — `of` names the parent it reads from.
+ * Read-only is enforced by the role's grants rather than by which endpoint it
+ * resolves to, so falling back to the writer where no replica exists stays safe.
+ */
+export interface DatabaseReaderDeclaration extends Node {
+	kind: 'database-reader';
+	of: ConstructId;
+}
+
+/**
+ * A second schema inside an existing database, with its own role(s) and URL.
+ *
+ * The mechanism behind tenancy: the parent's role holds no grant on these
+ * tables at all. pg-boss is an instance of this rather than a special case.
+ */
+export interface DatabaseSchemaDeclaration extends Node {
+	kind: 'database-schema';
+	of: ConstructId;
+	schema: string;
+}
+
+/**
  * Every declaration. A discriminated union, so `kind` gives exhaustiveness *and*
  * per-kind fields — there is no separate enum to keep in step, and no shape
  * carrying fields that belong to a different kind.
  */
-export type Declaration = ObjectsDeclaration;
+export type Declaration =
+	| ObjectsDeclaration
+	| DatabaseDeclaration
+	| DatabaseReaderDeclaration
+	| DatabaseSchemaDeclaration;
+
+/** A declaration that provisions nothing of its own and names a parent. */
+export type DerivedDeclaration = Extract<Declaration, { of: ConstructId }>;
+
+export type DerivedKind = DerivedDeclaration['kind'];
+
+/**
+ * What each kind may derive from.
+ *
+ * Small enough to state exhaustively, and stating it makes cycles impossible
+ * without a graph walk: readers are terminal, so no chain can return to its
+ * start. There is no `writer` — the database *is* the writer, which is what
+ * keeps a replica from being reached by accident.
+ */
+export const DERIVES_FROM: Readonly<Record<DerivedKind, readonly string[]>> = {
+	'database-reader': ['database', 'database-schema'],
+	'database-schema': ['database'],
+};
 
 export type DeclarationKind = Declaration['kind'];
 
@@ -169,6 +240,13 @@ export type AllProvidedKeys<M extends ConstructManifest> = {
  */
 export interface ProvidesByKind {
 	objects: { url: string };
+	/**
+	 * One key, the runtime role's. The owner URL is not here by design — see
+	 * {@link DatabaseDeclaration}.
+	 */
+	database: { url: string };
+	'database-reader': { url: string };
+	'database-schema': { url: string };
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
@@ -184,4 +262,8 @@ export const PUBLIC: {
 	readonly [K in keyof ProvidesByKind]: readonly (keyof ProvidesByKind[K])[];
 } = {
 	objects: [],
+	// A connection string is never shippable, whichever role it carries.
+	database: [],
+	'database-reader': [],
+	'database-schema': [],
 };
