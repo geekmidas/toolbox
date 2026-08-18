@@ -937,6 +937,64 @@ export const upload = api.post('/upload')
 // sst.config.ts: nothing — bucket, link, env, and IAM all derive
 ```
 
+### A database, end to end
+
+```ts
+// before — a service, the schema type hand-threaded through the builder,
+// sst.config.ts, and `services: ['postgres']` in gkm.config.ts
+export const dbService = { serviceName: 'db', async register({ envParser }) { … } };
+export const listOrders = e.get('/orders').database(dbService).handle(…);
+
+// after
+export const orders = new KyselyDatabase<OrdersDB, 'Orders'>('Orders', {
+  plugins: [new CamelCasePlugin()],
+});
+
+export const listOrders = api.get('/orders')
+  .database(orders)
+  .handle(async ({ db }) => db.selectFrom('orders').selectAll().execute());
+```
+
+**Both type arguments or neither.** TypeScript has no partial type-argument
+inference, so `new KyselyDatabase<OrdersDB>('Orders')` leaves the name parameter
+at its default and the service key widens from `orders` to `string`. `db` still
+types either way, because `.database()` infers from the service.
+
+Options are `Omit<KyselyConfig, 'dialect'>` plus what the construct declares. The
+construct owns `dialect` — it is built from the one URL the adapter supplied —
+and everything else Kysely takes passes through, so `plugins` and `log` need no
+per-field plumbing here.
+
+Derived constructs are top-level entries that provision nothing of their own:
+
+```ts
+export const ordersReader = orders.reader();                 // OrdersReader, SELECT-only role
+export const auth = orders.schema<AuthDB, 'Auth'>('Auth');   // second schema, own role, own URL
+```
+
+which is four manifest entries from three lines:
+
+```ts
+Orders       { kind: 'database',        schema: 'app',  provides: ['ORDERS_URL'] }
+OrdersReader { kind: 'database-reader',  of: 'Orders',  provides: ['ORDERS_READER_URL'] }
+Auth         { kind: 'database-schema',  of: 'Orders',  schema: 'auth', provides: ['AUTH_URL'] }
+AuthReader   { kind: 'database-reader',  of: 'Auth',    provides: ['AUTH_READER_URL'] }
+```
+
+`app`'s role holds no grant on `auth`'s tables, so a compromised orders handler
+cannot read sessions — and none of it is stated twice.
+
+The same construct is what a test connects through, so configuration cannot
+diverge between them:
+
+```ts
+const isolatedTest = isolator.wrapVitestWithTransaction({ connection: orders });
+
+isolatedTest('lists orders', async ({ trx }) => {
+  await adaptor.request({ database: trx, … });
+});
+```
+
 ### A queue and its producer
 
 ```ts
@@ -1656,8 +1714,11 @@ whenever, repeatedly. It computes the desired state, compares, applies the
 difference. `gkm setup` is that code invoked explicitly — for CI, for a teammate,
 for reconciling without starting a server.
 
-This is not a new concept in the codebase. `reconcileMissingSecrets` is already
-this; what changes is that it reads the manifest instead of a hand-written list.
+Most of this already exists inside `setupCommand`: resolve secrets, write the
+docker env, resolve ports, start the services. What changes is where the list of
+services comes from — the manifest rather than a hand-written `services:` block —
+and that the same function is what `gkm dev` and `gkm test` both call, with the
+stage as its parameter.
 
 ### `gkm dev` sets up automatically
 
@@ -1722,11 +1783,19 @@ that cannot drift:
 | migrations applied | migrations table | already how migrators work |
 | containers, volumes | compose project labels | docker already remembers |
 | generated code, manifest | `.gkm/` | derived; safe to delete at any time |
-| **port assignments** | `.gkm/secrets/<stage>.json` | nothing else remembers, and they must stay stable |
-| **generated passwords** | same file | the database stores only a hash |
+| **port assignments** | `.gkm/ports.json` | nothing else remembers, and they must stay stable |
+| **generated passwords** | `.gkm/secrets/<stage>.json`, encrypted | the database stores only a hash |
 
-Both live in the store that already exists, encrypted, with the key in
-`~/.gkm/<project>/<stage>.key`. No second state file.
+Both stores already exist. `resolveServicePorts` in
+`packages/cli/src/credentials/index.ts` already persists ports to
+`.gkm/ports.json`, reuses a saved port when it is still free, reuses a running
+container's actual port, and falls forward to the next free one when the default
+is taken — which is the whole of the allocation described above. What changes is
+only where the list of services comes from: the manifest, rather than a parsed
+`docker-compose.yml`.
+
+Ports stay out of the encrypted store because they are not secrets, and passwords
+stay in it because they are. The key lives in `~/.gkm/<project>/<stage>.key`.
 
 Because roles are **queried rather than recorded**, losing the secrets file is
 recoverable rather than corrupting: reconcile regenerates the passwords and runs
@@ -1806,6 +1875,73 @@ screen is the failure worth designing out.
 
 Not `gkm credentials` — that name is taken by the Dokploy login store, and two
 meanings of the word is one too many.
+
+### `gkm test` is the same reconcile, with a suffix
+
+Tests need their own database, not their own stack. So `gkm test` is not a
+second mechanism — it is `reconcile` with a different stage:
+
+```
+gkm dev   = reconcile(manifest, 'development') → turbo run dev
+gkm test  = reconcile(manifest, 'test')        → inject env → vitest
+```
+
+**The stage names resources; it never names infrastructure.**
+
+| | `gkm dev` | `gkm test` |
+|---|---|---|
+| container | the project's Postgres | *the same one* |
+| ports | allocated once | *the same* |
+| roles, schema, `search_path` | `app`, `app_owner`, `app` | *the same* |
+| database | `orders` | `orders_test` |
+| bucket, queue | `uploads` | `uploads-test` |
+
+What makes this nearly free is a property of Postgres: **roles are
+cluster-scoped while grants are per-object.** One `app`/`app_owner` pair and one
+`ALTER ROLE … SET search_path` cover both databases, because the schema is
+called `app` in each. Nothing is duplicated, and there is no second container to
+start, wait for, or run out of ports on.
+
+It generalises past databases without a new idea: a bucket becomes
+`uploads-test` in the same MinIO, a queue `orders-test` in the same LocalStack.
+This is the local counterpart of `cloudName(scope, id)`, which already scopes a
+deployed resource by stage.
+
+**`rewriteDatabaseUrlForTests` goes away.** Today `gkm test` rewrites any env key
+containing `DATABASE_URL` by string-editing the database name onto the end. That
+matches nothing once constructs provide `ORDERS_URL` and `AUTH_URL`, so tests
+would quietly run against the development database. Provisioning replaces it: the
+test URL is composed from what was actually created, the same way every other URL
+is, which is also why the Postgres codec needs only `build()` and no parser.
+
+**Tests never commit**, so the test database cannot drift. Every test runs inside
+a transaction that is rolled back, and Postgres rolls back DDL too — so even a
+test that creates a table leaves nothing behind. Two consequences:
+
+- **No per-worker databases.** Vitest runs files concurrently, and MVCC isolates
+  concurrent transactions. One shared `orders_test` is correct, not a compromise.
+- **The only durable writes are the migrations.** So "does the test database need
+  rebuilding" reduces to "have the migrations changed", which the plan hash
+  already answers. `gkm test --fresh` forces it.
+
+The construct is identical in both stages; only the injected value differs. That
+is what lets a test build its client through the *same* `connect()` production
+uses:
+
+```ts
+const isolatedTest = isolator.wrapVitestWithTransaction({
+  connection: orders,        // the construct — registered against process.env
+  fixtures: { factory: (trx) => new KyselyFactory(builders, seeds, trx) },
+});
+
+isolatedTest('creates an order', async ({ trx, factory }) => {
+  await adaptor.request({ database: trx, … });     // one door: trx is `db`
+});
+```
+
+A hand-rolled test client is the failure this avoids: without the construct's
+`plugins`, it writes `createdAt` where the app writes `created_at`, and the test
+passes while production does not.
 
 ## Boundaries
 
