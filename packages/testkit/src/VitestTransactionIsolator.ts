@@ -1,3 +1,5 @@
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { type Service, serviceContext } from '@geekmidas/services';
 import type { TestAPI } from 'vitest';
 
 /**
@@ -155,6 +157,23 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 			fixtures,
 		} = options;
 
+		// Resolved once per file, not once per test. The fixture below runs for
+		// every test, and opening a pool each time leaves one connection per test
+		// alive — a file of fifty tests exhausts the server.
+		let resolved: TConn | undefined;
+		const resolveConnection = async (): Promise<TConn> => {
+			if (resolved === undefined) {
+				resolved = await (isConstruct(connection)
+					? connection.service.register({
+							// Spread: `process.env` is a ProcessEnv, not a plain object.
+							envParser: new EnvironmentParser({ ...process.env }),
+							context: serviceContext,
+						})
+					: connection());
+			}
+			return resolved;
+		};
+
 		// Build fixture definitions for additional fixtures that depend on trx
 		const additionalFixtures: Record<string, unknown> = {};
 		if (fixtures) {
@@ -191,7 +210,7 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 				}
 
 				let testError: Error | undefined;
-				const conn = await connection();
+				const conn = await resolveConnection();
 				try {
 					await this.transact(conn, isolationLevel, async (transaction) => {
 						try {
@@ -216,8 +235,6 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 					if (testError) {
 						throw testError;
 					}
-				} finally {
-					await this.destroy(conn);
 				}
 			},
 			...additionalFixtures,
@@ -226,17 +243,43 @@ export abstract class VitestPostgresTransactionIsolator<TConn, Transaction> {
 }
 
 export type DatabaseConnectionFn<Conn> = () => Conn | Promise<Conn>;
-export type DatabaseConnection<Conn> = DatabaseConnectionFn<Conn>;
+
+/**
+ * Where a connection comes from: a construct, or a function returning one.
+ *
+ * A construct is preferred, because it builds the client through the same
+ * `connect()` production uses. A hand-rolled client missing `CamelCasePlugin`
+ * writes `createdAt` where the app writes `created_at`, and the test passes
+ * while production does not. The URL is read from `process.env`.
+ */
+export type DatabaseConnection<Conn> =
+	| DatabaseConnectionFn<Conn>
+	| ConnectableConstruct<Conn>;
+
+/** A construct is distinguished from a factory by owning a service. */
+function isConstruct<Conn>(
+	connection: DatabaseConnection<Conn>,
+): connection is ConnectableConstruct<Conn> {
+	return typeof connection !== 'function';
+}
 
 /**
  * Options for wrapping Vitest tests with database transaction isolation.
  */
+/**
+ * Anything that owns a service handing back a connection — a database
+ * construct, structurally, so testkit depends on no construct package.
+ */
+export interface ConnectableConstruct<TConn> {
+	readonly service: Service<string, TConn>;
+}
+
 export interface TransactionWrapperOptions<
 	TConn,
 	Transaction,
 	Extended extends Record<string, unknown> = {},
 > {
-	/** Function that creates or returns a database connection */
+	/** Where the connection comes from — a construct, or a function returning one */
 	connection: DatabaseConnection<TConn>;
 	/** Optional setup function to run within the transaction before each test */
 	setup?: (trx: Transaction) => Promise<void>;

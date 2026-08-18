@@ -47,8 +47,13 @@ export class VitestKyselyTransactionIsolator<
 	Kysely<Database>,
 	Transaction<Database>
 > {
-	async destroy(_conn: Kysely<Database>): Promise<void> {
-		// return conn.destroy();
+	/**
+	 * Closes the pool. Safe to implement now that it runs in the file's
+	 * teardown rather than after every test, where it would have closed the
+	 * connection the next test was about to use.
+	 */
+	async destroy(conn: Kysely<Database>): Promise<void> {
+		return conn.destroy();
 	}
 	/**
 	 * Creates a Kysely transaction with the specified isolation level.
