@@ -133,6 +133,16 @@
 				"types": "./dist/object-storage.d.cts",
 				"default": "./dist/object-storage.cjs"
 			}
+		},
+		"./database/kysely": {
+			"import": {
+				"types": "./dist/database/kysely.d.mts",
+				"default": "./dist/database/kysely.mjs"
+			},
+			"require": {
+				"types": "./dist/database/kysely.d.cts",
+				"default": "./dist/database/kysely.cjs"
+			}
 		}
 	},
 	"scripts": {
@@ -197,7 +207,9 @@
 		"hono": ">=4.8.2",
 		"msw": ">=2.0.0",
 		"@geekmidas/manifest": "workspace:^",
-		"@geekmidas/storage": "workspace:^"
+		"@geekmidas/storage": "workspace:^",
+		"kysely": ">=0.28.2 <0.30.0",
+		"pg": "~8.16.3"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/audit": {
@@ -246,6 +258,12 @@
 			"optional": true
 		},
 		"@geekmidas/storage": {
+			"optional": true
+		},
+		"kysely": {
+			"optional": true
+		},
+		"pg": {
 			"optional": true
 		}
 	}
