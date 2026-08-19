@@ -35,6 +35,7 @@ export type {
 	Dependency,
 	DerivedDeclaration,
 	DerivedKind,
+	EmailDeclaration,
 	Fn,
 	IdsOf,
 	IdsOfKind,

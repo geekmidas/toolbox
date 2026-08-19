@@ -88,6 +88,25 @@ export interface ObjectsDeclaration extends Node {
 }
 
 /**
+ * Outbound email.
+ *
+ * Provides one `smtp://` URL and nothing else, because email is delivered over
+ * SMTP whatever the provider — Mailpit locally, SES through its SMTP interface,
+ * Resend and Postmark through theirs. There is no `provider` field here for the
+ * same reason there is no `ses://` scheme: which service delivers the mail
+ * differs between dev and prod, so by this design's own test it is stage-varying
+ * config rather than a structural fact about the app.
+ *
+ * What *is* structural is only that the app sends mail at all. The sending
+ * domain is not: it is `myapp.test` locally and `example.com` deployed, so it
+ * fails the same test the provider does and resolves at deploy alongside every
+ * other address.
+ */
+export interface EmailDeclaration extends Node {
+	kind: 'email';
+}
+
+/**
  * A logical database, its schema, and the roles that reach it.
  *
  * Provides one key — the *runtime* role's URL. The owner URL exists but is
@@ -143,6 +162,7 @@ export interface DatabaseSchemaDeclaration extends Node {
  */
 export type Declaration =
 	| ObjectsDeclaration
+	| EmailDeclaration
 	| DatabaseDeclaration
 	| DatabaseReaderDeclaration
 	| DatabaseSchemaDeclaration;
@@ -240,6 +260,8 @@ export type AllProvidedKeys<M extends ConstructManifest> = {
  */
 export interface ProvidesByKind {
 	objects: { url: string };
+	/** An `smtp://` URL, credentials included — never shippable. */
+	email: { url: string };
 	/**
 	 * One key, the runtime role's. The owner URL is not here by design — see
 	 * {@link DatabaseDeclaration}.
@@ -262,6 +284,8 @@ export const PUBLIC: {
 	readonly [K in keyof ProvidesByKind]: readonly (keyof ProvidesByKind[K])[];
 } = {
 	objects: [],
+	// Carries the SMTP credentials in its userinfo.
+	email: [],
 	// A connection string is never shippable, whichever role it carries.
 	database: [],
 	'database-reader': [],
