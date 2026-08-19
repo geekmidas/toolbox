@@ -63,6 +63,10 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		startDocker: true,
 		secretsFileName: 'test-secrets.json',
 		resolveDockerPorts: 'full',
+		// The same reconcile `gkm dev` runs, differing only in what the resources
+		// are called: one container and one role pair serve both stages, so the
+		// suffix is the whole of the isolation.
+		reconcileStage: 'test',
 	});
 
 	let finalCredentials = { ...result.credentials };

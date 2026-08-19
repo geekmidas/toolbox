@@ -16,6 +16,7 @@ import {
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
+import { usesConstructs } from '../reconcile/workspace.js';
 import { getDependencyEnvVars } from '../workspace/index.js';
 
 const logger = console;
@@ -703,6 +704,14 @@ export async function prepareEntryCredentials(options: {
 	startDocker?: boolean;
 	/** Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json' */
 	secretsFileName?: string;
+	/**
+	 * The stage to reconcile the local target for.
+	 *
+	 * `gkm test` passes `test` and gets the same containers with suffixed
+	 * resources; `gkm dev` passes `development` and gets unsuffixed ones. Only
+	 * read by workspaces that have adopted the constructs glob.
+	 */
+	reconcileStage?: string;
 }): Promise<EntryCredentialsResult> {
 	const cwd = options.cwd ?? process.cwd();
 	const portMode = options.resolveDockerPorts ?? 'full';
@@ -737,63 +746,85 @@ export async function prepareEntryCredentials(options: {
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);
 
-	// Resolve Docker ports and rewrite connection URLs
-	const composePath = join(secretsRoot, 'docker-compose.yml');
-	const mappings = parseComposePortMappings(composePath);
-	if (mappings.length > 0) {
-		let resolvedPorts: ResolvedServicePorts;
+	// An app that has adopted the constructs glob derives its containers, ports,
+	// and URLs from what it declares. The branch below is what it replaces:
+	// parsing a hand-written compose file for ports and rewriting URLs to match.
+	if (appInfo && usesConstructs(appInfo.workspace)) {
+		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
+		const reconciled = await reconcileWorkspace(appInfo.workspace, {
+			stage: options.reconcileStage ?? 'development',
+			start: options.startDocker ?? false,
+		});
 
-		if (portMode === 'full') {
-			// Full resolution: probe containers, saved state, find available ports
-			resolvedPorts = await resolveServicePorts(secretsRoot);
-		} else {
-			// Readonly: check running containers and saved state only
-			const savedPorts = await loadPortState(secretsRoot);
-			const ports: PortState = {};
+		// Declared URLs win over anything sniffed or stored: the manifest is the
+		// statement of what exists, and a stale secret naming an old port is
+		// exactly the drift this replaces.
+		Object.assign(credentials, reconciled.env);
 
-			for (const mapping of mappings) {
-				const containerPort = getContainerHostPort(
-					secretsRoot,
-					mapping.service,
-					mapping.containerPort,
-				);
-				if (containerPort !== null) {
-					ports[mapping.envVar] = containerPort;
-				} else {
-					const saved = savedPorts[mapping.envVar];
-					if (saved !== undefined) {
-						ports[mapping.envVar] = saved;
+		if (Object.keys(reconciled.env).length > 0) {
+			logger.log(
+				`🔌 Resolved ${Object.keys(reconciled.env).length} declared URL(s)`,
+			);
+		}
+	} else {
+		// Resolve Docker ports and rewrite connection URLs
+		const composePath = join(secretsRoot, 'docker-compose.yml');
+		const mappings = parseComposePortMappings(composePath);
+		if (mappings.length > 0) {
+			let resolvedPorts: ResolvedServicePorts;
+
+			if (portMode === 'full') {
+				// Full resolution: probe containers, saved state, find available ports
+				resolvedPorts = await resolveServicePorts(secretsRoot);
+			} else {
+				// Readonly: check running containers and saved state only
+				const savedPorts = await loadPortState(secretsRoot);
+				const ports: PortState = {};
+
+				for (const mapping of mappings) {
+					const containerPort = getContainerHostPort(
+						secretsRoot,
+						mapping.service,
+						mapping.containerPort,
+					);
+					if (containerPort !== null) {
+						ports[mapping.envVar] = containerPort;
+					} else {
+						const saved = savedPorts[mapping.envVar];
+						if (saved !== undefined) {
+							ports[mapping.envVar] = saved;
+						}
 					}
+				}
+
+				resolvedPorts = { dockerEnv: {}, ports, mappings };
+			}
+
+			// Start Docker services if requested (between port resolution and URL rewriting)
+			// Docker needs raw secrets (POSTGRES_USER, etc.) + resolved port env for compose interpolation
+			if (options.startDocker) {
+				if (appInfo) {
+					await startWorkspaceServices(
+						appInfo.workspace,
+						resolvedPorts.dockerEnv,
+						credentials,
+					);
+				} else {
+					await startComposeServices(
+						secretsRoot,
+						resolvedPorts.dockerEnv,
+						credentials,
+					);
 				}
 			}
 
-			resolvedPorts = { dockerEnv: {}, ports, mappings };
-		}
-
-		// Start Docker services if requested (between port resolution and URL rewriting)
-		// Docker needs raw secrets (POSTGRES_USER, etc.) + resolved port env for compose interpolation
-		if (options.startDocker) {
-			if (appInfo) {
-				await startWorkspaceServices(
-					appInfo.workspace,
-					resolvedPorts.dockerEnv,
-					credentials,
-				);
-			} else {
-				await startComposeServices(
-					secretsRoot,
-					resolvedPorts.dockerEnv,
-					credentials,
+			if (Object.keys(resolvedPorts.ports).length > 0) {
+				const rewritten = rewriteUrlsWithPorts(credentials, resolvedPorts);
+				Object.assign(credentials, rewritten);
+				logger.log(
+					`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
 				);
 			}
-		}
-
-		if (Object.keys(resolvedPorts.ports).length > 0) {
-			const rewritten = rewriteUrlsWithPorts(credentials, resolvedPorts);
-			Object.assign(credentials, rewritten);
-			logger.log(
-				`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-			);
 		}
 	}
 

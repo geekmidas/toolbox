@@ -6,6 +6,7 @@ import {
 	resolveServicePorts,
 	startWorkspaceServices,
 } from '../credentials/index.js';
+import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
@@ -82,20 +83,57 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		logger.log('📄 Generated docker/.env with database passwords');
 	}
 
-	// 4. Start Docker services with resolved ports
+	// 4. Reconcile the local target: derive containers, allocate ports, start.
 	if (!options.skipDocker) {
-		const composeFile = join(workspace.root, 'docker-compose.yml');
-		if (existsSync(composeFile)) {
-			logger.log('');
-			const resolvedPorts = await resolveServicePorts(workspace.root);
-			await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
+		logger.log('');
+
+		// An app that has adopted the constructs glob gets its containers derived
+		// from what it declares. One that has not keeps the hand-maintained
+		// compose file — the change is adoptable in pieces, not a flag day.
+		if (usesConstructs(workspace)) {
+			await reconcileLocal(workspace, stage);
 		} else {
-			logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
+			const composeFile = join(workspace.root, 'docker-compose.yml');
+			if (existsSync(composeFile)) {
+				const resolvedPorts = await resolveServicePorts(workspace.root);
+				await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
+			} else {
+				logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
+			}
 		}
 	}
 
 	// Print summary
 	printSummary(workspace, stage);
+}
+
+/**
+ * Converge this machine on what the manifest declares.
+ *
+ * Says what it did in one line and stays silent when it did nothing, because
+ * reconciling on every start is only tolerable if the converged case is both
+ * free and quiet.
+ */
+async function reconcileLocal(
+	workspace: NormalizedWorkspace,
+	stage: string,
+): Promise<void> {
+	const result = await reconcileWorkspace(workspace, { stage });
+
+	if (result.plan.containers.length === 0) {
+		logger.log('🐳 No containers declared');
+		return;
+	}
+
+	if (!result.changed) {
+		logger.log('🐳 Services already up to date');
+		return;
+	}
+
+	logger.log(`🐳 Services: ${result.plan.containers.join(', ')}`);
+	for (const [container, address] of Object.entries(result.addresses)) {
+		logger.log(`   ${container}: ${address}`);
+	}
 }
 
 /**

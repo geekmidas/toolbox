@@ -440,6 +440,17 @@ interface AppConfigBase {
 	// ─────────────────────────────────────────────────────────────────
 
 	/**
+	 * Constructs glob pattern — one glob, every kind.
+	 *
+	 * A glob per kind cannot find a resource, because a declared `ObjectStorage`
+	 * has no kind to be listed under. This one is what reconcile reads to derive
+	 * the containers a stage needs, and it replaces the per-kind globs below.
+	 *
+	 * @example './src/**\/*.ts'
+	 */
+	constructs?: Routes;
+
+	/**
 	 * Routes glob pattern for gkm endpoints.
 	 * @example './src/endpoints/**\/*.ts'
 	 */
