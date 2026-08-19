@@ -15,7 +15,7 @@ services:
       SRH_CONNECTION_STRING: "redis://redis:6379" # Using `redis` hostname since they're in the same Docker network.
   postgres:
     restart: unless-stopped
-    image: postgres:17
+    image: postgres:18
     volumes:
       - "dbdata:/var/lib/postgresql/data"
       - "./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql"
