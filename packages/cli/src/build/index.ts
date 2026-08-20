@@ -28,6 +28,7 @@ import {
 	type GeneratedConstruct,
 	QueueGenerator,
 	SubscriberGenerator,
+	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
@@ -162,6 +163,9 @@ export async function buildCommand(
 		hooks,
 		production,
 		dockerServices,
+		// The entry point registers the drivers its target needs, so a URL's
+		// scheme can pick one without application code naming a provider.
+		storageDrivers: storageDriversFor(process.cwd()),
 		markOptional: options.markOptional ?? false,
 	};
 

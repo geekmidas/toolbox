@@ -12,6 +12,7 @@ import {
 } from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { LegacyProvider, RouteInfo } from '../types';
+import type { StorageDrivers } from './drivers';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -221,6 +222,7 @@ export class EndpointGenerator extends ConstructGenerator<
 					exportName,
 					relativeEnvParserPath,
 					context.envParserImportPattern,
+					context.storageDrivers,
 				);
 				break;
 			case 'aws-apigatewayv2':
@@ -229,6 +231,7 @@ export class EndpointGenerator extends ConstructGenerator<
 					exportName,
 					relativeEnvParserPath,
 					context.envParserImportPattern,
+					context.storageDrivers,
 				);
 				break;
 			case 'server':
@@ -624,7 +627,17 @@ import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${telescopeImports}
 ${studioImports}
 ${hooksImports}
+${context.storageDrivers?.imports ?? ''}
 
+${
+	context.storageDrivers?.setup
+		? `// Which storage drivers exist is the entry point's decision: the scheme in
+// each injected URL picks one, so no construct and no application module names
+// a provider.
+${context.storageDrivers.setup}
+`
+		: ''
+}
 export interface ServerApp {
   app: HonoType;
   start: (options?: {
@@ -721,11 +734,13 @@ export default createApp;
 		exportName: string,
 		envParserPath: string,
 		envParserImportPattern: string,
+		drivers?: StorageDrivers,
 	): string {
 		return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
-
+${drivers?.imports ?? ''}
+${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
 const adapter = new AmazonApiGatewayV1Endpoint(envParser, ${exportName});
 
 export const handler = adapter.handler;
@@ -737,11 +752,13 @@ export const handler = adapter.handler;
 		exportName: string,
 		envParserPath: string,
 		envParserImportPattern: string,
+		drivers?: StorageDrivers,
 	): string {
 		return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 import ${envParserImportPattern} from '${envParserPath}';
-
+${drivers?.imports ?? ''}
+${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
 const adapter = new AmazonApiGatewayV2Endpoint(envParser, ${exportName});
 
 export const handler = adapter.handler;
@@ -866,7 +883,15 @@ ${subscriberImport}
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${hooksImports}
+${context.storageDrivers?.imports ?? ''}
 
+${
+	context.storageDrivers?.setup
+		? `// The entry point registers the drivers its target needs.
+${context.storageDrivers.setup}
+`
+		: ''
+}
 export interface ServerApp {
   app: HonoType;
   start: (options?: {

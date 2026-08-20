@@ -35,6 +35,7 @@ import {
 	FunctionGenerator,
 	QueueGenerator,
 	SubscriberGenerator,
+	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import {
@@ -1197,6 +1198,11 @@ async function buildServer(
 	appRoot: string = process.cwd(),
 	bustCache = false,
 ): Promise<void> {
+	// The entry point registers the drivers its target needs — see
+	// `generators/drivers.ts`. Decided here because this is where the app root is
+	// known, and read by every generator that writes an entry.
+	context = { ...context, storageDrivers: storageDriversFor(appRoot) };
+
 	// Initialize generators
 	const endpointGenerator = new EndpointGenerator();
 	const functionGenerator = new FunctionGenerator();
