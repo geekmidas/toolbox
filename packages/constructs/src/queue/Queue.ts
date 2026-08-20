@@ -1,4 +1,3 @@
-import { environmentCase } from '@geekmidas/envkit';
 import {
 	type EventPublisher,
 	type EventPublisherConnectionString,
@@ -7,6 +6,7 @@ import {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
+import { canonicalId, type Declaration, provideKey } from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -52,6 +52,23 @@ export class Queue<
 		);
 	}
 
+	/**
+	 * The canonical id this queue is declared under.
+	 *
+	 * Derived from the name rather than given separately, so `emails` and
+	 * `Emails` are one queue. The name stays what it was: it is the wire `type`
+	 * a producer sends and the worker subscribes to, and changing that would
+	 * silently orphan in-flight messages.
+	 */
+	readonly id: string;
+
+	/**
+	 * The producer's env key. Read by both {@link declare} and
+	 * {@link publisher}, so what the target publishes and what the producer
+	 * looks up cannot drift.
+	 */
+	private readonly connectionKey: string;
+
 	constructor(
 		public readonly name: TName,
 		public readonly handler: QueueHandler<TMessage, TServices, TLogger>,
@@ -73,6 +90,28 @@ export class Queue<
 			undefined,
 			timeout,
 		);
+
+		this.id = canonicalId(name);
+		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+	}
+
+	/**
+	 * What this queue is in the manifest.
+	 *
+	 * A queue is a resource, not a handler: the worker is reached *through* it,
+	 * so the declaration carries the producer's key and nothing about the code
+	 * that drains it. The local target reads this to know which broker has to be
+	 * running and what connection string to inject.
+	 */
+	declare(): Declaration[] {
+		return [
+			{
+				kind: 'queue',
+				id: this.id,
+				provides: [this.connectionKey],
+				...(this.fifo ? { fifo: true } : {}),
+			},
+		];
 	}
 
 	/**
@@ -90,7 +129,7 @@ export class Queue<
 		`${TName}Publisher`,
 		EventPublisher<QueueMessage<TName, TMessage>>
 	> {
-		const envVar = `${environmentCase(this.name)}_PUBLISHER_CONNECTION_STRING`;
+		const envVar = this.connectionKey;
 		return {
 			serviceName: `${this.name}Publisher`,
 			async register({ envParser }) {

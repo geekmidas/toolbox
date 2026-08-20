@@ -1,4 +1,3 @@
-import { environmentCase } from '@geekmidas/envkit';
 import {
 	type EventPublisher,
 	type EventPublisherConnectionString,
@@ -7,6 +6,7 @@ import {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
+import { canonicalId, type Declaration, provideKey } from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -52,6 +52,20 @@ export class Topic<
 		);
 	}
 
+	/**
+	 * The canonical id this topic is declared under.
+	 *
+	 * Derived from the name, so `users` and `Users` are one topic. The name is
+	 * left alone: subscribers bind to it and it is what the broker routes on.
+	 */
+	readonly id: string;
+
+	/**
+	 * The producer's env key, read by both {@link declare} and
+	 * {@link publisher} so the two cannot drift.
+	 */
+	private readonly connectionKey: string;
+
 	constructor(
 		public readonly name: TName,
 		/**
@@ -63,6 +77,26 @@ export class Topic<
 		logger: Logger = DEFAULT_LOGGER,
 	) {
 		super(ConstructType.Topic, logger, [], []);
+
+		this.id = canonicalId(name);
+		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+	}
+
+	/**
+	 * What this topic is in the manifest.
+	 *
+	 * Only the producer's key: a subscriber is *bound* to a topic rather than
+	 * depending on it, so the binding is an edge the deploy target reads and not
+	 * an env key anyone can hold. Locally both sides meet on the same broker.
+	 */
+	declare(): Declaration[] {
+		return [
+			{
+				kind: 'topic',
+				id: this.id,
+				provides: [this.connectionKey],
+			},
+		];
 	}
 
 	/** The event type names this topic carries. */
@@ -84,7 +118,7 @@ export class Topic<
 		`${TName}Publisher`,
 		EventPublisher<TopicMessage<TEvents>>
 	> {
-		const envVar = `${environmentCase(this.name)}_PUBLISHER_CONNECTION_STRING`;
+		const envVar = this.connectionKey;
 		return {
 			serviceName: `${this.name}Publisher`,
 			async register({ envParser }) {

@@ -44,6 +44,8 @@ export type {
 	ProvidedKeys,
 	Provides,
 	ProvidesByKind,
+	QueueDeclaration,
+	TopicDeclaration,
 } from './declaration';
 export { DERIVES_FROM, PUBLIC } from './declaration';
 export { assertDerivations, isDerived, provisionOrder } from './derive';

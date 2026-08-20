@@ -156,6 +156,34 @@ export interface DatabaseSchemaDeclaration extends Node {
 }
 
 /**
+ * A point-to-point queue and the single consumer that drains it.
+ *
+ * Provides one key, the producer's connection string. The protocol in it picks
+ * the transport — `pgboss://` locally, `sqs://` deployed — so a producer names
+ * no broker, exactly as a database consumer names no cloud.
+ *
+ * The consumer side provides nothing: a worker is reached *through* its queue,
+ * so there is no second key and nothing can depend on a handler.
+ */
+export interface QueueDeclaration extends Node {
+	kind: 'queue';
+	/** FIFO ordering, where the transport offers it. */
+	fifo?: boolean;
+}
+
+/**
+ * A topic — pub/sub fan-out, one publisher and any number of subscribers.
+ *
+ * Like a queue it provides only the producer's string; a subscriber is bound to
+ * the topic rather than depending on it, so the binding is an edge the deploy
+ * target reads, not an env key. Locally both sides meet on the same pg-boss
+ * connection, which is why the subscriber needs no key of its own.
+ */
+export interface TopicDeclaration extends Node {
+	kind: 'topic';
+}
+
+/**
  * Every declaration. A discriminated union, so `kind` gives exhaustiveness *and*
  * per-kind fields — there is no separate enum to keep in step, and no shape
  * carrying fields that belong to a different kind.
@@ -165,7 +193,9 @@ export type Declaration =
 	| EmailDeclaration
 	| DatabaseDeclaration
 	| DatabaseReaderDeclaration
-	| DatabaseSchemaDeclaration;
+	| DatabaseSchemaDeclaration
+	| QueueDeclaration
+	| TopicDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
 export type DerivedDeclaration = Extract<Declaration, { of: ConstructId }>;
@@ -269,6 +299,12 @@ export interface ProvidesByKind {
 	database: { url: string };
 	'database-reader': { url: string };
 	'database-schema': { url: string };
+	/**
+	 * The producer's connection string. One key, not two: the consumer is
+	 * reached through the queue rather than by an address of its own.
+	 */
+	queue: { publisherConnectionString: string };
+	topic: { publisherConnectionString: string };
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
@@ -290,4 +326,8 @@ export const PUBLIC: {
 	database: [],
 	'database-reader': [],
 	'database-schema': [],
+	// Carries broker credentials, and a browser that can publish to a queue can
+	// forge any job the worker trusts.
+	queue: [],
+	topic: [],
 };
