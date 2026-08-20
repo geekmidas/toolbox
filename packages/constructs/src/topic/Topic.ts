@@ -6,7 +6,12 @@ import {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { canonicalId, type Declaration, provideKey } from '@geekmidas/manifest';
+import {
+	canonicalId,
+	type Declaration,
+	provideKey,
+	serviceKey,
+} from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -114,6 +119,27 @@ export class Topic<
 	 * Because it's a `Service`, the connection-string requirement is sniffed into
 	 * the manifest of whatever construct injects it (least-privilege linking).
 	 */
+	/**
+	 * The topic as a dependency — what `.dependsOn([users])` dissolves into,
+	 * reachable as `services.users`.
+	 *
+	 * It is the producer, because publishing is the only thing depending on a
+	 * topic can mean: a subscriber *binds* with `s.topic(…)` instead, and is
+	 * deliberately never handed this. {@link publisher} is the same service
+	 * under its older `<name>Publisher` key.
+	 */
+	get service(): Service<
+		Uncapitalize<TName>,
+		EventPublisher<TopicMessage<TEvents>>
+	> {
+		const { register } = this.publisher;
+
+		return {
+			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
+			register,
+		};
+	}
+
 	get publisher(): Service<
 		`${TName}Publisher`,
 		EventPublisher<TopicMessage<TEvents>>

@@ -10,6 +10,12 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
+import {
+	type Consumable,
+	type ServicesOf,
+	serviceOf,
+	servicesOf,
+} from '../construct-interface';
 import { BaseFunctionBuilder } from '../functions';
 import type { HttpMethod } from '../types';
 import type { Authorizer, SecurityScheme } from './Authorizer';
@@ -341,6 +347,57 @@ export class EndpointBuilder<
 		return this;
 	}
 
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	dependsOn<const T extends readonly Consumable[]>(
+		constructs: T,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		[...TServices, ...ServicesOf<T>],
+		TLogger,
+		OutSchema,
+		TSession,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as EndpointBuilder<
+			TRoute,
+			TMethod,
+			TInput,
+			[...TServices, ...ServicesOf<T>],
+			TLogger,
+			OutSchema,
+			TSession,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TAuthorizers,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			TAuditAction,
+			TDatabase,
+			TDatabaseServiceName
+		>;
+	}
+
 	services<T extends Service[]>(
 		services: T,
 	): EndpointBuilder<
@@ -577,7 +634,7 @@ export class EndpointBuilder<
 	 * ```
 	 */
 	override database<T, TName extends string>(
-		service: Service<TName, T>,
+		source: Consumable<TName, T> | Service<TName, T>,
 	): EndpointBuilder<
 		TRoute,
 		TMethod,
@@ -595,6 +652,8 @@ export class EndpointBuilder<
 		T,
 		TName
 	> {
+		const service = serviceOf(source);
+
 		this._databaseService = service as unknown as Service<
 			TDatabaseServiceName,
 			TDatabase

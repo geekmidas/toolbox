@@ -8,7 +8,7 @@ import { database } from '../constructs/database.js';
  */
 export const cleanupStaleUsers = c
 	.logger(logger)
-	.services([database.service])
+	.dependsOn([database])
 	.schedule('rate(1 day)')
 	.handle(async ({ services, logger }) => {
 		const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);

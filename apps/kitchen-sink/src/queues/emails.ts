@@ -28,7 +28,8 @@ export const EmailJob = z.object({
 export const emailsQueue = q
 	.queue('emails')
 	.logger(logger)
-	.services([CacheService, mail.service])
+	.dependsOn([mail])
+	.services([CacheService])
 	.message(EmailJob)
 	.handle(async ({ messages, services, logger }) => {
 		for (const { to, name, userId, template } of messages) {

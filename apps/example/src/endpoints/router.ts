@@ -12,7 +12,7 @@ import { EventsService } from '../services/EventsService';
  * ```typescript
  * e.logger(logger)
  *   .services([AuthService])
- *   .database(database.service)
+ *   .database(database)
  *   .auditor(AuditStorageService)
  *   .publisher(EventsService)
  * ```
@@ -39,7 +39,7 @@ import { EventsService } from '../services/EventsService';
 export const router = e
 	.logger(logger)
 	.services([AuthService])
-	.database(database.service)
+	.database(database)
 	.auditor(AuditStorageService)
 	.publisher(EventsService)
 	.authorizer('iam');

@@ -12,7 +12,7 @@ import { CacheService } from '../services/CacheService.js';
  * - `logger`                        — the Pino/Telescope logger
  * - `.services([...])`              — auth and cache, the two things that are
  *                                     not resources and so are still `Service`s
- * - `.database(database.service)`   — `db` in context, typed by the construct's
+ * - `.database(database)`           — `db` in context, typed by the construct's
  *                                     schema (and the audit transaction)
  * - `.auditor(AuditStorageService)` — `auditor` in context + declarative `.audit([...])`
  * - `.publisher(users.publisher)`   — the topic's *derived* producer, so
@@ -25,6 +25,6 @@ import { CacheService } from '../services/CacheService.js';
 export const router = e
 	.logger(logger)
 	.services([AuthService, CacheService])
-	.database(database.service)
+	.database(database)
 	.auditor(AuditStorageService)
 	.publisher(users.publisher);

@@ -10,7 +10,7 @@ import { database } from '../constructs/database.js';
  */
 export const reindexUsers = f
 	.logger(logger)
-	.services([database.service])
+	.dependsOn([database])
 	.input(z.object({ since: z.iso.datetime().optional() }))
 	.output(z.object({ reindexed: z.number() }))
 	.handle(async ({ input, services, logger }) => {

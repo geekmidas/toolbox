@@ -6,7 +6,12 @@ import {
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
-import { canonicalId, type Declaration, provideKey } from '@geekmidas/manifest';
+import {
+	canonicalId,
+	type Declaration,
+	provideKey,
+	serviceKey,
+} from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -125,6 +130,27 @@ export class Queue<
 	 * `Construct.getEnvironment()` sniffs it, so the env requirement flows into
 	 * the manifest and infra links exactly this queue with least privilege.
 	 */
+	/**
+	 * The queue as a dependency — what `.dependsOn([emailsQueue])` dissolves
+	 * into, reachable as `services.emails`.
+	 *
+	 * It is the producer: a consumer is the worker written right here, so the
+	 * only thing another construct can want from a queue is the ability to send
+	 * to it. {@link publisher} is the same service under its older
+	 * `<name>Publisher` key, kept for `.services([queue.publisher])`.
+	 */
+	get service(): Service<
+		Uncapitalize<TName>,
+		EventPublisher<QueueMessage<TName, TMessage>>
+	> {
+		const { register } = this.publisher;
+
+		return {
+			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
+			register,
+		};
+	}
+
 	get publisher(): Service<
 		`${TName}Publisher`,
 		EventPublisher<QueueMessage<TName, TMessage>>

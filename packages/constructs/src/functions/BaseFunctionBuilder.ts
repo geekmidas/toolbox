@@ -10,6 +10,7 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
+import { type Consumable, serviceOf } from '../construct-interface';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -167,7 +168,7 @@ export abstract class BaseFunctionBuilder<
 	 * The database will be available in the handler context as `db`.
 	 */
 	database<T, TName extends string>(
-		service: Service<TName, T>,
+		source: Consumable<TName, T> | Service<TName, T>,
 	): BaseFunctionBuilder<
 		TInput,
 		OutSchema,
@@ -180,6 +181,8 @@ export abstract class BaseFunctionBuilder<
 		T,
 		TName
 	> {
+		const service = serviceOf(source);
+
 		this._databaseService = service as unknown as Service<
 			TDatabaseServiceName,
 			TDatabase

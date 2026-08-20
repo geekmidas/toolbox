@@ -15,7 +15,7 @@ import { users } from '../constructs/topics.js';
  */
 export const userEventsSubscriber = s
 	.logger(logger)
-	.services([database.service])
+	.dependsOn([database])
 	.topic(users)
 	.subscribe(['user.created', 'user.updated'])
 	.handle(async ({ events, logger }) => {

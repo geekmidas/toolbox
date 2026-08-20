@@ -2,6 +2,11 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import {
+	type Consumable,
+	type ServicesOf,
+	servicesOf,
+} from '../construct-interface';
 import { Queue, type QueueHandler } from './Queue';
 
 /**
@@ -47,6 +52,30 @@ export class QueueBuilder<
 	fifo(fifo = true): this {
 		this._fifo = fifo;
 		return this;
+	}
+
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	dependsOn<const T extends readonly Consumable[]>(
+		constructs: T,
+	): QueueBuilder<TName, TMessage, [...TServices, ...ServicesOf<T>], TLogger> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as QueueBuilder<
+			TName,
+			TMessage,
+			[...TServices, ...ServicesOf<T>],
+			TLogger
+		>;
 	}
 
 	services<T extends Service[]>(
