@@ -1,6 +1,6 @@
 # Dev Server Resilience Design
 
-Status: parked / not yet started
+Status: parked / not yet started — issues re-verified against `apps/kitchen-sink`
 Owner: TBD
 Scope: `packages/cli/src/dev/index.ts`, `packages/cli/src/generators/Generator.ts`
 
@@ -59,6 +59,56 @@ limitations of the current dev orchestrator and hot-reload implementation.
     fragile (loader compatibility with tsx, source maps, etc.).
 
 Worker thread is the recommended path.
+
+### Verified, and what the measurements added
+
+Re-run against `apps/kitchen-sink` while the constructs work was landing. Both
+root causes reproduce; two further findings belong with them.
+
+| behaviour | measured |
+|---|---|
+| one save to an existing file | 2 `📝 File changed` lines → 1 rebuild (the 300ms debounce collapses them) |
+| one rebuild | regenerates server files and the OpenAPI client, then restarts the server |
+| a brand-new file | **0 rebuilds** — the route 404s until the dev server is restarted |
+
+**Every file is watched twice.** `chokidar.watch([...resolvedFiles,
+...dirsToWatch])` registers each file explicitly *and* through its parent
+directory, so a single write fires two `change` events. The debounce hides it, so
+this is noise rather than a second rebuild — but it doubles the event rate and
+makes the log read as though something is looping. Watching the directories alone
+is enough, and is also where the `add`/`unlink` fix has to live.
+
+**Generation is unconditional.** Every rebuild rewrites `.gkm/openapi.ts` whether
+or not any signature changed, so editing a comment rewrites a file other apps
+import — a spurious HMR reload in every frontend dev server watching it. Generated
+files should be written only when their content changes. This matters more as
+constructs start generating client-side consumables: a client that rewrites on
+every keystroke is a client nothing downstream can watch.
+
+### The Zod registry error is a symptom of root cause 2
+
+`.meta({ id })` throwing *"ID X already exists in the registry"* on hot reload is
+the same shallow-cache-bust problem, seen from the other side.
+
+The mitigation already exists and is wired correctly: `clearZodGlobalRegistry()`
+runs at the start of every cache-busting `load()`, and Zod 4 keeps its registry at
+`globalThis.__zod_globalRegistry`, so one clear covers every copy of Zod in the
+process. It could not be made to throw in kitchen-sink — including with one route
+importing another route's `.meta({ id })` schema — precisely *because* the bust is
+shallow: the schema module is not re-executed, so it never registers twice. What
+you get instead is the stale schema.
+
+It throws when one module executes **twice after a single clear**, and the way
+that happens is two generator globs matching the same file: the six generators
+run under `Promise.all` and each stamps its own `Date.now()`, so the same file
+resolves under two URLs, executes twice, and registers the id twice. Overlapping
+globs (`routes` and `functions` both matching `src/api/**`) is therefore the first
+thing to check in an app that hits this.
+
+Either way, the fix is not another registry patch. The worker-thread rebuild below
+removes the whole class at once — a fresh module graph per rebuild means no `?t=`,
+no clearing, no stale transitive modules, and no duplicate ids. The registry
+problem stops existing rather than being caught.
 
 ## Issue 2 — Ctrl+C orphans `tsx`/`node` processes
 
@@ -173,6 +223,17 @@ and 2 solvable cleanly.
 
 Each step is shippable independently. Order matters: 1 unblocks the cleanest
 form of 2 and 3.
+
+**Nothing in this repository exercises step 1.** `workspaceDevCommand` only runs
+for a multi-app workspace, and both `apps/example` and `apps/kitchen-sink` are
+single-app configs — so the supervisor needs a two-app workspace fixture landed
+alongside it, or it ships unverified.
+
+There is also a cheap slice of Issue 1 that does not wait on the supervisor and is
+verifiable today: subscribe to `add`/`unlink` and re-resolve the glob set, watch
+the glob roots rather than the files, drop the double watch, and write generated
+files only when their content changes. That leaves the worker thread — the part
+that actually needs the supervisor's process ownership — as the remaining work.
 
 ## Out of scope
 

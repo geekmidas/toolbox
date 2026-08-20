@@ -937,6 +937,82 @@ export const upload = api.post('/upload')
 // sst.config.ts: nothing — bucket, link, env, and IAM all derive
 ```
 
+### Serving files
+
+`ObjectStorage` is the bucket: it writes, it presigns, and its URL is never
+public. Serving those objects on a domain is a *second address on the same
+resource*, so it is a derived construct — the shape `orders.reader()` and
+`orders.schema()` already use — rather than a second kind of storage anyone has
+to choose between:
+
+```ts
+export const uploads = new ObjectStorage('Uploads');
+export const files   = uploads.server({ subdomain: 'files', open: ['brand/**'] });
+```
+
+Three axes get conflated here, and separating them is most of the design:
+
+| axis | choices | decided by |
+|---|---|---|
+| does reading need a signature | open / signed | the object, via its path |
+| how a signature travels | cookie / URL | the use case, not the object |
+| which address you hold | bucket (write, presign) / server (domain, read) | the edge |
+
+**Private by default; `open` is an exception list.** A bucket where forgetting a
+flag publishes user uploads is the wrong default. `open` names the paths served
+without a signature; everything else requires one. Paths rather than per-object
+flags because that is what the infrastructure enforces — with origin access
+locked down, a CDN keys behaviours off path patterns, and a per-object ACL is a
+thing nobody audits. Listing them in code means exactly one set of paths is
+unauthenticated and it is reviewable in a diff.
+
+**"Public" never means the bucket is world-readable.** It means the server
+serves that path without a signature. The bucket stays private in both cases.
+
+**The subdomain is the address, not the boundary.** Signed content is served
+from the same host — and for cookies it *must* be, since a cookie is scoped to a
+domain. Two servers over one bucket is a legitimate arrangement (public assets
+that never carry an auth cookie, and cleaner cache keys), but that is a
+cache-behaviour decision, not a secrecy one.
+
+**Cookies are set at the parent domain**, `Domain=.example.com`, exactly as the
+auth section already requires — so the file server needs to know nothing about
+the API, and there is one domain rule in the system rather than two. Two
+assumptions come with it, and they are assumptions rather than accidents: every
+subdomain under that parent is yours (a parent-scoped cookie can be overwritten
+by anything under it, so per-tenant subdomains would need revisiting), and open
+behaviours are configured not to forward cookies, so the browser sending one
+does not pollute the cache key.
+
+**Per-user authorisation is out of scope for path patterns.** "Can *this* user
+read invoice 7" is not expressible as a prefix; the answer is that the app
+authorises and redirects to a short-lived signed URL. Saying so is better than
+implying patterns cover it — the alternative is an edge function doing auth,
+which is a large surface to sign up for.
+
+#### Locally, on MinIO
+
+Three of the four map cleanly:
+
+| capability | local |
+|---|---|
+| the address | `MINIO_DOMAIN` gives virtual-host addressing — `uploads.myapp.test/brand/logo.png` is the CDN URL shape, no bucket segment, no proxy |
+| `open` patterns | a MinIO bucket policy with prefix resources — real enforcement, same declaration |
+| signed URLs | S3 presigning works against MinIO unchanged |
+| signed cookies | **nothing** — CloudFront-specific |
+
+The addressing constraint: the label has to equal the bucket name for MinIO to
+resolve it, which the default already satisfies since both derive from the id.
+Overriding the label costs shape-parity locally until the local target grows a
+proxy that mimics a CDN over MinIO — worth doing later, and additive when it
+lands.
+
+The cookie gap is why the client should expose one `read(key)` that resolves
+however the stage can, rather than app code branching on a mechanism that only
+half exists locally. If cookies are the default path in application code, the
+first time anyone learns whether the domain, `Secure`, and `SameSite` are right
+is on deploy.
+
 ### A database, end to end
 
 ```ts
@@ -1127,6 +1203,97 @@ Two knock-ons: CORS **cannot** be `*`, because credentialed requests require an
 explicit origin, which the derived list supplies; and mounting auth on the API
 surface is the better default, since the cookie is then same-origin with the
 calls that use it.
+
+#### Consolidating providers: abstract the authorizer, not the server
+
+A self-hosted auth server and a hosted identity provider are not the same thing
+wearing different clothes. One owns a database, mounts endpoints on your domain,
+and issues your session; the other owns nothing of yours and hands you a token to
+verify against a JWKS. A facade over both ends up leaky or anemic — and the
+anemic version is the one that abstracts user management, orgs, and admin APIs
+into an interface too thin to use.
+
+What they genuinely share is one thing, and it is the thing every endpoint
+consumes:
+
+```ts
+verify(request) → Session | null
+```
+
+So the **authorizer** is the consolidation point, and the provider construct is
+not consolidated at all:
+
+```ts
+export const auth = new BetterAuth('Auth', { database: authDb, … });  // owns a DB, a surface, a secret
+export const auth = new OidcAuth('Auth', { issuer: 'https://…/' });   // owns a client secret, nothing else
+
+export const api = new RestApi('Api', { authorizers: [auth], default: auth });
+```
+
+`services.auth` stays the provider's own client — no lowest common denominator —
+while `session` in a handler is uniform because it arrived through the
+authorizer. The hosted half is largely written already: `@geekmidas/auth` has
+`oidc.ts` and `jwt.ts` on jose with hono and lambda adaptors, so `OidcAuth`
+wraps existing code rather than reimplementing verification.
+
+#### The auth server is its own surface
+
+Mounting auth on the API surface was argued from cookie same-origin. Once the
+cookie is set at the parent domain — which the file server needs anyway —
+`auth.example.com` reaches the API just as well, so mounting becomes a
+deploy-shape question rather than a correctness one: its own surface means its
+own scaling, its own cold starts, its own blast radius, and an `AUTH_URL` that
+the browser client and the trusted-origins derivation both want. The construct
+owns a surface; whether the adapter gives it a distribution of its own or a path
+behaviour on the API's is the adapter's call, exactly as it is for CDN-enabled
+buckets.
+
+#### The client is generated, and the server dictates capabilities
+
+A site that depends on auth should get its client the way it gets an API client:
+derived, not hand-written. The naive form of that — generating the provider's own
+client with its plugin twins — means maintaining a name registry that lags the
+provider's releases, and better-auth's plugin options hold server-only closures
+that cannot be serialised anyway.
+
+The form that works inverts it: the generated client's API is **ours**, and the
+provider is an implementation detail behind it.
+
+```ts
+auth.signIn.magicLink({ email })   // exists because the server declared it
+auth.signIn.oauth('github')
+auth.session()
+auth.signOut()
+```
+
+**The server dictates capabilities; both sides no longer declare them.** That is
+the same rule as `provides`/`requires` — one declaration, both sides derive — and
+it removes a class of bug outright: a client offering a sign-in method the server
+never enabled. It is also the same shape as `ProvidesByKind`, a neutral contract
+with provider-specific codecs behind it; `s3://` and `gs://` parse privately and
+never reach the neutral layer, and neither should a plugin name.
+
+Where capabilities overlap, swapping providers changes no application code. Where
+they do not, it is a **compile error rather than a runtime 404**, which is the
+argument that makes the facade worth having.
+
+Two limits, stated rather than discovered:
+
+- **Generated at build, verified at runtime in dev.** Build-time generation is
+  what makes the capability set a *type*; a discovery document fetched at runtime
+  would keep a deployed frontend honest across a backend change without a rebuild
+  but gives up the compile-time surface. Generate types, and warn on mismatch in
+  dev.
+- **The facade covers sign-in, session, and sign-out.** Everything else reaches
+  the provider through an escape hatch (`auth.raw`), which is also a one-line
+  signal in review that neutral ground has been left.
+
+**Known deviation.** The kitchen-sink auth construct currently takes better-auth
+plugins directly — the app imports `magicLink` from `better-auth/plugins` and
+passes it in, which is the provider leaking into application code that this
+section exists to prevent. It should be a capability the construct translates
+(`capabilities: { magicLink: { send } }`), with the send callback still reaching
+the mail construct the way it does now.
 
 ### A site
 
