@@ -53,8 +53,20 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 * between stages the way the host can.
 	 */
 	basePath?: string;
-	/** The rest of better-auth's options: providers, plugins, email settings. */
-	options?: BetterAuthOptions;
+	/**
+	 * The rest of better-auth's options: providers, plugins, email settings.
+	 *
+	 * A function when they need another construct — a magic-link plugin has to
+	 * *send* the link, and the thing that sends mail is a construct whose client
+	 * has to be registered. It is handed the same `ServiceRegisterOptions` this
+	 * construct was, so the env parser flows through the graph rather than being
+	 * imported out of application config.
+	 */
+	options?:
+		| BetterAuthOptions
+		| ((
+				options: ServiceRegisterOptions,
+		  ) => BetterAuthOptions | Promise<BetterAuthOptions>);
 }
 
 const DEFAULT_BASE_PATH = '/api/auth';
@@ -145,8 +157,16 @@ export class BetterAuth<
 			Record<string, never>
 		>;
 
+		// Hoisted: narrowing a property of `this` is not preserved across the
+		// await, and the false branch is the plain-object form.
+		const configure = this.config.options;
+		const configured: BetterAuthOptions =
+			typeof configure === 'function'
+				? await configure(options)
+				: (configure ?? {});
+
 		return betterAuth({
-			...this.config.options,
+			...configured,
 			secret,
 			baseURL: baseUrl,
 			basePath: this.basePath,

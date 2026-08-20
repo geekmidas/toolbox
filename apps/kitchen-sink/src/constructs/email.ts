@@ -1,4 +1,5 @@
 import { Email } from '@geekmidas/constructs/email';
+import { MagicLink } from './templates/MagicLink.js';
 import { Welcome } from './templates/Welcome.js';
 
 /**
@@ -14,5 +15,5 @@ import { Welcome } from './templates/Welcome.js';
  * which differs per stage, so it arrives as `MAIL_FROM` beside the URL.
  */
 export const mail = new Email('Mail', {
-	templates: { welcome: Welcome },
+	templates: { welcome: Welcome, magicLink: MagicLink },
 });
