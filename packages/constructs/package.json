@@ -144,6 +144,26 @@
 				"default": "./dist/email.cjs"
 			}
 		},
+		"./cache": {
+			"import": {
+				"types": "./dist/cache.d.mts",
+				"default": "./dist/cache.mjs"
+			},
+			"require": {
+				"types": "./dist/cache.d.cts",
+				"default": "./dist/cache.cjs"
+			}
+		},
+		"./auth": {
+			"import": {
+				"types": "./dist/auth.d.mts",
+				"default": "./dist/auth.mjs"
+			},
+			"require": {
+				"types": "./dist/auth.d.cts",
+				"default": "./dist/auth.cjs"
+			}
+		},
 		"./database/kysely": {
 			"import": {
 				"types": "./dist/database/kysely.d.mts",
@@ -221,7 +241,8 @@
 		"@geekmidas/storage": "workspace:^",
 		"kysely": ">=0.28.2 <0.30.0",
 		"pg": "~8.16.3",
-		"@geekmidas/emailkit": "workspace:^"
+		"@geekmidas/emailkit": "workspace:^",
+		"better-auth": ">=1.4.18"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/audit": {
@@ -279,6 +300,9 @@
 			"optional": true
 		},
 		"@geekmidas/emailkit": {
+			"optional": true
+		},
+		"better-auth": {
 			"optional": true
 		}
 	}

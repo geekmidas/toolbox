@@ -15,6 +15,7 @@ import {
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
+	environmentCase,
 	provideKey,
 } from '@geekmidas/manifest';
 import type { EventsBackend } from '../types';
@@ -35,6 +36,31 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	'database-schema': 'postgres',
 	objects: 'minio',
 	email: 'mailpit',
+	// The proxy, not the Redis behind it: the client speaks HTTP with a token
+	// wherever it runs, which is what makes dev and prod the same client.
+	cache: 'redis-http',
+};
+
+/**
+ * Kinds that resolve a value without anything running.
+ *
+ * A secret is the case: it has no address, so there is nothing to start and
+ * nothing to connect to — but it still appears in the plan, because the target
+ * still has to resolve it.
+ */
+const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
+	secret: true,
+};
+
+/**
+ * Containers that cannot run alone.
+ *
+ * The one case is the cache: `serverless-redis-http` is a proxy and needs the
+ * Redis it proxies. Kept here rather than in the compose definition so the plan
+ * -- which is what decides what must be running -- still names everything.
+ */
+const REQUIRES: Readonly<Record<string, readonly string[]>> = {
+	'redis-http': ['redis'],
 };
 
 /**
@@ -112,8 +138,8 @@ export interface PlannedResource {
 	/** The construct's canonical id, e.g. `Orders`. */
 	id: string;
 	kind: DeclarationKind;
-	/** The container that serves it, e.g. `postgres`. */
-	container: string;
+	/** The container that serves it, e.g. `postgres`. Absent for a secret. */
+	container?: string;
 	/** The stage-scoped name, e.g. `orders_test`. */
 	name: string;
 	/** The env key it resolves onto anything depending on it. */
@@ -233,16 +259,25 @@ export function planFor(
 		if (!declaration) continue;
 
 		const container = containerFor(declaration.kind, events);
-		if (!container) continue;
+		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
-		containers.add(container);
+		if (container) {
+			containers.add(container);
+			for (const required of REQUIRES[container] ?? [])
+				containers.add(required);
+		}
 
 		resources.push({
 			id,
 			kind: declaration.kind,
-			container,
+			...(container ? { container } : {}),
 			name: resourceName(id, declaration.kind, stage),
-			envKey: provideKey(id, ROLES[declaration.kind] ?? 'url'),
+			// A secret's name *is* its key — there is no role to qualify, and
+			// `AUTH_SECRET_SECRET` is what qualifying it would produce.
+			envKey:
+				declaration.kind === 'secret'
+					? environmentCase(id)
+					: provideKey(id, ROLES[declaration.kind] ?? 'url'),
 			provisions: PROVISIONS[declaration.kind] === true,
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema

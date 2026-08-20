@@ -29,6 +29,7 @@ export interface ComposeService {
 	ports?: string[];
 	environment?: Record<string, string>;
 	volumes?: string[];
+	depends_on?: string[];
 	healthcheck?: {
 		test: string[];
 		interval: string;
@@ -47,6 +48,15 @@ export interface ComposeFile {
 
 /** The credential every derived container is brought up with locally. */
 const LOCAL_USER = 'geekmidas';
+
+/**
+ * The token the local cache accepts.
+ *
+ * Fixed rather than generated: it is only ever reachable on a port this project
+ * published, and the URL that carries it is derived, so nothing is made safer
+ * by making it unguessable and a stable one keeps `redis-cli` sessions working.
+ */
+const LOCAL_TOKEN = 'geekmidas';
 
 export interface ComposeOptions {
 	/** Names the compose project, which is what isolates it from other stacks. */
@@ -204,6 +214,39 @@ function define(
 					interval: '5s',
 					timeout: '3s',
 					retries: 5,
+				},
+			};
+
+		case 'redis-http':
+			return {
+				image,
+				restart: 'unless-stopped',
+				ports: published,
+				environment: {
+					SRH_MODE: 'env',
+					SRH_TOKEN: LOCAL_TOKEN,
+					// The Redis beside it, by compose service name — the one address
+					// in this file that is not published, because nothing outside the
+					// network speaks to it.
+					SRH_CONNECTION_STRING: 'redis://redis:6379',
+				},
+				depends_on: ['redis'],
+				healthcheck: {
+					// 127.0.0.1, not localhost: the proxy binds IPv4 only, and
+					// `localhost` resolves to ::1 first inside the container — which
+					// is a health check that never passes and a container that never
+					// comes up.
+					test: [
+						'CMD',
+						'wget',
+						'-q',
+						'-O',
+						'/dev/null',
+						'http://127.0.0.1:80/',
+					],
+					interval: '5s',
+					timeout: '3s',
+					retries: 10,
 				},
 			};
 

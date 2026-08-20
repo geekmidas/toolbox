@@ -22,6 +22,7 @@ const manifest = {
 	},
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
 	Emails: {
 		kind: 'queue',
 		id: 'Emails',
@@ -65,6 +66,7 @@ describe('envFor', () => {
 			'MAIL_FROM',
 			'MAIL_URL',
 			'ORDERS_URL',
+			'SESSIONS_URL',
 			'UPLOADS_URL',
 			'USERS_PUBLISHER_CONNECTION_STRING',
 		]);
@@ -135,6 +137,12 @@ describe('envFor', () => {
 		const plan = planFor(manifest, 'test', provisionOrder(manifest));
 
 		expect(envFor(plan, { ports: {} })).toEqual({});
+	});
+
+	it('carries the cache token in the URL that addresses it', () => {
+		// An address and the credential that opens it are one fact — the same
+		// shape as a Postgres URL, and the reason the client takes one string.
+		expect(env().SESSIONS_URL).toMatch(/^http:\/\/:[^@]+@localhost:\d+$/);
 	});
 
 	it('addresses a local bucket path-style', () => {

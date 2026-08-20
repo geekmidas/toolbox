@@ -23,6 +23,7 @@
 
 export type {
 	AllProvidedKeys,
+	CacheDeclaration,
 	ConstructId,
 	ConstructManifest,
 	ConstructName,
@@ -45,6 +46,7 @@ export type {
 	Provides,
 	ProvidesByKind,
 	QueueDeclaration,
+	SecretDeclaration,
 	TopicDeclaration,
 } from './declaration';
 export { DERIVES_FROM, PUBLIC } from './declaration';

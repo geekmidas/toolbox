@@ -12,6 +12,7 @@
  * app reads `ORDERS_URL` and never sees a host or a port.
  */
 
+import { createHash } from 'node:crypto';
 import { provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
@@ -48,6 +49,9 @@ const STORAGE_CREDENTIALS: Readonly<Record<string, string>> = {
 	AWS_REGION: LOCAL_REGION,
 };
 
+/** The token the local cache proxy accepts. Matches the compose definition. */
+const LOCAL_TOKEN = 'geekmidas';
+
 /** The schema pg-boss keeps its tables in, inside the declared database. */
 const PGBOSS_SCHEMA = 'pgboss';
 
@@ -57,6 +61,14 @@ const RABBITMQ_EXCHANGE = 'geekmidas.events';
 export interface EnvOptions {
 	/** Assigned ports, keyed by port key. */
 	ports: PortAssignments;
+	/**
+	 * The project, which seeds any secret this stage derives.
+	 *
+	 * Derived rather than random so it survives a restart -- a signing key that
+	 * changed on every `gkm dev` would invalidate every session you were in the
+	 * middle of -- and seeded by the project so two checkouts do not share one.
+	 */
+	project?: string;
 	/**
 	 * The domain mail is sent from locally.
 	 *
@@ -79,7 +91,7 @@ export function envFor(
 	const env: Record<string, string> = {};
 
 	for (const resource of plan.resources) {
-		const url = urlFor(resource, plan, options.ports);
+		const url = urlFor(resource, plan, options.ports, options.project ?? '');
 		if (url) env[resource.envKey] = url;
 
 		// Mail owns a second key. It is the sending identity, which is the one
@@ -117,7 +129,7 @@ function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
 	);
 	if (!carrier) return {};
 
-	const publisher = urlFor(carrier, plan, ports);
+	const publisher = urlFor(carrier, plan, ports, '');
 	if (!publisher) return {};
 
 	return {
@@ -138,7 +150,13 @@ function urlFor(
 	resource: PlannedResource,
 	plan: Plan,
 	ports: PortAssignments,
+	project: string,
 ): string | undefined {
+	// A secret has no address, so there is no port to wait for.
+	if (resource.kind === 'secret') return localSecret(project, plan, resource);
+
+	if (!resource.container) return undefined;
+
 	const port = ports[primaryPortKey(resource.container)];
 	if (port === undefined) return undefined;
 
@@ -170,6 +188,12 @@ function urlFor(
 			// it: virtual-host style resolves `bucket.localhost`, which is not
 			// MinIO and not anything.
 			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
+
+		case 'cache':
+			// The token in the userinfo, because an address and the credential
+			// that opens it are one fact. Deployed the scheme is https and the
+			// host is the provider's; nothing else differs.
+			return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
 
 		case 'queue':
 		case 'topic':
@@ -267,4 +291,23 @@ export class UnprovisionedEventsBackend extends Error {
 		);
 		this.name = 'UnprovisionedEventsBackend';
 	}
+}
+
+/**
+ * The value a secret resolves to locally.
+ *
+ * A hash of what identifies it, so it is stable, distinct per project, stage
+ * and construct, and never written to disk as a literal. Deployed this is the
+ * one kind whose value does *not* come from here — a secret manager generates
+ * it once and the target reads it back.
+ */
+function localSecret(
+	project: string,
+	plan: Plan,
+	resource: PlannedResource,
+): string {
+	return createHash('sha256')
+		.update(`${project}:${plan.stage}:${resource.id}`)
+		.digest('base64url')
+		.slice(0, 43);
 }

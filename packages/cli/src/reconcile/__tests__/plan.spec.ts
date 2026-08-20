@@ -88,6 +88,10 @@ describe('containerFor', () => {
 		expect(containerFor('email')).toBe('mailpit');
 	});
 
+	it('maps a cache onto the proxy the client actually speaks to', () => {
+		expect(containerFor('cache')).toBe('redis-http');
+	});
+
 	it('maps a queue and a topic onto the broker, not onto one of their own', () => {
 		expect(containerFor('queue', 'rabbitmq')).toBe('rabbitmq');
 		expect(containerFor('topic', 'sns')).toBe('localstack');
@@ -242,6 +246,19 @@ describe('planFor', () => {
 		expect(planFor({}, 'test', [], { events: 'pgboss' }).containers).toEqual(
 			[],
 		);
+	});
+
+	it('starts the Redis a cache proxy cannot run without', () => {
+		// The plan is what decides what must be running, so a container that
+		// cannot run alone names its companion here rather than in the compose
+		// file, where nothing would be waiting on it.
+		const cached = {
+			Sessions: { kind: 'cache', id: 'Sessions' },
+		} as const satisfies ConstructManifest;
+
+		expect(
+			planFor(cached, 'test', provisionOrder(cached)).containers.sort(),
+		).toEqual(['redis', 'redis-http']);
 	});
 
 	it('merges in containers no construct implies', () => {

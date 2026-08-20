@@ -6,6 +6,8 @@ export default defineConfig({
 		'src/types.ts',
 		'src/construct-interface.ts',
 		'src/object-storage.ts',
+		'src/cache.ts',
+		'src/auth.ts',
 		'src/email.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',

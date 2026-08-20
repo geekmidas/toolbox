@@ -23,6 +23,7 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	minio: 'minio/minio:latest',
 	mailpit: 'axllent/mailpit:latest',
 	redis: 'redis:8-alpine',
+	'redis-http': 'hiett/serverless-redis-http:latest',
 	rabbitmq: 'rabbitmq:4-management-alpine',
 	localstack: 'localstack/localstack:latest',
 };
@@ -60,6 +61,7 @@ const PORTS: Readonly<Record<string, readonly ContainerPort[]>> = {
 		{ key: 'mailpit-web', inside: 8025, label: 'mailpit inbox' },
 	],
 	redis: [{ key: 'redis', inside: 6379, label: 'redis' }],
+	'redis-http': [{ key: 'redis-http', inside: 80, label: 'cache' }],
 	rabbitmq: [
 		{ key: 'rabbitmq', inside: 5672, label: 'amqp' },
 		{ key: 'rabbitmq-management', inside: 15672, label: 'rabbitmq console' },

@@ -156,6 +156,30 @@ export interface DatabaseSchemaDeclaration extends Node {
 }
 
 /**
+ * A generated secret — a signing key, a token, anything with no address.
+ *
+ * It provides a value rather than a URL, which is why it is a node of its own
+ * instead of a field on whatever needs it: the thing that generates it, the
+ * thing that stores it, and the thing that reads it are three different systems
+ * deployed, and one derived string locally.
+ */
+export interface SecretDeclaration extends Node {
+	kind: 'secret';
+}
+
+/**
+ * A key/value cache.
+ *
+ * Provides one URL carrying its own token, because a cache is reached over the
+ * same protocol wherever it runs — Upstash's REST API deployed, and a proxy in
+ * front of Redis locally, which is what lets the client be identical in both.
+ * Nothing here says Redis: what backs it is the provider's business.
+ */
+export interface CacheDeclaration extends Node {
+	kind: 'cache';
+}
+
+/**
  * A point-to-point queue and the single consumer that drains it.
  *
  * Provides one key, the producer's connection string. The protocol in it picks
@@ -194,6 +218,8 @@ export type Declaration =
 	| DatabaseDeclaration
 	| DatabaseReaderDeclaration
 	| DatabaseSchemaDeclaration
+	| CacheDeclaration
+	| SecretDeclaration
 	| QueueDeclaration
 	| TopicDeclaration;
 
@@ -299,6 +325,10 @@ export interface ProvidesByKind {
 	database: { url: string };
 	'database-reader': { url: string };
 	'database-schema': { url: string };
+	/** The endpoint and its token, in one string. */
+	cache: { url: string };
+	/** The value itself. A secret has no address to hand out instead. */
+	secret: { value: string };
 	/**
 	 * The producer's connection string. One key, not two: the consumer is
 	 * reached through the queue rather than by an address of its own.
@@ -326,6 +356,11 @@ export const PUBLIC: {
 	database: [],
 	'database-reader': [],
 	'database-schema': [],
+	// Carries its token, and a cache a browser can write is a cache it can
+	// poison.
+	cache: [],
+	// The whole point of one.
+	secret: [],
 	// Carries broker credentials, and a browser that can publish to a queue can
 	// forge any job the worker trusts.
 	queue: [],

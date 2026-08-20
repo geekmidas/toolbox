@@ -187,6 +187,7 @@ export async function reconcile(
 	const addresses = addressesFor(plan.containers, ports);
 	const env = envFor(plan, {
 		ports,
+		project,
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
 	});
 	const result: ReconcileResult = {
