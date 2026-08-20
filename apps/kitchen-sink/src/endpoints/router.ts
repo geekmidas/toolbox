@@ -1,17 +1,18 @@
 import { e } from '@geekmidas/constructs/endpoints';
 import logger from '../config/logger.js';
+import { auth } from '../constructs/auth.js';
+import { sessions } from '../constructs/cache.js';
 import { database } from '../constructs/database.js';
 import { users } from '../constructs/topics.js';
 import { AuditStorageService } from '../services/AuditStorageService.js';
-import { AuthService } from '../services/AuthService.js';
-import { CacheService } from '../services/CacheService.js';
 
 /**
  * The shared endpoint factory. Every endpoint built from `router` inherits:
  *
  * - `logger`                        — the Pino/Telescope logger
- * - `.services([...])`              — auth and cache, the two things that are
- *                                     not resources and so are still `Service`s
+ * - `.dependsOn([...])`             — the auth server and the cache, under
+ *                                     their own ids: `services.auth`,
+ *                                     `services.sessions`
  * - `.database(database)`           — `db` in context, typed by the construct's
  *                                     schema (and the audit transaction)
  * - `.auditor(AuditStorageService)` — `auditor` in context + declarative `.audit([...])`
@@ -24,7 +25,7 @@ import { CacheService } from '../services/CacheService.js';
  */
 export const router = e
 	.logger(logger)
-	.services([AuthService, CacheService])
+	.dependsOn([auth, sessions])
 	.database(database)
 	.auditor(AuditStorageService)
 	.publisher(users.publisher);

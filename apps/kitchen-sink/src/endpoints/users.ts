@@ -22,7 +22,9 @@ export const listUsers = router
 	.output(z.object({ users: UserSchema.array() }))
 	.handle(async ({ services, logger, db }) => {
 		const cached =
-			await services.cache.get<z.infer<typeof UserSchema>[]>(USERS_CACHE_KEY);
+			await services.sessions.get<z.infer<typeof UserSchema>[]>(
+				USERS_CACHE_KEY,
+			);
 		if (cached) {
 			logger.debug('Serving users from cache');
 			return { users: cached };
@@ -36,7 +38,7 @@ export const listUsers = router
 			created_at: u.created_at.toISOString(),
 		}));
 
-		await services.cache.set(USERS_CACHE_KEY, users, 30);
+		await services.sessions.set(USERS_CACHE_KEY, users, 30);
 		return { users };
 	});
 
@@ -92,7 +94,7 @@ export const createUser = router
 		// Imperative audit (the router supplies `auditor`, typed to AppAuditAction).
 		auditor.audit('user.created', { userId: user.id, email: user.email });
 
-		await services.cache.delete(USERS_CACHE_KEY);
+		await services.sessions.delete(USERS_CACHE_KEY);
 		logger.info({ userId: user.id }, 'Created user');
 
 		return {
@@ -112,9 +114,13 @@ export const getUser = router
 	.params(z.object({ id: z.string().uuid() }))
 	.authorizer('iam')
 	.output(UserSchema)
-	.handle(async ({ params, services, auditor, db }) => {
-		// The auth service is available via DI (mock implementation).
-		await services.auth.getUserById(params.id);
+	.handle(async ({ params, services, auditor, db, header }) => {
+		// The auth server, consumed like any other construct. This is the real
+		// Better Auth instance — `services.auth.api` is its server API, reading
+		// the session out of the request's own cookies.
+		await services.auth.api.getSession({
+			headers: new Headers({ cookie: header('cookie') ?? '' }),
+		});
 
 		const user = await db
 			.selectFrom('users')

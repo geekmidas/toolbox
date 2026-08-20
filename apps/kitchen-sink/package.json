@@ -32,6 +32,7 @@
 		"@geekmidas/telescope": "workspace:*",
 		"@hono/node-server": "~1.19.5",
 		"@react-email/components": "~1.0.1",
+		"better-auth": "~1.4.18",
 		"hono": "^4.7.15",
 		"kysely": "~0.29.4",
 		"pg": "~8.16.0",

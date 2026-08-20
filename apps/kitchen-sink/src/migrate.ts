@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { snifferContext } from '@geekmidas/constructs';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { Credentials } from '@geekmidas/envkit/credentials';
 import { provideKey } from '@geekmidas/manifest';
@@ -8,6 +9,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 // `Migrator`/`FileMigrationProvider` moved to the 'kysely/migration' subpath in kysely 0.29+.
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
 import pg from 'pg';
+import { auth } from './constructs/auth.js';
 import { database } from './constructs/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +40,15 @@ async function migrate() {
 			migrationFolder: path.join(__dirname, 'migrations'),
 		}),
 	});
+
+	// Better Auth brings its own schema — users, sessions, accounts,
+	// verifications — so the app never writes those tables and cannot drift
+	// from them. They live in the tenant the construct was given.
+	const runAuthMigrations = await auth.migrations({
+		envParser: new EnvironmentParser({ ...process.env, ...Credentials }),
+		context: snifferContext,
+	});
+	await runAuthMigrations();
 
 	const { error, results } = await migrator.migrateToLatest();
 

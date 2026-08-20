@@ -14,6 +14,9 @@ is injected — `gkm dev` reconciles all of it before the server starts.
 | Construct | File | Declares | Locally (`gkm dev`) | Deployed |
 |-----------|------|----------|---------------------|----------|
 | `KyselyDatabase` | `src/constructs/database.ts` | `KITCHEN_SINK_URL` | Postgres container, `kitchensink` database | RDS |
+| `.schema()` tenant | `src/constructs/auth.ts` | `AUTH_DB_URL` | the `authdb` schema, on its own search path | own role, no grant to the app |
+| `BetterAuth` | `src/constructs/auth.ts` | `AUTH_SECRET` | a real auth server on the tenant above | SES/OAuth providers, same server |
+| `Cache` | `src/constructs/cache.ts` | `SESSIONS_URL` | Redis + the HTTP proxy the client speaks | Upstash |
 | `ObjectStorage` | `src/constructs/storage.ts` | `UPLOADS_URL` | MinIO container, `uploads` bucket | S3 bucket |
 | `Email` | `src/constructs/email.ts` | `MAIL_URL`, `MAIL_FROM` | Mailpit — a real inbox on its own port | SES over SMTP |
 | `t` topic | `src/constructs/topics.ts` | `USERS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SNS topic |
@@ -86,6 +89,11 @@ curl -XPOST localhost:3000/users -H 'content-type: application/json' \
 
 # watch the subscriber + queue worker logs in the console / at /telescope
 curl localhost:3000/users               # served from cache when warm
+
+# sign up, then read the session back — Better Auth, on its own schema
+curl -XPOST localhost:3000/api/auth/sign-up/email -H 'content-type: application/json' \
+  -d '{"email":"ada@example.com","password":"correct-horse-battery","name":"Ada"}' -c /tmp/gkm.cookies
+curl -b /tmp/gkm.cookies localhost:3000/api/auth/get-session
 
 # a presigned upload URL, signed for MinIO
 curl -XPOST localhost:3000/uploads -H 'content-type: application/json' \

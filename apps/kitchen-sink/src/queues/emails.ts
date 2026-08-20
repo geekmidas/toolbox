@@ -1,8 +1,8 @@
 import { q } from '@geekmidas/constructs/queue';
 import { z } from 'zod';
 import logger from '../config/logger.js';
+import { sessions } from '../constructs/cache.js';
 import { mail } from '../constructs/email.js';
-import { CacheService } from '../services/CacheService.js';
 
 /** The job payload — point-to-point work for a single consumer. */
 export const EmailJob = z.object({
@@ -28,13 +28,12 @@ export const EmailJob = z.object({
 export const emailsQueue = q
 	.queue('emails')
 	.logger(logger)
-	.dependsOn([mail])
-	.services([CacheService])
+	.dependsOn([mail, sessions])
 	.message(EmailJob)
 	.handle(async ({ messages, services, logger }) => {
 		for (const { to, name, userId, template } of messages) {
 			const dedupeKey = `email:${userId}:${template}`;
-			if (await services.cache.get(dedupeKey)) {
+			if (await services.sessions.get(dedupeKey)) {
 				logger.info({ to, template }, 'Skipping duplicate email');
 				continue;
 			}
@@ -45,7 +44,7 @@ export const emailsQueue = q
 				props: { name, appUrl: 'http://localhost:3000' },
 			});
 
-			await services.cache.set(dedupeKey, true, 3600);
+			await services.sessions.set(dedupeKey, true, 3600);
 			logger.info({ to, template, messageId }, 'Sent email');
 		}
 	});
