@@ -186,9 +186,31 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 
 		return new Kysely<DB>({
 			...kysely,
-			dialect: new PostgresDialect({
-				pool: new pg.Pool({ connectionString: url }),
-			}),
+			dialect: new PostgresDialect({ pool: pool(url) }),
 		});
 	}
+}
+
+/**
+ * A pool for one URL, with its schema actually on the search path.
+ *
+ * `?search_path=` is not a libpq parameter — a URL carrying it connects
+ * happily and then resolves every unqualified name against `public`, which is
+ * how a schema tenant silently writes its tables into the database it was
+ * separated from. Postgres takes it as a startup option instead, so the URL
+ * keeps the readable form the target derives and this turns it into the thing
+ * the server understands.
+ */
+function pool(url: string): pg.Pool {
+	const parsed = new URL(url);
+	const searchPath = parsed.searchParams.get('search_path');
+
+	if (!searchPath) return new pg.Pool({ connectionString: url });
+
+	parsed.searchParams.delete('search_path');
+
+	return new pg.Pool({
+		connectionString: parsed.toString(),
+		options: `-c search_path=${searchPath}`,
+	});
 }
