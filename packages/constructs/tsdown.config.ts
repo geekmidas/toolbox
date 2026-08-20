@@ -4,6 +4,10 @@ export default defineConfig({
 	entry: [
 		'src/index.ts',
 		'src/types.ts',
+		'src/construct-interface.ts',
+		'src/object-storage.ts',
+		'src/email.ts',
+		'src/database/kysely.ts',
 		'src/endpoints/index.ts',
 		'src/functions/index.ts',
 		'src/crons/index.ts',

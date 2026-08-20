@@ -134,6 +134,16 @@
 				"default": "./dist/object-storage.cjs"
 			}
 		},
+		"./email": {
+			"import": {
+				"types": "./dist/email.d.mts",
+				"default": "./dist/email.mjs"
+			},
+			"require": {
+				"types": "./dist/email.d.cts",
+				"default": "./dist/email.cjs"
+			}
+		},
 		"./database/kysely": {
 			"import": {
 				"types": "./dist/database/kysely.d.mts",
