@@ -1,24 +1,39 @@
 import { defineConfig } from '@geekmidas/cli/config';
 
 /**
- * Kitchen-sink config — registers every construct type the toolbox supports so
- * `gkm dev` / `gkm build` discover them:
+ * Kitchen-sink config.
+ *
+ * `constructs` is the glob the *local target* reads: every declaration found
+ * under it decides which containers exist, what is created inside them, and
+ * which URLs are injected. A database implies Postgres, a bucket implies MinIO,
+ * mail implies Mailpit, and a queue or topic implies whichever broker the
+ * project selected — pg-boss by default, which lives in the database already
+ * declared. Nothing in this file lists a service.
+ *
+ * `src/config/**` is deliberately outside it: discovery imports what it finds,
+ * and those modules resolve injected URLs at import time — which is only
+ * possible after discovery has run.
+ *
+ * The per-kind globs below are a different question — not *what exists* but
+ * *what to generate handlers for*:
  *
  * - `routes`      → HTTP endpoints (`e`)            — Hono locally, API Gateway deployed
  * - `functions`   → standalone functions (`f`)      — invoked directly / Lambda
  * - `crons`       → scheduled tasks (`c`)           — EventBridge schedule deployed
  * - `subscribers` → topic fan-out workers (`s`)     — SNS deployed, pg-boss poller locally
  * - `queues`      → point-to-point workers (`q`)    — SQS deployed, pg-boss poller locally
- *
- * Subscribers and queues are background workers, not HTTP routes — locally they
- * poll pg-boss in-process alongside the Hono server.
+ * - `topics`      → the topics themselves (`t`)     — SNS topics deployed
  */
 export default defineConfig({
+	constructs:
+		'./src/{constructs,crons,endpoints,functions,queues,subscribers}/**/*.ts',
+
 	routes: './src/endpoints/**/*.ts',
 	functions: './src/functions/**/*.ts',
 	crons: './src/crons/**/*.ts',
 	subscribers: './src/subscribers/**/*.ts',
 	queues: './src/queues/**/*.ts',
+	topics: './src/constructs/**/*.ts',
 
 	envParser: './src/config/env#envParser',
 	logger: './src/config/logger',
@@ -37,12 +52,6 @@ export default defineConfig({
 	docker: {
 		registry: 'ghcr.io/technanimals',
 		imageName: 'kitchen-sink',
-		compose: {
-			services: {
-				// pg-boss reuses this Postgres for events/queues (dedicated schema).
-				postgres: true,
-			},
-		},
 	},
 
 	providers: {

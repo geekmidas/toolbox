@@ -6,7 +6,7 @@ export const UserSchema = z
 	.object({
 		id: z.string(),
 		name: z.string(),
-		email: z.string().email(),
+		email: z.email(),
 		created_at: z.string(),
 	})
 	.meta({ id: 'User' });
@@ -20,7 +20,7 @@ const USERS_CACHE_KEY = 'users:all';
 export const listUsers = router
 	.get('/users')
 	.output(z.object({ users: UserSchema.array() }))
-	.handle(async ({ services, logger }) => {
+	.handle(async ({ services, logger, db }) => {
 		const cached =
 			await services.cache.get<z.infer<typeof UserSchema>[]>(USERS_CACHE_KEY);
 		if (cached) {
@@ -28,10 +28,7 @@ export const listUsers = router
 			return { users: cached };
 		}
 
-		const rows = await services.database
-			.selectFrom('users')
-			.selectAll()
-			.execute();
+		const rows = await db.selectFrom('users').selectAll().execute();
 		const users = rows.map((u) => ({
 			id: u.id,
 			name: u.name,
@@ -58,21 +55,22 @@ export const createUser = router
 	.body(
 		z.object({
 			name: z.string().min(1),
-			email: z.string().email(),
+			email: z.email(),
 		}),
 	)
 	.output(UserSchema)
-	// Queue producer — `emailsQueue.publisher` is a Service; its serviceName is
-	// `emailsPublisher`. The env var it needs (EMAILS_PUBLISHER_CONNECTION_STRING)
-	// is sniffed into the manifest from here.
+	// Queue producer — the queue derives its own publisher, so the only thing
+	// written here is which queue. Its connection string
+	// (EMAILS_PUBLISHER_CONNECTION_STRING) is declared by the queue construct and
+	// resolved by the target, never by this file.
 	.services([emailsQueue.publisher])
-	// Topic fan-out — delivered via the router's EventsService publisher.
+	// Topic fan-out — delivered through the router's topic publisher.
 	.event({
 		type: 'user.created',
 		payload: (r) => ({ userId: r.id, email: r.email, name: r.name }),
 	})
-	.handle(async ({ body, services, logger, auditor }) => {
-		const user = await services.database
+	.handle(async ({ body, services, logger, auditor, db }) => {
+		const user = await db
 			.insertInto('users')
 			.values({ name: body.name, email: body.email })
 			.returningAll()
@@ -82,7 +80,12 @@ export const createUser = router
 		await services.emailsPublisher.publish([
 			{
 				type: 'emails',
-				payload: { to: user.email, userId: user.id, template: 'welcome' },
+				payload: {
+					to: user.email,
+					name: user.name,
+					userId: user.id,
+					template: 'welcome',
+				},
 			},
 		]);
 
@@ -109,11 +112,11 @@ export const getUser = router
 	.params(z.object({ id: z.string().uuid() }))
 	.authorizer('iam')
 	.output(UserSchema)
-	.handle(async ({ params, services, auditor }) => {
+	.handle(async ({ params, services, auditor, db }) => {
 		// The auth service is available via DI (mock implementation).
 		await services.auth.getUserById(params.id);
 
-		const user = await services.database
+		const user = await db
 			.selectFrom('users')
 			.selectAll()
 			.where('id', '=', params.id)

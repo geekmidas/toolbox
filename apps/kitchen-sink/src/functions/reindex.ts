@@ -1,7 +1,7 @@
 import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
 import logger from '../config/logger.js';
-import { DatabaseService } from '../services/DatabaseService.js';
+import { database } from '../constructs/database.js';
 
 /**
  * A standalone function (`f`) — not an HTTP route and not schedule-driven.
@@ -10,11 +10,11 @@ import { DatabaseService } from '../services/DatabaseService.js';
  */
 export const reindexUsers = f
 	.logger(logger)
-	.services([DatabaseService])
-	.input(z.object({ since: z.string().datetime().optional() }))
+	.services([database.service])
+	.input(z.object({ since: z.iso.datetime().optional() }))
 	.output(z.object({ reindexed: z.number() }))
 	.handle(async ({ input, services, logger }) => {
-		let query = services.database.selectFrom('users').selectAll();
+		let query = services.kitchenSink.selectFrom('users').selectAll();
 		if (input.since) {
 			query = query.where('updated_at', '>=', new Date(input.since));
 		}
