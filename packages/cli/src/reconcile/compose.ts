@@ -135,7 +135,12 @@ function define(
 					// inside this cluster by the applier, not by the image.
 					POSTGRES_DB: LOCAL_USER,
 				},
-				volumes: ['postgres-data:/var/lib/postgresql/data'],
+				// One mount at the parent, not at `data`: the 18 image keeps its
+				// cluster in a version-named subdirectory and refuses to start when
+				// something is mounted over the legacy path. Mounting the parent is
+				// also what makes the next major bump a `pg_upgrade --link` rather
+				// than a new volume.
+				volumes: ['postgres-data:/var/lib/postgresql'],
 				healthcheck: {
 					test: ['CMD-SHELL', `pg_isready -U ${LOCAL_USER}`],
 					interval: '5s',

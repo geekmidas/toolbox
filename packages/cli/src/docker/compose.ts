@@ -190,7 +190,7 @@ services:
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: \${POSTGRES_DB:-app}
     volumes:
-      - dbdata:/var/lib/postgresql/18/data
+      - dbdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -471,7 +471,7 @@ services:
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: \${POSTGRES_DB:-app}
     volumes:
-      - dbdata:/var/lib/postgresql/18/data
+      - dbdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s

@@ -93,6 +93,15 @@ describe('composeFor', () => {
 		});
 	});
 
+	it('mounts the postgres volume where 18 keeps its cluster', () => {
+		// The 18 image keeps its data in a version-named subdirectory and refuses
+		// to start when a volume is mounted over the legacy `data` path, so this
+		// is the difference between a container that starts and one that does not.
+		expect(compose(['postgres']).services.postgres.volumes).toEqual([
+			'postgres-data:/var/lib/postgresql',
+		]);
+	});
+
 	it('declares no volume for mail', () => {
 		// Local mail is disposable; an inbox surviving days of dev is noise.
 		expect(compose(['mailpit']).volumes).toBeUndefined();

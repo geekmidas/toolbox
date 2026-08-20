@@ -182,7 +182,7 @@ describe('generateDockerCompose', () => {
 				services: { postgres: true },
 			});
 
-			expect(yaml).toContain('- dbdata:/var/lib/postgresql/18/data');
+			expect(yaml).toContain('- dbdata:/var/lib/postgresql');
 			expect(yaml).toContain('dbdata:');
 		});
 
@@ -978,7 +978,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			expect(yaml).toContain('dbdata:');
-			expect(yaml).toContain('dbdata:/var/lib/postgresql/18/data');
+			expect(yaml).toContain('dbdata:/var/lib/postgresql');
 		});
 
 		it('should add redis_data volume when redis is enabled', () => {
