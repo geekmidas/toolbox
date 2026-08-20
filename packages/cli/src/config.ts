@@ -238,7 +238,29 @@ export interface AppConfigResult {
  * ```ts
  * // From apps/api directory with package.json: { "name": "@myorg/api" }
  * const { app, workspace, workspaceRoot } = await loadAppConfig();
- * console.log(app.routes); // './src/endpoints/**\/*.ts'
+ * console.log(app.routes); // './src/endpoints/**
+ * The app a package directory refers to, and what the workspace calls it.
+ *
+ * A single-app config is wrapped as a one-app workspace keyed `api`, which is
+ * almost never the package name. Matching on the key alone means an app like
+ * `@geekmidas/example` resolves to nothing and silently loses everything that
+ * comes from the workspace — including the URLs its constructs declare.
+ */
+function resolveWorkspaceApp(
+	loadedConfig: LoadedConfig,
+	appName: string,
+): { key: string; app: NormalizedAppConfig } | undefined {
+	const apps = loadedConfig.workspace.apps;
+
+	if (apps[appName]) return { key: appName, app: apps[appName] };
+
+	const names = Object.keys(apps);
+	if (loadedConfig.type !== 'single' || names.length !== 1) return undefined;
+
+	return { key: names[0], app: apps[names[0]] };
+}
+
+/**\/*.ts'
  * ```
  */
 export async function loadAppConfig(
@@ -255,19 +277,22 @@ export async function loadAppConfig(
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
 	const loadedConfig = processConfig(config, workspaceRoot);
 
-	// Find the app in workspace (apps is a Record<string, NormalizedAppConfig>)
-	const app = loadedConfig.workspace.apps[appName];
+	const resolved = resolveWorkspaceApp(loadedConfig, appName);
 
-	if (!app) {
-		const availableApps = Object.keys(loadedConfig.workspace.apps).join(', ');
+	if (!resolved) {
 		throw new Error(
-			`App "${appName}" not found in workspace config. Available apps: ${availableApps}. ` +
+			`App "${appName}" not found in workspace config. Available apps: ${Object.keys(
+				loadedConfig.workspace.apps,
+			).join(', ')}. ` +
 				`Ensure the package.json name matches the app key in gkm.config.ts.`,
 		);
 	}
 
-	// Get the app's GKM config using the helper
-	const gkmConfig = getAppGkmConfig(loadedConfig.workspace, appName);
+	const { key, app } = resolved;
+
+	// Keyed by what the workspace calls the app, not by the package name — for a
+	// single-app config those differ.
+	const gkmConfig = getAppGkmConfig(loadedConfig.workspace, key);
 
 	if (!gkmConfig) {
 		throw new Error(
@@ -311,9 +336,9 @@ export async function loadWorkspaceAppInfo(
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
 	const loadedConfig = processConfig(config, workspaceRoot);
 
-	const app = loadedConfig.workspace.apps[appName];
+	const resolved = resolveWorkspaceApp(loadedConfig, appName);
 
-	if (!app) {
+	if (!resolved) {
 		const availableApps = Object.keys(loadedConfig.workspace.apps).join(', ');
 		throw new Error(
 			`App "${appName}" not found in workspace config. Available apps: ${availableApps}. ` +
@@ -323,7 +348,7 @@ export async function loadWorkspaceAppInfo(
 
 	return {
 		appName,
-		app,
+		app: resolved.app,
 		workspace: loadedConfig.workspace,
 		workspaceRoot,
 	};

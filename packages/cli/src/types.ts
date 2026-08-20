@@ -235,6 +235,17 @@ export interface ProvidersConfig {
 }
 
 export interface GkmConfig {
+	/**
+	 * Constructs glob pattern — one glob, every kind.
+	 *
+	 * What reconcile reads to derive the containers a stage needs: a database
+	 * implies Postgres, objects imply MinIO, mail implies Mailpit. A glob per
+	 * kind cannot find a resource, because a declared `ObjectStorage` has no
+	 * kind to be listed under.
+	 *
+	 * @example './src/**\/*.ts'
+	 */
+	constructs?: Routes;
 	routes: Routes;
 	functions?: Routes;
 	crons?: Routes;

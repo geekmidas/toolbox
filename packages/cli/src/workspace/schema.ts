@@ -646,6 +646,7 @@ const AppConfigSchema = z
 		deploy: DeployTargetSchema.optional(),
 
 		// Backend-specific (from GkmConfig)
+		constructs: RoutesSchema.optional(),
 		routes: RoutesSchema.optional(),
 		functions: RoutesSchema.optional(),
 		crons: RoutesSchema.optional(),

@@ -339,6 +339,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 		// Single-app mode - use existing logic
 		config = loadedConfig.raw as GkmConfig;
+		// Wrapped as a one-app workspace, which is what reconcile reads. Nothing
+		// below depends on an app name, so this only turns on the parts that need
+		// a workspace at all.
+		workspace = loadedConfig.workspace;
 	}
 
 	// Load any additional env files specified in config
@@ -431,14 +435,35 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	let secretsJsonPath: string | undefined;
 	const appSecrets = await loadSecretsForApp(secretsRoot, workspaceAppName);
 
-	// Resolve Docker service ports and rewrite connection URLs
-	const resolvedPorts = await resolveServicePorts(secretsRoot);
-	if (Object.keys(resolvedPorts.ports).length > 0) {
-		const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
-		Object.assign(appSecrets, rewritten);
-		logger.log(
-			`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-		);
+	if (workspace && usesConstructs(workspace)) {
+		// The same reconcile `gkm setup` and the workspace dev path run: derive
+		// the containers from what the app declares, start them, create what the
+		// URLs name, and inject those URLs. It replaces the branch below, which
+		// has no hand-written compose file left to read ports out of.
+		const reconciled = await reconcileWorkspace(workspace, {
+			stage: 'development',
+		});
+
+		if (reconciled.changed && reconciled.plan.containers.length > 0) {
+			logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
+			for (const [container, address] of Object.entries(reconciled.addresses)) {
+				logger.log(`   ${container}: ${address}`);
+			}
+		}
+
+		// Declared URLs win over anything sniffed or stored — the manifest is the
+		// statement of what exists.
+		Object.assign(appSecrets, reconciled.env);
+	} else {
+		// Resolve Docker service ports and rewrite connection URLs
+		const resolvedPorts = await resolveServicePorts(secretsRoot);
+		if (Object.keys(resolvedPorts.ports).length > 0) {
+			const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
+			Object.assign(appSecrets, rewritten);
+			logger.log(
+				`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
+			);
+		}
 	}
 
 	// Inject dependency URLs if in workspace mode

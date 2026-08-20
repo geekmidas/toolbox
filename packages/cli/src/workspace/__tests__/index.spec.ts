@@ -317,6 +317,22 @@ describe('wrapSingleAppAsWorkspace', () => {
 		expect(result.services.cache).toBe(true);
 	});
 
+	it('carries the constructs glob through', () => {
+		// Reconcile derives the local containers from this glob, so dropping it
+		// here is the difference between a single-app project deriving its
+		// Postgres and silently getting none.
+		const config: GkmConfig = {
+			constructs: './src/constructs/**/*.ts',
+			routes: './src/endpoints/**/*.ts',
+			envParser: './src/env',
+			logger: './src/logger',
+		};
+
+		const result = wrapSingleAppAsWorkspace(config, '/project');
+
+		expect(result.apps.api.constructs).toBe('./src/constructs/**/*.ts');
+	});
+
 	it('should set resolvedDeployTarget to dokploy', () => {
 		const config: GkmConfig = {
 			routes: './src/**/*.ts',
