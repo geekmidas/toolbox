@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     image: postgres:18
     volumes:
-      - "dbdata:/var/lib/postgresql/data"
+      - "dbdata18:/var/lib/postgresql"
       - "./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql"
     ports:
       - "5432:5432"
@@ -90,7 +90,7 @@ services:
       start_period: 10s
 
 volumes:
-  dbdata:
+  dbdata18:
   minio-data:
   cache:
   rabbitmq_data:
