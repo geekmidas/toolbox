@@ -220,7 +220,7 @@ export const createUser = e
   .post('/users')
   .body(z.object({
     name: z.string(),
-    email: z.string().email()
+    email: z.email()
   }))
   .services([databaseService, cacheService, emailService])
   .handle(async ({ body, services }) => {

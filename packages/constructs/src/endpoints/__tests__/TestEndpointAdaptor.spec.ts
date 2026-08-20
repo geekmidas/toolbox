@@ -30,7 +30,7 @@ describe('TestEndpointAdaptor', () => {
 		it('should handle endpoint with body schema', async () => {
 			const endpoint = e
 				.post('/users')
-				.body(z.object({ name: z.string(), email: z.string().email() }))
+				.body(z.object({ name: z.string(), email: z.email() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
 				.handle(async ({ body }) => ({
 					id: 'user-123',
@@ -94,7 +94,7 @@ describe('TestEndpointAdaptor', () => {
 			const endpoint = e
 				.put('/users/:id')
 				.params(z.object({ id: z.string() }))
-				.body(z.object({ name: z.string(), email: z.string().email() }))
+				.body(z.object({ name: z.string(), email: z.email() }))
 				.query(z.object({ notify: z.coerce.boolean().default(false) }))
 				.output(
 					z.object({

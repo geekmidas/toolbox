@@ -109,7 +109,7 @@ describe('Endpoint', () => {
 		it('should include request body for POST endpoint', async () => {
 			const bodySchema = z.object({
 				name: z.string(),
-				email: z.string().email(),
+				email: z.email(),
 			});
 
 			const endpoint = new Endpoint({
@@ -257,7 +257,7 @@ describe('Endpoint', () => {
 		it('should handle PUT endpoint with body and params', async () => {
 			const bodySchema = z.object({
 				name: z.string(),
-				email: z.string().email(),
+				email: z.email(),
 			});
 			const paramsSchema = z.object({
 				id: z.string(),

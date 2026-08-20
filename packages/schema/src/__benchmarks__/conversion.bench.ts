@@ -6,7 +6,7 @@ describe('Schema Conversion - Simple', () => {
 	const simpleSchema = z.object({
 		id: z.string(),
 		name: z.string(),
-		email: z.string().email(),
+		email: z.email(),
 	});
 
 	bench('simple object schema', async () => {
@@ -77,7 +77,7 @@ describe('Schema Conversion - Complex', () => {
 describe('Schema Conversion - With Refinements', () => {
 	const refinedSchema = z.object({
 		age: z.number().min(0).max(150),
-		email: z.string().email(),
+		email: z.email(),
 		url: z.string().url(),
 		uuid: z.string().uuid(),
 	});

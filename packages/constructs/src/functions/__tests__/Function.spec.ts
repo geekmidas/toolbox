@@ -196,7 +196,7 @@ describe('Function', () => {
 			it('should throw validation errors for composed schema with invalid data', async () => {
 				const schema = {
 					name: z.string(),
-					email: z.string().email(),
+					email: z.email(),
 				};
 
 				const invalidData = { name: 'John', email: 'invalid-email' };
@@ -208,7 +208,7 @@ describe('Function', () => {
 			it('should handle nested paths in composed schemas', async () => {
 				const schema = {
 					'user.name': z.string(),
-					'user.email': z.string().email(),
+					'user.email': z.email(),
 				};
 
 				const data = {

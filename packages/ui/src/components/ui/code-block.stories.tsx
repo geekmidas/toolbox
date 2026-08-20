@@ -162,7 +162,7 @@ export const createUser = e
   .post('/users')
   .body(z.object({
     name: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
     role: z.enum(['admin', 'user']).default('user'),
   }))
   .output(z.object({

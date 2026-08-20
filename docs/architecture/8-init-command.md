@@ -387,7 +387,7 @@ export * from './user';
  */
 export const UserSchema = z.object({
   id: z.string().uuid(),
-  email: z.string().email(),
+  email: z.email(),
   name: z.string().min(1).max(100),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

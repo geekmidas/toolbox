@@ -429,7 +429,7 @@ describe('EndpointBuilder', () => {
 			const endpoint = new EndpointBuilder('/users', 'POST')
 				.description('Create a new user')
 				.status(201)
-				.body(z.object({ name: z.string(), email: z.string().email() }))
+				.body(z.object({ name: z.string(), email: z.email() }))
 				.output(z.object({ id: z.string(), created: z.boolean() }))
 				.handle(async () => ({
 					id: '123',

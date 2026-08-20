@@ -222,7 +222,7 @@ describe('ConfigParser', () => {
 		it('should use default values that pass validation', () => {
 			const config = {
 				port: z.number().min(1000).max(65535).default(3000),
-				email: z.string().email().default('admin@example.com'),
+				email: z.email().default('admin@example.com'),
 			};
 
 			const parser = new ConfigParser(config);

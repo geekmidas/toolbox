@@ -67,12 +67,12 @@ export const cacheService = {
 export const userSchema = z.object({
 	id: z.string(),
 	name: z.string(),
-	email: z.string().email(),
+	email: z.email(),
 });
 
 export const createUserSchema = z.object({
 	name: z.string().min(1),
-	email: z.string().email(),
+	email: z.email(),
 });
 
 export const orderSchema = z.object({

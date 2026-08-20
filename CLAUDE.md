@@ -46,6 +46,7 @@ toolbox/
 - 80 char line width, arrow functions always have parens
 - `import type` for type-only imports
 - Files: camelCase. Classes/Types/Interfaces: PascalCase. Constants: UPPER_SNAKE_CASE.
+- Zod formats are top-level schemas: `z.email()`, never `z.string().email()`. See [AGENTS.md](./AGENTS.md).
 
 ## Key Patterns
 

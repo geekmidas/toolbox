@@ -252,12 +252,12 @@ export const createUser = e
   .post('/users')
   .body(z.object({
     name: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
   }))
   .output(z.object({
     id: z.string(),
     name: z.string(),
-    email: z.string().email(),
+    email: z.email(),
   }))
   .handle(async ({ body, logger }) => {
     logger.info({ body }, 'Creating user');

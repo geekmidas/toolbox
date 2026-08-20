@@ -69,7 +69,7 @@ describe('Hono E2E - CRUD Operations', () => {
 
 		api
 			.post('/users')
-			.body(z.object({ name: z.string(), email: z.string().email() }))
+			.body(z.object({ name: z.string(), email: z.email() }))
 			.output(z.object({ id: z.string() }))
 			.handle(async () => ({ id: crypto.randomUUID() })),
 
@@ -125,7 +125,7 @@ describe('Hono E2E - Complex Validation', () => {
 			z.object({
 				customer: z.object({
 					name: z.string(),
-					email: z.string().email(),
+					email: z.email(),
 					address: z.object({
 						street: z.string(),
 						city: z.string(),

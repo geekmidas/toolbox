@@ -5,7 +5,7 @@ export const UserSchema = z
 	.object({
 		id: z.string(),
 		name: z.string(),
-		email: z.string().email(),
+		email: z.email(),
 		created_at: z.string(),
 	})
 	.meta({ id: 'User' });
@@ -41,7 +41,7 @@ export const createUser = router
 	.body(
 		z.object({
 			name: z.string().min(1),
-			email: z.string().email(),
+			email: z.email(),
 		}),
 	)
 	.output(UserSchema)
