@@ -27,10 +27,7 @@ import type { Service } from '@geekmidas/services';
  * `Subscriber` is reached through its topic, so `.dependsOn()` on either is a
  * compile error rather than a stub that throws.
  */
-export interface Construct<
-	TName extends string = string,
-	TClient = never,
-> {
+export interface Construct<TName extends string = string, TClient = never> {
 	/** Canonical, PascalCase, unique within the manifest. */
 	readonly id: TName;
 
@@ -56,11 +53,9 @@ export interface Construct<
 }
 
 /** What consuming a construct hands you. */
-export type Infer<C> = C extends Construct<string, infer TClient>
-	? TClient
-	: never;
+export type Infer<C> =
+	C extends Construct<string, infer TClient> ? TClient : never;
 
 /** A construct's canonical id. */
-export type NameOf<C> = C extends Construct<infer TName, unknown>
-	? TName
-	: never;
+export type NameOf<C> =
+	C extends Construct<infer TName, unknown> ? TName : never;

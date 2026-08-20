@@ -1,16 +1,20 @@
-import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EmailClient } from '@geekmidas/emailkit';
+import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it } from 'vitest';
-import { Email } from '../email';
 import { snifferContext } from '../Construct';
+import { Email } from '../email';
 
 /** A template record — the only structural option the construct takes. */
 const templates = {
-	welcome: ({ name }: { name: string }) => ({ type: 'p', props: { children: name } }) as any,
+	welcome: ({ name }: { name: string }) =>
+		({ type: 'p', props: { children: name } }) as any,
 };
 
 /** Register the construct's service against a fixed environment. */
-const connect = (env: Record<string, string>, construct = new Email('Mail', { templates })) =>
+const connect = (
+	env: Record<string, string>,
+	construct = new Email('Mail', { templates }),
+) =>
 	construct.service.register({
 		envParser: new EnvironmentParser(env) as any,
 		context: snifferContext,
@@ -35,11 +39,7 @@ describe('Email', () => {
 		// prod, so they arrive as stage config rather than in the manifest.
 		const [declaration] = new Email('Mail', { templates }).declare();
 
-		expect(Object.keys(declaration).sort()).toEqual([
-			'id',
-			'kind',
-			'provides',
-		]);
+		expect(Object.keys(declaration).sort()).toEqual(['id', 'kind', 'provides']);
 	});
 
 	it('is consumed under the uncapitalised form of its id', () => {
