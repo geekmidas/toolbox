@@ -1,6 +1,10 @@
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+	// One glob, every kind. What reconcile reads to derive the containers this
+	// app needs: the `Example` database is why a Postgres exists at all, so
+	// nothing lists `postgres` anywhere.
+	constructs: './src/constructs/**/*.ts',
 	routes: './src/endpoints/**/*.ts',
 	subscribers: './src/subscribers/**/*.ts',
 	envParser: './src/config/env#envParser',
@@ -18,6 +22,10 @@ export default defineConfig({
 		imageName: 'example-api',
 		compose: {
 			services: {
+				// Deploy-side only. Locally this is ignored rather than obeyed —
+				// the `Example` construct is what implies a Postgres — but the
+				// Dokploy target still provisions from here until deploy derives
+				// from the manifest too.
 				postgres: true,
 			},
 		},

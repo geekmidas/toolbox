@@ -11,7 +11,7 @@
 		"out": "gkm prepack --build",
 		"openapi": "gkm openapi",
 		"start": "node .gkm/server/app.js",
-		"migrate": "tsx src/migrate.ts"
+		"migrate": "gkm exec -- tsx src/migrate.ts"
 	},
 	"dependencies": {
 		"@geekmidas/audit": "workspace:*",

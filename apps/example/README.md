@@ -74,6 +74,8 @@ apps/example/
 │   ├── config/
 │   │   ├── env.ts         # Environment configuration
 │   │   └── logger.ts      # Logger configuration
+│   ├── constructs/
+│   │   └── database.ts    # The declared database — a container derives from it
 │   ├── endpoints/
 │   │   ├── health.ts      # Health check endpoint
 │   │   └── users.ts       # User CRUD endpoints
@@ -140,6 +142,7 @@ export EVENT_SUBSCRIBER_CONNECTION_STRING="basic://in-memory"
 
 ```typescript
 export default {
+  constructs: './src/constructs/**/*.ts',
   routes: './src/endpoints/**/*.ts',
   subscribers: './src/subscribers/**/*.ts',
   envParser: './src/config/env',
@@ -147,11 +150,39 @@ export default {
 };
 ```
 
+### Constructs
+
+Infrastructure is declared, not configured. `src/constructs/database.ts` is the
+whole of it:
+
+```typescript
+export const database = new KyselyDatabase<Database, 'Example'>('Example');
+```
+
+From that one line `gkm dev` derives a Postgres container, allocates it a free
+port, creates the `example` database inside it, and injects `EXAMPLE_URL` — so
+nothing lists `postgres` anywhere and no URL is written down twice. Endpoints
+reach it through the router:
+
+```typescript
+e.database(database.service)  // `db` in every handler, typed by `Database`
+```
+
+Run `gkm setup` to converge the containers without starting the server.
+
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `EXAMPLE_URL` | Postgres URL for the `Example` database. Injected by `gkm dev` / `gkm exec` — do not set it by hand | derived |
 | `EVENT_SUBSCRIBER_CONNECTION_STRING` | Connection string for event subscribers | - |
+
+Migrations run through the same injection, which is why the script is
+`gkm exec -- tsx src/migrate.ts` rather than `tsx src/migrate.ts`:
+
+```bash
+pnpm run migrate
+```
 
 ## Using Different Runtimes
 

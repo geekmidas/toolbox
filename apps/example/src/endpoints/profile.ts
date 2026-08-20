@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import { z } from 'zod';
 import { router } from './router';
 
@@ -27,11 +28,16 @@ export const getProfile = router
 			throw new Error('User not found');
 		}
 
-		// Use database from router (available as `db` in context)
-		// When auditor uses same database, `db` is the transaction for ACID compliance
-		const data = await db.query<{ key: string; value: string }>(
-			`SELECT * FROM user_data WHERE user_id = '${query.userId}'`,
-		);
+		// The declared database, available as `db` in context. When the auditor
+		// writes to the same database, `db` is the transaction, so the audit and
+		// the read it describes commit together.
+		//
+		// `user_data` is outside the construct's schema type, so it is reached
+		// through `sql` — which also parameterises `userId` rather than
+		// interpolating it into the statement.
+		const { rows: data } = await sql<{ key: string; value: string }>`
+			SELECT * FROM user_data WHERE user_id = ${query.userId}
+		`.execute(db);
 
 		// Manual audit logging via auditor - type is inferred from AuditStorageService
 		auditor.audit('user.updated', {
