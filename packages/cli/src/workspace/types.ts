@@ -469,6 +469,18 @@ interface AppConfigBase {
 	crons?: Routes;
 
 	/**
+	 * Queues glob pattern for point-to-point workers.
+	 * @example './src/queues/**\/*.ts'
+	 */
+	queues?: Routes;
+
+	/**
+	 * Topics glob pattern for the topics subscribers bind to.
+	 * @example './src/topics/**\/*.ts'
+	 */
+	topics?: Routes;
+
+	/**
 	 * Subscribers glob pattern for event handlers.
 	 * @example './src/subscribers/**\/*.ts'
 	 */

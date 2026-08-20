@@ -225,9 +225,47 @@ describe('reconcile', () => {
 		expect(provisioned).toEqual([]);
 	});
 
-	it('adds the events container the backend needs', async () => {
-		expect((await run({ events: 'sns' })).plan.containers).toContain(
-			'localstack',
+	it('adds the events container a declared topic needs', async () => {
+		const withTopic = {
+			...manifest,
+			Users: {
+				kind: 'topic',
+				id: 'Users',
+				provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+			},
+		} as const satisfies ConstructManifest;
+
+		expect(
+			(await run({ manifest: withTopic, events: 'rabbitmq' })).plan.containers,
+		).toContain('rabbitmq');
+	});
+
+	it('starts no broker for a project that publishes nothing', async () => {
+		// Selecting a backend is not the same as needing one — the declarations
+		// decide whether a broker exists at all.
+		expect((await run({ events: 'rabbitmq' })).plan.containers).not.toContain(
+			'rabbitmq',
+		);
+	});
+
+	it('resolves a queue onto pg-boss inside the declared database', async () => {
+		const withQueue = {
+			...manifest,
+			Emails: {
+				kind: 'queue',
+				id: 'Emails',
+				provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+			},
+		} as const satisfies ConstructManifest;
+
+		const { env } = await run({ manifest: withQueue });
+
+		expect(env.EMAILS_PUBLISHER_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/.*\/orders\?schema=pgboss$/,
+		);
+		// The local pollers open one connection and subscribe every worker on it.
+		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
+			env.EMAILS_PUBLISHER_CONNECTION_STRING,
 		);
 	});
 

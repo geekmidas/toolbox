@@ -1654,14 +1654,23 @@ the list comes from:
 
 | today | derived |
 |---|---|
-| `services: ['postgres','minio']`, hand-maintained | a `database` implies Postgres, `objects` implies MinIO |
+| `services: ['postgres','minio']`, hand-maintained | a `database` implies Postgres, `objects` implies MinIO, `email` implies Mailpit |
 | fixed default ports, env-overridable | allocated per project, URL composed from what was allocated |
 | image and version pinning | unchanged — still explicit config |
-| containers no construct implies (mailpit) | unchanged — still explicit config |
+| containers no construct implies (redis) | unchanged — still explicit config |
 
 The same split as `ComponentOverrides`: neutral facts come from the declaration,
 provider detail from config, escape hatch stays. `services` stops being a list
 you maintain and becomes a list of exceptions.
+
+A `queue` and a `topic` are kinds too, and they are the case that shows why the
+mapping is keyed by kind rather than by config. They have no container of their
+own: they live in whichever backend the project selected, so config still picks
+*which* broker while the declarations decide *whether* one exists at all —
+selecting `rabbitmq` in a project that publishes nothing starts nothing.
+pg-boss, the default, has no container even then: its queues are tables in a
+database the manifest already declares, which is also why declaring a queue
+without a database is an error rather than a second Postgres nobody asked for.
 
 ### Ports are allocated, and that is why several projects can run at once
 

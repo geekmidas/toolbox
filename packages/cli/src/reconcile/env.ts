@@ -14,7 +14,7 @@
 
 import { provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
-import type { Plan, PlannedResource } from './plan';
+import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
 
 /**
@@ -29,6 +29,30 @@ const LOCAL_USER = 'geekmidas';
 
 /** The host containers are published on. */
 const LOCAL_HOST = 'localhost';
+
+/** The region local buckets claim, so the client has one to sign with. */
+const LOCAL_REGION = 'us-east-1';
+
+/**
+ * The credentials the S3 client resolves for MinIO.
+ *
+ * An `s3://` URL deliberately carries none: deployed, the SDK reads them from
+ * the execution role, so a URL that embedded a key would be one more thing to
+ * rotate and one more thing to leak into a log. Locally there is no role, and
+ * the same chain reads these — which is why they are injected beside the URL
+ * rather than written into it.
+ */
+const STORAGE_CREDENTIALS: Readonly<Record<string, string>> = {
+	AWS_ACCESS_KEY_ID: LOCAL_USER,
+	AWS_SECRET_ACCESS_KEY: LOCAL_USER,
+	AWS_REGION: LOCAL_REGION,
+};
+
+/** The schema pg-boss keeps its tables in, inside the declared database. */
+const PGBOSS_SCHEMA = 'pgboss';
+
+/** The exchange every local topic and queue shares on RabbitMQ. */
+const RABBITMQ_EXCHANGE = 'geekmidas.events';
 
 export interface EnvOptions {
 	/** Assigned ports, keyed by port key. */
@@ -67,7 +91,42 @@ export function envFor(
 		}
 	}
 
+	Object.assign(env, brokerEnv(plan, options.ports));
+
+	// Only once a bucket actually resolved: an unresolvable plan resolves
+	// nothing, and credentials for a container that is not running are noise.
+	if (plan.resources.some((r) => r.kind === 'objects' && env[r.envKey])) {
+		Object.assign(env, STORAGE_CREDENTIALS);
+	}
+
 	return env;
+}
+
+/**
+ * The shared broker keys, when anything is published or consumed.
+ *
+ * A queue's own key is the producer's. These two are the *connection* itself,
+ * which locally is one broker for every queue and topic in the project: the
+ * generated pollers open a single connection and subscribe each worker by name
+ * on it. Deployed there is no such thing — a Lambda is handed its own event
+ * source — so this pair exists for the local target and says so.
+ */
+function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
+	const carrier = plan.resources.find(
+		(r) => r.kind === 'queue' || r.kind === 'topic',
+	);
+	if (!carrier) return {};
+
+	const publisher = urlFor(carrier, plan, ports);
+	if (!publisher) return {};
+
+	return {
+		EVENT_PUBLISHER_CONNECTION_STRING: publisher,
+		// One connection for both directions everywhere except SNS, where the
+		// thing you publish to and the thing you poll are different services.
+		EVENT_SUBSCRIBER_CONNECTION_STRING:
+			plan.events === 'sns' ? publisher.replace(/^sns:/, 'sqs:') : publisher,
+	};
 }
 
 /**
@@ -107,11 +166,49 @@ function urlFor(
 
 		case 'objects':
 			// `?endpoint=` is what points the same S3 client at MinIO — the client
-			// is identical, only the URL differs.
-			return `s3://${resource.name}?region=us-east-1&endpoint=http://${LOCAL_HOST}:${port}`;
+			// is identical, only the URL differs. Path-style addressing goes with
+			// it: virtual-host style resolves `bucket.localhost`, which is not
+			// MinIO and not anything.
+			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
+
+		case 'queue':
+		case 'topic':
+			return broker(plan, port);
 
 		default:
 			return undefined;
+	}
+}
+
+/**
+ * The producer's connection string, composed from the backend the plan chose.
+ *
+ * The protocol is what picks the transport, so a producer never branches: the
+ * same `.publish()` reaches pg-boss here and SQS deployed because the string it
+ * was handed said so.
+ */
+function broker(plan: Plan, port: number): string {
+	switch (plan.events) {
+		case 'pgboss': {
+			// A schema tenant of the database the app already declared, which is
+			// why nothing here invents a Postgres of its own.
+			const database = plan.resources.find((r) => r.kind === 'database');
+			if (!database) throw new PgBossNeedsDatabase([]);
+
+			return `pgboss://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}/${database.name}?schema=${PGBOSS_SCHEMA}`;
+		}
+
+		case 'rabbitmq':
+			// The exchange is declared by whichever client connects first, so
+			// naming it here is the whole of the setup.
+			return `rabbitmq://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}?exchange=${RABBITMQ_EXCHANGE}`;
+
+		case 'sns':
+			// An SNS URL carries the ARN of a topic that has to exist first, so
+			// this needs a provisioning step LocalStack has not been given yet.
+			// Failing here names the gap; composing a URL without the ARN would
+			// fail at the first publish instead.
+			throw new UnprovisionedEventsBackend('sns');
 	}
 }
 
@@ -152,4 +249,22 @@ function schemaOf(resource: PlannedResource, plan: Plan): string | undefined {
 	}
 
 	return undefined;
+}
+
+/**
+ * A backend whose local addresses cannot be derived yet.
+ *
+ * SNS and SQS are addressed by ARN, which means the topic and queue have to be
+ * created in LocalStack before a URL can name them. Until that provisioning
+ * lands, saying so is better than handing out a string that fails on first use.
+ */
+export class UnprovisionedEventsBackend extends Error {
+	constructor(readonly backend: string) {
+		super(
+			`The local target cannot derive addresses for '${backend}' yet — its ` +
+				`topics and queues are named by ARN, which nothing creates locally. ` +
+				`Use 'pgboss' (the default) or 'rabbitmq' for local development.`,
+		);
+		this.name = 'UnprovisionedEventsBackend';
+	}
 }

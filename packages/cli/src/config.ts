@@ -231,14 +231,6 @@ export interface AppConfigResult {
 }
 
 /**
- * Load app-specific configuration from workspace.
- * Uses the app name from package.json to find the correct app config.
- *
- * @example
- * ```ts
- * // From apps/api directory with package.json: { "name": "@myorg/api" }
- * const { app, workspace, workspaceRoot } = await loadAppConfig();
- * console.log(app.routes); // './src/endpoints/**
  * The app a package directory refers to, and what the workspace calls it.
  *
  * A single-app config is wrapped as a one-app workspace keyed `api`, which is
@@ -252,15 +244,29 @@ function resolveWorkspaceApp(
 ): { key: string; app: NormalizedAppConfig } | undefined {
 	const apps = loadedConfig.workspace.apps;
 
-	if (apps[appName]) return { key: appName, app: apps[appName] };
+	const named = apps[appName];
+	if (named) return { key: appName, app: named };
 
 	const names = Object.keys(apps);
-	if (loadedConfig.type !== 'single' || names.length !== 1) return undefined;
+	const only = names[0];
+	if (loadedConfig.type !== 'single' || names.length !== 1 || !only) {
+		return undefined;
+	}
 
-	return { key: names[0], app: apps[names[0]] };
+	const app = apps[only];
+
+	return app ? { key: only, app } : undefined;
 }
 
-/**\/*.ts'
+/**
+ * Load app-specific configuration from workspace.
+ * Uses the app name from package.json to find the correct app config.
+ *
+ * @example
+ * ```ts
+ * // From apps/api directory with package.json: { "name": "@myorg/api" }
+ * const { app, workspace, workspaceRoot } = await loadAppConfig();
+ * console.log(app.routes); // './src/endpoints/**\/*.ts'
  * ```
  */
 export async function loadAppConfig(

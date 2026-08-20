@@ -38,6 +38,24 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 };
 
 /**
+ * The role each kind's one key plays, where it is not a URL.
+ *
+ * The twin of `ProvidesByKind` in `@geekmidas/manifest`: that is what a
+ * construct declares, this is what the local target resolves, and both derive
+ * the key from the same `provideKey` so they cannot disagree.
+ */
+const ROLES: Partial<Record<DeclarationKind, string>> = {
+	queue: 'publisherConnectionString',
+	topic: 'publisherConnectionString',
+};
+
+/** The kinds whose container is the events backend's rather than their own. */
+const EVENT_KINDS: Partial<Record<DeclarationKind, true>> = {
+	queue: true,
+	topic: true,
+};
+
+/**
  * Which kinds provision something *inside* their container.
  *
  * A database creates a database, a bucket creates a bucket; mail creates
@@ -51,6 +69,10 @@ const PROVISIONS: Partial<Record<DeclarationKind, true>> = {
 	'database-schema': true,
 	objects: true,
 };
+// Queues and topics are absent deliberately: pg-boss creates its own schema and
+// tables on first connect, and a RabbitMQ exchange is declared by the client
+// that binds to it. Both still appear in the plan, because both still resolve a
+// connection string.
 
 /**
  * The container each events backend needs, where it needs one of its own.
@@ -67,6 +89,9 @@ const EVENT_CONTAINERS: Partial<Record<EventsBackend, string>> = {
 	sns: 'localstack',
 	rabbitmq: 'rabbitmq',
 };
+
+/** The backend a project gets when it declares queues or topics and says nothing. */
+export const DEFAULT_EVENTS: EventsBackend = 'pgboss';
 
 /**
  * How a resource of each kind separates its stage suffix.
@@ -108,6 +133,14 @@ export interface PlannedResource {
 
 export interface Plan {
 	stage: string;
+	/**
+	 * The events backend this plan was built for.
+	 *
+	 * Carried on the plan rather than passed alongside it, because everything
+	 * downstream that composes a connection string needs it and reading it off
+	 * the plan is what keeps the two from disagreeing.
+	 */
+	events: EventsBackend;
 	/** Containers to start, deduplicated. */
 	containers: string[];
 	/**
@@ -156,8 +189,24 @@ export function resourceName(
 	return `${base}${SEPARATORS[kind] ?? '-'}${stage}`;
 }
 
-/** The container a kind needs, or `undefined` if it needs none. */
-export function containerFor(kind: DeclarationKind): string | undefined {
+/**
+ * The container a kind needs, or `undefined` if it needs none.
+ *
+ * Queues and topics have no container of their own — they live in whichever
+ * broker the project selected, which is why the backend is an argument here
+ * rather than a second pass that adds containers after the fact.
+ */
+export function containerFor(
+	kind: DeclarationKind,
+	events: EventsBackend = DEFAULT_EVENTS,
+): string | undefined {
+	if (EVENT_KINDS[kind]) {
+		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
+		// tenant in a database the manifest already declares, so its container is
+		// that database's.
+		return EVENT_CONTAINERS[events] ?? CONTAINERS.database;
+	}
+
 	return CONTAINERS[kind];
 }
 
@@ -177,11 +226,13 @@ export function planFor(
 	const containers = new Set<string>();
 	const resources: PlannedResource[] = [];
 
+	const events = options.events ?? DEFAULT_EVENTS;
+
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
 		if (!declaration) continue;
 
-		const container = containerFor(declaration.kind);
+		const container = containerFor(declaration.kind, events);
 		if (!container) continue;
 
 		containers.add(container);
@@ -191,7 +242,7 @@ export function planFor(
 			kind: declaration.kind,
 			container,
 			name: resourceName(id, declaration.kind, stage),
-			envKey: provideKey(id, 'url'),
+			envKey: provideKey(id, ROLES[declaration.kind] ?? 'url'),
 			provisions: PROVISIONS[declaration.kind] === true,
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
@@ -200,10 +251,38 @@ export function planFor(
 		});
 	}
 
-	const events = options.events && EVENT_CONTAINERS[options.events];
-	if (events) containers.add(events);
-
 	for (const extra of options.extraContainers ?? []) containers.add(extra);
 
-	return { stage, containers: [...containers], resources };
+	// pg-boss lives in a declared database. Without one there is nothing for it
+	// to live in, and starting a Postgres to hold only a queue would be the
+	// container this design refuses to invent.
+	if (
+		events === 'pgboss' &&
+		resources.some((r) => EVENT_KINDS[r.kind]) &&
+		!resources.some((r) => r.kind === 'database')
+	) {
+		throw new PgBossNeedsDatabase(
+			resources.filter((r) => EVENT_KINDS[r.kind]).map((r) => r.id),
+		);
+	}
+
+	return { stage, events, containers: [...containers], resources };
+}
+
+/**
+ * Queues or topics were declared with pg-boss and no database to hold them.
+ *
+ * Not a reconcile failure but a manifest one: the fix is a line of application
+ * code either way — declare a database, or select a backend that brings its own
+ * broker.
+ */
+export class PgBossNeedsDatabase extends Error {
+	constructor(readonly ids: readonly string[]) {
+		super(
+			`pg-boss keeps its queues in a declared database, and none was declared. ` +
+				`Declare one, or set services.events to 'rabbitmq' or 'sns'. ` +
+				`Queues and topics affected: ${ids.join(', ')}.`,
+		);
+		this.name = 'PgBossNeedsDatabase';
+	}
 }

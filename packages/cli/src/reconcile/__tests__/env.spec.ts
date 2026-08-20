@@ -22,6 +22,16 @@ const manifest = {
 	},
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+	Emails: {
+		kind: 'queue',
+		id: 'Emails',
+		provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+	},
+	Users: {
+		kind: 'topic',
+		id: 'Users',
+		provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+	},
 } as const satisfies ConstructManifest;
 
 const portsFor = (stage: string) => {
@@ -46,10 +56,17 @@ describe('envFor', () => {
 		expect(Object.keys(env()).sort()).toEqual([
 			'AUTH_READER_URL',
 			'AUTH_URL',
+			'AWS_ACCESS_KEY_ID',
+			'AWS_REGION',
+			'AWS_SECRET_ACCESS_KEY',
+			'EMAILS_PUBLISHER_CONNECTION_STRING',
+			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'EVENT_SUBSCRIBER_CONNECTION_STRING',
 			'MAIL_FROM',
 			'MAIL_URL',
 			'ORDERS_URL',
 			'UPLOADS_URL',
+			'USERS_PUBLISHER_CONNECTION_STRING',
 		]);
 	});
 
@@ -118,5 +135,42 @@ describe('envFor', () => {
 		const plan = planFor(manifest, 'test', provisionOrder(manifest));
 
 		expect(envFor(plan, { ports: {} })).toEqual({});
+	});
+
+	it('addresses a local bucket path-style', () => {
+		// Virtual-host style would resolve `uploads.localhost`, which is not
+		// MinIO and not anything.
+		expect(env().UPLOADS_URL).toContain('forcePathStyle=true');
+	});
+
+	it('injects the credentials the S3 client resolves for MinIO', () => {
+		// The URL deliberately carries none — deployed they come from the
+		// execution role — so locally they arrive beside it, on the chain the
+		// same client already reads.
+		expect(env().AWS_ACCESS_KEY_ID).toBe('geekmidas');
+		expect(env().AWS_SECRET_ACCESS_KEY).toBe('geekmidas');
+	});
+
+	it('gives a queue and a topic the same pg-boss connection', () => {
+		// Both live in the database the app already declared, in pg-boss's own
+		// schema — which is what makes it a schema tenant rather than a broker.
+		const url = `@localhost:${portsFor('development').postgres}/orders?schema=pgboss`;
+
+		expect(env().EMAILS_PUBLISHER_CONNECTION_STRING).toContain(url);
+		expect(env().USERS_PUBLISHER_CONNECTION_STRING).toContain(url);
+	});
+
+	it('resolves the shared connection the local pollers open', () => {
+		// One connection for every worker in the project: the generated pollers
+		// subscribe each by name on it.
+		expect(env().EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
+			env().EVENT_PUBLISHER_CONNECTION_STRING,
+		);
+	});
+
+	it('follows the stage into the queue database', () => {
+		expect(env('test').EMAILS_PUBLISHER_CONNECTION_STRING).toContain(
+			'/orders_test?schema=pgboss',
+		);
 	});
 });

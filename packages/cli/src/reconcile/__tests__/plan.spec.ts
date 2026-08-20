@@ -1,6 +1,12 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { containerFor, type PlanOptions, planFor, resourceName } from '../plan';
+import {
+	containerFor,
+	PgBossNeedsDatabase,
+	type PlanOptions,
+	planFor,
+	resourceName,
+} from '../plan';
 
 /** A database, a tenant, a reader on the tenant, a bucket, and mail. */
 const manifest = {
@@ -20,6 +26,16 @@ const manifest = {
 	},
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+	Emails: {
+		kind: 'queue',
+		id: 'Emails',
+		provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+	},
+	Users: {
+		kind: 'topic',
+		id: 'Users',
+		provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+	},
 } as const satisfies ConstructManifest;
 
 const plan = (stage: string, options?: PlanOptions) =>
@@ -71,6 +87,18 @@ describe('containerFor', () => {
 		// open, and the provider survives only as a host in the URL.
 		expect(containerFor('email')).toBe('mailpit');
 	});
+
+	it('maps a queue and a topic onto the broker, not onto one of their own', () => {
+		expect(containerFor('queue', 'rabbitmq')).toBe('rabbitmq');
+		expect(containerFor('topic', 'sns')).toBe('localstack');
+	});
+
+	it('maps a queue onto the declared database under pg-boss', () => {
+		// The default, and the reason pg-boss needs no container: its queues are
+		// tables in a database the app already declared.
+		expect(containerFor('queue', 'pgboss')).toBe('postgres');
+		expect(containerFor('topic')).toBe('postgres');
+	});
 });
 
 describe('planFor', () => {
@@ -113,6 +141,8 @@ describe('planFor', () => {
 			'AuthReader',
 			'Uploads',
 			'Mail',
+			'Emails',
+			'Users',
 		]);
 	});
 
@@ -137,6 +167,8 @@ describe('planFor', () => {
 			AuthReader: 'authreader_test',
 			Uploads: 'uploads-test',
 			Mail: 'mail-test',
+			Emails: 'emails-test',
+			Users: 'users-test',
 		});
 	});
 
@@ -152,6 +184,8 @@ describe('planFor', () => {
 			'AUTH_READER_URL',
 			'UPLOADS_URL',
 			'MAIL_URL',
+			'EMAILS_PUBLISHER_CONNECTION_STRING',
+			'USERS_PUBLISHER_CONNECTION_STRING',
 		]);
 	});
 
@@ -160,7 +194,7 @@ describe('planFor', () => {
 		expect(plan('test').containers).toEqual(plan('development').containers);
 	});
 
-	it('adds a container for an events backend that needs one', () => {
+	it('puts a queue and a topic in the backend the project selected', () => {
 		expect(plan('test', { events: 'sns' }).containers).toContain('localstack');
 		expect(plan('test', { events: 'rabbitmq' }).containers).toContain(
 			'rabbitmq',
@@ -169,10 +203,39 @@ describe('planFor', () => {
 
 	it('adds no container for pg-boss', () => {
 		// It is a schema tenant in a database the manifest already declares, so
-		// mapping it to postgres here would start one for a project with none.
+		// mapping it to a container of its own would start a second Postgres.
 		expect(plan('test', { events: 'pgboss' }).containers).toEqual(
 			plan('test').containers,
 		);
+	});
+
+	it('starts no broker for a project that declared no queue or topic', () => {
+		// Config selects *which* backend, never *whether* one exists — that is
+		// what the declarations are for, and rabbitmq for a project with nothing
+		// to publish is the container this design refuses to invent.
+		const queueless = {
+			Orders: { kind: 'database', id: 'Orders' },
+		} as const satisfies ConstructManifest;
+
+		expect(
+			planFor(queueless, 'test', provisionOrder(queueless), {
+				events: 'rabbitmq',
+			}).containers,
+		).toEqual(['postgres']);
+	});
+
+	it('refuses pg-boss with nowhere to live', () => {
+		// The fix is a line of application code either way, so it is worth the
+		// error rather than a Postgres started to hold only a queue.
+		const homeless = {
+			Emails: { kind: 'queue', id: 'Emails' },
+		} as const satisfies ConstructManifest;
+
+		expect(() =>
+			planFor(homeless, 'test', provisionOrder(homeless), {
+				events: 'pgboss',
+			}),
+		).toThrow(PgBossNeedsDatabase);
 	});
 
 	it('starts no database for pg-boss when nothing declared one', () => {
@@ -197,6 +260,7 @@ describe('planFor', () => {
 	it('plans nothing for an empty manifest', () => {
 		expect(planFor({}, 'test', [])).toEqual({
 			stage: 'test',
+			events: 'pgboss',
 			containers: [],
 			resources: [],
 		});
