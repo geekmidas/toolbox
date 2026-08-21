@@ -2,8 +2,8 @@
 // Checked by `ts:check:sst`; vitest ignores it.
 
 import { App } from '../App';
-import { Function } from '../Function';
-import { Storage } from '../Storage';
+import { Function } from '../aws/Function';
+import { Storage } from '../aws/Storage';
 
 const stack = new App({
 	name: 'a',

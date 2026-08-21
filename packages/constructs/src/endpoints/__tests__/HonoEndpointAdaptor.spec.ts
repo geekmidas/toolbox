@@ -51,7 +51,7 @@ describe('HonoEndpointAdaptor', () => {
 		it('should register a POST endpoint with body validation', async () => {
 			const bodySchema = z.object({
 				name: z.string(),
-				email: z.string().email(),
+				email: z.email(),
 			});
 
 			const endpoint = new Endpoint({
@@ -379,7 +379,7 @@ describe('HonoEndpointAdaptor', () => {
 		it('should handle PATCH method', async () => {
 			const bodySchema = z.object({
 				name: z.string().optional(),
-				email: z.string().email().optional(),
+				email: z.email().optional(),
 			});
 			const paramsSchema = z.object({
 				id: z.string(),

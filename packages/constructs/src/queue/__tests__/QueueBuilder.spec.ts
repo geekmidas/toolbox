@@ -79,6 +79,38 @@ describe('QueueBuilder', () => {
 	});
 });
 
+describe('Queue.declare', () => {
+	it('declares a queue under a canonical id, keeping the wire name', () => {
+		// The name is the `type` a producer sends and the worker subscribes to;
+		// changing it would silently orphan in-flight messages.
+		const queue = new QueueBuilder()
+			.queue('orderEvents')
+			.message(schema)
+			.handle(async () => {});
+
+		expect(queue.id).toBe('OrderEvents');
+		expect(queue.name).toBe('orderEvents');
+		expect(queue.declare()).toEqual([
+			{
+				kind: 'queue',
+				id: 'OrderEvents',
+				provides: ['ORDER_EVENTS_PUBLISHER_CONNECTION_STRING'],
+			},
+		]);
+	});
+
+	it('declares only the producer key', () => {
+		// A worker is reached through its queue, so there is no second key and
+		// nothing can depend on the handler.
+		const queue = new QueueBuilder()
+			.queue('orders')
+			.message(schema)
+			.handle(async () => {});
+
+		expect(queue.declare()[0]?.provides).toHaveLength(1);
+	});
+});
+
 describe('Queue.publisher', () => {
 	it('exposes a `<name>Publisher` producer service', () => {
 		const queue = new QueueBuilder()

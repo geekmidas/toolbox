@@ -12,9 +12,11 @@ async function migrate() {
 	const db = new Kysely({
 		dialect: new PostgresDialect({
 			pool: new pg.Pool({
+				// Run through `gkm exec` (see the `migrate` script) so this is the
+				// URL of the database the constructs actually reconciled.
 				connectionString:
-					process.env.DATABASE_URL ??
-					'postgresql://geekmidas:geekmidas@localhost:5432/examples',
+					process.env.EXAMPLE_URL ??
+					'postgres://geekmidas:geekmidas@localhost:5432/example',
 			}),
 		}),
 	});

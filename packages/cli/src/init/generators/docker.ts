@@ -53,7 +53,7 @@ export function generateDockerFiles(
     ports:
       - '\${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
-      - dbdata:/var/lib/postgresql/18/data${initVolume}
+      - dbdata:/var/lib/postgresql${initVolume}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER']
       interval: 5s

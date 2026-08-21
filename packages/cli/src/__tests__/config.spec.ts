@@ -231,6 +231,35 @@ export default {
 		);
 	});
 
+	it('resolves the only app of a single-app config, whatever the package is called', async () => {
+		// A single-app config is wrapped as a one-app workspace keyed `api`, which
+		// is almost never the package name. Matching on the key alone loses
+		// everything the workspace carries — including the constructs glob the
+		// local target is derived from.
+		const appDir = tempDir;
+		const config = `
+export default {
+  constructs: './src/constructs/**/*.ts',
+  routes: './src/endpoints/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/config/logger',
+};
+`;
+		await writeFile(join(appDir, 'gkm.config.ts'), config);
+		await writeFile(
+			join(appDir, 'package.json'),
+			JSON.stringify({ name: '@acme/example', version: '1.0.0' }),
+		);
+
+		process.chdir(appDir);
+
+		const result = await loadAppConfig();
+
+		expect(result.appName).toBe('example');
+		expect(result.app.constructs).toBe('./src/constructs/**/*.ts');
+		expect(result.gkmConfig.constructs).toBe('./src/constructs/**/*.ts');
+	});
+
 	it('should throw error if app not found in workspace', async () => {
 		// Create workspace structure
 		const workspaceRoot = tempDir;

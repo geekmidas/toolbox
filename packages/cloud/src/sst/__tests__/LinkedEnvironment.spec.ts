@@ -14,7 +14,10 @@ const stack = new App({
 }).stack('api');
 
 const db: GkmLinkable = { _id: 'db', _type: ResourceType.Postgres };
-const uploads: GkmLinkable = { _id: 'uploads', _type: ResourceType.Bucket };
+const uploads: GkmLinkable = {
+	_id: 'uploads',
+	_type: ResourceType.ObjectStorage,
+};
 
 describe('LinkedEnvironment', () => {
 	describe('createBaseEnvironment', () => {

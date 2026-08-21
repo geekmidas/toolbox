@@ -35,6 +35,7 @@ import {
 	FunctionGenerator,
 	QueueGenerator,
 	SubscriberGenerator,
+	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import {
@@ -42,6 +43,7 @@ import {
 	OPENAPI_OUTPUT_PATH,
 	resolveOpenApiConfig,
 } from '../openapi';
+import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
 	secretsExist,
@@ -338,6 +340,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 		// Single-app mode - use existing logic
 		config = loadedConfig.raw as GkmConfig;
+		// Wrapped as a one-app workspace, which is what reconcile reads. Nothing
+		// below depends on an app name, so this only turns on the parts that need
+		// a workspace at all.
+		workspace = loadedConfig.workspace;
 	}
 
 	// Load any additional env files specified in config
@@ -430,14 +436,35 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	let secretsJsonPath: string | undefined;
 	const appSecrets = await loadSecretsForApp(secretsRoot, workspaceAppName);
 
-	// Resolve Docker service ports and rewrite connection URLs
-	const resolvedPorts = await resolveServicePorts(secretsRoot);
-	if (Object.keys(resolvedPorts.ports).length > 0) {
-		const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
-		Object.assign(appSecrets, rewritten);
-		logger.log(
-			`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-		);
+	if (workspace && usesConstructs(workspace)) {
+		// The same reconcile `gkm setup` and the workspace dev path run: derive
+		// the containers from what the app declares, start them, create what the
+		// URLs name, and inject those URLs. It replaces the branch below, which
+		// has no hand-written compose file left to read ports out of.
+		const reconciled = await reconcileWorkspace(workspace, {
+			stage: 'development',
+		});
+
+		if (reconciled.changed && reconciled.plan.containers.length > 0) {
+			logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
+			for (const [container, address] of Object.entries(reconciled.addresses)) {
+				logger.log(`   ${container}: ${address}`);
+			}
+		}
+
+		// Declared URLs win over anything sniffed or stored — the manifest is the
+		// statement of what exists.
+		Object.assign(appSecrets, reconciled.env);
+	} else {
+		// Resolve Docker service ports and rewrite connection URLs
+		const resolvedPorts = await resolveServicePorts(secretsRoot);
+		if (Object.keys(resolvedPorts.ports).length > 0) {
+			const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
+			Object.assign(appSecrets, rewritten);
+			logger.log(
+				`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
+			);
+		}
 	}
 
 	// Inject dependency URLs if in workspace mode
@@ -982,18 +1009,44 @@ async function workspaceDevCommand(
 	// (e.g. import { createApi } from '@myapp/api/client')
 	// No file copying needed — pnpm workspace resolution handles it.
 
-	// Resolve dynamic service ports from docker-compose.yml
-	const resolvedPorts = await resolveServicePorts(workspace.root);
-
 	// Load secrets BEFORE starting Docker so POSTGRES_USER, POSTGRES_PASSWORD,
 	// etc. are available for docker-compose variable interpolation
 	const rawSecrets = await loadDevSecrets(workspace);
 
-	// Start docker-compose services with resolved ports AND secrets
-	await startWorkspaceServices(workspace, resolvedPorts.dockerEnv, rawSecrets);
+	let secretsEnv: Record<string, string>;
 
-	// Rewrite URLs with resolved ports (hostnames and port numbers)
-	const secretsEnv = rewriteUrlsWithPorts(rawSecrets, resolvedPorts);
+	if (usesConstructs(workspace)) {
+		// Derive the containers from what the app declares, start them, create
+		// what the URLs name, and inject those URLs. Safe to do on every start
+		// because the blast radius is this project's containers and `.gkm/`, and
+		// because the converged case costs one hash and one health check.
+		const reconciled = await reconcileWorkspace(workspace, {
+			stage: 'development',
+		});
+
+		if (reconciled.changed && reconciled.plan.containers.length > 0) {
+			logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
+			for (const [container, address] of Object.entries(reconciled.addresses)) {
+				logger.log(`   ${container}: ${address}`);
+			}
+		}
+
+		secretsEnv = { ...rawSecrets, ...reconciled.env };
+	} else {
+		// Resolve dynamic service ports from the hand-written docker-compose.yml
+		const resolvedPorts = await resolveServicePorts(workspace.root);
+
+		// Start docker-compose services with resolved ports AND secrets
+		await startWorkspaceServices(
+			workspace,
+			resolvedPorts.dockerEnv,
+			rawSecrets,
+		);
+
+		// Rewrite URLs with resolved ports (hostnames and port numbers)
+		secretsEnv = rewriteUrlsWithPorts(rawSecrets, resolvedPorts);
+	}
+
 	if (Object.keys(secretsEnv).length > 0) {
 		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
 	}
@@ -1145,6 +1198,11 @@ async function buildServer(
 	appRoot: string = process.cwd(),
 	bustCache = false,
 ): Promise<void> {
+	// The entry point registers the drivers its target needs — see
+	// `generators/drivers.ts`. Decided here because this is where the app root is
+	// known, and read by every generator that writes an entry.
+	context = { ...context, storageDrivers: storageDriversFor(appRoot) };
+
 	// Initialize generators
 	const endpointGenerator = new EndpointGenerator();
 	const functionGenerator = new FunctionGenerator();

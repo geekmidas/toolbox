@@ -1,21 +1,22 @@
 import { s } from '@geekmidas/constructs/subscribers';
 import logger from '../config/logger.js';
-import { DatabaseService } from '../services/DatabaseService.js';
-import { EventsService } from '../services/EventsService.js';
+import { database } from '../constructs/database.js';
+import { users } from '../constructs/topics.js';
 
 /**
- * A topic subscriber — fan-out. Chaining `.publisher(EventsService)` types the
- * subscribed events (and their payloads) from `AppEvents`, so `event.payload` is
- * narrowed per `event.type`. Many subscribers can each subscribe to the same
- * stream; this one reacts to user lifecycle events.
+ * A topic subscriber — fan-out. `.topic(users)` types the events and their
+ * payloads from the topic's contract and records the binding for the manifest,
+ * so infra wires the subscription.
  *
- * Locally it runs as an in-process pg-boss poller alongside the Hono server;
- * deployed it's an SNS subscription.
+ * Binding is not depending: a consumer does not publish, so this subscriber is
+ * never handed the topic's publisher connection string. Locally it runs as an
+ * in-process pg-boss poller alongside the Hono server; deployed it is an SNS
+ * subscription.
  */
 export const userEventsSubscriber = s
 	.logger(logger)
-	.services([DatabaseService])
-	.publisher(EventsService)
+	.dependsOn([database])
+	.topic(users)
 	.subscribe(['user.created', 'user.updated'])
 	.handle(async ({ events, logger }) => {
 		for (const event of events) {

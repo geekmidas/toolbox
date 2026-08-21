@@ -673,7 +673,8 @@ policies live, so that is where the split earns its place.
 CREATE ROLE app_owner;                          -- migrations
 CREATE ROLE app LOGIN PASSWORD '…';             -- runtime
 CREATE SCHEMA app AUTHORIZATION app_owner;
-ALTER ROLE app SET search_path TO app;
+ALTER ROLE app_owner SET search_path TO app;    -- both, see below
+ALTER ROLE app       SET search_path TO app;
 GRANT USAGE ON SCHEMA app TO app;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA app
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
@@ -775,6 +776,48 @@ so the app's role has no grant on the auth tables at all. pg-boss becomes an
 instance of this rather than the hardcoded special case it is today — with a
 single role, which is correct for it.
 
+**Schemas resolve through `search_path` on the role**, not through the
+connection string or client config — so `db.selectFrom('orders')` finds
+`app.orders` with no `withSchema()` call, and a schema tenant works identically
+through its own role. It must be set on **both** roles: migrations run as
+`app_owner`, so without it they create tables on the default path while the
+runtime role looks in `app` and finds nothing — a migration that reports success
+followed by "relation does not exist". The opt-out path has no role to pin, so
+there it moves onto the connection string (`?options=-csearch_path%3Dapp`),
+which is a second reason that path is a downgrade.
+
+**Roles are created by an in-VPC provisioner, triggered as a Pulumi resource.**
+The alternative — `@pulumi/postgresql` resources for roles and schemas — is
+declarative and diffable but requires the Pulumi CLI to reach the database at
+deploy time, which a private RDS does not allow without a bastion. A provisioner
+function is already in the VPC:
+
+```
+sst.aws.Postgres          the instance, master secret
+  → Secret app / app_owner
+  → OrdersProvisioner     in-VPC, linked to all three secrets
+  → aws.lambda.Invocation runs it during `pulumi up`
+  → OrdersMigrator        invoked next
+  → app functions         dependsOn the provisioning invocation
+```
+
+Invoking a Lambda is a control-plane call, so Pulumi can trigger it from
+anywhere; only the *database connection* needs to be inside the VPC. The
+invocation's input is a hash of the desired state — schema name, role names,
+secret versions — so it re-runs when any of those change and is skipped when
+they do not.
+
+Two things follow. **Rotation stops being a two-step procedure**: changing a
+secret changes the invocation's input, the provisioner re-runs, and its
+`ALTER ROLE … WITH PASSWORD` branch syncs the database. And **the provisioner is
+the only thing linked to the master secret** — it is the one component that can
+create or drop, which is the entire point of the split and easy to undo by
+linking master "just for now" to something else.
+
+The cost is that Pulumi does not know the schema exists: no diff, no destroy,
+and removing a tenant leaves it behind. That lands in the destructive-change gap
+already deferred to the manifest-diff work rather than opening a new one.
+
 **It declares two functions of its own.** A database returns three declarations,
 not one — the database, a migrator, and a seeder:
 
@@ -797,9 +840,11 @@ Locally there is no Lambda, so the same migration code runs in-process. Worth
 stating explicitly so the two paths cannot drift: a migration that works locally
 and fails in the VPC is the expensive failure.
 
-**Ordering.** "Invoke after create" is not a resource, so the sequence lives in
-the deploy command rather than in the dependency graph — the one part of this
-that infrastructure-as-code does not express for us.
+**Ordering** stays in the dependency graph. `aws.lambda.Invocation` is a real
+resource, so "invoke the migrator after the provisioner" is an ordinary
+`dependsOn` rather than a step in a deploy script — and the app's functions
+depend on the migration invocation the same way. Locally the same ordering is a
+sequence in `gkm setup`, since there is no graph to express it in.
 
 ### Services, loggers, and builders
 
@@ -890,6 +935,140 @@ export const upload = api.post('/upload')
   .dependsOn([uploads])
   .handle(async ({ body, services }) => services.uploads.put(key, body));
 // sst.config.ts: nothing — bucket, link, env, and IAM all derive
+```
+
+### Serving files
+
+`ObjectStorage` is the bucket: it writes, it presigns, and its URL is never
+public. Serving those objects on a domain is a *second address on the same
+resource*, so it is a derived construct — the shape `orders.reader()` and
+`orders.schema()` already use — rather than a second kind of storage anyone has
+to choose between:
+
+```ts
+export const uploads = new ObjectStorage('Uploads');
+export const files   = uploads.server({ subdomain: 'files', open: ['brand/**'] });
+```
+
+Three axes get conflated here, and separating them is most of the design:
+
+| axis | choices | decided by |
+|---|---|---|
+| does reading need a signature | open / signed | the object, via its path |
+| how a signature travels | cookie / URL | the use case, not the object |
+| which address you hold | bucket (write, presign) / server (domain, read) | the edge |
+
+**Private by default; `open` is an exception list.** A bucket where forgetting a
+flag publishes user uploads is the wrong default. `open` names the paths served
+without a signature; everything else requires one. Paths rather than per-object
+flags because that is what the infrastructure enforces — with origin access
+locked down, a CDN keys behaviours off path patterns, and a per-object ACL is a
+thing nobody audits. Listing them in code means exactly one set of paths is
+unauthenticated and it is reviewable in a diff.
+
+**"Public" never means the bucket is world-readable.** It means the server
+serves that path without a signature. The bucket stays private in both cases.
+
+**The subdomain is the address, not the boundary.** Signed content is served
+from the same host — and for cookies it *must* be, since a cookie is scoped to a
+domain. Two servers over one bucket is a legitimate arrangement (public assets
+that never carry an auth cookie, and cleaner cache keys), but that is a
+cache-behaviour decision, not a secrecy one.
+
+**Cookies are set at the parent domain**, `Domain=.example.com`, exactly as the
+auth section already requires — so the file server needs to know nothing about
+the API, and there is one domain rule in the system rather than two. Two
+assumptions come with it, and they are assumptions rather than accidents: every
+subdomain under that parent is yours (a parent-scoped cookie can be overwritten
+by anything under it, so per-tenant subdomains would need revisiting), and open
+behaviours are configured not to forward cookies, so the browser sending one
+does not pollute the cache key.
+
+**Per-user authorisation is out of scope for path patterns.** "Can *this* user
+read invoice 7" is not expressible as a prefix; the answer is that the app
+authorises and redirects to a short-lived signed URL. Saying so is better than
+implying patterns cover it — the alternative is an edge function doing auth,
+which is a large surface to sign up for.
+
+#### Locally, on MinIO
+
+Three of the four map cleanly:
+
+| capability | local |
+|---|---|
+| the address | `MINIO_DOMAIN` gives virtual-host addressing — `uploads.myapp.test/brand/logo.png` is the CDN URL shape, no bucket segment, no proxy |
+| `open` patterns | a MinIO bucket policy with prefix resources — real enforcement, same declaration |
+| signed URLs | S3 presigning works against MinIO unchanged |
+| signed cookies | **nothing** — CloudFront-specific |
+
+The addressing constraint: the label has to equal the bucket name for MinIO to
+resolve it, which the default already satisfies since both derive from the id.
+Overriding the label costs shape-parity locally until the local target grows a
+proxy that mimics a CDN over MinIO — worth doing later, and additive when it
+lands.
+
+The cookie gap is why the client should expose one `read(key)` that resolves
+however the stage can, rather than app code branching on a mechanism that only
+half exists locally. If cookies are the default path in application code, the
+first time anyone learns whether the domain, `Secure`, and `SameSite` are right
+is on deploy.
+
+### A database, end to end
+
+```ts
+// before — a service, the schema type hand-threaded through the builder,
+// sst.config.ts, and `services: ['postgres']` in gkm.config.ts
+export const dbService = { serviceName: 'db', async register({ envParser }) { … } };
+export const listOrders = e.get('/orders').database(dbService).handle(…);
+
+// after
+export const orders = new KyselyDatabase<OrdersDB, 'Orders'>('Orders', {
+  plugins: [new CamelCasePlugin()],
+});
+
+export const listOrders = api.get('/orders')
+  .database(orders)
+  .handle(async ({ db }) => db.selectFrom('orders').selectAll().execute());
+```
+
+**Both type arguments or neither.** TypeScript has no partial type-argument
+inference, so `new KyselyDatabase<OrdersDB>('Orders')` leaves the name parameter
+at its default and the service key widens from `orders` to `string`. `db` still
+types either way, because `.database()` infers from the service.
+
+Options are `Omit<KyselyConfig, 'dialect'>` plus what the construct declares. The
+construct owns `dialect` — it is built from the one URL the adapter supplied —
+and everything else Kysely takes passes through, so `plugins` and `log` need no
+per-field plumbing here.
+
+Derived constructs are top-level entries that provision nothing of their own:
+
+```ts
+export const ordersReader = orders.reader();                 // OrdersReader, SELECT-only role
+export const auth = orders.schema<AuthDB, 'Auth'>('Auth');   // second schema, own role, own URL
+```
+
+which is four manifest entries from three lines:
+
+```ts
+Orders       { kind: 'database',        schema: 'app',  provides: ['ORDERS_URL'] }
+OrdersReader { kind: 'database-reader',  of: 'Orders',  provides: ['ORDERS_READER_URL'] }
+Auth         { kind: 'database-schema',  of: 'Orders',  schema: 'auth', provides: ['AUTH_URL'] }
+AuthReader   { kind: 'database-reader',  of: 'Auth',    provides: ['AUTH_READER_URL'] }
+```
+
+`app`'s role holds no grant on `auth`'s tables, so a compromised orders handler
+cannot read sessions — and none of it is stated twice.
+
+The same construct is what a test connects through, so configuration cannot
+diverge between them:
+
+```ts
+const isolatedTest = isolator.wrapVitestWithTransaction({ connection: orders });
+
+isolatedTest('lists orders', async ({ trx }) => {
+  await adaptor.request({ database: trx, … });
+});
 ```
 
 ### A queue and its producer
@@ -1024,6 +1203,97 @@ Two knock-ons: CORS **cannot** be `*`, because credentialed requests require an
 explicit origin, which the derived list supplies; and mounting auth on the API
 surface is the better default, since the cookie is then same-origin with the
 calls that use it.
+
+#### Consolidating providers: abstract the authorizer, not the server
+
+A self-hosted auth server and a hosted identity provider are not the same thing
+wearing different clothes. One owns a database, mounts endpoints on your domain,
+and issues your session; the other owns nothing of yours and hands you a token to
+verify against a JWKS. A facade over both ends up leaky or anemic — and the
+anemic version is the one that abstracts user management, orgs, and admin APIs
+into an interface too thin to use.
+
+What they genuinely share is one thing, and it is the thing every endpoint
+consumes:
+
+```ts
+verify(request) → Session | null
+```
+
+So the **authorizer** is the consolidation point, and the provider construct is
+not consolidated at all:
+
+```ts
+export const auth = new BetterAuth('Auth', { database: authDb, … });  // owns a DB, a surface, a secret
+export const auth = new OidcAuth('Auth', { issuer: 'https://…/' });   // owns a client secret, nothing else
+
+export const api = new RestApi('Api', { authorizers: [auth], default: auth });
+```
+
+`services.auth` stays the provider's own client — no lowest common denominator —
+while `session` in a handler is uniform because it arrived through the
+authorizer. The hosted half is largely written already: `@geekmidas/auth` has
+`oidc.ts` and `jwt.ts` on jose with hono and lambda adaptors, so `OidcAuth`
+wraps existing code rather than reimplementing verification.
+
+#### The auth server is its own surface
+
+Mounting auth on the API surface was argued from cookie same-origin. Once the
+cookie is set at the parent domain — which the file server needs anyway —
+`auth.example.com` reaches the API just as well, so mounting becomes a
+deploy-shape question rather than a correctness one: its own surface means its
+own scaling, its own cold starts, its own blast radius, and an `AUTH_URL` that
+the browser client and the trusted-origins derivation both want. The construct
+owns a surface; whether the adapter gives it a distribution of its own or a path
+behaviour on the API's is the adapter's call, exactly as it is for CDN-enabled
+buckets.
+
+#### The client is generated, and the server dictates capabilities
+
+A site that depends on auth should get its client the way it gets an API client:
+derived, not hand-written. The naive form of that — generating the provider's own
+client with its plugin twins — means maintaining a name registry that lags the
+provider's releases, and better-auth's plugin options hold server-only closures
+that cannot be serialised anyway.
+
+The form that works inverts it: the generated client's API is **ours**, and the
+provider is an implementation detail behind it.
+
+```ts
+auth.signIn.magicLink({ email })   // exists because the server declared it
+auth.signIn.oauth('github')
+auth.session()
+auth.signOut()
+```
+
+**The server dictates capabilities; both sides no longer declare them.** That is
+the same rule as `provides`/`requires` — one declaration, both sides derive — and
+it removes a class of bug outright: a client offering a sign-in method the server
+never enabled. It is also the same shape as `ProvidesByKind`, a neutral contract
+with provider-specific codecs behind it; `s3://` and `gs://` parse privately and
+never reach the neutral layer, and neither should a plugin name.
+
+Where capabilities overlap, swapping providers changes no application code. Where
+they do not, it is a **compile error rather than a runtime 404**, which is the
+argument that makes the facade worth having.
+
+Two limits, stated rather than discovered:
+
+- **Generated at build, verified at runtime in dev.** Build-time generation is
+  what makes the capability set a *type*; a discovery document fetched at runtime
+  would keep a deployed frontend honest across a backend change without a rebuild
+  but gives up the compile-time surface. Generate types, and warn on mismatch in
+  dev.
+- **The facade covers sign-in, session, and sign-out.** Everything else reaches
+  the provider through an escape hatch (`auth.raw`), which is also a one-line
+  signal in review that neutral ground has been left.
+
+**Known deviation.** The kitchen-sink auth construct currently takes better-auth
+plugins directly — the app imports `magicLink` from `better-auth/plugins` and
+passes it in, which is the provider leaking into application code that this
+section exists to prevent. It should be a capability the construct translates
+(`capabilities: { magicLink: { send } }`), with the send callback still reaching
+the mail construct the way it does now.
 
 ### A site
 
@@ -1531,6 +1801,323 @@ reporting stops being silent** — because the filter keys off *sniffed* names, 
 with a permissions error. And `EnvValidationError` guards a narrower gap: it
 exists because required vars and available links are independently maintained,
 and one edge collapses that class of error.
+
+## The Local Target
+
+Local is a target adapter, not a simulation of one. It reads the same
+declarations `fromManifest` reads and produces containers instead of cloud
+resources — same edges, same `provides()` contract, same assertion that what a
+component supplies matches what the app declared.
+
+This matters more than it sounds. The alternative — and what exists today — is a
+hand-written `services: ['postgres', 'minio']` list in the workspace config that
+you keep in step with your code by hand. It is the same triplication the whole
+design exists to remove, in the one place you touch every day.
+
+### Containers are derived, config only overrides
+
+`gkm docker` keeps its templates and its image pinning; what changes is where
+the list comes from:
+
+| today | derived |
+|---|---|
+| `services: ['postgres','minio']`, hand-maintained | a `database` implies Postgres, `objects` implies MinIO, `email` implies Mailpit |
+| fixed default ports, env-overridable | allocated per project, URL composed from what was allocated |
+| image and version pinning | unchanged — still explicit config |
+| containers no construct implies (redis) | unchanged — still explicit config |
+
+The same split as `ComponentOverrides`: neutral facts come from the declaration,
+provider detail from config, escape hatch stays. `services` stops being a list
+you maintain and becomes a list of exceptions.
+
+A `queue` and a `topic` are kinds too, and they are the case that shows why the
+mapping is keyed by kind rather than by config. They have no container of their
+own: they live in whichever backend the project selected, so config still picks
+*which* broker while the declarations decide *whether* one exists at all —
+selecting `rabbitmq` in a project that publishes nothing starts nothing.
+pg-boss, the default, has no container even then: its queues are tables in a
+database the manifest already declares, which is also why declaring a queue
+without a database is an error rather than a second Postgres nobody asked for.
+
+### Ports are allocated, and that is why several projects can run at once
+
+Publishing `5432:5432` means the second project on your machine cannot start.
+Nothing solves that except giving each project its own ports — and the reason
+that is *possible* here is the single-`<NAME>_URL` rule. The app reads
+`ORDERS_URL`; it never sees a host or a port, so the local target is free to bind
+whatever is available and compose the URL from what it bound. An app that reads
+`DB_HOST` and `DB_PORT` separately can't be moved this way.
+
+A shared cluster with a database per project is the tempting alternative and does
+not survive contact with reality: one project needs `postgis/postgis:17-3.5`,
+another `postgres:18`. One container cannot be both. Projects keep their own
+stacks.
+
+Assignments are **persisted, not recomputed**. A hash of the project name picks a
+starting point unlikely to collide; from then on the assignment is stored, because
+recomputing means adding a construct renumbers its neighbours and every running
+container, saved connection string, and `psql` history goes stale at once.
+Allocation checks what is actually listening, so a collision with another
+project's stack surfaces at reconcile rather than as a failed connection.
+
+### The role DDL belongs to `db`, not to `cloud`
+
+Roles have to exist locally too, or `ORDERS_URL` names a role that is not there.
+The design already says the migrator runs in-process locally and as a Lambda in
+the VPC; the same has to be true of role and schema creation. So the DDL lives in
+`@geekmidas/db`, imported by both the provisioner Lambda and `gkm setup`:
+
+```ts
+// @geekmidas/db/pg/provision
+export function statements(plan: SchemaPlan): string[]   // pure, testable without a database
+export async function apply(master: string, plan: SchemaPlan): Promise<void>
+```
+
+Pure statement generation applied by whichever caller holds the master
+credential. One implementation, so there is nothing for the two paths to disagree
+about — which is what stops "works locally, fails in the VPC".
+
+### Three phases, and only one has side effects
+
+| phase | command | side effects |
+|---|---|---|
+| **declare** | `gkm build`, dev's watcher | none — constructs → manifest, pure |
+| **reconcile** | `gkm setup`, and `gkm dev` on startup | ports, passwords, compose file, containers, roles, env |
+| **run** | `gkm dev`, deployed handlers | reads `<NAME>_URL`; provisions nothing |
+
+Reconcile is **convergent**, so "when does it run" has the comfortable answer:
+whenever, repeatedly. It computes the desired state, compares, applies the
+difference. `gkm setup` is that code invoked explicitly — for CI, for a teammate,
+for reconciling without starting a server.
+
+Most of this already exists inside `setupCommand`: resolve secrets, write the
+docker env, resolve ports, start the services. What changes is where the list of
+services comes from — the manifest rather than a hand-written `services:` block —
+and that the same function is what `gkm dev` and `gkm test` both call, with the
+stage as its parameter.
+
+### `gkm dev` sets up automatically
+
+It should, and the reason it is safe to is that reconcile's blast radius is
+entirely local: this project's containers, this project's `.gkm/`. Nothing it
+does can reach a cloud. Auto-running a deploy would be indefensible; auto-running
+this is not.
+
+The alternative is that a fresh clone's first experience is `ORDERS_URL is not
+defined`, with a fix you have to already know about — which contradicts the
+zero-config principle directly.
+
+**The line is drawn at data, not at side effects:**
+
+| automatic | never automatic |
+|---|---|
+| allocate ports, generate missing passwords | seed |
+| write the compose file | reset or drop |
+| start containers, wait for health | destructive migrations |
+| create roles, schemas, `search_path` | anything targeting a non-local stage |
+| run **pending** migrations | |
+
+Migrations run because they are forward-only and the local database is
+disposable. Seeds do not, for the reason already given — running them
+automatically is how you overwrite data — and that argument is about intent, so
+it holds locally even though the stakes are lower.
+
+Three things keep it from being annoying:
+
+**A fast path.** Hash the desired plan; if it matches what was recorded and the
+containers are healthy, do nothing. Reconciling on every start is only acceptable
+if the converged case is free. That hash is the same mechanism the deployed side
+uses — `aws.lambda.Invocation` keyed on schema name, role names, and secret
+versions, re-running only when one changes. Both targets should call the *same*
+plan-hash function, so they cannot disagree about what counts as a change.
+
+**Saying what it did.** One line when it acts, silence when it does not:
+
+```
+gkm: provisioned Reports (database, :27438), 2 migrations applied
+```
+
+Silent provisioning is how people stop knowing what state their machine is in.
+
+**An escape hatch and a decent failure.** `--no-setup` for when you are pointed at
+a remote database or already have the stack running, and a sentence rather than a
+socket error when the docker daemon is not up.
+
+One consequence: the watcher must re-reconcile when the manifest changes, and it
+currently misses file `add`/`unlink`. Today that costs a stale route. Here it
+means a newly declared database is never provisioned while the error you see says
+an environment variable is missing. It moves from a known bug to a blocker.
+
+### State lives in the thing it describes
+
+Only two things need to be written down. Everything else already has an owner
+that cannot drift:
+
+| state | where | why |
+|---|---|---|
+| roles and schemas exist | **the database** — queried | a file drifts the first time a volume is dropped |
+| migrations applied | migrations table | already how migrators work |
+| containers, volumes | compose project labels | docker already remembers |
+| generated code, manifest | `.gkm/` | derived; safe to delete at any time |
+| **port assignments** | `.gkm/ports.json` | nothing else remembers, and they must stay stable |
+| **generated passwords** | `.gkm/secrets/<stage>.json`, encrypted | the database stores only a hash |
+
+Both stores already exist. `resolveServicePorts` in
+`packages/cli/src/credentials/index.ts` already persists ports to
+`.gkm/ports.json`, reuses a saved port when it is still free, reuses a running
+container's actual port, and falls forward to the next free one when the default
+is taken — which is the whole of the allocation described above. What changes is
+only where the list of services comes from: the manifest, rather than a parsed
+`docker-compose.yml`.
+
+Ports stay out of the encrypted store because they are not secrets, and passwords
+stay in it because they are. The key lives in `~/.gkm/<project>/<stage>.key`.
+
+Because roles are **queried rather than recorded**, losing the secrets file is
+recoverable rather than corrupting: reconcile regenerates the passwords and runs
+`ALTER ROLE … WITH PASSWORD`, which is the identical code path as rotation. The
+rare path is exercised by the common one. Ports are reallocated, which recreates
+the containers, but volumes are keyed to the project rather than the port, so the
+data survives.
+
+**One breaking change.** `StageSecrets.services` is keyed by container —
+`{ postgres?, redis?, minio? }` — which cannot express two databases and cannot
+express a schema tenant at all. `Orders`, an `Auth` tenant, and pg-boss are three
+role sets in one container. It becomes keyed by construct id:
+
+```ts
+services: Record<string, ConstructCredentials>   // 'Orders', 'Auth', 'Uploads'
+ports:    Record<string, number>                 // same keys
+```
+
+Fine on the v10 line, but it wants a read-old/write-new migration so nobody's
+`development.json` is silently orphaned.
+
+### Encryption in dev, and being able to read your own state
+
+The encryption currently buys less than it appears to. The key sits next to the
+ciphertext, same machine, same user, no passphrase — so it is not defending
+against local compromise, it is not disk-at-rest protection, and it is not what
+prevents an accidental commit, since `.gkm` being gitignored does that. For a
+generated password to a container bound to localhost, it protects nothing.
+
+It stays anyway, for a reason that is not uniformity: **dev secret files
+routinely hold real third-party credentials.** A Stripe test key is a live
+credential; an OpenAI key in dev is the same key as anywhere else. The store
+cannot know what a human pasted into it, so it assumes the worst.
+
+What changes is that entries record **provenance**:
+
+```ts
+interface SecretEntry {
+  value: string;
+  origin: 'generated' | 'supplied';   // reconcile made it, or a human did
+}
+```
+
+Generated local values then print in full — they are useless off your machine and
+you need to paste them into `psql` — while supplied values mask unless
+`--reveal`. Today `--reveal` is one switch over both, which is why encryption
+feels like it is in the way: it is not, the reader is too blunt.
+
+### `gkm status`
+
+`gkm secrets:show` answers "what secrets exist". Nothing answers "what state is
+my machine in", which is the question you actually have — and it is a question
+only the manifest can answer, because it is about constructs:
+
+```
+$ gkm status
+development · 3 constructs · stack healthy
+
+Orders           database          :27431   ✓ healthy
+  ORDERS_URL     postgres://app:hunter2@localhost:27431/orders
+  roles          app, app_owner    migrations  7 applied
+Auth             database-schema   → Orders
+  AUTH_URL       postgres://auth:s3cret@localhost:27431/orders
+Uploads          objects           :27433   ✓ healthy
+  UPLOADS_URL    s3://uploads?endpoint=http%3A%2F%2Flocalhost%3A27433
+
+supplied secrets  STRIPE_SECRET_KEY, OPENAI_API_KEY   (--reveal to show)
+```
+
+What exists, what port it got, whether it is up, the URL to paste, and what
+`Auth` hangs off. `--json` to pipe it. It reads the cached manifest and warns
+rather than rebuilding when stale.
+
+Values print in full for local stages and mask for every other one. Printing a
+production password because someone ran `gkm status --stage prod` on a shared
+screen is the failure worth designing out.
+
+Not `gkm credentials` — that name is taken by the Dokploy login store, and two
+meanings of the word is one too many.
+
+### `gkm test` is the same reconcile, with a suffix
+
+Tests need their own database, not their own stack. So `gkm test` is not a
+second mechanism — it is `reconcile` with a different stage:
+
+```
+gkm dev   = reconcile(manifest, 'development') → turbo run dev
+gkm test  = reconcile(manifest, 'test')        → inject env → vitest
+```
+
+**The stage names resources; it never names infrastructure.**
+
+| | `gkm dev` | `gkm test` |
+|---|---|---|
+| container | the project's Postgres | *the same one* |
+| ports | allocated once | *the same* |
+| roles, schema, `search_path` | `app`, `app_owner`, `app` | *the same* |
+| database | `orders` | `orders_test` |
+| bucket, queue | `uploads` | `uploads-test` |
+
+What makes this nearly free is a property of Postgres: **roles are
+cluster-scoped while grants are per-object.** One `app`/`app_owner` pair and one
+`ALTER ROLE … SET search_path` cover both databases, because the schema is
+called `app` in each. Nothing is duplicated, and there is no second container to
+start, wait for, or run out of ports on.
+
+It generalises past databases without a new idea: a bucket becomes
+`uploads-test` in the same MinIO, a queue `orders-test` in the same LocalStack.
+This is the local counterpart of `cloudName(scope, id)`, which already scopes a
+deployed resource by stage.
+
+**`rewriteDatabaseUrlForTests` goes away.** Today `gkm test` rewrites any env key
+containing `DATABASE_URL` by string-editing the database name onto the end. That
+matches nothing once constructs provide `ORDERS_URL` and `AUTH_URL`, so tests
+would quietly run against the development database. Provisioning replaces it: the
+test URL is composed from what was actually created, the same way every other URL
+is, which is also why the Postgres codec needs only `build()` and no parser.
+
+**Tests never commit**, so the test database cannot drift. Every test runs inside
+a transaction that is rolled back, and Postgres rolls back DDL too — so even a
+test that creates a table leaves nothing behind. Two consequences:
+
+- **No per-worker databases.** Vitest runs files concurrently, and MVCC isolates
+  concurrent transactions. One shared `orders_test` is correct, not a compromise.
+- **The only durable writes are the migrations.** So "does the test database need
+  rebuilding" reduces to "have the migrations changed", which the plan hash
+  already answers. `gkm test --fresh` forces it.
+
+The construct is identical in both stages; only the injected value differs. That
+is what lets a test build its client through the *same* `connect()` production
+uses:
+
+```ts
+const isolatedTest = isolator.wrapVitestWithTransaction({
+  connection: orders,        // the construct — registered against process.env
+  fixtures: { factory: (trx) => new KyselyFactory(builders, seeds, trx) },
+});
+
+isolatedTest('creates an order', async ({ trx, factory }) => {
+  await adaptor.request({ database: trx, … });     // one door: trx is `db`
+});
+```
+
+A hand-rolled test client is the failure this avoids: without the construct's
+`plugins`, it writes `createdAt` where the app writes `created_at`, and the test
+passes while production does not.
 
 ## Boundaries
 

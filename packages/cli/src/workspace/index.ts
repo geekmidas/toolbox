@@ -238,9 +238,12 @@ export function wrapSingleAppAsWorkspace(
 		port: 3000,
 		dependencies: [],
 		resolvedDeployTarget: 'dokploy',
+		constructs: config.constructs,
 		routes: config.routes,
 		functions: config.functions,
 		crons: config.crons,
+		queues: config.queues,
+		topics: config.topics,
 		subscribers: config.subscribers,
 		envParser: config.envParser,
 		logger: config.logger,
@@ -308,9 +311,12 @@ export function getAppGkmConfig(
 	}
 
 	return {
+		constructs: app.constructs,
 		routes: app.routes ?? '',
 		functions: app.functions,
 		crons: app.crons,
+		queues: app.queues,
+		topics: app.topics,
 		subscribers: app.subscribers,
 		envParser: app.envParser ?? '',
 		logger: app.logger ?? '',

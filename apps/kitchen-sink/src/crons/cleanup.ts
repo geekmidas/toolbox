@@ -1,6 +1,6 @@
 import { c } from '@geekmidas/constructs/crons';
 import logger from '../config/logger.js';
-import { DatabaseService } from '../services/DatabaseService.js';
+import { database } from '../constructs/database.js';
 
 /**
  * A scheduled task (`c`). The `schedule` expression is deploy-time infra (an
@@ -8,11 +8,11 @@ import { DatabaseService } from '../services/DatabaseService.js';
  */
 export const cleanupStaleUsers = c
 	.logger(logger)
-	.services([DatabaseService])
+	.dependsOn([database])
 	.schedule('rate(1 day)')
 	.handle(async ({ services, logger }) => {
 		const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
-		const result = await services.database
+		const result = await services.kitchenSink
 			.deleteFrom('users')
 			.where('updated_at', '<', cutoff)
 			.executeTakeFirst();

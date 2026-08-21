@@ -54,7 +54,7 @@ export const getUsers = e
   .output(z.array(z.object({
     id: z.string(),
     name: z.string(),
-    email: z.string().email()
+    email: z.email()
   })))
   .handle(async () => {
     return [
@@ -67,7 +67,7 @@ export const createUser = e
   .post('/users')
   .body(z.object({
     name: z.string().min(1),
-    email: z.string().email()
+    email: z.email()
   }))
   .output(z.object({
     id: z.string(),
@@ -390,7 +390,7 @@ export const createUser = e
   .post('/users')
   .body(z.object({
     name: z.string(),
-    email: z.string().email()
+    email: z.email()
   }))
   .publisher(userEventPublisher)
   .event('user.created', (body, result) => ({
@@ -465,7 +465,7 @@ When using both `.database()` and `.auditor()` with the same database, `db` is a
 ```typescript
 export const createUser = e
   .post('/users')
-  .body(z.object({ name: z.string(), email: z.string().email() }))
+  .body(z.object({ name: z.string(), email: z.email() }))
   .output(userSchema)
   .database(databaseService)
   .auditor(auditStorageService)
@@ -555,12 +555,12 @@ import { z } from 'zod';
 const userSchema = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string().email()
+  email: z.email()
 });
 
 export const createUser = e
   .post('/users')
-  .body(z.object({ name: z.string(), email: z.string().email() }))
+  .body(z.object({ name: z.string(), email: z.email() }))
   .output(userSchema)
   .database(databaseService)
   .auditor(auditStorageService)
@@ -647,7 +647,7 @@ You can use both approaches together:
 export const updateUser = e
   .put('/users/:id')
   .params(z.object({ id: z.string() }))
-  .body(z.object({ name: z.string().optional(), email: z.string().email().optional() }))
+  .body(z.object({ name: z.string().optional(), email: z.email().optional() }))
   .output(userSchema)
   .database(databaseService)
   .auditor(auditStorageService)

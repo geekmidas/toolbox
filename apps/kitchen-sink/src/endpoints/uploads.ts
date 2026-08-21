@@ -1,16 +1,19 @@
 import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 import logger from '../config/logger.js';
-import { StorageService } from '../services/StorageService.js';
+import { uploads } from '../constructs/storage.js';
 
 /**
- * A presigned S3 upload URL — demonstrates the storage service. Uses its own
- * lean factory (only the storage service) to show endpoints don't have to share
- * the big router. `STORAGE_*` env is sniffed into the manifest via StorageService.
+ * A presigned upload URL. Uses its own lean factory — only the bucket — to show
+ * that an endpoint need not share the big router.
+ *
+ * `.dependsOn([uploads])` is the whole of the wiring: the construct
+ * declares the bucket, the target injects `UPLOADS_URL`, and the scheme in that
+ * URL builds the client. Nothing here names MinIO, S3, a region, or a key.
  */
 export const createUploadUrl = e
 	.logger(logger)
-	.services([StorageService])
+	.dependsOn([uploads])
 	.post('/uploads')
 	.body(
 		z.object({
@@ -21,7 +24,7 @@ export const createUploadUrl = e
 	)
 	.output(z.object({ url: z.string() }))
 	.handle(async ({ body, services }) => {
-		const url = await services.storage.getUploadURL(
+		const url = await services.uploads.getUploadURL(
 			{
 				path: body.path,
 				contentType: body.contentType,

@@ -1,26 +1,31 @@
 import { e } from '@geekmidas/constructs/endpoints';
 import logger from '../config/logger.js';
+import { auth } from '../constructs/auth.js';
+import { sessions } from '../constructs/cache.js';
+import { database } from '../constructs/database.js';
+import { users } from '../constructs/topics.js';
 import { AuditStorageService } from '../services/AuditStorageService.js';
-import { AuthService } from '../services/AuthService.js';
-import { CacheService } from '../services/CacheService.js';
-import { DatabaseService } from '../services/DatabaseService.js';
-import { EventsService } from '../services/EventsService.js';
 
 /**
  * The shared endpoint factory. Every endpoint built from `router` inherits:
  *
- * - `logger`                          — the Pino/Telescope logger
- * - `.services([...])`                — database, auth, cache (as `services.*`)
- * - `.database(DatabaseService)`      — `db` in context (and the audit transaction)
- * - `.auditor(AuditStorageService)`   — `auditor` in context + declarative `.audit([...])`
- * - `.publisher(EventsService)`       — declarative `.event(...)` topic publishing
+ * - `logger`                        — the Pino/Telescope logger
+ * - `.dependsOn([...])`             — the auth server and the cache, under
+ *                                     their own ids: `services.auth`,
+ *                                     `services.sessions`
+ * - `.database(database)`           — `db` in context, typed by the construct's
+ *                                     schema (and the audit transaction)
+ * - `.auditor(AuditStorageService)` — `auditor` in context + declarative `.audit([...])`
+ * - `.publisher(users.publisher)`   — the topic's *derived* producer, so
+ *                                     `.event(...)` declarations are delivered
+ *                                     without a publisher service to write
  *
  * No default authorizer → endpoints are public; opt in per-endpoint with
  * `.authorizer('iam')` (see the protected endpoint in users.ts).
  */
 export const router = e
 	.logger(logger)
-	.services([DatabaseService, AuthService, CacheService])
-	.database(DatabaseService)
+	.dependsOn([auth, sessions])
+	.database(database)
 	.auditor(AuditStorageService)
-	.publisher(EventsService);
+	.publisher(users.publisher);

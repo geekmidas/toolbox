@@ -117,7 +117,7 @@ describe('Endpoint Handling - Simple', () => {
 describe('Endpoint Handling - With Validation', () => {
 	const validatedEndpoint = api
 		.post('/users')
-		.body(z.object({ name: z.string(), email: z.string().email() }))
+		.body(z.object({ name: z.string(), email: z.email() }))
 		.output(z.object({ id: z.string() }))
 		.handle(async () => ({ id: '123' }));
 
@@ -137,7 +137,7 @@ describe('Endpoint Handling - With Validation', () => {
 			z.object({
 				user: z.object({
 					name: z.string(),
-					email: z.string().email(),
+					email: z.email(),
 					profile: z.object({
 						bio: z.string().optional(),
 						avatar: z.string().url().optional(),
@@ -455,7 +455,7 @@ describe('Endpoint Handling - Full Stack (Services + Session + Audit)', () => {
 		.body(
 			z.object({
 				name: z.string(),
-				email: z.string().email(),
+				email: z.email(),
 				profile: z.object({ bio: z.string().optional() }),
 			}),
 		)

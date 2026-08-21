@@ -113,6 +113,66 @@
 				"types": "./dist/adaptors/testing.d.cts",
 				"default": "./dist/adaptors/testing.cjs"
 			}
+		},
+		"./construct": {
+			"import": {
+				"types": "./dist/construct-interface.d.mts",
+				"default": "./dist/construct-interface.mjs"
+			},
+			"require": {
+				"types": "./dist/construct-interface.d.cts",
+				"default": "./dist/construct-interface.cjs"
+			}
+		},
+		"./object-storage": {
+			"import": {
+				"types": "./dist/object-storage.d.mts",
+				"default": "./dist/object-storage.mjs"
+			},
+			"require": {
+				"types": "./dist/object-storage.d.cts",
+				"default": "./dist/object-storage.cjs"
+			}
+		},
+		"./email": {
+			"import": {
+				"types": "./dist/email.d.mts",
+				"default": "./dist/email.mjs"
+			},
+			"require": {
+				"types": "./dist/email.d.cts",
+				"default": "./dist/email.cjs"
+			}
+		},
+		"./cache": {
+			"import": {
+				"types": "./dist/cache.d.mts",
+				"default": "./dist/cache.mjs"
+			},
+			"require": {
+				"types": "./dist/cache.d.cts",
+				"default": "./dist/cache.cjs"
+			}
+		},
+		"./auth": {
+			"import": {
+				"types": "./dist/auth.d.mts",
+				"default": "./dist/auth.mjs"
+			},
+			"require": {
+				"types": "./dist/auth.d.cts",
+				"default": "./dist/auth.cjs"
+			}
+		},
+		"./database/kysely": {
+			"import": {
+				"types": "./dist/database/kysely.d.mts",
+				"default": "./dist/database/kysely.mjs"
+			},
+			"require": {
+				"types": "./dist/database/kysely.d.cts",
+				"default": "./dist/database/kysely.cjs"
+			}
 		}
 	},
 	"scripts": {
@@ -159,7 +219,8 @@
 		"kysely": "~0.29.4",
 		"pg": "~8.16.3",
 		"msw": "~2.10.3",
-		"zod": "~4.1.13"
+		"zod": "~4.1.13",
+		"@geekmidas/emailkit": "workspace:^"
 	},
 	"peerDependencies": {
 		"@geekmidas/audit": "workspace:^",
@@ -175,7 +236,13 @@
 		"@middy/core": ">=6.3.1",
 		"@types/aws-lambda": ">=8.10.92",
 		"hono": ">=4.8.2",
-		"msw": ">=2.0.0"
+		"msw": ">=2.0.0",
+		"@geekmidas/manifest": "workspace:^",
+		"@geekmidas/storage": "workspace:^",
+		"kysely": ">=0.28.2 <0.30.0",
+		"pg": "~8.16.3",
+		"@geekmidas/emailkit": "workspace:^",
+		"better-auth": ">=1.4.18"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/audit": {
@@ -218,6 +285,24 @@
 			"optional": true
 		},
 		"msw": {
+			"optional": true
+		},
+		"@geekmidas/manifest": {
+			"optional": true
+		},
+		"@geekmidas/storage": {
+			"optional": true
+		},
+		"kysely": {
+			"optional": true
+		},
+		"pg": {
+			"optional": true
+		},
+		"@geekmidas/emailkit": {
+			"optional": true
+		},
+		"better-auth": {
 			"optional": true
 		}
 	}

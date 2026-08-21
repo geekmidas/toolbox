@@ -33,6 +33,36 @@ describe('TopicBuilder', () => {
 	});
 });
 
+describe('Topic.declare', () => {
+	it('declares a topic under a canonical id', () => {
+		// `users` and `Users` are one topic, not two that collide — and the name
+		// is left alone, because subscribers bind to it and the broker routes on
+		// it.
+		const topic = new TopicBuilder().topic('users').events(events);
+
+		expect(topic.id).toBe('Users');
+		expect(topic.name).toBe('users');
+		expect(topic.declare()).toEqual([
+			{
+				kind: 'topic',
+				id: 'Users',
+				provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+			},
+		]);
+	});
+
+	it('declares the key its own publisher reads', () => {
+		// Declared once: what the target publishes and what the producer looks up
+		// cannot drift.
+		const topic = new TopicBuilder().topic('userEvents').events(events);
+		const [declaration] = topic.declare();
+
+		expect(declaration?.provides).toEqual([
+			'USER_EVENTS_PUBLISHER_CONNECTION_STRING',
+		]);
+	});
+});
+
 describe('Topic.publisher', () => {
 	it('exposes a `<name>Publisher` producer service', () => {
 		const topic = new TopicBuilder().topic('users').events(events);

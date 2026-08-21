@@ -445,7 +445,7 @@ describe('Validation Overhead', () => {
 
 	// With manual Zod validation
 	const { z } = require('zod');
-	const schema = z.object({ name: z.string(), email: z.string().email() });
+	const schema = z.object({ name: z.string(), email: z.email() });
 
 	const manualValidationApp = new Hono();
 	manualValidationApp.post('/test', async (c) => {

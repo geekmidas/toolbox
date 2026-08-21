@@ -54,6 +54,16 @@
 		"sst": "4.15.2"
 	},
 	"peerDependencies": {
-		"sst": "^4.15.2"
+		"sst": "^4.15.2",
+		"@geekmidas/manifest": "workspace:^",
+		"@geekmidas/storage": "workspace:^"
+	},
+	"peerDependenciesMeta": {
+		"@geekmidas/manifest": {
+			"optional": true
+		},
+		"@geekmidas/storage": {
+			"optional": true
+		}
 	}
 }

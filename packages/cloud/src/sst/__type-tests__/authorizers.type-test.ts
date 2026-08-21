@@ -3,9 +3,9 @@
 // ignores it). Each `@ts-expect-error` self-validates: if the enforcement
 // regresses, the now-unused directive becomes a TS error the gate catches.
 
-import { Api } from '../Api';
 import { App } from '../App';
-import { Function } from '../Function';
+import { Api } from '../aws/Api';
+import { Function } from '../aws/Function';
 
 const stack = new App({
 	name: 'a',

@@ -73,7 +73,7 @@ import { z } from 'zod';
 // Define a schema
 const userSchema = z.object({
   id: z.string(),
-  email: z.string().email(),
+  email: z.email(),
   age: z.number().min(18),
   role: z.enum(['admin', 'user'])
 });
@@ -130,7 +130,7 @@ import { z } from 'zod';
 const schemas = {
   user: z.object({
     id: z.string(),
-    email: z.string().email()
+    email: z.email()
   }),
   post: z.object({
     id: z.string(),
@@ -237,7 +237,7 @@ import { z } from 'zod';
 const createUserEndpoint = {
   body: z.object({
     name: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
     age: z.number().int().min(18)
   }),
   response: z.object({
@@ -272,7 +272,7 @@ import { z } from 'zod';
 
 const userSchema = z.object({
   id: z.string(),
-  email: z.string().email()
+  email: z.email()
 });
 
 type User = InferStandardSchema<typeof userSchema>;

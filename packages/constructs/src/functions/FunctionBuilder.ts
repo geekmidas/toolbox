@@ -7,6 +7,12 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
+import {
+	type Consumable,
+	type ServicesOf,
+	serviceOf,
+	servicesOf,
+} from '../construct-interface';
 import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { Function, type FunctionHandler } from './Function';
 
@@ -108,6 +114,49 @@ export class FunctionBuilder<
 			T,
 			OutSchema,
 			TServices,
+			TLogger,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			TDatabase,
+			TDatabaseServiceName,
+			TAuditAction
+		>;
+	}
+
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	dependsOn<const T extends readonly Consumable[]>(
+		constructs: T,
+	): FunctionBuilder<
+		TInput,
+		OutSchema,
+		[...TServices, ...ServicesOf<T>],
+		TLogger,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TDatabase,
+		TDatabaseServiceName,
+		TAuditAction
+	> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as FunctionBuilder<
+			TInput,
+			OutSchema,
+			[...TServices, ...ServicesOf<T>],
 			TLogger,
 			TEventPublisher,
 			TEventPublisherServiceName,
@@ -293,7 +342,7 @@ export class FunctionBuilder<
 	 * The database will be available in the handler context as `db`.
 	 */
 	override database<T, TName extends string>(
-		service: Service<TName, T>,
+		source: Consumable<TName, T> | Service<TName, T>,
 	): FunctionBuilder<
 		TInput,
 		OutSchema,
@@ -307,6 +356,8 @@ export class FunctionBuilder<
 		TName,
 		TAuditAction
 	> {
+		const service = serviceOf(source);
+
 		this._databaseService = service as unknown as Service<
 			TDatabaseServiceName,
 			TDatabase

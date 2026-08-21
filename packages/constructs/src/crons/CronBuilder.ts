@@ -6,6 +6,12 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
+import {
+	type Consumable,
+	type ServicesOf,
+	serviceOf,
+	servicesOf,
+} from '../construct-interface';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
 import { Cron, type ScheduleExpression } from './Cron';
 
@@ -111,6 +117,43 @@ export class CronBuilder<
 		>;
 	}
 
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	override dependsOn<const T extends readonly Consumable[]>(
+		constructs: T,
+	): CronBuilder<
+		TInput,
+		[...TServices, ...ServicesOf<T>],
+		TLogger,
+		OutSchema,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as CronBuilder<
+			TInput,
+			[...TServices, ...ServicesOf<T>],
+			TLogger,
+			OutSchema,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TDatabase,
+			TDatabaseServiceName
+		>;
+	}
+
 	override services<T extends Service[]>(
 		services: T,
 	): CronBuilder<
@@ -200,7 +243,7 @@ export class CronBuilder<
 	 * The database will be available in the handler context as `db`.
 	 */
 	override database<T, TName extends string>(
-		service: Service<TName, T>,
+		source: Consumable<TName, T> | Service<TName, T>,
 	): CronBuilder<
 		TInput,
 		TServices,
@@ -211,6 +254,8 @@ export class CronBuilder<
 		T,
 		TName
 	> {
+		const service = serviceOf(source);
+
 		this._databaseService = service as unknown as Service<
 			TDatabaseServiceName,
 			TDatabase

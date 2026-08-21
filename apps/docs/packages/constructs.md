@@ -80,7 +80,7 @@ const createUserEndpoint = e
   .post('/users')
   .body(z.object({
     name: z.string(),
-    email: z.string().email(),
+    email: z.email(),
   }))
   .query(z.object({
     sendEmail: z.boolean().optional(),
@@ -208,7 +208,7 @@ import { z } from 'zod';
 const loginEndpoint = e
   .post('/auth/login')
   .body(z.object({
-    email: z.string().email(),
+    email: z.email(),
     password: z.string(),
   }))
   .output(z.object({
@@ -285,7 +285,7 @@ const createEndpoint = e
   .post('/users')
   .body(z.object({
     name: z.string(),
-    email: z.string().email(),
+    email: z.email(),
   }))
   .output(z.object({
     id: z.string(),

@@ -458,7 +458,7 @@ export const complexEndpoint = e
   .body(z.object({
     user: z.object({
       name: z.string(),
-      email: z.string().email(),
+      email: z.email(),
       age: z.number().optional(),
     }),
     tags: z.array(z.string()),

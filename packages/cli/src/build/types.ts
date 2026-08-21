@@ -95,6 +95,13 @@ export interface BuildContext {
 	 * environment array (e.g. `PORT?` instead of `PORT`).
 	 */
 	markOptional?: boolean;
+	/**
+	 * Storage drivers the generated entry points should register.
+	 *
+	 * The scheme in an injected URL picks the driver, so registering is the entry
+	 * point's job — see `generators/drivers.ts`.
+	 */
+	storageDrivers?: import('../generators/drivers.js').StorageDrivers;
 }
 
 export interface ProviderBuildResult {

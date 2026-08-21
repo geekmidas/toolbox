@@ -1,4 +1,5 @@
 export { CronGenerator } from './CronGenerator';
+export { type StorageDrivers, storageDriversFor } from './drivers';
 export { EndpointGenerator } from './EndpointGenerator';
 export { FunctionGenerator } from './FunctionGenerator';
 export {

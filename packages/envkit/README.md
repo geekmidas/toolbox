@@ -249,12 +249,12 @@ import { ResourceType } from '@geekmidas/envkit/sst';
 // Legacy format (dot notation)
 ResourceType.Postgres    // 'sst.aws.Postgres'
 ResourceType.Secret      // 'sst.sst.Secret'
-ResourceType.Bucket      // 'sst.aws.Bucket'
+ResourceType.ObjectStorage      // 'sst.aws.Bucket'
 
 // Modern format (colon notation)
 ResourceType.SSTPostgres // 'sst:aws:Postgres'
 ResourceType.SSTSecret   // 'sst:sst:Secret'
-ResourceType.SSTBucket   // 'sst:aws:Bucket'
+ResourceType.SSTObjectStorage   // 'sst:aws:Bucket'
 ResourceType.SnsTopic    // 'sst:aws:SnsTopic'
 ```
 

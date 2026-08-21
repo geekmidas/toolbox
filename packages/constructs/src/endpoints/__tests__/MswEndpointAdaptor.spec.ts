@@ -34,7 +34,7 @@ const listUsers = e
 
 const createUser = e
 	.post('/users')
-	.body(z.object({ name: z.string().min(1), email: z.string().email() }))
+	.body(z.object({ name: z.string().min(1), email: z.email() }))
 	.output(z.object({ id: z.string(), name: z.string(), email: z.string() }))
 	.handle(async ({ body }) => ({
 		id: crypto.randomUUID(),

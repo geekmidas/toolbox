@@ -15,7 +15,54 @@
  * This is the dependency-free data contract shared between the producer
  * (`@geekmidas/cli`) and consumers (e.g. `@geekmidas/cloud/sst`'s `fromManifest`
  * integrators).
+ *
+ * The types below describe the **per-kind** manifest. The construct manifest
+ * that replaces it — every construct keyed by id, with dependency edges — lives
+ * in `./declaration`; both are exported while the migration runs.
  */
+
+export type {
+	AllProvidedKeys,
+	CacheDeclaration,
+	ConstructId,
+	ConstructManifest,
+	ConstructName,
+	DatabaseDeclaration,
+	DatabaseReaderDeclaration,
+	DatabaseSchemaDeclaration,
+	Declaration,
+	DeclarationKind,
+	DeclarationOf,
+	Dependency,
+	DerivedDeclaration,
+	DerivedKind,
+	EmailDeclaration,
+	Fn,
+	IdsOf,
+	IdsOfKind,
+	Node,
+	ObjectsDeclaration,
+	ProvidedKeys,
+	Provides,
+	ProvidesByKind,
+	QueueDeclaration,
+	SecretDeclaration,
+	TopicDeclaration,
+} from './declaration';
+export { DERIVES_FROM, PUBLIC } from './declaration';
+export { assertDerivations, isDerived, provisionOrder } from './derive';
+export {
+	IllegalDerivation,
+	InvalidConstructId,
+	UnknownParent,
+} from './errors';
+export {
+	canonicalId,
+	cloudName,
+	environmentCase,
+	provideKey,
+	serviceKey,
+} from './naming';
 
 /**
  * A manifest field is either a flat list or, when the build is partitioned

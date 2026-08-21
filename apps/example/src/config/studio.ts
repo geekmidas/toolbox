@@ -5,7 +5,7 @@ import {
 } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '../services/DatabaseService.js';
+import type { Database } from '../constructs/database.js';
 import { config } from './env.js';
 
 /**

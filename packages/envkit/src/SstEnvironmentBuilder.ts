@@ -16,7 +16,7 @@ export enum ResourceType {
 	ApiGatewayV2 = 'sst.aws.ApiGatewayV2',
 	Postgres = 'sst.aws.Postgres',
 	Function = 'sst.aws.Function',
-	Bucket = 'sst.aws.Bucket',
+	ObjectStorage = 'sst.aws.Bucket',
 	Vpc = 'sst.aws.Vpc',
 	Secret = 'sst.sst.Secret',
 	Dynamo = 'sst.aws.Dynamo',
@@ -27,7 +27,7 @@ export enum ResourceType {
 	SSTFunction = 'sst:sst:Function',
 	SSTApiGatewayV2 = 'sst:aws:ApiGatewayV2',
 	SSTPostgres = 'sst:aws:Postgres',
-	SSTBucket = 'sst:aws:Bucket',
+	SSTObjectStorage = 'sst:aws:Bucket',
 	SnsTopic = 'sst:aws:SnsTopic',
 	SSTDynamo = 'sst:aws:Dynamo',
 	SSTQueue = 'sst:aws:Queue',
@@ -67,8 +67,15 @@ export type Function = {
  * AWS S3 Bucket resource type.
  */
 export type Bucket = {
-	type: ResourceType.Bucket | ResourceType.SSTBucket;
+	type: ResourceType.ObjectStorage | ResourceType.SSTObjectStorage;
 	name: string;
+	/**
+	 * Supplied by `@geekmidas/cloud`'s ObjectStorage, which widens SST's link to
+	 * carry them — a bucket may not be in the reader's region, and the URL is
+	 * composed where the resource's shape is known.
+	 */
+	region?: string;
+	url?: string;
 };
 
 /**
@@ -161,6 +168,11 @@ const postgresResolver = (key: string, value: PostgresValue) => ({
 
 const bucketResolver = (name: string, value: BucketValue) => ({
 	[`${name}Name`]: value.name,
+	// The single URL a construct reads. Composed by the component, which knows
+	// its own shape; this only renames it into env case. Always emitted, even
+	// when absent, so `resolveEnvKeys` can derive the key from the link's type
+	// alone — a bucket linked without our component yields an empty one.
+	[`${name}Url`]: value.url ?? '',
 });
 
 const topicResolver = (name: string, value: SnsTopicValue) => ({
@@ -194,13 +206,13 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.Vpc]: noopResolver,
 	[ResourceType.Secret]: secretResolver,
 	[ResourceType.Postgres]: postgresResolver,
-	[ResourceType.Bucket]: bucketResolver,
+	[ResourceType.ObjectStorage]: bucketResolver,
 	[ResourceType.Dynamo]: dynamoResolver,
 	[ResourceType.Queue]: queueResolver,
 
 	// Modern format
 	[ResourceType.SSTSecret]: secretResolver,
-	[ResourceType.SSTBucket]: bucketResolver,
+	[ResourceType.SSTObjectStorage]: bucketResolver,
 	[ResourceType.SSTFunction]: noopResolver,
 	[ResourceType.SSTPostgres]: postgresResolver,
 	[ResourceType.SSTApiGatewayV2]: noopResolver,

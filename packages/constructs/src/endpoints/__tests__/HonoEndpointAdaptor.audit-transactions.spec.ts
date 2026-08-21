@@ -310,7 +310,7 @@ describe('HonoEndpoint Audit Transactions', () => {
 
 			const outputSchema = z.object({
 				id: z.string().min(10), // Will fail validation
-				email: z.string().email(),
+				email: z.email(),
 			});
 
 			const audits: MappedAudit<TestAuditAction, typeof outputSchema>[] = [

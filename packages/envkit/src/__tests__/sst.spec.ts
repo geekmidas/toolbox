@@ -210,8 +210,9 @@ describe('sst', () => {
 		describe('Bucket resource', () => {
 			it('should process Bucket resource correctly', () => {
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'my-s3-bucket',
+					url: 's3://my-s3-bucket?region=us-east-1',
 				};
 
 				const result = normalizeResourceEnv({
@@ -220,13 +221,15 @@ describe('sst', () => {
 
 				expect(result).toEqual({
 					UPLOAD_BUCKET_NAME: 'my-s3-bucket',
+					UPLOAD_BUCKET_URL: 's3://my-s3-bucket?region=us-east-1',
 				});
 			});
 
 			it('should process SSTBucket resource correctly', () => {
 				const bucket = {
-					type: ResourceType.SSTBucket as ResourceType.SSTBucket,
+					type: ResourceType.SSTObjectStorage as ResourceType.SSTObjectStorage,
 					name: 'assets-bucket-prod',
+					url: 's3://assets-bucket-prod?region=us-east-1',
 				};
 
 				const result = normalizeResourceEnv({
@@ -235,6 +238,7 @@ describe('sst', () => {
 
 				expect(result).toEqual({
 					ASSET_STORAGE_NAME: 'assets-bucket-prod',
+					ASSET_STORAGE_URL: 's3://assets-bucket-prod?region=us-east-1',
 				});
 			});
 		});
@@ -316,8 +320,9 @@ describe('sst', () => {
 				};
 
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'uploads-bucket',
+					url: 's3://uploads-bucket?region=us-east-1',
 				};
 
 				const result = normalizeResourceEnv({
@@ -341,6 +346,7 @@ describe('sst', () => {
 					DATABASE_USERNAME: 'app_user',
 					JWT_SECRET: 'jwt-secret',
 					UPLOADS_NAME: 'uploads-bucket',
+					UPLOADS_URL: 's3://uploads-bucket?region=us-east-1',
 					API_VERSION: 'v2',
 				});
 			});
@@ -402,8 +408,9 @@ describe('sst', () => {
 
 			it('should handle multiple underscores and numbers', () => {
 				const bucket: Bucket = {
-					type: ResourceType.Bucket,
+					type: ResourceType.ObjectStorage,
 					name: 'test-bucket',
+					url: 's3://test-bucket',
 				};
 
 				const result = normalizeResourceEnv({
@@ -413,7 +420,9 @@ describe('sst', () => {
 
 				expect(result).toEqual({
 					S3_BUCKET_V21_NAME: 'test-bucket',
+					S3_BUCKET_V21_URL: 's3://test-bucket',
 					BUCKET123456_NAME: 'test-bucket',
+					BUCKET123456_URL: 's3://test-bucket',
 				});
 			});
 		});
@@ -424,14 +433,14 @@ describe('sst', () => {
 			expect(ResourceType.ApiGatewayV2).toBe('sst.aws.ApiGatewayV2');
 			expect(ResourceType.Postgres).toBe('sst.aws.Postgres');
 			expect(ResourceType.Function).toBe('sst.aws.Function');
-			expect(ResourceType.Bucket).toBe('sst.aws.Bucket');
+			expect(ResourceType.ObjectStorage).toBe('sst.aws.Bucket');
 			expect(ResourceType.Vpc).toBe('sst.aws.Vpc');
 			expect(ResourceType.Secret).toBe('sst.sst.Secret');
 			expect(ResourceType.SSTSecret).toBe('sst:sst:Secret');
 			expect(ResourceType.SSTFunction).toBe('sst:sst:Function');
 			expect(ResourceType.SSTApiGatewayV2).toBe('sst:aws:ApiGatewayV2');
 			expect(ResourceType.SSTPostgres).toBe('sst:aws:Postgres');
-			expect(ResourceType.SSTBucket).toBe('sst:aws:Bucket');
+			expect(ResourceType.SSTObjectStorage).toBe('sst:aws:Bucket');
 		});
 	});
 });

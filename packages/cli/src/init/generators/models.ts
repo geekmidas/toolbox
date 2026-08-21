@@ -94,7 +94,7 @@ import { IdSchema, TimestampsSchema } from './common.ts';
 
 export const UserSchema = z.object({
   id: IdSchema,
-  email: z.string().email(),
+  email: z.email(),
   name: z.string().min(1).max(100),
   ...TimestampsSchema.shape,
 });

@@ -171,14 +171,14 @@ const simpleSchema = z.object({ message: z.literal('pong') });
 const mediumSchema = z.object({
 	id: z.string(),
 	name: z.string(),
-	email: z.string().email(),
+	email: z.email(),
 	createdAt: z.string(),
 });
 const complexSchema = z.object({
 	user: z.object({
 		id: z.string(),
 		name: z.string(),
-		email: z.string().email(),
+		email: z.email(),
 		profile: z.object({
 			bio: z.string().optional(),
 			avatar: z.string().url().optional(),

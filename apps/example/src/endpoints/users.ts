@@ -1,12 +1,11 @@
 import { z } from 'zod';
-import { DatabaseService } from '../services/DatabaseService.js';
 import { router } from './router.js';
 
 export const UserSchema = z
 	.object({
 		id: z.string(),
 		name: z.string(),
-		email: z.string().email(),
+		email: z.email(),
 		created_at: z.string(),
 	})
 	.meta({ id: 'User' });
@@ -21,12 +20,8 @@ export const getUsers = router
 			users: UserSchema.array(),
 		}),
 	)
-	.services([DatabaseService])
-	.handle(async ({ services }) => {
-		const users = await services.database
-			.selectFrom('users')
-			.selectAll()
-			.execute();
+	.handle(async ({ db }) => {
+		const users = await db.selectFrom('users').selectAll().execute();
 
 		return {
 			users: users.map((user) => ({
@@ -46,11 +41,10 @@ export const createUser = router
 	.body(
 		z.object({
 			name: z.string().min(1),
-			email: z.string().email(),
+			email: z.email(),
 		}),
 	)
 	.output(UserSchema)
-	.services([DatabaseService])
 	.event({
 		type: 'user.created',
 		payload: (r) => ({
@@ -58,10 +52,10 @@ export const createUser = router
 			email: r.email,
 		}),
 	})
-	.handle(async ({ body, services, logger }) => {
+	.handle(async ({ body, db, logger }) => {
 		logger.info({ body }, 'Creating user');
 
-		const user = await services.database
+		const user = await db
 			.insertInto('users')
 			.values({
 				name: body.name,
@@ -85,9 +79,8 @@ export const getUser = router
 	.get('/users/:id')
 	.params(z.object({ id: z.string().uuid() }))
 	.output(UserSchema)
-	.services([DatabaseService])
-	.handle(async ({ params, services }) => {
-		const user = await services.database
+	.handle(async ({ params, db }) => {
+		const user = await db
 			.selectFrom('users')
 			.selectAll()
 			.where('id', '=', params.id)

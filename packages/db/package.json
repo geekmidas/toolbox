@@ -53,6 +53,26 @@
 				"types": "./dist/rls.d.cts",
 				"default": "./dist/rls.cjs"
 			}
+		},
+		"./pg/url": {
+			"import": {
+				"types": "./dist/pg/url.d.mts",
+				"default": "./dist/pg/url.mjs"
+			},
+			"require": {
+				"types": "./dist/pg/url.d.cts",
+				"default": "./dist/pg/url.cjs"
+			}
+		},
+		"./errors": {
+			"import": {
+				"types": "./dist/errors.d.mts",
+				"default": "./dist/errors.mjs"
+			},
+			"require": {
+				"types": "./dist/errors.d.cts",
+				"default": "./dist/errors.cjs"
+			}
 		}
 	},
 	"dependencies": {

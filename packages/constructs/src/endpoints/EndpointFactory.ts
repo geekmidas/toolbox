@@ -8,6 +8,12 @@ import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
+import {
+	type Consumable,
+	type ServicesOf,
+	serviceOf,
+	servicesOf,
+} from '../construct-interface';
 import type { HttpMethod } from '../types';
 import {
 	type Authorizer,
@@ -475,6 +481,55 @@ export class EndpointFactory<
 	}
 
 	// Create a new factory with services
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	dependsOn<const S extends readonly Consumable[]>(
+		constructs: S,
+	): EndpointFactory<
+		[...ServicesOf<S>, ...TServices],
+		TBasePath,
+		TLogger,
+		TSession,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName,
+		TSecuritySchemes,
+		RlsConfig<[...ServicesOf<S>, ...TServices], TSession, TLogger> | undefined
+	> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as EndpointFactory<
+			[...ServicesOf<S>, ...TServices],
+			TBasePath,
+			TLogger,
+			TSession,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TAuthorizers,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			TAuditAction,
+			TDatabase,
+			TDatabaseServiceName,
+			TSecuritySchemes,
+			RlsConfig<[...ServicesOf<S>, ...TServices], TSession, TLogger> | undefined
+		>;
+	}
+
 	services<S extends Service[]>(
 		services: S,
 	): EndpointFactory<
@@ -720,7 +775,7 @@ export class EndpointFactory<
 	 * The database will be available in handler context as `db`.
 	 */
 	database<T, TName extends string>(
-		service: Service<TName, T>,
+		source: Consumable<TName, T> | Service<TName, T>,
 	): EndpointFactory<
 		TServices,
 		TBasePath,
@@ -737,6 +792,8 @@ export class EndpointFactory<
 		TSecuritySchemes,
 		TRlsConfig
 	> {
+		const service = serviceOf(source);
+
 		return new EndpointFactory<
 			TServices,
 			TBasePath,

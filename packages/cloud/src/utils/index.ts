@@ -26,14 +26,14 @@ export enum ResourceType {
 	ApiGatewayV2 = 'sst.aws.ApiGatewayV2',
 	Postgres = 'sst.aws.Postgres',
 	Function = 'sst.aws.Function',
-	Bucket = 'sst.aws.Bucket',
+	ObjectStorage = 'sst.aws.Bucket',
 	Vpc = 'sst.aws.Vpc',
 	Secret = 'sst.sst.Secret',
 	SSTSecret = 'sst:sst:Secret',
 	SSTFunction = 'sst:sst:Function',
 	SSTApiGatewayV2 = 'sst:aws:ApiGatewayV2',
 	SSTPostgres = 'sst:aws:Postgres',
-	SSTBucket = 'sst:aws:Bucket',
+	SSTObjectStorage = 'sst:aws:Bucket',
 	SnsTopic = 'sst:aws:SnsTopic',
 }
 
@@ -75,10 +75,10 @@ const processors: Record<ResourceType, ResourceProcessor<any>> = {
 	[ResourceType.Vpc]: noop,
 	[ResourceType.Secret]: secret,
 	[ResourceType.Postgres]: postgres,
-	[ResourceType.Bucket]: bucket,
+	[ResourceType.ObjectStorage]: bucket,
 
 	[ResourceType.SSTSecret]: secret,
-	[ResourceType.SSTBucket]: bucket,
+	[ResourceType.SSTObjectStorage]: bucket,
 	[ResourceType.SSTFunction]: noop,
 	[ResourceType.SSTPostgres]: postgres,
 	[ResourceType.SSTApiGatewayV2]: noop,
@@ -126,7 +126,7 @@ export type Function = {
 
 export type Bucket = {
 	name: string;
-	type: ResourceType.Bucket;
+	type: ResourceType.ObjectStorage;
 };
 
 export type SnsTopic = {

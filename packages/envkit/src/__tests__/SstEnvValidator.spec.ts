@@ -26,10 +26,12 @@ describe('SstEnvValidator', () => {
 			);
 		});
 
-		it('derives the suffixed key a Bucket link produces', () => {
+		it('derives the keys an ObjectStorage link produces', () => {
+			// `_URL` is the single value a construct reads; `_NAME` predates it and
+			// is kept for hand-written services.
 			expect(
-				resolveEnvKeys({ uploads: { type: ResourceType.Bucket } }),
-			).toEqual(['UPLOADS_NAME']);
+				resolveEnvKeys({ uploads: { type: ResourceType.ObjectStorage } }),
+			).toEqual(['UPLOADS_NAME', 'UPLOADS_URL']);
 		});
 
 		it('derives queue keys incl. the publisher connection string', () => {
@@ -79,7 +81,7 @@ describe('SstEnvValidator', () => {
 		it('merges keys across multiple links', () => {
 			const keys = resolveEnvKeys({
 				db: { type: ResourceType.Postgres },
-				cache: { type: ResourceType.Bucket },
+				cache: { type: ResourceType.ObjectStorage },
 			});
 			expect(keys).toContain('DB_HOST');
 			expect(keys).toContain('CACHE_NAME');
@@ -160,7 +162,7 @@ describe('SstEnvValidator', () => {
 	describe('getProvidersForEnvVars (least-privilege filtering)', () => {
 		const validator = new EnvValidator({
 			db: { type: ResourceType.Postgres },
-			uploads: { type: ResourceType.Bucket },
+			uploads: { type: ResourceType.ObjectStorage },
 			apiKey: { type: ResourceType.Secret },
 		});
 

@@ -117,8 +117,9 @@ describe('SstEnvironmentBuilder', () => {
 	describe('Bucket resource', () => {
 		it('should process Bucket resource correctly', () => {
 			const bucket: Bucket = {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'my-s3-bucket',
+				url: 's3://my-s3-bucket?region=us-east-1',
 			};
 
 			const env = new SstEnvironmentBuilder({
@@ -127,13 +128,15 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				UPLOAD_BUCKET_NAME: 'my-s3-bucket',
+				UPLOAD_BUCKET_URL: 's3://my-s3-bucket?region=us-east-1',
 			});
 		});
 
 		it('should process SSTBucket resource correctly', () => {
 			const bucket: Bucket = {
-				type: ResourceType.SSTBucket,
+				type: ResourceType.SSTObjectStorage,
 				name: 'assets-bucket-prod',
+				url: 's3://assets-bucket-prod?region=us-east-1',
 			};
 
 			const env = new SstEnvironmentBuilder({
@@ -142,6 +145,7 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				ASSET_STORAGE_NAME: 'assets-bucket-prod',
+				ASSET_STORAGE_URL: 's3://assets-bucket-prod?region=us-east-1',
 			});
 		});
 	});
@@ -249,8 +253,9 @@ describe('SstEnvironmentBuilder', () => {
 			};
 
 			const bucket: Bucket = {
-				type: ResourceType.Bucket,
+				type: ResourceType.ObjectStorage,
 				name: 'uploads-bucket',
+				url: 's3://uploads-bucket?region=us-east-1',
 			};
 
 			const topic: SnsTopic = {
@@ -280,6 +285,7 @@ describe('SstEnvironmentBuilder', () => {
 					'postgresql://app_user:db-pass@db.example.com:5432/app_db',
 				JWT_SECRET: 'jwt-secret',
 				UPLOADS_NAME: 'uploads-bucket',
+				UPLOADS_URL: 's3://uploads-bucket?region=us-east-1',
 				EVENTS_ARN: 'arn:aws:sns:us-east-1:123456789:events',
 				EVENTS_PUBLISHER_CONNECTION_STRING:
 					'sns://?topicArn=arn%3Aaws%3Asns%3Aus-east-1%3A123456789%3Aevents',
@@ -371,7 +377,7 @@ describe('SstEnvironmentBuilder', () => {
 			expect(sstResolvers).toBeDefined();
 			expect(typeof sstResolvers[ResourceType.Secret]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.Postgres]).toBe('function');
-			expect(typeof sstResolvers[ResourceType.Bucket]).toBe('function');
+			expect(typeof sstResolvers[ResourceType.ObjectStorage]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.SnsTopic]).toBe('function');
 			expect(typeof sstResolvers[ResourceType.SSTDynamo]).toBe('function');
 		});
@@ -382,14 +388,14 @@ describe('SstEnvironmentBuilder', () => {
 			expect(ResourceType.ApiGatewayV2).toBe('sst.aws.ApiGatewayV2');
 			expect(ResourceType.Postgres).toBe('sst.aws.Postgres');
 			expect(ResourceType.Function).toBe('sst.aws.Function');
-			expect(ResourceType.Bucket).toBe('sst.aws.Bucket');
+			expect(ResourceType.ObjectStorage).toBe('sst.aws.Bucket');
 			expect(ResourceType.Vpc).toBe('sst.aws.Vpc');
 			expect(ResourceType.Secret).toBe('sst.sst.Secret');
 			expect(ResourceType.SSTSecret).toBe('sst:sst:Secret');
 			expect(ResourceType.SSTFunction).toBe('sst:sst:Function');
 			expect(ResourceType.SSTApiGatewayV2).toBe('sst:aws:ApiGatewayV2');
 			expect(ResourceType.SSTPostgres).toBe('sst:aws:Postgres');
-			expect(ResourceType.SSTBucket).toBe('sst:aws:Bucket');
+			expect(ResourceType.SSTObjectStorage).toBe('sst:aws:Bucket');
 			expect(ResourceType.SnsTopic).toBe('sst:aws:SnsTopic');
 			expect(ResourceType.SSTDynamo).toBe('sst:aws:Dynamo');
 		});

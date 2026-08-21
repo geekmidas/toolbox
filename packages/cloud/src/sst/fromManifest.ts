@@ -1,0 +1,202 @@
+/**
+ * Manifest → SST.
+ *
+ * Split deliberately into decisions and instantiation. The decisions —
+ * which component provisions a kind, whether what it supplies matches what the
+ * app declared — are pure functions, so they can be asserted as data. Only
+ * {@link fromManifest} touches Pulumi, and it is thin enough that little is
+ * hidden behind a runtime nothing can unit-test.
+ *
+ * Built for AWS. Extending to another provider means adding entries to
+ * {@link PROVISIONERS}, not restructuring: the manifest names a *kind*, never a
+ * cloud.
+ */
+
+import { resolveEnvKeys } from '@geekmidas/envkit/sst';
+import type {
+	ConstructManifest,
+	Declaration,
+	DeclarationKind,
+	Dependency,
+} from '@geekmidas/manifest';
+import { provideKey } from '@geekmidas/manifest';
+import { ObjectStorage } from './aws/ObjectStorage';
+import {
+	ProvidesMismatch,
+	UnknownDeclarationKind,
+	UnresolvedDependency,
+} from './errors';
+import type { GkmLinkable } from './Linkable';
+import type { StackType } from './Stack';
+
+/**
+ * A provisioned construct — the component, which *is* the linkable.
+ *
+ * `provides()` returns its values keyed by role. They reach the running code by
+ * being spread into the link's properties, which SST injects and envkit's
+ * resolvers flatten into env; keeping them behind a method is what lets the
+ * contract be asserted at synth without a deploy.
+ */
+export interface Provisioned extends GkmLinkable {
+	provides(): Record<string, $util.Input<string>>;
+}
+
+/** Everything the manifest declared, keyed by id — the shape edges resolve against. */
+export type ProvisionedManifest = Record<string, Provisioned>;
+
+type Provisioner = (
+	stack: StackType,
+	declaration: Declaration,
+	props: Record<string, unknown>,
+) => Provisioned;
+
+/**
+ * Provider-specific props, per construct id.
+ *
+ * Neutral options — `versioned`, and later `cdn` — travel in the declaration,
+ * because the app legitimately has an opinion about them. Anything with S3 in
+ * its name does not belong in application code, so lifecycle rules, CORS, and
+ * canned ACLs are supplied here, in the deploy layer, keyed by the id they
+ * apply to and typed against the component that receives them.
+ *
+ * A third escape hatch needs no API at all: `fromManifest` returns the
+ * components, so `provisioned.Uploads.nodes.bucket` is reachable for anything
+ * neither route covers.
+ */
+export type ComponentOverrides = Record<string, Record<string, unknown>>;
+
+/**
+ * Which component provisions which kind.
+ *
+ * The extension point: a second provider adds entries here, and nothing above
+ * this line changes.
+ */
+const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
+	objects: (stack, d, props) =>
+		new ObjectStorage(stack, d.id, {
+			// Neutral options the app declared, mapped to this provider's words.
+			...(d.kind === 'objects' && d.versioned ? { versioning: true } : {}),
+			// Overrides win: they are the more specific statement, and the escape
+			// hatch is worthless if it cannot override the general case.
+			...props,
+		}),
+};
+
+/** The provisioner for a kind. Pure — the lookup is testable without Pulumi. */
+export function provisionerFor(kind: DeclarationKind): Provisioner {
+	const provisioner = PROVISIONERS[kind];
+	if (!provisioner) {
+		throw new UnknownDeclarationKind(kind, Object.keys(PROVISIONERS));
+	}
+	return provisioner;
+}
+
+/**
+ * Assert that a link yields exactly the env keys the app declared.
+ *
+ * `supplied` comes from `resolveEnvKeys`, which derives the keys a resource type
+ * produces — the same derivation that runs for real. The app↔infra contract is
+ * the one guarantee spanning two packages, two build phases, and two authors,
+ * and the one a JavaScript consumer gets no compiler help with, so it is checked
+ * at synth rather than trusted.
+ */
+export function assertProvides(
+	id: string,
+	declared: readonly string[] = [],
+	supplied: readonly string[] = [],
+): void {
+	const missing = declared.filter((key) => !supplied.includes(key));
+	const extra = supplied.filter((key) => !declared.includes(key));
+
+	if (missing.length || extra.length) {
+		throw new ProvidesMismatch(id, missing, extra);
+	}
+}
+
+/**
+ * Provision everything the manifest declares.
+ *
+ * Resources are leaves — they depend on nothing — so order within this pass is
+ * free. Constructs that derive from another (a read replica, a schema tenant)
+ * name their parent and are resolved after it; none exist yet.
+ */
+export function fromManifest(
+	stack: StackType,
+	manifest: ConstructManifest,
+	overrides: ComponentOverrides = {},
+): ProvisionedManifest {
+	const provisioned: ProvisionedManifest = {};
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		const component = provisionerFor(declaration.kind)(
+			stack,
+			declaration,
+			overrides[id] ?? {},
+		);
+
+		assertProvides(
+			id,
+			declaration.provides,
+			// A role becomes the env key the app declared: `url` → `UPLOADS_URL`.
+			Object.keys(component.provides()).map((role) => provideKey(id, role)),
+		);
+
+		provisioned[id] = component;
+	}
+
+	return provisioned;
+}
+
+/** What one function receives from its edges. */
+export interface ResolvedEdges {
+	/** The components it may reach. SST turns these into IAM *and* injects their
+	 * properties, so this is the whole delivery mechanism. */
+	link: Provisioned[];
+	/**
+	 * The env keys those links yield.
+	 *
+	 * Not values: the values are injected at runtime by the link, and a map of
+	 * key→placeholder would be a lie that ships. Keys are what the adapter needs,
+	 * so a function's `requires` can be checked against what its own edges cover.
+	 */
+	envKeys: string[];
+}
+
+/**
+ * Resolve one function's dependencies into what it is given.
+ *
+ * A function is linked to exactly the constructs it declared, never the app's
+ * full set — so least privilege falls out of the edges rather than out of
+ * discipline. Adding an unrelated construct to the manifest cannot widen what
+ * an existing function can reach, which is the property worth testing as an
+ * exclusion.
+ *
+ * Pure: given a provisioned map, this is data in and data out, so the whole
+ * filtering rule is assertable without a deploy.
+ */
+export function resolveEdges(
+	dependencies: readonly Dependency[] = [],
+	provisioned: ProvisionedManifest,
+): ResolvedEdges {
+	const link: Provisioned[] = [];
+	const envKeys = new Set<string>();
+
+	for (const dependency of dependencies) {
+		const component = provisioned[dependency.target];
+		if (!component) {
+			throw new UnresolvedDependency(
+				dependency.target,
+				Object.keys(provisioned),
+			);
+		}
+
+		link.push(component);
+		for (const key of resolveEnvKeys({
+			[dependency.target]: { type: component._type as string },
+		})) {
+			envKeys.add(key);
+		}
+	}
+
+	return { link, envKeys: [...envKeys].sort() };
+}

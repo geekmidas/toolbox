@@ -1,7 +1,9 @@
+import { snifferContext } from '@geekmidas/constructs';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import type { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { auth } from '../constructs/auth.js';
 
 interface HookContext {
 	envParser: EnvironmentParser<any>;
@@ -24,6 +26,21 @@ export async function beforeSetup(app: Hono, ctx: HookContext) {
 			credentials: true,
 			maxAge: 86400,
 		}),
+	);
+
+	// The auth server's own routes.
+	//
+	// Mounted here rather than declared, because an auth server is a set of
+	// endpoints and there is no `rest-api` kind yet to declare them into. When
+	// there is, this hook goes away and the surface carries them — the construct
+	// itself does not change.
+	const server = await auth.service.register({
+		envParser: ctx.envParser,
+		context: snifferContext,
+	});
+
+	app.on(['GET', 'POST'], `${auth.basePath}/*`, (c) =>
+		server.handler(c.req.raw),
 	);
 }
 

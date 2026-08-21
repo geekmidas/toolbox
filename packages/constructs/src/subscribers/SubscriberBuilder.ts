@@ -6,6 +6,11 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import {
+	type Consumable,
+	type ServicesOf,
+	servicesOf,
+} from '../construct-interface';
 import type { Topic, TopicEvents, TopicMessage } from '../topic/Topic';
 import { Subscriber, type SubscriberHandler } from './Subscriber';
 
@@ -78,6 +83,39 @@ export class SubscriberBuilder<
 	> {
 		this.outputSchema = schema as unknown as OutSchema;
 		return this as any;
+	}
+
+	/**
+	 * Depend on constructs — a database, a bucket, a mail sender, a queue, a
+	 * topic.
+	 *
+	 * It records the edge and dissolves each construct's client into the
+	 * handler's service record under the construct's own id, so
+	 * `.dependsOn([uploads])` is what makes `services.uploads` exist and type.
+	 *
+	 * Constructs only. A `Service` does not match the shape, which is what keeps
+	 * env sniffing confined to `.services()` and the explicit lift.
+	 */
+	dependsOn<const T extends readonly Consumable[]>(
+		constructs: T,
+	): SubscriberBuilder<
+		[...TServices, ...ServicesOf<T>],
+		TLogger,
+		OutSchema,
+		TEventPublisher,
+		TEventPublisherServiceName,
+		TSubscribedEvents
+	> {
+		return this.services(
+			servicesOf(constructs) as unknown as Service[],
+		) as unknown as SubscriberBuilder<
+			[...TServices, ...ServicesOf<T>],
+			TLogger,
+			OutSchema,
+			TEventPublisher,
+			TEventPublisherServiceName,
+			TSubscribedEvents
+		>;
 	}
 
 	services<T extends Service[]>(
