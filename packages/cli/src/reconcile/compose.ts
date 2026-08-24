@@ -274,9 +274,10 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					SERVICES: 'sns,sqs',
 					AWS_DEFAULT_REGION: 'us-east-1',
-					// LocalStack requires this prefix on access keys it issues.
+					// The prefix LocalStack required on issued keys. floci does not
+					// care, and keeping it means a project that pins the old image
+					// still works.
 					AWS_ACCESS_KEY_ID: 'LSIAQAAAAAAVNCBMPNSG',
 					AWS_SECRET_ACCESS_KEY: LOCAL_USER,
 				},

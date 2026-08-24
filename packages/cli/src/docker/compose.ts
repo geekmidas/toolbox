@@ -15,7 +15,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 	rabbitmq: 'rabbitmq',
 	minio: 'minio/minio',
 	mailpit: 'axllent/mailpit',
-	localstack: 'localstack/localstack',
+	localstack: 'floci/floci',
 };
 
 /** Default Docker image versions for services */
@@ -302,7 +302,6 @@ services:
     container_name: localstack
     restart: unless-stopped
     environment:
-      SERVICES: sns,sqs
       AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
       AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}
@@ -551,11 +550,10 @@ services:
 	if (hasLocalStack) {
 		yaml += `
   localstack:
-    image: localstack/localstack:latest
+    image: floci/floci:latest
     container_name: ${workspace.name}-localstack
     restart: unless-stopped
     environment:
-      SERVICES: sns,sqs
       AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
       AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}

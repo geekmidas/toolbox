@@ -25,7 +25,7 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	redis: 'redis:8-alpine',
 	'redis-http': 'hiett/serverless-redis-http:latest',
 	rabbitmq: 'rabbitmq:4-management-alpine',
-	localstack: 'localstack/localstack:latest',
+	localstack: 'floci/floci:latest',
 };
 
 /** One port an image listens on. */
