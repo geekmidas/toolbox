@@ -940,15 +940,78 @@ export const upload = api.post('/upload')
 ### Serving files
 
 `ObjectStorage` is the bucket: it writes, it presigns, and its URL is never
-public. Serving those objects on a domain is a *second address on the same
-resource*, so it is a derived construct — the shape `orders.reader()` and
-`orders.schema()` already use — rather than a second kind of storage anyone has
-to choose between:
+public. Serving those objects on a domain is a different thing, and where it
+belongs took three passes to settle.
 
 ```ts
 export const uploads = new ObjectStorage('Uploads');
-export const files   = uploads.server({ subdomain: 'files', open: ['brand/**'] });
+export const files   = new FileServer('Files', {
+  origins: { '/*': uploads },
+  open: ['brand/**'],
+});
 ```
+
+#### Why a separate construct, and what it costs
+
+Three shapes were on the table. The argument is worth keeping because the
+obvious answer is not the one that survives.
+
+**A — an option on the bucket**, `new ObjectStorage('Uploads', { cdn: true })`,
+which is what this document originally said.
+
+**B — a derived construct**, `uploads.server({ … })`, in the shape
+`orders.reader()` and `orders.schema()` already use.
+
+**C — a construct of its own**, `new FileServer('Files', { origins: … })`.
+
+| | A: option | B: derived | C: own construct |
+|---|---|---|---|
+| ids in the manifest | 1 | 2, parent named by `of` | 2, related by an edge |
+| "is this bucket public?" | read one declaration | read one, follow `of` | **find whoever points at it** |
+| two surfaces over one bucket | ✗ | ✓ | ✓ |
+| one surface over two buckets | ✗ | ✗ | ✓ |
+| an origin that is not a bucket | ✗ | ✗ | ✓ |
+| who owns cert + DNS + cache config | the `objects` provisioner | the `objects` provisioner | its own |
+| adding serving to a live bucket | changes the bucket node | adds a node | adds a node |
+| shares machinery with `StaticSite` | ✗ | ✗ | ✓ — same infrastructure |
+
+A dies on the first two rows of capability: `cdn: true` is a boolean on a
+bucket, so it cannot express open-versus-signed paths, cannot express two
+surfaces, and grows a second `provides` key that is only sometimes there — every
+consumer then branches on its presence.
+
+B survives longer, and the case for it is real: one bucket, one lifecycle, one
+id, and a second address on the same resource is exactly what `reader()` and
+`schema()` are. What kills it is the relationship. A reader and a schema tenant
+share the parent's *credentials* — they are the same database reached with
+different grants, which is why deriving them from it reads correctly. A file
+server shares the parent's *contents*, which is a different thing entirely, and
+the difference shows up as three concrete failures:
+
+- **A distribution can front several origins**; a method on one bucket cannot
+  express that. The moment you want `/*` from the uploads bucket and `/__session`
+  from the API — which is how a cookie gets minted on the file host rather than
+  the parent domain — B has nowhere to put it.
+- **The provisioner ends up wrong.** `of` makes the parent's component
+  responsible for the child, so the `objects` provisioner would be issuing ACM
+  certificates and writing Route53 records. That is a domain lifecycle living
+  inside a bucket.
+- **It duplicates `StaticSite`.** A site is already a bucket, a distribution, a
+  certificate and a domain. A file server is the same infrastructure with live
+  bucket contents instead of a build output. Under C they share a provisioner;
+  under B one of them is a method and the other is a construct.
+
+So C, with its cost named rather than waved away: **the bucket alone no longer
+tells you whether it is served.** Under A you read one declaration; under C you
+have to find whoever points at it. That is a real regression in auditability and
+it is answered the same way `of` is — a reference check at manifest build, so
+every origin resolves to a declared construct and `gkm` can print, for any
+bucket, the surfaces that serve it. Unresolvable origin, build failure; that is
+the same guarantee `assertDerivations` already gives derived database nodes.
+
+The second cost is naming. Two constructs invite "which one do I put things
+in?", which is why the serving construct is not called `FileStorage` — nothing
+is stored in it. It serves.
 
 Three axes get conflated here, and separating them is most of the design:
 
@@ -1001,11 +1064,23 @@ Three of the four map cleanly:
 | signed URLs | S3 presigning works against MinIO unchanged |
 | signed cookies | **nothing** — CloudFront-specific |
 
-The addressing constraint: the label has to equal the bucket name for MinIO to
-resolve it, which the default already satisfies since both derive from the id.
-Overriding the label costs shape-parity locally until the local target grows a
-proxy that mimics a CDN over MinIO — worth doing later, and additive when it
-lands.
+The addressing constraint is where choosing a separate construct is felt
+locally: MinIO's virtual-host mode reads the leading label *as the bucket name*,
+so it only produces the CDN shape when the server's id and the bucket's id agree
+— `Uploads` serving `uploads`. A `FileServer` named for what it serves rather
+than for its origin (`files.myapp.test` over bucket `uploads`) does not resolve,
+and a server fronting **two** buckets cannot resolve by construction. So under C
+the local target either falls back to MinIO's path-style URL — correct, but not
+the deployed shape — or grows a small proxy in front of MinIO that maps host and
+path patterns onto buckets the way a distribution does.
+
+That proxy is the honest answer, and it is additive: it changes no construct API,
+and it is the only component that could also verify a signature locally. It is
+not something an AWS emulator gives you for free — CloudFront emulation in
+LocalStack and in [floci](https://floci.io) is **control plane only**
+(distributions, origins, cache behaviours, invalidations), which provisions a
+distribution that never serves a byte. What the local target needs is the data
+plane, which is the half nobody emulates.
 
 The cookie gap is why the client should expose one `read(key)` that resolves
 however the stage can, rather than app code branching on a mechanism that only
