@@ -944,12 +944,89 @@ public. Serving those objects on a domain is a different thing, and where it
 belongs took three passes to settle.
 
 ```ts
-export const uploads = new ObjectStorage('Uploads');
-export const files   = new FileServer('Files', {
-  origins: { '/*': uploads },
-  open: ['brand/**'],
-});
+export const uploads = new FileServer('Uploads', { open: ['brand/**'] });
+
+uploads.getUploadURL(key, '15m')      // an S3 presign against the bucket
+uploads.url('brand/logo.png')         // open path — no signature
+uploads.signedUrl(key, '15m')         // one object, one recipient
+uploads.signedCookie('reports/', '1h') // a session over many
 ```
+
+**One construct, one client, both halves.** How a file lands in the bucket is
+the same whether or not it is served, so splitting the upload half from the
+serving half would be ceremony rather than safety: the client is a *superset* of
+`StorageClient`, which is worth making literal in the type, since anything taking
+`services.uploads` today keeps compiling when the construct behind it grows a
+serving half.
+
+**It vends its bucket, and takes one when you have it.** `new
+FileServer('Uploads')` declares both nodes; `new FileServer('Files', { origin:
+uploads })` fronts a bucket declared elsewhere, which is also how the two edges
+come back when you want them — a handler depending on the bucket writes, a
+handler depending on the server mints URLs.
+
+**The id names the bucket, not the surface.** This is the one detail that has to
+be right before anything ships, because getting it backwards is destructive:
+
+```
+new ObjectStorage('Uploads')   → Uploads        { kind: 'objects' }
+new FileServer('Uploads')      → Uploads        { kind: 'objects' }                    ← unchanged
+                                 UploadsServer  { kind: 'file-server', of: 'Uploads' }  ← added
+```
+
+The migration people will actually perform is serving a bucket they already have.
+Naming the bucket after the construct means that edit *adds* a node and a
+provided key and touches nothing holding data. The other way round — surface
+takes the id, bucket gets a suffix — the same edit renames the bucket, which
+replaces it, and the plan shows a destroy that nothing explains.
+
+Which puts the derived form back in the manifest, inverted from where it was
+first proposed: the **construct** is standalone, with its own provisioner owning
+the certificate and the DNS record, while the **surface node** derives from the
+bucket by `of` — which is what makes the reference check work and lets `gkm`
+answer "is this bucket served?" from one lookup.
+
+#### Open paths are a type, not a convention
+
+`open` is checked at the call site, not only at the edge:
+
+```ts
+const files = new FileServer('Uploads', { open: ['brand/**', 'avatars/**'] });
+
+files.url('brand/logo.png')          // ok
+files.url(`avatars/${id}.png`)       // ok — a template literal still matches
+files.url('invoices/7.pdf')          // ✗ not assignable — never served unsigned
+files.signedUrl('invoices/7.pdf')    // ok — this is what signing is for
+```
+
+The patterns become a key type by the same trick `ConstructName` uses, with a
+`const` type parameter so no call site needs `as const`:
+
+```ts
+type Served<P extends string> =
+  P extends `${infer Head}**`            ? `${Head}${string}` :
+  P extends `${infer Head}*${infer Tail}` ? `${Head}${string}${Tail}` :
+  P;
+```
+
+Three limits, stated rather than discovered:
+
+- **`*` and `**` are the same type.** A template literal cannot exclude `/`, so
+  the compile-time check is a prefix and suffix guard while the *exact* pattern
+  is enforced by the bucket policy and the cache behaviour. The type says
+  plausibly open; the infrastructure says definitely.
+- **A fully dynamic key does not type.** `files.url(someString)` is a compile
+  error, which is correct and also the case people will hit — so there is an
+  explicit escape hatch rather than a cast, and it is runtime-checked, because
+  minting an unsigned URL for a private object is a leak rather than a mistake.
+- **Runtime checks anyway.** A JavaScript caller gets no compiler, which is the
+  same argument that gives `canonicalId` a runtime guard beside
+  `ConstructName`, and `.dependsOn()` a `NotAConstruct` beside its type.
+
+Uploading is deliberately *not* restricted: writing to a path that happens to be
+open is ordinary, and the only asymmetry worth enforcing is that you cannot hand
+out an unsigned URL for something the server would refuse to serve unsigned.
+
 
 #### Why a separate construct, and what it costs
 
@@ -962,7 +1039,7 @@ which is what this document originally said.
 **B — a derived construct**, `uploads.server({ … })`, in the shape
 `orders.reader()` and `orders.schema()` already use.
 
-**C — a construct of its own**, `new FileServer('Files', { origins: … })`.
+**C — a construct of its own**, `new FileServer('Uploads', { open: … })`.
 
 | | A: option | B: derived | C: own construct |
 |---|---|---|---|
@@ -1018,7 +1095,7 @@ Three axes get conflated here, and separating them is most of the design:
 | axis | choices | decided by |
 |---|---|---|
 | does reading need a signature | open / signed | the object, via its path |
-| how a signature travels | cookie / URL | the use case, not the object |
+| how a signature travels | cookie / URL | the caller, per call — not configuration |
 | which address you hold | bucket (write, presign) / server (domain, read) | the edge |
 
 **Private by default; `open` is an exception list.** A bucket where forgetting a
@@ -1038,6 +1115,15 @@ domain. Two servers over one bucket is a legitimate arrangement (public assets
 that never carry an auth cookie, and cleaner cache keys), but that is a
 cache-behaviour decision, not a secrecy one.
 
+**Both signature mechanisms are always available.** A behaviour with restricted
+viewer access is configured once, with a trusted key group, and then accepts
+either a signed URL or signed cookies — the URL wins when a request carries both.
+So there is nothing for the construct to declare beyond the key material, and
+which mechanism is used is decided per call by whoever mints it. Note that this
+is *CloudFront* signing with a key pair through the distribution, which is a
+different mechanism from the *S3* presign `getUploadURL` issues with IAM
+credentials straight at the bucket: same word, different keys, different host.
+
 **Cookies are set at the parent domain**, `Domain=.example.com`, exactly as the
 auth section already requires — so the file server needs to know nothing about
 the API, and there is one domain rule in the system rather than two. Two
@@ -1052,6 +1138,15 @@ read invoice 7" is not expressible as a prefix; the answer is that the app
 authorises and redirects to a short-lived signed URL. Saying so is better than
 implying patterns cover it — the alternative is an edge function doing auth,
 which is a large surface to sign up for.
+
+**Multi-origin is deliberately deferred.** A distribution can front several
+origins, and `origin` will grow into an ordered `origins: [{ path, origin }]` the
+day something needs it — an array rather than a map, because behaviour precedence
+is most-specific-first and object key order is an invisible place to keep that.
+It is deferred because it costs the client its vocabulary: with one origin at the
+root a served path *is* a bucket key, and `getUploadURL(key)` and `url(key)` speak
+the same language. With several they diverge, and only the people who opt in
+should pay that.
 
 #### Locally, on MinIO
 
