@@ -70,6 +70,21 @@ export interface EnvOptions {
 	 */
 	project?: string;
 	/**
+	 * Where this app's own surfaces answer, e.g. `http://localhost:3000`.
+	 *
+	 * Not a container address: `gkm dev` assigns it, which is why it arrives
+	 * here rather than being read off a published port.
+	 */
+	surface?: string;
+	/**
+	 * Every origin in the workspace, for surfaces that check who is calling.
+	 *
+	 * Derived from what the workspace runs rather than hand-listed, which is the
+	 * same rule the design applies to CORS and to trusted origins: consumers
+	 * declare, and nothing enumerates its own callers.
+	 */
+	origins?: readonly string[];
+	/**
 	 * The domain mail is sent from locally.
 	 *
 	 * Stage config, exactly as it is deployed — the difference is only that here
@@ -91,7 +106,22 @@ export function envFor(
 	const env: Record<string, string> = {};
 
 	for (const resource of plan.resources) {
-		const url = urlFor(resource, plan, options.ports, options.project ?? '');
+		const url = urlFor(
+			resource,
+			plan,
+			options.ports,
+			options.project ?? '',
+			options.surface,
+		);
+
+		// A surface carries the origins its callers may come from. Better Auth's
+		// CSRF check applies to every caller, not only browsers, so a sibling
+		// service calling it is rejected unless its origin is listed — and the
+		// list is derivable, because the workspace already knows what it runs.
+		if (resource.kind === 'rest-api' && options.origins?.length) {
+			env[provideKey(resource.id, 'trustedOrigins')] =
+				options.origins.join(',');
+		}
 		if (url) env[resource.envKey] = url;
 
 		// Mail owns a second key. It is the sending identity, which is the one
@@ -151,9 +181,14 @@ function urlFor(
 	plan: Plan,
 	ports: PortAssignments,
 	project: string,
+	surface?: string,
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
+
+	// A surface answers on the app's own port, which the workspace assigned and
+	// no container published.
+	if (resource.kind === 'rest-api') return surface;
 
 	if (!resource.container) return undefined;
 

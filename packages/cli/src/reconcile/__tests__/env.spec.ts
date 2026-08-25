@@ -23,6 +23,12 @@ const manifest = {
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
+	AuthApi: {
+		kind: 'rest-api',
+		id: 'AuthApi',
+		provides: ['AUTH_API_URL', 'AUTH_API_TRUSTED_ORIGINS'],
+		endpoints: [],
+	},
 	Emails: {
 		kind: 'queue',
 		id: 'Emails',
@@ -48,6 +54,8 @@ const env = (stage = 'development', mailFrom?: string) => {
 
 	return envFor(plan, {
 		ports: portsFor(stage),
+		surface: 'http://localhost:3000',
+		origins: ['http://localhost:3000', 'http://localhost:5173'],
 		...(mailFrom ? { mailFrom } : {}),
 	});
 };
@@ -55,6 +63,8 @@ const env = (stage = 'development', mailFrom?: string) => {
 describe('envFor', () => {
 	it('resolves one URL per construct', () => {
 		expect(Object.keys(env()).sort()).toEqual([
+			'AUTH_API_TRUSTED_ORIGINS',
+			'AUTH_API_URL',
 			'AUTH_READER_URL',
 			'AUTH_URL',
 			'AWS_ACCESS_KEY_ID',
@@ -179,6 +189,21 @@ describe('envFor', () => {
 	it('follows the stage into the queue database', () => {
 		expect(env('test').EMAILS_PUBLISHER_CONNECTION_STRING).toContain(
 			'/orders_test?schema=pgboss',
+		);
+	});
+
+	it('answers a surface on the app’s own port, not a container’s', () => {
+		// The first kind whose address belongs to something gkm starts rather
+		// than something Docker published.
+		expect(env().AUTH_API_URL).toBe('http://localhost:3000');
+	});
+
+	it('derives who may call a surface from what the workspace runs', () => {
+		// Better Auth rejects an untrusted origin whether or not it is a browser,
+		// so a sibling service calling it needs to be on this list — and the
+		// workspace already knows what it runs.
+		expect(env().AUTH_API_TRUSTED_ORIGINS).toBe(
+			'http://localhost:3000,http://localhost:5173',
 		);
 	});
 });

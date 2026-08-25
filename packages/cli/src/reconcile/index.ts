@@ -109,6 +109,10 @@ export interface ReconcileOptions {
 	provision?: boolean;
 	/** The address mail is sent from locally. */
 	mailFrom?: string;
+	/** Where this app's own surfaces answer, e.g. `http://localhost:3000`. */
+	surface?: string;
+	/** Every origin the workspace runs, for surfaces that check their callers. */
+	origins?: readonly string[];
 	docker?: Docker;
 	probe?: PortProbe;
 	/** Injected for tests; the defaults talk to the containers just started. */
@@ -189,6 +193,8 @@ export async function reconcile(
 		ports,
 		project,
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
+		...(options.surface ? { surface: options.surface } : {}),
+		...(options.origins ? { origins: options.origins } : {}),
 	});
 	const result: ReconcileResult = {
 		stage,

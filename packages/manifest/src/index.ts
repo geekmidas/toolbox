@@ -46,6 +46,8 @@ export type {
 	Provides,
 	ProvidesByKind,
 	QueueDeclaration,
+	RestApiDeclaration,
+	RestApiEndpoint,
 	SecretDeclaration,
 	TopicDeclaration,
 } from './declaration';

@@ -180,6 +180,33 @@ export interface CacheDeclaration extends Node {
 }
 
 /**
+ * An HTTP surface and the handlers mounted on it.
+ *
+ * The first kind that is not a resource in the ordinary sense: it owns an
+ * address, and the functions it triggers are *nested inside it* rather than
+ * listed beside it, because position carries the trigger — a handler here is
+ * reached by its method and path and by nothing else.
+ *
+ * `authorizers` are names. A bare string is resolved by the target (`iam`), while
+ * a {@link ConstructId} names a construct that carries its own implementation,
+ * its database dependency, and its session typing.
+ */
+export interface RestApiDeclaration extends Node {
+	kind: 'rest-api';
+	authorizers?: readonly string[];
+	/** The authorizer applied where an endpoint names none. */
+	defaultAuthorizer?: string;
+	endpoints: readonly RestApiEndpoint[];
+}
+
+/** One route on a surface. */
+export interface RestApiEndpoint extends Fn {
+	method: string;
+	path: string;
+	authorizer?: string;
+}
+
+/**
  * A point-to-point queue and the single consumer that drains it.
  *
  * Provides one key, the producer's connection string. The protocol in it picks
@@ -220,6 +247,7 @@ export type Declaration =
 	| DatabaseSchemaDeclaration
 	| CacheDeclaration
 	| SecretDeclaration
+	| RestApiDeclaration
 	| QueueDeclaration
 	| TopicDeclaration;
 
@@ -327,6 +355,8 @@ export interface ProvidesByKind {
 	'database-schema': { url: string };
 	/** The endpoint and its token, in one string. */
 	cache: { url: string };
+	/** Where the surface answers. Public: a browser is the point of it. */
+	'rest-api': { url: string };
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
 	/**
@@ -361,6 +391,8 @@ export const PUBLIC: {
 	cache: [],
 	// The whole point of one.
 	secret: [],
+	// A URL a browser calls is a URL a browser may hold.
+	'rest-api': ['url'],
 	// Carries broker credentials, and a browser that can publish to a queue can
 	// forge any job the worker trusts.
 	queue: [],

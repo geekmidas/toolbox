@@ -21,6 +21,7 @@ import {
 	canonicalId,
 	type Declaration,
 	environmentCase,
+	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -81,10 +82,15 @@ export class BetterAuth<
 	readonly basePath: string;
 
 	/**
-	 * Declared once and read by both `declare()` and `connect()`, so the key the
-	 * target publishes and the key the server reads cannot drift.
+	 * Declared once and read by both `declare()` and `connect()`, so the keys the
+	 * target publishes and the keys the server reads cannot drift.
 	 */
-	private readonly secret: { id: string; key: string };
+	private readonly keys: {
+		secretId: string;
+		secret: string;
+		url: string;
+		trustedOrigins: string;
+	};
 
 	constructor(
 		id: ConstructName<TName>,
@@ -98,7 +104,12 @@ export class BetterAuth<
 		// A secret's name is its key: `Auth` signs with `AUTH_SECRET`, which is
 		// also what better-auth's own tooling looks for.
 		const secretId = `${canonical}Secret`;
-		this.secret = { id: secretId, key: environmentCase(secretId) };
+		this.keys = {
+			secretId,
+			secret: environmentCase(secretId),
+			url: provideKey(canonical, 'url'),
+			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
+		};
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
@@ -108,16 +119,43 @@ export class BetterAuth<
 	}
 
 	/**
-	 * The signing secret, and nothing else.
+	 * A signing secret and a surface.
 	 *
-	 * The database is not declared here — it is declared by the tenant that was
-	 * passed in, and declaring it twice is the duplication the whole model
-	 * removes. The routes are not declared either, because there is no
-	 * `rest-api` kind yet to declare them into.
+	 * The database is *not* declared here — the tenant that was passed in
+	 * declares it, and declaring it twice is the duplication the whole model
+	 * removes. What is declared is what this construct owns: the key it signs
+	 * with, and the routes it answers on.
+	 *
+	 * One endpoint, wildcarded. Better Auth routes internally and the set of
+	 * paths depends on which capabilities are enabled, so enumerating them here
+	 * would be a copy of its router that goes stale on its next release. The
+	 * surface's job is to send everything under `basePath` to one handler, which
+	 * is exactly what the declaration says.
 	 */
 	declare(): Declaration[] {
 		return [
-			{ kind: 'secret', id: this.secret.id, provides: [this.secret.key] },
+			{
+				kind: 'secret',
+				id: this.keys.secretId,
+				provides: [this.keys.secret],
+			},
+			{
+				kind: 'rest-api',
+				id: this.id,
+				provides: [this.keys.url, this.keys.trustedOrigins],
+				endpoints: [
+					{
+						id: `${this.id}Handler`,
+						handler: `${this.id}.handler`,
+						method: 'ANY',
+						path: `${this.basePath}/*`,
+						dependencies: [
+							{ target: this.config.database.id, kind: 'database-schema' },
+						],
+						requires: [this.keys.secret],
+					},
+				],
+			},
 		];
 	}
 
@@ -138,16 +176,27 @@ export class BetterAuth<
 	}
 
 	private async connect(options: ServiceRegisterOptions): Promise<AuthServer> {
-		const { secret, baseUrl } = options.envParser
+		const { secret, baseUrl, trustedOrigins } = options.envParser
 			.create((get) => ({
-				secret: get(this.secret.key).string(),
-				// The surface's URL, which nothing derives yet — the `rest-api`
-				// kind is what will supply it. Until then it follows the port the
-				// server was told to listen on.
-				baseUrl: get('PORT')
+				secret: get(this.keys.secret).string(),
+				// The surface's own URL, resolved by the target — not guessed from
+				// a port, which was wrong the moment the server moved to 3001.
+				baseUrl: get(this.keys.url).string(),
+				// Better Auth's CSRF check applies to every caller, not just
+				// browsers, so an API calling the auth server is rejected unless
+				// its origin is trusted. The list is derived from the graph and
+				// arrives as one comma-separated value, for the same reason every
+				// other derived value arrives as a string: it crosses a process
+				// boundary as env.
+				trustedOrigins: get(this.keys.trustedOrigins)
 					.string()
-					.transform((port) => `http://localhost:${port}`)
-					.default('http://localhost:3000'),
+					.default('')
+					.transform((value) =>
+						value
+							.split(',')
+							.map((origin) => origin.trim())
+							.filter(Boolean),
+					),
 			}))
 			.parse();
 
@@ -171,6 +220,15 @@ export class BetterAuth<
 			baseURL: baseUrl,
 			basePath: this.basePath,
 			database: { db, type: 'postgres' },
+			// Whatever the app added wins over the derived list rather than
+			// replacing it: an origin nobody declared is still sometimes real.
+			trustedOrigins: [
+				...trustedOrigins,
+				...(configured.trustedOrigins &&
+				Array.isArray(configured.trustedOrigins)
+					? configured.trustedOrigins
+					: []),
+			],
 		});
 	}
 }

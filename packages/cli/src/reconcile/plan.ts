@@ -50,6 +50,9 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
  */
 const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	secret: true,
+	// A surface answers on the app's own port. It is the first kind whose
+	// address belongs to something gkm starts rather than something Docker does.
+	'rest-api': true,
 };
 
 /**

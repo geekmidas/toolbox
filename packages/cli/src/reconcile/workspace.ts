@@ -136,6 +136,7 @@ export async function reconcileWorkspace(
 		extraContainers: extraContainers(workspace),
 		images: imagePins(workspace),
 		saved: await loadPortState(workspace.root),
+		...surfaceAddresses(workspace),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 
@@ -156,4 +157,34 @@ function patternsOf(routes: Routes | undefined): string[] {
 	if (!paths) return [];
 
 	return Array.isArray(paths) ? paths : [paths];
+}
+
+/**
+ * Where this workspace's apps answer, and therefore who may call whom.
+ *
+ * Derived from the ports the workspace already assigns rather than written
+ * down: a surface's own URL, and the origins of everything running beside it.
+ * The same list feeds CORS and Better Auth's trusted origins, because it is the
+ * same question asked twice.
+ */
+function surfaceAddresses(workspace: NormalizedWorkspace): {
+	surface?: string;
+	origins?: string[];
+} {
+	const origins = Object.values(workspace.apps)
+		.map((app) => app.port)
+		.filter((port): port is number => typeof port === 'number')
+		.map((port) => `http://localhost:${port}`);
+
+	const backend = Object.values(workspace.apps).find(
+		(app) => app.type === 'backend',
+	);
+	const surface = backend?.port
+		? `http://localhost:${backend.port}`
+		: undefined;
+
+	return {
+		...(surface ? { surface } : {}),
+		...(origins.length ? { origins: [...new Set(origins)] } : {}),
+	};
 }
