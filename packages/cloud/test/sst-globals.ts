@@ -43,6 +43,19 @@ class StubComponent {
 	}
 }
 
+/** A router records what it was asked to route, so the wiring is assertable. */
+class StubRouter extends StubComponent {
+	readonly routed: { pattern: string; bucket: unknown }[] = [];
+
+	get url() {
+		return `https://${this.name}.stub.cloudfront.net`;
+	}
+
+	routeBucket(pattern: string, bucket: unknown) {
+		this.routed.push({ pattern, bucket });
+	}
+}
+
 /** A secret is not an `sst.aws.*` component and carries a value, not an address. */
 class StubSecret {
 	readonly name: string;
@@ -82,6 +95,8 @@ Object.assign(globalThis, {
 			SnsTopic: StubComponent,
 			Function: StubComponent,
 			ApiGatewayV2: StubComponent,
+			StaticSite: StubComponent,
+			Router: StubRouter,
 		},
 	},
 	$util: util,

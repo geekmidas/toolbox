@@ -59,7 +59,9 @@ export {
 	dependenciesOf,
 	dependentsOf,
 	isDerived,
+	PUBLIC_PREFIX,
 	provisionOrder,
+	publicEnvFor,
 } from './derive';
 export {
 	IllegalDerivation,

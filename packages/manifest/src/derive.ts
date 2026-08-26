@@ -16,9 +16,11 @@ import type {
 	Declaration,
 	Dependency,
 	DerivedDeclaration,
+	SiteDeclaration,
 } from './declaration';
-import { DERIVES_FROM } from './declaration';
+import { DERIVES_FROM, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
+import { provideKey } from './naming';
 
 /** Whether a declaration names a parent. */
 export function isDerived(
@@ -132,4 +134,55 @@ export function dependentsOf(
 	}
 
 	return callers.sort();
+}
+
+/**
+ * How each site variant names a value it ships to the browser.
+ *
+ * The prefix *is* the framework's contract — `VITE_`, `NEXT_PUBLIC_` and
+ * `EXPO_PUBLIC_` all mean "inline this into the bundle" — so it is the one thing
+ * a variant changes, and it changes nothing else.
+ */
+export const PUBLIC_PREFIX: Record<SiteDeclaration['variant'], string> = {
+	static: 'VITE_',
+	tanstack: 'VITE_',
+	next: 'NEXT_PUBLIC_',
+};
+
+/**
+ * The keys a site's bundle needs, mapped to the key each value comes from —
+ * `{ VITE_API_URL: 'API_URL' }`.
+ *
+ * A rename, not a second derivation: `API_URL` is resolved once, by whatever
+ * resolved it for the server, and the site reads the same value under the name
+ * its bundler will inline. That is what keeps a site and its API from coming to
+ * disagree about where the API is.
+ *
+ * Filtered by `PUBLIC` rather than by what the site asked for. A site may
+ * legitimately depend on anything — its server half, where it has one, reads env
+ * exactly as a function does — so this is not a restriction on edges. It decides
+ * one thing: which values may be prefixed into a bundle, which is what keeps
+ * `ORDERS_URL` and its password out of a JavaScript file served to the public.
+ *
+ * Shared by every target for the same reason `providedKeyFor` is: a site built
+ * locally and the same site built by a deploy must inline the same names.
+ */
+export function publicEnvFor(
+	declaration: SiteDeclaration,
+	manifest: ConstructManifest,
+): Record<string, string> {
+	const prefix = PUBLIC_PREFIX[declaration.variant];
+	const keys: Record<string, string> = {};
+
+	for (const edge of declaration.dependencies) {
+		const target = manifest[edge.target];
+		if (!target) continue;
+
+		for (const role of PUBLIC[target.kind] ?? []) {
+			const key = provideKey(edge.target, role as string);
+			keys[`${prefix}${key}`] = key;
+		}
+	}
+
+	return keys;
 }

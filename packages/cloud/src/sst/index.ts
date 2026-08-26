@@ -15,6 +15,7 @@ export {
 	type CronRate,
 	type CronSchedule,
 } from './aws/Cron';
+export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {
 	ObjectStorage,
@@ -22,6 +23,7 @@ export {
 } from './aws/ObjectStorage';
 export { Queue, type QueueProps } from './aws/Queue';
 export { Secret, type SecretProps } from './aws/Secret';
+export { StaticSite, type StaticSiteProps } from './aws/StaticSite';
 /** @deprecated renamed to `ObjectStorage`, matching the construct that declares it. */
 export { Storage, type StorageProps } from './aws/Storage';
 export { Topic, type TopicProps } from './aws/Topic';
@@ -34,11 +36,14 @@ export {
 	assertProvides,
 	type ComponentOverrides,
 	fromManifest,
+	isServed,
+	type ProvisionContext,
 	type Provisioned,
 	type ProvisionedManifest,
 	provisionerFor,
 	type ResolvedEdges,
 	resolveEdges,
+	siteEnvironment,
 } from './fromManifest';
 export { type GkmLinkable, ResourceType } from './Linkable';
 export { kebab, prefixedName, regionOfArn } from './naming';

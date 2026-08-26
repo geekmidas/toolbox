@@ -18,11 +18,19 @@ import type {
 	Declaration,
 	DeclarationKind,
 	Dependency,
+	SiteDeclaration,
 } from '@geekmidas/manifest';
-import { providedKeyFor } from '@geekmidas/manifest';
+import {
+	PUBLIC,
+	PUBLIC_PREFIX,
+	providedKeyFor,
+	provisionOrder,
+} from '@geekmidas/manifest';
+import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
 import { Secret } from './aws/Secret';
+import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
 import {
 	ProvidesMismatch,
@@ -47,10 +55,27 @@ export interface Provisioned extends GkmLinkable {
 /** Everything the manifest declared, keyed by id — the shape edges resolve against. */
 export type ProvisionedManifest = Record<string, Provisioned>;
 
+/**
+ * What a provisioner can see beyond its own declaration.
+ *
+ * Two kinds need it, and both are consequences of decisions the design took
+ * deliberately. A bucket has to know whether anything serves it, because the
+ * file server is a construct of its own rather than a flag — the cost that
+ * decision names, paid here by looking rather than by reading a flag. And a
+ * derived node needs the component its parent became, since it provisions
+ * nothing and resolves an address off that one.
+ */
+export interface ProvisionContext {
+	manifest: ConstructManifest;
+	/** Everything already provisioned. Parents are present; siblings may not be. */
+	provisioned: ProvisionedManifest;
+}
+
 type Provisioner = (
 	stack: StackType,
 	declaration: Declaration,
 	props: Record<string, unknown>,
+	context: ProvisionContext,
 ) => Provisioned;
 
 /**
@@ -75,14 +100,43 @@ export type ComponentOverrides = Record<string, Record<string, unknown>>;
  * this line changes.
  */
 const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
-	objects: (stack, d, props) =>
+	objects: (stack, d, props, context) =>
 		new ObjectStorage(stack, d.id, {
 			// Neutral options the app declared, mapped to this provider's words.
 			...(d.kind === 'objects' && d.versioned ? { versioning: true } : {}),
+			// A served bucket has to let CloudFront read it, and only the manifest
+			// knows whether anything serves it — the cost of making the file
+			// server its own construct, paid here rather than by a flag on the
+			// bucket that every consumer would then branch on.
+			...(isServed(d.id, context.manifest) ? { access: 'cloudfront' } : {}),
 			// Overrides win: they are the more specific statement, and the escape
 			// hatch is worthless if it cannot override the general case.
 			...props,
 		}),
+
+	'file-server': (stack, d, props, context) => {
+		if (d.kind !== 'file-server') throw new UnknownDeclarationKind(d.kind, []);
+
+		const origin = context.provisioned[d.of];
+		if (!origin) {
+			throw new UnresolvedDependency(d.of, Object.keys(context.provisioned));
+		}
+
+		return new FileServer(stack, d.id, {
+			origin: origin as unknown as sst.aws.Bucket,
+			...props,
+		});
+	},
+
+	site: (stack, d, props, context) => {
+		if (d.kind !== 'site') throw new UnknownDeclarationKind(d.kind, []);
+
+		return new StaticSite(stack, d.id, {
+			path: d.path,
+			environment: siteEnvironment(d, context),
+			...props,
+		});
+	},
 
 	queue: (stack, d, props) =>
 		new Queue(stack, d.id, {
@@ -99,6 +153,70 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 	secret: (stack, d, props) => new Secret(stack, d.id, props),
 };
+
+/**
+ * A site's build-time environment: the actual values, under the names its
+ * bundler inlines.
+ *
+ * The names come from the shared derivation, so a site built by `gkm dev` and
+ * the same site built here inline the same keys. The *values* can only come
+ * from the provisioned components — a static site has no server half to read a
+ * link at runtime, so an address it needs has to be an input to its build.
+ *
+ * @throws {UnresolvedDependency} when an edge names something not provisioned.
+ * Silently emitting a smaller environment would produce a frontend that builds
+ * and then fails against `http:///`, with nothing to point at.
+ */
+export function siteEnvironment(
+	declaration: SiteDeclaration,
+	context: ProvisionContext,
+): Record<string, $util.Input<string>> {
+	const prefix = PUBLIC_PREFIX[declaration.variant];
+	const environment: Record<string, $util.Input<string>> = {};
+
+	for (const edge of declaration.dependencies) {
+		const target = context.manifest[edge.target];
+		if (!target) continue;
+
+		const roles = PUBLIC[target.kind] ?? [];
+		if (roles.length === 0) continue;
+
+		const component = context.provisioned[edge.target];
+		if (!component) {
+			throw new UnresolvedDependency(
+				edge.target,
+				Object.keys(context.provisioned),
+			);
+		}
+
+		const provided = component.provides();
+		for (const role of roles) {
+			const value = provided[role as string];
+			if (value === undefined) continue;
+
+			environment[
+				`${prefix}${providedKeyFor(edge.target, target.kind, role as string)}`
+			] = value;
+		}
+	}
+
+	return environment;
+}
+
+/**
+ * Whether anything in the manifest serves this bucket.
+ *
+ * The question the design's chosen shape makes you ask. Under a `cdn: true`
+ * flag you read one declaration; here you find whoever points at it — which is
+ * a real regression in auditability, answered by making the lookup one function
+ * that every consumer shares rather than something each caller re-derives.
+ */
+export function isServed(id: string, manifest: ConstructManifest): boolean {
+	return Object.values(manifest).some(
+		(declaration) =>
+			declaration.kind === 'file-server' && declaration.of === id,
+	);
+}
 
 /** The provisioner for a kind. Pure — the lookup is testable without Pulumi. */
 export function provisionerFor(kind: DeclarationKind): Provisioner {
@@ -134,9 +252,9 @@ export function assertProvides(
 /**
  * Provision everything the manifest declares.
  *
- * Resources are leaves — they depend on nothing — so order within this pass is
- * free. Constructs that derive from another (a read replica, a schema tenant)
- * name their parent and are resolved after it; none exist yet.
+ * In `provisionOrder`, which puts every parent before its children — a schema
+ * tenant, a read replica, and the surface over a bucket all resolve an address
+ * off something else, and a pass in map order would find it half the time.
  */
 export function fromManifest(
 	stack: StackType,
@@ -145,11 +263,29 @@ export function fromManifest(
 ): ProvisionedManifest {
 	const provisioned: ProvisionedManifest = {};
 
-	for (const [id, declaration] of Object.entries(manifest)) {
+	// In provisioning order, so a derived node finds the component its parent
+	// became. `assertDerivations` has already ruled out a missing parent, so the
+	// order is total rather than best-effort.
+	//
+	// Sites come last, and separately, because `provisionOrder` orders `of` and
+	// not `dependencies` — a site needs its edges' *values* at construction
+	// time, since a static site has no server half to read a link at runtime.
+	// It is a pure consumer of addresses, so building it after everything else
+	// is enough; the day a kind needs a site's URL at construction, this needs a
+	// real topological sort rather than a second pass.
+	const order = provisionOrder(manifest);
+	const sites = order.filter((id) => manifest[id]?.kind === 'site');
+	const rest = order.filter((id) => manifest[id]?.kind !== 'site');
+
+	for (const id of [...rest, ...sites]) {
+		const declaration = manifest[id];
+		if (!declaration) continue;
+
 		const component = provisionerFor(declaration.kind)(
 			stack,
 			declaration,
 			overrides[id] ?? {},
+			{ manifest, provisioned },
 		);
 
 		assertProvides(

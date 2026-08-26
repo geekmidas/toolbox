@@ -16,10 +16,9 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
-	PUBLIC,
 	providedKeyFor,
 	provideKey,
-	type SiteDeclaration,
+	publicEnvFor,
 } from '@geekmidas/manifest';
 import type { EventsBackend } from '../types';
 
@@ -86,49 +85,6 @@ const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
 };
-
-/**
- * How each site variant names a value it ships to the browser.
- *
- * The prefix *is* the framework's contract — `VITE_`, `NEXT_PUBLIC_` and
- * `EXPO_PUBLIC_` all mean "inline this into the bundle" — so it is the one thing
- * a variant changes, and it changes nothing else.
- */
-const PUBLIC_PREFIX: Record<SiteDeclaration['variant'], string> = {
-	static: 'VITE_',
-	tanstack: 'VITE_',
-	next: 'NEXT_PUBLIC_',
-};
-
-/**
- * The keys a site's bundle needs, from the constructs it declared an edge to.
- *
- * Filtered by `PUBLIC` rather than by what the site asked for. A site may
- * legitimately depend on anything — its server half, where it has one, reads
- * env exactly as a function does — so this is not a restriction on edges. It
- * decides one thing only: which values may be prefixed into a bundle, which is
- * what keeps `ORDERS_URL` and its password out of a JavaScript file served to
- * the public.
- */
-function publicEnvFor(
-	declaration: SiteDeclaration,
-	manifest: ConstructManifest,
-): Record<string, string> {
-	const prefix = PUBLIC_PREFIX[declaration.variant];
-	const keys: Record<string, string> = {};
-
-	for (const edge of declaration.dependencies) {
-		const target = manifest[edge.target];
-		if (!target) continue;
-
-		for (const role of PUBLIC[target.kind] ?? []) {
-			const key = provideKey(edge.target, role as string);
-			keys[`${prefix}${key}`] = key;
-		}
-	}
-
-	return keys;
-}
 
 /** The kinds whose container is the events backend's rather than their own. */
 const EVENT_KINDS: Partial<Record<DeclarationKind, true>> = {

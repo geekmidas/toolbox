@@ -131,8 +131,15 @@ describe('ObjectStorage', () => {
 });
 
 describe('component settings', () => {
-	const provision = (declaration: never, props = {}) =>
-		provisionerFor('objects')({} as never, declaration, props) as unknown as {
+	const provision = (
+		declaration: never,
+		props = {},
+		manifest: ConstructManifest = {},
+	) =>
+		provisionerFor('objects')({} as never, declaration, props, {
+			manifest,
+			provisioned: {},
+		}) as unknown as {
 			name: string;
 			props?: Record<string, unknown>;
 		};
