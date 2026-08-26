@@ -164,6 +164,26 @@
 				"default": "./dist/auth.cjs"
 			}
 		},
+		"./rest-api": {
+			"import": {
+				"types": "./dist/rest-api.d.mts",
+				"default": "./dist/rest-api.mjs"
+			},
+			"require": {
+				"types": "./dist/rest-api.d.cts",
+				"default": "./dist/rest-api.cjs"
+			}
+		},
+		"./site": {
+			"import": {
+				"types": "./dist/site.d.mts",
+				"default": "./dist/site.mjs"
+			},
+			"require": {
+				"types": "./dist/site.d.cts",
+				"default": "./dist/site.cjs"
+			}
+		},
 		"./database/kysely": {
 			"import": {
 				"types": "./dist/database/kysely.d.mts",

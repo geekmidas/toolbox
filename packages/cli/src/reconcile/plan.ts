@@ -15,8 +15,11 @@ import {
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
+	dependentsOf,
 	environmentCase,
+	PUBLIC,
 	provideKey,
+	type SiteDeclaration,
 } from '@geekmidas/manifest';
 import type { EventsBackend } from '../types';
 
@@ -53,6 +56,9 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	// A surface answers on the app's own port. It is the first kind whose
 	// address belongs to something gkm starts rather than something Docker does.
 	'rest-api': true,
+	// A site is the second: it is served by its own framework's dev server, and
+	// what the target resolves for it is only where that server answers.
+	site: true,
 };
 
 /**
@@ -77,6 +83,49 @@ const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
 };
+
+/**
+ * How each site variant names a value it ships to the browser.
+ *
+ * The prefix *is* the framework's contract — `VITE_`, `NEXT_PUBLIC_` and
+ * `EXPO_PUBLIC_` all mean "inline this into the bundle" — so it is the one thing
+ * a variant changes, and it changes nothing else.
+ */
+const PUBLIC_PREFIX: Record<SiteDeclaration['variant'], string> = {
+	static: 'VITE_',
+	tanstack: 'VITE_',
+	next: 'NEXT_PUBLIC_',
+};
+
+/**
+ * The keys a site's bundle needs, from the constructs it declared an edge to.
+ *
+ * Filtered by `PUBLIC` rather than by what the site asked for. A site may
+ * legitimately depend on anything — its server half, where it has one, reads
+ * env exactly as a function does — so this is not a restriction on edges. It
+ * decides one thing only: which values may be prefixed into a bundle, which is
+ * what keeps `ORDERS_URL` and its password out of a JavaScript file served to
+ * the public.
+ */
+function publicEnvFor(
+	declaration: SiteDeclaration,
+	manifest: ConstructManifest,
+): Record<string, string> {
+	const prefix = PUBLIC_PREFIX[declaration.variant];
+	const keys: Record<string, string> = {};
+
+	for (const edge of declaration.dependencies) {
+		const target = manifest[edge.target];
+		if (!target) continue;
+
+		for (const role of PUBLIC[target.kind] ?? []) {
+			const key = provideKey(edge.target, role as string);
+			keys[`${prefix}${key}`] = key;
+		}
+	}
+
+	return keys;
+}
 
 /** The kinds whose container is the events backend's rather than their own. */
 const EVENT_KINDS: Partial<Record<DeclarationKind, true>> = {
@@ -158,6 +207,27 @@ export interface PlannedResource {
 	provisions: boolean;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
+	/**
+	 * For a site: the keys its bundle needs, mapped to the key each value comes
+	 * from — `{ VITE_API_URL: 'API_URL' }`.
+	 *
+	 * One neutral name from the construct and one serialisation per framework.
+	 * The prefix is the whole of what varies, which is why the mapping is a
+	 * rename rather than a second derivation: `API_URL` is resolved once, by the
+	 * same code that resolves it for the server, and a site simply reads it
+	 * under the name its bundler will inline.
+	 */
+	publicEnv?: Record<string, string>;
+	/**
+	 * The ids that depend on this one — the graph read backwards.
+	 *
+	 * Carried on surfaces, where it is the whole answer to "who may call this":
+	 * CORS origins, trusted origins, and the cookie domain are three readings of
+	 * this one list. Resolved to addresses by the target, because the manifest
+	 * knows which constructs call which and only the target knows where any of
+	 * them answer.
+	 */
+	callers?: string[];
 }
 
 export interface Plan {
@@ -282,6 +352,15 @@ export function planFor(
 					? environmentCase(id)
 					: provideKey(id, ROLES[declaration.kind] ?? 'url'),
 			provisions: PROVISIONS[declaration.kind] === true,
+			// Only for surfaces. Every other kind is reached by a URL that says
+			// nothing about who holds it, so a caller list would be a fact with
+			// no reader.
+			...(declaration.kind === 'rest-api'
+				? { callers: dependentsOf(manifest, id) }
+				: {}),
+			...(declaration.kind === 'site'
+				? { publicEnv: publicEnvFor(declaration, manifest) }
+				: {}),
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
 				? { schema: declaration.schema }

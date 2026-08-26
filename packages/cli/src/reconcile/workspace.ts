@@ -136,7 +136,7 @@ export async function reconcileWorkspace(
 		extraContainers: extraContainers(workspace),
 		images: imagePins(workspace),
 		saved: await loadPortState(workspace.root),
-		...surfaceAddresses(workspace),
+		addresses: surfaceAddresses(workspace, manifest),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 
@@ -160,31 +160,55 @@ function patternsOf(routes: Routes | undefined): string[] {
 }
 
 /**
- * Where this workspace's apps answer, and therefore who may call whom.
+ * Where each declared surface and site answers locally.
  *
- * Derived from the ports the workspace already assigns rather than written
- * down: a surface's own URL, and the origins of everything running beside it.
- * The same list feeds CORS and Better Auth's trusted origins, because it is the
- * same question asked twice.
+ * The addresses come from the ports the workspace already assigns; which
+ * construct sits at which one comes from the manifest. That split is the point:
+ * this used to answer "who may call whom" by listing every app the workspace
+ * runs, which is a different question that happened to give the same answer in
+ * a single-repo workspace and no answer at all deployed. Now it answers only
+ * "where does this construct answer", and the graph answers the rest.
+ *
+ * A site is matched to its app by `path`, because that is the one thing a site
+ * declaration and a workspace app both name. Surfaces are matched to the
+ * backend app: every `rest-api` in a process answers on that process's port, so
+ * an app serving both its own API and an auth server publishes one address
+ * twice — which is exactly what it does at runtime.
  */
-function surfaceAddresses(workspace: NormalizedWorkspace): {
-	surface?: string;
-	origins?: string[];
-} {
-	const origins = Object.values(workspace.apps)
-		.map((app) => app.port)
-		.filter((port): port is number => typeof port === 'number')
-		.map((port) => `http://localhost:${port}`);
+function surfaceAddresses(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): Record<string, string> {
+	const addresses: Record<string, string> = {};
 
 	const backend = Object.values(workspace.apps).find(
 		(app) => app.type === 'backend',
 	);
-	const surface = backend?.port
-		? `http://localhost:${backend.port}`
-		: undefined;
 
-	return {
-		...(surface ? { surface } : {}),
-		...(origins.length ? { origins: [...new Set(origins)] } : {}),
-	};
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind === 'rest-api') {
+			if (backend?.port) addresses[id] = localAddress(backend.port);
+			continue;
+		}
+
+		if (declaration.kind !== 'site') continue;
+
+		const app = Object.values(workspace.apps).find(
+			(candidate) =>
+				normalizePath(candidate.path) === normalizePath(declaration.path),
+		);
+		if (app?.port) addresses[id] = localAddress(app.port);
+	}
+
+	return addresses;
+}
+
+/** Where a local process answers, given the port the workspace gave it. */
+function localAddress(port: number): string {
+	return `http://localhost:${port}`;
+}
+
+/** A workspace path and a declared path, comparable. */
+function normalizePath(path: string): string {
+	return path.replace(/^\.\//, '').replace(/\/+$/, '');
 }

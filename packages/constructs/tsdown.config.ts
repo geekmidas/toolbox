@@ -8,6 +8,8 @@ export default defineConfig({
 		'src/object-storage.ts',
 		'src/cache.ts',
 		'src/auth.ts',
+		'src/rest-api.ts',
+		'src/site.ts',
 		'src/email.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',

@@ -3,6 +3,7 @@ import { InvalidConstructId } from '../errors';
 import {
 	canonicalId,
 	cloudName,
+	cookieDomain,
 	environmentCase,
 	provideKey,
 	serviceKey,
@@ -111,5 +112,48 @@ describe('serviceKey', () => {
 		const id = 'UserUploads' as const;
 		const typed: Uncapitalize<typeof id> = 'userUploads';
 		expect(serviceKey(id)).toBe(typed);
+	});
+});
+
+describe('cookieDomain', () => {
+	it('scopes a cookie to the domain a surface and its callers share', () => {
+		expect(
+			cookieDomain(['https://api.example.com', 'https://console.example.com']),
+		).toBe('.example.com');
+	});
+
+	it('scopes nothing across one host', () => {
+		// Local development: cookies ignore the port, so there is nothing for a
+		// Domain to widen — and `.localhost` is not one a browser accepts.
+		expect(
+			cookieDomain(['http://localhost:3000', 'http://localhost:5173']),
+		).toBeUndefined();
+	});
+
+	it('scopes nothing across unrelated hosts', () => {
+		// Two registrable domains cannot share a cookie at all, and emitting
+		// their longest common suffix would set a value that silently fails.
+		expect(
+			cookieDomain(['https://api.example.com', 'https://console.other.com']),
+		).toBeUndefined();
+	});
+
+	it('refuses a bare TLD', () => {
+		// `.com` is one shared label, which is a suffix and not a domain.
+		expect(
+			cookieDomain(['https://example.com', 'https://other.com']),
+		).toBeUndefined();
+	});
+
+	it('scopes nothing across IP addresses', () => {
+		expect(
+			cookieDomain(['http://127.0.0.1:3000', 'http://127.0.0.1:5173']),
+		).toBeUndefined();
+	});
+
+	it('goes as deep as the addresses agree', () => {
+		expect(
+			cookieDomain(['https://a.eu.example.com', 'https://b.eu.example.com']),
+		).toBe('.eu.example.com');
 	});
 });

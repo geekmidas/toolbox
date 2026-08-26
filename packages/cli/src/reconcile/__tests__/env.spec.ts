@@ -26,8 +26,23 @@ const manifest = {
 	AuthApi: {
 		kind: 'rest-api',
 		id: 'AuthApi',
-		provides: ['AUTH_API_URL', 'AUTH_API_TRUSTED_ORIGINS'],
+		provides: [
+			'AUTH_API_URL',
+			'AUTH_API_TRUSTED_ORIGINS',
+			'AUTH_API_COOKIE_DOMAIN',
+		],
 		endpoints: [],
+	},
+	Console: {
+		kind: 'site',
+		id: 'Console',
+		variant: 'static',
+		path: 'apps/console',
+		dependencies: [
+			{ target: 'AuthApi', kind: 'rest-api' },
+			{ target: 'Orders', kind: 'database' },
+		],
+		provides: ['CONSOLE_URL'],
 	},
 	Emails: {
 		kind: 'queue',
@@ -54,8 +69,10 @@ const env = (stage = 'development', mailFrom?: string) => {
 
 	return envFor(plan, {
 		ports: portsFor(stage),
-		surface: 'http://localhost:3000',
-		origins: ['http://localhost:3000', 'http://localhost:5173'],
+		addresses: {
+			AuthApi: 'http://localhost:3000',
+			Console: 'http://localhost:5173',
+		},
 		...(mailFrom ? { mailFrom } : {}),
 	});
 };
@@ -70,6 +87,7 @@ describe('envFor', () => {
 			'AWS_ACCESS_KEY_ID',
 			'AWS_REGION',
 			'AWS_SECRET_ACCESS_KEY',
+			'CONSOLE_URL',
 			'EMAILS_PUBLISHER_CONNECTION_STRING',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
 			'EVENT_SUBSCRIBER_CONNECTION_STRING',
@@ -79,6 +97,10 @@ describe('envFor', () => {
 			'SESSIONS_URL',
 			'UPLOADS_URL',
 			'USERS_PUBLISHER_CONNECTION_STRING',
+			// The site's own copy of its API's address, under the name its
+			// bundler inlines. No database URL has one: `PUBLIC` decides which
+			// values may be prefixed, and a connection string never may.
+			'VITE_AUTH_API_URL',
 		]);
 	});
 
@@ -198,12 +220,54 @@ describe('envFor', () => {
 		expect(env().AUTH_API_URL).toBe('http://localhost:3000');
 	});
 
-	it('derives who may call a surface from what the workspace runs', () => {
+	it('derives who may call a surface from its inbound edges', () => {
 		// Better Auth rejects an untrusted origin whether or not it is a browser,
-		// so a sibling service calling it needs to be on this list — and the
-		// workspace already knows what it runs.
-		expect(env().AUTH_API_TRUSTED_ORIGINS).toBe(
-			'http://localhost:3000,http://localhost:5173',
+		// so a sibling service calling it needs to be on this list — and the one
+		// thing that declared it calls this surface is the console's edge.
+		expect(env().AUTH_API_TRUSTED_ORIGINS).toBe('http://localhost:5173');
+	});
+
+	it('leaves a surface out of its own origin list', () => {
+		// A surface does not need permission to call itself, and putting its own
+		// address on the list would make every surface sharing a port trust
+		// every other one — which is not an edge anybody declared.
+		expect(env().AUTH_API_TRUSTED_ORIGINS).not.toContain(
+			'http://localhost:3000',
 		);
+	});
+
+	it('scopes no cookie domain across one host', () => {
+		// Everything local is `localhost` on a different port, and cookies ignore
+		// the port — so there is nothing for a Domain attribute to widen, and
+		// `.localhost` is not a domain a browser accepts.
+		expect(env().AUTH_API_COOKIE_DOMAIN).toBeUndefined();
+	});
+
+	it('gives a site its API’s address under the name its bundler inlines', () => {
+		// The same value the server reads, renamed — not a second derivation, so
+		// the two cannot come to disagree about where the API is.
+		expect(env().VITE_AUTH_API_URL).toBe('http://localhost:3000');
+	});
+
+	it('keeps a credential-bearing URL out of a bundle', () => {
+		// `PUBLIC` decides what may be prefixed. A database URL carries its
+		// password, so no prefixed form of it exists at all.
+		expect(
+			Object.keys(env()).some((key) => key.startsWith('VITE_ORDERS')),
+		).toBe(false);
+	});
+
+	it('scopes a cookie to the domain a surface and its callers share', () => {
+		const plan = planFor(manifest, 'development', provisionOrder(manifest));
+
+		const env = envFor(plan, {
+			ports: portsFor('development'),
+			addresses: {
+				AuthApi: 'https://api.example.com',
+				Console: 'https://console.example.com',
+			},
+		});
+
+		expect(env.AUTH_API_COOKIE_DOMAIN).toBe('.example.com');
 	});
 });

@@ -49,10 +49,17 @@ export type {
 	RestApiDeclaration,
 	RestApiEndpoint,
 	SecretDeclaration,
+	SiteDeclaration,
 	TopicDeclaration,
 } from './declaration';
 export { DERIVES_FROM, PUBLIC } from './declaration';
-export { assertDerivations, isDerived, provisionOrder } from './derive';
+export {
+	assertDerivations,
+	dependenciesOf,
+	dependentsOf,
+	isDerived,
+	provisionOrder,
+} from './derive';
 export {
 	IllegalDerivation,
 	InvalidConstructId,
@@ -61,6 +68,7 @@ export {
 export {
 	canonicalId,
 	cloudName,
+	cookieDomain,
 	environmentCase,
 	provideKey,
 	serviceKey,

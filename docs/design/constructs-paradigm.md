@@ -1485,9 +1485,53 @@ Four things derive from that edge that are hand-maintained today:
 | `auth`'s trusted origins | hand-listed |
 | which generated client lands in which app | a manual alias |
 
+The first three landed together — see below. The fourth waits on client
+generation.
+
 It owns an address, so it has a `.service` — useful in the other direction,
 since a transactional email needs the console's URL to build links, which is
 otherwise another hand-maintained variable.
+
+#### What landed, and the three decisions it forced
+
+`RestApi` and `StaticSite` exist, and the four hand-maintained things in the
+table above are now one edge each. The measurement, on kitchen-sink:
+
+```
+Auth  <- [Api]                          # from api.dependsOn([auth])
+AUTH_TRUSTED_ORIGINS = http://localhost:3000
+API_TRUSTED_ORIGINS  =                  # correct: nothing declares an edge to it yet
+```
+
+That empty value is the point rather than a gap. The list it replaced was two
+hardcoded localhost ports in a server hook, one of which nothing was serving, and
+which no deployed stage could have used at all.
+
+**A surface's endpoints are found, not declared.** `RestApi` names a `routes`
+glob and declares `endpoints: []`; the build fills them. The construct cannot
+import route modules to answer "what paths exist" without evaluating the whole
+runtime graph, so the split is the same one drawn everywhere else — what is
+structural is declared, what has to be found is found once, by the thing already
+walking the filesystem. An auth server enumerates instead, because its one
+wildcard route *is* structural.
+
+**Edges live in two places on a surface, and readers see one.** A route's
+`.dependsOn()` is about injecting a client into a handler; a surface's
+`.dependsOn()` is about calling another surface, which every route on it does.
+Both are real, so `RestApiDeclaration` carries `dependencies` beside its
+`endpoints`, and `dependenciesOf()` unions them — nothing reading the graph has
+to know which of the two a given edge came from.
+
+**The cookie domain is derived, and the Public Suffix List is where it stops.**
+`cookieDomain()` takes the surface's address and its callers' and returns their
+shared parent, `.example.com`. It returns nothing for one host — locally
+everything is `localhost` on a different port, cookies ignore the port, and
+`.localhost` is not a domain a browser accepts — and nothing for unrelated hosts,
+where the longest common suffix would be a value that silently fails to set. The
+case it gets wrong is `a.vercel.app` and `b.vercel.app`, which share a
+*registrable suffix* rather than a registrable domain; resolving that needs the
+PSL, which is a downloaded, expiring dataset, so the rule is two labels minimum
+and the value stays overridable.
 
 #### Injection: one derivation, per-framework delivery
 

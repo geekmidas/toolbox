@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { provideKey } from '@geekmidas/manifest';
+import { cookieDomain, provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
@@ -70,20 +70,15 @@ export interface EnvOptions {
 	 */
 	project?: string;
 	/**
-	 * Where this app's own surfaces answer, e.g. `http://localhost:3000`.
+	 * Where each address-owning construct answers, keyed by id — surfaces and
+	 * sites, e.g. `{ Api: 'http://localhost:3000', Console: 'http://localhost:5173' }`.
 	 *
-	 * Not a container address: `gkm dev` assigns it, which is why it arrives
-	 * here rather than being read off a published port.
+	 * Not container addresses: `gkm dev` assigns these, which is why they arrive
+	 * here rather than being read off a published port. Keyed by id rather than
+	 * being one `surface` string because there is more than one address in a
+	 * workspace and the difference between them is exactly what CORS is about.
 	 */
-	surface?: string;
-	/**
-	 * Every origin in the workspace, for surfaces that check who is calling.
-	 *
-	 * Derived from what the workspace runs rather than hand-listed, which is the
-	 * same rule the design applies to CORS and to trusted origins: consumers
-	 * declare, and nothing enumerates its own callers.
-	 */
-	origins?: readonly string[];
+	addresses?: Readonly<Record<string, string>>;
 	/**
 	 * The domain mail is sent from locally.
 	 *
@@ -111,16 +106,17 @@ export function envFor(
 			plan,
 			options.ports,
 			options.project ?? '',
-			options.surface,
+			options.addresses,
 		);
 
-		// A surface carries the origins its callers may come from. Better Auth's
-		// CSRF check applies to every caller, not only browsers, so a sibling
-		// service calling it is rejected unless its origin is listed — and the
-		// list is derivable, because the workspace already knows what it runs.
-		if (resource.kind === 'rest-api' && options.origins?.length) {
-			env[provideKey(resource.id, 'trustedOrigins')] =
-				options.origins.join(',');
+		// A surface carries the origins its callers may come from, and they are
+		// its inbound edges — nothing more. Better Auth's CSRF check applies to
+		// every caller and not only to browsers, so a sibling service calling it
+		// is rejected unless its origin is listed; that this list is now the
+		// graph rather than every app the workspace happens to run is what makes
+		// it the same list deployed, where no workspace is watching.
+		if (resource.kind === 'rest-api') {
+			Object.assign(env, surfaceEnv(resource, url, options.addresses));
 		}
 		if (url) env[resource.envKey] = url;
 
@@ -133,6 +129,12 @@ export function envFor(
 		}
 	}
 
+	// After the loop, and deliberately: a site's keys are renames of values the
+	// constructs it depends on resolved, so every source has to exist before any
+	// of them can be read. Doing it inline would make the result depend on the
+	// order the manifest happened to be keyed in.
+	Object.assign(env, publicEnv(plan, env));
+
 	Object.assign(env, brokerEnv(plan, options.ports));
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves
@@ -142,6 +144,87 @@ export function envFor(
 	}
 
 	return env;
+}
+
+/**
+ * The values a site's bundler inlines, under the names it inlines them by.
+ *
+ * A rename and nothing more. `API_URL` was resolved once, by the same code that
+ * resolved it for the server; a site reads the same value under `VITE_API_URL`
+ * because that prefix is how its bundler is told to ship it. Nothing is derived
+ * twice, so a site and its API cannot come to disagree about where the API is.
+ *
+ * A source that resolved to nothing is skipped rather than written empty: an
+ * inlined empty string is a frontend that builds and then fails at runtime
+ * against `http:///`, where a missing variable fails at build with the name of
+ * the thing that is missing.
+ */
+function publicEnv(
+	plan: Plan,
+	resolved: Record<string, string>,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+
+	for (const resource of plan.resources) {
+		for (const [key, source] of Object.entries(resource.publicEnv ?? {})) {
+			const value = resolved[source];
+			if (value) env[key] = value;
+		}
+	}
+
+	return env;
+}
+
+/**
+ * What a surface publishes beyond its own address: who may call it, and where
+ * a cookie set by it is readable.
+ *
+ * Both are read off the same list — the constructs that declared an edge to
+ * this surface — which is why neither appears in application code. A surface
+ * that listed its own callers would be edited every time something new called
+ * it, and the thing being edited is already recorded in the graph.
+ *
+ * An empty origin list is written, and a surface with no address writes nothing
+ * at all. The two cases look alike and are not: "nothing depends on this yet" is
+ * a real state a target should publish, while "this surface has no address here"
+ * means it is not running in this stage, and keys belong with the address they
+ * describe.
+ */
+function surfaceEnv(
+	resource: PlannedResource,
+	url: string | undefined,
+	addresses: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+	if (!url) return {};
+
+	const origins = [
+		...new Set(
+			(resource.callers ?? [])
+				.map((caller) => addresses[caller])
+				.filter((address): address is string => Boolean(address))
+				.map(originOf)
+				.filter((origin): origin is string => Boolean(origin)),
+		),
+	].sort();
+
+	// Its own address belongs in the cookie derivation but not in the origin
+	// list: a surface does not need permission to call itself, and adding it
+	// would make every surface trust every other one that shares a port.
+	const domain = cookieDomain([url, ...origins]);
+
+	return {
+		[provideKey(resource.id, 'trustedOrigins')]: origins.join(','),
+		...(domain ? { [provideKey(resource.id, 'cookieDomain')]: domain } : {}),
+	};
+}
+
+/** An address reduced to the origin a browser compares against. */
+function originOf(address: string): string | undefined {
+	try {
+		return new URL(address).origin;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -181,14 +264,16 @@ function urlFor(
 	plan: Plan,
 	ports: PortAssignments,
 	project: string,
-	surface?: string,
+	addresses: Readonly<Record<string, string>> = {},
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
 
-	// A surface answers on the app's own port, which the workspace assigned and
-	// no container published.
-	if (resource.kind === 'rest-api') return surface;
+	// A surface answers on the app's own port, and a site on its dev server's —
+	// both assigned by the workspace, neither published by a container.
+	if (resource.kind === 'rest-api' || resource.kind === 'site') {
+		return addresses[resource.id];
+	}
 
 	if (!resource.container) return undefined;
 

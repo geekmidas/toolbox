@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest } from '../declaration';
-import { assertDerivations, isDerived, provisionOrder } from '../derive';
+import {
+	assertDerivations,
+	dependentsOf,
+	isDerived,
+	provisionOrder,
+} from '../derive';
 import { IllegalDerivation, UnknownParent } from '../errors';
 
 /** A database, a reader on it, and a schema tenant — the shape the doc uses. */
@@ -163,5 +168,75 @@ describe('provisionOrder', () => {
 				B: { kind: 'database-reader', id: 'B', of: 'A' },
 			}),
 		).not.toThrow();
+	});
+});
+
+describe('dependentsOf', () => {
+	const manifest = {
+		Auth: {
+			kind: 'rest-api',
+			id: 'Auth',
+			endpoints: [
+				{
+					id: 'AuthHandler',
+					handler: 'Auth.handler',
+					method: 'ANY',
+					path: '/api/auth/*',
+					dependencies: [{ target: 'AuthDb', kind: 'database-schema' }],
+				},
+			],
+		},
+		Api: {
+			kind: 'rest-api',
+			id: 'Api',
+			endpoints: [],
+			dependencies: [{ target: 'Auth', kind: 'rest-api' }],
+		},
+		Console: {
+			kind: 'site',
+			id: 'Console',
+			variant: 'static',
+			path: 'apps/console',
+			dependencies: [
+				{ target: 'Api', kind: 'rest-api' },
+				{ target: 'Auth', kind: 'rest-api' },
+			],
+		},
+		Orders: { kind: 'database', id: 'Orders' },
+		AuthDb: {
+			kind: 'database-schema',
+			id: 'AuthDb',
+			of: 'Orders',
+			schema: 'auth',
+		},
+	} as const satisfies ConstructManifest;
+
+	it('reads the graph backwards', () => {
+		expect(dependentsOf(manifest, 'Auth')).toEqual(['Api', 'Console']);
+		expect(dependentsOf(manifest, 'Api')).toEqual(['Console']);
+	});
+
+	it('finds an edge whether it sits on the node or on a handler', () => {
+		// A site depends as a whole; a surface's routes depend one at a time.
+		// Nothing reading the graph should have to know which.
+		expect(dependentsOf(manifest, 'AuthDb')).toEqual(['Auth']);
+	});
+
+	it('is empty for something nothing calls', () => {
+		// A real state, and the one every surface starts in.
+		expect(dependentsOf(manifest, 'Console')).toEqual([]);
+	});
+
+	it('does not count a construct as its own caller', () => {
+		const selfish = {
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				endpoints: [],
+				dependencies: [{ target: 'Api', kind: 'rest-api' }],
+			},
+		} as const satisfies ConstructManifest;
+
+		expect(dependentsOf(selfish, 'Api')).toEqual([]);
 	});
 });

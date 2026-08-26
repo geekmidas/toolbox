@@ -11,9 +11,10 @@
  * schema and the role; this declares the one thing left, the signing secret,
  * and reads back the two keys it needs.
  *
- * What it does not do yet: mount its own routes. That needs the `rest-api`
- * kind, and until it lands the app mounts `auth.handler` itself — see the
- * kitchen-sink server hook.
+ * It declares its own surface, so where it answers, who may call it, and the
+ * domain its cookies are scoped to all arrive as environment resolved by the
+ * target — none of them guessed from a port, and none of them listed by hand in
+ * application config.
  */
 
 import {
@@ -27,7 +28,7 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { betterAuth } from 'better-auth';
 import type { Kysely } from 'kysely';
-import type { Construct, Consumable } from './construct-interface';
+import { type Construct, type Consumable, edgeTo } from './construct-interface';
 
 /** The server better-auth hands back. */
 export type AuthServer = ReturnType<typeof betterAuth>;
@@ -90,6 +91,7 @@ export class BetterAuth<
 		secret: string;
 		url: string;
 		trustedOrigins: string;
+		cookieDomain: string;
 	};
 
 	constructor(
@@ -109,6 +111,7 @@ export class BetterAuth<
 			secret: environmentCase(secretId),
 			url: provideKey(canonical, 'url'),
 			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
+			cookieDomain: provideKey(canonical, 'cookieDomain'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.
@@ -142,16 +145,22 @@ export class BetterAuth<
 			{
 				kind: 'rest-api',
 				id: this.id,
-				provides: [this.keys.url, this.keys.trustedOrigins],
+				provides: [
+					this.keys.url,
+					this.keys.trustedOrigins,
+					this.keys.cookieDomain,
+				],
 				endpoints: [
 					{
 						id: `${this.id}Handler`,
 						handler: `${this.id}.handler`,
 						method: 'ANY',
 						path: `${this.basePath}/*`,
-						dependencies: [
-							{ target: this.config.database.id, kind: 'database-schema' },
-						],
+						// Read off the tenant rather than written down: this
+						// construct takes whatever database it is given, and a
+						// hardcoded kind is a second statement of a fact the
+						// tenant already makes.
+						dependencies: [edgeTo(this.config.database)],
 						requires: [this.keys.secret],
 					},
 				],
@@ -176,7 +185,7 @@ export class BetterAuth<
 	}
 
 	private async connect(options: ServiceRegisterOptions): Promise<AuthServer> {
-		const { secret, baseUrl, trustedOrigins } = options.envParser
+		const { secret, baseUrl, trustedOrigins, cookieDomain } = options.envParser
 			.create((get) => ({
 				secret: get(this.keys.secret).string(),
 				// The surface's own URL, resolved by the target — not guessed from
@@ -197,6 +206,12 @@ export class BetterAuth<
 							.map((origin) => origin.trim())
 							.filter(Boolean),
 					),
+				// The domain a session cookie has to carry to be readable by a
+				// frontend on a sibling host. Optional because there is often
+				// nothing to widen to: locally everything shares `localhost`,
+				// where cookies ignore the port and a `Domain` would only be a
+				// value the browser refuses.
+				cookieDomain: get(this.keys.cookieDomain).string().optional(),
 			}))
 			.parse();
 
@@ -229,6 +244,22 @@ export class BetterAuth<
 					? configured.trustedOrigins
 					: []),
 			],
+			advanced: {
+				...configured.advanced,
+				// Only when a domain was derived. Better Auth reads the presence
+				// of this block as intent, so enabling it with no domain would
+				// widen the cookie to whatever host happened to set it — and the
+				// case with nothing to widen to is the common one, not an error.
+				...(cookieDomain
+					? {
+							crossSubDomainCookies: {
+								enabled: true,
+								domain: cookieDomain,
+								...configured.advanced?.crossSubDomainCookies,
+							},
+						}
+					: {}),
+			},
 		});
 	}
 }

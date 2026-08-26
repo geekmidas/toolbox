@@ -11,8 +11,10 @@
  */
 
 import type {
+	ConstructId,
 	ConstructManifest,
 	Declaration,
+	Dependency,
 	DerivedDeclaration,
 } from './declaration';
 import { DERIVES_FROM } from './declaration';
@@ -79,4 +81,54 @@ export function provisionOrder(manifest: ConstructManifest): string[] {
 	for (const id of Object.keys(manifest)) place(id);
 
 	return ordered;
+}
+
+/**
+ * Every edge a declaration carries, wherever the kind happens to keep them.
+ *
+ * Dependencies live in two places by design: on a node when the whole construct
+ * is the consumer (a site), and on each nested handler when the construct is a
+ * surface (a `rest-api`, whose routes each depend on their own things and
+ * nothing more). Flattening that difference here is what lets every consumer of
+ * the graph — reverse lookups, filtering, reference checks — ask one question.
+ */
+export function dependenciesOf(
+	declaration: Declaration,
+): readonly Dependency[] {
+	const own = 'dependencies' in declaration ? declaration.dependencies : [];
+	const nested =
+		declaration.kind === 'rest-api'
+			? declaration.endpoints.flatMap((endpoint) => endpoint.dependencies)
+			: [];
+
+	return [...own, ...nested];
+}
+
+/**
+ * The ids that depend on one construct — the graph read backwards.
+ *
+ * This is the whole mechanism behind CORS origins and trusted origins. Both are
+ * lists of *callers*, and a caller is exactly an inbound edge, so neither is
+ * ever written down: a surface that listed its own callers would have to be
+ * edited every time something new called it, which is the hand-maintained list
+ * this replaces.
+ *
+ * Sorted, because it feeds a comma-separated env value that would otherwise
+ * change whenever the manifest's key order did — and a value that churns is a
+ * container that redeploys for no reason.
+ */
+export function dependentsOf(
+	manifest: ConstructManifest,
+	id: ConstructId,
+): string[] {
+	const callers: string[] = [];
+
+	for (const [callerId, declaration] of Object.entries(manifest)) {
+		if (callerId === id) continue;
+		if (dependenciesOf(declaration).some((edge) => edge.target === id)) {
+			callers.push(callerId);
+		}
+	}
+
+	return callers.sort();
 }

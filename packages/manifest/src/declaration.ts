@@ -196,7 +196,61 @@ export interface RestApiDeclaration extends Node {
 	authorizers?: readonly string[];
 	/** The authorizer applied where an endpoint names none. */
 	defaultAuthorizer?: string;
+	/**
+	 * The routes known when the surface declared itself.
+	 *
+	 * Empty is ordinary rather than wrong. A surface whose routes are a known,
+	 * fixed set enumerates them here — an auth server's single wildcard is the
+	 * case — while an application's own API spreads its routes over a tree of
+	 * modules that the declaring construct cannot import without becoming a
+	 * bundler. That surface names {@link RestApiDeclaration.routes} instead and
+	 * the build fills this in, which is the same split the design draws
+	 * everywhere else: what is structural is declared, what has to be found is
+	 * found once, by the thing that already walks the filesystem.
+	 */
 	endpoints: readonly RestApiEndpoint[];
+	/**
+	 * Where to find the routes this surface mounts, as globs relative to the app
+	 * root. Present when `endpoints` is discovered rather than enumerated.
+	 */
+	routes?: readonly string[];
+	/**
+	 * What the surface itself calls, as opposed to what its routes call.
+	 *
+	 * The distinction is real and small: an API sitting in front of a separate
+	 * auth server calls it from every route, and that is what puts this API's
+	 * origin on that server's trusted list. Per-route edges live on the
+	 * endpoints, and both are read together — nothing has to know which of the
+	 * two places an edge came from.
+	 */
+	dependencies?: readonly Dependency[];
+}
+
+/**
+ * A frontend — a construct like any other, which is what removes the last
+ * mechanism that ran in parallel to the graph.
+ *
+ * Its edges are what make it worth declaring. A site depending on an API is the
+ * single fact behind four things that are hand-maintained otherwise: the site's
+ * build-time `VITE_API_URL`, the API's CORS origins, the auth server's trusted
+ * origins, and which generated client lands in which app. None of those are
+ * declared anywhere here, because all four are the *same* edge read from one
+ * end or the other.
+ *
+ * `variant` is the framework, because the framework changes the code you write:
+ * it selects how the values are delivered (`VITE_`, `NEXT_PUBLIC_`, a
+ * `config.json`), never which values there are.
+ */
+export interface SiteDeclaration extends Node {
+	kind: 'site';
+	variant: 'static' | 'next' | 'tanstack';
+	/** Where its source lives, relative to the workspace root. */
+	path: string;
+	/**
+	 * What it calls. On a node rather than on a handler because a site has no
+	 * single entrypoint — the whole app is the consumer.
+	 */
+	dependencies: readonly Dependency[];
 }
 
 /** One route on a surface. */
@@ -248,6 +302,7 @@ export type Declaration =
 	| CacheDeclaration
 	| SecretDeclaration
 	| RestApiDeclaration
+	| SiteDeclaration
 	| QueueDeclaration
 	| TopicDeclaration;
 
@@ -355,8 +410,29 @@ export interface ProvidesByKind {
 	'database-schema': { url: string };
 	/** The endpoint and its token, in one string. */
 	cache: { url: string };
-	/** Where the surface answers. Public: a browser is the point of it. */
-	'rest-api': { url: string };
+	/**
+	 * Where the surface answers, who may call it, and the domain its cookies
+	 * are scoped to.
+	 *
+	 * Only `url` is a fact about the surface itself. The other two are read off
+	 * its *inbound* edges — every construct that depends on it — which is why a
+	 * surface never lists its own callers: nothing enumerates the things that
+	 * point at it, the graph already does.
+	 *
+	 * `trustedOrigins` and `cookieDomain` are one key each rather than a list
+	 * and a structure, because both cross a process boundary as environment.
+	 */
+	'rest-api': {
+		url: string;
+		/** Comma-separated. Empty when nothing declares an edge to this surface. */
+		trustedOrigins: string;
+		/**
+		 * The parent domain shared by the surface and its callers, leading dot
+		 * included — `.example.com`. Absent where there is nothing to share:
+		 * one host locally, unrelated hosts deployed.
+		 */
+		cookieDomain: string;
+	};
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
 	/**
@@ -365,6 +441,8 @@ export interface ProvidesByKind {
 	 */
 	queue: { publisherConnectionString: string };
 	topic: { publisherConnectionString: string };
+	/** Where the site is served. Public for the same reason an API's is. */
+	site: { url: string };
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
@@ -391,10 +469,16 @@ export const PUBLIC: {
 	cache: [],
 	// The whole point of one.
 	secret: [],
-	// A URL a browser calls is a URL a browser may hold.
+	// A URL a browser calls is a URL a browser may hold. The other two are not
+	// secret either — they are simply server-side facts, and prefixing a value
+	// into a bundle that nothing there reads is how a bundle grows keys nobody
+	// can account for.
 	'rest-api': ['url'],
 	// Carries broker credentials, and a browser that can publish to a queue can
 	// forge any job the worker trusts.
 	queue: [],
 	topic: [],
+	// Its own address, which it needs in order to build absolute links to
+	// itself — and which an email templating a link to it needs too.
+	site: ['url'],
 };
