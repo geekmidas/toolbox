@@ -1877,14 +1877,48 @@ shorter one and the CORS path stays untested.
 Each kind maps to a component in `@geekmidas/cloud/sst`, which already wraps the
 SST resource and implements `GkmLinkable`:
 
-| kind | `@geekmidas/cloud/sst` | SST | `ResourceType` |
+| kind | `@geekmidas/cloud/sst` | SST | provisioned |
 |---|---|---|---|
-| `objects` | `Storage` | `sst.aws.Bucket` | `sst:aws:Bucket` |
-| `database` | *(to add)* | `sst.aws.Postgres` | `sst:aws:Postgres` |
-| `queue` | `Queue` | `sst.aws.Queue` | `sst:aws:Queue` |
-| `topic` | `Topic` | `sst.aws.SnsTopic` | `sst:aws:SnsTopic` |
-| `secret` | *(to add)* | `sst.sst.Secret` | `sst:sst:Secret` |
-| `cache` | *(to add)* | — | — |
+| `objects` | `ObjectStorage` | `sst.aws.Bucket` | ✓ |
+| `file-server` | `FileServer` | `sst.aws.Router` | ✓ |
+| `site` | `StaticSite` | `sst.aws.StaticSite` | ✓ |
+| `queue` | `Queue` | `sst.aws.Queue` | ✓ |
+| `topic` | `Topic` | `sst.aws.SnsTopic` | ✓ |
+| `secret` | `Secret` | `sst.Secret` | ✓ |
+| `database` | — | `sst.aws.Postgres` | see Open Question 4 |
+| `database-reader` | — | — | see Open Question 4 |
+| `database-schema` | — | *(no AWS resource)* | after `database` |
+| `cache` | — | *(needs a provider)* | undecided |
+| `email` | — | `sst.aws.Email` | undecided |
+| `rest-api` | `Api` | `sst.aws.ApiGatewayV2` | after the endpoint merge |
+
+The six that landed are the six with no open question attached. The remaining
+six are blocked on decisions rather than on work, and the decisions are worth
+stating so nobody mistakes them for a to-do list:
+
+- **`database`** is Open Question 4 — whether the adapter *creates* a replica or
+  points at one, and what `--target=server` does where there is none. Also
+  unchosen: RDS instance versus Aurora Serverless v2, which is not a detail,
+  because it is the difference between a fixed monthly floor and a scale-to-zero
+  bill. `database-schema` provisions no AWS resource at all — it is DDL inside
+  the parent — so it follows whatever `database` becomes.
+- **`cache`** has no AWS answer that keeps the client identical. The local
+  target speaks Upstash's HTTP protocol through a proxy in front of Redis
+  precisely so dev and prod run the same client; ElastiCache does not speak it,
+  so provisioning one means a new provider dependency and its credentials.
+- **`email`** is SES, and the work is not the identity — it is deriving SMTP
+  credentials from an IAM user, since the declaration promises an `smtp://` URL
+  and SES's SMTP password is a signed derivation of a secret access key.
+- **`rest-api`** waits on the endpoint merge: the surface node declares
+  `endpoints: []` for an app's own API, and routes still reach the deploy target
+  through the separate `RouteInfo[]` pipeline.
+
+A seventh thing the six forced, worth recording because it constrains the rest:
+`fromManifest` provisions in `provisionOrder`, which orders `of` and **not**
+`dependencies`. Sites are provisioned last as a result, which is sound only
+while a site is a pure consumer of addresses. The first kind that needs another
+construct's *value* at construction time turns that second pass into a real
+topological sort — and a cycle check with it.
 
 #### Linkables declare what they provide
 
