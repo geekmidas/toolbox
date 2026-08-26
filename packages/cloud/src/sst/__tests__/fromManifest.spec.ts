@@ -1,5 +1,5 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor, provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
@@ -19,6 +19,15 @@ import {
 describe('provisionerFor', () => {
 	it('resolves a kind this adapter can provision', () => {
 		expect(provisionerFor('objects')).toBeTypeOf('function');
+	});
+
+	it.each([
+		'objects',
+		'queue',
+		'topic',
+		'secret',
+	] as const)('provisions %s', (kind) => {
+		expect(provisionerFor(kind)).toBeTypeOf('function');
 	});
 
 	it('reports what is supported when a kind has no provisioner', () => {
@@ -200,5 +209,30 @@ describe('resolveEdges', () => {
 			expect(e.target).toBe('Missing');
 			expect(e.available).toContain('Uploads');
 		}
+	});
+});
+
+describe('the key a provided role becomes', () => {
+	it('qualifies an ordinary role by its id', () => {
+		expect(providedKeyFor('Uploads', 'objects', 'url')).toBe('UPLOADS_URL');
+	});
+
+	it('leaves a secret’s name as its key', () => {
+		// `Auth` signs with `AUTH_SECRET`, which is also what better-auth's own
+		// tooling looks for — and qualifying it would produce
+		// `AUTH_SECRET_VALUE`, which nothing reads.
+		expect(providedKeyFor('AuthSecret', 'secret', 'value')).toBe('AUTH_SECRET');
+	});
+
+	it('is the same derivation the contract check uses', () => {
+		// The point of sharing it: a check deriving the key differently from the
+		// thing it checks passes on drift instead of catching it.
+		expect(() =>
+			assertProvides(
+				'AuthSecret',
+				['AUTH_SECRET'],
+				['value'].map((role) => providedKeyFor('AuthSecret', 'secret', role)),
+			),
+		).not.toThrow();
 	});
 });

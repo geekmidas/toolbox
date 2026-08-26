@@ -71,6 +71,7 @@ export {
 	cloudName,
 	cookieDomain,
 	environmentCase,
+	providedKeyFor,
 	provideKey,
 	serviceKey,
 } from './naming';

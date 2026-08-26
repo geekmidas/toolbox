@@ -21,6 +21,7 @@ export {
 	type ObjectStorageProps,
 } from './aws/ObjectStorage';
 export { Queue, type QueueProps } from './aws/Queue';
+export { Secret, type SecretProps } from './aws/Secret';
 /** @deprecated renamed to `ObjectStorage`, matching the construct that declares it. */
 export { Storage, type StorageProps } from './aws/Storage';
 export { Topic, type TopicProps } from './aws/Topic';
@@ -40,4 +41,5 @@ export {
 	resolveEdges,
 } from './fromManifest';
 export { type GkmLinkable, ResourceType } from './Linkable';
+export { kebab, prefixedName, regionOfArn } from './naming';
 export { Stack, type StackType } from './Stack';

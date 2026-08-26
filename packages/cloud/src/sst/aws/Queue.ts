@@ -1,4 +1,6 @@
+import { sqsUrl } from '@geekmidas/events/sqs';
 import { type GkmLinkable, ResourceType } from '../Linkable';
+import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';
 
 /**
@@ -34,11 +36,31 @@ export class Queue<
 		this._id = name;
 	}
 
+	/**
+	 * The values this queue resolves onto anything that publishes to it, keyed
+	 * by role. One key, the producer's: a worker is reached *through* the queue,
+	 * so there is no second address and nothing can depend on the handler.
+	 *
+	 * The region is read out of the queue's own ARN rather than left for the SDK
+	 * to infer. `AWS_REGION` inside a Lambda is the *function's* region, so a
+	 * connection string that omits it works until the day the queue lives
+	 * somewhere else and then fails at runtime with nothing to point at.
+	 */
+	provides(): Record<string, $util.Input<string>> {
+		return {
+			publisherConnectionString: $util
+				.all([this.url, this.arn])
+				.apply(([queueUrl, arn]) =>
+					sqsUrl.build({ queueUrl, region: regionOfArn(arn) }),
+				),
+		};
+	}
+
 	override getSSTLink() {
 		const link = super.getSSTLink();
 		return {
 			...link,
-			properties: { ...link.properties, arn: this.arn },
+			properties: { ...link.properties, arn: this.arn, ...this.provides() },
 		};
 	}
 }

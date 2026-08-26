@@ -16,8 +16,8 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
-	environmentCase,
 	PUBLIC,
+	providedKeyFor,
 	provideKey,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
@@ -361,12 +361,13 @@ export function planFor(
 			kind: declaration.kind,
 			...(container ? { container } : {}),
 			name: resourceName(id, declaration.kind, stage),
-			// A secret's name *is* its key — there is no role to qualify, and
-			// `AUTH_SECRET_SECRET` is what qualifying it would produce.
-			envKey:
-				declaration.kind === 'secret'
-					? environmentCase(id)
-					: provideKey(id, ROLES[declaration.kind] ?? 'url'),
+			// Through the shared derivation: a secret's name *is* its key, and
+			// this target and the deploy target must not answer that separately.
+			envKey: providedKeyFor(
+				id,
+				declaration.kind,
+				ROLES[declaration.kind] ?? 'url',
+			),
 			provisions: PROVISIONS[declaration.kind] === true,
 			// Only for surfaces. Every other kind is reached by a URL that says
 			// nothing about who holds it, so a caller list would be a fact with

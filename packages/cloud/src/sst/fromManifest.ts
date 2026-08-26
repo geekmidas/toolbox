@@ -19,8 +19,11 @@ import type {
 	DeclarationKind,
 	Dependency,
 } from '@geekmidas/manifest';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import { ObjectStorage } from './aws/ObjectStorage';
+import { Queue } from './aws/Queue';
+import { Secret } from './aws/Secret';
+import { Topic } from './aws/Topic';
 import {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
@@ -80,6 +83,21 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			// hatch is worthless if it cannot override the general case.
 			...props,
 		}),
+
+	queue: (stack, d, props) =>
+		new Queue(stack, d.id, {
+			// FIFO is a neutral option — the app legitimately has an opinion about
+			// ordering — and `fifo` is also what SST calls it.
+			...(d.kind === 'queue' && d.fifo ? { fifo: true } : {}),
+			...props,
+		}),
+
+	// A topic declares nothing beyond its id: which events it carries is the
+	// producer's and subscribers' business, and SNS has no per-event
+	// configuration to map it onto.
+	topic: (stack, d, props) => new Topic(stack, d.id, props),
+
+	secret: (stack, d, props) => new Secret(stack, d.id, props),
 };
 
 /** The provisioner for a kind. Pure — the lookup is testable without Pulumi. */
@@ -138,7 +156,12 @@ export function fromManifest(
 			id,
 			declaration.provides,
 			// A role becomes the env key the app declared: `url` → `UPLOADS_URL`.
-			Object.keys(component.provides()).map((role) => provideKey(id, role)),
+			// Through the shared derivation, not a local copy of it — a secret's
+			// name *is* its key, and a check that derived it differently from the
+			// thing being checked would pass on drift instead of catching it.
+			Object.keys(component.provides()).map((role) =>
+				providedKeyFor(id, declaration.kind, role),
+			),
 		);
 
 		provisioned[id] = component;

@@ -1,6 +1,7 @@
 import { SQSClient, type SQSClientConfig } from '@aws-sdk/client-sqs';
 import type { EventConnection } from '../types';
 import { EventPublisherType } from '../types';
+import * as sqsUrl from './sqsUrl';
 
 export interface SQSConnectionConfig {
 	queueUrl: string;
@@ -37,21 +38,20 @@ export class SQSConnection implements EventConnection {
 	static async fromConnectionString(
 		connectionString: string,
 	): Promise<SQSConnection> {
-		const url = new URL(connectionString);
-		const params = url.searchParams;
-
-		const queueUrl = params.get('queueUrl');
-		if (!queueUrl) {
-			throw new Error('queueUrl parameter is required in connection string');
-		}
+		// Through the codec, not a second hand-rolled parse: the deploy target
+		// composes these with `sqsUrl.build`, and a string it cannot read back is
+		// exactly the drift one shared module rules out.
+		const { queueUrl, region, endpoint } = sqsUrl.parse(connectionString);
+		const params = new URL(connectionString).searchParams;
 
 		const config: SQSConnectionConfig = {
 			queueUrl,
-			region: params.get('region') || undefined,
-			endpoint: params.get('endpoint') || undefined,
+			region,
+			endpoint,
 		};
 
-		// Parse credentials if provided
+		// Credentials are not part of the address — see `sqsUrl` — but a caller
+		// may still pin them here, so they are read beside it rather than in it.
 		const accessKeyId = params.get('accessKeyId');
 		const secretAccessKey = params.get('secretAccessKey');
 		if (accessKeyId && secretAccessKey) {

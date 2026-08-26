@@ -9,6 +9,7 @@
  */
 
 import snakecase from 'lodash.snakecase';
+import type { DeclarationKind } from './declaration';
 
 import { InvalidConstructId } from './errors';
 
@@ -161,4 +162,25 @@ export function cookieDomain(urls: readonly string[]): string | undefined {
 	if (shared.length < 2) return;
 
 	return `.${shared.reverse().join('.')}`;
+}
+
+/**
+ * The env key a construct's provided role actually becomes.
+ *
+ * Almost always `provideKey(id, role)` — and `secret` is the exception, because
+ * a secret's *name* is its key: `Auth` signs with `AUTH_SECRET`, which is also
+ * what better-auth's own tooling looks for, and qualifying it by role would
+ * produce `AUTH_SECRET_VALUE`.
+ *
+ * It lives here rather than in each target because two targets deriving the
+ * same key separately is exactly the drift the app/infra contract check exists
+ * to catch — and a check deriving the key differently from the thing it checks
+ * cannot catch anything.
+ */
+export function providedKeyFor(
+	id: string,
+	kind: DeclarationKind,
+	role: string,
+): string {
+	return kind === 'secret' ? environmentCase(id) : provideKey(id, role);
 }
