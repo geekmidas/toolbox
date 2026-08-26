@@ -6,6 +6,7 @@ export default defineConfig({
 		'src/types.ts',
 		'src/construct-interface.ts',
 		'src/object-storage.ts',
+		'src/file-server.ts',
 		'src/cache.ts',
 		'src/auth.ts',
 		'src/rest-api.ts',

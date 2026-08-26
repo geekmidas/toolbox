@@ -56,7 +56,12 @@ describe('reconcile', () => {
 			docker,
 			probe: async () => true,
 			sql: () => ({ query: async () => [] }),
-			buckets: () => ({ exists: async () => true, create: async () => {} }),
+			buckets: () => ({
+				exists: async () => true,
+				create: async () => {},
+				policy: async () => undefined,
+				setPolicy: async () => {},
+			}),
 			...overrides,
 		});
 	};
@@ -112,7 +117,12 @@ describe('reconcile', () => {
 			docker,
 			probe: async () => true,
 			sql: () => ({ query: async () => [] }),
-			buckets: () => ({ exists: async () => true, create: async () => {} }),
+			buckets: () => ({
+				exists: async () => true,
+				create: async () => {},
+				policy: async () => undefined,
+				setPolicy: async () => {},
+			}),
 		});
 
 		expect(second.changed).toBe(false);

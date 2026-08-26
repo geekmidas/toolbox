@@ -38,6 +38,9 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	'database-reader': 'postgres',
 	'database-schema': 'postgres',
 	objects: 'minio',
+	// The server answers on the same MinIO that holds the objects, because
+	// locally there is nothing else for it to answer on — see `urlFor`.
+	'file-server': 'minio',
 	email: 'mailpit',
 	// The proxy, not the Redis behind it: the client speaks HTTP with a token
 	// wherever it runs, which is what makes dev and prod the same client.
@@ -146,6 +149,10 @@ const PROVISIONS: Partial<Record<DeclarationKind, true>> = {
 	'database-reader': true,
 	'database-schema': true,
 	objects: true,
+	// The open patterns become a bucket policy on the origin — real
+	// enforcement locally, from the same declaration the CDN behaviour comes
+	// from deployed.
+	'file-server': true,
 };
 // Queues and topics are absent deliberately: pg-boss creates its own schema and
 // tables on first connect, and a RabbitMQ exchange is declared by the client
@@ -207,6 +214,15 @@ export interface PlannedResource {
 	provisions: boolean;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
+	/**
+	 * For a file server: the paths it serves without a signature.
+	 *
+	 * Carried into the plan because the local target enforces them for real — a
+	 * bucket policy with prefix resources, from the same declaration the CDN
+	 * behaviour comes from deployed. An open path that is open locally and shut
+	 * in production is the bug this avoids.
+	 */
+	open?: readonly string[];
 	/**
 	 * For a site: the keys its bundle needs, mapped to the key each value comes
 	 * from — `{ VITE_API_URL: 'API_URL' }`.
@@ -360,6 +376,9 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
+				: {}),
+			...(declaration.kind === 'file-server' && declaration.open?.length
+				? { open: declaration.open }
 				: {}),
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema

@@ -95,7 +95,8 @@ export function provisionOrder(manifest: ConstructManifest): string[] {
 export function dependenciesOf(
 	declaration: Declaration,
 ): readonly Dependency[] {
-	const own = 'dependencies' in declaration ? declaration.dependencies : [];
+	const own =
+		'dependencies' in declaration ? (declaration.dependencies ?? []) : [];
 	const nested =
 		declaration.kind === 'rest-api'
 			? declaration.endpoints.flatMap((endpoint) => endpoint.dependencies)

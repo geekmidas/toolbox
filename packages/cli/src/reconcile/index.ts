@@ -37,9 +37,11 @@ import {
 import {
 	type Applied,
 	applyBuckets,
+	applyPolicies,
 	applyPostgres,
 	type BucketClient,
 	bucketNames,
+	bucketPolicies,
 	postgresStatements,
 	type SqlClient,
 } from './provision';
@@ -256,8 +258,15 @@ async function create(
 
 	const minioPort = ports[primaryPortKey('minio')];
 	const names = bucketNames(plan);
-	if (minioPort !== undefined && names.length > 0) {
-		applied.push(...(await applyBuckets(buckets(minioPort), names)));
+	const policies = bucketPolicies(plan);
+	if (minioPort !== undefined && (names.length > 0 || policies.length > 0)) {
+		const client = buckets(minioPort);
+
+		// Buckets first: a policy names a bucket, and applying one to a bucket
+		// that does not exist yet fails on the first reconcile of a new project.
+		if (names.length > 0) applied.push(...(await applyBuckets(client, names)));
+		if (policies.length > 0)
+			applied.push(...(await applyPolicies(client, policies)));
 	}
 
 	return applied;

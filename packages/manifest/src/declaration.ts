@@ -88,6 +88,46 @@ export interface ObjectsDeclaration extends Node {
 }
 
 /**
+ * A domain that serves a bucket's objects.
+ *
+ * Its own construct rather than a flag on the bucket, because three things it
+ * has to express are not properties of a bucket: a surface can front several
+ * origins, a bucket can have several surfaces over it, and issuing a
+ * certificate and writing a DNS record is a domain lifecycle that has no
+ * business living inside an `objects` provisioner. It shares its infrastructure
+ * with a static site rather than with storage — a site is the same
+ * distribution over a build output instead of over live contents.
+ *
+ * It derives from the bucket by `of`, which costs the one thing the flag gave
+ * for free: the bucket alone no longer says whether it is served, and finding
+ * out means finding whoever points at it. That is answered the way every other
+ * derivation is — the reference check at manifest build, so an unresolvable
+ * origin is a build failure and `gkm` can name, for any bucket, the surfaces
+ * over it.
+ *
+ * Private by default. `open` is an exception list, because a bucket where
+ * forgetting a flag publishes user uploads is the wrong default — and paths
+ * rather than per-object flags, because a path pattern is what the
+ * infrastructure actually enforces and a per-object ACL is a thing nobody
+ * audits.
+ *
+ * "Open" never means the bucket is world-readable. It means the server serves
+ * that path without a signature; the bucket is private in both cases.
+ */
+export interface FileServerDeclaration extends Node {
+	kind: 'file-server';
+	/** The bucket whose objects it serves. */
+	of: ConstructId;
+	/**
+	 * Paths served without a signature — everything else requires one.
+	 *
+	 * Globs, matched most-literally by the infrastructure: a CDN keys its
+	 * behaviours off path patterns, and a bucket policy names prefixes.
+	 */
+	open?: readonly string[];
+}
+
+/**
  * Outbound email.
  *
  * Provides one `smtp://` URL and nothing else, because email is delivered over
@@ -295,6 +335,7 @@ export interface TopicDeclaration extends Node {
  */
 export type Declaration =
 	| ObjectsDeclaration
+	| FileServerDeclaration
 	| EmailDeclaration
 	| DatabaseDeclaration
 	| DatabaseReaderDeclaration
@@ -322,6 +363,10 @@ export type DerivedKind = DerivedDeclaration['kind'];
 export const DERIVES_FROM: Readonly<Record<DerivedKind, readonly string[]>> = {
 	'database-reader': ['database', 'database-schema'],
 	'database-schema': ['database'],
+	// A file server derives from what it serves. Unlike the database pair it
+	// shares the parent's *contents* rather than its credentials, which is why
+	// it is a construct of its own and only its node is derived.
+	'file-server': ['objects'],
 };
 
 export type DeclarationKind = Declaration['kind'];
@@ -399,6 +444,8 @@ export type AllProvidedKeys<M extends ConstructManifest> = {
  */
 export interface ProvidesByKind {
 	objects: { url: string };
+	/** Where the served objects answer. Public: a browser is the point of it. */
+	'file-server': { url: string };
 	/** An `smtp://` URL, credentials included — never shippable. */
 	email: { url: string };
 	/**
@@ -458,6 +505,10 @@ export const PUBLIC: {
 	readonly [K in keyof ProvidesByKind]: readonly (keyof ProvidesByKind[K])[];
 } = {
 	objects: [],
+	// The address a browser fetches an image from. The bucket's own URL is not
+	// here and must not be: it presigns, and a presigner in a bundle is a
+	// credential in a bundle.
+	'file-server': ['url'],
 	// Carries the SMTP credentials in its userinfo.
 	email: [],
 	// A connection string is never shippable, whichever role it carries.

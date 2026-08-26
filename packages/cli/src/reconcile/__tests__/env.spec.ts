@@ -21,6 +21,13 @@ const manifest = {
 		provides: ['AUTH_READER_URL'],
 	},
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	UploadsServer: {
+		kind: 'file-server',
+		id: 'UploadsServer',
+		of: 'Uploads',
+		open: ['brand/**'],
+		provides: ['UPLOADS_SERVER_URL'],
+	},
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
 	AuthApi: {
@@ -95,6 +102,7 @@ describe('envFor', () => {
 			'MAIL_URL',
 			'ORDERS_URL',
 			'SESSIONS_URL',
+			'UPLOADS_SERVER_URL',
 			'UPLOADS_URL',
 			'USERS_PUBLISHER_CONNECTION_STRING',
 			// The site's own copy of its API's address, under the name its
@@ -241,6 +249,20 @@ describe('envFor', () => {
 		// the port — so there is nothing for a Domain attribute to widen, and
 		// `.localhost` is not a domain a browser accepts.
 		expect(env().AUTH_API_COOKIE_DOMAIN).toBeUndefined();
+	});
+
+	it('serves a bucket on the MinIO that holds it', () => {
+		// Path style, and deliberately not the deployed shape: MinIO's
+		// virtual-host mode reads the leading label as the bucket name, so it
+		// only produces the CDN shape when the server's id and the bucket's
+		// agree — and never for a server fronting two buckets.
+		expect(env().UPLOADS_SERVER_URL).toBe(
+			`http://localhost:${portsFor('development').minio}/uploads`,
+		);
+	});
+
+	it('serves the stage-scoped bucket, not the plain one', () => {
+		expect(env('test').UPLOADS_SERVER_URL).toContain('/uploads-test');
 	});
 
 	it('gives a site its API’s address under the name its bundler inlines', () => {

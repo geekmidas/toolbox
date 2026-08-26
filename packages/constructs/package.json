@@ -134,6 +134,16 @@
 				"default": "./dist/object-storage.cjs"
 			}
 		},
+		"./file-server": {
+			"import": {
+				"types": "./dist/file-server.d.mts",
+				"default": "./dist/file-server.mjs"
+			},
+			"require": {
+				"types": "./dist/file-server.d.cts",
+				"default": "./dist/file-server.cjs"
+			}
+		},
 		"./email": {
 			"import": {
 				"types": "./dist/email.d.mts",

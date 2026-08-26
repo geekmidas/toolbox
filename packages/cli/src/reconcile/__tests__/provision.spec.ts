@@ -4,8 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { planFor } from '../plan';
 import {
 	applyBuckets,
+	applyPolicies,
 	applyPostgres,
+	type BucketClient,
 	bucketNames,
+	bucketPolicies,
+	bucketPolicy,
 	postgresStatements,
 	quoteIdentifier,
 	type SqlClient,
@@ -27,6 +31,22 @@ const manifest = {
 		provides: ['AUTH_READER_URL'],
 	},
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	UploadsServer: {
+		kind: 'file-server',
+		id: 'UploadsServer',
+		of: 'Uploads',
+		open: ['brand/**'],
+		provides: ['UPLOADS_SERVER_URL'],
+	},
+	// A second surface over the same bucket, which is a legitimate arrangement:
+	// two cache behaviours, one origin.
+	AssetsServer: {
+		kind: 'file-server',
+		id: 'AssetsServer',
+		of: 'Uploads',
+		open: ['avatars/*.png'],
+		provides: ['ASSETS_SERVER_URL'],
+	},
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 } as const satisfies ConstructManifest;
 
@@ -180,5 +200,73 @@ describe('applyBuckets', () => {
 
 		expect(created).toEqual([]);
 		expect(applied[0].created).toBe(false);
+	});
+});
+
+describe('bucket policies', () => {
+	it('unions the open paths of every server over one bucket', () => {
+		// The policy lives on the origin, so two servers contribute to one
+		// document rather than the last one written winning.
+		expect(bucketPolicies(plan())).toEqual([
+			{ bucket: 'uploads', open: ['avatars/*.png', 'brand/**'] },
+		]);
+	});
+
+	it('names only the open prefixes, and only for reading', () => {
+		const document = JSON.parse(bucketPolicy('uploads', ['brand/**']));
+
+		expect(document.Statement[0]).toMatchObject({
+			Effect: 'Allow',
+			Action: ['s3:GetObject'],
+			Resource: ['arn:aws:s3:::uploads/brand/*'],
+		});
+	});
+
+	it('leaves a bucket nothing serves without a policy', () => {
+		const unserved = {
+			Assets: { kind: 'objects', id: 'Assets', provides: ['ASSETS_URL'] },
+		} as const satisfies ConstructManifest;
+
+		expect(
+			bucketPolicies(
+				planFor(unserved, 'development', provisionOrder(unserved)),
+			),
+		).toEqual([]);
+	});
+
+	it('writes a policy once and leaves it alone after', async () => {
+		// Idempotent like everything else here: reporting a change on every
+		// start is what makes a converged reconcile untrustworthy.
+		let stored: string | undefined;
+		const writes: string[] = [];
+
+		const client: BucketClient = {
+			exists: async () => true,
+			create: async () => {},
+			policy: async () => stored,
+			setPolicy: async (_bucket, document) => {
+				writes.push(document);
+				stored = document;
+			},
+		};
+
+		const policies = bucketPolicies(plan());
+
+		expect((await applyPolicies(client, policies))[0]?.created).toBe(true);
+		expect((await applyPolicies(client, policies))[0]?.created).toBe(false);
+		expect(writes).toHaveLength(1);
+	});
+
+	it('rewrites a policy that says something else', async () => {
+		const client: BucketClient = {
+			exists: async () => true,
+			create: async () => {},
+			policy: async () => '{"Version":"2012-10-17","Statement":[]}',
+			setPolicy: async () => {},
+		};
+
+		expect(
+			(await applyPolicies(client, bucketPolicies(plan())))[0],
+		).toMatchObject({ created: true });
 	});
 });

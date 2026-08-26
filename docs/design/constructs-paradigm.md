@@ -363,36 +363,37 @@ This table is the seam between the adapter (which writes the URL) and the client
 pinned before either is built.
 
 A construct may provide more than one URL when it genuinely owns more than one
-address. A CDN is the clearest case, and it is not purely an infra concern — it
-changes what the *client returns*, since `getDownloadURL()` should hand back a
-CDN URL while `getUploadURL()` still presigns against the bucket:
+address. Serving a bucket's objects on a domain is the clearest case, and it is
+not purely an infra concern — it changes what the *client returns*, since a
+served object has a public address while an upload still presigns against the
+bucket.
 
-```ts
-new ObjectStorage('Uploads', { cdn: true });                    // → uploads.{domain}
-new ObjectStorage('Uploads', { cdn: { subdomain: 'assets' } }); // → assets.{domain}
-//  provides → UPLOADS_URL       (writes, presigning — never public)
-//             UPLOADS_CDN_URL   (public reads)
-```
+**Superseded shape.** This section originally put that on the bucket, as
+`new ObjectStorage('Uploads', { cdn: true })` providing a second
+`UPLOADS_CDN_URL`. That is arrangement **A** in "Why a separate construct, and
+what it costs", and it does not survive: a boolean on a bucket cannot express
+open-versus-signed paths, cannot express two surfaces over one bucket, and grows
+a second `provides` key that is only sometimes there — so every consumer branches
+on its presence. The two addresses are real; they belong to two nodes.
+`FileServer` declares both, and the served address is `UPLOADS_SERVER_URL` from
+the surface rather than a conditional key on the bucket.
 
-The CDN takes a subdomain like any other addressable construct, defaulting to
-the kebab-case of the id. Two reasons it should not sit on the cloud's assigned
-hostname: **CloudFront signed cookies** only work when the CDN shares a
-registrable domain with the app, since the cookie cannot otherwise reach it; and
-an assigned hostname changes if the distribution is replaced, turning any URL
-you emailed or cached into a dead one.
+What survives from the original argument, and still holds: the served domain
+should not sit on the cloud's assigned hostname, because **CloudFront signed
+cookies** only work when it shares a registrable domain with the app, and an
+assigned hostname changes if the distribution is replaced — turning any URL you
+emailed or cached into a dead one.
 
-Whether several CDN-enabled buckets share one distribution with path-based
-origins or get one each is the adapter's call — the declaration is per-construct
-either way.
-
-*Whether* there is a CDN is structural and lives in code; the distribution,
-origin access, cache behaviours, TTLs, and invalidation are the adapter's
-business. Locally there is no CloudFront, so `UPLOADS_CDN_URL` resolves to the
-MinIO URL — same shape, different value, no branch in application code.
+Whether several served buckets share one distribution with path-based origins or
+get one each is the adapter's call; the declaration is per-construct either way.
+*Whether* a bucket is served is structural and lives in code, while the
+distribution, origin access, cache behaviours, TTLs, and invalidation are the
+adapter's business.
 
 | kind | scheme | shape | notes |
 |---|---|---|---|
 | `objects` | `s3` / `gs` | `s3://<bucket>?region=<r>` | `?endpoint=` for MinIO |
+| `file-server` | `https` | `https://<host>` | the MinIO path-style base locally |
 | `database` | `postgres` | `postgres://<host>:<port>/<db>` | `?secretArn=` when credentials resolve at connect |
 | `database` (reader) | `postgres` | same, reader endpoint | separate key — see Open Questions |
 | `cache` | `redis` | `redis://<host>:<port>` | Upstash: `rediss://` |
@@ -946,10 +947,10 @@ belongs took three passes to settle.
 ```ts
 export const uploads = new FileServer('Uploads', { open: ['brand/**'] });
 
-uploads.getUploadURL(key, '15m')      // an S3 presign against the bucket
+uploads.getUploadURL(key, 15)         // an S3 presign against the bucket
 uploads.url('brand/logo.png')         // open path — no signature
-uploads.signedUrl(key, '15m')         // one object, one recipient
-uploads.signedCookie('reports/', '1h') // a session over many
+uploads.openUrl(dynamicKey)           // same check, for a key the type cannot see
+uploads.signedUrl(key, 15)            // one object, one recipient
 ```
 
 **One construct, one client, both halves.** How a file lands in the bucket is
@@ -1148,6 +1149,44 @@ root a served path *is* a bucket key, and `getUploadURL(key)` and `url(key)` spe
 the same language. With several they diverge, and only the people who opt in
 should pay that.
 
+#### What landed, and what a signature currently means
+
+`FileServer` exists, kitchen-sink's bucket is one, and `endpoints/uploads.ts`
+still calls `services.uploads.getUploadURL(...)` **unchanged** — which is the
+superset claim verified rather than asserted.
+
+```
+Uploads        { kind: 'objects' }                                  ← unchanged
+UploadsServer  { kind: 'file-server', of: 'Uploads', open: ['brand/**'] }
+UPLOADS_URL        = s3://uploads?region=…&endpoint=http://localhost:20002&…
+UPLOADS_SERVER_URL = http://localhost:20002/uploads
+```
+
+Three things came out differently from the sketch, and they are worth naming
+because two of them are limits rather than choices.
+
+**`signedCookie` is not implemented, and `signedUrl` is an S3 presign.** Both
+mechanisms remain available in the design and both are CloudFront signing with a
+key pair through the distribution — which needs key material the construct does
+not yet declare, and which has no local equivalent at all. What ships is the
+mechanism that works identically in both places: an S3 presign at the bucket.
+The docblock says so rather than calling it a CDN URL, because "same word,
+different keys, different host" is exactly the confusion that makes this worth
+stating twice.
+
+**The escape hatch is a method, not a cast.** A fully dynamic key does not type
+— correct, and also the case people hit — so `openUrl(key: string)` takes it and
+runs the *same* runtime check. `url()` is the typed door and `openUrl()` the
+untyped one; neither is a way past the guard.
+
+**A single star is stricter in the client than in the policy.** The construct's
+runtime check stops `*` at a segment boundary, matching what a CDN behaviour
+does. An S3 policy resource's `*` crosses `/`, so `avatars/*.png` admits
+`avatars/2024/me.png` in the bucket policy and is refused by the client. The
+client is the stricter of the two, so nothing it refuses was ever relied on the
+policy to refuse — but a key fetched directly, bypassing the client, can be
+admitted. Prefer `**` where crossing segments is what you meant.
+
 #### Locally, on MinIO
 
 Three of the four map cleanly:
@@ -1169,7 +1208,13 @@ the local target either falls back to MinIO's path-style URL — correct, but no
 the deployed shape — or grows a small proxy in front of MinIO that maps host and
 path patterns onto buckets the way a distribution does.
 
-That proxy is the honest answer, and it is additive: it changes no construct API,
+What landed is the first branch: `UPLOADS_SERVER_URL` is MinIO's path-style
+address for the origin bucket, and the `open` patterns become a real MinIO bucket
+policy — anonymous `s3:GetObject` on those prefixes and nothing else, applied by
+the reconciler and idempotent, so a path that is open locally is open for the
+same reason it is open deployed.
+
+That proxy is the honest answer for the *shape*, and it is additive: it changes no construct API,
 and it is the only component that could also verify a signature locally. It is
 not something an AWS emulator gives you for free — CloudFront emulation in
 LocalStack and in [floci](https://floci.io) is **control plane only**

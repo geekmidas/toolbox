@@ -309,6 +309,22 @@ function urlFor(
 			// MinIO and not anything.
 			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
 
+		case 'file-server': {
+			// Path style, not the deployed shape, and deliberately so. MinIO's
+			// virtual-host mode reads the leading label *as the bucket name*, so
+			// it only produces the CDN shape when the server's id and the
+			// bucket's agree — and never at all for a server fronting two
+			// buckets. The honest local answer is the address that works;
+			// producing the deployed shape needs a small proxy in front of MinIO,
+			// which is additive and changes no construct API. Note that an AWS
+			// emulator does not supply it: CloudFront emulation is control plane
+			// only, and what is needed here is the data plane.
+			const origin = plan.resources.find((r) => r.id === resource.of);
+			if (!origin) return undefined;
+
+			return `http://${LOCAL_HOST}:${port}/${origin.name}`;
+		}
+
 		case 'cache':
 			// The token in the userinfo, because an address and the credential
 			// that opens it are one fact. Deployed the scheme is https and the
