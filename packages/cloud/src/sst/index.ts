@@ -16,6 +16,12 @@ export {
 	type CronRate,
 	type CronSchedule,
 } from './aws/Cron';
+export {
+	Database,
+	DatabaseNeedsVpc,
+	type DatabaseProps,
+} from './aws/Database';
+export { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {

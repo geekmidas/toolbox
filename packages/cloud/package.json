@@ -57,7 +57,8 @@
 		"sst": "^4.15.2",
 		"@geekmidas/manifest": "workspace:^",
 		"@geekmidas/storage": "workspace:^",
-		"@geekmidas/events": "workspace:^"
+		"@geekmidas/events": "workspace:^",
+		"@geekmidas/db": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/manifest": {
@@ -67,6 +68,9 @@
 			"optional": true
 		},
 		"@geekmidas/events": {
+			"optional": true
+		},
+		"@geekmidas/db": {
 			"optional": true
 		}
 	}

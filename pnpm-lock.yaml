@@ -475,6 +475,9 @@ importers:
 
   packages/cloud:
     dependencies:
+      '@geekmidas/db':
+        specifier: workspace:^
+        version: link:../db
       '@geekmidas/envkit':
         specifier: workspace:*
         version: link:../envkit
@@ -15857,7 +15860,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

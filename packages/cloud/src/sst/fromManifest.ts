@@ -27,6 +27,8 @@ import {
 	provisionOrder,
 } from '@geekmidas/manifest';
 import { Credential } from './aws/Credential';
+import { Database, DatabaseNeedsVpc } from './aws/Database';
+import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
@@ -152,6 +154,34 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	// configuration to map it onto.
 	topic: (stack, d, props) => new Topic(stack, d.id, props),
 
+	database: (stack, d, props) => {
+		if (d.kind !== 'database') throw new UnknownDeclarationKind(d.kind, []);
+		// Required rather than defaulted: creating a VPC means creating a NAT
+		// gateway, which is a monthly cost in an account whose networking may
+		// already be someone else's decision.
+		if (!('vpc' in props)) throw new DatabaseNeedsVpc(d.id);
+
+		return new Database(stack, d.id, {
+			...(d.schema ? { schema: d.schema } : {}),
+			...(props as unknown as sst.aws.AuroraArgs),
+		});
+	},
+
+	'database-reader': (stack, d, props, context) =>
+		derived(d, context, (id, parent) => new DatabaseReader(id, parent)),
+
+	'database-schema': (stack, d, props, context) =>
+		derived(
+			d,
+			context,
+			(id, parent) =>
+				new DatabaseSchema(
+					id,
+					parent,
+					d.kind === 'database-schema' ? d.schema : id.toLowerCase(),
+				),
+		),
+
 	secret: (stack, d, props) => new Secret(stack, d.id, props),
 
 	// The same storage as a secret, under a different role — see the component.
@@ -205,6 +235,46 @@ export function siteEnvironment(
 	}
 
 	return environment;
+}
+
+/**
+ * Resolve a derived database node against the cluster its parent became.
+ *
+ * A reader and a schema tenant provision nothing, so the whole of their
+ * provisioning is finding the parent — which `provisionOrder` guarantees is
+ * already there, and `assertDerivations` guarantees exists at all.
+ *
+ * @throws {UnresolvedDependency} if neither guarantee held, which would mean the
+ * manifest reached here without its own validation having run.
+ */
+function derived(
+	declaration: Declaration,
+	context: ProvisionContext,
+	build: (id: string, parent: Database) => Provisioned,
+): Provisioned {
+	if (!('of' in declaration)) {
+		throw new UnknownDeclarationKind(declaration.kind, []);
+	}
+
+	const parent = context.provisioned[declaration.of];
+	if (!parent) {
+		throw new UnresolvedDependency(
+			declaration.of,
+			Object.keys(context.provisioned),
+		);
+	}
+
+	// A tenant may derive from another tenant, and what both ultimately need is
+	// the cluster underneath. `DerivedDatabase` holds its parent, so walking up
+	// is following the same chain `provisionOrder` walked to get here.
+	return build(declaration.id, rootCluster(parent));
+}
+
+/** The `Database` at the bottom of a chain of derived nodes. */
+function rootCluster(component: Provisioned): Database {
+	const parent = (component as { parent?: Provisioned }).parent;
+
+	return parent ? rootCluster(parent) : (component as unknown as Database);
 }
 
 /**

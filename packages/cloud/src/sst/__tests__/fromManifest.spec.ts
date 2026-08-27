@@ -33,11 +33,13 @@ describe('provisionerFor', () => {
 	it('reports what is supported when a kind has no provisioner', () => {
 		expect.assertions(3);
 		try {
-			provisionerFor('database' as never);
+			// A kind no adapter will ever have, so this test does not go stale
+			// every time one more kind becomes provisionable.
+			provisionerFor('carrier-pigeon' as never);
 		} catch (error) {
 			const e = error as UnknownDeclarationKind;
 			expect(e).toBeInstanceOf(UnknownDeclarationKind);
-			expect(e.kind).toBe('database');
+			expect(e.kind).toBe('carrier-pigeon');
 			expect(e.supported).toContain('objects');
 		}
 	});
