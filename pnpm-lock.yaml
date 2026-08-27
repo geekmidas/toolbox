@@ -496,6 +496,9 @@ importers:
       lodash.snakecase:
         specifier: ~4.1.1
         version: 4.1.1
+      pg:
+        specifier: ^8.13.0
+        version: 8.16.3
     devDependencies:
       '@types/lodash.get':
         specifier: ~4.4.9
@@ -509,6 +512,9 @@ importers:
       '@types/node':
         specifier: ~24.9.1
         version: 24.9.1
+      '@types/pg':
+        specifier: ~8.15.5
+        version: 8.15.6
       sst:
         specifier: 4.15.2
         version: 4.15.2

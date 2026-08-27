@@ -94,6 +94,10 @@ const util = {
 	output<T>(value: T) {
 		return { apply: <R>(fn: (v: T) => R) => fn(value) };
 	},
+	/** Pulumi's `secret` marker is identity under test. */
+	secret<T>(value: T) {
+		return value;
+	},
 	interpolate(strings: TemplateStringsArray, ...values: unknown[]) {
 		return strings.reduce((out, part, i) => out + part + (values[i] ?? ''), '');
 	},

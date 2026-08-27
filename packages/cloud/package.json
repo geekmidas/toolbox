@@ -51,6 +51,7 @@
 		"@types/lodash.set": "~4.3.9",
 		"@types/lodash.snakecase": "~4.1.9",
 		"@types/node": "~24.9.1",
+		"@types/pg": "~8.15.5",
 		"sst": "4.15.2"
 	},
 	"peerDependencies": {
@@ -58,7 +59,8 @@
 		"@geekmidas/manifest": "workspace:^",
 		"@geekmidas/storage": "workspace:^",
 		"@geekmidas/events": "workspace:^",
-		"@geekmidas/db": "workspace:^"
+		"@geekmidas/db": "workspace:^",
+		"pg": "^8.13.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/manifest": {
@@ -71,6 +73,9 @@
 			"optional": true
 		},
 		"@geekmidas/db": {
+			"optional": true
+		},
+		"pg": {
 			"optional": true
 		}
 	}

@@ -51,6 +51,7 @@ const context = (
 ): ProvisionContext => ({
 	manifest,
 	provisioned: provisioned as never,
+	bootstraps: new Map(),
 });
 
 describe('isServed', () => {

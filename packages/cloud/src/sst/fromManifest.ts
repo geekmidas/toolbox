@@ -12,6 +12,7 @@
  * cloud.
  */
 
+import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
 import type {
 	ConstructManifest,
@@ -28,6 +29,7 @@ import {
 } from '@geekmidas/manifest';
 import { Credential } from './aws/Credential';
 import { Database, DatabaseNeedsVpc } from './aws/Database';
+import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
@@ -72,6 +74,14 @@ export interface ProvisionContext {
 	manifest: ConstructManifest;
 	/** Everything already provisioned. Parents are present; siblings may not be. */
 	provisioned: ProvisionedManifest;
+	/**
+	 * The role bootstrap for each cluster, keyed by the cluster's id.
+	 *
+	 * Populated as tenants are provisioned and run once at the end: Pulumi can
+	 * generate a password and store it but cannot run `CREATE ROLE`, so the DDL
+	 * is a function invoked after everything it operates on exists.
+	 */
+	bootstraps: Map<string, DatabaseBootstrap>;
 }
 
 type Provisioner = (
@@ -168,19 +178,46 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	'database-reader': (stack, d, props, context) =>
-		derived(d, context, (id, parent) => new DatabaseReader(id, parent)),
+		derived(d, context, (id, parent) => {
+			// A reader reads through the *parent's* read-only role: read-only is
+			// enforced by the grants, which is what makes falling back to the
+			// writer's endpoint safe where a cluster has no replica.
+			const source = parentOf(d, context);
+			const roles = context.bootstraps.get(rootId(source, context));
+			const runtime = roleNameFor(source, context);
+			const reader = roles?.readerFor(runtime);
 
-	'database-schema': (stack, d, props, context) =>
-		derived(
-			d,
-			context,
-			(id, parent) =>
-				new DatabaseSchema(
-					id,
-					parent,
-					d.kind === 'database-schema' ? d.schema : id.toLowerCase(),
-				),
-		),
+			return new DatabaseReader(id, parent, reader);
+		}),
+
+	'database-schema': (stack, d, props, context) => {
+		if (d.kind !== 'database-schema')
+			throw new UnknownDeclarationKind(d.kind, []);
+
+		return derived(d, context, (id, parent) => {
+			const bootstrap = bootstrapFor(parent, rootId(d, context), context);
+			const runtime = roleNameFor(d, context);
+
+			// Registering the tenant is what creates its passwords and its secret;
+			// the DDL that uses them runs at the end, from one function.
+			const credentials = bootstrap?.add({
+				id,
+				schema: d.schema,
+				runtime,
+				owner: ownerRole(runtime),
+				...(hasReader(d.id, context) ? { reader: readerRole(runtime) } : {}),
+			});
+
+			return new DatabaseSchema(
+				id,
+				parent,
+				d.schema,
+				credentials
+					? { user: runtime, password: credentials.runtime }
+					: undefined,
+			);
+		});
+	},
 
 	secret: (stack, d, props) => new Secret(stack, d.id, props),
 
@@ -270,6 +307,85 @@ function derived(
 	return build(declaration.id, rootCluster(parent));
 }
 
+/** The declaration a derived node hangs off. */
+function parentOf(
+	declaration: Declaration,
+	context: ProvisionContext,
+): Declaration {
+	if (!('of' in declaration)) return declaration;
+
+	return context.manifest[declaration.of] ?? declaration;
+}
+
+/**
+ * The id of the cluster at the bottom of a chain of derived nodes.
+ *
+ * A tenant may derive from another tenant, and what both ultimately live in is
+ * one database — so this follows `of` to the end rather than reading the
+ * immediate parent.
+ */
+function rootId(declaration: Declaration, context: ProvisionContext): string {
+	let current = declaration;
+
+	while ('of' in current) {
+		const parent = context.manifest[current.of];
+		if (!parent) break;
+		current = parent;
+	}
+
+	return current.id;
+}
+
+/**
+ * The runtime role a node connects as: its own id, lowercased.
+ *
+ * The same rule the local target uses, so a role a developer sees in `\du` is
+ * the role that exists in production. Roles are cluster-scoped, so two stages
+ * sharing a cluster would collide — which is why a deployed stage gets its own.
+ */
+function roleNameFor(
+	declaration: Declaration,
+	_context: ProvisionContext,
+): string {
+	return declaration.id.toLowerCase();
+}
+
+/** Whether anything in the manifest reads through this node. */
+function hasReader(id: string, context: ProvisionContext): boolean {
+	return Object.values(context.manifest).some(
+		(declaration) =>
+			declaration.kind === 'database-reader' && declaration.of === id,
+	);
+}
+
+/**
+ * The bootstrap for a cluster, created on first use.
+ *
+ * One per cluster rather than one per tenant: the DDL for every tenant runs on
+ * the same connection, as the same master, so a function each would be the same
+ * work done N times with N cold starts.
+ */
+function bootstrapFor(
+	cluster: Database,
+	clusterId: string,
+	context: ProvisionContext,
+): DatabaseBootstrap | undefined {
+	// `roles: false` is the documented downgrade: no roles, and both URLs fall
+	// back to the master. Nothing to bootstrap.
+	const declaration = context.manifest[clusterId];
+	if (declaration && 'roles' in declaration && declaration.roles === false) {
+		return undefined;
+	}
+
+	const existing = context.bootstraps.get(clusterId);
+	if (existing) return existing;
+
+	const created = new DatabaseBootstrap(clusterId, cluster);
+	context.bootstraps.set(clusterId, created);
+
+	return created;
+}
+
 /** The `Database` at the bottom of a chain of derived nodes. */
 function rootCluster(component: Provisioned): Database {
 	const parent = (component as { parent?: Provisioned }).parent;
@@ -351,6 +467,12 @@ export function fromManifest(
 	const sites = order.filter((id) => manifest[id]?.kind === 'site');
 	const rest = order.filter((id) => manifest[id]?.kind !== 'site');
 
+	const context: ProvisionContext = {
+		manifest,
+		provisioned,
+		bootstraps: new Map<string, DatabaseBootstrap>(),
+	};
+
 	for (const id of [...rest, ...sites]) {
 		const declaration = manifest[id];
 		if (!declaration) continue;
@@ -359,7 +481,7 @@ export function fromManifest(
 			stack,
 			declaration,
 			overrides[id] ?? {},
-			{ manifest, provisioned },
+			context,
 		);
 
 		assertProvides(
@@ -375,6 +497,15 @@ export function fromManifest(
 		);
 
 		provisioned[id] = component;
+	}
+
+	// Last, and only now: the roles exist as passwords and secrets from the
+	// moment each tenant was provisioned, but nothing has run `CREATE ROLE`.
+	// Pulumi cannot — so one function per cluster does, inside the VPC, invoked
+	// with an input that changes only when the roles or the cluster do.
+	for (const [clusterId, bootstrap] of context.bootstraps) {
+		const cluster = provisioned[clusterId] as unknown as Database | undefined;
+		if (cluster) bootstrap.run(cluster.vpc);
 	}
 
 	return provisioned;

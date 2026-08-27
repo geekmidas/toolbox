@@ -45,6 +45,15 @@ export class Database<
 	/** The schema pinned on the connection's `search_path`, where one applies. */
 	private readonly schema: string | undefined;
 
+	/**
+	 * The VPC this cluster lives in.
+	 *
+	 * Kept so the bootstrap function can be put in the same one — a database
+	 * reachable from outside its VPC is the problem the requirement avoids, and
+	 * the DDL has to reach it from inside.
+	 */
+	readonly vpc: sst.aws.AuroraArgs['vpc'];
+
 	constructor(
 		_stack: StackType<TStage, TDomain>,
 		name: string,
@@ -55,6 +64,7 @@ export class Database<
 		super(name, { engine: 'postgres', ...args });
 		this._id = name;
 		this.schema = schema;
+		this.vpc = args.vpc;
 	}
 
 	/**
@@ -82,12 +92,31 @@ export class Database<
 	 * put together. That matters more than it sounds: `search_path` is the part
 	 * that goes quietly missing when the join is done by hand.
 	 */
-	urlFor(options: { reader?: boolean; schema?: string }): $util.Input<string> {
+	urlFor(options: {
+		reader?: boolean;
+		schema?: string;
+		/**
+		 * Connect as a role other than the master.
+		 *
+		 * What every tenant does. The master credential exists before any role
+		 * does, which is why the bootstrap uses it and why nothing else should: a
+		 * handler holding it could drop the database it was reading.
+		 */
+		as?: { user: $util.Input<string>; password: $util.Input<string> };
+	}): $util.Input<string> {
 		const host = options.reader ? this.reader : this.host;
-		const searchPath = options.schema ?? this.schema;
+		// A role carries its own `search_path`, pinned by `ALTER ROLE`. It goes in
+		// the URL only for the master, which has no role of its own to pin it on.
+		const searchPath = options.as ? undefined : (options.schema ?? this.schema);
 
 		return $util
-			.all([host, this.port, this.database, this.username, this.password])
+			.all([
+				host,
+				this.port,
+				this.database,
+				options.as?.user ?? this.username,
+				options.as?.password ?? this.password,
+			])
 			.apply(([resolvedHost, port, database, username, password]) =>
 				postgresUrl.build({
 					host: resolvedHost,

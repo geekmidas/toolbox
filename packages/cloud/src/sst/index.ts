@@ -21,6 +21,10 @@ export {
 	DatabaseNeedsVpc,
 	type DatabaseProps,
 } from './aws/Database';
+export {
+	bootstrapEvent,
+	DatabaseBootstrap,
+} from './aws/DatabaseBootstrap';
 export { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
@@ -28,7 +32,7 @@ export {
 	ObjectStorage,
 	type ObjectStorageProps,
 } from './aws/ObjectStorage';
-export { Queue, type QueueProps } from './aws/Queue';
+export { fifoName, Queue, type QueueProps } from './aws/Queue';
 export { Secret, type SecretProps } from './aws/Secret';
 export { StaticSite, type StaticSiteProps } from './aws/StaticSite';
 /** @deprecated renamed to `ObjectStorage`, matching the construct that declares it. */

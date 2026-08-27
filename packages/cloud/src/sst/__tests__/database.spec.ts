@@ -35,6 +35,7 @@ const cluster = () => new Database(stack, 'Orders', { vpc, schema: 'app' });
 const context = (provisioned: Record<string, unknown>): ProvisionContext => ({
 	manifest,
 	provisioned: provisioned as never,
+	bootstraps: new Map(),
 });
 
 describe('Database', () => {

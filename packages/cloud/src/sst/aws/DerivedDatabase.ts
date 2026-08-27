@@ -54,12 +54,32 @@ abstract class DerivedDatabase implements GkmLinkable {
  * reached.
  */
 export class DatabaseReader extends DerivedDatabase {
+	constructor(
+		id: string,
+		parent: Database,
+		/**
+		 * The read-only role, where one was provisioned.
+		 *
+		 * Absent under `roles: false`, where there is one credential and it is
+		 * the master's — and read-only then holds by convention rather than by
+		 * grant, which is exactly why that mode is a downgrade.
+		 */
+		private readonly role?: { user: string; password: $util.Input<string> },
+	) {
+		super(id, parent);
+	}
+
 	get _type() {
 		return ResourceType.SSTPostgres;
 	}
 
 	provides(): Record<string, $util.Input<string>> {
-		return { url: this.parent.urlFor({ reader: true }) };
+		return {
+			url: this.parent.urlFor({
+				reader: true,
+				...(this.role ? { as: this.role } : {}),
+			}),
+		};
 	}
 }
 
@@ -77,6 +97,8 @@ export class DatabaseSchema extends DerivedDatabase {
 		id: string,
 		parent: Database,
 		private readonly schema: string,
+		/** The tenant's runtime role, where one was provisioned. */
+		private readonly role?: { user: string; password: $util.Input<string> },
 	) {
 		super(id, parent);
 	}
@@ -86,6 +108,11 @@ export class DatabaseSchema extends DerivedDatabase {
 	}
 
 	provides(): Record<string, $util.Input<string>> {
-		return { url: this.parent.urlFor({ schema: this.schema }) };
+		return {
+			url: this.parent.urlFor({
+				schema: this.schema,
+				...(this.role ? { as: this.role } : {}),
+			}),
+		};
 	}
 }
