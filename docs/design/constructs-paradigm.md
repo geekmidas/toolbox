@@ -728,6 +728,14 @@ That is a security property rather than a convention: a compromised handler
 cannot `DROP TABLE`, because its role holds no such grant, and the cluster's
 master credentials never leave the provisioner.
 
+**It is also, today, aspirational.** No target creates either role. The local
+target runs `CREATE DATABASE` and `CREATE SCHEMA` and nothing else, and the AWS
+target runs no DDL at all; both URLs carry the cluster's master credential, and
+`roles?: boolean` on the declaration is read by nothing. Until the role DDL
+lands, the split above describes the design and not the behaviour — which is
+worth stating in the same breath as the claim, because a security property
+people believe they have is worse than one they know they lack.
+
 **Derived nodes name their parent.** A reader and a schema tenant are top-level
 entries that provision nothing of their own — one is an endpoint on an existing
 cluster, the other a schema inside an existing database — so each carries

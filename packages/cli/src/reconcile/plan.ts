@@ -175,6 +175,14 @@ export interface PlannedResource {
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
 	/**
+	 * Whether to provision the owner/runtime role split.
+	 *
+	 * `false` is the documented downgrade — both URLs fall back to the cluster's
+	 * master credential — and it is a choice someone made rather than a default
+	 * they got, which is why it is carried through rather than inferred.
+	 */
+	roles?: boolean;
+	/**
 	 * For a file server: the paths it serves without a signature.
 	 *
 	 * Carried into the plan because the local target enforces them for real — a
@@ -344,6 +352,9 @@ export function planFor(
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
 				? { schema: declaration.schema }
+				: {}),
+			...('roles' in declaration && declaration.roles === false
+				? { roles: false }
 				: {}),
 		});
 	}

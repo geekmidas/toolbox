@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import { cookieDomain, provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
@@ -119,6 +120,20 @@ export function envFor(
 			Object.assign(env, surfaceEnv(resource, url, options.addresses));
 		}
 		if (url) env[resource.envKey] = url;
+
+		// A database owns a second key, and it is deliberately not in `provides`:
+		// the owner URL is what a migrator connects with, so no edge in any
+		// manifest can name it and nothing can be granted DDL rights by mistake.
+		// `gkm exec` injects it; a handler never sees it.
+		if (isDatabase(resource.kind) && resource.roles !== false) {
+			const owner = ownerUrl(
+				resource,
+				plan,
+				options.ports,
+				options.project ?? '',
+			);
+			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
+		}
 
 		// Mail owns a second key. It is the sending identity, which is the one
 		// thing about mail that differs per stage — so it travels with the URL
@@ -228,6 +243,52 @@ function originOf(address: string): string | undefined {
 }
 
 /**
+ * The runtime role of whatever a derived node hangs off.
+ *
+ * A reader's parent may itself be a schema tenant, so this follows `of` by one
+ * hop rather than assuming the cluster — the reader of a tenant reads that
+ * tenant's schema, not the database's.
+ */
+function parentRole(resource: PlannedResource, plan: Plan): string {
+	const parent = plan.resources.find((r) => r.id === resource.of);
+
+	return parent ? localRole(parent) : resource.name;
+}
+
+/** Whether a kind connects to Postgres and therefore has an owner role. */
+function isDatabase(kind: PlannedResource['kind']): boolean {
+	return kind === 'database' || kind === 'database-schema';
+}
+
+/**
+ * The URL a migrator connects with — the owner role, which can create, alter
+ * and drop.
+ *
+ * Never in `provides`, which is the whole point. A handler that could reach this
+ * could `DROP TABLE`, and the security property the role split exists for is
+ * that it cannot: the value is injected by `gkm exec` for the migrate step and
+ * by nothing else.
+ */
+function ownerUrl(
+	resource: PlannedResource,
+	plan: Plan,
+	ports: PortAssignments,
+	project: string,
+): string | undefined {
+	if (!resource.container) return undefined;
+
+	const port = ports[primaryPortKey(resource.container)];
+	if (port === undefined) return undefined;
+
+	const owner = ownerRole(localRole(resource));
+
+	return postgres(port, rootDatabase(resource, plan), {
+		user: owner,
+		password: localRolePassword(project, plan, owner),
+	});
+}
+
+/**
  * The shared broker keys, when anything is published or consumed.
  *
  * A queue's own key is the producer's. These two are the *connection* itself,
@@ -290,19 +351,41 @@ function urlFor(
 
 	switch (resource.kind) {
 		case 'database':
-			return postgres(port, resource.name);
-
 		case 'database-schema':
 		case 'database-reader': {
 			// A tenant and a reader both live in the *parent's* database; what
-			// separates them is the schema on the search path and the role's grants,
-			// never a database of their own.
+			// separates them is the role's grants and the `search_path` pinned on
+			// that role, never a database of their own.
 			const database = rootDatabase(resource, plan);
-			const schema = schemaOf(resource, plan);
 
-			return schema
-				? `${postgres(port, database)}?search_path=${schema}`
-				: postgres(port, database);
+			// The runtime role, which can read and write rows and create nothing.
+			// `search_path` is pinned on the role by the DDL rather than carried
+			// here, so a connection string cannot forget it — and forgetting it
+			// looks like an empty database rather than an error.
+			//
+			// `roles: false` is the documented downgrade: both URLs fall back to
+			// the cluster's master credential, and the schema goes back into the
+			// URL because there is no role to pin it on.
+			if (resource.roles === false) {
+				const schema = schemaOf(resource, plan);
+
+				return schema
+					? `${postgres(port, database)}?search_path=${schema}`
+					: postgres(port, database);
+			}
+
+			// A reader connects as the read-only role on its parent, not as a role
+			// of its own: read-only is enforced by the grants, which is what makes
+			// falling back to the writer's endpoint safe where no replica exists.
+			const role =
+				resource.kind === 'database-reader'
+					? readerRole(parentRole(resource, plan))
+					: localRole(resource);
+
+			return postgres(port, database, {
+				user: role,
+				password: localRolePassword(project, plan, role),
+			});
 		}
 
 		case 'email':
@@ -381,8 +464,50 @@ function broker(plan: Plan, port: number): string {
 }
 
 /** A local Postgres URL, master credential and all. */
-function postgres(port: number, database: string): string {
-	return `postgres://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}/${database}`;
+function postgres(
+	port: number,
+	database: string,
+	credential: { user: string; password: string } = {
+		user: LOCAL_USER,
+		password: LOCAL_USER,
+	},
+): string {
+	return `postgres://${credential.user}:${credential.password}@${LOCAL_HOST}:${port}/${database}`;
+}
+
+/**
+ * The role a handler connects as, for one database or tenant.
+ *
+ * The construct's id, lowercased and stage-scoped exactly as its database or
+ * schema is — so `Orders` in the `test` stage connects as `orders_test`, and two
+ * stages sharing one cluster cannot share a credential. Roles are cluster-scoped
+ * in Postgres, which is why the suffix is not optional here the way it is for a
+ * schema.
+ */
+export function localRole(resource: PlannedResource): string {
+	return resource.name;
+}
+
+/**
+ * The password for a derived local role.
+ *
+ * Derived rather than random, for the same reason the local secret is: a
+ * password that changed on every `gkm dev` would lock a developer out of the
+ * data they had a moment ago. Seeded by the project so two checkouts do not
+ * share one, and by the stage so `test` and `development` do not.
+ *
+ * It is a *local* credential by construction — the cluster is on loopback and
+ * the seed is a checkout path — and no deployed target uses this function.
+ */
+export function localRolePassword(
+	project: string,
+	plan: Plan,
+	role: string,
+): string {
+	return createHash('sha256')
+		.update(`${project}:${plan.stage}:role:${role}`)
+		.digest('base64url')
+		.slice(0, 32);
 }
 
 /**

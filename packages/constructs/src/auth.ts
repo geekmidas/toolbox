@@ -6,10 +6,18 @@
  * authorizer, and a set of endpoints. This lands the first two.
  *
  * Its tables live in a schema tenant it is *given* — `orders.schema('AuthDb')`
- * — rather than one it invents, so the application's own role holds no grant on
- * them and a compromised handler cannot read sessions. The tenant declares the
- * schema and the role; this declares the one thing left, the signing secret,
- * and reads back the two keys it needs.
+ * — rather than one it invents. The tenant declares the schema and the role;
+ * this declares the one thing left, the signing secret, and reads back the keys
+ * it needs.
+ *
+ * :::caution
+ * The isolation that arrangement is *for* — the application's own role holding
+ * no grant on these tables, so a compromised handler cannot read sessions — does
+ * **not hold yet**. No target creates the per-schema role: both connect as the
+ * database owner, so today the tenant is a `search_path`, which is a namespace
+ * and not a privilege boundary. See "Roles are declared and never created" in
+ * `docs/design/constructs-outstanding.md`.
+ * :::
  *
  * It declares its own surface, so where it answers, who may call it, and the
  * domain its cookies are scoped to all arrive as environment resolved by the
@@ -177,14 +185,21 @@ export class BetterAuth<
 	async migrations(
 		options: ServiceRegisterOptions,
 	): Promise<() => Promise<void>> {
-		const auth = await this.connect(options);
+		// As the owner, not the runtime role. Creating tables is DDL, and the
+		// whole point of the split is that a handler's role cannot do it — so a
+		// migrator that connected the way a handler does would fail on the first
+		// `CREATE TABLE` rather than working by accident.
+		const auth = await this.connect(options, { owner: true });
 		const { getMigrations } = await import('better-auth/db');
 		const { runMigrations } = await getMigrations(auth.options);
 
 		return runMigrations;
 	}
 
-	private async connect(options: ServiceRegisterOptions): Promise<AuthServer> {
+	private async connect(
+		options: ServiceRegisterOptions,
+		as: { owner?: boolean } = {},
+	): Promise<AuthServer> {
 		const { secret, baseUrl, trustedOrigins, cookieDomain } = options.envParser
 			.create((get) => ({
 				secret: get(this.keys.secret).string(),
@@ -217,7 +232,14 @@ export class BetterAuth<
 
 		// The tenant's own client: one construct, one connection, so what auth
 		// writes and what the browser inspects cannot be two different databases.
-		const db = (await this.config.database.service.register(options)) as Kysely<
+		// A migration asks the tenant for its owner connection, which the tenant
+		// exposes as a `Service` and not as anything `.dependsOn()` would take.
+		const tenant = this.config.database as Consumable & {
+			owner?: Service<string, unknown>;
+		};
+		const source = as.owner && tenant.owner ? tenant.owner : tenant.service;
+
+		const db = (await source.register(options)) as Kysely<
 			Record<string, never>
 		>;
 

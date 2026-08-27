@@ -229,7 +229,7 @@ export async function reconcile(
 	// Only once the containers are up: there is nothing to create inside a
 	// container that is not running.
 	const provisioned =
-		start && provision ? await create(plan, ports, sql, buckets) : [];
+		start && provision ? await create(plan, ports, sql, buckets, project) : [];
 
 	await saveState(root, { hash, stage });
 
@@ -247,11 +247,13 @@ async function create(
 	ports: PortAssignments,
 	sql: (port: number) => SqlClient,
 	buckets: (port: number) => BucketClient,
+	/** Seeds the derived role passwords — see `localRolePassword`. */
+	project: string,
 ): Promise<Applied[]> {
 	const applied: Applied[] = [];
 
 	const postgresPort = ports[primaryPortKey('postgres')];
-	const statements = postgresStatements(plan);
+	const statements = postgresStatements(plan, project);
 	if (postgresPort !== undefined && statements.length > 0) {
 		applied.push(...(await applyPostgres(sql(postgresPort), statements)));
 	}

@@ -1,7 +1,7 @@
 import { snsUrl } from '@geekmidas/events/sns';
 import { sqsUrl } from '@geekmidas/events/sqs';
 import { describe, expect, it } from 'vitest';
-import { Queue } from '../aws/Queue';
+import { fifoName, Queue } from '../aws/Queue';
 import { Secret } from '../aws/Secret';
 import { Topic } from '../aws/Topic';
 import { regionOfArn } from '../naming';
@@ -77,5 +77,31 @@ describe('regionOfArn', () => {
 	it('is undefined where an ARN carries no region', () => {
 		expect(regionOfArn('arn:aws:iam::123:role/x')).toBeUndefined();
 		expect(regionOfArn('not-an-arn')).toBeUndefined();
+	});
+});
+
+describe('fifoName', () => {
+	it('appends .fifo to a FIFO queue’s name', () => {
+		// AWS rejects the mistake at the API call rather than at plan time, so
+		// the component fixes it where the fact lives.
+		expect(fifoName('emails', true)).toBe('emails.fifo');
+	});
+
+	it('does not append it twice', () => {
+		// `.fifo` counts toward the 80-character limit.
+		expect(fifoName('emails.fifo', true)).toBe('emails.fifo');
+	});
+
+	it('treats the object form as FIFO', () => {
+		expect(fifoName('emails', { contentBasedDeduplication: true })).toBe(
+			'emails.fifo',
+		);
+	});
+
+	it('strips it from a standard queue’s name', () => {
+		// The rule runs both ways: a standard queue whose name ends in `.fifo`
+		// is rejected just as loudly.
+		expect(fifoName('emails.fifo', false)).toBe('emails');
+		expect(fifoName('emails.fifo', undefined)).toBe('emails');
 	});
 });

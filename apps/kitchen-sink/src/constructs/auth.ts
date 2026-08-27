@@ -6,10 +6,14 @@ import { mail } from './email.js';
 /**
  * The auth database — a schema tenant of the app's own database.
  *
- * Its tables live in the `authdb` schema with their own role, so the
- * application's role holds no grant on them at all: a compromised handler
- * cannot read sessions. It is a second URL in the same Postgres, not a second
- * database, and both are derived.
+ * Its tables live in the `authdb` schema: a second URL in the same Postgres,
+ * not a second database, and both are derived.
+ *
+ * The point of the arrangement is that the application's role should hold no
+ * grant on those tables, so a compromised handler cannot read sessions — but
+ * **that is not true yet**. No target creates the per-schema role; both connect
+ * as the owner, which makes the tenant a namespace rather than a privilege
+ * boundary. See `docs/design/constructs-outstanding.md`.
  */
 export const authDb = database.schema<Record<string, never>, 'AuthDb'>(
 	'AuthDb',

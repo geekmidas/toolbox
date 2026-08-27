@@ -89,6 +89,7 @@ describe('envFor', () => {
 		expect(Object.keys(env()).sort()).toEqual([
 			'AUTH_API_TRUSTED_ORIGINS',
 			'AUTH_API_URL',
+			'AUTH_OWNER_URL',
 			'AUTH_READER_URL',
 			'AUTH_URL',
 			'AWS_ACCESS_KEY_ID',
@@ -100,6 +101,7 @@ describe('envFor', () => {
 			'EVENT_SUBSCRIBER_CONNECTION_STRING',
 			'MAIL_FROM',
 			'MAIL_URL',
+			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
 			'SESSIONS_URL',
 			'UPLOADS_SERVER_URL',
@@ -124,18 +126,48 @@ describe('envFor', () => {
 		expect(env('test').ORDERS_URL).toContain('/orders_test');
 	});
 
-	it('puts a tenant in its parent’s database, on its own search path', () => {
+	it('connects a handler as the runtime role, not the cluster master', () => {
+		// The security property the role split exists for: a compromised handler
+		// cannot DROP TABLE, because its role holds no such grant.
+		expect(env().ORDERS_URL).toMatch(/^postgres:\/\/orders:/);
+	});
+
+	it('keeps the owner URL out of what any edge can name', () => {
+		// It exists — a migrator needs DDL rights — and it is deliberately not in
+		// `provides`, so nothing can be granted it by mistake.
+		expect(env().ORDERS_OWNER_URL).toMatch(/^postgres:\/\/orders_owner:/);
+	});
+
+	it('gives each role a password of its own', () => {
+		const resolved = env();
+
+		expect(resolved.ORDERS_URL).not.toBe(resolved.ORDERS_OWNER_URL);
+	});
+
+	it('reads through a role that may only read', () => {
+		// Read-only is enforced by the grants, which is what makes falling back
+		// to the writer's endpoint safe where no replica exists.
+		expect(env().AUTH_READER_URL).toMatch(/^postgres:\/\/auth_reader:/);
+	});
+
+	it('puts a tenant in its parent’s database, on its own role', () => {
 		// A tenant is a schema, never a database of its own — that is what makes
 		// pg-boss an instance of this rather than a special case.
 		expect(env().AUTH_URL).toContain('/orders');
-		expect(env().AUTH_URL).toContain('search_path=auth');
+		expect(env().AUTH_URL).toMatch(/^postgres:\/\/auth:/);
+	});
+
+	it('pins search_path on the role rather than in the URL', () => {
+		// A connection string that has to remember `search_path` is one that
+		// eventually forgets, and the forgetting looks like an empty database
+		// rather than an error. `ALTER ROLE … SET search_path` is what carries it.
+		expect(env().AUTH_URL).not.toContain('search_path');
 	});
 
 	it('walks a reader to the database that actually exists', () => {
 		// AuthReader → Auth → Orders. Reading the immediate parent would name a
 		// database that was never created.
 		expect(env().AUTH_READER_URL).toContain('/orders');
-		expect(env().AUTH_READER_URL).toContain('search_path=auth');
 	});
 
 	it('gives object storage an endpoint so one client serves both', () => {

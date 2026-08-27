@@ -54,20 +54,50 @@ const plan = (stage = 'development') =>
 	planFor(manifest, stage, provisionOrder(manifest));
 
 /** A Postgres that starts empty and remembers what was created in it. */
+/**
+ * Which catalogue an existence check is asking about.
+ *
+ * Namespaced, because Postgres is: a role named `auth` and a schema named
+ * `auth` are different objects, and a fake that keeps one set of names reports
+ * the schema as already there the moment the role is created.
+ */
+const CATALOGUES: [RegExp, string][] = [
+	[/pg_roles/, 'role'],
+	[/pg_database/, 'database'],
+	[/information_schema\.schemata/, 'schema'],
+];
+
 function fakePostgres(existing: string[] = []) {
-	const present = new Set(existing);
+	// A bare name is taken as present in every catalogue — the shorthand the
+	// tests use for "this already exists", where which catalogue is not the
+	// point being made.
+	const present = new Set(
+		existing.flatMap((name) => [
+			`role:${name}`,
+			`database:${name}`,
+			`schema:${name}`,
+		]),
+	);
 	const ran: string[] = [];
 
 	const client: SqlClient = {
 		async query(_database, sql, values) {
 			if (sql.startsWith('SELECT')) {
-				return present.has(String(values?.[0])) ? [{ '?column?': 1 }] : [];
+				const catalogue =
+					CATALOGUES.find(([pattern]) => pattern.test(sql))?.[1] ?? 'unknown';
+
+				return present.has(`${catalogue}:${values?.[0]}`)
+					? [{ '?column?': 1 }]
+					: [];
 			}
 
 			ran.push(sql);
+
 			// Remember it, so a second pass converges rather than repeating.
-			const name = sql.match(/"([^"]+)"/)?.[1];
-			if (name) present.add(name);
+			const created = sql.match(/^CREATE (ROLE|DATABASE|SCHEMA) "([^"]+)"/);
+			if (created?.[1] && created[2]) {
+				present.add(`${created[1].toLowerCase()}:${created[2]}`);
+			}
 
 			return [];
 		},
@@ -130,34 +160,48 @@ describe('quoteIdentifier', () => {
 });
 
 describe('applyPostgres', () => {
+	/** Statements that ask whether they are needed, as opposed to grants. */
+	const checked = (statements: readonly { exists?: unknown }[]) =>
+		statements.filter((s) => s.exists);
+
 	it('creates what is missing', async () => {
 		const { client, ran } = fakePostgres();
-		const applied = await applyPostgres(client, postgresStatements(plan()));
+		const statements = postgresStatements(plan());
+		const applied = await applyPostgres(client, statements);
 
-		expect(applied.every((a) => a.created)).toBe(true);
+		// Grants report unchanged by design — they run every time and re-granting
+		// is a no-op — so the claim is about the statements that ask first.
+		expect(applied.filter((a) => a.created)).toHaveLength(
+			checked(statements).length,
+		);
 		expect(ran.some((sql) => sql.includes('CREATE DATABASE "orders"'))).toBe(
 			true,
 		);
 	});
 
 	it('creates nothing that already exists', async () => {
-		const { client, ran } = fakePostgres(['orders', 'auth']);
+		const { client, ran } = fakePostgres([
+			'orders',
+			'auth',
+			'auth_owner',
+			'auth_reader',
+		]);
 		const applied = await applyPostgres(client, postgresStatements(plan()));
 
 		expect(applied.every((a) => !a.created)).toBe(true);
-		expect(ran).toEqual([]);
+		// Only the grants, which are idempotent and cost one round trip each.
+		expect(ran.every((sql) => /^(GRANT|ALTER)/.test(sql))).toBe(true);
 	});
 
 	it('is convergent — applying twice creates once', async () => {
 		// The property that lets `gkm dev` do this on every start.
-		const { client, ran } = fakePostgres();
+		const { client } = fakePostgres();
 		const statements = postgresStatements(plan());
 
 		await applyPostgres(client, statements);
 		const second = await applyPostgres(client, statements);
 
 		expect(second.every((a) => !a.created)).toBe(true);
-		expect(ran).toHaveLength(2);
 	});
 
 	it('drops nothing', async () => {
@@ -165,7 +209,36 @@ describe('applyPostgres', () => {
 		const { client, ran } = fakePostgres();
 		await applyPostgres(client, postgresStatements(plan()));
 
-		expect(ran.some((sql) => /DROP|TRUNCATE|DELETE/i.test(sql))).toBe(false);
+		expect(ran.some((sql) => /DROP|TRUNCATE/i.test(sql))).toBe(false);
+	});
+
+	it('gives a handler’s role no ability to create anything', async () => {
+		// The whole point of the split: a compromised handler cannot DROP TABLE,
+		// because its role holds no such grant.
+		const { client, ran } = fakePostgres();
+		await applyPostgres(client, postgresStatements(plan(), 'toolbox'));
+
+		const runtimeGrants = ran.filter(
+			(sql) => sql.includes('TO "auth"') && sql.startsWith('GRANT'),
+		);
+
+		expect(runtimeGrants.length).toBeGreaterThan(0);
+		expect(
+			runtimeGrants.every((sql) => !/CREATE|ALL PRIVILEGES/.test(sql)),
+		).toBe(true);
+	});
+
+	it('owns the schema from the moment it exists', async () => {
+		// Creating it as the master and granting afterwards leaves a window
+		// where the master owns objects the owner is supposed to.
+		const { client, ran } = fakePostgres();
+		await applyPostgres(client, postgresStatements(plan(), 'toolbox'));
+
+		expect(
+			ran.some((sql) =>
+				/CREATE SCHEMA "auth" AUTHORIZATION "auth_owner"/.test(sql),
+			),
+		).toBe(true);
 	});
 });
 

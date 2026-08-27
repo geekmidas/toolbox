@@ -32,7 +32,21 @@ export class Queue<
 		name: string,
 		props: QueueProps = {},
 	) {
-		super(name, props);
+		const { queueName, ...args } = props;
+
+		super(name, {
+			...args,
+			// A supplied name has to satisfy SQS's rule; an auto-generated one is
+			// Pulumi's problem and it already handles it.
+			...(queueName
+				? {
+						transform: {
+							...args.transform,
+							queue: { name: fifoName(queueName, args.fifo) },
+						},
+					}
+				: {}),
+		});
 		this._id = name;
 	}
 
@@ -65,4 +79,35 @@ export class Queue<
 	}
 }
 
-export interface QueueProps extends sst.aws.QueueArgs {}
+export interface QueueProps extends sst.aws.QueueArgs {
+	/**
+	 * The physical queue name, where the auto-generated one will not do.
+	 *
+	 * Normalised for SQS's FIFO rule — see {@link fifoName}. This is a separate
+	 * prop rather than a `transform` because the rule is easy to not know and
+	 * expensive to discover: the deploy fails at the API call, long after the
+	 * plan looked fine.
+	 */
+	queueName?: string;
+}
+
+/**
+ * A FIFO queue's name must end in `.fifo`, and a standard queue's must not.
+ *
+ * AWS rejects either mistake at the API call rather than at plan time, so the
+ * component fixes it where the fact lives instead of leaving it as something
+ * every caller has to remember. Appending is safe: `.fifo` counts toward the
+ * 80-character limit, so a name already carrying it must not get a second one.
+ */
+export function fifoName(
+	name: string,
+	fifo: sst.aws.QueueArgs['fifo'],
+): string {
+	// `fifo` is an Input and may be an object (`{ contentBasedDeduplication }`),
+	// which is still FIFO — only `false` and `undefined` are not.
+	const isFifo = fifo !== undefined && fifo !== false;
+
+	if (!isFifo) return name.replace(/\.fifo$/, '');
+
+	return name.endsWith('.fifo') ? name : `${name}.fifo`;
+}

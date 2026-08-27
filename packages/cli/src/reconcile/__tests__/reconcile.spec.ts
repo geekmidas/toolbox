@@ -200,6 +200,9 @@ describe('reconcile', () => {
 		expect(Object.keys(env).sort()).toEqual([
 			'MAIL_FROM',
 			'MAIL_URL',
+			// Not in `provides`: the owner URL is what a migrator connects with,
+			// so no edge in any manifest can name it.
+			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
 		]);
 	});

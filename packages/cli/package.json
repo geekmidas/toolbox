@@ -79,6 +79,7 @@
 		"@aws-sdk/client-ssm": "~3.992.0",
 		"@aws-sdk/credential-providers": "~3.992.0",
 		"@geekmidas/constructs": "workspace:~",
+		"@geekmidas/db": "workspace:*",
 		"@geekmidas/envkit": "workspace:~",
 		"@geekmidas/errors": "workspace:~",
 		"@geekmidas/logger": "workspace:~",

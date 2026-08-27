@@ -78,7 +78,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	 * Declared once and read by both `declare()` and `connect()`, so the key the
 	 * build publishes and the key the client reads cannot drift.
 	 */
-	private readonly config: { url: string };
+	private readonly config: { url: string; ownerUrl: string };
 	private readonly schemaName: string;
 	private readonly roles: boolean;
 	private readonly derivedFrom?: DerivedFrom;
@@ -93,7 +93,10 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.config = { url: provideKey(canonical, 'url') };
+		this.config = {
+			url: provideKey(canonical, 'url'),
+			ownerUrl: provideKey(canonical, 'ownerUrl'),
+		};
 		this.schemaName = options.schema ?? DEFAULT_SCHEMA;
 		this.roles = options.roles ?? true;
 		this.derivedFrom = derivedFrom;
@@ -118,9 +121,17 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 							id: this.id,
 							of,
 							schema: schema ?? this.schemaName,
-							provides: Object.values(this.config),
+							// The runtime key alone — see the note below on the parent.
+							provides: [this.config.url],
 						}
-					: { kind, id: this.id, of, provides: Object.values(this.config) },
+					: {
+							kind,
+							id: this.id,
+							of,
+							// A reader has no owner URL of its own — nothing migrates
+							// through a read-only endpoint — so this is the one key.
+							provides: [this.config.url],
+						},
 			];
 		}
 
@@ -130,9 +141,10 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				id: this.id,
 				engine: 'postgres',
 				schema: this.schemaName,
-				// One key, the runtime role's. The owner URL is wired straight to the
-				// migrator by the adapter, so no edge in any manifest can name it.
-				provides: Object.values(this.config),
+				// One key, the runtime role's. `config` also holds the owner key and
+				// it is deliberately absent here: a key in `provides` is a key an
+				// edge can name, and nothing should be able to depend on DDL rights.
+				provides: [this.config.url],
 				...(this.roles ? {} : { roles: false }),
 			},
 		];
@@ -174,9 +186,35 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		});
 	}
 
-	private async connect(options: ServiceRegisterOptions): Promise<Kysely<DB>> {
-		const { url } = options.envParser
-			.create((get) => ({ url: get(this.config.url).string() }))
+	/**
+	 * A connection as the *owner* role — the one that may create, alter and drop.
+	 *
+	 * A `Service` rather than part of the construct, and deliberately so: a
+	 * construct is what `.dependsOn()` accepts, and nothing should be able to
+	 * depend on this. A migrator asks for it by name; a handler cannot ask at
+	 * all, which is the security property the role split exists for.
+	 *
+	 * Falls back to the runtime URL where no owner URL was published — the
+	 * `roles: false` downgrade, where there is only one credential and it is the
+	 * cluster master's.
+	 */
+	get owner(): Service<`${Uncapitalize<TName>}Owner`, Kysely<DB>> {
+		return {
+			serviceName:
+				`${serviceKey(this.id)}Owner` as `${Uncapitalize<TName>}Owner`,
+			register: (options) => this.connect(options, { owner: true }),
+		};
+	}
+
+	private async connect(
+		options: ServiceRegisterOptions,
+		as: { owner?: boolean } = {},
+	): Promise<Kysely<DB>> {
+		const { url, ownerUrl } = options.envParser
+			.create((get) => ({
+				url: get(this.config.url).string(),
+				ownerUrl: get(this.config.ownerUrl).string().optional(),
+			}))
 			.parse();
 
 		// Split what the manifest declared from what Kysely takes, so neither
@@ -186,7 +224,9 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 
 		return new Kysely<DB>({
 			...kysely,
-			dialect: new PostgresDialect({ pool: pool(url) }),
+			dialect: new PostgresDialect({
+				pool: pool(as.owner ? (ownerUrl ?? url) : url),
+			}),
 		});
 	}
 }
