@@ -10,46 +10,52 @@ picks up the ticket. Everything under "blocked on a decision" needs an answer
 before code, and the answer is not obvious from the codebase.
 
 **Status at the time of writing:** the construct half of the model is largely
-complete — twelve declaration kinds, and a construct for each one that needs it.
-The target adapters are not. The local target reconciles all twelve; the AWS
-target provisions six.
+complete — thirteen declaration kinds, and a construct for each one that needs
+it. The local target reconciles all thirteen; the AWS target provisions ten.
 
 ---
 
-## 1. The AWS target — six of twelve kinds
+## 1. The AWS target — ten of thirteen kinds
 
-`PROVISIONERS` in `packages/cloud/src/sst/fromManifest.ts` is the whole gap.
-Provisioned: `objects`, `file-server`, `site`, `queue`, `topic`, `secret`.
+`PROVISIONERS` in `packages/cloud/src/sst/fromManifest.ts` is what is left.
+Provisioned: `objects`, `file-server`, `site`, `queue`, `topic`, `secret`,
+`credential`, `database`, `database-reader`, `database-schema`. Missing:
+`cache`, `email`, `rest-api`.
 
 Nothing in this section has been deployed. The components are verified by their
 decisions being pure functions — `provisionerFor`, `assertProvides`,
-`siteEnvironment`, `isServed` are all assertable without Pulumi — and by parsing
-each composed URL back with the client's own codec. A stack has never come up.
+`siteEnvironment`, `isServed`, `bootstrapEvent` are all assertable without
+Pulumi — and by parsing each composed URL back with the client's own codec. A
+stack has never come up.
 
-### 1.1 `database`, `database-reader`, `database-schema` — *decision*
+### 1.1 `database`, `database-reader`, `database-schema` — **done**
 
-Two decisions, and neither is a detail.
+Both decisions answered themselves once SST's own components were read.
 
-**Open Question 4 in the design doc is still open.** `orders.reader()` declares
-a dependency on a reader endpoint without saying whether the adapter *creates* a
-replica or *points at* one — and on `--target=server` there may be no replica at
-all, in which case the reader URL should resolve to the writer rather than fail.
-Everything else about readers is settled.
+**Aurora Serverless v2, not an RDS instance.** The reason is the stage model
+rather than the engine: this design provisions per stage, which makes stages
+cheap to create and encourages having several — and a provisioned instance puts
+a fixed monthly floor under every one. Aurora defaults to `min: 0 ACU`. A
+steady-state production workload may be cheaper provisioned; that varies by
+stage and by month rather than by what the application *is*, so it lives in
+overrides, and switching replaces the cluster.
 
-**RDS instance versus Aurora Serverless v2 is unchosen.** This is a billing
-model, not a component swap: a fixed monthly floor against scale-to-zero. It
-belongs to whoever pays the bill, not to whoever writes the provisioner.
+**Nobody provisions the read replica** (Open Question 4). A reader endpoint is
+something an Aurora cluster *has*. Where a cluster runs one instance it resolves
+to that instance, which is safe because read-only is enforced by the reader
+role's grants, not by which endpoint was reached.
 
-`database-schema` provisions no AWS resource at all — it is DDL inside the
-parent, and its component only re-composes the parent's URL with a
-`search_path`. It follows whatever `database` becomes and needs no decision of
-its own.
+**The roles are created by a Lambda**, because SST provisions a cluster and
+nothing in Pulumi runs SQL. `DatabaseBootstrap` generates the passwords and one
+Secrets Manager secret *per tenant*, and a function inside the VPC applies
+`roleStatements` as the cluster master — the only credential that exists before
+any role does. Per-tenant secrets rather than one shared: a function that could
+read a shared secret could connect as any role, which is exactly what the split
+exists to prevent.
 
-**First step once decided:** `sst.aws.Postgres` (or `sst.aws.Aurora`) wrapped as
-a `Provisioned`, composing its URL with `postgresUrl.build` from
-`@geekmidas/db/pg/url` — the codec already exists, and `@geekmidas/cloud` would
-take `@geekmidas/db` as an optional peer the way it already takes `storage` and
-`events`.
+Still open here: **nothing has been deployed**, so the bootstrap is unverified
+end to end (see §8). And roles are cluster-scoped in Postgres, so two stages
+sharing one cluster would collide — every stage currently gets its own.
 
 ### 1.2 `cache` — *decision*
 
@@ -111,51 +117,33 @@ means threading the constructs through every copy-on-write branch of the factory
 
 ---
 
-## 3. `Credential` — *decided this session, unbuilt*
+## 3. `Credential` — **done**
 
-Open Question 1 ("where does `Secret` sit?") is answered: **it becomes
-`Credential`, and it accepts a StandardSchema.**
+Open Question 1 is closed. `Credential` sits *beside* `Secret` rather than
+replacing it, because the two differ by lifecycle and that is the only
+difference worth two kinds for: a secret is generated and rotated by the
+platform and is one opaque string; a credential is issued by someone else,
+arrives with several fields, and is validated on the way in.
 
 ```ts
 export const stripe = new Credential('Stripe', {
   schema: z.object({ secretKey: z.string(), webhookSecret: z.string() }),
 });
 
-// in a handler — no await, already parsed and validated
-services.stripe.secretKey
+services.stripe.secretKey   // no await — already parsed and validated
 ```
 
-**The async question is already answered by an existing seam.**
-`Service.register()` returns `TInstance | Promise<TInstance>`, and
-`ServiceDiscovery.register()` awaits every one before a handler runs
-(`packages/services/src/ServiceDiscovery.ts:123`). So a fetch and a validation
-both happen in `connect()`, and application code never sees a promise —
-including when StandardSchema's `~standard.validate` returns one itself.
+The async question needed no new machinery: `ServiceDiscovery` already awaits
+every `register()` before a handler runs, so the fetch and the validation both
+happen in that seam. One key holding JSON, because that is what a secret manager
+stores and the only shape an arbitrary StandardSchema supports — the spec has no
+introspection API. Resolved once per process, holding the *promise* so
+concurrent registrations share one resolution; `refresh: true` for a credential
+that rotates faster than a restart.
 
-**Where the value comes from follows the rule the design already has:** the
-protocol picks the resolver, exactly as `<NAME>_URL` picks a driver.
-
-```
-STRIPE_CREDENTIAL = json:{"secretKey":"sk_…"}       # inlined — local, gkm secrets
-STRIPE_CREDENTIAL = ssm:///myapp/prod/stripe        # fetched at register
-STRIPE_CREDENTIAL = secretsmanager://arn:aws:…      # fetched at register
-```
-
-One key holding a JSON blob, which is also the shape Secrets Manager stores.
-**Rejected:** deriving flat keys (`STRIPE_SECRET_KEY`) from the schema, because
-StandardSchema v1 has no introspection API — enumerating a schema's keys means
-reaching for `.shape` and being Zod-only.
-
-Two things to settle while building it:
-
-- **Memoisation.** The resolved value should be cached per process, or it is a
-  network call per request — which means a rotated secret needs a restart. A TTL
-  is the escape hatch if that bites; it should not be the default.
-- **It is the first construct whose client is plain data** rather than a
-  connection. That seems fine and is worth stating rather than discovering.
-
-Open: whether the `secret` kind survives alongside `credential`, or whether a
-signing key is just a `Credential` with a one-field schema.
+**Still open:** only the value-inline path exists. `ssm://` and
+`secretsmanager://` resolution at registration is designed and unbuilt — and
+largely unnecessary on SST, which injects the value through the link.
 
 ---
 
@@ -292,17 +280,17 @@ found only by running `tsc` against the file directly.
 Vitest transpiles without checking, so these errors surface nowhere. Either
 include specs in a check, or add a separate `tsconfig.test.json` to the pipeline.
 
-### 7.3 Two spellings of `search_path` — *work, small*
+### 7.3 Two spellings of `search_path` — **resolved**
 
-The local target writes `postgres://…?search_path=authdb`
-(`packages/cli/src/reconcile/env.ts`), and `@geekmidas/db/pg/url` writes the
-libpq-correct `?options=-c search_path=…`. Both work — `KyselyDatabase`'s `pool()`
-translates the first, and `pg` understands the second natively — but they are two
-spellings of one fact.
+Neither spelling survives. `search_path` is now pinned on the *role* by
+`ALTER ROLE … SET search_path` and leaves the URL entirely, except for the
+cluster master, which has no role of its own to pin it on. A connection string
+that has to remember it is one that eventually forgets, and the forgetting looks
+like an empty database rather than an error.
 
-The fix is for the local target to build through the codec, which means
-`@geekmidas/cli` taking a dependency on `@geekmidas/db` — a real layering
-decision for one function, which is why it was not done in passing.
+`@geekmidas/cli` does now depend on `@geekmidas/db`, for the shared role and URL
+generators — the layering question that had held this up, answered by there
+being two callers rather than one.
 
 ### 7.4 Test suites that need containers — *environment*
 
@@ -333,10 +321,16 @@ Stated plainly, because "tests pass" and "it works" are different claims.
   target's six provisioners are verified as pure decisions, not as a stack.
 - **The file server has not run against MinIO.** Docker was not up. The bucket
   policy is asserted as a document, not as an applied policy.
-- **kitchen-sink has not been re-run end to end** since the API, file server and
-  auth surface changes. It was verified end to end from an empty volume in an
-  earlier session — magic-link sign-in through Mailpit, presigned MinIO upload,
-  pg-boss fan-out, cache in Redis — but not since.
+- **kitchen-sink has not been re-run end to end** since the API, file server,
+  auth surface and role changes. It was verified end to end from an empty volume
+  in an earlier session — magic-link sign-in through Mailpit, presigned MinIO
+  upload, pg-boss fan-out, cache in Redis — but not since. The role change is the
+  one most worth re-running: every local URL now carries a derived per-role
+  credential rather than the cluster master, and an existing dev database has
+  tables owned by the old one.
+- **The database bootstrap has never run.** Its decisions are asserted as pure
+  data — the event it composes is fed straight into the DDL generator in a test
+  — but no Lambda has connected to a real cluster.
 
 ---
 
@@ -345,11 +339,14 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
 bill and the security model, and the rest follows them.
 
-1. **§3 `Credential`** — decided, self-contained, and closes an open question.
-2. **§5 kitchen-sink frontend** — makes four already-built derivations observable
+1. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
+   in the repo, and everything below is easier to trust once one stack has come
+   up. Re-running kitchen-sink locally against the new roles is the same point
+   in miniature and costs minutes.
+2. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
+   is the largest remaining piece of correctness debt in the model.
+3. **§5 kitchen-sink frontend** — makes four already-built derivations observable
    rather than merely tested, and is cheap.
-3. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
-   is the largest piece of correctness debt in the model.
-4. **§1.1 `database`** — once the replica and RDS/Aurora questions are answered.
-   Nothing meaningful deploys without it.
-5. **§7.2 and §7.3** — small, and §7.2 is the kind of gap that hides others.
+4. **§1.2 and §1.3** — the cache and email decisions, which are still nobody's
+   but yours.
+5. **§7.2** — small, and the kind of gap that hides others.
