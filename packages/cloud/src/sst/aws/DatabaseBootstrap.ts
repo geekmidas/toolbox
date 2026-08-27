@@ -12,11 +12,20 @@ import type { Database } from './Database';
  * the DDL is a Lambda invoked once per deploy, inside the VPC, connecting as the
  * cluster master — the only credential that exists before any role does.
  *
- * **One secret per tenant, not one holding all of them.** A shared secret would
- * defeat the thing the role split exists for: a function that could read it
- * could connect as *any* role, so the application's role could not read the auth
- * schema's tables but could read the auth schema's password. Per-tenant keeps
- * IAM able to grant exactly one, and keeps rotation per-tenant too.
+ * **One secret for the cluster, holding every role in it.** The obvious worry —
+ * that a shared secret lets anything holding it connect as any role — describes
+ * a read that does not happen. No function fetches a credential: each node's URL
+ * is carried in its own link (`getSSTLink` publishes `provides()` and nothing
+ * else), so a handler is *given* exactly its own role and has no IAM to read
+ * Secrets Manager at all. Splitting the secret would not narrow runtime
+ * privilege, because runtime never touches it.
+ *
+ * What the secret is actually for is out-of-band access — a person with
+ * break-glass, an external tool, a rotation job. That is where the case for
+ * splitting it lives, and it is a real one: per-tenant secrets are what let IAM
+ * grant somebody the reporting role's password without also handing them the
+ * auth schema's. Nothing here needs that yet, and one secret is one resource and
+ * one place to look, so it stays one until somebody has that second reader.
  *
  * :::caution
  * Not verified against a live deploy. The shape is sound and every decision in
@@ -27,8 +36,13 @@ export class DatabaseBootstrap {
 	/** The generated passwords, by role name. */
 	private readonly passwords = new Map<string, $util.Output<string>>();
 
-	/** The per-tenant secrets, by construct id. */
-	readonly secrets = new Map<string, secretsmanager.Secret>();
+	/**
+	 * The cluster's credentials, for out-of-band use.
+	 *
+	 * Created by `run()` rather than by `add()`, because it holds every tenant
+	 * and there is no every-tenant until the last one is added.
+	 */
+	secret?: secretsmanager.Secret;
 
 	private readonly tenants: BootstrapTenant[] = [];
 
@@ -55,32 +69,6 @@ export class DatabaseBootstrap {
 		const runtime = this.password(tenant.runtime);
 		const owner = this.password(tenant.owner);
 		const reader = tenant.reader ? this.password(tenant.reader) : undefined;
-
-		this.secrets.set(
-			tenant.id,
-			new secretsmanager.Secret(`${this.name}${tenant.id}Credentials`, {
-				// The construct id in the name, because the point of one secret per
-				// tenant is that a human granting access can tell which is which.
-				namePrefix: `${this.name}/${tenant.id}/`,
-				description: `Database roles for ${tenant.id}`,
-			}),
-		);
-
-		new secretsmanager.SecretVersion(
-			`${this.name}${tenant.id}CredentialsValue`,
-			{
-				secretId: this.secrets.get(tenant.id)!.id,
-				secretString: $util
-					.all([runtime, owner, reader ?? $util.output('')])
-					.apply(([runtimeValue, ownerValue, readerValue]) =>
-						JSON.stringify({
-							runtime: runtimeValue,
-							owner: ownerValue,
-							...(readerValue ? { reader: readerValue } : {}),
-						}),
-					),
-			},
-		);
 
 		this.tenants.push({
 			id: tenant.id,
@@ -173,6 +161,8 @@ export class DatabaseBootstrap {
 	run(vpc: sst.aws.AuroraArgs['vpc']): void {
 		if (this.empty) return;
 
+		this.storeCredentials();
+
 		const fn = new sst.aws.Function(`${this.name}Bootstrap`, {
 			// Shipped by this package rather than by the application: the DDL is
 			// the framework's, and an app that had to carry a bootstrap handler
@@ -194,6 +184,43 @@ export class DatabaseBootstrap {
 		new aws.lambda.Invocation(`${this.name}BootstrapRun`, {
 			functionName: fn.name,
 			input: this.event(),
+		});
+	}
+
+	/**
+	 * Write every role's password to one secret, for out-of-band use.
+	 *
+	 * Nothing at runtime reads this — a handler is given its own URL through its
+	 * link — so this exists for a person with break-glass, an external tool, or a
+	 * rotation job. Keyed by role name rather than by tenant, because a role name
+	 * is what somebody at a `psql` prompt actually has in hand.
+	 *
+	 * Note what this is *not*: the source of truth. The passwords are generated
+	 * here and this records them. Making the secret authoritative — read at
+	 * deploy, so rotating it in Secrets Manager propagates on the next deploy —
+	 * is a better rotation story and a different design: it needs a first-deploy
+	 * seed, and changing a value there does not change the role until the DDL
+	 * runs again.
+	 */
+	private storeCredentials(): void {
+		this.secret = new secretsmanager.Secret(`${this.name}Credentials`, {
+			namePrefix: `${this.name}/roles/`,
+			description: `Database roles for ${this.name}`,
+		});
+
+		const roles = [...this.passwords.keys()];
+
+		new secretsmanager.SecretVersion(`${this.name}CredentialsValue`, {
+			secretId: this.secret.id,
+			secretString: $util
+				.all(roles.map((role) => this.passwords.get(role)!))
+				.apply((values) =>
+					JSON.stringify(
+						Object.fromEntries(
+							roles.map((role, index) => [role, values[index]]),
+						),
+					),
+				),
 		});
 	}
 

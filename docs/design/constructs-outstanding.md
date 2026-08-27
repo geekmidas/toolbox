@@ -46,12 +46,23 @@ to that instance, which is safe because read-only is enforced by the reader
 role's grants, not by which endpoint was reached.
 
 **The roles are created by a Lambda**, because SST provisions a cluster and
-nothing in Pulumi runs SQL. `DatabaseBootstrap` generates the passwords and one
-Secrets Manager secret *per tenant*, and a function inside the VPC applies
-`roleStatements` as the cluster master — the only credential that exists before
-any role does. Per-tenant secrets rather than one shared: a function that could
-read a shared secret could connect as any role, which is exactly what the split
-exists to prevent.
+nothing in Pulumi runs SQL. `DatabaseBootstrap` generates the passwords and a
+function inside the VPC applies `roleStatements` as the cluster master — the
+only credential that exists before any role does.
+
+**One secret for the cluster, holding every role.** The worry that a shared
+secret lets anything holding it become any role describes a read that does not
+happen: no function fetches a credential, because each node publishes only its
+own URL through its own link, so a handler is *given* its role and has no IAM to
+read Secrets Manager at all. What the secret is for is out-of-band use — a
+person with break-glass, an external tool, a rotation job — and that is where
+the case for splitting it lives: per-tenant secrets are what let IAM grant
+somebody one role's password without the others. Nothing needs that yet.
+
+Worth knowing: the secret **records** the generated passwords rather than being
+the source of truth. Making it authoritative — read at deploy, so rotating it
+propagates on the next one — is a better rotation story and a different design,
+needing a first-deploy seed and a DDL re-run to make a changed value real.
 
 Still open here: **nothing has been deployed**, so the bootstrap is unverified
 end to end (see §8). And roles are cluster-scoped in Postgres, so two stages

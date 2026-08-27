@@ -22,9 +22,11 @@ describe('DatabaseBootstrap', () => {
 		expect(new DatabaseBootstrap('Orders', cluster()).empty).toBe(true);
 	});
 
-	it('gives every tenant a secret of its own', () => {
-		// A shared secret defeats the thing the role split exists for: a function
-		// that could read it could connect as any role.
+	it('creates nothing merely by registering a tenant', () => {
+		// The reason one secret is enough: nothing reads it at runtime. A node
+		// publishes only its own URL through its link, so a handler is *given* its
+		// role and has no IAM to read Secrets Manager at all. The secret is for
+		// out-of-band use and is written once, by `run()`.
 		const bootstrap = bootstrapWith([
 			{
 				id: 'AuthDb',
@@ -35,7 +37,8 @@ describe('DatabaseBootstrap', () => {
 			{ id: 'Jobs', schema: 'jobs', runtime: 'jobs', owner: 'jobs_owner' },
 		]);
 
-		expect([...bootstrap.secrets.keys()].sort()).toEqual(['AuthDb', 'Jobs']);
+		expect(bootstrap.secret).toBeUndefined();
+		expect(bootstrap.empty).toBe(false);
 	});
 
 	it('has no reader credential unless a reader was asked for', () => {
