@@ -27,6 +27,7 @@ export type {
 	ConstructId,
 	ConstructManifest,
 	ConstructName,
+	CredentialDeclaration,
 	DatabaseDeclaration,
 	DatabaseReaderDeclaration,
 	DatabaseSchemaDeclaration,

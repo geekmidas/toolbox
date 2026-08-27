@@ -26,6 +26,7 @@ import {
 	providedKeyFor,
 	provisionOrder,
 } from '@geekmidas/manifest';
+import { Credential } from './aws/Credential';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
@@ -152,6 +153,9 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	topic: (stack, d, props) => new Topic(stack, d.id, props),
 
 	secret: (stack, d, props) => new Secret(stack, d.id, props),
+
+	// The same storage as a secret, under a different role — see the component.
+	credential: (stack, d, props) => new Credential(stack, d.id, props),
 };
 
 /**

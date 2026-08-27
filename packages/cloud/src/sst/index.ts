@@ -8,6 +8,7 @@ export {
 	type LambdaAuthorizer,
 	type Route,
 } from './aws/Api';
+export { Credential, type CredentialProps } from './aws/Credential';
 export {
 	Cron,
 	type CronExpression,

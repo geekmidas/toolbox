@@ -208,6 +208,26 @@ export interface SecretDeclaration extends Node {
 }
 
 /**
+ * A third-party credential with a shape.
+ *
+ * Distinct from {@link SecretDeclaration} by *lifecycle*, which is the only
+ * distinction worth having two kinds for. A secret is generated and rotated by
+ * the platform — `gkm secrets`, `sst secret set` — and is one opaque string
+ * whose name is its key. A credential is issued by someone else, arrives with
+ * several fields, and is validated on the way in: a Stripe key pair, an OAuth
+ * client, a webhook signing secret.
+ *
+ * It provides one key holding a JSON object, rather than one key per field.
+ * That is what a secret manager actually stores, and it is also the only shape
+ * that works with an arbitrary StandardSchema — the spec has no introspection
+ * API, so enumerating a schema's fields means reaching into one library's
+ * internals and being wrong for every other.
+ */
+export interface CredentialDeclaration extends Node {
+	kind: 'credential';
+}
+
+/**
  * A key/value cache.
  *
  * Provides one URL carrying its own token, because a cache is reached over the
@@ -342,6 +362,7 @@ export type Declaration =
 	| DatabaseSchemaDeclaration
 	| CacheDeclaration
 	| SecretDeclaration
+	| CredentialDeclaration
 	| RestApiDeclaration
 	| SiteDeclaration
 	| QueueDeclaration
@@ -483,6 +504,11 @@ export interface ProvidesByKind {
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
 	/**
+	 * The credential as one JSON object, parsed and validated by the construct
+	 * that declared the schema.
+	 */
+	credential: { credential: string };
+	/**
 	 * The producer's connection string. One key, not two: the consumer is
 	 * reached through the queue rather than by an address of its own.
 	 */
@@ -520,6 +546,9 @@ export const PUBLIC: {
 	cache: [],
 	// The whole point of one.
 	secret: [],
+	// A credential a browser can read is a credential anyone can read. A
+	// publishable key belongs in the site's own config, not in this.
+	credential: [],
 	// A URL a browser calls is a URL a browser may hold. The other two are not
 	// secret either — they are simply server-side facts, and prefixing a value
 	// into a bundle that nothing there reads is how a bundle grows keys nobody

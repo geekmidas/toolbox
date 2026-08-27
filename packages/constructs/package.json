@@ -164,6 +164,16 @@
 				"default": "./dist/cache.cjs"
 			}
 		},
+		"./credential": {
+			"import": {
+				"types": "./dist/credential.d.mts",
+				"default": "./dist/credential.mjs"
+			},
+			"require": {
+				"types": "./dist/credential.d.cts",
+				"default": "./dist/credential.cjs"
+			}
+		},
 		"./auth": {
 			"import": {
 				"types": "./dist/auth.d.mts",

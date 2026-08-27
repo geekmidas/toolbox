@@ -243,3 +243,22 @@ describe('the key a provided role becomes', () => {
 		).not.toThrow();
 	});
 });
+
+describe('Credential', () => {
+	it('provides under the role the declaration named', async () => {
+		// The role *is* the contract: providing `value` against a declared
+		// `STRIPE_CREDENTIAL` supplies `STRIPE_VALUE`, and assertProvides
+		// rejects the stack at synth. Which is the check working.
+		const { Credential } = await import('../aws/Credential');
+
+		expect(
+			Object.keys(new Credential({} as never, 'Stripe').provides()),
+		).toEqual(['credential']);
+	});
+
+	it('agrees with what the construct declares', () => {
+		expect(providedKeyFor('Stripe', 'credential', 'credential')).toBe(
+			'STRIPE_CREDENTIAL',
+		);
+	});
+});

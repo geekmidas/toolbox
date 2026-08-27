@@ -269,6 +269,14 @@ function urlFor(
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
 
+	// A credential resolves to nothing here, deliberately. A secret is derived
+	// because the platform owns it; a credential was issued by a third party, so
+	// inventing a value would produce a Stripe key that is not a Stripe key and
+	// fail at the first call rather than at the first read. It comes from
+	// `gkm secrets` or `.env` like any other supplied value, and the construct's
+	// own schema is what reports it missing.
+	if (resource.kind === 'credential') return undefined;
+
 	// A surface answers on the app's own port, and a site on its dev server's —
 	// both assigned by the workspace, neither published by a container.
 	if (resource.kind === 'rest-api' || resource.kind === 'site') {

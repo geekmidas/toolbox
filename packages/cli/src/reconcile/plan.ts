@@ -55,6 +55,9 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
  */
 const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	secret: true,
+	// A credential has no address either — and unlike a secret it has no value
+	// this target can derive, because it was issued by somebody else.
+	credential: true,
 	// A surface answers on the app's own port. It is the first kind whose
 	// address belongs to something gkm starts rather than something Docker does.
 	'rest-api': true,
@@ -84,6 +87,7 @@ const REQUIRES: Readonly<Record<string, readonly string[]>> = {
 const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
+	credential: 'credential',
 };
 
 /** The kinds whose container is the events backend's rather than their own. */

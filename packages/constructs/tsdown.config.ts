@@ -8,6 +8,7 @@ export default defineConfig({
 		'src/object-storage.ts',
 		'src/file-server.ts',
 		'src/cache.ts',
+		'src/credential.ts',
 		'src/auth.ts',
 		'src/rest-api.ts',
 		'src/site.ts',
