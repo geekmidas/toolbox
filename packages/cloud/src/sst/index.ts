@@ -11,7 +11,7 @@ export {
 export {
 	Cache,
 	CacheNeedsDatabase,
-	CacheNeedsUrl,
+	CacheNeedsProvider,
 	CacheNeedsVpc,
 	type CacheProps,
 } from './aws/Cache';

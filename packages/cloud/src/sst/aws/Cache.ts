@@ -16,9 +16,11 @@ import type { StackType } from '../Stack';
  *   already declared, so this resolves that database's URL and the table is
  *   created by the same thing that creates the schema. No second resource, no
  *   second credential, and nothing to pay for while idle.
- * - **`upstash`** provisions nothing either, and for a different reason: it is a
- *   SaaS account rather than infrastructure in yours. The URL is supplied — set
- *   it with `sst secret set` — which is the same shape a `Credential` has.
+ * - **`upstash`** provisions a Redis database through Upstash's own Pulumi
+ *   provider, which SST installs on demand: `sst add upstash`. It is not one of
+ *   the two providers SST preloads, so the component checks for its global and
+ *   says which command is missing rather than failing on an undefined name. A
+ *   URL can still be supplied instead, for a database that already exists.
  * - **`elasticache`** is the one that creates something, and it comes with the
  *   constraints of a thing in a VPC: it is reachable from functions in that VPC
  *   and from nothing else.
@@ -42,7 +44,56 @@ export class Cache<
 		props: CacheProps,
 	) {
 		this._id = name;
-		this.url = props.url ?? this.provisionElastiCache(name, props);
+		this.url = props.url ?? this.provision(name, props);
+	}
+
+	/**
+	 * Create the cache, for the two backends that can be created.
+	 *
+	 * `db` never reaches here — it resolves the declared database's URL, which
+	 * the caller passes in as `url`.
+	 */
+	private provision(name: string, props: CacheProps): $util.Input<string> {
+		return props.backend === 'upstash'
+			? this.provisionUpstash(name, props)
+			: this.provisionElastiCache(name, props);
+	}
+
+	/**
+	 * An Upstash Redis database, over HTTP.
+	 *
+	 * The default backend, because HTTP with a token is reachable from a Lambda
+	 * with no VPC and no connection pool — the same argument that makes it worth
+	 * running a proxy in front of Redis locally so both speak one protocol.
+	 *
+	 * The token goes in the URL's userinfo rather than a second key, because an
+	 * address and the credential that opens it are one fact.
+	 */
+	private provisionUpstash(
+		name: string,
+		props: CacheProps,
+	): $util.Input<string> {
+		// Upstash is installed on demand rather than preloaded, so its global is
+		// absent until `sst add upstash` has run. Checking for it turns an
+		// undefined-name crash into a sentence naming the command.
+		if (typeof upstash === 'undefined') throw new CacheNeedsProvider(name);
+
+		const database = new upstash.RedisDatabase(`${name}Cache`, {
+			databaseName: name,
+			// `global` needs a primary region named alongside it, so a plain
+			// region is the default that needs no second decision.
+			region: props.region ?? 'eu-west-1',
+			// In transit, always. The client speaks HTTPS either way, and a cache
+			// reachable unencrypted over the public internet is not one.
+			tls: true,
+		});
+
+		return $util
+			.all([database.endpoint, database.restToken])
+			.apply(
+				([endpoint, token]) =>
+					`https://:${encodeURIComponent(token)}@${endpoint}`,
+			);
 	}
 
 	/**
@@ -90,6 +141,10 @@ export class Cache<
 }
 
 export interface CacheProps {
+	/** Which backend to create. `db` never creates anything and never gets here. */
+	backend?: 'upstash' | 'elasticache' | 'db';
+	/** The region to create an Upstash database in. */
+	region?: string;
 	/**
 	 * The cache's URL, whose scheme picks the driver.
 	 *
@@ -144,21 +199,20 @@ export class CacheNeedsDatabase extends Error {
 }
 
 /**
- * An Upstash-backed cache with no URL set.
+ * An Upstash cache was declared and Upstash's provider is not installed.
  *
- * Upstash is an account somebody creates, not infrastructure this provisions —
- * so the URL is an input, and its absence is a missing setup step rather than
- * something to default. Failing at synth names it; defaulting would produce a
- * cache that resolves and never answers.
+ * SST preloads two providers and installs the rest on demand, so the global this
+ * component reaches for does not exist until somebody runs the command. Naming
+ * the command beats an undefined-name crash halfway through a synth.
  */
-export class CacheNeedsUrl extends Error {
+export class CacheNeedsProvider extends Error {
 	constructor(readonly id: string) {
 		super(
-			`'${id}' is an Upstash cache and no URL was supplied for it. Upstash ` +
-				`is an account rather than something to provision, so set the URL ` +
-				`with \`sst secret set\` and pass it through the deploy layer — ` +
+			`'${id}' is an Upstash cache and the Upstash provider is not ` +
+				`installed. Run \`sst add upstash\` in the app, or supply a URL for ` +
+				`a database that already exists — ` +
 				`fromManifest(stack, manifest, { ${id}: { url } }).`,
 		);
-		this.name = 'CacheNeedsUrl';
+		this.name = 'CacheNeedsProvider';
 	}
 }

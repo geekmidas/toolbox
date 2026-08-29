@@ -27,12 +27,7 @@ import {
 	providedKeyFor,
 	provisionOrder,
 } from '@geekmidas/manifest';
-import {
-	Cache,
-	CacheNeedsDatabase,
-	CacheNeedsUrl,
-	type CacheProps,
-} from './aws/Cache';
+import { Cache, CacheNeedsDatabase, type CacheProps } from './aws/Cache';
 import { Credential } from './aws/Credential';
 import { Database, DatabaseNeedsVpc } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
@@ -256,21 +251,17 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const supplied = props as {
 			url?: $util.Input<string>;
 			vpc?: CacheProps['vpc'];
+			region?: string;
 		};
 
-		if (backend === 'elasticache') {
-			// The one backend that creates something. It composes its own URL from
-			// the cluster it made, so nothing is supplied but the VPC.
-			return new Cache(stack, d.id, {
-				...(supplied.vpc ? { vpc: supplied.vpc } : {}),
-			});
-		}
-
-		// Upstash is an account, not infrastructure — so the URL is an input, and
-		// its absence is a missing setup step rather than something to default.
-		if (!supplied.url) throw new CacheNeedsUrl(d.id);
-
-		return new Cache(stack, d.id, { url: supplied.url });
+		// Both remaining backends create something, and both take a URL instead
+		// for a cache that already exists.
+		return new Cache(stack, d.id, {
+			backend,
+			...(supplied.url ? { url: supplied.url } : {}),
+			...(supplied.vpc ? { vpc: supplied.vpc } : {}),
+			...(supplied.region ? { region: supplied.region } : {}),
+		});
 	},
 
 	email: (stack, d, props, context) => {

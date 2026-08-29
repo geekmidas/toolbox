@@ -1,6 +1,10 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { CacheNeedsDatabase, CacheNeedsUrl, CacheNeedsVpc } from '../aws/Cache';
+import {
+	CacheNeedsDatabase,
+	CacheNeedsProvider,
+	CacheNeedsVpc,
+} from '../aws/Cache';
 import { EmailNeedsUrl } from '../aws/Email';
 import { type ProvisionContext, provisionerFor } from '../fromManifest';
 
@@ -52,12 +56,24 @@ describe('cache', () => {
 		).toThrow(CacheNeedsDatabase);
 	});
 
-	it('refuses to invent an Upstash URL', () => {
-		// Upstash is an account somebody creates, not infrastructure this
-		// provisions — so its absence is a missing step, not a default.
+	it('names the command when Upstash’s provider is not installed', () => {
+		// SST preloads two providers and installs the rest on demand, so the
+		// global this reaches for is absent until somebody runs the command.
+		// Naming it beats an undefined-name crash halfway through a synth.
 		expect(() =>
 			provisionerFor('cache')(stack, manifest.Sessions, {}, context()),
-		).toThrow(CacheNeedsUrl);
+		).toThrow(CacheNeedsProvider);
+	});
+
+	it('takes a URL instead, for a database that already exists', () => {
+		const cache = provisionerFor('cache')(
+			stack,
+			manifest.Sessions,
+			{ url: 'https://:token@eu1.upstash.io' },
+			context(),
+		);
+
+		expect(cache.provides().url).toBe('https://:token@eu1.upstash.io');
 	});
 
 	it('refuses an ElastiCache cache with no VPC', () => {
@@ -71,17 +87,6 @@ describe('cache', () => {
 				context({ cache: 'elasticache' }),
 			),
 		).toThrow(CacheNeedsVpc);
-	});
-
-	it('takes the URL it was given', () => {
-		const cache = provisionerFor('cache')(
-			stack,
-			manifest.Sessions,
-			{ url: 'https://token@eu1.upstash.io' },
-			context(),
-		);
-
-		expect(cache.provides().url).toBe('https://token@eu1.upstash.io');
 	});
 });
 
