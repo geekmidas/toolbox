@@ -11,16 +11,14 @@ before code, and the answer is not obvious from the codebase.
 
 **Status at the time of writing:** the construct half of the model is largely
 complete — thirteen declaration kinds, and a construct for each one that needs
-it. The local target reconciles all thirteen; the AWS target provisions ten.
+it. The local target reconciles all thirteen; the AWS target provisions twelve.
 
 ---
 
-## 1. The AWS target — ten of thirteen kinds
+## 1. The AWS target — twelve of thirteen kinds
 
-`PROVISIONERS` in `packages/cloud/src/sst/fromManifest.ts` is what is left.
-Provisioned: `objects`, `file-server`, `site`, `queue`, `topic`, `secret`,
-`credential`, `database`, `database-reader`, `database-schema`. Missing:
-`cache`, `email`, `rest-api`.
+`rest-api` is the only kind left, and it is blocked on §2 rather than on a
+decision.
 
 Nothing in this section has been deployed. The components are verified by their
 decisions being pure functions — `provisionerFor`, `assertProvides`,
@@ -68,31 +66,52 @@ Still open here: **nothing has been deployed**, so the bootstrap is unverified
 end to end (see §8). And roles are cluster-scoped in Postgres, so two stages
 sharing one cluster would collide — every stage currently gets its own.
 
-### 1.2 `cache` — *decision*
+### 1.2 `cache` — **done**
 
-There is no AWS answer that keeps the client identical.
+`services.cache: 'upstash' | 'elasticache' | 'db'`, defaulting to Upstash. The
+same application code caches into any of them, which is why it is config beside
+`services.events` rather than a field on the construct.
 
-The local target runs `serverless-redis-http` in front of Redis *precisely so*
-that dev and prod speak the same protocol — the client is Upstash's HTTP API in
-both. ElastiCache does not speak it. So provisioning a cache on AWS means either
+Cache backends genuinely differ — Upstash speaks HTTP, Redis its wire protocol,
+a table SQL — so unlike email the client *does* change, and the scheme picks the
+driver exactly as it does for object storage. The driver modules are the lazy
+boundary: an app caching in Postgres never resolves `ioredis`, one caching in
+Upstash resolves neither it nor `pg`, and the generated entry registers precisely
+one, keyed off the backend.
 
-- an **Upstash provider dependency** and its credentials in the deploy path, or
-- **ElastiCache and a second client**, which gives up the property the local
-  proxy exists to preserve, or
-- **leaving `cache` unprovisioned on AWS**, treating the cache as externally
-  managed and injected as a URL — which is honest and is what many teams do.
+Each backend is consistent between local and deployed, which is the property
+worth having: `upstash` runs the HTTP proxy locally, `elasticache` runs plain
+Redis, and `db` runs nothing at all.
 
-### 1.3 `email` — *decision, then real work*
+Deployed, only `elasticache` provisions anything (a serverless Valkey cache, for
+the same reason the database is Aurora Serverless). `db` resolves the declared
+database's URL; `upstash` is an account rather than infrastructure, so its URL is
+an input and `CacheNeedsUrl` says so rather than defaulting.
 
-The declaration promises an `smtp://` URL, because that is what is true of email
-whoever delivers it. SES has an SMTP interface, so the shape holds — but its
-SMTP password is a *signed derivation* of an IAM secret access key, not a value
-the API hands back. So the provisioner is an SES identity, an IAM user, an
-access key, and a derivation, rather than one component.
+One interaction worth remembering: the Postgres cache does **not** create its
+table lazily. A handler's role may not create anything, so the DDL is exported
+and applied by whatever applies DDL — the same split `roles.ts` uses.
 
-The decision underneath it: whether `--target=aws` should provision that chain
-at all, or whether a sending identity is stage config that arrives as a URL like
-any other credential.
+### 1.3 `email` — **done**
+
+`services.mail: 'resend' | 'ses' | 'smtp'`, defaulting to Resend, and it changes
+almost nothing — which is the declaration being right. Every backend speaks SMTP,
+so the `smtp://` URL is true of all of them and the client never changes. Only
+who issues the credential differs.
+
+`resend` and `smtp` compose a URL from a value you hold. `ses` is the only one
+that provisions a chain — an identity, a user, an access key, and a password
+*derived* from that key, because SES issues IAM credentials and documents the
+arithmetic rather than issuing SMTP passwords.
+
+**How far the derivation is verified, stated because it matters.** The recipe
+was taken from AWS's own page and matches step for step. AWS publishes no worked
+example, so there is no golden value to assert against; the tests check the
+properties the recipe implies — the version byte survives, it is deterministic,
+it changes with key and with region. A wrong password fails at the first send,
+long after the stack reported success. The same page also gave a guard worth
+having: not every region has an SMTP endpoint, and deriving for one that does not
+produces a credential that can never work.
 
 ### 1.4 `rest-api` — *blocked on §2*
 
@@ -342,6 +361,12 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 - **The database bootstrap has never run.** Its decisions are asserted as pure
   data — the event it composes is fed straight into the DDL generator in a test
   — but no Lambda has connected to a real cluster.
+- **No mail has been sent through SES**, so the SMTP password derivation is
+  verified against the documented algorithm and not against the service. See
+  §1.3.
+- **No cache backend has run outside its tests.** In particular the Postgres
+  cache's table DDL has never been applied, and the ElastiCache cluster has
+  never been created.
 
 ---
 
@@ -358,6 +383,4 @@ bill and the security model, and the rest follows them.
    is the largest remaining piece of correctness debt in the model.
 3. **§5 kitchen-sink frontend** — makes four already-built derivations observable
    rather than merely tested, and is cheap.
-4. **§1.2 and §1.3** — the cache and email decisions, which are still nobody's
-   but yours.
-5. **§7.2** — small, and the kind of gap that hides others.
+4. **§7.2** — small, and the kind of gap that hides others.
