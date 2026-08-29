@@ -27,10 +27,17 @@ import {
 	providedKeyFor,
 	provisionOrder,
 } from '@geekmidas/manifest';
+import {
+	Cache,
+	CacheNeedsDatabase,
+	CacheNeedsUrl,
+	type CacheProps,
+} from './aws/Cache';
 import { Credential } from './aws/Credential';
 import { Database, DatabaseNeedsVpc } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
+import { Email } from './aws/Email';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
@@ -82,6 +89,16 @@ export interface ProvisionContext {
 	 * is a function invoked after everything it operates on exists.
 	 */
 	bootstraps: Map<string, DatabaseBootstrap>;
+	/**
+	 * Where a declared cache lives, and who delivers mail.
+	 *
+	 * Deployment choices rather than declarations, for the same reason
+	 * `services.events` is: the same application code caches into any of them and
+	 * sends through any of them. They reach the provisioner here because it is
+	 * the only place that knows both the choice and the manifest.
+	 */
+	cache?: 'upstash' | 'elasticache' | 'db';
+	email?: 'resend' | 'ses' | 'smtp';
 }
 
 type Provisioner = (
@@ -216,6 +233,59 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 					? { user: runtime, password: credentials.runtime }
 					: undefined,
 			);
+		});
+	},
+
+	cache: (stack, d, props, context) => {
+		const backend = context.cache ?? 'upstash';
+
+		if (backend === 'db') {
+			// The database the app already declared. Resolving its URL rather than
+			// composing a new one is what makes this backend free: same address,
+			// same role, one more table.
+			const database = Object.entries(context.manifest).find(
+				([, declaration]) => declaration.kind === 'database',
+			);
+			const provisioned = database && context.provisioned[database[0]];
+
+			if (!provisioned) throw new CacheNeedsDatabase(d.id);
+
+			return new Cache(stack, d.id, { url: provisioned.provides().url! });
+		}
+
+		const supplied = props as {
+			url?: $util.Input<string>;
+			vpc?: CacheProps['vpc'];
+		};
+
+		if (backend === 'elasticache') {
+			// The one backend that creates something. It composes its own URL from
+			// the cluster it made, so nothing is supplied but the VPC.
+			return new Cache(stack, d.id, {
+				...(supplied.vpc ? { vpc: supplied.vpc } : {}),
+			});
+		}
+
+		// Upstash is an account, not infrastructure — so the URL is an input, and
+		// its absence is a missing setup step rather than something to default.
+		if (!supplied.url) throw new CacheNeedsUrl(d.id);
+
+		return new Cache(stack, d.id, { url: supplied.url });
+	},
+
+	email: (stack, d, props, context) => {
+		const backend = context.email ?? 'resend';
+		const supplied = props as {
+			url?: $util.Input<string>;
+			region?: $util.Input<string>;
+		};
+
+		return new Email(stack, d.id, {
+			backend,
+			...(supplied.url ? { url: supplied.url } : {}),
+			// SES derives its own credential and needs to know which region's
+			// endpoint to derive it for; the others were handed a URL already.
+			region: supplied.region ?? $app.providers?.aws?.region ?? 'us-east-1',
 		});
 	},
 
@@ -450,6 +520,16 @@ export function fromManifest(
 	stack: StackType,
 	manifest: ConstructManifest,
 	overrides: ComponentOverrides = {},
+	/**
+	 * The backend choices that are config rather than declaration.
+	 *
+	 * Defaulted the same way the local target defaults them, so a stage deployed
+	 * without saying gets the same backend a developer ran against.
+	 */
+	backends: {
+		cache?: 'upstash' | 'elasticache' | 'db';
+		email?: 'resend' | 'ses' | 'smtp';
+	} = {},
 ): ProvisionedManifest {
 	const provisioned: ProvisionedManifest = {};
 
@@ -471,6 +551,8 @@ export function fromManifest(
 		manifest,
 		provisioned,
 		bootstraps: new Map<string, DatabaseBootstrap>(),
+		...(backends.cache ? { cache: backends.cache } : {}),
+		...(backends.email ? { email: backends.email } : {}),
 	};
 
 	for (const id of [...rest, ...sites]) {

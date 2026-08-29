@@ -166,9 +166,7 @@ const pools = new Map<string, Pool>();
  * Run as the schema's **owner**. The role a handler connects as cannot create a
  * table, which is the point of the split and the reason this is not done lazily.
  */
-export function cacheTableStatements(
-	options: PostgresCacheOptions = {},
-): {
+export function cacheTableStatements(options: PostgresCacheOptions = {}): {
 	describe: string;
 	exists?: { sql: string; values: unknown[] };
 	sql: string;

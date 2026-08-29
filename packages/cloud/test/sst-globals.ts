@@ -119,4 +119,7 @@ Object.assign(globalThis, {
 	},
 	$util: util,
 	$interpolate: util.interpolate,
+	// `$app` carries the deploy's own settings; components read the region off
+	// it when nothing more specific was supplied.
+	$app: { name: 'stub', providers: { aws: { region: 'eu-west-1' } } },
 });

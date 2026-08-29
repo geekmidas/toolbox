@@ -8,6 +8,13 @@ export {
 	type LambdaAuthorizer,
 	type Route,
 } from './aws/Api';
+export {
+	Cache,
+	CacheNeedsDatabase,
+	CacheNeedsUrl,
+	CacheNeedsVpc,
+	type CacheProps,
+} from './aws/Cache';
 export { Credential, type CredentialProps } from './aws/Credential';
 export {
 	Cron,
@@ -26,6 +33,7 @@ export {
 	DatabaseBootstrap,
 } from './aws/DatabaseBootstrap';
 export { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
+export { Email, type EmailProps } from './aws/Email';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {
@@ -37,6 +45,14 @@ export { Secret, type SecretProps } from './aws/Secret';
 export { StaticSite, type StaticSiteProps } from './aws/StaticSite';
 /** @deprecated renamed to `ObjectStorage`, matching the construct that declares it. */
 export { Storage, type StorageProps } from './aws/Storage';
+export {
+	NoSmtpEndpoint,
+	SMTP_PORT,
+	SMTP_REGIONS,
+	sesSmtpUrl,
+	smtpEndpoint,
+	smtpPassword,
+} from './aws/ses';
 export { Topic, type TopicProps } from './aws/Topic';
 export {
 	ProvidesMismatch,

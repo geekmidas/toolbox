@@ -37,6 +37,10 @@ export enum ResourceType {
 	// because SST builds them differently.
 	FileServer = 'sst:aws:Router',
 	StaticSite = 'sst:aws:StaticSite',
+	// Neither is an SST component: mail is an IAM chain and a composed URL, and
+	// a cache is whatever the selected backend turned out to be.
+	Email = 'gkm:aws:Email',
+	Cache = 'gkm:aws:Cache',
 }
 
 /**
