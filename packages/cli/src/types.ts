@@ -118,10 +118,14 @@ export const DEFAULT_CACHE: CacheBackend = 'upstash';
  * provisioner differs — which is the same reason the declaration has no
  * `provider` field and there is no `ses://` scheme.
  *
- * - `resend` (default) — an API key you hold, composed into an SMTP URL. Nothing
- *   to provision: it is a SaaS account, not infrastructure.
- * - `ses` — provisioned on AWS, which is the only backend that *is* a chain of
- *   resources: an identity, a user, an access key, and a derived SMTP password.
+ * - `ses` (default) — the only backend that can be a *chain* of resources: an
+ *   identity, a user, an access key, and an SMTP password derived from it,
+ *   because SES issues IAM credentials rather than SMTP ones. Hand it a URL and
+ *   it uses that instead, which is what you want when the credentials already
+ *   exist — provisioning a second set of sending credentials for an identity
+ *   that already has them is not a thing to do by default.
+ * - `resend` — an API key you hold, composed into an SMTP URL. Nothing to
+ *   provision: a SaaS account is not infrastructure.
  * - `smtp` — a URL supplied whole, for a relay somebody else runs.
  *
  * Locally every one of them is Mailpit, because locally none of it matters.
@@ -129,7 +133,7 @@ export const DEFAULT_CACHE: CacheBackend = 'upstash';
 export type EmailBackend = 'resend' | 'ses' | 'smtp';
 
 /** The backend a project gets when it declares email and says nothing. */
-export const DEFAULT_EMAIL: EmailBackend = 'resend';
+export const DEFAULT_EMAIL: EmailBackend = 'ses';
 
 /** Supported docker-compose service names */
 export type ComposeServiceName =

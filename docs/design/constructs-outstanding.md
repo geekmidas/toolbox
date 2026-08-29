@@ -94,15 +94,18 @@ and applied by whatever applies DDL — the same split `roles.ts` uses.
 
 ### 1.3 `email` — **done**
 
-`services.mail: 'resend' | 'ses' | 'smtp'`, defaulting to Resend, and it changes
+`services.mail: 'ses' | 'resend' | 'smtp'`, defaulting to SES, and it changes
 almost nothing — which is the declaration being right. Every backend speaks SMTP,
 so the `smtp://` URL is true of all of them and the client never changes. Only
 who issues the credential differs.
 
-`resend` and `smtp` compose a URL from a value you hold. `ses` is the only one
-that provisions a chain — an identity, a user, an access key, and a password
-*derived* from that key, because SES issues IAM credentials and documents the
-arithmetic rather than issuing SMTP passwords.
+`resend` and `smtp` compose a URL from a value you hold, and `EmailNeedsUrl`
+says so when you have not: they are accounts somebody created, so there is
+nothing for a deploy to provision. `ses` is the only backend that *can* mint its
+own — an identity, a user, an access key, and a password derived from that key —
+and it does so only when handed no URL. Credentials that already exist are the
+common case, and creating a second IAM user for an identity that already sends
+would be a deploy quietly adding another way into the account.
 
 **How far the derivation is verified, stated because it matters.** The recipe
 was taken from AWS's own page and matches step for step. AWS publishes no worked

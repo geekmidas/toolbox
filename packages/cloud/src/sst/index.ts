@@ -33,7 +33,7 @@ export {
 	DatabaseBootstrap,
 } from './aws/DatabaseBootstrap';
 export { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
-export { Email, type EmailProps } from './aws/Email';
+export { Email, EmailNeedsUrl, type EmailProps } from './aws/Email';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {

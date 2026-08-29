@@ -1,6 +1,7 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { CacheNeedsDatabase, CacheNeedsUrl, CacheNeedsVpc } from '../aws/Cache';
+import { EmailNeedsUrl } from '../aws/Email';
 import { type ProvisionContext, provisionerFor } from '../fromManifest';
 
 const stack = {} as never;
@@ -100,7 +101,7 @@ describe('email', () => {
 		);
 	});
 
-	it('derives its own credential for ses', () => {
+	it('derives its own credential for ses when given none', () => {
 		// The only backend that is a chain rather than a value: a user, a key,
 		// and a password computed from it.
 		const email = provisionerFor('email')(
@@ -113,6 +114,40 @@ describe('email', () => {
 		expect(email.provides().url).toMatch(
 			/^smtp:\/\/.+:.+@email-smtp\.eu-west-1\.amazonaws\.com:587$/,
 		);
+	});
+
+	it('uses credentials that already exist rather than making more', () => {
+		// The common case: a sending identity set up once, by hand. Creating a
+		// second IAM user for it would be a deploy quietly adding another way
+		// into the account.
+		const email = provisionerFor('email')(
+			stack,
+			manifest.Mail,
+			{ url: 'smtp://AKIAOLD:pw@email-smtp.eu-west-1.amazonaws.com:587' },
+			context({ email: 'ses' }),
+		);
+
+		expect(email.provides().url).toBe(
+			'smtp://AKIAOLD:pw@email-smtp.eu-west-1.amazonaws.com:587',
+		);
+	});
+
+	it('refuses a backend that cannot mint its own and was given none', () => {
+		expect(() =>
+			provisionerFor('email')(
+				stack,
+				manifest.Mail,
+				{},
+				context({ email: 'resend' }),
+			),
+		).toThrow(EmailNeedsUrl);
+	});
+
+	it('sends through SES when nothing said otherwise', () => {
+		// The default, because it is what this repo's projects actually use.
+		const email = provisionerFor('email')(stack, manifest.Mail, {}, context());
+
+		expect(email.provides().url).toContain('email-smtp.');
 	});
 
 	it('produces an smtp:// URL whichever backend it is', () => {

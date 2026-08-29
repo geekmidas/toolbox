@@ -156,7 +156,7 @@ export interface ServicesConfig {
 	 * Mail, as a container pin or as a backend name.
 	 *
 	 * `true` or a config is Mailpit locally; a string names who delivers it
-	 * deployed — `'resend'` (default), `'ses'`, or `'smtp'`. Locally every one of
+	 * deployed — `'ses'` (default), `'resend'`, or `'smtp'`. Locally every one of
 	 * them is Mailpit, because every one of them speaks SMTP.
 	 */
 	mail?: boolean | MailServiceConfig | import('../types.js').EmailBackend;

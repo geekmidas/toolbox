@@ -38,8 +38,26 @@ export class Email<
 		props: EmailProps,
 	) {
 		this._id = name;
-		this.url =
-			props.backend === 'ses' ? this.provisionSes(name, props) : props.url;
+
+		// A supplied URL wins over provisioning, for every backend including SES.
+		// Credentials that already exist are the common case — a sending identity
+		// set up once, by hand — and creating a second IAM user for it would be
+		// this deploy quietly adding another way into the account.
+		this.url = props.url ?? this.provision(name, props);
+	}
+
+	/**
+	 * Mint a credential, for the one backend that can.
+	 *
+	 * @throws {EmailNeedsUrl} for the backends that cannot. Resend and a plain
+	 * relay *are* accounts somebody created, so a missing URL is a missing setup
+	 * step — and saying so at synth beats composing something that cannot
+	 * deliver and finding out at the first send.
+	 */
+	private provision(name: string, props: EmailProps): $util.Input<string> {
+		if (props.backend !== 'ses') throw new EmailNeedsUrl(name, props.backend);
+
+		return this.provisionSes(name, props);
 	}
 
 	/**
@@ -93,12 +111,34 @@ export interface EmailProps {
 	/** Who delivers the mail. Only `ses` provisions anything. */
 	backend: 'resend' | 'ses' | 'smtp';
 	/**
-	 * The `smtp://` URL, for the backends that are handed one.
+	 * The `smtp://` URL, where the credentials already exist.
 	 *
-	 * Required for `resend` and `smtp`, ignored for `ses` — which derives its
-	 * own, because the credential does not exist until the user does.
+	 * Required for `resend` and `smtp`, which are accounts rather than
+	 * infrastructure. Optional for `ses`, and supplying it is the difference
+	 * between using the sending identity you have and provisioning a second one.
 	 */
 	url?: $util.Input<string>;
 	/** The region to derive SES credentials for. Required for `ses`. */
 	region?: $util.Input<string>;
+}
+
+/**
+ * A backend that cannot mint its own credentials was given none.
+ *
+ * Resend and a plain relay are accounts somebody created, so there is nothing
+ * for a deploy to provision and a missing URL is a missing setup step.
+ */
+export class EmailNeedsUrl extends Error {
+	constructor(
+		readonly id: string,
+		readonly backend: string,
+	) {
+		super(
+			`'${id}' sends through ${backend}, which is an account rather than ` +
+				`something to provision, and no URL was supplied for it. Set it with ` +
+				`\`sst secret set\` and pass it through the deploy layer — ` +
+				`fromManifest(stack, manifest, { ${id}: { url } }).`,
+		);
+		this.name = 'EmailNeedsUrl';
+	}
 }

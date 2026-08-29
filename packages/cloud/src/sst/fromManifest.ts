@@ -274,7 +274,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	email: (stack, d, props, context) => {
-		const backend = context.email ?? 'resend';
+		const backend = context.email ?? 'ses';
 		const supplied = props as {
 			url?: $util.Input<string>;
 			region?: $util.Input<string>;
