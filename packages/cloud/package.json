@@ -4,7 +4,8 @@
 	"type": "module",
 	"files": [
 		"dist",
-		"src/sst"
+		"src/sst",
+		"src/dokploy"
 	],
 	"scripts": {
 		"sst:install": "sst install",
@@ -31,7 +32,8 @@
 				"default": "./dist/utils/index.cjs"
 			}
 		},
-		"./sst": "./src/sst/index.ts"
+		"./sst": "./src/sst/index.ts",
+		"./dokploy": "./src/dokploy/index.ts"
 	},
 	"repository": {
 		"type": "git",

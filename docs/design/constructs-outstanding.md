@@ -289,6 +289,60 @@ error.
 
 ---
 
+## 6b. Dokploy as a Pulumi provider — *prototyped, undecided*
+
+`packages/cli/src/deploy/` is a deployment engine written by hand. It calls
+Dokploy's REST API, and it remembers what it created — `deploy/state.ts`,
+`SSMStateProvider` — so the next deploy finds the same resources. That second
+half is the interesting one, because **remembering what you created is the entire
+job of a Pulumi state file**.
+
+`@geekmidas/cloud/dokploy` is one resource, prototyped to see whether the shape
+holds: an `Application` as a `pulumi.dynamic.ResourceProvider` with
+create/read/update/delete/diff. SST uses this same escape hatch wherever official
+provider coverage stops (`vercel/providers/dns-record.ts`,
+`cloudflare/providers/kv-data.ts`), so the pattern is not exotic.
+
+**What it would buy**
+
+- A whole subsystem deleted rather than refactored: state tracking is the
+  provider's, not ours.
+- `pulumi preview` for the server target, which has no equivalent today.
+- One adapter shape across both targets — `fromManifest` is already a table of
+  provisioners, and `--target=server` becomes another table rather than a
+  parallel engine.
+- Better coverage where it is worst. Every currently failing test in this repo
+  lives in `deploy/`.
+
+**What has to be answered first**
+
+- **Where Pulumi state lives for a non-AWS target.** `SSMStateProvider` is
+  precedent that this is answerable, but it is the first question.
+- **`delete` is the risky half.** Today's engine fails loudly when it cannot find
+  something. A provider that gets destroy wrong leaves resources behind that
+  Pulumi believes it removed — silent, and worse than the failure it replaces.
+- **SST or plain Pulumi.** SST's value is its AWS components; a Dokploy-only
+  stack may want Pulumi directly, with SST kept for the AWS target.
+
+**Three things the prototype already surfaced**, which are the reason to
+prototype rather than plan:
+
+1. **The provider is serialised into state**, so its functions must be
+   self-contained. That is why the API token is an *input* rather than something
+   closed over, and why the prototype calls `fetch` directly instead of reusing
+   `DokployApi` — a class imported from another module would have to serialise
+   with it, and the failure when it cannot is obscure.
+2. **Outputs must be declared as undefined inputs** or Pulumi never populates
+   them. A quiet rule, and the usual first thing to get wrong.
+3. **`diff` is where the design lives.** Dokploy derives `appName` from the
+   application's name, so a rename is a *replacement* rather than an update —
+   and saying so is what makes preview warn before the destroy instead of
+   reporting it after. Casing-only changes are not replacements, which the tests
+   pin, because destroying an application to restyle its name in the UI would be
+   a spectacular way to lose one.
+
+Nothing has run against a real Dokploy server.
+
 ## 7. Correctness and infrastructure gaps
 
 ### 7.1 `provisionOrder` orders `of`, not `dependencies` — *work*

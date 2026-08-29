@@ -15,6 +15,9 @@ export default defineProject({
 			'@pulumi/random': fileURLToPath(
 				new URL('./.sst/platform/node_modules/@pulumi/random', import.meta.url),
 			),
+			'@pulumi/pulumi': fileURLToPath(
+				new URL('./.sst/platform/node_modules/@pulumi/pulumi', import.meta.url),
+			),
 		},
 	},
 	test: {
