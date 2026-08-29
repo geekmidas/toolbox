@@ -15,6 +15,7 @@ import { isAbsolute, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
 import type { Routes } from '../types.js';
+import { cacheBackendOf } from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
@@ -133,6 +134,9 @@ export async function reconcileWorkspace(
 		manifest,
 		stage: options.stage,
 		events: workspace.services.events,
+		// A backend name, not an image pin. `cache: 'db'` says where the cache
+		// lives and implies no container at all.
+		cache: cacheBackendOf(workspace.services.cache),
 		extraContainers: extraContainers(workspace),
 		images: imagePins(workspace),
 		saved: await loadPortState(workspace.root),

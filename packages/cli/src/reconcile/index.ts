@@ -21,7 +21,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
-import type { EventsBackend } from '../types';
+import type { CacheBackend, EventsBackend } from '../types';
 import { bucketClient, pgClient } from './clients';
 import { type ComposeFile, composeFor, toYaml } from './compose';
 import { portKeys, portsOf, primaryPortKey } from './containers';
@@ -94,6 +94,8 @@ export interface ReconcileOptions {
 	stage: string;
 	/** The events backend, until `topic` and `queue` are kinds. */
 	events?: EventsBackend;
+	/** Where a declared cache lives — see {@link CacheBackend}. */
+	cache?: CacheBackend;
 	/** Containers no construct implies — the config exceptions. */
 	extraContainers?: readonly string[];
 	/** Per-container image pins. */
@@ -171,6 +173,7 @@ export async function reconcile(
 
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
 		events: options.events,
+		cache: options.cache,
 		extraContainers: options.extraContainers,
 	});
 

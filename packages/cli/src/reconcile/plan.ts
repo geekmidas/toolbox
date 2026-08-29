@@ -20,7 +20,7 @@ import {
 	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
-import type { EventsBackend } from '../types';
+import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
 
 /** The stage whose resources carry no suffix. */
 export const DEFAULT_STAGE = 'development';
@@ -40,10 +40,30 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	// The server answers on the same MinIO that holds the objects, because
 	// locally there is nothing else for it to answer on — see `urlFor`.
 	'file-server': 'minio',
+	// Every mail backend speaks SMTP, so locally there is one answer whichever
+	// one is selected — which is the same reason the declaration has no
+	// `provider` field.
 	email: 'mailpit',
+};
+
+/**
+ * The container a cache backend needs locally.
+ *
+ * Each one matches the protocol its deployed form speaks, which is the property
+ * worth having: a cache that behaves differently in the two places is worse than
+ * a slower one.
+ *
+ * `db` is deliberately absent, the same way `pgboss` is absent from
+ * `EVENT_CONTAINERS`: the cache is a table in a database the manifest already
+ * declares, so mapping it here would start a container for a project that needs
+ * none.
+ */
+const CACHE_CONTAINERS: Partial<Record<CacheBackend, string>> = {
 	// The proxy, not the Redis behind it: the client speaks HTTP with a token
 	// wherever it runs, which is what makes dev and prod the same client.
-	cache: 'redis-http',
+	upstash: 'redis-http',
+	// The wire protocol, which is what ElastiCache offers — so dev speaks it too.
+	elasticache: 'redis',
 };
 
 /**
@@ -224,6 +244,8 @@ export interface Plan {
 	 * the plan is what keeps the two from disagreeing.
 	 */
 	events: EventsBackend;
+	/** Where the cache lives, for everything downstream that composes its URL. */
+	cache: CacheBackend;
 	/** Containers to start, deduplicated. */
 	containers: string[];
 	/**
@@ -236,6 +258,14 @@ export interface Plan {
 
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
+	/**
+	 * Where a declared cache lives, which decides both the container it needs
+	 * locally and the protocol its URL speaks.
+	 *
+	 * Config rather than declaration, because the same application code caches
+	 * into any of them — the same reason `events` is config.
+	 */
+	cache?: CacheBackend;
 	/**
 	 * The events backend, which selects a container of its own for everything
 	 * except pg-boss.
@@ -282,12 +312,18 @@ export function resourceName(
 export function containerFor(
 	kind: DeclarationKind,
 	events: EventsBackend = DEFAULT_EVENTS,
+	cache: CacheBackend = DEFAULT_CACHE,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
 		// tenant in a database the manifest already declares, so its container is
 		// that database's.
 		return EVENT_CONTAINERS[events] ?? CONTAINERS.database;
+	}
+
+	// The same shape: a cache in the database lives in the database's container.
+	if (kind === 'cache') {
+		return CACHE_CONTAINERS[cache] ?? CONTAINERS.database;
 	}
 
 	return CONTAINERS[kind];
@@ -310,12 +346,13 @@ export function planFor(
 	const resources: PlannedResource[] = [];
 
 	const events = options.events ?? DEFAULT_EVENTS;
+	const cache = options.cache ?? DEFAULT_CACHE;
 
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
 		if (!declaration) continue;
 
-		const container = containerFor(declaration.kind, events);
+		const container = containerFor(declaration.kind, events, cache);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
 		if (container) {
@@ -374,7 +411,20 @@ export function planFor(
 		);
 	}
 
-	return { stage, events, containers: [...containers], resources };
+	// A cache in the database needs one to live in, exactly as pg-boss does.
+	// Starting a Postgres to hold only a cache would be the container this
+	// design refuses to invent.
+	if (
+		cache === 'db' &&
+		resources.some((r) => r.kind === 'cache') &&
+		!resources.some((r) => r.kind === 'database')
+	) {
+		throw new CacheNeedsDatabase(
+			resources.filter((r) => r.kind === 'cache').map((r) => r.id),
+		);
+	}
+
+	return { stage, events, cache, containers: [...containers], resources };
 }
 
 /**
@@ -384,6 +434,17 @@ export function planFor(
  * code either way — declare a database, or select a backend that brings its own
  * broker.
  */
+export class CacheNeedsDatabase extends Error {
+	constructor(readonly ids: readonly string[]) {
+		super(
+			`A cache backed by the database needs a declared database, and none ` +
+				`was declared. Declare one, or set services.cache to 'upstash' or ` +
+				`'elasticache'. Caches affected: ${ids.join(', ')}.`,
+		);
+		this.name = 'CacheNeedsDatabase';
+	}
+}
+
 export class PgBossNeedsDatabase extends Error {
 	constructor(readonly ids: readonly string[]) {
 		super(

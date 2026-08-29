@@ -325,3 +325,36 @@ describe('envFor', () => {
 		expect(env.AUTH_API_COOKIE_DOMAIN).toBe('.example.com');
 	});
 });
+
+describe('cache backends', () => {
+	const cacheEnv = (backend?: 'upstash' | 'elasticache' | 'db') => {
+		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			...(backend ? { cache: backend } : {}),
+		});
+
+		return envFor(plan, {
+			ports: Object.fromEntries(
+				portKeys(plan.containers).map((key, index) => [key, 20000 + index]),
+			),
+			addresses: { AuthApi: 'http://localhost:3000' },
+		});
+	};
+
+	it('speaks HTTP with a token for upstash', () => {
+		// The same protocol Upstash speaks deployed, which is what lets one
+		// client serve both.
+		expect(cacheEnv().SESSIONS_URL).toMatch(/^http:\/\/:.+@localhost:/);
+	});
+
+	it('speaks the wire protocol for elasticache', () => {
+		expect(cacheEnv('elasticache').SESSIONS_URL).toMatch(/^redis:\/\//);
+	});
+
+	it('is the declared database for db', () => {
+		// No second address and no second credential: the cache is a table
+		// reached by the same role, which is why the backend costs nothing.
+		const env = cacheEnv('db');
+
+		expect(env.SESSIONS_URL).toBe(env.ORDERS_URL);
+	});
+});

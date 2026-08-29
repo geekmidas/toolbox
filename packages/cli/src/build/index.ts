@@ -23,12 +23,12 @@ import {
 } from '../dev';
 import {
 	CronGenerator,
+	driversFor,
 	EndpointGenerator,
 	FunctionGenerator,
 	type GeneratedConstruct,
 	QueueGenerator,
 	SubscriberGenerator,
-	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
@@ -40,6 +40,7 @@ import {
 	type RouteInfo,
 	type Routes,
 } from '../types';
+import { cacheBackendOf } from '../workspace/backends.js';
 import {
 	getAppBuildOrder,
 	type NormalizedAppConfig,
@@ -165,7 +166,13 @@ export async function buildCommand(
 		dockerServices,
 		// The entry point registers the drivers its target needs, so a URL's
 		// scheme can pick one without application code naming a provider.
-		storageDrivers: storageDriversFor(process.cwd()),
+		storageDrivers: driversFor({
+			appRoot: process.cwd(),
+			cache: cacheBackendOf(
+				(loadedConfig as { workspace?: { services?: { cache?: unknown } } })
+					.workspace?.services?.cache,
+			),
+		}),
 		markOptional: options.markOptional ?? false,
 	};
 

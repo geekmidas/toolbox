@@ -417,10 +417,31 @@ function urlFor(
 		}
 
 		case 'cache':
-			// The token in the userinfo, because an address and the credential
-			// that opens it are one fact. Deployed the scheme is https and the
-			// host is the provider's; nothing else differs.
-			return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
+			// The scheme is the backend, and the backend is the same one deployed —
+			// which is what lets a driver registered at build time match the URL
+			// resolved at run time.
+			switch (plan.cache) {
+				case 'db': {
+					// The database the app already declared. No second address, no
+					// second credential: the cache is a table reached by the same
+					// role, which is why this backend costs nothing to run.
+					const database = plan.resources.find((r) => r.kind === 'database');
+					if (!database) return undefined;
+
+					return urlFor(database, plan, ports, project, addresses);
+				}
+
+				case 'elasticache':
+					// The wire protocol, unauthenticated locally. Deployed it is
+					// `rediss://` inside a VPC; the client is the same either way.
+					return `redis://${LOCAL_HOST}:${port}`;
+
+				default:
+					// The token in the userinfo, because an address and the credential
+					// that opens it are one fact. Deployed the scheme is https and the
+					// host is the provider's; nothing else differs.
+					return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
+			}
 
 		case 'queue':
 		case 'topic':

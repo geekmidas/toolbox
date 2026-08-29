@@ -16,6 +16,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { type CacheBackend, DEFAULT_CACHE } from '../types.js';
 
 /** The `s3://` driver, which serves MinIO locally and S3 deployed. */
 const S3 = {
@@ -24,14 +25,72 @@ const S3 = {
 };
 
 /** What a generated entry needs in order to register the drivers it uses. */
-export interface StorageDrivers {
+export interface RuntimeDrivers {
 	/** Import lines, or `''` when there is nothing to register. */
 	imports: string;
 	/** The registration calls, or `''`. */
 	setup: string;
 }
 
-const NONE: StorageDrivers = { imports: '', setup: '' };
+/** @deprecated The same shape, from when only storage had drivers. */
+export type StorageDrivers = RuntimeDrivers;
+
+const NONE: RuntimeDrivers = { imports: '', setup: '' };
+
+/**
+ * The cache driver for a backend — exactly one, never all three.
+ *
+ * Keyed off the *backend* rather than off a dependency, because unlike storage
+ * the backend already says which driver is right: a project caching in Postgres
+ * resolves `pg` and never `ioredis`, and one caching in Upstash resolves
+ * neither. That is the whole reason the drivers live behind separate subpaths.
+ *
+ * Both HTTP schemes are registered for Upstash, because the local proxy speaks
+ * `http://` and Upstash speaks `https://`, and an entry that registered one
+ * would work in exactly one of the two places.
+ */
+const CACHE_DRIVERS: Record<CacheBackend, RuntimeDrivers> = {
+	upstash: {
+		imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { upstashCacheDriver, upstashInsecureCacheDriver } from '@geekmidas/cache/upstash';`,
+		setup:
+			'registerCacheDriver(upstashCacheDriver);\nregisterCacheDriver(upstashInsecureCacheDriver);',
+	},
+	elasticache: {
+		imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { redisCacheDriver, redissCacheDriver } from '@geekmidas/cache/redis';`,
+		setup:
+			'registerCacheDriver(redisCacheDriver);\nregisterCacheDriver(redissCacheDriver);',
+	},
+	db: {
+		imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { postgresCacheDriver } from '@geekmidas/cache/postgres';`,
+		setup: 'registerCacheDriver(postgresCacheDriver);',
+	},
+};
+
+/**
+ * Everything a generated entry should register: object storage, and the cache.
+ *
+ * Merged here rather than threaded separately, because a generated file has one
+ * import block and one setup block whatever fills them.
+ */
+export function driversFor(options: {
+	appRoot: string;
+	/** Absent means nothing declared a cache, so no cache driver is registered. */
+	cache?: CacheBackend | false;
+}): RuntimeDrivers {
+	const parts = [
+		storageDriversFor(options.appRoot),
+		options.cache === false || options.cache === undefined
+			? NONE
+			: (CACHE_DRIVERS[options.cache] ?? CACHE_DRIVERS[DEFAULT_CACHE]),
+	].filter((part) => part.imports || part.setup);
+
+	if (parts.length === 0) return NONE;
+
+	return {
+		imports: parts.map((part) => part.imports).join('\n'),
+		setup: parts.map((part) => part.setup).join('\n'),
+	};
+}
 
 /**
  * The drivers an app's entry points should register.
@@ -41,7 +100,7 @@ const NONE: StorageDrivers = { imports: '', setup: '' };
  * app that installed `@geekmidas/storage` has already paid for the SDK it would
  * otherwise resolve lazily.
  */
-export function storageDriversFor(appRoot: string): StorageDrivers {
+export function storageDriversFor(appRoot: string): RuntimeDrivers {
 	return dependsOnStorage(appRoot) ? S3 : NONE;
 }
 

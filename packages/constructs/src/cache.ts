@@ -5,14 +5,18 @@
  * implements the construct contract, derives its env key through
  * `@geekmidas/manifest`, and hands back a `@geekmidas/cache` client.
  *
- * It names no provider. A cache is reached over HTTP with a token whether it is
- * Upstash deployed or a proxy in front of Redis locally, so there is one client
- * and one URL shape, and the provider survives only as a host and a credential
- * — exactly the argument that makes `Email` always `smtp://`.
+ * It names no provider — and unlike `Email`, it cannot name one protocol
+ * either. Every mail backend speaks SMTP, so an `smtp://` URL is true of all of
+ * them; cache backends genuinely differ, because Upstash speaks HTTP, a Redis
+ * speaks its wire protocol, and a table in Postgres speaks SQL. So the scheme in
+ * the URL picks the driver, exactly as it does for object storage, and which
+ * drivers exist is the generated entry point's decision.
+ *
+ * The backend is chosen at deploy, not here. An app caching in Postgres and an
+ * app caching in Upstash are the same application code.
  */
 
-import type { Cache as CacheClient } from '@geekmidas/cache';
-import { UpstashCache } from '@geekmidas/cache/upstash';
+import { type Cache as CacheClient, createCacheClient } from '@geekmidas/cache';
 import {
 	type ConstructName,
 	canonicalId,
@@ -55,10 +59,13 @@ export class Cache<TName extends string = string>
 	/**
 	 * Builds the client from the single URL the target supplied.
 	 *
-	 * The token travels in the URL's userinfo rather than in a second key, for
-	 * the same reason a Postgres password does: an address and the credential
-	 * that opens it are one fact, and splitting them is one more thing to keep
-	 * in step.
+	 * Any credential travels in that URL's userinfo rather than in a second key,
+	 * for the same reason a Postgres password does: an address and the thing that
+	 * opens it are one fact, and splitting them is one more thing to keep in step.
+	 *
+	 * The scheme selects the driver, so this construct imports no provider and
+	 * an app that caches in Postgres never resolves a Redis client. Whoever
+	 * assembles the application registers the drivers its target needs.
 	 */
 	private async connect({
 		envParser,
@@ -67,36 +74,6 @@ export class Cache<TName extends string = string>
 			.create((get) => ({ url: get(this.key).string() }))
 			.parse();
 
-		const { endpoint, token } = parseCacheUrl(url);
-
-		return new UpstashCache(endpoint, token);
+		return createCacheClient(url);
 	}
-}
-
-/** What a cache URL addresses: an HTTP endpoint and the token that opens it. */
-export interface CacheAddress {
-	endpoint: string;
-	token: string;
-}
-
-/**
- * Split a cache URL into what the client takes.
- *
- * `http://:token@localhost:20705` → `{ endpoint: 'http://localhost:20705',
- * token }`. Deployed the scheme is `https` and the host is Upstash's; nothing
- * else differs, which is the point.
- */
-export function parseCacheUrl(url: string): CacheAddress {
-	const parsed = new URL(url);
-	const token = decodeURIComponent(parsed.password || parsed.username);
-
-	parsed.username = '';
-	parsed.password = '';
-
-	return {
-		// `origin` drops the trailing slash `toString()` would add, which the
-		// client would otherwise send as part of every path.
-		endpoint: parsed.origin,
-		token,
-	};
 }

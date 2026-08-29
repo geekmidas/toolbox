@@ -31,11 +31,11 @@ import {
 } from '../credentials';
 import {
 	CronGenerator,
+	driversFor,
 	EndpointGenerator,
 	FunctionGenerator,
 	QueueGenerator,
 	SubscriberGenerator,
-	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import {
@@ -58,6 +58,7 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types';
+import { cacheBackendOf } from '../workspace/backends.js';
 import {
 	type FrontendFramework,
 	getAppBuildOrder,
@@ -1201,7 +1202,17 @@ async function buildServer(
 	// The entry point registers the drivers its target needs — see
 	// `generators/drivers.ts`. Decided here because this is where the app root is
 	// known, and read by every generator that writes an entry.
-	context = { ...context, storageDrivers: storageDriversFor(appRoot) };
+	context = {
+		...context,
+		storageDrivers: driversFor({
+			appRoot,
+			// The backend picks exactly one cache driver, so a project caching in
+			// Postgres never resolves a Redis client. `config.services` is the same
+			// value the local target reads when it decides what to run, so the
+			// driver and the URL cannot disagree about which protocol this is.
+			cache: cacheBackendOf(config?.services?.cache),
+		}),
+	};
 
 	// Initialize generators
 	const endpointGenerator = new EndpointGenerator();

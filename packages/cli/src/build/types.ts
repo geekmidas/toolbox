@@ -101,7 +101,7 @@ export interface BuildContext {
 	 * The scheme in an injected URL picks the driver, so registering is the entry
 	 * point's job — see `generators/drivers.ts`.
 	 */
-	storageDrivers?: import('../generators/drivers.js').StorageDrivers;
+	storageDrivers?: import('../generators/drivers.js').RuntimeDrivers;
 }
 
 export interface ProviderBuildResult {

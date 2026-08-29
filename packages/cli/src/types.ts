@@ -88,6 +88,49 @@ export interface ServiceConfig {
  */
 export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
 
+/**
+ * Where a declared cache actually lives.
+ *
+ * A deployment choice, not an application one — the same code caches into any
+ * of these — so it is config here beside `events` rather than a field on the
+ * construct. Each backend is consistent between local and deployed, which is
+ * the property worth having: a cache that behaves differently in the two places
+ * is worse than a slower one.
+ *
+ * - `upstash` (default) — HTTP with a token. Reachable from a Lambda with no
+ *   VPC and no connection pool, which is why it is the default; locally the
+ *   `serverless-redis-http` proxy in front of Redis speaks the same protocol.
+ * - `elasticache` — the Redis wire protocol, inside a VPC. Locally, plain Redis.
+ * - `db` — a table in the database the app already declared. No infrastructure
+ *   at all, and the same relationship pg-boss has to Postgres: it creates its
+ *   own table on first use and needs a declared database to live in.
+ */
+export type CacheBackend = 'upstash' | 'elasticache' | 'db';
+
+/** The backend a project gets when it declares a cache and says nothing. */
+export const DEFAULT_CACHE: CacheBackend = 'upstash';
+
+/**
+ * Who delivers a declared app's mail.
+ *
+ * Unlike a cache, this changes *nothing* about the client. Every backend speaks
+ * SMTP, so the declaration's `smtp://` URL is true of all of them and only the
+ * provisioner differs — which is the same reason the declaration has no
+ * `provider` field and there is no `ses://` scheme.
+ *
+ * - `resend` (default) — an API key you hold, composed into an SMTP URL. Nothing
+ *   to provision: it is a SaaS account, not infrastructure.
+ * - `ses` — provisioned on AWS, which is the only backend that *is* a chain of
+ *   resources: an identity, a user, an access key, and a derived SMTP password.
+ * - `smtp` — a URL supplied whole, for a relay somebody else runs.
+ *
+ * Locally every one of them is Mailpit, because locally none of it matters.
+ */
+export type EmailBackend = 'resend' | 'ses' | 'smtp';
+
+/** The backend a project gets when it declares email and says nothing. */
+export const DEFAULT_EMAIL: EmailBackend = 'resend';
+
 /** Supported docker-compose service names */
 export type ComposeServiceName =
 	| 'postgres'
