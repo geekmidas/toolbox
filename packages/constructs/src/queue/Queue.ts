@@ -115,6 +115,20 @@ export class Queue<
 				id: this.id,
 				provides: [this.connectionKey],
 				...(this.fifo ? { fifo: true } : {}),
+				// Nested rather than a sibling node, because position carries the
+				// trigger: this handler is reached by messages on this queue and
+				// by nothing else, so there is no `trigger` field to keep in step.
+				//
+				// `handler` is the export name; which directory the build wrote it
+				// to is the target's business, and a path with a cloud in it does
+				// not belong in a neutral declaration.
+				worker: {
+					id: `${this.id}Worker`,
+					handler: `${this.id}.handler`,
+					// Filled by the build from what the worker declared. Empty is a
+					// stated gap, not a claim that it reaches nothing.
+					dependencies: [],
+				},
 			},
 		];
 	}

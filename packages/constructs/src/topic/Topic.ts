@@ -100,6 +100,14 @@ export class Topic<
 				kind: 'topic',
 				id: this.id,
 				provides: [this.connectionKey],
+				// The contract this topic carries. Structural: which events exist
+				// is a fact about the application, and a subscriber binding to one
+				// that does not is a mistake worth catching at build.
+				events: this.eventTypes,
+				// Bound rather than declared here — a subscriber names the topic,
+				// not the other way round — so the build fills these from what it
+				// found. Nested when it does, because position is the trigger.
+				subscribers: [],
 			},
 		];
 	}

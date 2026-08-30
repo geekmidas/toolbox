@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { withRoutes } from '../reconcile/emit.js';
+import { withCompute, withRoutes } from '../reconcile/emit.js';
 import type {
 	CronInfo,
 	FunctionInfo,
@@ -114,10 +114,20 @@ export async function generateAwsManifest(
 	// The routes the constructs manifest carries are this target's, so they are
 	// filtered the same way — an `ALL` catch-all describes the server build, not
 	// the application.
-	const awsConstructs = withRoutes(
-		constructs,
-		Array.isArray(awsRoutes) ? awsRoutes : Object.values(awsRoutes).flat(),
-		{ perRoute: true },
+	const flat = <T>(field: ManifestField<T>): T[] =>
+		Array.isArray(field) ? field : Object.values(field).flat();
+
+	// Routes first, then the compute they sit beside: a queue's worker and a
+	// topic's subscriber nest inside the resource that triggers them, so the
+	// resource has to be there before they can be folded in.
+	const awsConstructs = withCompute(
+		withRoutes(constructs, flat(awsRoutes), { perRoute: true }),
+		{
+			functions: flat(functions),
+			crons: flat(crons),
+			queues: flat(queues),
+			subscribers: flat(subscribers),
+		},
 	);
 
 	const content = `export const manifest = {

@@ -56,6 +56,17 @@ export class EndpointFactory<
 		| undefined = undefined,
 > {
 	private defaultServices: TServices = [] as unknown as TServices;
+	/**
+	 * The constructs `.dependsOn()` was given, kept alongside the services they
+	 * dissolve into.
+	 *
+	 * `.dependsOn()` collapses straight into `.services()`, which is right for
+	 * *running* — a handler wants clients, not ids — and loses the one thing the
+	 * manifest needs: which constructs this endpoint reaches. Keeping the ids
+	 * here is what lets a route declare its edges, and lets a target derive its
+	 * environment from the graph rather than from sniffing what the code touched.
+	 */
+	private defaultConstructs: string[] = [];
 	private basePath: TBasePath = '' as TBasePath;
 	private defaultAuthorizeFn?: AuthorizeFn<
 		TServices,
@@ -93,6 +104,7 @@ export class EndpointFactory<
 		defaultSessionExtractor,
 		// @ts-expect-error
 		defaultServices = [] as TServices,
+		defaultConstructs = [] as string[],
 		defaultEventPublisher,
 		availableAuthorizers = [],
 		defaultAuthorizerName,
@@ -117,6 +129,7 @@ export class EndpointFactory<
 		TRlsConfig
 	> = {}) {
 		// Initialize default services
+		this.defaultConstructs = [...new Set(defaultConstructs)];
 		this.defaultServices = uniqBy(
 			defaultServices,
 			(s) => s.serviceName,
@@ -213,6 +226,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -279,6 +293,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -361,6 +376,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -414,6 +430,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: newBasePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -465,6 +482,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: fn,
 			defaultLogger: this.defaultLogger,
@@ -565,6 +583,7 @@ export class EndpointFactory<
 			RlsConfig<[...S, ...TServices], TSession, TLogger> | undefined
 		>({
 			defaultServices: [...services, ...this.defaultServices],
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
 				[...S, ...TServices],
@@ -625,6 +644,7 @@ export class EndpointFactory<
 			RlsConfig<TServices, TSession, L> | undefined
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
 				TServices,
@@ -694,6 +714,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -744,6 +765,7 @@ export class EndpointFactory<
 			RlsConfig<TServices, T, TLogger> | undefined
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as AuthorizeFn<
 				TServices,
@@ -811,6 +833,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as
 				| AuthorizeFn<TServices, TLogger, TSession, undefined, T>
@@ -871,6 +894,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -930,6 +954,7 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -998,6 +1023,7 @@ export class EndpointFactory<
 			TConfig
 		>({
 			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
@@ -1181,6 +1207,8 @@ export interface EndpointFactoryOptions<
 		| undefined = undefined,
 > {
 	defaultServices?: TServices;
+	/** Construct ids from `.dependsOn()`, carried so a route can declare edges. */
+	defaultConstructs?: string[];
 	basePath?: TBasePath;
 	defaultAuthorizeFn?: AuthorizeFn<
 		TServices,

@@ -47,6 +47,12 @@ describe('Topic.declare', () => {
 				kind: 'topic',
 				id: 'Users',
 				provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+				// The contract it carries. Structural, so a subscriber binding to
+				// an event this topic does not have is catchable at build.
+				events: Object.keys(events),
+				// Bound rather than declared here — a subscriber names the topic,
+				// not the other way round — so the build fills these in.
+				subscribers: [],
 			},
 		]);
 	});

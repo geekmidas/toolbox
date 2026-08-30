@@ -95,6 +95,14 @@ describe('Queue.declare', () => {
 				kind: 'queue',
 				id: 'OrderEvents',
 				provides: ['ORDER_EVENTS_PUBLISHER_CONNECTION_STRING'],
+				// Nested rather than a node beside it: position carries the
+				// trigger, so this handler is reached by messages on this queue
+				// and by nothing else.
+				worker: {
+					id: 'OrderEventsWorker',
+					handler: 'OrderEvents.handler',
+					dependencies: [],
+				},
 			},
 		]);
 	});

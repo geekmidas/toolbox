@@ -22,9 +22,15 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type {
 	ConstructManifest,
+	CronInfo,
+	Declaration,
+	FunctionInfo,
+	QueueInfo,
 	RestApiEndpoint,
 	RouteInfo,
+	SubscriberInfo,
 } from '@geekmidas/manifest';
+import { canonicalId, provideKey } from '@geekmidas/manifest';
 import type { CacheBackend, EmailBackend } from '../types.js';
 
 /** Where the build writes it, relative to the app root. */
@@ -82,6 +88,88 @@ export function withRoutes(
 			endpoints: routes.map((route) => asEndpoint(id, route)),
 		},
 	};
+}
+
+/**
+ * Fold in the compute the build generated: functions, crons, queue workers and
+ * topic subscribers.
+ *
+ * All four are named by their *export*, the same way an endpoint's handler is —
+ * `CronGenerator` uses the export key as the name — so none of them can declare
+ * themselves and all of them are the build's to add. That is why a `Function`
+ * has no `declare()` and never will.
+ *
+ * A worker and a subscriber **nest** inside the queue or topic that triggers
+ * them, because position carries the trigger. A function and a cron are
+ * top-level, because nothing triggers them but a caller or a clock.
+ */
+export function withCompute(
+	manifest: ConstructManifest,
+	compute: {
+		functions?: readonly FunctionInfo[];
+		crons?: readonly CronInfo[];
+		queues?: readonly QueueInfo[];
+		subscribers?: readonly SubscriberInfo[];
+	},
+): ConstructManifest {
+	const next: Record<string, Declaration> = { ...manifest };
+
+	for (const fn of compute.functions ?? []) {
+		next[fn.name] = {
+			kind: 'function',
+			id: fn.name,
+			handler: fn.handler,
+			dependencies: [],
+			provides: [provideKey(fn.name, 'url')],
+		};
+	}
+
+	for (const cron of compute.crons ?? []) {
+		next[cron.name] = {
+			kind: 'cron',
+			id: cron.name,
+			handler: cron.handler,
+			schedule: cron.schedule,
+			dependencies: [],
+		};
+	}
+
+	// A worker drains exactly one queue, so it is matched by the queue it names
+	// rather than by anything about the handler.
+	for (const worker of compute.queues ?? []) {
+		const queue = next[canonicalId(worker.name)];
+		if (queue?.kind !== 'queue') continue;
+
+		next[queue.id] = {
+			...queue,
+			worker: {
+				id: `${queue.id}Worker`,
+				handler: worker.handler,
+				dependencies: [],
+			},
+		};
+	}
+
+	for (const subscriber of compute.subscribers ?? []) {
+		const topicId = subscriber.topic && canonicalId(subscriber.topic);
+		const topic = topicId ? next[topicId] : undefined;
+		if (topic?.kind !== 'topic') continue;
+
+		next[topic.id] = {
+			...topic,
+			subscribers: [
+				...topic.subscribers,
+				{
+					id: subscriber.name,
+					handler: subscriber.handler,
+					events: subscriber.subscribedEvents,
+					dependencies: [],
+				},
+			],
+		};
+	}
+
+	return next;
 }
 
 /** One generated route as the manifest's shape. */

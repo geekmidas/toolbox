@@ -139,3 +139,32 @@ describe('FileServer', () => {
 		expect(typeof files.getDownloadURL).toBe('function');
 	});
 });
+
+describe('FileServer.server', () => {
+	it('points an edge at the surface rather than the bucket', () => {
+		// Depending on the file server itself points at the *bucket*, which is
+		// right for a handler that presigns — and useless to a site, because a
+		// bucket's URL is never public and so is never inlined.
+		expect(uploads.server.id).toBe('UploadsServer');
+		expect(uploads.server.declare()).toEqual([
+			{
+				kind: 'file-server',
+				id: 'UploadsServer',
+				of: 'Uploads',
+				open: ['brand/**', 'avatars/*.png'],
+				provides: ['UPLOADS_SERVER_URL'],
+			},
+		]);
+	});
+
+	it('is the half that is safe to ship', () => {
+		// `PUBLIC` is what draws the line: a served address may be prefixed into
+		// a bundle, a presigning one may not.
+		const bucket = uploads.declare().find((d) => d.kind === 'objects');
+
+		expect(bucket?.provides).toEqual(['UPLOADS_URL']);
+		expect(uploads.server.declare()[0]?.provides).toEqual([
+			'UPLOADS_SERVER_URL',
+		]);
+	});
+});

@@ -358,6 +358,14 @@ export interface QueueDeclaration extends Node {
 	kind: 'queue';
 	/** FIFO ordering, where the transport offers it. */
 	fifo?: boolean;
+	/**
+	 * The single consumer that drains it.
+	 *
+	 * Nested rather than listed beside the queue, because **position carries the
+	 * trigger**: a handler here is reached by messages arriving on this queue and
+	 * by nothing else, so there is no `trigger` field to keep in step with it.
+	 */
+	worker: Fn;
 }
 
 /**
@@ -370,6 +378,40 @@ export interface QueueDeclaration extends Node {
  */
 export interface TopicDeclaration extends Node {
 	kind: 'topic';
+	/** The event type names this topic carries. */
+	events: readonly string[];
+	/**
+	 * The handlers bound to it, each with the events it wants.
+	 *
+	 * Nested for the same reason a queue's worker is: position is the trigger. A
+	 * subscriber is *bound* to a topic rather than depending on it, which is why
+	 * it holds no key of its own and cannot be reached except through the topic.
+	 */
+	subscribers: readonly (Fn & { events: readonly string[] })[];
+}
+
+/**
+ * A function invoked directly, with no surface in front of it.
+ *
+ * An `Fn` rather than a `Node`, because a function *is* a handler — there is no
+ * resource beside it to declare. It provides its own address, so something else
+ * can depend on it and be given a way to call it.
+ */
+export interface FunctionDeclaration extends Fn {
+	kind: 'function';
+}
+
+/**
+ * A function on a schedule.
+ *
+ * The schedule is the trigger and it is structural: *that* something runs
+ * nightly is a fact about the application, while which timezone a stage
+ * interprets it in is not.
+ */
+export interface CronDeclaration extends Fn {
+	kind: 'cron';
+	/** A rate or cron expression, e.g. `rate(1 day)`. */
+	schedule: string;
 }
 
 /**
@@ -390,7 +432,9 @@ export type Declaration =
 	| RestApiDeclaration
 	| SiteDeclaration
 	| QueueDeclaration
-	| TopicDeclaration;
+	| TopicDeclaration
+	| FunctionDeclaration
+	| CronDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
 /**
@@ -560,6 +604,10 @@ export interface ProvidesByKind {
 	 */
 	queue: { publisherConnectionString: string };
 	topic: { publisherConnectionString: string };
+	/** Where to invoke it — what lets something else depend on a function. */
+	function: { url: string };
+	/** A cron is reached by its schedule and by nothing else, so it provides none. */
+	cron: Record<never, never>;
 	/** Where the site is served. Public for the same reason an API's is. */
 	site: { url: string };
 }
@@ -604,6 +652,10 @@ export const PUBLIC: {
 	// forge any job the worker trusts.
 	queue: [],
 	topic: [],
+	// An invocation address is not a public one: reaching it is IAM's business,
+	// not a browser's.
+	function: [],
+	cron: [],
 	// Its own address, which it needs in order to build absolute links to
 	// itself — and which an email templating a link to it needs too.
 	site: ['url'],
