@@ -31,9 +31,9 @@ export default $config({
 
 	async run() {
 		const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
-		const { manifest } = await import('./.gkm/manifest.js');
+		const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-		// `.gkm/manifest.ts` is written by `gkm build`, and importing it rather
+		// `.gkm/manifest/aws.ts` is written by `gkm build`, and importing it rather
 		// than calling `discover()` here is deliberate: discovery imports the
 		// application's own modules, so a deploy config that called it would
 		// evaluate the whole runtime graph — React email templates included —
@@ -66,7 +66,7 @@ export default $config({
 
 		return fromManifest(
 			stack,
-			manifest,
+			constructs,
 			{
 				// Provider-specific inputs, keyed by construct id. Everything a
 				// neutral declaration *can* express is already in the manifest.
@@ -77,16 +77,11 @@ export default $config({
 				// here.
 				Mail: { from: 'noreply@shortstaff.co.za' },
 			},
-			{
-				// A cache in the declared database: no second resource, no second
-				// credential, nothing to pay for while idle. `orders.cache()` would
-				// say the same thing structurally; this says it for a standalone
-				// `Cache` at deploy time.
-				cache: 'db',
-				// SES, and it uses credentials that already exist when they do —
-				// see `Email`. With none supplied it provisions the chain.
-				email: 'ses',
-			},
+			// Read from the manifest rather than restated here. The build already
+			// registered exactly one cache driver for this answer; choosing
+			// differently at deploy would hand the running code a URL it has no
+			// driver for, which is a runtime failure with a build-time cause.
+			backends,
 		);
 	},
 });

@@ -15,7 +15,6 @@
  *
  * ```ts
  * export const api = new RestApi('Api', {
- *   routes: 'src/routes/**\/*.ts',
  *   authorizers: ['session'],
  *   default: 'session',
  * });
@@ -32,16 +31,6 @@ import {
 import { type Declarable, edgeTo } from './construct-interface';
 
 export interface RestApiConfig {
-	/**
-	 * Where this surface's routes live, as globs relative to the app root.
-	 *
-	 * A glob rather than an array of endpoints because the construct cannot
-	 * import them: route modules import services, which import clients, which is
-	 * a runtime graph the build has no business evaluating in order to answer
-	 * "what paths exist". The build already walks these files; this says which
-	 * surface they belong to.
-	 */
-	routes?: string | readonly string[];
 	/**
 	 * The authorizer names this surface exposes. Names only — what verifies a
 	 * request legitimately differs between local and deployed, so the mechanism
@@ -74,8 +63,6 @@ export class RestApi<TName extends string = string>
 		cookieDomain: string;
 	};
 
-	private readonly routes: readonly string[];
-
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: RestApiConfig,
@@ -85,10 +72,6 @@ export class RestApi<TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.routes =
-			typeof config.routes === 'string'
-				? [config.routes]
-				: (config.routes ?? []);
 
 		this.keys = {
 			url: provideKey(canonical, 'url'),
@@ -132,9 +115,12 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
+				// Filled by the build, which already generates one handler per
+				// endpoint and knows the path it wrote it to. A surface that
+				// enumerates its own routes statically — an auth server's single
+				// wildcard — puts them here instead.
 				endpoints: [],
 				...(this.dependencies.length ? { calls: this.dependencies } : {}),
-				...(this.routes.length ? { routes: this.routes } : {}),
 				...(this.config.authorizers?.length
 					? { authorizers: this.config.authorizers }
 					: {}),

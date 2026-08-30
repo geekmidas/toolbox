@@ -199,17 +199,37 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	// configuration to map it onto.
 	topic: (stack, d, props) => new Topic(stack, d.id, props),
 
-	database: (stack, d, props) => {
+	database: (stack, d, props, context) => {
 		if (d.kind !== 'database') throw new UnknownDeclarationKind(d.kind, []);
 		// Required rather than defaulted: creating a VPC means creating a NAT
 		// gateway, which is a monthly cost in an account whose networking may
 		// already be someone else's decision.
 		if (!('vpc' in props)) throw new DatabaseNeedsVpc(d.id);
 
-		return new Database(stack, d.id, {
+		const cluster = new Database(stack, d.id, {
 			...(d.schema ? { schema: d.schema } : {}),
 			...(props as unknown as sst.aws.AuroraArgs),
 		});
+
+		// A database needs its own roles, not just its tenants'. Registering only
+		// tenants left the *database* connecting as the cluster master and its
+		// reader falling back to the same — so the split the local target
+		// enforces was absent deployed, which is the worst shape a gap can take:
+		// a developer sees it working and production silently does not have it.
+		if (d.schema) {
+			const bootstrap = bootstrapFor(cluster, d.id, context);
+			const runtime = roleNameFor(d, context);
+
+			bootstrap?.add({
+				id: d.id,
+				schema: d.schema,
+				runtime,
+				owner: ownerRole(runtime),
+				...(hasReader(d.id, context) ? { reader: readerRole(runtime) } : {}),
+			});
+		}
+
+		return cluster;
 	},
 
 	'database-reader': (stack, d, props, context) =>
@@ -535,11 +555,9 @@ export function describeRoutes(manifest: ConstructManifest): string[] {
 		lines.push(`${id}:`);
 
 		if (declaration.endpoints.length === 0) {
-			lines.push(
-				declaration.routes?.length
-					? `  (routes discovered from ${declaration.routes.join(', ')}, not yet merged into the manifest)`
-					: '  (no routes)',
-			);
+			// Empty is now genuinely empty: the build folds discovered routes into
+			// the surface that serves them, so a surface with none has none.
+			lines.push('  (no routes)');
 		}
 
 		for (const endpoint of declaration.endpoints) {

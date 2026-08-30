@@ -11,11 +11,7 @@ import { KyselyDatabase } from '../database/kysely';
 import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
-const api = new RestApi('Api', {
-	routes: './src/endpoints/**/*.ts',
-	authorizers: ['iam'],
-	default: 'none',
-});
+const api = new RestApi('Api', { authorizers: ['iam'], default: 'none' });
 
 describe('RestApi', () => {
 	it('declares one surface providing its address and both caller-derived keys', () => {
@@ -24,7 +20,6 @@ describe('RestApi', () => {
 		expect(surface).toMatchObject({
 			kind: 'rest-api',
 			id: 'Api',
-			routes: ['./src/endpoints/**/*.ts'],
 			authorizers: ['iam'],
 			defaultAuthorizer: 'none',
 			provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
@@ -35,9 +30,11 @@ describe('RestApi', () => {
 		expect(new RestApi('user-api', { default: 'none' }).id).toBe('UserApi');
 	});
 
-	it('leaves endpoints to the build when it named a glob', () => {
-		// The construct cannot import route modules without evaluating the whole
-		// runtime graph to answer "what paths exist".
+	it('leaves its routes to the build', () => {
+		// The build already generates one handler per endpoint and knows where it
+		// wrote each one, so it folds them in. Restating any of that on the
+		// declaration is how the two come to disagree — and a `routes` glob here
+		// duplicated a string `gkm.config.ts` already holds.
 		const [surface] = api.declare();
 
 		expect(surface).toMatchObject({ endpoints: [] });

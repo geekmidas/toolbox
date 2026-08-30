@@ -278,23 +278,20 @@ export interface RestApiDeclaration extends Node {
 	/** The authorizer applied where an endpoint names none. */
 	defaultAuthorizer?: string;
 	/**
-	 * The routes known when the surface declared itself.
+	 * Every route on this surface.
 	 *
-	 * Empty is ordinary rather than wrong. A surface whose routes are a known,
-	 * fixed set enumerates them here — an auth server's single wildcard is the
-	 * case — while an application's own API spreads its routes over a tree of
-	 * modules that the declaring construct cannot import without becoming a
-	 * bundler. That surface names {@link RestApiDeclaration.routes} instead and
-	 * the build fills this in, which is the same split the design draws
-	 * everywhere else: what is structural is declared, what has to be found is
-	 * found once, by the thing that already walks the filesystem.
+	 * Complete, always — a manifest that says "the routes are over there, run
+	 * this glob to find them" is not a manifest, it is a pointer to one. An
+	 * earlier version carried a `routes` glob for an application's own API and
+	 * left this empty, which meant the document *claimed no routes* while five
+	 * existed. Being incomplete is a gap; being wrong is worse.
+	 *
+	 * So a surface takes its endpoints as a list and reads method, path and
+	 * handler off them. That also removes a duplicate: the glob was written once
+	 * in `gkm.config.ts` and again on the construct, two strings that could
+	 * disagree about the same thing.
 	 */
 	endpoints: readonly RestApiEndpoint[];
-	/**
-	 * Where to find the routes this surface mounts, as globs relative to the app
-	 * root. Present when `endpoints` is discovered rather than enumerated.
-	 */
-	routes?: readonly string[];
 	/**
 	 * Other surfaces this one calls.
 	 *

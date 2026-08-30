@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import type { ConstructManifest } from '@geekmidas/manifest';
+import { withRoutes } from '../reconcile/emit.js';
 import type {
 	CronInfo,
 	FunctionInfo,
@@ -85,6 +87,16 @@ export async function generateAwsManifest(
 	subscribers: ManifestField<SubscriberInfo>,
 	queues: ManifestField<QueueInfo> = [],
 	topics: ManifestField<TopicInfo> = [],
+	/**
+	 * The construct manifest, and the backends this build resolved.
+	 *
+	 * Here rather than in a file of its own: one manifest per target, holding
+	 * everything that target needs, is the structure this directory already has.
+	 * A parallel `.gkm/manifest.ts` would be a second document describing the
+	 * same build, and the handler paths in it are target-specific anyway.
+	 */
+	constructs: ConstructManifest = {},
+	backends: { cache?: string; email?: string } = {},
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -99,6 +111,15 @@ export async function generateAwsManifest(
 	const queuesPartitioned = isPartitioned(queues);
 	const topicsPartitioned = isPartitioned(topics);
 
+	// The routes the constructs manifest carries are this target's, so they are
+	// filtered the same way — an `ALL` catch-all describes the server build, not
+	// the application.
+	const awsConstructs = withRoutes(
+		constructs,
+		Array.isArray(awsRoutes) ? awsRoutes : Object.values(awsRoutes).flat(),
+		{ perRoute: true },
+	);
+
 	const content = `export const manifest = {
   routes: ${serializeField(awsRoutes)},
   functions: ${serializeField(functions)},
@@ -108,6 +129,24 @@ export async function generateAwsManifest(
   topics: ${serializeField(topics)},
 } as const;
 
+/**
+ * What the application declares, as opposed to what this build generated.
+ *
+ * Discovery imports application code, so it runs once here rather than in every
+ * consumer — a deploy config calling it would evaluate the whole runtime graph
+ * inside its own toolchain.
+ */
+export const constructs = ${JSON.stringify(awsConstructs, null, 2)} as const;
+
+/**
+ * Where the backends that are config rather than declaration resolved to.
+ *
+ * Recorded because they were answered twice: once by the build, which registers
+ * exactly one cache driver, and once by a deploy, which told the provisioner
+ * something else — leaving the running code with a URL it had no driver for.
+ */
+export const backends = ${JSON.stringify(backends, null, 2)} as const;
+
 // Derived types
 ${generateDerivedType('routes', 'Route', routesPartitioned)}
 ${generateDerivedType('functions', 'Function', functionsPartitioned)}
@@ -115,6 +154,9 @@ ${generateDerivedType('crons', 'Cron', cronsPartitioned)}
 ${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 ${generateDerivedType('queues', 'Queue', queuesPartitioned)}
 ${generateDerivedType('topics', 'Topic', topicsPartitioned)}
+
+export type ConstructId = keyof typeof constructs;
+export type Construct<Id extends ConstructId> = (typeof constructs)[Id];
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
@@ -138,6 +180,16 @@ export async function generateServerManifest(
 	subscribers: ManifestField<SubscriberInfo>,
 	queues: ManifestField<QueueInfo> = [],
 	topics: ManifestField<TopicInfo> = [],
+	/**
+	 * The construct manifest, and the backends this build resolved.
+	 *
+	 * Here rather than in a file of its own: one manifest per target, holding
+	 * everything that target needs, is the structure this directory already has.
+	 * A parallel `.gkm/manifest.ts` would be a second document describing the
+	 * same build, and the handler paths in it are target-specific anyway.
+	 */
+	constructs: ConstructManifest = {},
+	backends: { cache?: string; email?: string } = {},
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -172,6 +224,9 @@ ${generateDerivedType('routes', 'Route', routesPartitioned)}
 ${generateDerivedType('subscribers', 'Subscriber', subscribersPartitioned)}
 ${generateDerivedType('queues', 'Queue', queuesPartitioned)}
 ${generateDerivedType('topics', 'Topic', topicsPartitioned)}
+
+export type ConstructId = keyof typeof constructs;
+export type Construct<Id extends ConstructId> = (typeof constructs)[Id];
 
 // Useful union types
 export type Authorizer = Route['authorizer'];
