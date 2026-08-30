@@ -254,6 +254,44 @@ construct, which is the provider leaking into application code that
 exists to prevent. It should be `capabilities: { magicLink: { send } }`, with the
 send callback still reaching the mail construct as it does now.
 
+### 6.1b Provider naming and swapping — **decided, revisit later**
+
+Asked and settled: no `new Auth({ provider: 'better-auth' })`, no facade over
+the auth *server*, and no rename of `BetterAuth`.
+
+**Why not a `provider` field.** It is the shape the design rejects elsewhere —
+the email declaration says so outright — and auth does not even qualify for that
+treatment. A cache or a mailer genuinely varies by stage: the same code caches
+into any backend. Auth does not. You cannot run better-auth in dev and Auth0 in
+prod, because the user tables, the session format and the tokens all differ. It
+is structural, so it lives in code.
+
+**Why siblings.** The precedent is the database, not the cache: `KyselyDatabase`
+today and `KnexDatabase` planned, two constructs sharing one kind. Auth is the
+same — `BetterAuth` and `OidcAuth`, both with id `Auth`, which is why the class
+name keeps the library in it. Renaming one to `Auth` would leave a pair where the
+neutral-sounding name secretly means better-auth.
+
+**Why not a facade over the server.** Beyond the doc's argument that it lands
+leaky or anemic: the barrier to swapping providers is *data*, not API. Migrating
+users, re-inviting passwords and invalidating every live session is the cost, and
+no abstraction touches it. A facade would promise a portability it cannot
+deliver, while adding two security-critical implementations to keep correct.
+
+**What is abstracted instead** is the authorizer — `verify(request) → Session |
+null` — which is the one thing every endpoint consumes and the one thing both
+kinds of provider genuinely share. Most of it exists: `@geekmidas/auth` ships
+`OidcVerifier` with hono and lambda adaptors, so `OidcAuth` wraps code rather
+than reimplementing verification.
+
+**This dissolves the `auth` kind question.** The two provision so differently
+that a shared kind would be nearly empty: better-auth owns a database, a surface
+and a secret (`rest-api` + `secret`, accurate), while OIDC owns a client secret
+and nothing else (`secret`, also accurate). Neither needs a kind of its own.
+
+**Revisit when** `OidcAuth` is actually written — that is when the neutral shape
+becomes discoverable rather than guessed, and when the naming pays for itself.
+
 ### 6.2 Generated clients — *work, with one measured constraint*
 
 `gkm dev` should generate the auth client bound to `AUTH_URL` and the API clients

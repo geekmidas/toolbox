@@ -25,6 +25,16 @@
 				"default": "./dist/config.cjs"
 			}
 		},
+		"./reconcile": {
+			"import": {
+				"types": "./dist/reconcile/public.d.mts",
+				"default": "./dist/reconcile/public.mjs"
+			},
+			"require": {
+				"types": "./dist/reconcile/public.d.cts",
+				"default": "./dist/reconcile/public.cjs"
+			}
+		},
 		"./workspace": {
 			"import": {
 				"types": "./dist/workspace/index.d.mts",

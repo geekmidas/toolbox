@@ -27,3 +27,16 @@ export interface Database {
 export const database = new KyselyDatabase<Database, 'KitchenSink'>(
 	'KitchenSink',
 );
+
+/**
+ * A read-only endpoint on the same database.
+ *
+ * Locally, and on any single-node deployment, this resolves to the same
+ * Postgres the writer does — and that is safe rather than a loophole, because
+ * read-only is enforced by the `kitchensink_reader` role's grants and not by
+ * which endpoint the URL happens to name. On Aurora it resolves to the
+ * cluster's reader endpoint, which exists without anything creating a replica.
+ *
+ * Nothing here changes when the topology does, which is the point.
+ */
+export const reader = database.reader();

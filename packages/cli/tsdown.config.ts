@@ -4,6 +4,9 @@ export default defineConfig({
 	entry: [
 		'src/index.ts',
 		'src/config.ts',
+		// Reachable from an `sst.config.ts`, so a deploy builds the manifest the
+		// same way `gkm dev` does rather than reimplementing discovery.
+		'src/reconcile/public.ts',
 		'src/workspace/index.ts',
 		'src/openapi.ts',
 		'src/openapi-react-query.ts',

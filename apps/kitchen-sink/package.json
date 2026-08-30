@@ -42,9 +42,11 @@
 		"zod": "~4.1.13"
 	},
 	"devDependencies": {
+		"@geekmidas/cloud": "workspace:*",
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.15.0",
 		"@types/react": "^19.0.0",
+		"sst": "4.15.2",
 		"tsx": "~4.20.6"
 	}
 }
