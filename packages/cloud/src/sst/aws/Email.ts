@@ -28,6 +28,15 @@ export class Email<
 	/** Composed once, in the constructor, so `provides` cannot drift from it. */
 	private readonly url: $util.Input<string>;
 
+	/**
+	 * The address mail is sent from.
+	 *
+	 * Required rather than defaulted: an unverified sender is rejected by every
+	 * provider, and a guess would be rejected at the first send rather than at
+	 * synth.
+	 */
+	private readonly from: $util.Input<string>;
+
 	get _type() {
 		return ResourceType.Email;
 	}
@@ -44,6 +53,7 @@ export class Email<
 		// set up once, by hand — and creating a second IAM user for it would be
 		// this deploy quietly adding another way into the account.
 		this.url = props.url ?? this.provision(name, props);
+		this.from = props.from;
 	}
 
 	/**
@@ -66,7 +76,7 @@ export class Email<
 	 * stage.
 	 */
 	provides(): Record<string, $util.Input<string>> {
-		return { url: this.url };
+		return { url: this.url, from: this.from };
 	}
 
 	getSSTLink() {
@@ -120,6 +130,13 @@ export interface EmailProps {
 	url?: $util.Input<string>;
 	/** The region to derive SES credentials for. Required for `ses`. */
 	region?: $util.Input<string>;
+	/**
+	 * The identity mail is sent from — a verified address or domain.
+	 *
+	 * Stage-varying by nature, which is why it is here rather than on the
+	 * construct: `noreply@myapp.test` locally, a verified domain deployed.
+	 */
+	from: $util.Input<string>;
 }
 
 /**
@@ -140,5 +157,25 @@ export class EmailNeedsUrl extends Error {
 				`fromManifest(stack, manifest, { ${id}: { url } }).`,
 		);
 		this.name = 'EmailNeedsUrl';
+	}
+}
+
+/**
+ * Mail was declared and no sending identity was supplied.
+ *
+ * Not defaultable: every provider rejects an unverified sender, so a guess would
+ * deploy cleanly and fail at the first send. The address is also stage-varying
+ * by nature, which is why it belongs in the deploy layer rather than the
+ * construct.
+ */
+export class EmailNeedsSender extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' sends mail and no sending identity was supplied. Pass one ` +
+				`through the deploy layer — ` +
+				`fromManifest(stack, manifest, { ${id}: { from: 'noreply@example.com' } }) ` +
+				`— and make sure it is verified with the provider.`,
+		);
+		this.name = 'EmailNeedsSender';
 	}
 }

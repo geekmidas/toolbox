@@ -204,8 +204,21 @@ export class DatabaseBootstrap {
 	 */
 	private storeCredentials(): void {
 		this.secret = new secretsmanager.Secret(`${this.name}Credentials`, {
-			namePrefix: `${this.name}/roles/`,
-			description: `Database roles for ${this.name}`,
+			// A name somebody can find. `namePrefix` was the first attempt and it
+			// produced `KitchenSink/roles/20260830202841251200000001` — unique,
+			// and useless to the person doing break-glass at 3am, which is the
+			// only reason this secret exists.
+			name: `${$app.name}/${$app.stage}/${this.name}/roles`,
+			description: `Database roles for ${this.name} (${$app.stage})`,
+			// Rotating a password *updates* this secret — a new version on the
+			// same resource — so none of this applies to normal operation. It
+			// applies to one flow: tearing a stage down and standing it back up.
+			// Secrets Manager holds a deleted secret for a recovery window and
+			// keeps its name reserved for the duration, so the recreate fails on
+			// a name pointing at something nobody can see. That flow is what a
+			// disposable stage *is*, so those waive the window; a retained app
+			// keeps the default, because there the recovery window is the point.
+			...($app.removal === 'remove' ? { recoveryWindowInDays: 0 } : {}),
 		});
 
 		const roles = [...this.passwords.keys()];

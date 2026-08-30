@@ -1,4 +1,7 @@
-import { sqsUrl } from '@geekmidas/events/sqs';
+// The codec alone, not the barrel: `@geekmidas/events/sqs` re-exports the
+// publisher and its AWS SDK client, and a deploy config that only needs to
+// *compose a URL* should not have to resolve a runtime it never calls.
+import * as sqsUrl from '@geekmidas/events/sqs/url';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';

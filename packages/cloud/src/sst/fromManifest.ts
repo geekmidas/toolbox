@@ -22,6 +22,8 @@ import type {
 	SiteDeclaration,
 } from '@geekmidas/manifest';
 import {
+	cookieDomain,
+	dependentsOf,
 	PUBLIC,
 	PUBLIC_PREFIX,
 	providedKeyFor,
@@ -32,10 +34,11 @@ import { Credential } from './aws/Credential';
 import { Database, DatabaseNeedsVpc } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
-import { Email } from './aws/Email';
+import { Email, EmailNeedsSender } from './aws/Email';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
+import { RestApiSurface } from './aws/RestApiSurface';
 import { Secret } from './aws/Secret';
 import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
@@ -94,6 +97,25 @@ export interface ProvisionContext {
 	 */
 	cache?: 'upstash' | 'elasticache' | 'db';
 	email?: 'resend' | 'ses' | 'smtp';
+	/**
+	 * One deferred caller list per surface, resolved once everything exists.
+	 *
+	 * A surface's origins come from its *inbound* edges, and one of those is
+	 * usually a site whose own build needs this surface's address — so the values
+	 * are circular even though the resources are not. Deferring the value is
+	 * what breaks it; deferring the resource would deadlock.
+	 */
+	callers?: Map<string, Deferred>;
+}
+
+/** A promise and the handle to settle it. */
+interface Deferred {
+	promise: Promise<{ trustedOrigins: string; cookieDomain?: string }>;
+	resolve: (
+		value:
+			| { trustedOrigins: string; cookieDomain?: string }
+			| Promise<{ trustedOrigins: string; cookieDomain?: string }>,
+	) => void;
 }
 
 type Provisioner = (
@@ -158,6 +180,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return new StaticSite(stack, d.id, {
 			path: d.path,
+			variant: d.variant,
 			environment: siteEnvironment(d, context),
 			...props,
 		});
@@ -277,16 +300,41 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const supplied = props as {
 			url?: $util.Input<string>;
 			region?: $util.Input<string>;
+			from?: $util.Input<string>;
 		};
+
+		// Not defaultable: every provider rejects an unverified sender, so a
+		// guess deploys cleanly and fails at the first send.
+		if (!supplied.from) throw new EmailNeedsSender(d.id);
 
 		return new Email(stack, d.id, {
 			backend,
+			from: supplied.from,
 			...(supplied.url ? { url: supplied.url } : {}),
 			// SES derives its own credential and needs to know which region's
 			// endpoint to derive it for; the others were handed a URL already.
 			region: supplied.region ?? $app.providers?.aws?.region ?? 'us-east-1',
 		});
 	},
+
+	/**
+	 * The surface, without its routes.
+	 *
+	 * An API Gateway with no routes 404s everything, and that is the honest
+	 * state: the *surface* is what this kind declares, and mounting handlers on
+	 * it is the endpoint merge that has not landed — routes still reach the
+	 * deploy target through the separate `RouteInfo[]` pipeline.
+	 *
+	 * Provisioning it anyway is not ceremony. Its address is what a site inlines
+	 * as `VITE_API_URL`, what an auth server puts on its trusted-origin list, and
+	 * what the cookie domain derives from — so everything downstream of the API
+	 * is blocked on the API *existing*, not on it answering.
+	 */
+	'rest-api': (stack, d, props, context) =>
+		new RestApiSurface(stack, d.id, {
+			...(props as sst.aws.ApiGatewayV2Args),
+			callers: context.callers?.get(d.id)?.promise,
+		}),
 
 	secret: (stack, d, props) => new Secret(stack, d.id, props),
 
@@ -463,6 +511,149 @@ function rootCluster(component: Provisioned): Database {
 }
 
 /**
+ * Every route and exactly what it depends on, as lines to print.
+ *
+ * The design's central claim is that a function is linked to the constructs it
+ * declared and nothing else — least privilege falling out of the graph rather
+ * than out of discipline. That is easy to assert in a test and invisible during
+ * a deploy, which is the moment somebody would want to check it. So it is
+ * printed: one line per route, naming what it can reach.
+ *
+ * A surface with no routes says so rather than printing nothing, because "no
+ * routes yet" and "this printed nothing" look identical otherwise — and for an
+ * application's own API that is currently the true state, pending the endpoint
+ * merge.
+ *
+ * Pure, so what gets printed can be asserted without a deploy.
+ */
+export function describeRoutes(manifest: ConstructManifest): string[] {
+	const lines: string[] = [];
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind !== 'rest-api') continue;
+
+		lines.push(`${id}:`);
+
+		if (declaration.endpoints.length === 0) {
+			lines.push(
+				declaration.routes?.length
+					? `  (routes discovered from ${declaration.routes.join(', ')}, not yet merged into the manifest)`
+					: '  (no routes)',
+			);
+		}
+
+		for (const endpoint of declaration.endpoints) {
+			const reaches = endpoint.dependencies
+				.map((edge) => `${edge.target} (${edge.kind})`)
+				.join(', ');
+
+			lines.push(
+				`  ${endpoint.method} ${endpoint.path} → ${reaches || 'nothing'}`,
+			);
+		}
+
+		// A caller relationship, printed apart from the routes because it grants
+		// nothing — see `RestApiDeclaration.calls`.
+		if (declaration.calls?.length) {
+			lines.push(
+				`  calls ${declaration.calls.map((edge) => edge.target).join(', ')} (origin only; grants nothing)`,
+			);
+		}
+	}
+
+	return lines;
+}
+
+/** A promise with its settle function, for a value that arrives later. */
+function defer(): Deferred {
+	let resolve!: Deferred['resolve'];
+	const promise = new Promise<{
+		trustedOrigins: string;
+		cookieDomain?: string;
+	}>((settle) => {
+		resolve = settle;
+	});
+
+	return { promise, resolve };
+}
+
+/**
+ * Who may call one surface, and the domain they can share a cookie on.
+ *
+ * The same derivation the local target runs, from the same two functions —
+ * `dependentsOf` reads the graph backwards and `cookieDomain` finds the shared
+ * parent. What differs is only where an address comes from: a published port
+ * there, a provisioned component here.
+ *
+ * A surface is left off its own origin list: it does not need permission to call
+ * itself, and adding it would make every surface trust every other one sharing a
+ * host.
+ */
+async function callersOf(
+	id: string,
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): Promise<{ trustedOrigins: string; cookieDomain?: string }> {
+	// Every address here is a Pulumi output, not a string — a CloudFront domain
+	// and an API Gateway endpoint are both known only after their resource
+	// exists. An earlier version filtered for `typeof url === 'string'` and so
+	// filtered out *everything*, which deployed cleanly with an empty
+	// trusted-origin list: the failure mode this whole derivation exists to
+	// avoid, arrived at by a type guard that looked defensive.
+	const urls = await Promise.all(
+		dependentsOf(manifest, id).map((caller) =>
+			resolved(provisioned[caller]?.provides().url),
+		),
+	);
+
+	const origins = [
+		...new Set(
+			urls
+				.map((url) => (url ? originOf(url) : undefined))
+				.filter((origin): origin is string => Boolean(origin)),
+		),
+	].sort();
+
+	const own = await resolved(provisioned[id]?.provides().url);
+	const domain = cookieDomain([...(own ? [own] : []), ...origins]);
+
+	return {
+		trustedOrigins: origins.join(','),
+		...(domain ? { cookieDomain: domain } : {}),
+	};
+}
+
+/**
+ * A Pulumi input as the string it eventually is.
+ *
+ * `$util.output(…).apply()` is how a value is read, and the promise it returns
+ * is what makes the caller list resolvable at all — the whole reason a surface's
+ * origins are deferred rather than computed at construction.
+ */
+function resolved(
+	value: $util.Input<string> | undefined,
+): Promise<string | undefined> {
+	if (value === undefined) return Promise.resolve(undefined);
+	if (typeof value === 'string') return Promise.resolve(value);
+
+	return new Promise((settle) => {
+		$util.output(value).apply((url) => {
+			settle(url);
+			return url;
+		});
+	});
+}
+
+/** An address reduced to the origin a browser compares against. */
+function originOf(address: string): string | undefined {
+	try {
+		return new URL(address).origin;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Whether anything in the manifest serves this bucket.
  *
  * The question the design's chosen shape makes you ask. Under a `cdn: true`
@@ -546,9 +737,17 @@ export function fromManifest(
 	const sites = order.filter((id) => manifest[id]?.kind === 'site');
 	const rest = order.filter((id) => manifest[id]?.kind !== 'site');
 
+	// One per surface, created up front so a surface can be handed its own before
+	// the things that call it exist.
+	const callers = new Map<string, Deferred>();
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind === 'rest-api') callers.set(id, defer());
+	}
+
 	const context: ProvisionContext = {
 		manifest,
 		provisioned,
+		callers,
 		bootstraps: new Map<string, DatabaseBootstrap>(),
 		...(backends.cache ? { cache: backends.cache } : {}),
 		...(backends.email ? { email: backends.email } : {}),
@@ -578,6 +777,16 @@ export function fromManifest(
 		);
 
 		provisioned[id] = component;
+	}
+
+	for (const line of describeRoutes(manifest)) console.log(line);
+
+	// Now everything exists, so every surface's callers can be resolved — the
+	// site's address included, which is what the deferral was for.
+	for (const [id, deferred] of callers) {
+		// Resolved with the promise itself: the addresses it needs are Pulumi
+		// outputs, so the answer arrives when they do.
+		deferred.resolve(callersOf(id, manifest, provisioned));
 	}
 
 	// Last, and only now: the roles exist as passwords and secrets from the

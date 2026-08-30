@@ -76,6 +76,18 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 			sql: `CREATE ROLE ${ident(runtime)} LOGIN PASSWORD ${literal(passwords.runtime)}`,
 		},
 		{
+			// Postgres will not let you create an object owned by a role you are
+			// not a member of, and an RDS master is not a superuser — so
+			// `CREATE SCHEMA … AUTHORIZATION` fails with "must be able to SET
+			// ROLE" unless the connected role is granted membership first.
+			//
+			// Granting is idempotent and needs no check. It also leaves the master
+			// able to administer the schema, which is what you want from the one
+			// credential that exists before any role does.
+			describe: `${owner} granted to the connecting role`,
+			sql: `GRANT ${ident(owner)} TO CURRENT_USER`,
+		},
+		{
 			describe: `schema ${schema}`,
 			exists: {
 				sql: 'SELECT 1 FROM information_schema.schemata WHERE schema_name = $1',

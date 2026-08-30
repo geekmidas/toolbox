@@ -107,12 +107,18 @@ export function dependenciesOf(
 ): readonly Dependency[] {
 	const own =
 		'dependencies' in declaration ? (declaration.dependencies ?? []) : [];
+
+	// A surface's `calls` is a caller relationship rather than an injection, so
+	// it is read here — reverse lookups want it — and is never a dependency
+	// anything links from. See `RestApiDeclaration.calls`.
+	const calls = 'calls' in declaration ? (declaration.calls ?? []) : [];
+
 	const nested =
 		declaration.kind === 'rest-api'
 			? declaration.endpoints.flatMap((endpoint) => endpoint.dependencies)
 			: [];
 
-	return [...own, ...nested];
+	return [...own, ...calls, ...nested];
 }
 
 /**

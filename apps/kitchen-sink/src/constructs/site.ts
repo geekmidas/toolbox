@@ -15,10 +15,15 @@ import { uploads } from './storage.js';
  * - the auth server's trusted origins
  * - the cookie domain the two share
  *
- * Note what is *not* inlined: `uploads` is depended on, but only its **server's**
- * address reaches the bundle. The bucket's own URL presigns, and a presigner in
- * a bundle is a credential in a bundle — which `PUBLIC` is what enforces.
+ * Note the edge is `uploads.server`, not `uploads`. Depending on the file server
+ * itself points at the *bucket*, which is right for a handler that presigns and
+ * wrong here: a bucket's URL is never public, so the site would get nothing
+ * inlined. `PUBLIC` is what makes that distinction, and `.server` is how you ask
+ * for the half that is safe to ship.
  */
 export const web = new StaticSite('Web', {
-	path: 'apps/kitchen-sink-web',
-}).dependsOn([api, auth, uploads]);
+	// Relative to the app, not the workspace: the deploy target resolves it from
+	// wherever the config runs, and the local target matches a workspace app by
+	// the same string.
+	path: '../kitchen-sink-web',
+}).dependsOn([api, auth, uploads.server]);

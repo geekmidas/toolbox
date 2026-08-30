@@ -62,6 +62,7 @@ export {
 export {
 	assertProvides,
 	type ComponentOverrides,
+	describeRoutes,
 	fromManifest,
 	isServed,
 	type ProvisionContext,

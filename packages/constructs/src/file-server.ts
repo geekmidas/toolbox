@@ -195,6 +195,31 @@ export class FileServer<
 	}
 
 	/**
+	 * The served surface, as something an edge can point at.
+	 *
+	 * Depending on the `FileServer` itself points at the **bucket** — its
+	 * canonical node — which is right for a handler: it presigns and writes. But
+	 * a bucket's URL is never public, so a site depending on it gets nothing
+	 * inlined, which is correct and also useless.
+	 *
+	 * This is the other half: `.dependsOn([uploads.server])` points at the
+	 * surface, whose address *is* public, and is what puts
+	 * `VITE_UPLOADS_SERVER_URL` in a bundle. The same accessor shape
+	 * `database.reader()` uses, and for the same reason — one construct owning
+	 * two addresses needs a way to name the second.
+	 */
+	get server(): Declarable {
+		const surface = this.declare().find(
+			(declaration) => declaration.id === this.surfaceId,
+		);
+
+		return {
+			id: this.surfaceId,
+			declare: () => (surface ? [surface] : []),
+		};
+	}
+
+	/**
 	 * The bucket and the surface over it — or just the surface, when the bucket
 	 * was declared elsewhere.
 	 *

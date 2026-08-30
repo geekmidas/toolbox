@@ -296,15 +296,21 @@ export interface RestApiDeclaration extends Node {
 	 */
 	routes?: readonly string[];
 	/**
-	 * What the surface itself calls, as opposed to what its routes call.
+	 * Other surfaces this one calls.
 	 *
-	 * The distinction is real and small: an API sitting in front of a separate
-	 * auth server calls it from every route, and that is what puts this API's
-	 * origin on that server's trusted list. Per-route edges live on the
-	 * endpoints, and both are read together — nothing has to know which of the
-	 * two places an edge came from.
+	 * **Not a dependency, and deliberately not spelled like one.** A dependency
+	 * is an injection: `resolveEdges` gives a function exactly the constructs it
+	 * declared and nothing else, which is what makes least privilege fall out of
+	 * the graph instead of out of discipline. A surface-level `dependencies`
+	 * would hand *every route* on this API whatever the surface named — which is
+	 * precisely the over-granting that rule exists to prevent.
+	 *
+	 * What this records is weaker and only flows one way: it puts this API's
+	 * origin on the called surface's trusted-origin list. Nothing links from it,
+	 * nothing is granted by it, and per-route edges stay on the endpoints where
+	 * they belong.
 	 */
-	dependencies?: readonly Dependency[];
+	calls?: readonly Dependency[];
 }
 
 /**
@@ -503,8 +509,15 @@ export interface ProvidesByKind {
 	objects: { url: string };
 	/** Where the served objects answer. Public: a browser is the point of it. */
 	'file-server': { url: string };
-	/** An `smtp://` URL, credentials included — never shippable. */
-	email: { url: string };
+	/**
+	 * An `smtp://` URL, credentials included — never shippable — and the
+	 * identity mail is sent from.
+	 *
+	 * The sending address is the one thing about mail that genuinely differs per
+	 * stage (`myapp.test` locally, a verified domain deployed), so it travels
+	 * beside the URL rather than being written into the construct.
+	 */
+	email: { url: string; from: string };
 	/**
 	 * One key, the runtime role's. The owner URL is not here by design — see
 	 * {@link DatabaseDeclaration}.

@@ -62,7 +62,10 @@
 		"@geekmidas/storage": "workspace:^",
 		"@geekmidas/events": "workspace:^",
 		"@geekmidas/db": "workspace:^",
-		"pg": "^8.13.0"
+		"pg": "^8.13.0",
+		"@pulumi/aws": "^7.20.0",
+		"@pulumi/random": "^4.16.6",
+		"@pulumi/pulumi": "^3.215.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/manifest": {
@@ -78,6 +81,15 @@
 			"optional": true
 		},
 		"pg": {
+			"optional": true
+		},
+		"@pulumi/aws": {
+			"optional": true
+		},
+		"@pulumi/random": {
+			"optional": true
+		},
+		"@pulumi/pulumi": {
 			"optional": true
 		}
 	}

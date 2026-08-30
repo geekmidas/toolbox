@@ -12,3 +12,8 @@
  */
 
 export { type DiscoverOptions, discover, isDeclarable } from './discover.js';
+export {
+	MANIFEST_PATH,
+	manifestModule,
+	writeManifestModule,
+} from './emit.js';

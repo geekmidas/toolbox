@@ -32,6 +32,8 @@ import {
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
+import { discover } from '../reconcile/discover.js';
+import { writeManifestModule } from '../reconcile/emit.js';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -87,6 +89,30 @@ export async function buildCommand(
 
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
+
+	// The manifest, written once so nothing downstream has to discover for
+	// itself. A deploy config that called `discover()` would import the
+	// application's modules inside its own toolchain — which is how a React
+	// email template becomes a deploy failure. See `reconcile/emit.ts`.
+	// `constructs` accepts the partitioned shape every other glob does; only the
+	// flat forms name a construct file, and a partitioned one would be a
+	// different question than "where do constructs live".
+	const constructGlobs =
+		typeof config.constructs === 'string' || Array.isArray(config.constructs)
+			? config.constructs
+			: undefined;
+
+	if (constructGlobs) {
+		const manifest = await discover({
+			patterns: constructGlobs,
+			cwd: process.cwd(),
+		});
+
+		const path = await writeManifestModule(manifest, process.cwd());
+		logger.log(
+			`📋 Manifest: ${Object.keys(manifest).length} constructs → ${relative(process.cwd(), path)}`,
+		);
+	}
 
 	// Normalize production configuration
 	const productionConfigFromGkm = getProductionConfigFromGkm(config);

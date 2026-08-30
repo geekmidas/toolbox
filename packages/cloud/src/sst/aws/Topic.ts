@@ -1,4 +1,5 @@
-import { snsUrl } from '@geekmidas/events/sns';
+// The codec alone — see the note in `Queue.ts`.
+import * as snsUrl from '@geekmidas/events/sns/url';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';

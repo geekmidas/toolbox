@@ -43,19 +43,22 @@ describe('RestApi', () => {
 		expect(surface).toMatchObject({ endpoints: [] });
 	});
 
-	it('does not mutate when depended on', () => {
+	it('does not mutate when it calls another surface', () => {
 		// Immutable builders: a module exporting both a base and a variant must
 		// not have the second silently change the first.
-		const withAuth = api.dependsOn([
+		const withAuth = api.calls([
 			{
 				id: 'Auth',
 				declare: () => [{ kind: 'rest-api', id: 'Auth', endpoints: [] }],
 			},
 		]);
 
-		expect(api.declare()[0]).not.toHaveProperty('dependencies');
+		// `calls`, not `dependencies` — a surface-level dependency would hand
+		// every route on this API whatever the surface named, which is the
+		// over-granting least privilege exists to prevent.
+		expect(api.declare()[0]).not.toHaveProperty('calls');
 		expect(withAuth.declare()[0]).toMatchObject({
-			dependencies: [{ target: 'Auth', kind: 'rest-api' }],
+			calls: [{ target: 'Auth', kind: 'rest-api' }],
 		});
 	});
 });

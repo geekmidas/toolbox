@@ -5,7 +5,7 @@ import {
 	CacheNeedsProvider,
 	CacheNeedsVpc,
 } from '../aws/Cache';
-import { EmailNeedsUrl } from '../aws/Email';
+import { EmailNeedsSender, EmailNeedsUrl } from '../aws/Email';
 import { type ProvisionContext, provisionerFor } from '../fromManifest';
 
 const stack = {} as never;
@@ -97,7 +97,7 @@ describe('email', () => {
 		const email = provisionerFor('email')(
 			stack,
 			manifest.Mail,
-			{ url: 'smtp://resend:re_xxx@smtp.resend.com:587' },
+			{ url: 'smtp://resend:re_xxx@smtp.resend.com:587', from: 'a@b.com' },
 			context({ email: 'resend' }),
 		);
 
@@ -112,7 +112,7 @@ describe('email', () => {
 		const email = provisionerFor('email')(
 			stack,
 			manifest.Mail,
-			{},
+			{ from: 'a@b.com' },
 			context({ email: 'ses' }),
 		);
 
@@ -128,7 +128,10 @@ describe('email', () => {
 		const email = provisionerFor('email')(
 			stack,
 			manifest.Mail,
-			{ url: 'smtp://AKIAOLD:pw@email-smtp.eu-west-1.amazonaws.com:587' },
+			{
+				url: 'smtp://AKIAOLD:pw@email-smtp.eu-west-1.amazonaws.com:587',
+				from: 'a@b.com',
+			},
 			context({ email: 'ses' }),
 		);
 
@@ -138,11 +141,14 @@ describe('email', () => {
 	});
 
 	it('refuses a backend that cannot mint its own and was given none', () => {
+		// A sender alone is not enough for Resend: it is an account somebody
+		// created, so there is nothing for a deploy to provision and the URL is
+		// a missing setup step rather than something to default.
 		expect(() =>
 			provisionerFor('email')(
 				stack,
 				manifest.Mail,
-				{},
+				{ from: 'a@b.com' },
 				context({ email: 'resend' }),
 			),
 		).toThrow(EmailNeedsUrl);
@@ -150,7 +156,12 @@ describe('email', () => {
 
 	it('sends through SES when nothing said otherwise', () => {
 		// The default, because it is what this repo's projects actually use.
-		const email = provisionerFor('email')(stack, manifest.Mail, {}, context());
+		const email = provisionerFor('email')(
+			stack,
+			manifest.Mail,
+			{ from: 'a@b.com' },
+			context(),
+		);
 
 		expect(email.provides().url).toContain('email-smtp.');
 	});
@@ -164,7 +175,7 @@ describe('email', () => {
 			const provisioned = provisionerFor('email')(
 				stack,
 				manifest.Mail,
-				{ url: 'smtp://user:pw@relay.example.com:587' },
+				{ url: 'smtp://user:pw@relay.example.com:587', from: 'a@b.com' },
 				context({ email: backend }),
 			);
 
@@ -172,5 +183,14 @@ describe('email', () => {
 				true,
 			);
 		}
+	});
+
+	it('refuses to invent a sending identity', () => {
+		// Every provider rejects an unverified sender, so a guess would deploy
+		// cleanly and fail at the first send — which is the worst place to
+		// discover it.
+		expect(() =>
+			provisionerFor('email')(stack, manifest.Mail, {}, context()),
+		).toThrow(EmailNeedsSender);
 	});
 });

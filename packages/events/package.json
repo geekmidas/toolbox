@@ -43,6 +43,16 @@
 				"default": "./dist/sqs/index.cjs"
 			}
 		},
+		"./sqs/url": {
+			"import": {
+				"types": "./dist/sqs/sqsUrl.d.mts",
+				"default": "./dist/sqs/sqsUrl.mjs"
+			},
+			"require": {
+				"types": "./dist/sqs/sqsUrl.d.cts",
+				"default": "./dist/sqs/sqsUrl.cjs"
+			}
+		},
 		"./sns": {
 			"import": {
 				"types": "./dist/sns/index.d.mts",
@@ -51,6 +61,16 @@
 			"require": {
 				"types": "./dist/sns/index.d.cts",
 				"default": "./dist/sns/index.cjs"
+			}
+		},
+		"./sns/url": {
+			"import": {
+				"types": "./dist/sns/snsUrl.d.mts",
+				"default": "./dist/sns/snsUrl.mjs"
+			},
+			"require": {
+				"types": "./dist/sns/snsUrl.d.cts",
+				"default": "./dist/sns/snsUrl.cjs"
 			}
 		},
 		"./pgboss": {

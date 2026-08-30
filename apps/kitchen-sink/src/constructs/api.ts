@@ -23,4 +23,4 @@ export const api = new RestApi('Api', {
 	routes: './src/endpoints/**/*.ts',
 	authorizers: ['iam'],
 	default: 'none',
-}).dependsOn([auth]);
+}).calls([auth]);

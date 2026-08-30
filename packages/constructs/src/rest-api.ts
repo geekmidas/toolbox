@@ -79,7 +79,7 @@ export class RestApi<TName extends string = string>
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: RestApiConfig,
-		/** Internal: how `.dependsOn()` carries edges into the copy it returns. */
+		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
 	) {
 		const canonical = canonicalId(id as string);
@@ -98,18 +98,20 @@ export class RestApi<TName extends string = string>
 	}
 
 	/**
-	 * What this surface itself calls.
+	 * Other surfaces this one calls.
 	 *
-	 * Surface-to-surface only — an API in front of a separate auth server is the
-	 * case, and it is what puts this API's origin on that server's trusted list.
-	 * Not the same question as an endpoint's `.dependsOn()`, which is about
-	 * injecting clients into a handler; those edges belong to the endpoints and
-	 * fold into this node's `endpoints` when the build merges them, without
-	 * anything being written twice.
+	 * **Not `.dependsOn()`, and the difference matters.** An endpoint's
+	 * `.dependsOn()` injects a client into that handler and grants it exactly
+	 * what it named. This grants nothing and injects nothing: it records that
+	 * this API calls another surface, which is what puts this API's origin on
+	 * that surface's trusted-origin list.
+	 *
+	 * Spelling it `dependsOn` would invite the thing least privilege forbids —
+	 * every route on the surface receiving whatever the surface named.
 	 *
 	 * Immutable, like every other builder here.
 	 */
-	dependsOn(constructs: readonly Declarable[]): RestApi<TName> {
+	calls(constructs: readonly Declarable[]): RestApi<TName> {
 		return new RestApi<TName>(this.id as ConstructName<TName>, this.config, [
 			...this.dependencies,
 			...constructs.map(edgeTo),
@@ -131,9 +133,7 @@ export class RestApi<TName extends string = string>
 				kind: 'rest-api',
 				id: this.id,
 				endpoints: [],
-				...(this.dependencies.length
-					? { dependencies: this.dependencies }
-					: {}),
+				...(this.dependencies.length ? { calls: this.dependencies } : {}),
 				...(this.routes.length ? { routes: this.routes } : {}),
 				...(this.config.authorizers?.length
 					? { authorizers: this.config.authorizers }

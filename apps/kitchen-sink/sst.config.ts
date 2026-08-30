@@ -30,23 +30,39 @@ export default $config({
 	},
 
 	async run() {
-		const { discover } = await import('@geekmidas/cli/reconcile');
-		const { fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+		const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+		const { manifest } = await import('./.gkm/manifest.js');
 
-		// The same discovery `gkm dev` runs, against the same glob. One manifest,
-		// two targets — which is the claim this file exists to make true.
-		const manifest = await discover({
-			patterns:
-				'src/{constructs,crons,endpoints,functions,queues,subscribers}/**/*.ts',
-			cwd: process.cwd(),
-		});
+		// `.gkm/manifest.ts` is written by `gkm build`, and importing it rather
+		// than calling `discover()` here is deliberate: discovery imports the
+		// application's own modules, so a deploy config that called it would
+		// evaluate the whole runtime graph — React email templates included —
+		// inside SST's toolchain. That failed on the JSX long before reaching
+		// AWS, and would keep failing on the next thing an app imports.
+		//
+		// Same split `RestApi` makes by naming a routes glob: the build walks the
+		// filesystem once, and everything downstream reads what it wrote. And
+		// because it is a module rather than JSON, every id and key stays a
+		// literal.
 
 		// A VPC is required rather than invented, because creating one means
 		// creating a NAT gateway — a monthly cost in an account whose networking
 		// may already be somebody else's decision.
 		const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
 
-		const stack = new Stack('KitchenSink');
+		// `App` carries identity and the pre-resolved hosted zone; `Stack` is the
+		// grouping inside it. Neither is doing much here — most provisioners take
+		// the stack and ignore it — but the contract is what it is, and a QA stage
+		// with no custom domain simply has no zone to resolve.
+		const app = new App({
+			name: $app.name,
+			stage: $app.stage,
+			domain: '',
+			region: 'eu-west-1',
+			hostedZoneId: '',
+		});
+
+		const stack = new Stack(app, 'KitchenSink');
 
 		return fromManifest(
 			stack,
@@ -55,6 +71,11 @@ export default $config({
 				// Provider-specific inputs, keyed by construct id. Everything a
 				// neutral declaration *can* express is already in the manifest.
 				KitchenSink: { vpc },
+				// The sending identity: stage-varying by nature and not
+				// defaultable, because every provider rejects an unverified
+				// sender and a guess would fail at the first send rather than
+				// here.
+				Mail: { from: 'noreply@shortstaff.co.za' },
 			},
 			{
 				// A cache in the declared database: no second resource, no second

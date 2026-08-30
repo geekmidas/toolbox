@@ -33,7 +33,17 @@ export class StaticSite<
 		name: string,
 		props: StaticSiteProps = {},
 	) {
-		super(name, props);
+		const { variant = 'static', ...args } = props;
+
+		super(name, {
+			// The variant's build, unless the caller supplied one. A site is
+			// source until something builds it — uploading `path` directly is what
+			// puts `src/` and `node_modules/` in a bucket — and *how* to build is
+			// exactly what the variant knows and the declaration deliberately does
+			// not.
+			build: BUILDS[variant],
+			...args,
+		});
 		this._id = name;
 	}
 
@@ -58,4 +68,25 @@ export class StaticSite<
 	}
 }
 
-export interface StaticSiteProps extends sst.aws.StaticSiteArgs {}
+export interface StaticSiteProps extends sst.aws.StaticSiteArgs {
+	/** Which framework builds it, for the default build command. */
+	variant?: 'static' | 'next' | 'tanstack';
+}
+
+/**
+ * How each variant builds, and where it leaves the result.
+ *
+ * One neutral name from the construct, one build per framework — the same
+ * arrangement the `VITE_`/`NEXT_PUBLIC_` prefixes have, and for the same
+ * reason: the framework changes the code you write, so it changes this and
+ * nothing else.
+ */
+const BUILDS: Record<
+	NonNullable<StaticSiteProps['variant']>,
+	{ command: string; output: string }
+> = {
+	static: { command: 'npm run build', output: 'dist' },
+	tanstack: { command: 'npm run build', output: 'dist' },
+	// Next's static export lands in `out`, not `dist`.
+	next: { command: 'npm run build', output: 'out' },
+};
