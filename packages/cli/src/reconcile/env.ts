@@ -420,6 +420,17 @@ function urlFor(
 			// The scheme is the backend, and the backend is the same one deployed —
 			// which is what lets a driver registered at build time match the URL
 			// resolved at run time.
+			// A cache that named a database is in that one — not in whichever the
+			// backend config would have picked, and not in "the" database when
+			// an app declares two.
+			if (resource.of) {
+				const parent = plan.resources.find((r) => r.id === resource.of);
+
+				return parent
+					? urlFor(parent, plan, ports, project, addresses)
+					: undefined;
+			}
+
 			switch (plan.cache) {
 				case 'db': {
 					// The database the app already declared. No second address, no

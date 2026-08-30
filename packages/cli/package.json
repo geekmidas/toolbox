@@ -78,6 +78,7 @@
 		"@aws-sdk/client-s3": "~3.992.0",
 		"@aws-sdk/client-ssm": "~3.992.0",
 		"@aws-sdk/credential-providers": "~3.992.0",
+		"@geekmidas/cache": "workspace:*",
 		"@geekmidas/constructs": "workspace:~",
 		"@geekmidas/db": "workspace:*",
 		"@geekmidas/envkit": "workspace:~",

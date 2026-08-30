@@ -21,6 +21,7 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
 import pg from 'pg';
+import { Cache } from '../cache';
 import type { Construct } from '../construct-interface';
 
 /** The schema a database uses when it does not say otherwise. */
@@ -165,6 +166,33 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 			this.options,
 			{ kind: 'database-reader', of: this.id },
 		);
+	}
+
+	/**
+	 * A cache that lives in this database.
+	 *
+	 * The same strengthening `schema()` is over a second database: `new
+	 * Cache('Sessions')` says the app caches and leaves where to the deployment,
+	 * while this says it caches *here* — which is a fact about the application
+	 * and so belongs in its code.
+	 *
+	 * What it buys beyond being explicit: the table's schema and the role that
+	 * reaches it come from this database rather than from a second convention,
+	 * and the backend no longer has to guess which database "the database" meant
+	 * when an app declares two.
+	 *
+	 * A cache is not a `KyselyDatabase`, so this returns a `Cache` — the client
+	 * is a key/value store, not a query builder, and typing it as the parent
+	 * would be a convenience that lies.
+	 */
+	cache<TCache extends string = `${TName}Cache`>(
+		id: ConstructName<TCache> = `${this.id}Cache` as ConstructName<TCache>,
+		options: { table?: string } = {},
+	): Cache<TCache> {
+		return new Cache<TCache>(id, {
+			of: this.id,
+			...(options.table ? { table: options.table } : {}),
+		});
 	}
 
 	/**

@@ -234,18 +234,26 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	cache: (stack, d, props, context) => {
 		const backend = context.cache ?? 'upstash';
 
-		if (backend === 'db') {
-			// The database the app already declared. Resolving its URL rather than
-			// composing a new one is what makes this backend free: same address,
-			// same role, one more table.
-			const database = Object.entries(context.manifest).find(
-				([, declaration]) => declaration.kind === 'database',
-			);
-			const provisioned = database && context.provisioned[database[0]];
+		// A cache that named a database is in *that* one, whatever the backend
+		// config says — the declaration is the stronger statement. Without one,
+		// the `db` backend falls back to the declared database, which is
+		// unambiguous with one and arbitrary with two.
+		const parentId =
+			d.kind === 'cache' && d.of
+				? d.of
+				: backend === 'db'
+					? Object.entries(context.manifest).find(
+							([, declaration]) => declaration.kind === 'database',
+						)?.[0]
+					: undefined;
 
-			if (!provisioned) throw new CacheNeedsDatabase(d.id);
+		if (parentId) {
+			const parent = context.provisioned[parentId];
+			if (!parent) throw new CacheNeedsDatabase(d.id);
 
-			return new Cache(stack, d.id, { url: provisioned.provides().url! });
+			// Same address, same role, one more table — which is what makes this
+			// backend cost nothing to run.
+			return new Cache(stack, d.id, { url: parent.provides().url! });
 		}
 
 		const supplied = props as {

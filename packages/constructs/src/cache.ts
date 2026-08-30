@@ -27,6 +27,19 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Construct } from './construct-interface';
 
+export interface CacheOptions {
+	/**
+	 * The database this cache lives in.
+	 *
+	 * Set by `database.cache()` rather than written by hand — the point of the
+	 * method is that the parent's id comes from the parent rather than from a
+	 * string somebody has to keep in step.
+	 */
+	of?: string;
+	/** The table entries are kept in. Defaults to `cache`. */
+	table?: string;
+}
+
 export class Cache<TName extends string = string>
 	implements Construct<TName, CacheClient>
 {
@@ -39,7 +52,10 @@ export class Cache<TName extends string = string>
 	 */
 	private readonly key: string;
 
-	constructor(id: ConstructName<TName>) {
+	constructor(
+		id: ConstructName<TName>,
+		private readonly options: CacheOptions = {},
+	) {
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
@@ -53,7 +69,15 @@ export class Cache<TName extends string = string>
 	}
 
 	declare(): Declaration[] {
-		return [{ kind: 'cache', id: this.id, provides: [this.key] }];
+		return [
+			{
+				kind: 'cache',
+				id: this.id,
+				...(this.options.of ? { of: this.options.of } : {}),
+				...(this.options.table ? { table: this.options.table } : {}),
+				provides: [this.key],
+			},
+		];
 	}
 
 	/**

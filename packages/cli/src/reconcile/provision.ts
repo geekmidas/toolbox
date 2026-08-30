@@ -16,6 +16,7 @@
  * growing its own.
  */
 
+import { cacheTableStatements } from '@geekmidas/cache/postgres';
 import { ownerRole, readerRole, roleStatements } from '@geekmidas/db/pg/roles';
 import { localRole, localRolePassword, rootDatabase } from './env';
 import type { Plan, PlannedResource } from './plan';
@@ -94,6 +95,23 @@ export function postgresStatements(
 			// from a provisioner in a VPC, and one implementation is what stops
 			// "works locally, fails deployed".
 			statements.push(...rolesFor(resource, resource.schema, plan, project));
+		}
+
+		// A cache that lives in a database is a table in it, and a table is DDL —
+		// so the owner creates it, not the handler's role, which may not create
+		// anything. The same reason the driver does not do it lazily.
+		if (resource.kind === 'cache' && resource.of) {
+			statements.push(
+				...cacheTableStatements({
+					...(resource.table ? { table: resource.table } : {}),
+				}).map((statement) => ({
+					id: resource.id,
+					describe: statement.describe,
+					database: rootDatabase(resource, plan),
+					...(statement.exists ? { exists: statement.exists } : {}),
+					create: statement.sql,
+				})),
+			);
 		}
 
 		// A reader provisions nothing: it is a set of grants on an endpoint that

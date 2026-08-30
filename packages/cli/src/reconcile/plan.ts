@@ -129,6 +129,9 @@ const PROVISIONS: Partial<Record<DeclarationKind, true>> = {
 	'database-reader': true,
 	'database-schema': true,
 	objects: true,
+	// Only a cache that lives in a database creates anything — its table. The
+	// other backends have nothing to create inside the container they use.
+	cache: true,
 	// The open patterns become a bucket policy on the origin — real
 	// enforcement locally, from the same declaration the CDN behaviour comes
 	// from deployed.
@@ -194,6 +197,8 @@ export interface PlannedResource {
 	provisions: boolean;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
+	/** For a cache in a database: the table entries are kept in. */
+	table?: string;
 	/**
 	 * Whether to provision the owner/runtime role split.
 	 *
@@ -313,6 +318,8 @@ export function containerFor(
 	kind: DeclarationKind,
 	events: EventsBackend = DEFAULT_EVENTS,
 	cache: CacheBackend = DEFAULT_CACHE,
+	/** Whether the declaration named a parent — see the `cache` branch. */
+	derived = false,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
@@ -323,6 +330,11 @@ export function containerFor(
 
 	// The same shape: a cache in the database lives in the database's container.
 	if (kind === 'cache') {
+		// A cache that *named* a database is in it whatever the backend config
+		// says — the declaration is the stronger statement, and config choosing
+		// otherwise would move a cache the app said lives here.
+		if (derived) return CONTAINERS.database;
+
 		return CACHE_CONTAINERS[cache] ?? CONTAINERS.database;
 	}
 
@@ -352,7 +364,12 @@ export function planFor(
 		const declaration: Declaration | undefined = manifest[id];
 		if (!declaration) continue;
 
-		const container = containerFor(declaration.kind, events, cache);
+		const container = containerFor(
+			declaration.kind,
+			events,
+			cache,
+			'of' in declaration && typeof declaration.of === 'string',
+		);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
 		if (container) {
@@ -393,6 +410,9 @@ export function planFor(
 			...('roles' in declaration && declaration.roles === false
 				? { roles: false }
 				: {}),
+			...('table' in declaration && declaration.table
+				? { table: declaration.table }
+				: {}),
 		});
 	}
 
@@ -413,10 +433,12 @@ export function planFor(
 
 	// A cache in the database needs one to live in, exactly as pg-boss does.
 	// Starting a Postgres to hold only a cache would be the container this
-	// design refuses to invent.
+	// design refuses to invent. A cache that named its parent is checked by
+	// `assertDerivations` instead, which is stricter — it names the database
+	// that is missing rather than reporting that some database is.
 	if (
 		cache === 'db' &&
-		resources.some((r) => r.kind === 'cache') &&
+		resources.some((r) => r.kind === 'cache' && !r.of) &&
 		!resources.some((r) => r.kind === 'database')
 	) {
 		throw new CacheNeedsDatabase(

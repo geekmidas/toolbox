@@ -230,13 +230,34 @@ export interface CredentialDeclaration extends Node {
 /**
  * A key/value cache.
  *
- * Provides one URL carrying its own token, because a cache is reached over the
- * same protocol wherever it runs — Upstash's REST API deployed, and a proxy in
- * front of Redis locally, which is what lets the client be identical in both.
- * Nothing here says Redis: what backs it is the provider's business.
+ * Provides one URL. What is *in* that URL is the backend's business — Upstash's
+ * REST API, a Redis endpoint, or a table in a database — and the scheme is what
+ * picks the client, exactly as it does for object storage.
+ *
+ * Two ways to declare one, and the difference is a real statement rather than a
+ * spelling. `new Cache('Sessions')` says *this app caches*, leaving where to the
+ * deployment; `orders.cache('Sessions')` says *this app caches in that
+ * database*, which is a fact about the application and belongs in its code. The
+ * second is the same strengthening `orders.schema('AuthDb')` is over declaring a
+ * second database.
  */
 export interface CacheDeclaration extends Node {
 	kind: 'cache';
+	/**
+	 * The database this cache lives in, when it lives in one.
+	 *
+	 * Present only for a cache derived from a database. It removes a guess the
+	 * backend selection otherwise has to make — "the declared database" is
+	 * unambiguous with one and arbitrary with two — and it means the table's
+	 * schema and the role that reaches it come from the parent rather than from
+	 * a second convention.
+	 */
+	of?: ConstructId;
+	/**
+	 * The table entries are kept in, resolved against the connection's
+	 * `search_path`. Defaults to `cache`.
+	 */
+	table?: string;
 }
 
 /**
@@ -369,7 +390,18 @@ export type Declaration =
 	| TopicDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
-export type DerivedDeclaration = Extract<Declaration, { of: ConstructId }>;
+/**
+ * A declaration that names a parent.
+ *
+ * A union rather than an `Extract`, because one kind is *optionally* derived: a
+ * cache lives in a database when it was declared from one and stands alone
+ * otherwise, so `of` is optional on it and an `Extract<…, { of: ConstructId }>`
+ * would not select it. {@link isDerived} tests the value rather than the kind
+ * for exactly that reason.
+ */
+export type DerivedDeclaration =
+	| Extract<Declaration, { of: ConstructId }>
+	| CacheDeclaration;
 
 export type DerivedKind = DerivedDeclaration['kind'];
 
@@ -388,6 +420,10 @@ export const DERIVES_FROM: Readonly<Record<DerivedKind, readonly string[]>> = {
 	// shares the parent's *contents* rather than its credentials, which is why
 	// it is a construct of its own and only its node is derived.
 	'file-server': ['objects'],
+	// A cache in a database is a table in it, reached by the same role — so it
+	// derives from either a database or a tenant of one, and a tenant's cache
+	// lands in the tenant's schema without naming it.
+	cache: ['database', 'database-schema'],
 };
 
 export type DeclarationKind = Declaration['kind'];

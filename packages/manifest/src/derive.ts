@@ -25,8 +25,16 @@ import { provideKey } from './naming';
 /** Whether a declaration names a parent. */
 export function isDerived(
 	declaration: Declaration,
-): declaration is DerivedDeclaration {
-	return declaration.kind in DERIVES_FROM;
+): declaration is DerivedDeclaration & { of: ConstructId } {
+	// Both halves, because one kind is *optionally* derived: a cache declared
+	// from a database names it, and a cache declared on its own names nothing.
+	// Testing only the kind would make every standalone cache look like a
+	// derivation with a missing parent.
+	return (
+		declaration.kind in DERIVES_FROM &&
+		'of' in declaration &&
+		typeof declaration.of === 'string'
+	);
 }
 
 /**

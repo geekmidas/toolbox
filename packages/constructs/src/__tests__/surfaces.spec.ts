@@ -1,7 +1,13 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { dependentsOf } from '@geekmidas/manifest';
+import {
+	assertDerivations,
+	dependentsOf,
+	UnknownParent,
+} from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { Cache } from '../cache';
 import { edgeTo, NotAConstruct } from '../construct-interface';
+import { KyselyDatabase } from '../database/kysely';
 import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
@@ -94,5 +100,67 @@ describe('edgeTo', () => {
 				declare: () => [{ kind: 'secret', id: 'AuthSecret' }],
 			}),
 		).toThrow(NotAConstruct);
+	});
+});
+
+describe('database.cache()', () => {
+	const database = new KyselyDatabase('Orders');
+
+	it('names the database it lives in', () => {
+		// Which removes a guess: "the declared database" is unambiguous with one
+		// and arbitrary with two.
+		expect(database.cache().declare()).toEqual([
+			{
+				kind: 'cache',
+				id: 'OrdersCache',
+				of: 'Orders',
+				provides: ['ORDERS_CACHE_URL'],
+			},
+		]);
+	});
+
+	it('takes a name and a table when the defaults will not do', () => {
+		expect(database.cache('Sessions', { table: 'sessions' }).declare()).toEqual(
+			[
+				{
+					kind: 'cache',
+					id: 'Sessions',
+					of: 'Orders',
+					table: 'sessions',
+					provides: ['SESSIONS_URL'],
+				},
+			],
+		);
+	});
+
+	it('resolves against its parent, or fails the build', () => {
+		const manifest = Object.fromEntries(
+			[...database.declare(), ...database.cache().declare()].map((d) => [
+				d.id,
+				d,
+			]),
+		) as ConstructManifest;
+
+		expect(() => assertDerivations(manifest)).not.toThrow();
+
+		const orphan = Object.fromEntries(
+			database
+				.cache()
+				.declare()
+				.map((d) => [d.id, d]),
+		) as ConstructManifest;
+
+		expect(() => assertDerivations(orphan)).toThrow(UnknownParent);
+	});
+
+	it('leaves a standalone cache underived', () => {
+		// `new Cache('Sessions')` says the app caches and leaves where to the
+		// deployment. Treating it as a derivation with a missing parent is the
+		// trap `isDerived` testing the value rather than the kind avoids.
+		const standalone = Object.fromEntries(
+			new Cache('Sessions').declare().map((d) => [d.id, d]),
+		) as ConstructManifest;
+
+		expect(() => assertDerivations(standalone)).not.toThrow();
 	});
 });
