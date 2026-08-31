@@ -62,13 +62,15 @@ describe('Database', () => {
 });
 
 describe('DatabaseReader', () => {
-	it('points at the endpoint the cluster already has', () => {
-		// Nobody provisions a replica: `reader` is something an Aurora cluster
-		// *has*, and where it runs one instance the endpoint resolves to it.
+	it('points at the one endpoint the instance has', () => {
+		// Nobody provisions a replica, and an RDS instance has no second address:
+		// a reader resolves to the writer's endpoint. Safe because read-only is
+		// enforced by the role's grants, never by which host was reached.
 		const url = new DatabaseReader('OrdersReader', cluster()).provides()
 			.url as string;
 
-		expect(url).toContain('db-ro.stub.rds.amazonaws.com');
+		expect(url).toContain('@db.stub.rds.amazonaws.com');
+		expect(url).not.toContain('db-ro.');
 	});
 
 	it('is reachable through the provisioner, from its parent', () => {
@@ -79,7 +81,7 @@ describe('DatabaseReader', () => {
 			context({ Orders: cluster() }),
 		);
 
-		expect(reader.provides().url).toContain('db-ro.');
+		expect(reader.provides().url).toContain('@db.stub.rds.amazonaws.com');
 	});
 });
 
@@ -110,6 +112,8 @@ describe('DatabaseSchema', () => {
 			context({ Orders: cluster(), AuthDb: tenant }),
 		);
 
-		expect(readerOnTenant.provides().url).toContain('db-ro.');
+		expect(readerOnTenant.provides().url).toContain(
+			'@db.stub.rds.amazonaws.com',
+		);
 	});
 });

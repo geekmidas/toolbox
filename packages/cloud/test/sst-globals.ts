@@ -57,12 +57,12 @@ class StubRouter extends StubComponent {
 }
 
 /**
- * A cluster with the five parts a connection URL is composed from, plus the
- * reader endpoint an Aurora cluster has without anything creating a replica.
+ * An instance with the five parts a connection URL is composed from, and no
+ * `reader` — an RDS instance has one endpoint, which is the whole reason
+ * `urlFor({ reader: true })` hands back the writer's address.
  */
-class StubAurora extends StubComponent {
+class StubPostgres extends StubComponent {
 	readonly host = 'db.stub.rds.amazonaws.com';
-	readonly reader = 'db-ro.stub.rds.amazonaws.com';
 	readonly port = 5432;
 	readonly database = 'stubdb';
 	readonly username = 'postgres';
@@ -114,7 +114,7 @@ Object.assign(globalThis, {
 			ApiGatewayV2: StubComponent,
 			StaticSite: StubComponent,
 			Router: StubRouter,
-			Aurora: StubAurora,
+			Postgres: StubPostgres,
 		},
 	},
 	$util: util,
