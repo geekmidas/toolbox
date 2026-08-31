@@ -168,9 +168,13 @@ export interface EmailDeclaration extends Node {
  * catalogue in its region, so check before pinning an unusual version:
  *
  * ```
- * aws rds describe-db-engine-versions --engine aurora-postgresql \
- *   --query '*[].[EngineVersion]' --output text
+ * aws rds describe-db-engine-versions --engine postgres \
+ *   --query 'DBEngineVersions[].EngineVersion' --output text
  * ```
+ *
+ * RDS offered 11 through 18 in `eu-west-1` when this was written. 11 and 12 are
+ * left out because they are past upstream end-of-life: still provisionable, but
+ * not something to make easy to reach for.
  */
 export type PostgresVersion = 13 | 14 | 15 | 16 | 17 | 18;
 
