@@ -155,10 +155,17 @@ export class DatabaseBootstrap {
 	 * that touched neither costs nothing, which is what makes running this on
 	 * every deploy acceptable rather than something to remember.
 	 *
-	 * @param vpc the cluster's VPC. The function has to reach the database, and
+	 * @param vpc the database's VPC. The function has to reach the database, and
 	 * a database reachable from outside its VPC is the problem this avoids.
+	 *
+	 * The component rather than a component's `vpc` argument: a function in a VPC
+	 * needs subnets *and* security groups, and the two database components spell
+	 * their argument differently — a cluster asks for both, an instance asks only
+	 * for subnets. Naming the shared thing avoids inheriting whichever spelling
+	 * the database happens to use, which is how this came to be typed as
+	 * something that could not carry a security group.
 	 */
-	run(vpc: sst.aws.AuroraArgs['vpc']): void {
+	run(vpc: sst.aws.Vpc): void {
 		if (this.empty) return;
 
 		this.storeCredentials();
@@ -168,16 +175,12 @@ export class DatabaseBootstrap {
 			// the framework's, and an app that had to carry a bootstrap handler
 			// could get it wrong.
 			handler: HANDLER,
-			runtime: 'nodejs22.x',
-			// Long enough for a cold Aurora Serverless v2 cluster to wake up —
+			runtime: 'nodejs24.x',
+			// Long enough for a database that is still coming up to answer —
 			// `min: 0 ACU` means the first connection of the day pays for a
 			// resume, and timing out there would leave a half-bootstrapped schema.
 			timeout: '5 minutes',
-			// The two components spell the same VPC differently — a cluster names
-			// the subnets it lives in, a function names the private ones it runs
-			// in — and they are the same subnets. Translated here rather than
-			// asked for twice.
-			vpc: functionVpc(vpc),
+			vpc,
 			nodejs: { install: ['pg'] },
 		});
 
@@ -271,23 +274,6 @@ export class DatabaseBootstrap {
  */
 const HANDLER =
 	'node_modules/@geekmidas/cloud/src/sst/aws/bootstrap/handler.handler';
-
-/** An Aurora VPC argument as the shape a function takes. */
-function functionVpc(
-	vpc: sst.aws.AuroraArgs['vpc'],
-): sst.aws.FunctionArgs['vpc'] {
-	// A `Vpc` component satisfies both, so it passes straight through.
-	if (!vpc || typeof vpc !== 'object' || !('subnets' in vpc)) {
-		return vpc as sst.aws.FunctionArgs['vpc'];
-	}
-
-	const { subnets, securityGroups } = vpc as {
-		subnets: $util.Input<$util.Input<string>[]>;
-		securityGroups: $util.Input<$util.Input<string>[]>;
-	};
-
-	return { privateSubnets: subnets, securityGroups };
-}
 
 /**
  * The bootstrap's input, assembled from resolved values.

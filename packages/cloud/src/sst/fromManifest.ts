@@ -213,7 +213,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			// rather than whatever Aurora defaults to that month. Local ran 18
 			// while this ran 17.7, and neither was written down anywhere.
 			version: String(d.version ?? DEFAULT_POSTGRES_VERSION),
-			...(props as unknown as sst.aws.AuroraArgs),
+			...(props as unknown as sst.aws.PostgresArgs),
 		});
 
 		// A database needs its own roles, not just its tenants'. Registering only

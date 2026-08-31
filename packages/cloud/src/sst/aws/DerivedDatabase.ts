@@ -47,11 +47,10 @@ abstract class DerivedDatabase implements GkmLinkable {
 /**
  * A read-only endpoint on an existing cluster.
  *
- * Nothing is provisioned: `reader` is an endpoint an Aurora cluster has. Where
- * the cluster runs a single instance that endpoint resolves to it, which is safe
- * rather than a silently writable connection behind a name that says reader —
- * read-only is enforced by the role's grants, never by which endpoint was
- * reached.
+ * Nothing is provisioned. An RDS instance has one endpoint, so this resolves to
+ * the same address the writer uses — which is safe rather than a silently
+ * writable connection behind a name that says reader, because read-only is
+ * enforced by the role's grants and never by which endpoint was reached.
  */
 export class DatabaseReader extends DerivedDatabase {
 	constructor(

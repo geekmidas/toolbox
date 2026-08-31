@@ -3,37 +3,41 @@ import { type GkmLinkable, ResourceType } from '../Linkable';
 import type { StackType } from '../Stack';
 
 /**
- * `Database` — an Aurora Serverless v2 cluster, and the infra half of the
- * `database` kind.
+ * `Database` — an RDS Postgres instance, and the infra half of the `database`
+ * kind.
  *
- * **Aurora rather than an RDS instance**, and the reason is the stage model
- * rather than the engine. This design provisions per stage, which makes stages
- * cheap to create and encourages having several — and a provisioned instance
- * puts a fixed monthly floor under every one of them. Aurora Serverless v2
- * defaults to `min: 0 ACU`, so an idle preview stage costs storage and nothing
- * else. A steady-state production workload may well be cheaper on a provisioned
- * instance; that is a per-stage decision and belongs in `ComponentOverrides`,
- * not in a declaration, because it varies by stage and by month rather than by
- * what the application *is*.
+ * **A provisioned instance rather than Aurora Serverless v2.** Aurora is the
+ * more interesting answer on paper — it scales to zero, so an idle preview
+ * stage costs storage and nothing else, which suits a design that provisions
+ * per stage. It is also a cluster: more moving parts, a different resource
+ * type, and pricing that is harder to predict for the steady-state workload
+ * most stages actually are. A plain instance is the ordinary thing, and the
+ * ordinary thing is the better default.
+ *
+ * Aurora is not reachable from here: this class *is* the RDS component and its
+ * props are that component's args, so a stage wanting a cluster needs a second
+ * class rather than an override. Worth adding when something wants it; not
+ * worth pretending it already exists.
  *
  * :::caution
- * Switching between the two replaces the cluster. It is a different resource,
- * not a different setting.
+ * Moving between the two replaces the database. They are different resources,
+ * not different settings — the data does not come with you.
  * :::
  *
- * **It also answers who provisions the read replica** — nobody does. A reader
- * endpoint is something an Aurora cluster *has*; `DatabaseReader` resolves that
- * endpoint rather than creating a replica behind it. Where a cluster has one
- * instance the reader endpoint still resolves, to that instance, which is the
- * same safe fallback the design already specified for `--target=server`:
- * read-only is enforced by the role's grants, never by which endpoint you
- * happened to reach.
+ * **Who provisions the read replica** — nobody does, and a reader resolves to
+ * the writer's address. An Aurora cluster has a reader endpoint; an RDS
+ * instance has no second address to hand out, so `DatabaseReader` returns this
+ * one. That is the fallback the design already specified for `--target=server`
+ * and it is safe for the same reason: read-only is enforced by the role's
+ * grants, never by which endpoint you happened to reach. Adding `replicas`
+ * creates instances but no endpoint that balances across them, so it changes
+ * nothing here.
  */
 export class Database<
 		TStage extends string = string,
 		TDomain extends string = string,
 	>
-	extends sst.aws.Aurora
+	extends sst.aws.Postgres
 	implements GkmLinkable
 {
 	readonly _id!: string;
@@ -52,7 +56,7 @@ export class Database<
 	 * reachable from outside its VPC is the problem the requirement avoids, and
 	 * the DDL has to reach it from inside.
 	 */
-	readonly vpc: sst.aws.AuroraArgs['vpc'];
+	readonly vpc: sst.aws.Vpc;
 
 	constructor(
 		_stack: StackType<TStage, TDomain>,
@@ -61,7 +65,7 @@ export class Database<
 	) {
 		const { schema, ...args } = props;
 
-		super(name, { engine: 'postgres', ...args });
+		super(name, args);
 		this._id = name;
 		this.schema = schema;
 		this.vpc = args.vpc;
@@ -93,6 +97,15 @@ export class Database<
 	 * that goes quietly missing when the join is done by hand.
 	 */
 	urlFor(options: {
+		/**
+		 * Ask for the read path.
+		 *
+		 * Kept in the signature and currently resolved to the same address: an
+		 * RDS instance has one endpoint. It states the caller's intent — a reader
+		 * wants the read path — so moving a stage to a cluster that *has* a second
+		 * endpoint changes one line here rather than every call site. What makes
+		 * the connection read-only is the role it authenticates as, not this.
+		 */
 		reader?: boolean;
 		schema?: string;
 		/**
@@ -104,7 +117,9 @@ export class Database<
 		 */
 		as?: { user: $util.Input<string>; password: $util.Input<string> };
 	}): $util.Input<string> {
-		const host = options.reader ? this.reader : this.host;
+		// One address: an RDS instance has no reader endpoint. Reading through the
+		// writer is safe because the reader *role* is what forbids writing.
+		const host = this.host;
 		// A role carries its own `search_path`, pinned by `ALTER ROLE`. It goes in
 		// the URL only for the master, which has no role of its own to pin it on.
 		const searchPath = options.as ? undefined : (options.schema ?? this.schema);
@@ -138,15 +153,25 @@ export class Database<
 	}
 }
 
-export interface DatabaseProps extends sst.aws.AuroraArgs {
+export interface DatabaseProps extends Omit<sst.aws.PostgresArgs, 'vpc'> {
 	/** The schema to pin on the connection's `search_path`. */
 	schema?: string;
+	/**
+	 * The VPC the database lives in.
+	 *
+	 * Narrowed to the component from the wider argument the RDS component
+	 * accepts, because the bootstrap function has to run in this same VPC and a
+	 * function needs security groups as well as subnets — which the loose form
+	 * cannot carry. Requiring the component means one thing is passed and both
+	 * halves can use it.
+	 */
+	vpc: sst.aws.Vpc;
 }
 
 /**
  * A database was declared and the deploy layer supplied no VPC.
  *
- * Not something the adapter can default. Aurora lives in a VPC, and creating one
+ * Not something the adapter can default. RDS lives in a VPC, and creating one
  * means creating a NAT gateway — a real monthly cost, in an account whose
  * networking may already be someone else's decision. So it is required, named,
  * and supplied where other provider-specific props are.
