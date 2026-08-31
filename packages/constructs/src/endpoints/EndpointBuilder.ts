@@ -10,8 +10,10 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
+import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	idsOf,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
@@ -108,30 +110,27 @@ export class EndpointBuilder<
 	}
 
 	description(description: string): this {
-		this._description = description;
-		return this;
+		return cloneWith(this, { _description: description });
 	}
 
 	status(status: SuccessStatus): this {
-		this._status = status;
-		return this;
+		return cloneWith(this, { _status: status });
 	}
 
 	override event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
 		event: TEvent,
 	): this {
-		this._events.push(event);
-		return this;
+		// Replaced rather than pushed: a clone shares whatever array the field
+		// points at, so an in-place push would be seen by the base it came from.
+		return cloneWith(this, { _events: [...this._events, event] });
 	}
 
 	tags(tags: string[]): this {
-		this._tags = tags;
-		return this;
+		return cloneWith(this, { _tags: tags });
 	}
 
 	memorySize(memorySize: number): this {
-		this._memorySize = memorySize;
-		return this;
+		return cloneWith(this, { _memorySize: memorySize });
 	}
 
 	/**
@@ -153,8 +152,7 @@ export class EndpointBuilder<
 	 * ```
 	 */
 	responseType(type: string): this {
-		this._responseType = type;
-		return this;
+		return cloneWith(this, { _responseType: type });
 	}
 
 	override publisher<T extends EventPublisher<any>, TName extends string>(
@@ -176,12 +174,12 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._publisher = publisher as unknown as Service<
-			TEventPublisherServiceName,
-			TEventPublisher
-		>;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			_publisher: publisher as unknown as Service<
+				TEventPublisherServiceName,
+				TEventPublisher
+			>,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -297,13 +295,11 @@ export class EndpointBuilder<
 	authorize(
 		fn: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase>,
 	): this {
-		this._authorize = fn;
-		return this;
+		return cloneWith(this, { _authorize: fn });
 	}
 
 	rateLimit(config: RateLimitConfig): this {
-		this._rateLimit = config;
-		return this;
+		return cloneWith(this, { _rateLimit: config });
 	}
 
 	authorizer(
@@ -327,8 +323,7 @@ export class EndpointBuilder<
 	> {
 		// Special case: 'none' explicitly marks endpoint as having no authorizer
 		if (name === 'none') {
-			this._authorizerName = undefined;
-			return this;
+			return cloneWith(this, { _authorizerName: undefined });
 		}
 
 		// Validate that the authorizer exists in available authorizers
@@ -343,8 +338,8 @@ export class EndpointBuilder<
 				`Authorizer "${name as string}" not found in available authorizers: ${available}`,
 			);
 		}
-		this._authorizerName = name;
-		return this;
+
+		return cloneWith(this, { _authorizerName: name });
 	}
 
 	/**
@@ -377,9 +372,22 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		return this.services(
-			servicesOf(constructs) as unknown as Service[],
-		) as unknown as EndpointBuilder<
+		// Both halves of the edge, from one call and one clone: the services the
+		// handler runs with, and the ids the manifest records. Recording them
+		// separately is what let them drift apart.
+		//
+		// `servicesOf` is the half that validates, so it runs first — recording
+		// ids ahead of it left a caught `NotAConstruct` with `undefined` already
+		// on a `string[]`.
+		const services = servicesOf(constructs) as unknown as Service[];
+
+		return cloneWith(this, {
+			_services: uniqBy(
+				[...this._services, ...services],
+				(service: Service) => service.serviceName,
+			),
+			_constructs: idsOf(constructs, this._constructs),
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -417,12 +425,12 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._services = uniqBy(
-			[...this._services, ...services],
-			(s) => s.serviceName,
-		) as TServices;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			_services: uniqBy(
+				[...this._services, ...services],
+				(s) => s.serviceName,
+			) as TServices,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -460,9 +468,9 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._logger = logger as unknown as TLogger;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			_logger: logger as unknown as TLogger,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -500,9 +508,9 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this.outputSchema = schema as unknown as OutSchema;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			outputSchema: schema as unknown as OutSchema,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -545,12 +553,12 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._auditorStorage = storage as unknown as Service<
-			TAuditStorageServiceName,
-			TAuditStorage
-		>;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			_auditorStorage: storage as unknown as Service<
+				TAuditStorageServiceName,
+				TAuditStorage
+			>,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -592,8 +600,7 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._actorExtractor = extractor;
-		return this;
+		return cloneWith(this, { _actorExtractor: extractor });
 	}
 
 	/**
@@ -614,8 +621,7 @@ export class EndpointBuilder<
 	 * ```
 	 */
 	audit(audits: MappedAudit<TAuditAction, OutSchema>[]): this {
-		this._audits = audits;
-		return this;
+		return cloneWith(this, { _audits: audits });
 	}
 
 	/**
@@ -654,12 +660,12 @@ export class EndpointBuilder<
 	> {
 		const service = serviceOf(source);
 
-		this._databaseService = service as unknown as Service<
-			TDatabaseServiceName,
-			TDatabase
-		>;
-
-		return this as unknown as EndpointBuilder<
+		return cloneWith(this, {
+			_databaseService: service as unknown as Service<
+				TDatabaseServiceName,
+				TDatabase
+			>,
+		}) as unknown as EndpointBuilder<
 			TRoute,
 			TMethod,
 			TInput,
@@ -724,9 +730,7 @@ export class EndpointBuilder<
 	 * ```
 	 */
 	rlsBypass(): this {
-		this._rlsBypass = true;
-		this._rlsConfig = undefined;
-		return this;
+		return cloneWith(this, { _rlsBypass: true, _rlsConfig: undefined });
 	}
 
 	// EndpointBuilder doesn't have a generic input method - it uses body, query, params instead
@@ -795,6 +799,7 @@ export class EndpointBuilder<
 			input: this.schemas,
 			output: this.outputSchema,
 			services: this._services,
+			constructs: this._constructs,
 			logger: this._logger,
 			timeout: this._timeout,
 			memorySize: this._memorySize,

@@ -141,6 +141,22 @@ export function servicesOf<const T extends readonly Consumable[]>(
 	}) as ServicesOf<T>;
 }
 
+/**
+ * The other half of `servicesOf`: the same edge, as the manifest records it.
+ *
+ * `.dependsOn()` used to keep only the services, which is what a handler runs
+ * with — and an id cannot be recovered from a service name reliably, so the
+ * edges were gone by the time the build could read them. Both halves are taken
+ * from one call now, and `existing` is folded in so repeated `.dependsOn()`
+ * calls accumulate the way `.services()` already does.
+ */
+export function idsOf(
+	constructs: readonly Consumable[],
+	existing: readonly string[] = [],
+): string[] {
+	return [...new Set([...existing, ...constructs.map(({ id }) => id)])];
+}
+
 /** Something that is not a construct was passed to `.dependsOn()`. */
 export class NotAConstruct extends Error {
 	constructor(readonly value: unknown) {

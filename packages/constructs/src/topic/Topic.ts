@@ -5,7 +5,7 @@ import {
 	Publisher,
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	canonicalId,
 	type Declaration,
@@ -16,8 +16,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as unknown as Logger;
 
 /** A topic's event contract — a map of event type → payload schema. */
 export type TopicEvents = Record<string, StandardSchemaV1>;

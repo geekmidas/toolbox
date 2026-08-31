@@ -6,8 +6,10 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	idsOf,
 	type ServicesOf,
 	servicesOf,
 } from '../construct-interface';
@@ -26,6 +28,8 @@ export class SubscriberBuilder<
 	private _timeout?: number;
 	private outputSchema?: OutSchema;
 	private _services: TServices = [] as Service[] as TServices;
+	/** The construct ids `.dependsOn()` named — what the manifest records. */
+	public _constructs: string[] = [];
 	private _logger: TLogger = DEFAULT_LOGGER;
 	private _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	private _topicName?: string;
@@ -55,8 +59,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._topicName = topic.name;
-		return this as unknown as SubscriberBuilder<
+		return cloneWith(this, {
+			_topicName: topic.name,
+		}) as unknown as SubscriberBuilder<
 			TServices,
 			TLogger,
 			OutSchema,
@@ -67,8 +72,7 @@ export class SubscriberBuilder<
 	}
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	output<T extends StandardSchemaV1>(
@@ -81,8 +85,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this.outputSchema = schema as unknown as OutSchema;
-		return this as any;
+		return cloneWith(this, {
+			outputSchema: schema as unknown as OutSchema,
+		}) as any;
 	}
 
 	/**
@@ -106,9 +111,19 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		return this.services(
-			servicesOf(constructs) as unknown as Service[],
-		) as unknown as SubscriberBuilder<
+		// Both halves of the edge, from one call and one clone: the services the
+		// handler runs with, and the ids the manifest records. Recording them
+		// separately is what let them drift apart.
+		//
+		// `servicesOf` is the half that validates, so it runs first — recording
+		// ids ahead of it left a caught `NotAConstruct` with `undefined` already
+		// on a `string[]`.
+		const services = servicesOf(constructs) as unknown as Service[];
+
+		return cloneWith(this, {
+			_services: [...this._services, ...services],
+			_constructs: idsOf(constructs, this._constructs),
+		}) as unknown as SubscriberBuilder<
 			[...TServices, ...ServicesOf<T>],
 			TLogger,
 			OutSchema,
@@ -128,8 +143,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._services = [...this._services, ...services] as any;
-		return this as any;
+		return cloneWith(this, {
+			_services: [...this._services, ...services] as any,
+		}) as any;
 	}
 
 	logger<T extends Logger>(
@@ -142,8 +158,7 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._logger = logger as unknown as TLogger;
-		return this as any;
+		return cloneWith(this, { _logger: logger as unknown as TLogger }) as any;
 	}
 
 	publisher<T extends EventPublisher<any>, TName extends string>(
@@ -156,8 +171,7 @@ export class SubscriberBuilder<
 		TName,
 		TSubscribedEvents
 	> {
-		this._publisher = publisher as any;
-		return this as any;
+		return cloneWith(this, { _publisher: publisher as any }) as any;
 	}
 
 	subscribe<
@@ -179,8 +193,9 @@ export class SubscriberBuilder<
 			: [...TSubscribedEvents, TEvent]
 	> {
 		const eventsToAdd = Array.isArray(event) ? event : [event];
-		this._subscribedEvents = [...this._subscribedEvents, ...eventsToAdd] as any;
-		return this as any;
+		return cloneWith(this, {
+			_subscribedEvents: [...this._subscribedEvents, ...eventsToAdd] as any,
+		}) as any;
 	}
 
 	handle(
@@ -208,17 +223,11 @@ export class SubscriberBuilder<
 			this._logger,
 			this._publisher,
 			this._topicName,
+			this._constructs,
 		);
 
-		// Reset builder state after creating the subscriber to prevent pollution
-		this._services = [] as Service[] as TServices;
-		this._logger = DEFAULT_LOGGER;
-		this._publisher = undefined;
-		this._topicName = undefined;
-		this._subscribedEvents = [] as any;
-		this._timeout = 30000; // Reset to default
-		this.outputSchema = undefined;
-
+		// No reset: `.handle()` reads this builder and leaves it alone, so a
+		// configured base stays usable for the next subscriber.
 		return subscriber;
 	}
 }

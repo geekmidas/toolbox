@@ -2,8 +2,10 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	idsOf,
 	type ServicesOf,
 	servicesOf,
 } from '../construct-interface';
@@ -27,31 +29,34 @@ export class QueueBuilder<
 	private _batchSize?: number;
 	private _fifo?: boolean;
 	private _services: TServices = [] as Service[] as TServices;
+	/** The construct ids `.dependsOn()` named — what the manifest records. */
+	public _constructs: string[] = [];
 	private _logger: TLogger = DEFAULT_LOGGER as TLogger;
 
 	/** The queue name — drives the infra queue and its `<NAME>_*` env vars. */
 	queue<T extends string>(
 		name: T,
 	): QueueBuilder<T, TMessage, TServices, TLogger> {
-		this._name = name;
-		return this as unknown as QueueBuilder<T, TMessage, TServices, TLogger>;
+		return cloneWith(this, { _name: name }) as unknown as QueueBuilder<
+			T,
+			TMessage,
+			TServices,
+			TLogger
+		>;
 	}
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	/** SQS event-source batch size (deployed). */
 	batchSize(batchSize: number): this {
-		this._batchSize = batchSize;
-		return this;
+		return cloneWith(this, { _batchSize: batchSize });
 	}
 
 	/** Mark the queue as FIFO (deployed). */
 	fifo(fifo = true): this {
-		this._fifo = fifo;
-		return this;
+		return cloneWith(this, { _fifo: fifo });
 	}
 
 	/**
@@ -68,9 +73,19 @@ export class QueueBuilder<
 	dependsOn<const T extends readonly Consumable[]>(
 		constructs: T,
 	): QueueBuilder<TName, TMessage, [...TServices, ...ServicesOf<T>], TLogger> {
-		return this.services(
-			servicesOf(constructs) as unknown as Service[],
-		) as unknown as QueueBuilder<
+		// Both halves of the edge, from one call and one clone: the services the
+		// handler runs with, and the ids the manifest records. Recording them
+		// separately is what let them drift apart.
+		//
+		// `servicesOf` is the half that validates, so it runs first — recording
+		// ids ahead of it left a caught `NotAConstruct` with `undefined` already
+		// on a `string[]`.
+		const services = servicesOf(constructs) as unknown as Service[];
+
+		return cloneWith(this, {
+			_services: [...this._services, ...services],
+			_constructs: idsOf(constructs, this._constructs),
+		}) as unknown as QueueBuilder<
 			TName,
 			TMessage,
 			[...TServices, ...ServicesOf<T>],
@@ -81,8 +96,9 @@ export class QueueBuilder<
 	services<T extends Service[]>(
 		services: T,
 	): QueueBuilder<TName, TMessage, [...TServices, ...T], TLogger> {
-		this._services = [...this._services, ...services] as unknown as TServices;
-		return this as unknown as QueueBuilder<
+		return cloneWith(this, {
+			_services: [...this._services, ...services] as unknown as TServices,
+		}) as unknown as QueueBuilder<
 			TName,
 			TMessage,
 			[...TServices, ...T],
@@ -93,16 +109,18 @@ export class QueueBuilder<
 	logger<T extends Logger>(
 		logger: T,
 	): QueueBuilder<TName, TMessage, TServices, T> {
-		this._logger = logger as unknown as TLogger;
-		return this as unknown as QueueBuilder<TName, TMessage, TServices, T>;
+		return cloneWith(this, {
+			_logger: logger as unknown as TLogger,
+		}) as unknown as QueueBuilder<TName, TMessage, TServices, T>;
 	}
 
 	/** The typed message (job) payload the queue carries. */
 	message<T extends StandardSchemaV1>(
 		schema: T,
 	): QueueBuilder<TName, T, TServices, TLogger> {
-		this._messageSchema = schema as unknown as TMessage;
-		return this as unknown as QueueBuilder<TName, T, TServices, TLogger>;
+		return cloneWith(this, {
+			_messageSchema: schema as unknown as TMessage,
+		}) as unknown as QueueBuilder<TName, T, TServices, TLogger>;
 	}
 
 	handle(
@@ -128,16 +146,14 @@ export class QueueBuilder<
 			this._logger,
 			this._batchSize,
 			this._fifo,
+			this._constructs,
 		);
 
-		// Reset builder state to prevent pollution across reuse.
-		this._name = undefined;
-		this._messageSchema = undefined;
-		this._timeout = 30000;
-		this._batchSize = undefined;
-		this._fifo = undefined;
-		this._services = [] as Service[] as TServices;
-		this._logger = DEFAULT_LOGGER as TLogger;
+		// No reset. `.handle()` reads this builder and leaves it alone, so a
+		// configured base — `const fn = f.logger(log).timeout(60_000)` — keeps
+		// its configuration for every construct built from it. The reset that
+		// used to be here wiped the base on first use, which made a base usable
+		// exactly once, and quietly reverted the logger to the default.
 
 		return queue;
 	}

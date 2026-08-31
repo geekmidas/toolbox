@@ -5,7 +5,7 @@ import type {
 } from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import {
@@ -28,8 +28,6 @@ import type { RlsConfig } from './rls';
 
 // Re-export SecurityScheme to make the type portable in declaration files
 export type { SecurityScheme } from './Authorizer';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class EndpointFactory<
 	TServices extends Service[] = [],
@@ -528,9 +526,18 @@ export class EndpointFactory<
 		TSecuritySchemes,
 		RlsConfig<[...ServicesOf<S>, ...TServices], TSession, TLogger> | undefined
 	> {
-		return this.services(
-			servicesOf(constructs) as unknown as Service[],
-		) as unknown as EndpointFactory<
+		// The services are what a handler *runs* with; the ids are what the
+		// manifest needs. Dissolving to services alone is what lost the edges —
+		// the same information, one of the two forms discarded.
+		const next = this.services(servicesOf(constructs) as unknown as Service[]);
+		next.defaultConstructs = [
+			...new Set([
+				...this.defaultConstructs,
+				...constructs.map((construct) => construct.id),
+			]),
+		];
+
+		return next as unknown as EndpointFactory<
 			[...ServicesOf<S>, ...TServices],
 			TBasePath,
 			TLogger,
@@ -1084,6 +1091,11 @@ export class EndpointFactory<
 		if (this.defaultServices.length) {
 			// Create a copy to avoid sharing references between builders
 			builder._services = [...this.defaultServices] as TServices;
+		}
+		if (this.defaultConstructs.length) {
+			// Alongside the services, not instead of them: one is what the handler
+			// runs with, the other is what the manifest records it reaches.
+			builder._constructs = [...this.defaultConstructs];
 		}
 
 		if (this.defaultLogger) {

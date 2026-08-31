@@ -24,6 +24,7 @@ import type {
 	ConstructManifest,
 	CronInfo,
 	Declaration,
+	Dependency,
 	FunctionInfo,
 	QueueInfo,
 	RestApiEndpoint,
@@ -85,7 +86,7 @@ export function withRoutes(
 		...manifest,
 		[id]: {
 			...declaration,
-			endpoints: routes.map((route) => asEndpoint(id, route)),
+			endpoints: routes.map((route) => asEndpoint(manifest, id, route)),
 		},
 	};
 }
@@ -119,7 +120,7 @@ export function withCompute(
 			kind: 'function',
 			id: fn.name,
 			handler: fn.handler,
-			dependencies: [],
+			dependencies: edgesTo(manifest, fn.dependencies),
 			provides: [provideKey(fn.name, 'url')],
 		};
 	}
@@ -130,7 +131,7 @@ export function withCompute(
 			id: cron.name,
 			handler: cron.handler,
 			schedule: cron.schedule,
-			dependencies: [],
+			dependencies: edgesTo(manifest, cron.dependencies),
 		};
 	}
 
@@ -145,7 +146,7 @@ export function withCompute(
 			worker: {
 				id: `${queue.id}Worker`,
 				handler: worker.handler,
-				dependencies: [],
+				dependencies: edgesTo(manifest, worker.dependencies),
 			},
 		};
 	}
@@ -163,7 +164,7 @@ export function withCompute(
 					id: subscriber.name,
 					handler: subscriber.handler,
 					events: subscriber.subscribedEvents,
-					dependencies: [],
+					dependencies: edgesTo(manifest, subscriber.dependencies),
 				},
 			],
 		};
@@ -172,8 +173,36 @@ export function withCompute(
 	return next;
 }
 
+/**
+ * Construct ids as manifest edges.
+ *
+ * A `Dependency` carries the target's kind as well as its id, and the kind is
+ * read off the manifest rather than recorded beside the edge — the same rule
+ * `edgeTo` follows, for the same reason: a hand-written kind is one fact stated
+ * twice, and the copy is what goes stale.
+ *
+ * An id that names nothing is dropped rather than thrown on. A handler can
+ * depend on a construct that declares no node of its own — a lifted `Service`
+ * is exactly that — and a build is the wrong place to refuse it; what a target
+ * needs from this list is the subset it can actually grant.
+ */
+function edgesTo(
+	manifest: ConstructManifest,
+	ids: readonly string[] = [],
+): Dependency[] {
+	return ids.flatMap((target) => {
+		const declaration = manifest[target];
+
+		return declaration ? [{ target, kind: declaration.kind }] : [];
+	});
+}
+
 /** One generated route as the manifest's shape. */
-function asEndpoint(surface: string, route: RouteInfo): RestApiEndpoint {
+function asEndpoint(
+	manifest: ConstructManifest,
+	surface: string,
+	route: RouteInfo,
+): RestApiEndpoint {
 	return {
 		// The handler path is already unique per route and is what a target needs
 		// to point a function at, so it is also the natural id.
@@ -181,12 +210,11 @@ function asEndpoint(surface: string, route: RouteInfo): RestApiEndpoint {
 		handler: route.handler,
 		method: route.method,
 		path: route.path,
-		// Empty, and stated rather than implied: an endpoint's `.dependsOn()`
-		// collapses into `.services()` before the endpoint exists, so the
-		// construct *ids* are gone by the time anything can read them. The
-		// generated route carries `environment` — the keys it reads — which is
-		// the shadow of those edges, not the edges.
-		dependencies: [],
+		// The edges the handler declared, which is what a target reads to grant
+		// this one function access to exactly those constructs. `environment` is
+		// the same edges' shadow — the keys read — and cannot be turned back into
+		// them, which is why the ids are carried rather than inferred.
+		dependencies: edgesTo(manifest, route.dependencies),
 		...(route.authorizer ? { authorizer: route.authorizer } : {}),
 	};
 }

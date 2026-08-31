@@ -210,7 +210,12 @@ describe('Cron', () => {
 			const schedule: CronExpression = 'cron(0 0 * * SUN)';
 
 			const result = builder.schedule(schedule);
-			expect(result).toBe(builder); // Should return self for chaining
+
+			// A new builder carrying the schedule, so the base it came from stays
+			// clean for the next cron built off it.
+			expect(result).toBeInstanceOf(CronBuilder);
+			expect(result).not.toBe(builder);
+			expect((result as any)._schedule).toBe(schedule);
 		});
 
 		it('should build Cron with handle() method', () => {
@@ -261,7 +266,10 @@ describe('Cron', () => {
 				.schedule(schedule)
 				.input(z.object({ data: z.string() }));
 
-			expect(chained).toBe(builder);
+			expect(chained).toBeInstanceOf(CronBuilder);
+			expect(chained).not.toBe(builder);
+			expect((chained as any)._schedule).toBe(schedule);
+			expect((chained as any)._timeout).toBe(30000);
 		});
 	});
 

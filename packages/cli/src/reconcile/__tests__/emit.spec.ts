@@ -173,3 +173,111 @@ describe('manifestModule', () => {
 		expect(source).toContain("cache: 'db'");
 	});
 });
+
+/**
+ * The edges, arriving from the build.
+ *
+ * The manifest's whole job here is to say which function may reach which
+ * construct. It said nothing for a long time — every generated handler carried
+ * `dependencies: []` — because `.dependsOn()` dissolved into services and the
+ * ids never made it out of the builder. These assert the other end of that wire.
+ */
+describe('withRoutes — the edges it records', () => {
+	const manifest = {
+		...base,
+		Uploads: { kind: 'objects', id: 'Uploads' },
+		Orders: { kind: 'database', id: 'Orders' },
+	} as unknown as ConstructManifest;
+
+	it('resolves an id to the kind the manifest gives it', () => {
+		// The kind is read off the target rather than recorded beside the edge:
+		// one fact, one place, so the copy cannot go stale.
+		const merged = withRoutes(
+			manifest,
+			[{ ...route, dependencies: ['Uploads', 'Orders'] }],
+			{ perRoute: true },
+		);
+
+		expect(
+			(merged.Api as { endpoints: { dependencies: unknown }[] }).endpoints[0]
+				?.dependencies,
+		).toEqual([
+			{ target: 'Uploads', kind: 'objects' },
+			{ target: 'Orders', kind: 'database' },
+		]);
+	});
+
+	it('drops an id that names no declaration', () => {
+		// A lifted `Service` is a legitimate dependency that declares no node, so
+		// this is not an error — a target can only grant what it can find.
+		const merged = withRoutes(
+			manifest,
+			[{ ...route, dependencies: ['Uploads', 'Clock'] }],
+			{ perRoute: true },
+		);
+
+		expect(
+			(merged.Api as { endpoints: { dependencies: unknown }[] }).endpoints[0]
+				?.dependencies,
+		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
+	});
+});
+
+describe('withCompute — the edges it records', () => {
+	const manifest = {
+		...base,
+		Uploads: { kind: 'objects', id: 'Uploads' },
+	} as unknown as ConstructManifest;
+
+	it('carries them onto a function and a cron', () => {
+		const merged = withCompute(manifest, {
+			functions: [
+				{ name: 'Resize', handler: 'r.handler', dependencies: ['Uploads'] },
+			],
+			crons: [
+				{
+					name: 'Sweep',
+					handler: 's.handler',
+					schedule: 'rate(1 day)',
+					dependencies: ['Uploads'],
+				},
+			],
+		});
+
+		expect((merged.Resize as { dependencies: unknown }).dependencies).toEqual([
+			{ target: 'Uploads', kind: 'objects' },
+		]);
+		expect((merged.Sweep as { dependencies: unknown }).dependencies).toEqual([
+			{ target: 'Uploads', kind: 'objects' },
+		]);
+	});
+
+	it('carries them onto a nested worker and subscriber', () => {
+		// Nested rather than top-level because position carries the trigger — and
+		// the edge has to survive that nesting, which is where it is easiest to
+		// drop.
+		const merged = withCompute(manifest, {
+			queues: [
+				{ name: 'emails', handler: 'w.handler', dependencies: ['Uploads'] },
+			],
+			subscribers: [
+				{
+					name: 'OnCreated',
+					handler: 'sub.handler',
+					subscribedEvents: ['user.created'],
+					topic: 'users',
+					dependencies: ['Uploads'],
+				},
+			],
+		});
+
+		expect(
+			(merged.Emails as { worker: { dependencies: unknown } }).worker
+				.dependencies,
+		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
+		expect(
+			(merged.Users as { subscribers: { dependencies: unknown }[] })
+				.subscribers[0]?.dependencies,
+		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
+	});
+});

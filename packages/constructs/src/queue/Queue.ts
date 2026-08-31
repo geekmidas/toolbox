@@ -5,7 +5,7 @@ import {
 	Publisher,
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	canonicalId,
 	type Declaration,
@@ -16,8 +16,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as unknown as Logger;
 
 /**
  * The wire message a queue carries: `{ type: <queue name>, payload: <message> }`.
@@ -85,6 +83,11 @@ export class Queue<
 		public readonly batchSize?: number,
 		/** Whether the queue is FIFO (deployed). */
 		public readonly fifo?: boolean,
+		/**
+		 * The construct ids the *worker* `.dependsOn()` named — last, so no
+		 * existing positional argument moves.
+		 */
+		constructs: string[] = [],
 	) {
 		super(
 			ConstructType.Queue,
@@ -94,6 +97,9 @@ export class Queue<
 			undefined,
 			undefined,
 			timeout,
+			undefined, // memorySize
+			undefined, // auditorStorageService
+			constructs,
 		);
 
 		this.id = canonicalId(name);

@@ -51,6 +51,11 @@ export class Cron<
 		events: any[] = [],
 		memorySize?: number,
 		databaseService?: Service<TDatabaseServiceName, TDatabase>,
+		/**
+		 * The construct ids `.dependsOn()` named — last, so no existing positional
+		 * argument moves.
+		 */
+		constructs: string[] = [],
 	) {
 		super(
 			fn,
@@ -65,6 +70,7 @@ export class Cron<
 			memorySize,
 			undefined, // auditorStorageService
 			databaseService,
+			constructs,
 		);
 	}
 
