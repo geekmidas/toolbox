@@ -16,7 +16,7 @@
  */
 
 import { stringify } from 'yaml';
-import { DEFAULT_IMAGES, portsOf, volumeOf } from './containers';
+import { DEFAULT_IMAGES, portsOf, postgresImage, volumeOf } from './containers';
 import type { Plan } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -79,7 +79,17 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 	const volumes: Record<string, Record<string, never>> = {};
 
 	for (const container of [...plan.containers].sort()) {
-		const image = options.images?.[container] ?? DEFAULT_IMAGES[container];
+		// A declared version beats the default image, so the container a
+		// developer runs is the major the declaration names — and the same one a
+		// deploy provisions. An explicit `images` override still wins over both.
+		const declared =
+			container === 'postgres'
+				? plan.resources.find((r) => r.version)?.version
+				: undefined;
+
+		const image =
+			options.images?.[container] ??
+			(declared ? postgresImage(declared) : DEFAULT_IMAGES[container]);
 		if (!image) throw new UnknownContainer(container);
 
 		services[container] = define(

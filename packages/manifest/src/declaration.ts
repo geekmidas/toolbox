@@ -154,9 +154,50 @@ export interface EmailDeclaration extends Node {
  * the migrator and seeder this construct declares, so no edge in any manifest
  * can name it and nothing else can be granted it by mistake.
  */
+/**
+ * The Postgres major versions this toolbox provisions.
+ *
+ * A union rather than a string, because the two targets that read it are not
+ * equally forgiving: locally it becomes a container tag, where a typo yields a
+ * confusing pull failure, and on AWS it becomes an engine version, where a
+ * wrong value fails partway through a deploy. Both are better as a compile
+ * error.
+ *
+ * The union is what this toolbox knows how to name, not a promise that every
+ * target offers every one of them. A deployed stage is limited by the engine
+ * catalogue in its region, so check before pinning an unusual version:
+ *
+ * ```
+ * aws rds describe-db-engine-versions --engine aurora-postgresql \
+ *   --query '*[].[EngineVersion]' --output text
+ * ```
+ */
+export type PostgresVersion = 13 | 14 | 15 | 16 | 17 | 18;
+
+/**
+ * The version used when a database names none.
+ *
+ * The point is not which number this is but that there is only one of them.
+ * Local ran 18 while Aurora provisioned its own default of 17.7, and nothing in
+ * any declaration recorded the difference — a stage could behave differently
+ * from a developer's machine for a reason neither could see. Both now read
+ * this.
+ */
+export const DEFAULT_POSTGRES_VERSION: PostgresVersion = 18;
+
 export interface DatabaseDeclaration extends Node {
 	kind: 'database';
 	engine?: 'postgres';
+	/**
+	 * The engine's major version, read by every target that provisions one.
+	 *
+	 * Declared rather than configured per target, because a version set in a
+	 * compose file and a version set in a deploy config are two statements of
+	 * one fact — and they had already drifted apart, silently, by a major.
+	 *
+	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
+	 */
+	version?: PostgresVersion;
 	/**
 	 * The schema, pinned on both roles' `search_path`. Names the role the schema
 	 * plays rather than restating the database's own name, so `app` reads

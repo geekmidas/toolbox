@@ -16,6 +16,7 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	type PostgresVersion,
 	providedKeyFor,
 	provideKey,
 	publicEnvFor,
@@ -207,6 +208,14 @@ export interface PlannedResource {
 	 * they got, which is why it is carried through rather than inferred.
 	 */
 	roles?: boolean;
+	/**
+	 * For a database: the engine major version to run.
+	 *
+	 * Carried like `schema` and `roles` — read off the declaration so the
+	 * container tag and the deployed engine come from one statement. They used
+	 * to come from two, and had drifted a major apart with nothing recording it.
+	 */
+	version?: PostgresVersion;
 	/**
 	 * For a file server: the paths it serves without a signature.
 	 *
@@ -406,6 +415,9 @@ export function planFor(
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
 				? { schema: declaration.schema }
+				: {}),
+			...('version' in declaration && declaration.version
+				? { version: declaration.version }
 				: {}),
 			...('roles' in declaration && declaration.roles === false
 				? { roles: false }

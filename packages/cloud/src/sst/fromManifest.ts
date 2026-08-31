@@ -23,6 +23,7 @@ import type {
 } from '@geekmidas/manifest';
 import {
 	cookieDomain,
+	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
 	PUBLIC,
 	PUBLIC_PREFIX,
@@ -208,6 +209,10 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		const cluster = new Database(stack, d.id, {
 			...(d.schema ? { schema: d.schema } : {}),
+			// The declared major, so the cluster runs what the declaration says
+			// rather than whatever Aurora defaults to that month. Local ran 18
+			// while this ran 17.7, and neither was written down anywhere.
+			version: String(d.version ?? DEFAULT_POSTGRES_VERSION),
 			...(props as unknown as sst.aws.AuroraArgs),
 		});
 

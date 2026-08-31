@@ -1,3 +1,4 @@
+import { DEFAULT_POSTGRES_VERSION } from '@geekmidas/manifest';
 import type {
 	ComposeServiceName,
 	ComposeServicesConfig,
@@ -21,7 +22,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 
 /** Default Docker image versions for services */
 export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
-	postgres: '18-alpine',
+	postgres: `${DEFAULT_POSTGRES_VERSION}-alpine`,
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
 	minio: 'latest',

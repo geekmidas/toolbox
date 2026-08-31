@@ -14,7 +14,9 @@
 import {
 	type ConstructName,
 	canonicalId,
+	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
+	type PostgresVersion,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
@@ -53,6 +55,17 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 * function's environment. A deliberate downgrade, not a default.
 	 */
 	roles?: boolean;
+	/**
+	 * The Postgres major version to provision.
+	 *
+	 * Declared here so one statement reaches both targets. It was previously
+	 * set in two unrelated places — a container tag locally, nothing at all on
+	 * AWS (so Aurora chose) — which is how local came to run 18 while deployed
+	 * ran 17.7 with nothing recording the difference.
+	 *
+	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
+	 */
+	version?: PostgresVersion;
 }
 
 /** What makes a construct derived rather than a database in its own right. */
@@ -82,6 +95,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	private readonly config: { url: string; ownerUrl: string };
 	private readonly schemaName: string;
 	private readonly roles: boolean;
+	private readonly version: PostgresVersion;
 	private readonly derivedFrom?: DerivedFrom;
 
 	constructor(
@@ -100,6 +114,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		};
 		this.schemaName = options.schema ?? DEFAULT_SCHEMA;
 		this.roles = options.roles ?? true;
+		this.version = options.version ?? DEFAULT_POSTGRES_VERSION;
 		this.derivedFrom = derivedFrom;
 
 		// A field, not a getter: service discovery caches by object identity.
@@ -142,6 +157,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				id: this.id,
 				engine: 'postgres',
 				schema: this.schemaName,
+				version: this.version,
 				// One key, the runtime role's. `config` also holds the owner key and
 				// it is deliberately absent here: a key in `provides` is a key an
 				// edge can name, and nothing should be able to depend on DDL rights.

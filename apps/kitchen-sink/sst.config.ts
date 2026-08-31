@@ -75,7 +75,13 @@ export default $config({
 				// defaultable, because every provider rejects an unverified
 				// sender and a guess would fail at the first send rather than
 				// here.
-				Mail: { from: 'noreply@shortstaff.co.za' },
+				//
+				// From the environment rather than committed, because it names a
+				// domain verified in one specific account — a literal here is one
+				// person's project baked into everybody's example. Unset, the synth
+				// stops with `EmailNeedsSender` naming what to set, which is the
+				// right place to find out.
+				Mail: { from: process.env.KITCHEN_SINK_MAIL_FROM as string },
 			},
 			// Read from the manifest rather than restated here. The build already
 			// registered exactly one cache driver for this answer; choosing

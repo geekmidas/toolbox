@@ -46,6 +46,7 @@ export type {
 	IdsOfKind,
 	Node,
 	ObjectsDeclaration,
+	PostgresVersion,
 	ProvidedKeys,
 	Provides,
 	ProvidesByKind,
@@ -56,7 +57,11 @@ export type {
 	SiteDeclaration,
 	TopicDeclaration,
 } from './declaration';
-export { DERIVES_FROM, PUBLIC } from './declaration';
+export {
+	DEFAULT_POSTGRES_VERSION,
+	DERIVES_FROM,
+	PUBLIC,
+} from './declaration';
 export {
 	assertDerivations,
 	dependenciesOf,
