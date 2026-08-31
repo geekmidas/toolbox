@@ -30,18 +30,33 @@ stack has never come up.
 
 Both decisions answered themselves once SST's own components were read.
 
-**Aurora Serverless v2, not an RDS instance.** The reason is the stage model
-rather than the engine: this design provisions per stage, which makes stages
-cheap to create and encourages having several — and a provisioned instance puts
-a fixed monthly floor under every one. Aurora defaults to `min: 0 ACU`. A
-steady-state production workload may be cheaper provisioned; that varies by
-stage and by month rather than by what the application *is*, so it lives in
-overrides, and switching replaces the cluster.
+**An RDS instance, not an Aurora Serverless v2 cluster.** This was first
+answered the other way, on the stage model: provisioning per stage makes stages
+cheap and encourages having several, a provisioned instance puts a fixed monthly
+floor under every one, and Aurora defaults to `min: 0 ACU`. That reasoning still
+holds for a fleet of idle preview stages. It lost to a plainer one — a cluster
+is more moving parts and less predictable pricing for the steady-state workload
+most stages actually are, and the ordinary thing is the better default. Aurora
+is not reachable through overrides: the component's props *are* the RDS
+component's args, so wanting a cluster means a second class rather than a
+setting. Moving between them replaces the database.
 
-**Nobody provisions the read replica** (Open Question 4). A reader endpoint is
-something an Aurora cluster *has*. Where a cluster runs one instance it resolves
-to that instance, which is safe because read-only is enforced by the reader
-role's grants, not by which endpoint was reached.
+**Nobody provisions the read replica** (Open Question 4). An RDS instance has
+one endpoint, so a reader resolves to the writer's address. That is safe because
+read-only is enforced by the reader role's grants, not by which endpoint was
+reached — the same reason the fallback was already specified for
+`--target=server`. `urlFor({ reader })` keeps the option so intent stays at the
+call sites, and a stage that later runs a cluster changes one line rather than
+all of them.
+
+**The engine version is declared** rather than set per target. It was set in two
+unrelated places — a container tag locally, nothing at all on AWS, so the engine
+chose — and had drifted a major apart, local on 18 and Aurora on 17.7, with
+nothing recording it. `version` on the declaration is read by both: the
+container tag locally, the engine version deployed. It is a union of majors
+rather than a string, because a typo is a confusing image pull locally and a
+deploy that fails partway through on AWS, and both are better as a compile
+error.
 
 **The roles are created by a Lambda**, because SST provisions a cluster and
 nothing in Pulumi runs SQL. `DatabaseBootstrap` generates the passwords and a
@@ -83,8 +98,9 @@ Each backend is consistent between local and deployed, which is the property
 worth having: `upstash` runs the HTTP proxy locally, `elasticache` runs plain
 Redis, and `db` runs nothing at all.
 
-Deployed, only `elasticache` provisions anything (a serverless Valkey cache, for
-the same reason the database is Aurora Serverless). `db` resolves the declared
+Deployed, only `elasticache` provisions anything — a *serverless* Valkey cache,
+because this design provisions per stage and a node sized for an idle preview
+stage still costs what a node costs. `db` resolves the declared
 database's URL; `upstash` is an account rather than infrastructure, so its URL is
 an input and `CacheNeedsUrl` says so rather than defaulting.
 

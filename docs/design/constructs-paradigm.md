@@ -884,12 +884,22 @@ removes. They read `context.getLogger()` instead.
 is a getter returning a fresh object literal per access, so `serviceEnvCache`
 (keyed by object identity) never hits for topic and queue publishers.
 
-**Builders return new instances instead of mutating.** `TopicBuilder` and
-`QueueBuilder` mutate `this` and are exported as module singletons, so
-`const a = t.topic('a'); const b = t.topic('b')` yields two references to the
-same object; `events()` resets state to compensate. `EndpointFactory` already
-returns new instances. This matters more once `.dependsOn()` makes
-partially-applied builders attractive.
+**Builders return new instances instead of mutating.** *Done.* Every builder —
+`Topic`, `Queue`, `Subscriber`, `Function`, `Cron`, `Endpoint` — now clones
+rather than mutating `this`, and the reset blocks that compensated are gone.
+
+The last sentence of this item used to read "this matters more once
+`.dependsOn()` makes partially-applied builders attractive", and it was right in
+both directions. Adding `.dependsOn()` to the mutating builders produced exactly
+two failures. A field left off a reset block leaked into the *next* handler, so
+a function was granted a bucket a previous function had declared — an over-grant
+in the field a deploy reads to size an IAM policy. And every field that *was* on
+the reset block could not survive reuse, so `const fn = f.logger(log)` applied
+to one handler and silently reverted to the console logger for the next.
+
+Both are the same defect: a hand-maintained list of fields, edited whenever a
+field is added and silent when it isn't. Cloning copies whatever the instance
+has, which removes the list rather than lengthening it.
 
 **`private`, not `#`** — the repo uses `private` 848 times and `#` zero times,
 and `#` interacts badly with the proxies above.
@@ -1906,10 +1916,16 @@ stating so nobody mistakes them for a to-do list:
 
 - **`database`** is Open Question 4 — whether the adapter *creates* a replica or
   points at one, and what `--target=server` does where there is none. Also
-  unchosen: RDS instance versus Aurora Serverless v2, which is not a detail,
-  because it is the difference between a fixed monthly floor and a scale-to-zero
-  bill. `database-schema` provisions no AWS resource at all — it is DDL inside
-  the parent — so it follows whatever `database` becomes.
+  unchosen at the time of writing: RDS instance versus Aurora Serverless v2,
+  which is not a detail, because it is the difference between a fixed monthly
+  floor and a scale-to-zero bill. `database-schema` provisions no AWS resource at
+  all — it is DDL inside the parent — so it follows whatever `database` becomes.
+
+  *Both are now settled — see `constructs-outstanding.md` §1.1. Nobody creates a
+  replica: a reader resolves to the writer's address, safe because read-only is
+  enforced by the reader role's grants. And it is an RDS instance, not a cluster
+  — the scale-to-zero argument lost to a plainer one about moving parts and
+  predictable pricing.*
 - **`cache`** has no AWS answer that keeps the client identical. The local
   target speaks Upstash's HTTP protocol through a proxy in front of Redis
   precisely so dev and prod run the same client; ElastiCache does not speak it,

@@ -99,9 +99,11 @@ export class Cache<
 	/**
 	 * A serverless Valkey cache, in the VPC the caller named.
 	 *
-	 * Serverless rather than a node group for the same reason the database is
-	 * Aurora Serverless: this design provisions per stage, and a node running
-	 * around the clock under every preview stage is a bill nobody chose.
+	 * Serverless rather than a node group because this design provisions per
+	 * stage, and a node running around the clock under every preview stage is a
+	 * bill nobody chose. The database went the other way — a plain RDS instance —
+	 * because a cluster buys complexity there rather than savings; the two are
+	 * separate calls, not one principle applied twice.
 	 *
 	 * TLS is not optional — ElastiCache Serverless only accepts encrypted
 	 * connections — which is why the URL is `rediss://` and why the driver
