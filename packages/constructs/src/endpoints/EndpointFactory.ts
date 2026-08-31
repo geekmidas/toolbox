@@ -82,8 +82,8 @@ export class EndpointFactory<
 		TSession,
 		TDatabase
 	>;
-	private defaultLogger: TLogger = DEFAULT_LOGGER;
-	private availableAuthorizers: Authorizer[] = [];
+	private defaultLogger: TLogger;
+	private availableAuthorizers: Authorizer[];
 	private defaultAuthorizerName?: TAuthorizers[number];
 	private defaultAuditorStorage:
 		| Service<TAuditStorageServiceName, TAuditStorage>
@@ -92,13 +92,13 @@ export class EndpointFactory<
 		| Service<TDatabaseServiceName, TDatabase>
 		| undefined;
 	private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
-	private customSecuritySchemes: TSecuritySchemes = {} as TSecuritySchemes;
+	private customSecuritySchemes: TSecuritySchemes;
 	private defaultRlsConfig?: TRlsConfig;
 
 	constructor({
 		basePath,
 		defaultAuthorizeFn,
-		defaultLogger,
+		defaultLogger = DEFAULT_LOGGER as TLogger,
 		defaultSessionExtractor,
 		// @ts-expect-error
 		defaultServices = [] as TServices,
@@ -135,7 +135,7 @@ export class EndpointFactory<
 
 		this.basePath = basePath || ('' as TBasePath);
 		this.defaultAuthorizeFn = defaultAuthorizeFn;
-		this.defaultLogger = defaultLogger || (DEFAULT_LOGGER as TLogger);
+		this.defaultLogger = defaultLogger;
 		this.defaultSessionExtractor = defaultSessionExtractor;
 		this.defaultEventPublisher = defaultEventPublisher;
 		this.availableAuthorizers = availableAuthorizers;
