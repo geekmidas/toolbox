@@ -101,7 +101,20 @@ export interface BuildContext {
 	 * The scheme in an injected URL picks the driver, so registering is the entry
 	 * point's job — see `generators/drivers.ts`.
 	 */
-	storageDrivers?: import('../generators/drivers.js').StorageDrivers;
+	storageDrivers?: import('../generators/drivers.js').RuntimeDrivers;
+	/**
+	 * The constructs glob, so the build can emit the manifest once the routes it
+	 * folds in are known.
+	 */
+	constructGlobs?: string | readonly string[];
+	/**
+	 * The backends this build registered drivers for.
+	 *
+	 * Recorded in the emitted manifest so a deploy reads the same answer rather
+	 * than choosing its own — see `reconcile/emit.ts`.
+	 */
+	cacheBackend?: import('../types.js').CacheBackend;
+	emailBackend?: import('../types.js').EmailBackend;
 }
 
 export interface ProviderBuildResult {

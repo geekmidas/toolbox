@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PublishableMessage } from '../../types';
 import { SQSConnection } from '../SQSConnection';
 import { SQSPublisher } from '../SQSPublisher';
+import { MissingQueueUrl } from '../sqsUrl';
 
 type TestMessage = PublishableMessage<'user.created' | 'user.updated', any>;
 
@@ -158,11 +159,14 @@ describe('SQSPublisher', () => {
 		});
 
 		it('should throw error if queueUrl is missing', async () => {
+			// A typed error from the codec now, rather than a bare `Error` with a
+			// hand-written message — same failure, and the message names the
+			// string that produced it.
 			await expect(
 				SQSPublisher.fromConnectionString<TestMessage>(
 					'sqs://?region=us-east-1',
 				),
-			).rejects.toThrow('queueUrl parameter is required');
+			).rejects.toThrow(MissingQueueUrl);
 		});
 	});
 

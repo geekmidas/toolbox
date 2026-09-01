@@ -1,5 +1,6 @@
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
+import { cloneWith } from '../clone';
 import { Topic, type TopicEvents } from './Topic';
 
 /**
@@ -16,13 +17,14 @@ export class TopicBuilder<
 
 	/** The topic name — drives the infra topic and its `<NAME>_*` env vars. */
 	topic<T extends string>(name: T): TopicBuilder<T, TEvents> {
-		this._name = name;
-		return this as unknown as TopicBuilder<T, TEvents>;
+		return cloneWith(this, { _name: name }) as unknown as TopicBuilder<
+			T,
+			TEvents
+		>;
 	}
 
 	logger(logger: Logger): this {
-		this._logger = logger;
-		return this;
+		return cloneWith(this, { _logger: logger });
 	}
 
 	/**
@@ -42,10 +44,9 @@ export class TopicBuilder<
 			this._logger,
 		);
 
-		// Reset builder state to prevent pollution across reuse.
-		this._name = undefined;
-		this._logger = DEFAULT_LOGGER;
-
+		// No reset. `.events()` reads this builder and leaves it alone, so a
+		// configured base stays usable for the next topic — and two chains off one
+		// base cannot feed each other.
 		return topic;
 	}
 }

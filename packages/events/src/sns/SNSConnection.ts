@@ -1,6 +1,7 @@
 import { SNSClient, type SNSClientConfig } from '@aws-sdk/client-sns';
 import type { EventConnection } from '../types';
 import { EventPublisherType } from '../types';
+import * as snsUrl from './snsUrl';
 
 export interface SNSConnectionConfig {
 	topicArn: string;
@@ -38,21 +39,20 @@ export class SNSConnection implements EventConnection {
 	static async fromConnectionString(
 		connectionString: string,
 	): Promise<SNSConnection> {
-		const url = new URL(connectionString);
-		const params = url.searchParams;
-
-		const topicArn = params.get('topicArn');
-		if (!topicArn) {
-			throw new Error('topicArn parameter is required in connection string');
-		}
+		// Through the codec, not a second hand-rolled parse: the deploy target
+		// composes these with `snsUrl.build`, and a string it cannot read back is
+		// exactly the drift one shared module rules out.
+		const { topicArn, region, endpoint } = snsUrl.parse(connectionString);
+		const params = new URL(connectionString).searchParams;
 
 		const config: SNSConnectionConfig = {
 			topicArn,
-			region: params.get('region') || undefined,
-			endpoint: params.get('endpoint') || undefined,
+			region,
+			endpoint,
 		};
 
-		// Parse credentials if provided
+		// Credentials are not part of the address — see `snsUrl` — but a caller
+		// may still pin them here, so they are read beside it rather than in it.
 		const accessKeyId = params.get('accessKeyId');
 		const secretAccessKey = params.get('secretAccessKey');
 		if (accessKeyId && secretAccessKey) {

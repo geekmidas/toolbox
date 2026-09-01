@@ -2,7 +2,7 @@ import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import { UnprocessableEntityError } from '@geekmidas/errors';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type {
 	ComposableStandardSchema,
 	InferComposableStandardSchema,
@@ -13,8 +13,6 @@ import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { Construct, ConstructType } from '../Construct';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class FunctionFactory<
 	TServices extends Service[] = [],
@@ -155,6 +153,11 @@ export class Function<
 		memorySize?: number,
 		auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>,
 		public override databaseService?: Service<TDatabaseServiceName, TDatabase>,
+		/**
+		 * The construct ids `.dependsOn()` named — last, so no existing positional
+		 * argument moves.
+		 */
+		constructs: string[] = [],
 	) {
 		super(
 			type,
@@ -166,6 +169,7 @@ export class Function<
 			timeout,
 			memorySize,
 			auditorStorageService,
+			constructs,
 		);
 	}
 }

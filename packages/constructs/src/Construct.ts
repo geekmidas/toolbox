@@ -65,7 +65,6 @@ export abstract class Construct<
 		public readonly logger: TLogger,
 		public readonly services: TServices,
 		public readonly events: MappedEvent<T, any>[] = [],
-
 		public readonly publisherService?: Service<TServiceName, T>,
 		public outputSchema?: OutSchema,
 		public readonly timeout?: number,
@@ -74,6 +73,17 @@ export abstract class Construct<
 			TAuditStorageServiceName,
 			TAuditStorage
 		>,
+		/**
+		 * The constructs this one declared an edge to, by id.
+		 *
+		 * What the manifest records. `services` is the same information in the
+		 * form a handler runs with — clients, keyed by name — and an id cannot be
+		 * recovered from one of those reliably, so both are kept.
+		 *
+		 * Last in the list because every other parameter is positional and already
+		 * spoken for; a new one anywhere else silently rebinds existing callers.
+		 */
+		public readonly constructs: string[] = [],
 	) {}
 
 	/**

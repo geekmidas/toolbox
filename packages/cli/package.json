@@ -25,6 +25,16 @@
 				"default": "./dist/config.cjs"
 			}
 		},
+		"./reconcile": {
+			"import": {
+				"types": "./dist/reconcile/public.d.mts",
+				"default": "./dist/reconcile/public.mjs"
+			},
+			"require": {
+				"types": "./dist/reconcile/public.d.cts",
+				"default": "./dist/reconcile/public.cjs"
+			}
+		},
 		"./workspace": {
 			"import": {
 				"types": "./dist/workspace/index.d.mts",
@@ -78,7 +88,9 @@
 		"@aws-sdk/client-s3": "~3.992.0",
 		"@aws-sdk/client-ssm": "~3.992.0",
 		"@aws-sdk/credential-providers": "~3.992.0",
+		"@geekmidas/cache": "workspace:*",
 		"@geekmidas/constructs": "workspace:~",
+		"@geekmidas/db": "workspace:*",
 		"@geekmidas/envkit": "workspace:~",
 		"@geekmidas/errors": "workspace:~",
 		"@geekmidas/logger": "workspace:~",

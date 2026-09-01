@@ -363,36 +363,37 @@ This table is the seam between the adapter (which writes the URL) and the client
 pinned before either is built.
 
 A construct may provide more than one URL when it genuinely owns more than one
-address. A CDN is the clearest case, and it is not purely an infra concern — it
-changes what the *client returns*, since `getDownloadURL()` should hand back a
-CDN URL while `getUploadURL()` still presigns against the bucket:
+address. Serving a bucket's objects on a domain is the clearest case, and it is
+not purely an infra concern — it changes what the *client returns*, since a
+served object has a public address while an upload still presigns against the
+bucket.
 
-```ts
-new ObjectStorage('Uploads', { cdn: true });                    // → uploads.{domain}
-new ObjectStorage('Uploads', { cdn: { subdomain: 'assets' } }); // → assets.{domain}
-//  provides → UPLOADS_URL       (writes, presigning — never public)
-//             UPLOADS_CDN_URL   (public reads)
-```
+**Superseded shape.** This section originally put that on the bucket, as
+`new ObjectStorage('Uploads', { cdn: true })` providing a second
+`UPLOADS_CDN_URL`. That is arrangement **A** in "Why a separate construct, and
+what it costs", and it does not survive: a boolean on a bucket cannot express
+open-versus-signed paths, cannot express two surfaces over one bucket, and grows
+a second `provides` key that is only sometimes there — so every consumer branches
+on its presence. The two addresses are real; they belong to two nodes.
+`FileServer` declares both, and the served address is `UPLOADS_SERVER_URL` from
+the surface rather than a conditional key on the bucket.
 
-The CDN takes a subdomain like any other addressable construct, defaulting to
-the kebab-case of the id. Two reasons it should not sit on the cloud's assigned
-hostname: **CloudFront signed cookies** only work when the CDN shares a
-registrable domain with the app, since the cookie cannot otherwise reach it; and
-an assigned hostname changes if the distribution is replaced, turning any URL
-you emailed or cached into a dead one.
+What survives from the original argument, and still holds: the served domain
+should not sit on the cloud's assigned hostname, because **CloudFront signed
+cookies** only work when it shares a registrable domain with the app, and an
+assigned hostname changes if the distribution is replaced — turning any URL you
+emailed or cached into a dead one.
 
-Whether several CDN-enabled buckets share one distribution with path-based
-origins or get one each is the adapter's call — the declaration is per-construct
-either way.
-
-*Whether* there is a CDN is structural and lives in code; the distribution,
-origin access, cache behaviours, TTLs, and invalidation are the adapter's
-business. Locally there is no CloudFront, so `UPLOADS_CDN_URL` resolves to the
-MinIO URL — same shape, different value, no branch in application code.
+Whether several served buckets share one distribution with path-based origins or
+get one each is the adapter's call; the declaration is per-construct either way.
+*Whether* a bucket is served is structural and lives in code, while the
+distribution, origin access, cache behaviours, TTLs, and invalidation are the
+adapter's business.
 
 | kind | scheme | shape | notes |
 |---|---|---|---|
 | `objects` | `s3` / `gs` | `s3://<bucket>?region=<r>` | `?endpoint=` for MinIO |
+| `file-server` | `https` | `https://<host>` | the MinIO path-style base locally |
 | `database` | `postgres` | `postgres://<host>:<port>/<db>` | `?secretArn=` when credentials resolve at connect |
 | `database` (reader) | `postgres` | same, reader endpoint | separate key — see Open Questions |
 | `cache` | `redis` | `redis://<host>:<port>` | Upstash: `rediss://` |
@@ -727,6 +728,14 @@ That is a security property rather than a convention: a compromised handler
 cannot `DROP TABLE`, because its role holds no such grant, and the cluster's
 master credentials never leave the provisioner.
 
+**It is also, today, aspirational.** No target creates either role. The local
+target runs `CREATE DATABASE` and `CREATE SCHEMA` and nothing else, and the AWS
+target runs no DDL at all; both URLs carry the cluster's master credential, and
+`roles?: boolean` on the declaration is read by nothing. Until the role DDL
+lands, the split above describes the design and not the behaviour — which is
+worth stating in the same breath as the claim, because a security property
+people believe they have is worse than one they know they lack.
+
 **Derived nodes name their parent.** A reader and a schema tenant are top-level
 entries that provision nothing of their own — one is an endpoint on an existing
 cluster, the other a schema inside an existing database — so each carries
@@ -875,12 +884,22 @@ removes. They read `context.getLogger()` instead.
 is a getter returning a fresh object literal per access, so `serviceEnvCache`
 (keyed by object identity) never hits for topic and queue publishers.
 
-**Builders return new instances instead of mutating.** `TopicBuilder` and
-`QueueBuilder` mutate `this` and are exported as module singletons, so
-`const a = t.topic('a'); const b = t.topic('b')` yields two references to the
-same object; `events()` resets state to compensate. `EndpointFactory` already
-returns new instances. This matters more once `.dependsOn()` makes
-partially-applied builders attractive.
+**Builders return new instances instead of mutating.** *Done.* Every builder —
+`Topic`, `Queue`, `Subscriber`, `Function`, `Cron`, `Endpoint` — now clones
+rather than mutating `this`, and the reset blocks that compensated are gone.
+
+The last sentence of this item used to read "this matters more once
+`.dependsOn()` makes partially-applied builders attractive", and it was right in
+both directions. Adding `.dependsOn()` to the mutating builders produced exactly
+two failures. A field left off a reset block leaked into the *next* handler, so
+a function was granted a bucket a previous function had declared — an over-grant
+in the field a deploy reads to size an IAM policy. And every field that *was* on
+the reset block could not survive reuse, so `const fn = f.logger(log)` applied
+to one handler and silently reverted to the console logger for the next.
+
+Both are the same defect: a hand-maintained list of fields, edited whenever a
+field is added and silent when it isn't. Cloning copies whatever the instance
+has, which removes the list rather than lengthening it.
 
 **`private`, not `#`** — the repo uses `private` 848 times and `#` zero times,
 and `#` interacts badly with the proxies above.
@@ -940,22 +959,162 @@ export const upload = api.post('/upload')
 ### Serving files
 
 `ObjectStorage` is the bucket: it writes, it presigns, and its URL is never
-public. Serving those objects on a domain is a *second address on the same
-resource*, so it is a derived construct — the shape `orders.reader()` and
-`orders.schema()` already use — rather than a second kind of storage anyone has
-to choose between:
+public. Serving those objects on a domain is a different thing, and where it
+belongs took three passes to settle.
 
 ```ts
-export const uploads = new ObjectStorage('Uploads');
-export const files   = uploads.server({ subdomain: 'files', open: ['brand/**'] });
+export const uploads = new FileServer('Uploads', { open: ['brand/**'] });
+
+uploads.getUploadURL(key, 15)         // an S3 presign against the bucket
+uploads.url('brand/logo.png')         // open path — no signature
+uploads.openUrl(dynamicKey)           // same check, for a key the type cannot see
+uploads.signedUrl(key, 15)            // one object, one recipient
 ```
+
+**One construct, one client, both halves.** How a file lands in the bucket is
+the same whether or not it is served, so splitting the upload half from the
+serving half would be ceremony rather than safety: the client is a *superset* of
+`StorageClient`, which is worth making literal in the type, since anything taking
+`services.uploads` today keeps compiling when the construct behind it grows a
+serving half.
+
+**It vends its bucket, and takes one when you have it.** `new
+FileServer('Uploads')` declares both nodes; `new FileServer('Files', { origin:
+uploads })` fronts a bucket declared elsewhere, which is also how the two edges
+come back when you want them — a handler depending on the bucket writes, a
+handler depending on the server mints URLs.
+
+**The id names the bucket, not the surface.** This is the one detail that has to
+be right before anything ships, because getting it backwards is destructive:
+
+```
+new ObjectStorage('Uploads')   → Uploads        { kind: 'objects' }
+new FileServer('Uploads')      → Uploads        { kind: 'objects' }                    ← unchanged
+                                 UploadsServer  { kind: 'file-server', of: 'Uploads' }  ← added
+```
+
+The migration people will actually perform is serving a bucket they already have.
+Naming the bucket after the construct means that edit *adds* a node and a
+provided key and touches nothing holding data. The other way round — surface
+takes the id, bucket gets a suffix — the same edit renames the bucket, which
+replaces it, and the plan shows a destroy that nothing explains.
+
+Which puts the derived form back in the manifest, inverted from where it was
+first proposed: the **construct** is standalone, with its own provisioner owning
+the certificate and the DNS record, while the **surface node** derives from the
+bucket by `of` — which is what makes the reference check work and lets `gkm`
+answer "is this bucket served?" from one lookup.
+
+#### Open paths are a type, not a convention
+
+`open` is checked at the call site, not only at the edge:
+
+```ts
+const files = new FileServer('Uploads', { open: ['brand/**', 'avatars/**'] });
+
+files.url('brand/logo.png')          // ok
+files.url(`avatars/${id}.png`)       // ok — a template literal still matches
+files.url('invoices/7.pdf')          // ✗ not assignable — never served unsigned
+files.signedUrl('invoices/7.pdf')    // ok — this is what signing is for
+```
+
+The patterns become a key type by the same trick `ConstructName` uses, with a
+`const` type parameter so no call site needs `as const`:
+
+```ts
+type Served<P extends string> =
+  P extends `${infer Head}**`            ? `${Head}${string}` :
+  P extends `${infer Head}*${infer Tail}` ? `${Head}${string}${Tail}` :
+  P;
+```
+
+Three limits, stated rather than discovered:
+
+- **`*` and `**` are the same type.** A template literal cannot exclude `/`, so
+  the compile-time check is a prefix and suffix guard while the *exact* pattern
+  is enforced by the bucket policy and the cache behaviour. The type says
+  plausibly open; the infrastructure says definitely.
+- **A fully dynamic key does not type.** `files.url(someString)` is a compile
+  error, which is correct and also the case people will hit — so there is an
+  explicit escape hatch rather than a cast, and it is runtime-checked, because
+  minting an unsigned URL for a private object is a leak rather than a mistake.
+- **Runtime checks anyway.** A JavaScript caller gets no compiler, which is the
+  same argument that gives `canonicalId` a runtime guard beside
+  `ConstructName`, and `.dependsOn()` a `NotAConstruct` beside its type.
+
+Uploading is deliberately *not* restricted: writing to a path that happens to be
+open is ordinary, and the only asymmetry worth enforcing is that you cannot hand
+out an unsigned URL for something the server would refuse to serve unsigned.
+
+
+#### Why a separate construct, and what it costs
+
+Three shapes were on the table. The argument is worth keeping because the
+obvious answer is not the one that survives.
+
+**A — an option on the bucket**, `new ObjectStorage('Uploads', { cdn: true })`,
+which is what this document originally said.
+
+**B — a derived construct**, `uploads.server({ … })`, in the shape
+`orders.reader()` and `orders.schema()` already use.
+
+**C — a construct of its own**, `new FileServer('Uploads', { open: … })`.
+
+| | A: option | B: derived | C: own construct |
+|---|---|---|---|
+| ids in the manifest | 1 | 2, parent named by `of` | 2, related by an edge |
+| "is this bucket public?" | read one declaration | read one, follow `of` | **find whoever points at it** |
+| two surfaces over one bucket | ✗ | ✓ | ✓ |
+| one surface over two buckets | ✗ | ✗ | ✓ |
+| an origin that is not a bucket | ✗ | ✗ | ✓ |
+| who owns cert + DNS + cache config | the `objects` provisioner | the `objects` provisioner | its own |
+| adding serving to a live bucket | changes the bucket node | adds a node | adds a node |
+| shares machinery with `StaticSite` | ✗ | ✗ | ✓ — same infrastructure |
+
+A dies on the first two rows of capability: `cdn: true` is a boolean on a
+bucket, so it cannot express open-versus-signed paths, cannot express two
+surfaces, and grows a second `provides` key that is only sometimes there — every
+consumer then branches on its presence.
+
+B survives longer, and the case for it is real: one bucket, one lifecycle, one
+id, and a second address on the same resource is exactly what `reader()` and
+`schema()` are. What kills it is the relationship. A reader and a schema tenant
+share the parent's *credentials* — they are the same database reached with
+different grants, which is why deriving them from it reads correctly. A file
+server shares the parent's *contents*, which is a different thing entirely, and
+the difference shows up as three concrete failures:
+
+- **A distribution can front several origins**; a method on one bucket cannot
+  express that. The moment you want `/*` from the uploads bucket and `/__session`
+  from the API — which is how a cookie gets minted on the file host rather than
+  the parent domain — B has nowhere to put it.
+- **The provisioner ends up wrong.** `of` makes the parent's component
+  responsible for the child, so the `objects` provisioner would be issuing ACM
+  certificates and writing Route53 records. That is a domain lifecycle living
+  inside a bucket.
+- **It duplicates `StaticSite`.** A site is already a bucket, a distribution, a
+  certificate and a domain. A file server is the same infrastructure with live
+  bucket contents instead of a build output. Under C they share a provisioner;
+  under B one of them is a method and the other is a construct.
+
+So C, with its cost named rather than waved away: **the bucket alone no longer
+tells you whether it is served.** Under A you read one declaration; under C you
+have to find whoever points at it. That is a real regression in auditability and
+it is answered the same way `of` is — a reference check at manifest build, so
+every origin resolves to a declared construct and `gkm` can print, for any
+bucket, the surfaces that serve it. Unresolvable origin, build failure; that is
+the same guarantee `assertDerivations` already gives derived database nodes.
+
+The second cost is naming. Two constructs invite "which one do I put things
+in?", which is why the serving construct is not called `FileStorage` — nothing
+is stored in it. It serves.
 
 Three axes get conflated here, and separating them is most of the design:
 
 | axis | choices | decided by |
 |---|---|---|
 | does reading need a signature | open / signed | the object, via its path |
-| how a signature travels | cookie / URL | the use case, not the object |
+| how a signature travels | cookie / URL | the caller, per call — not configuration |
 | which address you hold | bucket (write, presign) / server (domain, read) | the edge |
 
 **Private by default; `open` is an exception list.** A bucket where forgetting a
@@ -975,6 +1134,15 @@ domain. Two servers over one bucket is a legitimate arrangement (public assets
 that never carry an auth cookie, and cleaner cache keys), but that is a
 cache-behaviour decision, not a secrecy one.
 
+**Both signature mechanisms are always available.** A behaviour with restricted
+viewer access is configured once, with a trusted key group, and then accepts
+either a signed URL or signed cookies — the URL wins when a request carries both.
+So there is nothing for the construct to declare beyond the key material, and
+which mechanism is used is decided per call by whoever mints it. Note that this
+is *CloudFront* signing with a key pair through the distribution, which is a
+different mechanism from the *S3* presign `getUploadURL` issues with IAM
+credentials straight at the bucket: same word, different keys, different host.
+
 **Cookies are set at the parent domain**, `Domain=.example.com`, exactly as the
 auth section already requires — so the file server needs to know nothing about
 the API, and there is one domain rule in the system rather than two. Two
@@ -990,6 +1158,53 @@ authorises and redirects to a short-lived signed URL. Saying so is better than
 implying patterns cover it — the alternative is an edge function doing auth,
 which is a large surface to sign up for.
 
+**Multi-origin is deliberately deferred.** A distribution can front several
+origins, and `origin` will grow into an ordered `origins: [{ path, origin }]` the
+day something needs it — an array rather than a map, because behaviour precedence
+is most-specific-first and object key order is an invisible place to keep that.
+It is deferred because it costs the client its vocabulary: with one origin at the
+root a served path *is* a bucket key, and `getUploadURL(key)` and `url(key)` speak
+the same language. With several they diverge, and only the people who opt in
+should pay that.
+
+#### What landed, and what a signature currently means
+
+`FileServer` exists, kitchen-sink's bucket is one, and `endpoints/uploads.ts`
+still calls `services.uploads.getUploadURL(...)` **unchanged** — which is the
+superset claim verified rather than asserted.
+
+```
+Uploads        { kind: 'objects' }                                  ← unchanged
+UploadsServer  { kind: 'file-server', of: 'Uploads', open: ['brand/**'] }
+UPLOADS_URL        = s3://uploads?region=…&endpoint=http://localhost:20002&…
+UPLOADS_SERVER_URL = http://localhost:20002/uploads
+```
+
+Three things came out differently from the sketch, and they are worth naming
+because two of them are limits rather than choices.
+
+**`signedCookie` is not implemented, and `signedUrl` is an S3 presign.** Both
+mechanisms remain available in the design and both are CloudFront signing with a
+key pair through the distribution — which needs key material the construct does
+not yet declare, and which has no local equivalent at all. What ships is the
+mechanism that works identically in both places: an S3 presign at the bucket.
+The docblock says so rather than calling it a CDN URL, because "same word,
+different keys, different host" is exactly the confusion that makes this worth
+stating twice.
+
+**The escape hatch is a method, not a cast.** A fully dynamic key does not type
+— correct, and also the case people hit — so `openUrl(key: string)` takes it and
+runs the *same* runtime check. `url()` is the typed door and `openUrl()` the
+untyped one; neither is a way past the guard.
+
+**A single star is stricter in the client than in the policy.** The construct's
+runtime check stops `*` at a segment boundary, matching what a CDN behaviour
+does. An S3 policy resource's `*` crosses `/`, so `avatars/*.png` admits
+`avatars/2024/me.png` in the bucket policy and is refused by the client. The
+client is the stricter of the two, so nothing it refuses was ever relied on the
+policy to refuse — but a key fetched directly, bypassing the client, can be
+admitted. Prefer `**` where crossing segments is what you meant.
+
 #### Locally, on MinIO
 
 Three of the four map cleanly:
@@ -1001,11 +1216,29 @@ Three of the four map cleanly:
 | signed URLs | S3 presigning works against MinIO unchanged |
 | signed cookies | **nothing** — CloudFront-specific |
 
-The addressing constraint: the label has to equal the bucket name for MinIO to
-resolve it, which the default already satisfies since both derive from the id.
-Overriding the label costs shape-parity locally until the local target grows a
-proxy that mimics a CDN over MinIO — worth doing later, and additive when it
-lands.
+The addressing constraint is where choosing a separate construct is felt
+locally: MinIO's virtual-host mode reads the leading label *as the bucket name*,
+so it only produces the CDN shape when the server's id and the bucket's id agree
+— `Uploads` serving `uploads`. A `FileServer` named for what it serves rather
+than for its origin (`files.myapp.test` over bucket `uploads`) does not resolve,
+and a server fronting **two** buckets cannot resolve by construction. So under C
+the local target either falls back to MinIO's path-style URL — correct, but not
+the deployed shape — or grows a small proxy in front of MinIO that maps host and
+path patterns onto buckets the way a distribution does.
+
+What landed is the first branch: `UPLOADS_SERVER_URL` is MinIO's path-style
+address for the origin bucket, and the `open` patterns become a real MinIO bucket
+policy — anonymous `s3:GetObject` on those prefixes and nothing else, applied by
+the reconciler and idempotent, so a path that is open locally is open for the
+same reason it is open deployed.
+
+That proxy is the honest answer for the *shape*, and it is additive: it changes no construct API,
+and it is the only component that could also verify a signature locally. It is
+not something an AWS emulator gives you for free — CloudFront emulation in
+LocalStack and in [floci](https://floci.io) is **control plane only**
+(distributions, origins, cache behaviours, invalidations), which provisions a
+distribution that never serves a byte. What the local target needs is the data
+plane, which is the half nobody emulates.
 
 The cookie gap is why the client should expose one `read(key)` that resolves
 however the stage can, rather than app code branching on a mechanism that only
@@ -1315,9 +1548,53 @@ Four things derive from that edge that are hand-maintained today:
 | `auth`'s trusted origins | hand-listed |
 | which generated client lands in which app | a manual alias |
 
+The first three landed together — see below. The fourth waits on client
+generation.
+
 It owns an address, so it has a `.service` — useful in the other direction,
 since a transactional email needs the console's URL to build links, which is
 otherwise another hand-maintained variable.
+
+#### What landed, and the three decisions it forced
+
+`RestApi` and `StaticSite` exist, and the four hand-maintained things in the
+table above are now one edge each. The measurement, on kitchen-sink:
+
+```
+Auth  <- [Api]                          # from api.dependsOn([auth])
+AUTH_TRUSTED_ORIGINS = http://localhost:3000
+API_TRUSTED_ORIGINS  =                  # correct: nothing declares an edge to it yet
+```
+
+That empty value is the point rather than a gap. The list it replaced was two
+hardcoded localhost ports in a server hook, one of which nothing was serving, and
+which no deployed stage could have used at all.
+
+**A surface's endpoints are found, not declared.** `RestApi` names a `routes`
+glob and declares `endpoints: []`; the build fills them. The construct cannot
+import route modules to answer "what paths exist" without evaluating the whole
+runtime graph, so the split is the same one drawn everywhere else — what is
+structural is declared, what has to be found is found once, by the thing already
+walking the filesystem. An auth server enumerates instead, because its one
+wildcard route *is* structural.
+
+**Edges live in two places on a surface, and readers see one.** A route's
+`.dependsOn()` is about injecting a client into a handler; a surface's
+`.dependsOn()` is about calling another surface, which every route on it does.
+Both are real, so `RestApiDeclaration` carries `dependencies` beside its
+`endpoints`, and `dependenciesOf()` unions them — nothing reading the graph has
+to know which of the two a given edge came from.
+
+**The cookie domain is derived, and the Public Suffix List is where it stops.**
+`cookieDomain()` takes the surface's address and its callers' and returns their
+shared parent, `.example.com`. It returns nothing for one host — locally
+everything is `localhost` on a different port, cookies ignore the port, and
+`.localhost` is not a domain a browser accepts — and nothing for unrelated hosts,
+where the longest common suffix would be a value that silently fails to set. The
+case it gets wrong is `a.vercel.app` and `b.vercel.app`, which share a
+*registrable suffix* rather than a registrable domain; resolving that needs the
+PSL, which is a downloaded, expiring dataset, so the rule is two labels minimum
+and the value stays overridable.
 
 #### Injection: one derivation, per-framework delivery
 
@@ -1618,14 +1895,54 @@ shorter one and the CORS path stays untested.
 Each kind maps to a component in `@geekmidas/cloud/sst`, which already wraps the
 SST resource and implements `GkmLinkable`:
 
-| kind | `@geekmidas/cloud/sst` | SST | `ResourceType` |
+| kind | `@geekmidas/cloud/sst` | SST | provisioned |
 |---|---|---|---|
-| `objects` | `Storage` | `sst.aws.Bucket` | `sst:aws:Bucket` |
-| `database` | *(to add)* | `sst.aws.Postgres` | `sst:aws:Postgres` |
-| `queue` | `Queue` | `sst.aws.Queue` | `sst:aws:Queue` |
-| `topic` | `Topic` | `sst.aws.SnsTopic` | `sst:aws:SnsTopic` |
-| `secret` | *(to add)* | `sst.sst.Secret` | `sst:sst:Secret` |
-| `cache` | *(to add)* | — | — |
+| `objects` | `ObjectStorage` | `sst.aws.Bucket` | ✓ |
+| `file-server` | `FileServer` | `sst.aws.Router` | ✓ |
+| `site` | `StaticSite` | `sst.aws.StaticSite` | ✓ |
+| `queue` | `Queue` | `sst.aws.Queue` | ✓ |
+| `topic` | `Topic` | `sst.aws.SnsTopic` | ✓ |
+| `secret` | `Secret` | `sst.Secret` | ✓ |
+| `database` | — | `sst.aws.Postgres` | see Open Question 4 |
+| `database-reader` | — | — | see Open Question 4 |
+| `database-schema` | — | *(no AWS resource)* | after `database` |
+| `cache` | — | *(needs a provider)* | undecided |
+| `email` | — | `sst.aws.Email` | undecided |
+| `rest-api` | `Api` | `sst.aws.ApiGatewayV2` | after the endpoint merge |
+
+The six that landed are the six with no open question attached. The remaining
+six are blocked on decisions rather than on work, and the decisions are worth
+stating so nobody mistakes them for a to-do list:
+
+- **`database`** is Open Question 4 — whether the adapter *creates* a replica or
+  points at one, and what `--target=server` does where there is none. Also
+  unchosen at the time of writing: RDS instance versus Aurora Serverless v2,
+  which is not a detail, because it is the difference between a fixed monthly
+  floor and a scale-to-zero bill. `database-schema` provisions no AWS resource at
+  all — it is DDL inside the parent — so it follows whatever `database` becomes.
+
+  *Both are now settled — see `constructs-outstanding.md` §1.1. Nobody creates a
+  replica: a reader resolves to the writer's address, safe because read-only is
+  enforced by the reader role's grants. And it is an RDS instance, not a cluster
+  — the scale-to-zero argument lost to a plainer one about moving parts and
+  predictable pricing.*
+- **`cache`** has no AWS answer that keeps the client identical. The local
+  target speaks Upstash's HTTP protocol through a proxy in front of Redis
+  precisely so dev and prod run the same client; ElastiCache does not speak it,
+  so provisioning one means a new provider dependency and its credentials.
+- **`email`** is SES, and the work is not the identity — it is deriving SMTP
+  credentials from an IAM user, since the declaration promises an `smtp://` URL
+  and SES's SMTP password is a signed derivation of a secret access key.
+- **`rest-api`** waits on the endpoint merge: the surface node declares
+  `endpoints: []` for an app's own API, and routes still reach the deploy target
+  through the separate `RouteInfo[]` pipeline.
+
+A seventh thing the six forced, worth recording because it constrains the rest:
+`fromManifest` provisions in `provisionOrder`, which orders `of` and **not**
+`dependencies`. Sites are provisioned last as a result, which is sound only
+while a site is a pure consumer of addresses. The first kind that needs another
+construct's *value* at construction time turns that second pass into a real
+topological sort — and a cycle check with it.
 
 #### Linkables declare what they provide
 

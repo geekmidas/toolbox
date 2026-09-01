@@ -1,7 +1,7 @@
 import type { AuditStorage } from '@geekmidas/audit';
 import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type {
 	ComposableStandardSchema,
 	InferComposableStandardSchema,
@@ -10,9 +10,8 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
+import { cloneWith } from '../clone';
 import { type Consumable, serviceOf } from '../construct-interface';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export abstract class BaseFunctionBuilder<
 	TInput extends ComposableStandardSchema,
@@ -31,6 +30,15 @@ export abstract class BaseFunctionBuilder<
 	protected _timeout?: number;
 
 	public _services: TServices = [] as Service[] as TServices;
+	/**
+	 * The construct ids `.dependsOn()` was given.
+	 *
+	 * Beside the services rather than instead of them: a handler *runs* with
+	 * clients and the manifest *records* which constructs it reaches, and
+	 * dissolving one into the other is what lost the edges. Shared by every
+	 * builder because every one of them can depend on something.
+	 */
+	public _constructs: string[] = [];
 	public _logger: TLogger = DEFAULT_LOGGER;
 
 	protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
@@ -82,8 +90,7 @@ export abstract class BaseFunctionBuilder<
 	abstract logger<T extends Logger>(logger: T): any;
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	abstract output<T extends StandardSchemaV1>(schema: T): any;
@@ -93,8 +100,9 @@ export abstract class BaseFunctionBuilder<
 	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
 		event: TEvent,
 	): this {
-		this._events.push(event);
-		return this;
+		// Replaced rather than pushed: a clone shares whatever array the field
+		// points at, so an in-place push would be seen by the base it came from.
+		return cloneWith(this, { _events: [...this._events, event] });
 	}
 
 	publisher<T extends EventPublisher<any>, TName extends string>(
@@ -111,12 +119,12 @@ export abstract class BaseFunctionBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._publisher = publisher as unknown as Service<
-			TEventPublisherServiceName,
-			TEventPublisher
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_publisher: publisher as unknown as Service<
+				TEventPublisherServiceName,
+				TEventPublisher
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,
@@ -144,12 +152,12 @@ export abstract class BaseFunctionBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._auditorStorage = storage as unknown as Service<
-			TAuditStorageServiceName,
-			TAuditStorage
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_auditorStorage: storage as unknown as Service<
+				TAuditStorageServiceName,
+				TAuditStorage
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,
@@ -183,12 +191,12 @@ export abstract class BaseFunctionBuilder<
 	> {
 		const service = serviceOf(source);
 
-		this._databaseService = service as unknown as Service<
-			TDatabaseServiceName,
-			TDatabase
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_databaseService: service as unknown as Service<
+				TDatabaseServiceName,
+				TDatabase
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,

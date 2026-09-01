@@ -46,3 +46,11 @@ export interface Cache {
 	 */
 	ttl(key: string): Promise<number>;
 }
+
+export type { CacheDriver } from './registry';
+export {
+	createCacheClient,
+	registerCacheDriver,
+	registeredCacheSchemes,
+	UnregisteredCacheScheme,
+} from './registry';

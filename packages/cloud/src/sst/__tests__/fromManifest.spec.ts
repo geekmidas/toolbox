@@ -1,5 +1,5 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor, provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
@@ -21,14 +21,25 @@ describe('provisionerFor', () => {
 		expect(provisionerFor('objects')).toBeTypeOf('function');
 	});
 
+	it.each([
+		'objects',
+		'queue',
+		'topic',
+		'secret',
+	] as const)('provisions %s', (kind) => {
+		expect(provisionerFor(kind)).toBeTypeOf('function');
+	});
+
 	it('reports what is supported when a kind has no provisioner', () => {
 		expect.assertions(3);
 		try {
-			provisionerFor('database' as never);
+			// A kind no adapter will ever have, so this test does not go stale
+			// every time one more kind becomes provisionable.
+			provisionerFor('carrier-pigeon' as never);
 		} catch (error) {
 			const e = error as UnknownDeclarationKind;
 			expect(e).toBeInstanceOf(UnknownDeclarationKind);
-			expect(e.kind).toBe('database');
+			expect(e.kind).toBe('carrier-pigeon');
 			expect(e.supported).toContain('objects');
 		}
 	});
@@ -122,8 +133,15 @@ describe('ObjectStorage', () => {
 });
 
 describe('component settings', () => {
-	const provision = (declaration: never, props = {}) =>
-		provisionerFor('objects')({} as never, declaration, props) as unknown as {
+	const provision = (
+		declaration: never,
+		props = {},
+		manifest: ConstructManifest = {},
+	) =>
+		provisionerFor('objects')({} as never, declaration, props, {
+			manifest,
+			provisioned: {},
+		}) as unknown as {
 			name: string;
 			props?: Record<string, unknown>;
 		};
@@ -200,5 +218,49 @@ describe('resolveEdges', () => {
 			expect(e.target).toBe('Missing');
 			expect(e.available).toContain('Uploads');
 		}
+	});
+});
+
+describe('the key a provided role becomes', () => {
+	it('qualifies an ordinary role by its id', () => {
+		expect(providedKeyFor('Uploads', 'objects', 'url')).toBe('UPLOADS_URL');
+	});
+
+	it('leaves a secret’s name as its key', () => {
+		// `Auth` signs with `AUTH_SECRET`, which is also what better-auth's own
+		// tooling looks for — and qualifying it would produce
+		// `AUTH_SECRET_VALUE`, which nothing reads.
+		expect(providedKeyFor('AuthSecret', 'secret', 'value')).toBe('AUTH_SECRET');
+	});
+
+	it('is the same derivation the contract check uses', () => {
+		// The point of sharing it: a check deriving the key differently from the
+		// thing it checks passes on drift instead of catching it.
+		expect(() =>
+			assertProvides(
+				'AuthSecret',
+				['AUTH_SECRET'],
+				['value'].map((role) => providedKeyFor('AuthSecret', 'secret', role)),
+			),
+		).not.toThrow();
+	});
+});
+
+describe('Credential', () => {
+	it('provides under the role the declaration named', async () => {
+		// The role *is* the contract: providing `value` against a declared
+		// `STRIPE_CREDENTIAL` supplies `STRIPE_VALUE`, and assertProvides
+		// rejects the stack at synth. Which is the check working.
+		const { Credential } = await import('../aws/Credential');
+
+		expect(
+			Object.keys(new Credential({} as never, 'Stripe').provides()),
+		).toEqual(['credential']);
+	});
+
+	it('agrees with what the construct declares', () => {
+		expect(providedKeyFor('Stripe', 'credential', 'credential')).toBe(
+			'STRIPE_CREDENTIAL',
+		);
 	});
 });

@@ -9,6 +9,7 @@
  */
 
 import snakecase from 'lodash.snakecase';
+import type { DeclarationKind } from './declaration';
 
 import { InvalidConstructId } from './errors';
 
@@ -100,4 +101,86 @@ export function cloudName(
 	return [scope.stage, scope.app, snakecase(id).replace(/_/g, '-')]
 		.join('-')
 		.toLowerCase();
+}
+
+/**
+ * The domain a cookie must be scoped to so a surface and its callers share it.
+ *
+ * Derived from the addresses rather than configured, for the same reason the
+ * origins are: the set of things that talk to a surface is already in the graph,
+ * and the domain they have in common is a fact about that set. Returned with the
+ * leading dot a `Domain` attribute wants.
+ *
+ * Returns `undefined` when there is nothing to scope, which is the common case
+ * and not a failure:
+ *
+ * - **One host.** Locally everything is `localhost` on different ports, and
+ *   cookies ignore the port — so a `Domain` would add nothing and `.localhost`
+ *   is not a domain a browser will accept.
+ * - **Nothing in common.** Unrelated hosts cannot share a cookie at all, and
+ *   emitting the longest common suffix anyway would be a value that silently
+ *   fails to set.
+ *
+ * **The public-suffix limit, stated rather than discovered.** Two apps on
+ * `a.vercel.app` and `b.vercel.app` share `.vercel.app`, which every browser
+ * rejects because it is a registrable suffix rather than a registrable domain.
+ * Resolving that correctly needs the Public Suffix List, which is a downloaded,
+ * expiring dataset — so this requires at least two labels and otherwise trusts
+ * the addresses, and the value stays overridable for the case it gets wrong.
+ */
+export function cookieDomain(urls: readonly string[]): string | undefined {
+	const hosts = new Set<string>();
+
+	for (const url of urls) {
+		try {
+			const { hostname } = new URL(url);
+			// An IP address has no parent to share: `.0.0.1` is not a domain.
+			if (/^\d+(\.\d+){3}$/.test(hostname) || hostname.includes(':')) return;
+			hosts.add(hostname.toLowerCase());
+		} catch {
+			// Not an address. Nothing to derive from, and guessing is worse than
+			// leaving the attribute off.
+			return;
+		}
+	}
+
+	if (hosts.size === 0) return;
+	// One host already shares its cookies with itself, whatever the port.
+	if (hosts.size === 1) return;
+
+	const [first = [], ...rest] = [...hosts].map((host) =>
+		host.split('.').reverse(),
+	);
+	const shared: string[] = [];
+
+	for (const [index, label] of first.entries()) {
+		if (!rest.every((labels) => labels[index] === label)) break;
+		shared.push(label);
+	}
+
+	// One shared label is a TLD — `.com` is not a cookie domain.
+	if (shared.length < 2) return;
+
+	return `.${shared.reverse().join('.')}`;
+}
+
+/**
+ * The env key a construct's provided role actually becomes.
+ *
+ * Almost always `provideKey(id, role)` — and `secret` is the exception, because
+ * a secret's *name* is its key: `Auth` signs with `AUTH_SECRET`, which is also
+ * what better-auth's own tooling looks for, and qualifying it by role would
+ * produce `AUTH_SECRET_VALUE`.
+ *
+ * It lives here rather than in each target because two targets deriving the
+ * same key separately is exactly the drift the app/infra contract check exists
+ * to catch — and a check deriving the key differently from the thing it checks
+ * cannot catch anything.
+ */
+export function providedKeyFor(
+	id: string,
+	kind: DeclarationKind,
+	role: string,
+): string {
+	return kind === 'secret' ? environmentCase(id) : provideKey(id, role);
 }

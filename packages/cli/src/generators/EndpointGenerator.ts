@@ -134,6 +134,7 @@ export class EndpointGenerator extends ConstructGenerator<
 					environment: await construct.getEnvironment({
 						markOptional: context.markOptional,
 					}),
+					dependencies: construct.constructs,
 					authorizer: construct.authorizer?.name ?? 'none',
 				};
 
@@ -166,6 +167,7 @@ export class EndpointGenerator extends ConstructGenerator<
 					environment: await construct.getEnvironment({
 						markOptional: context.markOptional,
 					}),
+					dependencies: construct.constructs,
 					authorizer: construct.authorizer?.name ?? 'none',
 				};
 

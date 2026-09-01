@@ -72,6 +72,7 @@ export class FunctionGenerator extends ConstructGenerator<
 				environment: await construct.getEnvironment({
 					markOptional: context.markOptional,
 				}),
+				dependencies: construct.constructs,
 			});
 
 			logger.log(`Generated function handler: ${key}`);

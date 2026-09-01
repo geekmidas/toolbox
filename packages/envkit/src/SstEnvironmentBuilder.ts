@@ -31,6 +31,16 @@ export enum ResourceType {
 	SnsTopic = 'sst:aws:SnsTopic',
 	SSTDynamo = 'sst:aws:Dynamo',
 	SSTQueue = 'sst:aws:Queue',
+	// A distribution, twice over: a file server and a static site are the same
+	// infrastructure with different contents behind it, and they are separate
+	// entries because what they provide is read under different ids, not
+	// because SST builds them differently.
+	FileServer = 'sst:aws:Router',
+	StaticSite = 'sst:aws:StaticSite',
+	// Neither is an SST component: mail is an IAM chain and a composed URL, and
+	// a cache is whatever the selected backend turned out to be.
+	Email = 'gkm:aws:Email',
+	Cache = 'gkm:aws:Cache',
 }
 
 /**

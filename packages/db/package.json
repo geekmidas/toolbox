@@ -64,6 +64,16 @@
 				"default": "./dist/pg/url.cjs"
 			}
 		},
+		"./pg/roles": {
+			"import": {
+				"types": "./dist/pg/roles.d.mts",
+				"default": "./dist/pg/roles.mjs"
+			},
+			"require": {
+				"types": "./dist/pg/roles.d.cts",
+				"default": "./dist/pg/roles.cjs"
+			}
+		},
 		"./errors": {
 			"import": {
 				"types": "./dist/errors.d.mts",

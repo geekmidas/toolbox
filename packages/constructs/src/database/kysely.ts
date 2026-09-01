@@ -14,13 +14,16 @@
 import {
 	type ConstructName,
 	canonicalId,
+	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
+	type PostgresVersion,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
 import pg from 'pg';
+import { Cache } from '../cache';
 import type { Construct } from '../construct-interface';
 
 /** The schema a database uses when it does not say otherwise. */
@@ -52,6 +55,17 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 * function's environment. A deliberate downgrade, not a default.
 	 */
 	roles?: boolean;
+	/**
+	 * The Postgres major version to provision.
+	 *
+	 * Declared here so one statement reaches both targets. It was previously
+	 * set in two unrelated places — a container tag locally, nothing at all on
+	 * AWS (so Aurora chose) — which is how local came to run 18 while deployed
+	 * ran 17.7 with nothing recording the difference.
+	 *
+	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
+	 */
+	version?: PostgresVersion;
 }
 
 /** What makes a construct derived rather than a database in its own right. */
@@ -78,9 +92,10 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	 * Declared once and read by both `declare()` and `connect()`, so the key the
 	 * build publishes and the key the client reads cannot drift.
 	 */
-	private readonly config: { url: string };
+	private readonly config: { url: string; ownerUrl: string };
 	private readonly schemaName: string;
 	private readonly roles: boolean;
+	private readonly version: PostgresVersion;
 	private readonly derivedFrom?: DerivedFrom;
 
 	constructor(
@@ -93,9 +108,13 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.config = { url: provideKey(canonical, 'url') };
+		this.config = {
+			url: provideKey(canonical, 'url'),
+			ownerUrl: provideKey(canonical, 'ownerUrl'),
+		};
 		this.schemaName = options.schema ?? DEFAULT_SCHEMA;
 		this.roles = options.roles ?? true;
+		this.version = options.version ?? DEFAULT_POSTGRES_VERSION;
 		this.derivedFrom = derivedFrom;
 
 		// A field, not a getter: service discovery caches by object identity.
@@ -118,9 +137,17 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 							id: this.id,
 							of,
 							schema: schema ?? this.schemaName,
-							provides: Object.values(this.config),
+							// The runtime key alone — see the note below on the parent.
+							provides: [this.config.url],
 						}
-					: { kind, id: this.id, of, provides: Object.values(this.config) },
+					: {
+							kind,
+							id: this.id,
+							of,
+							// A reader has no owner URL of its own — nothing migrates
+							// through a read-only endpoint — so this is the one key.
+							provides: [this.config.url],
+						},
 			];
 		}
 
@@ -130,9 +157,11 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				id: this.id,
 				engine: 'postgres',
 				schema: this.schemaName,
-				// One key, the runtime role's. The owner URL is wired straight to the
-				// migrator by the adapter, so no edge in any manifest can name it.
-				provides: Object.values(this.config),
+				version: this.version,
+				// One key, the runtime role's. `config` also holds the owner key and
+				// it is deliberately absent here: a key in `provides` is a key an
+				// edge can name, and nothing should be able to depend on DDL rights.
+				provides: [this.config.url],
 				...(this.roles ? {} : { roles: false }),
 			},
 		];
@@ -156,6 +185,33 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	}
 
 	/**
+	 * A cache that lives in this database.
+	 *
+	 * The same strengthening `schema()` is over a second database: `new
+	 * Cache('Sessions')` says the app caches and leaves where to the deployment,
+	 * while this says it caches *here* — which is a fact about the application
+	 * and so belongs in its code.
+	 *
+	 * What it buys beyond being explicit: the table's schema and the role that
+	 * reaches it come from this database rather than from a second convention,
+	 * and the backend no longer has to guess which database "the database" meant
+	 * when an app declares two.
+	 *
+	 * A cache is not a `KyselyDatabase`, so this returns a `Cache` — the client
+	 * is a key/value store, not a query builder, and typing it as the parent
+	 * would be a convenience that lies.
+	 */
+	cache<TCache extends string = `${TName}Cache`>(
+		id: ConstructName<TCache> = `${this.id}Cache` as ConstructName<TCache>,
+		options: { table?: string } = {},
+	): Cache<TCache> {
+		return new Cache<TCache>(id, {
+			of: this.id,
+			...(options.table ? { table: options.table } : {}),
+		});
+	}
+
+	/**
 	 * A second schema in this database, with its own role(s) and its own URL —
 	 * so this database's role holds no grant on those tables at all.
 	 *
@@ -174,9 +230,35 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		});
 	}
 
-	private async connect(options: ServiceRegisterOptions): Promise<Kysely<DB>> {
-		const { url } = options.envParser
-			.create((get) => ({ url: get(this.config.url).string() }))
+	/**
+	 * A connection as the *owner* role — the one that may create, alter and drop.
+	 *
+	 * A `Service` rather than part of the construct, and deliberately so: a
+	 * construct is what `.dependsOn()` accepts, and nothing should be able to
+	 * depend on this. A migrator asks for it by name; a handler cannot ask at
+	 * all, which is the security property the role split exists for.
+	 *
+	 * Falls back to the runtime URL where no owner URL was published — the
+	 * `roles: false` downgrade, where there is only one credential and it is the
+	 * cluster master's.
+	 */
+	get owner(): Service<`${Uncapitalize<TName>}Owner`, Kysely<DB>> {
+		return {
+			serviceName:
+				`${serviceKey(this.id)}Owner` as `${Uncapitalize<TName>}Owner`,
+			register: (options) => this.connect(options, { owner: true }),
+		};
+	}
+
+	private async connect(
+		options: ServiceRegisterOptions,
+		as: { owner?: boolean } = {},
+	): Promise<Kysely<DB>> {
+		const { url, ownerUrl } = options.envParser
+			.create((get) => ({
+				url: get(this.config.url).string(),
+				ownerUrl: get(this.config.ownerUrl).string().optional(),
+			}))
 			.parse();
 
 		// Split what the manifest declared from what Kysely takes, so neither
@@ -186,7 +268,9 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 
 		return new Kysely<DB>({
 			...kysely,
-			dialect: new PostgresDialect({ pool: pool(url) }),
+			dialect: new PostgresDialect({
+				pool: pool(as.owner ? (ownerUrl ?? url) : url),
+			}),
 		});
 	}
 }

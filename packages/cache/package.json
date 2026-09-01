@@ -35,6 +35,26 @@
 				"default": "./dist/upstash.cjs"
 			}
 		},
+		"./redis": {
+			"import": {
+				"types": "./dist/redis.d.mts",
+				"default": "./dist/redis.mjs"
+			},
+			"require": {
+				"types": "./dist/redis.d.cts",
+				"default": "./dist/redis.cjs"
+			}
+		},
+		"./postgres": {
+			"import": {
+				"types": "./dist/postgres.d.mts",
+				"default": "./dist/postgres.mjs"
+			},
+			"require": {
+				"types": "./dist/postgres.d.cts",
+				"default": "./dist/postgres.cjs"
+			}
+		},
 		"./expo": {
 			"import": {
 				"types": "./dist/expo.d.mts",
@@ -70,9 +90,28 @@
 	},
 	"peerDependencies": {
 		"@upstash/redis": "~1.35.1",
-		"expo-secure-store": "^14.2.3"
+		"expo-secure-store": "^14.2.3",
+		"ioredis": "^5.4.0",
+		"pg": "^8.13.0"
 	},
 	"devDependencies": {
-		"@types/proper-lockfile": "^4.1.4"
+		"@types/pg": "~8.15.5",
+		"@types/proper-lockfile": "^4.1.4",
+		"ioredis": "~5.8.2",
+		"pg": "~8.16.3"
+	},
+	"peerDependenciesMeta": {
+		"@upstash/redis": {
+			"optional": true
+		},
+		"expo-secure-store": {
+			"optional": true
+		},
+		"ioredis": {
+			"optional": true
+		},
+		"pg": {
+			"optional": true
+		}
 	}
 }

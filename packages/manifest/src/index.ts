@@ -27,6 +27,8 @@ export type {
 	ConstructId,
 	ConstructManifest,
 	ConstructName,
+	CredentialDeclaration,
+	CronDeclaration,
 	DatabaseDeclaration,
 	DatabaseReaderDeclaration,
 	DatabaseSchemaDeclaration,
@@ -37,20 +39,38 @@ export type {
 	DerivedDeclaration,
 	DerivedKind,
 	EmailDeclaration,
+	FileServerDeclaration,
 	Fn,
+	FunctionDeclaration,
 	IdsOf,
 	IdsOfKind,
 	Node,
 	ObjectsDeclaration,
+	PostgresVersion,
 	ProvidedKeys,
 	Provides,
 	ProvidesByKind,
 	QueueDeclaration,
+	RestApiDeclaration,
+	RestApiEndpoint,
 	SecretDeclaration,
+	SiteDeclaration,
 	TopicDeclaration,
 } from './declaration';
-export { DERIVES_FROM, PUBLIC } from './declaration';
-export { assertDerivations, isDerived, provisionOrder } from './derive';
+export {
+	DEFAULT_POSTGRES_VERSION,
+	DERIVES_FROM,
+	PUBLIC,
+} from './declaration';
+export {
+	assertDerivations,
+	dependenciesOf,
+	dependentsOf,
+	isDerived,
+	PUBLIC_PREFIX,
+	provisionOrder,
+	publicEnvFor,
+} from './derive';
 export {
 	IllegalDerivation,
 	InvalidConstructId,
@@ -59,7 +79,9 @@ export {
 export {
 	canonicalId,
 	cloudName,
+	cookieDomain,
 	environmentCase,
+	providedKeyFor,
 	provideKey,
 	serviceKey,
 } from './naming';
@@ -95,6 +117,15 @@ export interface RouteInfo {
 	memorySize?: number;
 	/** Required environment variables (a trailing `?` marks an optional var). */
 	environment?: readonly string[];
+	/**
+	 * The constructs this handler declared an edge to, by id.
+	 *
+	 * What `.dependsOn()` was given, carried through the build so the manifest
+	 * records the edge rather than only its shadow. `environment` is that shadow —
+	 * the keys the handler reads — and it cannot be turned back into edges, which
+	 * is why both exist and only this one grants anything.
+	 */
+	dependencies?: readonly string[];
 	/** Authorizer name: `none`, `iam`, or a declared authorizer. */
 	authorizer: string;
 }
@@ -106,6 +137,15 @@ export interface FunctionInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/**
+	 * The constructs this handler declared an edge to, by id.
+	 *
+	 * What `.dependsOn()` was given, carried through the build so the manifest
+	 * records the edge rather than only its shadow. `environment` is that shadow —
+	 * the keys the handler reads — and it cannot be turned back into edges, which
+	 * is why both exist and only this one grants anything.
+	 */
+	dependencies?: readonly string[];
 }
 
 /** A scheduled (cron) function. */
@@ -117,6 +157,15 @@ export interface CronInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/**
+	 * The constructs this handler declared an edge to, by id.
+	 *
+	 * What `.dependsOn()` was given, carried through the build so the manifest
+	 * records the edge rather than only its shadow. `environment` is that shadow —
+	 * the keys the handler reads — and it cannot be turned back into edges, which
+	 * is why both exist and only this one grants anything.
+	 */
+	dependencies?: readonly string[];
 }
 
 /** An event subscriber function (topic/queue resolved by `transport`). */
@@ -131,6 +180,15 @@ export interface SubscriberInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/**
+	 * The constructs this handler declared an edge to, by id.
+	 *
+	 * What `.dependsOn()` was given, carried through the build so the manifest
+	 * records the edge rather than only its shadow. `environment` is that shadow —
+	 * the keys the handler reads — and it cannot be turned back into edges, which
+	 * is why both exist and only this one grants anything.
+	 */
+	dependencies?: readonly string[];
 }
 
 /**
@@ -157,6 +215,12 @@ export interface QueueInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/**
+	 * The constructs the worker declared an edge to, by id.
+	 *
+	 * See {@link RouteInfo.dependencies} — same field, same reason.
+	 */
+	dependencies?: readonly string[];
 }
 
 /**

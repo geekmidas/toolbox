@@ -4,7 +4,8 @@
 	"type": "module",
 	"files": [
 		"dist",
-		"src/sst"
+		"src/sst",
+		"src/dokploy"
 	],
 	"scripts": {
 		"sst:install": "sst install",
@@ -31,7 +32,8 @@
 				"default": "./dist/utils/index.cjs"
 			}
 		},
-		"./sst": "./src/sst/index.ts"
+		"./sst": "./src/sst/index.ts",
+		"./dokploy": "./src/dokploy/index.ts"
 	},
 	"repository": {
 		"type": "git",
@@ -51,18 +53,43 @@
 		"@types/lodash.set": "~4.3.9",
 		"@types/lodash.snakecase": "~4.1.9",
 		"@types/node": "~24.9.1",
+		"@types/pg": "~8.15.5",
 		"sst": "4.15.2"
 	},
 	"peerDependencies": {
 		"sst": "^4.15.2",
 		"@geekmidas/manifest": "workspace:^",
-		"@geekmidas/storage": "workspace:^"
+		"@geekmidas/storage": "workspace:^",
+		"@geekmidas/events": "workspace:^",
+		"@geekmidas/db": "workspace:^",
+		"pg": "^8.13.0",
+		"@pulumi/aws": "^7.20.0",
+		"@pulumi/random": "^4.16.6",
+		"@pulumi/pulumi": "^3.215.0"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/manifest": {
 			"optional": true
 		},
 		"@geekmidas/storage": {
+			"optional": true
+		},
+		"@geekmidas/events": {
+			"optional": true
+		},
+		"@geekmidas/db": {
+			"optional": true
+		},
+		"pg": {
+			"optional": true
+		},
+		"@pulumi/aws": {
+			"optional": true
+		},
+		"@pulumi/random": {
+			"optional": true
+		},
+		"@pulumi/pulumi": {
 			"optional": true
 		}
 	}

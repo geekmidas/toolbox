@@ -21,3 +21,22 @@ export function prefixedName(prefix: string[], resource: string): string {
 	const name = kebab(resource);
 	return name.startsWith(joined) ? name : `${joined}-${name}`;
 }
+
+/**
+ * The region out of an AWS ARN — `arn:aws:sqs:eu-west-1:123:emails` →
+ * `eu-west-1`.
+ *
+ * Every connection string this package composes carries the region explicitly,
+ * because `AWS_REGION` inside a Lambda is the *function's* region and not the
+ * resource's. A cross-region queue then works right up until it doesn't, and
+ * fails at runtime with nothing in the URL to explain why.
+ *
+ * Returns `undefined` for the ARN shapes that carry no region — an IAM ARN, or
+ * anything that is not an ARN at all — so a caller omits the parameter rather
+ * than writing an empty one.
+ */
+export function regionOfArn(arn: string): string | undefined {
+	const [prefix, , , region] = arn.split(':');
+
+	return prefix === 'arn' && region ? region : undefined;
+}

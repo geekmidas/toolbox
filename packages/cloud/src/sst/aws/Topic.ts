@@ -1,4 +1,7 @@
+// The codec alone — see the note in `Queue.ts`.
+import * as snsUrl from '@geekmidas/events/sns/url';
 import { type GkmLinkable, ResourceType } from '../Linkable';
+import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';
 
 /**
@@ -31,6 +34,34 @@ export class Topic<
 	) {
 		super(name, props);
 		this._id = name;
+	}
+
+	/**
+	 * The publisher's connection string, and nothing else.
+	 *
+	 * A subscriber is *bound* to a topic rather than depending on it, so the
+	 * binding is an edge the deploy target reads and not a key anyone can hold —
+	 * which is what keeps a subscriber from being able to publish.
+	 *
+	 * The region comes out of the topic's own ARN, for the same reason it does
+	 * on a queue: the reader's region is not the resource's.
+	 */
+	provides(): Record<string, $util.Input<string>> {
+		return {
+			publisherConnectionString: $util
+				.output(this.arn)
+				.apply((topicArn) =>
+					snsUrl.build({ topicArn, region: regionOfArn(topicArn) }),
+				),
+		};
+	}
+
+	override getSSTLink() {
+		const link = super.getSSTLink();
+		return {
+			...link,
+			properties: { ...link.properties, ...this.provides() },
+		};
 	}
 }
 

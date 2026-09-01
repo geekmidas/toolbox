@@ -11,7 +11,9 @@
 
 import {
 	CreateBucketCommand,
+	GetBucketPolicyCommand,
 	HeadBucketCommand,
+	PutBucketPolicyCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
 import { Client } from 'pg';
@@ -75,6 +77,25 @@ export function bucketClient(port: number): BucketClient {
 
 		async create(bucket) {
 			await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+		},
+
+		async policy(bucket) {
+			try {
+				const result = await s3.send(
+					new GetBucketPolicyCommand({ Bucket: bucket }),
+				);
+				return result.Policy;
+			} catch {
+				// No policy, or the bucket is not reachable. Both mean there is
+				// nothing to compare against, and writing one is idempotent.
+				return undefined;
+			}
+		},
+
+		async setPolicy(bucket, policy) {
+			await s3.send(
+				new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }),
+			);
 		},
 	};
 }

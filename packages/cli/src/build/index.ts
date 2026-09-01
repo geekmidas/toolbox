@@ -23,15 +23,16 @@ import {
 } from '../dev';
 import {
 	CronGenerator,
+	driversFor,
 	EndpointGenerator,
 	FunctionGenerator,
 	type GeneratedConstruct,
 	QueueGenerator,
 	SubscriberGenerator,
-	storageDriversFor,
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
+import { discover } from '../reconcile/discover.js';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -40,6 +41,7 @@ import {
 	type RouteInfo,
 	type Routes,
 } from '../types';
+import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
 import {
 	getAppBuildOrder,
 	type NormalizedAppConfig,
@@ -86,6 +88,19 @@ export async function buildCommand(
 
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
+
+	// One answer for which backends this app uses, read once. The build
+	// registers drivers for it and records it in the manifest, so a deploy
+	// cannot pick differently and hand the running code a URL it has no driver
+	// for.
+	const backendConfig =
+		(config as { services?: { cache?: unknown; mail?: unknown } }).services ??
+		(
+			loadedConfig as {
+				workspace?: { services?: { cache?: unknown; mail?: unknown } };
+			}
+		).workspace?.services;
+	const cacheBackend = cacheBackendOf(backendConfig?.cache);
 
 	// Normalize production configuration
 	const productionConfigFromGkm = getProductionConfigFromGkm(config);
@@ -165,7 +180,15 @@ export async function buildCommand(
 		dockerServices,
 		// The entry point registers the drivers its target needs, so a URL's
 		// scheme can pick one without application code naming a provider.
-		storageDrivers: storageDriversFor(process.cwd()),
+		// `constructs` accepts the partitioned shape every other glob does; only
+		// the flat forms name a construct file.
+		constructGlobs:
+			typeof config.constructs === 'string' || Array.isArray(config.constructs)
+				? config.constructs
+				: undefined,
+		cacheBackend,
+		emailBackend: emailBackendOf(backendConfig?.mail),
+		storageDrivers: driversFor({ appRoot: process.cwd(), cache: cacheBackend }),
 		markOptional: options.markOptional ?? false,
 	};
 
@@ -309,6 +332,14 @@ async function buildForProvider(
 
 	// Assemble manifest fields (flat or partitioned per construct type)
 	const manifestRoutes = assembleManifestField(routes, endpoints);
+
+	// Discovery imports application code, so it runs once here and everything
+	// downstream reads what it wrote — a deploy config calling it would evaluate
+	// the whole runtime graph inside its own toolchain.
+	const discovered = context.constructGlobs
+		? await discover({ patterns: context.constructGlobs, cwd: process.cwd() })
+		: {};
+
 	const manifestFunctions = assembleManifestField(functionInfos, functions);
 	const manifestCrons = assembleManifestField(cronInfos, crons);
 	const manifestQueues = assembleManifestField(queueInfos, queues);
@@ -395,6 +426,8 @@ async function buildForProvider(
 			manifestSubscribers,
 			manifestQueues,
 			manifestTopics,
+			discovered,
+			{ cache: context.cacheBackend, email: context.emailBackend },
 		);
 	}
 

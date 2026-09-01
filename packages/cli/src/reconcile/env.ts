@@ -13,7 +13,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { provideKey } from '@geekmidas/manifest';
+import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
+import { cookieDomain, provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
@@ -70,6 +71,16 @@ export interface EnvOptions {
 	 */
 	project?: string;
 	/**
+	 * Where each address-owning construct answers, keyed by id — surfaces and
+	 * sites, e.g. `{ Api: 'http://localhost:3000', Console: 'http://localhost:5173' }`.
+	 *
+	 * Not container addresses: `gkm dev` assigns these, which is why they arrive
+	 * here rather than being read off a published port. Keyed by id rather than
+	 * being one `surface` string because there is more than one address in a
+	 * workspace and the difference between them is exactly what CORS is about.
+	 */
+	addresses?: Readonly<Record<string, string>>;
+	/**
 	 * The domain mail is sent from locally.
 	 *
 	 * Stage config, exactly as it is deployed — the difference is only that here
@@ -91,8 +102,38 @@ export function envFor(
 	const env: Record<string, string> = {};
 
 	for (const resource of plan.resources) {
-		const url = urlFor(resource, plan, options.ports, options.project ?? '');
+		const url = urlFor(
+			resource,
+			plan,
+			options.ports,
+			options.project ?? '',
+			options.addresses,
+		);
+
+		// A surface carries the origins its callers may come from, and they are
+		// its inbound edges — nothing more. Better Auth's CSRF check applies to
+		// every caller and not only to browsers, so a sibling service calling it
+		// is rejected unless its origin is listed; that this list is now the
+		// graph rather than every app the workspace happens to run is what makes
+		// it the same list deployed, where no workspace is watching.
+		if (resource.kind === 'rest-api') {
+			Object.assign(env, surfaceEnv(resource, url, options.addresses));
+		}
 		if (url) env[resource.envKey] = url;
+
+		// A database owns a second key, and it is deliberately not in `provides`:
+		// the owner URL is what a migrator connects with, so no edge in any
+		// manifest can name it and nothing can be granted DDL rights by mistake.
+		// `gkm exec` injects it; a handler never sees it.
+		if (isDatabase(resource.kind) && resource.roles !== false) {
+			const owner = ownerUrl(
+				resource,
+				plan,
+				options.ports,
+				options.project ?? '',
+			);
+			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
+		}
 
 		// Mail owns a second key. It is the sending identity, which is the one
 		// thing about mail that differs per stage — so it travels with the URL
@@ -103,6 +144,12 @@ export function envFor(
 		}
 	}
 
+	// After the loop, and deliberately: a site's keys are renames of values the
+	// constructs it depends on resolved, so every source has to exist before any
+	// of them can be read. Doing it inline would make the result depend on the
+	// order the manifest happened to be keyed in.
+	Object.assign(env, publicEnv(plan, env));
+
 	Object.assign(env, brokerEnv(plan, options.ports));
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves
@@ -112,6 +159,133 @@ export function envFor(
 	}
 
 	return env;
+}
+
+/**
+ * The values a site's bundler inlines, under the names it inlines them by.
+ *
+ * A rename and nothing more. `API_URL` was resolved once, by the same code that
+ * resolved it for the server; a site reads the same value under `VITE_API_URL`
+ * because that prefix is how its bundler is told to ship it. Nothing is derived
+ * twice, so a site and its API cannot come to disagree about where the API is.
+ *
+ * A source that resolved to nothing is skipped rather than written empty: an
+ * inlined empty string is a frontend that builds and then fails at runtime
+ * against `http:///`, where a missing variable fails at build with the name of
+ * the thing that is missing.
+ */
+function publicEnv(
+	plan: Plan,
+	resolved: Record<string, string>,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+
+	for (const resource of plan.resources) {
+		for (const [key, source] of Object.entries(resource.publicEnv ?? {})) {
+			const value = resolved[source];
+			if (value) env[key] = value;
+		}
+	}
+
+	return env;
+}
+
+/**
+ * What a surface publishes beyond its own address: who may call it, and where
+ * a cookie set by it is readable.
+ *
+ * Both are read off the same list — the constructs that declared an edge to
+ * this surface — which is why neither appears in application code. A surface
+ * that listed its own callers would be edited every time something new called
+ * it, and the thing being edited is already recorded in the graph.
+ *
+ * An empty origin list is written, and a surface with no address writes nothing
+ * at all. The two cases look alike and are not: "nothing depends on this yet" is
+ * a real state a target should publish, while "this surface has no address here"
+ * means it is not running in this stage, and keys belong with the address they
+ * describe.
+ */
+function surfaceEnv(
+	resource: PlannedResource,
+	url: string | undefined,
+	addresses: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+	if (!url) return {};
+
+	const origins = [
+		...new Set(
+			(resource.callers ?? [])
+				.map((caller) => addresses[caller])
+				.filter((address): address is string => Boolean(address))
+				.map(originOf)
+				.filter((origin): origin is string => Boolean(origin)),
+		),
+	].sort();
+
+	// Its own address belongs in the cookie derivation but not in the origin
+	// list: a surface does not need permission to call itself, and adding it
+	// would make every surface trust every other one that shares a port.
+	const domain = cookieDomain([url, ...origins]);
+
+	return {
+		[provideKey(resource.id, 'trustedOrigins')]: origins.join(','),
+		...(domain ? { [provideKey(resource.id, 'cookieDomain')]: domain } : {}),
+	};
+}
+
+/** An address reduced to the origin a browser compares against. */
+function originOf(address: string): string | undefined {
+	try {
+		return new URL(address).origin;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The runtime role of whatever a derived node hangs off.
+ *
+ * A reader's parent may itself be a schema tenant, so this follows `of` by one
+ * hop rather than assuming the cluster — the reader of a tenant reads that
+ * tenant's schema, not the database's.
+ */
+function parentRole(resource: PlannedResource, plan: Plan): string {
+	const parent = plan.resources.find((r) => r.id === resource.of);
+
+	return parent ? localRole(parent) : resource.name;
+}
+
+/** Whether a kind connects to Postgres and therefore has an owner role. */
+function isDatabase(kind: PlannedResource['kind']): boolean {
+	return kind === 'database' || kind === 'database-schema';
+}
+
+/**
+ * The URL a migrator connects with — the owner role, which can create, alter
+ * and drop.
+ *
+ * Never in `provides`, which is the whole point. A handler that could reach this
+ * could `DROP TABLE`, and the security property the role split exists for is
+ * that it cannot: the value is injected by `gkm exec` for the migrate step and
+ * by nothing else.
+ */
+function ownerUrl(
+	resource: PlannedResource,
+	plan: Plan,
+	ports: PortAssignments,
+	project: string,
+): string | undefined {
+	if (!resource.container) return undefined;
+
+	const port = ports[primaryPortKey(resource.container)];
+	if (port === undefined) return undefined;
+
+	const owner = ownerRole(localRole(resource));
+
+	return postgres(port, rootDatabase(resource, plan), {
+		user: owner,
+		password: localRolePassword(project, plan, owner),
+	});
 }
 
 /**
@@ -151,9 +325,24 @@ function urlFor(
 	plan: Plan,
 	ports: PortAssignments,
 	project: string,
+	addresses: Readonly<Record<string, string>> = {},
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
+
+	// A credential resolves to nothing here, deliberately. A secret is derived
+	// because the platform owns it; a credential was issued by a third party, so
+	// inventing a value would produce a Stripe key that is not a Stripe key and
+	// fail at the first call rather than at the first read. It comes from
+	// `gkm secrets` or `.env` like any other supplied value, and the construct's
+	// own schema is what reports it missing.
+	if (resource.kind === 'credential') return undefined;
+
+	// A surface answers on the app's own port, and a site on its dev server's —
+	// both assigned by the workspace, neither published by a container.
+	if (resource.kind === 'rest-api' || resource.kind === 'site') {
+		return addresses[resource.id];
+	}
 
 	if (!resource.container) return undefined;
 
@@ -162,19 +351,41 @@ function urlFor(
 
 	switch (resource.kind) {
 		case 'database':
-			return postgres(port, resource.name);
-
 		case 'database-schema':
 		case 'database-reader': {
 			// A tenant and a reader both live in the *parent's* database; what
-			// separates them is the schema on the search path and the role's grants,
-			// never a database of their own.
+			// separates them is the role's grants and the `search_path` pinned on
+			// that role, never a database of their own.
 			const database = rootDatabase(resource, plan);
-			const schema = schemaOf(resource, plan);
 
-			return schema
-				? `${postgres(port, database)}?search_path=${schema}`
-				: postgres(port, database);
+			// The runtime role, which can read and write rows and create nothing.
+			// `search_path` is pinned on the role by the DDL rather than carried
+			// here, so a connection string cannot forget it — and forgetting it
+			// looks like an empty database rather than an error.
+			//
+			// `roles: false` is the documented downgrade: both URLs fall back to
+			// the cluster's master credential, and the schema goes back into the
+			// URL because there is no role to pin it on.
+			if (resource.roles === false) {
+				const schema = schemaOf(resource, plan);
+
+				return schema
+					? `${postgres(port, database)}?search_path=${schema}`
+					: postgres(port, database);
+			}
+
+			// A reader connects as the read-only role on its parent, not as a role
+			// of its own: read-only is enforced by the grants, which is what makes
+			// falling back to the writer's endpoint safe where no replica exists.
+			const role =
+				resource.kind === 'database-reader'
+					? readerRole(parentRole(resource, plan))
+					: localRole(resource);
+
+			return postgres(port, database, {
+				user: role,
+				password: localRolePassword(project, plan, role),
+			});
 		}
 
 		case 'email':
@@ -189,11 +400,59 @@ function urlFor(
 			// MinIO and not anything.
 			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
 
+		case 'file-server': {
+			// Path style, not the deployed shape, and deliberately so. MinIO's
+			// virtual-host mode reads the leading label *as the bucket name*, so
+			// it only produces the CDN shape when the server's id and the
+			// bucket's agree — and never at all for a server fronting two
+			// buckets. The honest local answer is the address that works;
+			// producing the deployed shape needs a small proxy in front of MinIO,
+			// which is additive and changes no construct API. Note that an AWS
+			// emulator does not supply it: CloudFront emulation is control plane
+			// only, and what is needed here is the data plane.
+			const origin = plan.resources.find((r) => r.id === resource.of);
+			if (!origin) return undefined;
+
+			return `http://${LOCAL_HOST}:${port}/${origin.name}`;
+		}
+
 		case 'cache':
-			// The token in the userinfo, because an address and the credential
-			// that opens it are one fact. Deployed the scheme is https and the
-			// host is the provider's; nothing else differs.
-			return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
+			// The scheme is the backend, and the backend is the same one deployed —
+			// which is what lets a driver registered at build time match the URL
+			// resolved at run time.
+			// A cache that named a database is in that one — not in whichever the
+			// backend config would have picked, and not in "the" database when
+			// an app declares two.
+			if (resource.of) {
+				const parent = plan.resources.find((r) => r.id === resource.of);
+
+				return parent
+					? urlFor(parent, plan, ports, project, addresses)
+					: undefined;
+			}
+
+			switch (plan.cache) {
+				case 'db': {
+					// The database the app already declared. No second address, no
+					// second credential: the cache is a table reached by the same
+					// role, which is why this backend costs nothing to run.
+					const database = plan.resources.find((r) => r.kind === 'database');
+					if (!database) return undefined;
+
+					return urlFor(database, plan, ports, project, addresses);
+				}
+
+				case 'elasticache':
+					// The wire protocol, unauthenticated locally. Deployed it is
+					// `rediss://` inside a VPC; the client is the same either way.
+					return `redis://${LOCAL_HOST}:${port}`;
+
+				default:
+					// The token in the userinfo, because an address and the credential
+					// that opens it are one fact. Deployed the scheme is https and the
+					// host is the provider's; nothing else differs.
+					return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
+			}
 
 		case 'queue':
 		case 'topic':
@@ -237,8 +496,50 @@ function broker(plan: Plan, port: number): string {
 }
 
 /** A local Postgres URL, master credential and all. */
-function postgres(port: number, database: string): string {
-	return `postgres://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}/${database}`;
+function postgres(
+	port: number,
+	database: string,
+	credential: { user: string; password: string } = {
+		user: LOCAL_USER,
+		password: LOCAL_USER,
+	},
+): string {
+	return `postgres://${credential.user}:${credential.password}@${LOCAL_HOST}:${port}/${database}`;
+}
+
+/**
+ * The role a handler connects as, for one database or tenant.
+ *
+ * The construct's id, lowercased and stage-scoped exactly as its database or
+ * schema is — so `Orders` in the `test` stage connects as `orders_test`, and two
+ * stages sharing one cluster cannot share a credential. Roles are cluster-scoped
+ * in Postgres, which is why the suffix is not optional here the way it is for a
+ * schema.
+ */
+export function localRole(resource: PlannedResource): string {
+	return resource.name;
+}
+
+/**
+ * The password for a derived local role.
+ *
+ * Derived rather than random, for the same reason the local secret is: a
+ * password that changed on every `gkm dev` would lock a developer out of the
+ * data they had a moment ago. Seeded by the project so two checkouts do not
+ * share one, and by the stage so `test` and `development` do not.
+ *
+ * It is a *local* credential by construction — the cluster is on loopback and
+ * the seed is a checkout path — and no deployed target uses this function.
+ */
+export function localRolePassword(
+	project: string,
+	plan: Plan,
+	role: string,
+): string {
+	return createHash('sha256')
+		.update(`${project}:${plan.stage}:role:${role}`)
+		.digest('base64url')
+		.slice(0, 32);
 }
 
 /**

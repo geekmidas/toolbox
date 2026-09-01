@@ -5,7 +5,7 @@ import {
 	Publisher,
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	canonicalId,
 	type Declaration,
@@ -16,8 +16,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as unknown as Logger;
 
 /** A topic's event contract — a map of event type → payload schema. */
 export type TopicEvents = Record<string, StandardSchemaV1>;
@@ -100,6 +98,14 @@ export class Topic<
 				kind: 'topic',
 				id: this.id,
 				provides: [this.connectionKey],
+				// The contract this topic carries. Structural: which events exist
+				// is a fact about the application, and a subscriber binding to one
+				// that does not is a mistake worth catching at build.
+				events: this.eventTypes,
+				// Bound rather than declared here — a subscriber names the topic,
+				// not the other way round — so the build fills these from what it
+				// found. Nested when it does, because position is the trigger.
+				subscribers: [],
 			},
 		];
 	}

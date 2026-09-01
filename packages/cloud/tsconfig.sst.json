@@ -1,4 +1,5 @@
 {
+  "//paths": "Pulumi's SDKs are vendored under `.sst/platform/node_modules` rather than installed at the package level — this package deliberately depends on nothing from Pulumi. Most components need only the ambient `sst.aws.*` and `$util`; the ones creating a resource SST has no wrapper for (a generated password, a Secrets Manager entry) reach the SDK through the `paths` mappings below, which resolve to exactly the copy the deploy will run against.",
   "//": "Shared loosened compiler options for type-checking the source-only `src/sst` constructs. Pulling in SST's generated `.sst/platform` also pulls its platform source, which is authored against a much looser config than our strict base — so the strictness knobs are relaxed here to match it. This file carries options only (no `include`); the actual project config is `src/sst/tsconfig.json`, which extends it and is what both the editor and `ts:check:sst` use.",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
@@ -8,6 +9,12 @@
     "verbatimModuleSyntax": false,
     "noImplicitOverride": false,
     "noUncheckedIndexedAccess": false,
-    "strict": false
+    "strict": false,
+    "paths": {
+      "@pulumi/aws": ["./.sst/platform/node_modules/@pulumi/aws"],
+      "@pulumi/aws/*": ["./.sst/platform/node_modules/@pulumi/aws/*"],
+      "@pulumi/random": ["./.sst/platform/node_modules/@pulumi/random"],
+      "@pulumi/pulumi": ["./.sst/platform/node_modules/@pulumi/pulumi"]
+    }
   }
 }

@@ -143,10 +143,23 @@ export interface MailServiceConfig extends ServiceImageConfig {
 export interface ServicesConfig {
 	/** PostgreSQL database (default: postgres:18-alpine) */
 	db?: boolean | ServiceImageConfig;
-	/** Redis cache (default: redis:8-alpine) */
-	cache?: boolean | ServiceImageConfig;
-	/** Mail service (mailpit for dev) */
-	mail?: boolean | MailServiceConfig;
+	/**
+	 * The cache, as a container pin or as a backend name.
+	 *
+	 * `true` or an image config is the local container; a string names where the
+	 * cache lives when deployed — `'upstash'` (default), `'elasticache'`, or
+	 * `'db'`. Naming a backend also decides the local shape, so dev and prod
+	 * speak the same protocol either way.
+	 */
+	cache?: boolean | ServiceImageConfig | import('../types.js').CacheBackend;
+	/**
+	 * Mail, as a container pin or as a backend name.
+	 *
+	 * `true` or a config is Mailpit locally; a string names who delivers it
+	 * deployed — `'ses'` (default), `'resend'`, or `'smtp'`. Locally every one of
+	 * them is Mailpit, because every one of them speaks SMTP.
+	 */
+	mail?: boolean | MailServiceConfig | import('../types.js').EmailBackend;
 	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
 	storage?: boolean | ServiceImageConfig;
 	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */

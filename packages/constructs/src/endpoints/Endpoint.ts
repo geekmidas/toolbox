@@ -599,6 +599,7 @@ export class Endpoint<
 		logger,
 		output: outputSchema,
 		services,
+		constructs,
 		timeout,
 		memorySize,
 		getSession,
@@ -644,6 +645,8 @@ export class Endpoint<
 			events,
 			memorySize,
 			auditorStorageService,
+			undefined, // databaseService — assigned below, after the RLS wiring
+			constructs,
 		);
 
 		this.route = route;
@@ -782,6 +785,13 @@ export interface EndpointOptions<
 	output: TOutput | undefined;
 	/** Service dependencies to inject */
 	services: TServices;
+	/**
+	 * The ids of the constructs `.dependsOn()` named.
+	 *
+	 * The same edges as `services`, kept in the form the manifest records rather
+	 * than the form the handler runs with.
+	 */
+	constructs?: string[];
 	/** Logger instance */
 	logger: TLogger;
 	/** Optional session extraction function */

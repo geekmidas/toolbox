@@ -134,6 +134,16 @@
 				"default": "./dist/object-storage.cjs"
 			}
 		},
+		"./file-server": {
+			"import": {
+				"types": "./dist/file-server.d.mts",
+				"default": "./dist/file-server.mjs"
+			},
+			"require": {
+				"types": "./dist/file-server.d.cts",
+				"default": "./dist/file-server.cjs"
+			}
+		},
 		"./email": {
 			"import": {
 				"types": "./dist/email.d.mts",
@@ -154,6 +164,16 @@
 				"default": "./dist/cache.cjs"
 			}
 		},
+		"./credential": {
+			"import": {
+				"types": "./dist/credential.d.mts",
+				"default": "./dist/credential.mjs"
+			},
+			"require": {
+				"types": "./dist/credential.d.cts",
+				"default": "./dist/credential.cjs"
+			}
+		},
 		"./auth": {
 			"import": {
 				"types": "./dist/auth.d.mts",
@@ -162,6 +182,26 @@
 			"require": {
 				"types": "./dist/auth.d.cts",
 				"default": "./dist/auth.cjs"
+			}
+		},
+		"./rest-api": {
+			"import": {
+				"types": "./dist/rest-api.d.mts",
+				"default": "./dist/rest-api.mjs"
+			},
+			"require": {
+				"types": "./dist/rest-api.d.cts",
+				"default": "./dist/rest-api.cjs"
+			}
+		},
+		"./site": {
+			"import": {
+				"types": "./dist/site.d.mts",
+				"default": "./dist/site.mjs"
+			},
+			"require": {
+				"types": "./dist/site.d.cts",
+				"default": "./dist/site.cjs"
 			}
 		},
 		"./database/kysely": {

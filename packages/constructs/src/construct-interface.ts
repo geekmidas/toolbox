@@ -15,7 +15,7 @@
  * still in use; it takes that name once the class is gone.
  */
 
-import type { Declaration } from '@geekmidas/manifest';
+import type { Declaration, Dependency } from '@geekmidas/manifest';
 import type { Service } from '@geekmidas/services';
 
 /**
@@ -50,6 +50,42 @@ export interface Construct<TName extends string = string, TClient = never> {
 	readonly service: [TClient] extends [never]
 		? never
 		: Service<Uncapitalize<TName>, TClient>;
+}
+
+/**
+ * The build-time face alone — an id and what it contributes to the manifest.
+ *
+ * Weaker than {@link Consumable} on purpose. An edge is not always an
+ * injection: a site depending on an API needs that API's *address at build
+ * time* and has no service record to put a client into, so requiring one would
+ * make the weakest kind of edge impossible to express with the strongest
+ * interface. Discovery asks this same question and nothing more.
+ */
+export interface Declarable<TName extends string = string> {
+	readonly id: TName;
+	declare(): Declaration[];
+}
+
+/**
+ * The edge that points at a construct.
+ *
+ * A construct's *canonical* node is the one carrying its own id — the others are
+ * things it owns rather than things it is, like the signing secret beside an
+ * auth server — so the kind an edge records is read off that node instead of
+ * being written down beside it. Hand-written kinds are the same fact stated
+ * twice, and the copy is what goes stale when a construct changes what it
+ * declares.
+ *
+ * @throws {NotAConstruct} when the value declares nothing under its own id.
+ */
+export function edgeTo(construct: Declarable): Dependency {
+	const canonical = construct
+		.declare()
+		.find((declaration) => declaration.id === construct.id);
+
+	if (!canonical) throw new NotAConstruct(construct);
+
+	return { target: construct.id, kind: canonical.kind };
 }
 
 /** What consuming a construct hands you. */
@@ -103,6 +139,22 @@ export function servicesOf<const T extends readonly Consumable[]>(
 
 		return construct.service;
 	}) as ServicesOf<T>;
+}
+
+/**
+ * The other half of `servicesOf`: the same edge, as the manifest records it.
+ *
+ * `.dependsOn()` used to keep only the services, which is what a handler runs
+ * with — and an id cannot be recovered from a service name reliably, so the
+ * edges were gone by the time the build could read them. Both halves are taken
+ * from one call now, and `existing` is folded in so repeated `.dependsOn()`
+ * calls accumulate the way `.services()` already does.
+ */
+export function idsOf(
+	constructs: readonly Consumable[],
+	existing: readonly string[] = [],
+): string[] {
+	return [...new Set([...existing, ...constructs.map(({ id }) => id)])];
 }
 
 /** Something that is not a construct was passed to `.dependsOn()`. */

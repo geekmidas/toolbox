@@ -9,7 +9,15 @@
  * *importable*, so the adapter's decisions can be asserted as data. Verifying
  * that real resources are created is a different job, for Pulumi's own mocks or
  * a deploy.
+ *
+ * The addresses below are shaped like the real ones — an ARN with a region in
+ * the fourth field, a queue URL with a host — because `provides()` reads them
+ * apart. A stub returning `'stub'` would make those functions importable and
+ * still untestable.
  */
+
+const STUB_REGION = 'stub-region';
+const STUB_ACCOUNT = '123456789012';
 
 class StubComponent {
 	readonly name: string;
@@ -17,7 +25,16 @@ class StubComponent {
 
 	constructor(name: string, _props?: unknown) {
 		this.name = name;
-		this.nodes = { bucket: { region: 'stub-region' } };
+		this.nodes = { bucket: { region: STUB_REGION } };
+	}
+
+	/** Shaped like a real ARN: `provides()` reads the region out of field four. */
+	get arn() {
+		return `arn:aws:sqs:${STUB_REGION}:${STUB_ACCOUNT}:${this.name}`;
+	}
+
+	get url() {
+		return `https://sqs.${STUB_REGION}.amazonaws.com/${STUB_ACCOUNT}/${this.name}`;
 	}
 
 	/** Components override this to widen the payload; the base supplies a name. */
@@ -26,10 +43,60 @@ class StubComponent {
 	}
 }
 
+/** A router records what it was asked to route, so the wiring is assertable. */
+class StubRouter extends StubComponent {
+	readonly routed: { pattern: string; bucket: unknown }[] = [];
+
+	get url() {
+		return `https://${this.name}.stub.cloudfront.net`;
+	}
+
+	routeBucket(pattern: string, bucket: unknown) {
+		this.routed.push({ pattern, bucket });
+	}
+}
+
+/**
+ * An instance with the five parts a connection URL is composed from, and no
+ * `reader` — an RDS instance has one endpoint, which is the whole reason
+ * `urlFor({ reader: true })` hands back the writer's address.
+ */
+class StubPostgres extends StubComponent {
+	readonly host = 'db.stub.rds.amazonaws.com';
+	readonly port = 5432;
+	readonly database = 'stubdb';
+	readonly username = 'postgres';
+	readonly password = 'stub-password';
+}
+
+/** A secret is not an `sst.aws.*` component and carries a value, not an address. */
+class StubSecret {
+	readonly name: string;
+
+	constructor(name: string, placeholder?: string) {
+		this.name = name;
+		this.value = placeholder ?? `stub-secret-${name}`;
+	}
+
+	readonly value: string;
+
+	getSSTLink() {
+		return { properties: { value: this.value }, include: [] };
+	}
+}
+
 const util = {
 	/** Resolves eagerly, so `provides()` returns real strings under test. */
 	all<T>(values: T[]) {
 		return { apply: <R>(fn: (v: T[]) => R) => fn(values) };
+	},
+	/** The single-value form of `all`, same eagerness. */
+	output<T>(value: T) {
+		return { apply: <R>(fn: (v: T) => R) => fn(value) };
+	},
+	/** Pulumi's `secret` marker is identity under test. */
+	secret<T>(value: T) {
+		return value;
 	},
 	interpolate(strings: TemplateStringsArray, ...values: unknown[]) {
 		return strings.reduce((out, part, i) => out + part + (values[i] ?? ''), '');
@@ -38,14 +105,21 @@ const util = {
 
 Object.assign(globalThis, {
 	sst: {
+		Secret: StubSecret,
 		aws: {
 			Bucket: StubComponent,
 			Queue: StubComponent,
 			SnsTopic: StubComponent,
 			Function: StubComponent,
 			ApiGatewayV2: StubComponent,
+			StaticSite: StubComponent,
+			Router: StubRouter,
+			Postgres: StubPostgres,
 		},
 	},
 	$util: util,
 	$interpolate: util.interpolate,
+	// `$app` carries the deploy's own settings; components read the region off
+	// it when nothing more specific was supplied.
+	$app: { name: 'stub', providers: { aws: { region: 'eu-west-1' } } },
 });

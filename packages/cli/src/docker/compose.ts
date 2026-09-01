@@ -1,8 +1,10 @@
+import { DEFAULT_POSTGRES_VERSION } from '@geekmidas/manifest';
 import type {
 	ComposeServiceName,
 	ComposeServicesConfig,
 	ServiceConfig,
 } from '../types';
+import { cacheBackendOf, imagePinOf } from '../workspace/backends.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -20,7 +22,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 
 /** Default Docker image versions for services */
 export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
-	postgres: '18-alpine',
+	postgres: `${DEFAULT_POSTGRES_VERSION}-alpine`,
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
 	minio: 'latest',
@@ -423,7 +425,12 @@ export function generateWorkspaceCompose(
 
 	// Determine which infrastructure services to include
 	const hasPostgres = services.db !== undefined && services.db !== false;
-	const hasRedis = services.cache !== undefined && services.cache !== false;
+	// `cache: 'db'` needs no Redis at all: the cache is a table in the database
+	// the app already declared, which is the same relationship pg-boss has.
+	const hasRedis =
+		services.cache !== undefined &&
+		services.cache !== false &&
+		cacheBackendOf(services.cache) !== 'db';
 	const hasMail = services.mail !== undefined && services.mail !== false;
 	const hasMinio = services.storage !== undefined && services.storage !== false;
 	const eventsBackend = services.events;
@@ -434,7 +441,9 @@ export function generateWorkspaceCompose(
 
 	// Get image versions from config
 	const postgresImage = getInfraServiceImage('postgres', services.db);
-	const redisImage = getInfraServiceImage('redis', services.cache);
+	// A backend name is not an image pin — `cache: 'db'` says where the cache
+	// lives deployed and nothing about which container runs locally.
+	const redisImage = getInfraServiceImage('redis', imagePinOf(services.cache));
 	const minioImage = getInfraServiceImage('minio', services.storage);
 
 	let yaml = `# Docker Compose for ${workspace.name} workspace

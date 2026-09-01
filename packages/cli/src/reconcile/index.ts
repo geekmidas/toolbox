@@ -21,7 +21,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
-import type { EventsBackend } from '../types';
+import type { CacheBackend, EventsBackend } from '../types';
 import { bucketClient, pgClient } from './clients';
 import { type ComposeFile, composeFor, toYaml } from './compose';
 import { portKeys, portsOf, primaryPortKey } from './containers';
@@ -37,9 +37,11 @@ import {
 import {
 	type Applied,
 	applyBuckets,
+	applyPolicies,
 	applyPostgres,
 	type BucketClient,
 	bucketNames,
+	bucketPolicies,
 	postgresStatements,
 	type SqlClient,
 } from './provision';
@@ -92,6 +94,8 @@ export interface ReconcileOptions {
 	stage: string;
 	/** The events backend, until `topic` and `queue` are kinds. */
 	events?: EventsBackend;
+	/** Where a declared cache lives — see {@link CacheBackend}. */
+	cache?: CacheBackend;
 	/** Containers no construct implies — the config exceptions. */
 	extraContainers?: readonly string[];
 	/** Per-container image pins. */
@@ -109,6 +113,13 @@ export interface ReconcileOptions {
 	provision?: boolean;
 	/** The address mail is sent from locally. */
 	mailFrom?: string;
+	/**
+	 * Where each address-owning construct answers, keyed by id.
+	 *
+	 * Surfaces and sites. Assigned by whatever starts them, which is why it
+	 * arrives here rather than being read off a published container port.
+	 */
+	addresses?: Readonly<Record<string, string>>;
 	docker?: Docker;
 	probe?: PortProbe;
 	/** Injected for tests; the defaults talk to the containers just started. */
@@ -162,6 +173,7 @@ export async function reconcile(
 
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
 		events: options.events,
+		cache: options.cache,
 		extraContainers: options.extraContainers,
 	});
 
@@ -189,6 +201,7 @@ export async function reconcile(
 		ports,
 		project,
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
+		...(options.addresses ? { addresses: options.addresses } : {}),
 	});
 	const result: ReconcileResult = {
 		stage,
@@ -219,7 +232,7 @@ export async function reconcile(
 	// Only once the containers are up: there is nothing to create inside a
 	// container that is not running.
 	const provisioned =
-		start && provision ? await create(plan, ports, sql, buckets) : [];
+		start && provision ? await create(plan, ports, sql, buckets, project) : [];
 
 	await saveState(root, { hash, stage });
 
@@ -237,19 +250,28 @@ async function create(
 	ports: PortAssignments,
 	sql: (port: number) => SqlClient,
 	buckets: (port: number) => BucketClient,
+	/** Seeds the derived role passwords — see `localRolePassword`. */
+	project: string,
 ): Promise<Applied[]> {
 	const applied: Applied[] = [];
 
 	const postgresPort = ports[primaryPortKey('postgres')];
-	const statements = postgresStatements(plan);
+	const statements = postgresStatements(plan, project);
 	if (postgresPort !== undefined && statements.length > 0) {
 		applied.push(...(await applyPostgres(sql(postgresPort), statements)));
 	}
 
 	const minioPort = ports[primaryPortKey('minio')];
 	const names = bucketNames(plan);
-	if (minioPort !== undefined && names.length > 0) {
-		applied.push(...(await applyBuckets(buckets(minioPort), names)));
+	const policies = bucketPolicies(plan);
+	if (minioPort !== undefined && (names.length > 0 || policies.length > 0)) {
+		const client = buckets(minioPort);
+
+		// Buckets first: a policy names a bucket, and applying one to a bucket
+		// that does not exist yet fails on the first reconcile of a new project.
+		if (names.length > 0) applied.push(...(await applyBuckets(client, names)));
+		if (policies.length > 0)
+			applied.push(...(await applyPolicies(client, policies)));
 	}
 
 	return applied;

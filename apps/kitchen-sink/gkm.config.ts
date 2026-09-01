@@ -46,6 +46,14 @@ export default defineConfig({
 		server: './src/config/hooks',
 	},
 
+	// Where the backends that are deployment choices resolve to. Read once by
+	// the build — it registers the matching cache driver and records the answer
+	// in the manifest, so a deploy cannot pick differently.
+	services: {
+		cache: 'db',
+		mail: 'ses',
+	},
+
 	runtime: 'node',
 	env: ['.env', '.env.example'],
 

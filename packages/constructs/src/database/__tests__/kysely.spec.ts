@@ -1,6 +1,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	assertDerivations,
+	DEFAULT_POSTGRES_VERSION,
 	InvalidConstructId,
 	provisionOrder,
 } from '@geekmidas/manifest';
@@ -61,6 +62,10 @@ describe('KyselyDatabase', () => {
 					id: 'Orders',
 					engine: 'postgres',
 					schema: 'app',
+					// Always present, never inferred downstream: the container a
+					// developer runs and the engine a deploy provisions both read
+					// this one field, which is what stops them drifting apart.
+					version: DEFAULT_POSTGRES_VERSION,
 					provides: ['ORDERS_URL'],
 				},
 			]);

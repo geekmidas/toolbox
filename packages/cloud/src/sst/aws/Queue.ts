@@ -1,4 +1,9 @@
+// The codec alone, not the barrel: `@geekmidas/events/sqs` re-exports the
+// publisher and its AWS SDK client, and a deploy config that only needs to
+// *compose a URL* should not have to resolve a runtime it never calls.
+import * as sqsUrl from '@geekmidas/events/sqs/url';
 import { type GkmLinkable, ResourceType } from '../Linkable';
+import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';
 
 /**
@@ -30,17 +35,82 @@ export class Queue<
 		name: string,
 		props: QueueProps = {},
 	) {
-		super(name, props);
+		const { queueName, ...args } = props;
+
+		super(name, {
+			...args,
+			// A supplied name has to satisfy SQS's rule; an auto-generated one is
+			// Pulumi's problem and it already handles it.
+			...(queueName
+				? {
+						transform: {
+							...args.transform,
+							queue: { name: fifoName(queueName, args.fifo) },
+						},
+					}
+				: {}),
+		});
 		this._id = name;
+	}
+
+	/**
+	 * The values this queue resolves onto anything that publishes to it, keyed
+	 * by role. One key, the producer's: a worker is reached *through* the queue,
+	 * so there is no second address and nothing can depend on the handler.
+	 *
+	 * The region is read out of the queue's own ARN rather than left for the SDK
+	 * to infer. `AWS_REGION` inside a Lambda is the *function's* region, so a
+	 * connection string that omits it works until the day the queue lives
+	 * somewhere else and then fails at runtime with nothing to point at.
+	 */
+	provides(): Record<string, $util.Input<string>> {
+		return {
+			publisherConnectionString: $util
+				.all([this.url, this.arn])
+				.apply(([queueUrl, arn]) =>
+					sqsUrl.build({ queueUrl, region: regionOfArn(arn) }),
+				),
+		};
 	}
 
 	override getSSTLink() {
 		const link = super.getSSTLink();
 		return {
 			...link,
-			properties: { ...link.properties, arn: this.arn },
+			properties: { ...link.properties, arn: this.arn, ...this.provides() },
 		};
 	}
 }
 
-export interface QueueProps extends sst.aws.QueueArgs {}
+export interface QueueProps extends sst.aws.QueueArgs {
+	/**
+	 * The physical queue name, where the auto-generated one will not do.
+	 *
+	 * Normalised for SQS's FIFO rule — see {@link fifoName}. This is a separate
+	 * prop rather than a `transform` because the rule is easy to not know and
+	 * expensive to discover: the deploy fails at the API call, long after the
+	 * plan looked fine.
+	 */
+	queueName?: string;
+}
+
+/**
+ * A FIFO queue's name must end in `.fifo`, and a standard queue's must not.
+ *
+ * AWS rejects either mistake at the API call rather than at plan time, so the
+ * component fixes it where the fact lives instead of leaving it as something
+ * every caller has to remember. Appending is safe: `.fifo` counts toward the
+ * 80-character limit, so a name already carrying it must not get a second one.
+ */
+export function fifoName(
+	name: string,
+	fifo: sst.aws.QueueArgs['fifo'],
+): string {
+	// `fifo` is an Input and may be an object (`{ contentBasedDeduplication }`),
+	// which is still FIFO — only `false` and `undefined` are not.
+	const isFifo = fifo !== undefined && fifo !== false;
+
+	if (!isFifo) return name.replace(/\.fifo$/, '');
+
+	return name.endsWith('.fifo') ? name : `${name}.fifo`;
+}

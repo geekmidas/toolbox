@@ -15,10 +15,13 @@ import {
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
-	environmentCase,
+	dependentsOf,
+	type PostgresVersion,
+	providedKeyFor,
 	provideKey,
+	publicEnvFor,
 } from '@geekmidas/manifest';
-import type { EventsBackend } from '../types';
+import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
 
 /** The stage whose resources carry no suffix. */
 export const DEFAULT_STAGE = 'development';
@@ -35,10 +38,33 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	'database-reader': 'postgres',
 	'database-schema': 'postgres',
 	objects: 'minio',
+	// The server answers on the same MinIO that holds the objects, because
+	// locally there is nothing else for it to answer on — see `urlFor`.
+	'file-server': 'minio',
+	// Every mail backend speaks SMTP, so locally there is one answer whichever
+	// one is selected — which is the same reason the declaration has no
+	// `provider` field.
 	email: 'mailpit',
+};
+
+/**
+ * The container a cache backend needs locally.
+ *
+ * Each one matches the protocol its deployed form speaks, which is the property
+ * worth having: a cache that behaves differently in the two places is worse than
+ * a slower one.
+ *
+ * `db` is deliberately absent, the same way `pgboss` is absent from
+ * `EVENT_CONTAINERS`: the cache is a table in a database the manifest already
+ * declares, so mapping it here would start a container for a project that needs
+ * none.
+ */
+const CACHE_CONTAINERS: Partial<Record<CacheBackend, string>> = {
 	// The proxy, not the Redis behind it: the client speaks HTTP with a token
 	// wherever it runs, which is what makes dev and prod the same client.
-	cache: 'redis-http',
+	upstash: 'redis-http',
+	// The wire protocol, which is what ElastiCache offers — so dev speaks it too.
+	elasticache: 'redis',
 };
 
 /**
@@ -50,6 +76,15 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
  */
 const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	secret: true,
+	// A credential has no address either — and unlike a secret it has no value
+	// this target can derive, because it was issued by somebody else.
+	credential: true,
+	// A surface answers on the app's own port. It is the first kind whose
+	// address belongs to something gkm starts rather than something Docker does.
+	'rest-api': true,
+	// A site is the second: it is served by its own framework's dev server, and
+	// what the target resolves for it is only where that server answers.
+	site: true,
 };
 
 /**
@@ -73,6 +108,7 @@ const REQUIRES: Readonly<Record<string, readonly string[]>> = {
 const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
+	credential: 'credential',
 };
 
 /** The kinds whose container is the events backend's rather than their own. */
@@ -94,6 +130,13 @@ const PROVISIONS: Partial<Record<DeclarationKind, true>> = {
 	'database-reader': true,
 	'database-schema': true,
 	objects: true,
+	// Only a cache that lives in a database creates anything — its table. The
+	// other backends have nothing to create inside the container they use.
+	cache: true,
+	// The open patterns become a bucket policy on the origin — real
+	// enforcement locally, from the same declaration the CDN behaviour comes
+	// from deployed.
+	'file-server': true,
 };
 // Queues and topics are absent deliberately: pg-boss creates its own schema and
 // tables on first connect, and a RabbitMQ exchange is declared by the client
@@ -155,6 +198,54 @@ export interface PlannedResource {
 	provisions: boolean;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
+	/** For a cache in a database: the table entries are kept in. */
+	table?: string;
+	/**
+	 * Whether to provision the owner/runtime role split.
+	 *
+	 * `false` is the documented downgrade — both URLs fall back to the cluster's
+	 * master credential — and it is a choice someone made rather than a default
+	 * they got, which is why it is carried through rather than inferred.
+	 */
+	roles?: boolean;
+	/**
+	 * For a database: the engine major version to run.
+	 *
+	 * Carried like `schema` and `roles` — read off the declaration so the
+	 * container tag and the deployed engine come from one statement. They used
+	 * to come from two, and had drifted a major apart with nothing recording it.
+	 */
+	version?: PostgresVersion;
+	/**
+	 * For a file server: the paths it serves without a signature.
+	 *
+	 * Carried into the plan because the local target enforces them for real — a
+	 * bucket policy with prefix resources, from the same declaration the CDN
+	 * behaviour comes from deployed. An open path that is open locally and shut
+	 * in production is the bug this avoids.
+	 */
+	open?: readonly string[];
+	/**
+	 * For a site: the keys its bundle needs, mapped to the key each value comes
+	 * from — `{ VITE_API_URL: 'API_URL' }`.
+	 *
+	 * One neutral name from the construct and one serialisation per framework.
+	 * The prefix is the whole of what varies, which is why the mapping is a
+	 * rename rather than a second derivation: `API_URL` is resolved once, by the
+	 * same code that resolves it for the server, and a site simply reads it
+	 * under the name its bundler will inline.
+	 */
+	publicEnv?: Record<string, string>;
+	/**
+	 * The ids that depend on this one — the graph read backwards.
+	 *
+	 * Carried on surfaces, where it is the whole answer to "who may call this":
+	 * CORS origins, trusted origins, and the cookie domain are three readings of
+	 * this one list. Resolved to addresses by the target, because the manifest
+	 * knows which constructs call which and only the target knows where any of
+	 * them answer.
+	 */
+	callers?: string[];
 }
 
 export interface Plan {
@@ -167,6 +258,8 @@ export interface Plan {
 	 * the plan is what keeps the two from disagreeing.
 	 */
 	events: EventsBackend;
+	/** Where the cache lives, for everything downstream that composes its URL. */
+	cache: CacheBackend;
 	/** Containers to start, deduplicated. */
 	containers: string[];
 	/**
@@ -179,6 +272,14 @@ export interface Plan {
 
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
+	/**
+	 * Where a declared cache lives, which decides both the container it needs
+	 * locally and the protocol its URL speaks.
+	 *
+	 * Config rather than declaration, because the same application code caches
+	 * into any of them — the same reason `events` is config.
+	 */
+	cache?: CacheBackend;
 	/**
 	 * The events backend, which selects a container of its own for everything
 	 * except pg-boss.
@@ -225,12 +326,25 @@ export function resourceName(
 export function containerFor(
 	kind: DeclarationKind,
 	events: EventsBackend = DEFAULT_EVENTS,
+	cache: CacheBackend = DEFAULT_CACHE,
+	/** Whether the declaration named a parent — see the `cache` branch. */
+	derived = false,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
 		// tenant in a database the manifest already declares, so its container is
 		// that database's.
 		return EVENT_CONTAINERS[events] ?? CONTAINERS.database;
+	}
+
+	// The same shape: a cache in the database lives in the database's container.
+	if (kind === 'cache') {
+		// A cache that *named* a database is in it whatever the backend config
+		// says — the declaration is the stronger statement, and config choosing
+		// otherwise would move a cache the app said lives here.
+		if (derived) return CONTAINERS.database;
+
+		return CACHE_CONTAINERS[cache] ?? CONTAINERS.database;
 	}
 
 	return CONTAINERS[kind];
@@ -253,12 +367,18 @@ export function planFor(
 	const resources: PlannedResource[] = [];
 
 	const events = options.events ?? DEFAULT_EVENTS;
+	const cache = options.cache ?? DEFAULT_CACHE;
 
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
 		if (!declaration) continue;
 
-		const container = containerFor(declaration.kind, events);
+		const container = containerFor(
+			declaration.kind,
+			events,
+			cache,
+			'of' in declaration && typeof declaration.of === 'string',
+		);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
 		if (container) {
@@ -272,16 +392,38 @@ export function planFor(
 			kind: declaration.kind,
 			...(container ? { container } : {}),
 			name: resourceName(id, declaration.kind, stage),
-			// A secret's name *is* its key — there is no role to qualify, and
-			// `AUTH_SECRET_SECRET` is what qualifying it would produce.
-			envKey:
-				declaration.kind === 'secret'
-					? environmentCase(id)
-					: provideKey(id, ROLES[declaration.kind] ?? 'url'),
+			// Through the shared derivation: a secret's name *is* its key, and
+			// this target and the deploy target must not answer that separately.
+			envKey: providedKeyFor(
+				id,
+				declaration.kind,
+				ROLES[declaration.kind] ?? 'url',
+			),
 			provisions: PROVISIONS[declaration.kind] === true,
+			// Only for surfaces. Every other kind is reached by a URL that says
+			// nothing about who holds it, so a caller list would be a fact with
+			// no reader.
+			...(declaration.kind === 'rest-api'
+				? { callers: dependentsOf(manifest, id) }
+				: {}),
+			...(declaration.kind === 'site'
+				? { publicEnv: publicEnvFor(declaration, manifest) }
+				: {}),
+			...(declaration.kind === 'file-server' && declaration.open?.length
+				? { open: declaration.open }
+				: {}),
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
 				? { schema: declaration.schema }
+				: {}),
+			...('version' in declaration && declaration.version
+				? { version: declaration.version }
+				: {}),
+			...('roles' in declaration && declaration.roles === false
+				? { roles: false }
+				: {}),
+			...('table' in declaration && declaration.table
+				? { table: declaration.table }
 				: {}),
 		});
 	}
@@ -301,7 +443,22 @@ export function planFor(
 		);
 	}
 
-	return { stage, events, containers: [...containers], resources };
+	// A cache in the database needs one to live in, exactly as pg-boss does.
+	// Starting a Postgres to hold only a cache would be the container this
+	// design refuses to invent. A cache that named its parent is checked by
+	// `assertDerivations` instead, which is stricter — it names the database
+	// that is missing rather than reporting that some database is.
+	if (
+		cache === 'db' &&
+		resources.some((r) => r.kind === 'cache' && !r.of) &&
+		!resources.some((r) => r.kind === 'database')
+	) {
+		throw new CacheNeedsDatabase(
+			resources.filter((r) => r.kind === 'cache').map((r) => r.id),
+		);
+	}
+
+	return { stage, events, cache, containers: [...containers], resources };
 }
 
 /**
@@ -311,6 +468,17 @@ export function planFor(
  * code either way — declare a database, or select a backend that brings its own
  * broker.
  */
+export class CacheNeedsDatabase extends Error {
+	constructor(readonly ids: readonly string[]) {
+		super(
+			`A cache backed by the database needs a declared database, and none ` +
+				`was declared. Declare one, or set services.cache to 'upstash' or ` +
+				`'elasticache'. Caches affected: ${ids.join(', ')}.`,
+		);
+		this.name = 'CacheNeedsDatabase';
+	}
+}
+
 export class PgBossNeedsDatabase extends Error {
 	constructor(readonly ids: readonly string[]) {
 		super(

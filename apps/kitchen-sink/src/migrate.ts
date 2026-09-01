@@ -4,33 +4,25 @@ import { fileURLToPath } from 'node:url';
 import { snifferContext } from '@geekmidas/constructs';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { Credentials } from '@geekmidas/envkit/credentials';
-import { provideKey } from '@geekmidas/manifest';
-import { Kysely, PostgresDialect } from 'kysely';
+import type { Kysely } from 'kysely';
 // `Migrator`/`FileMigrationProvider` moved to the 'kysely/migration' subpath in kysely 0.29+.
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
-import pg from 'pg';
 import { auth } from './constructs/auth.js';
 import { database } from './constructs/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/**
- * The key the database construct provides, derived rather than written down —
- * so renaming the construct moves this too. Run through `gkm exec` (see the
- * `migrate` script), which is what injects the value.
- */
-const url = new EnvironmentParser({ ...process.env, ...Credentials })
-	.create((get) => ({
-		url: get(provideKey(database.id, 'url')).string(),
-	}))
-	.parse().url;
+const envParser = new EnvironmentParser({ ...process.env, ...Credentials });
 
 async function migrate() {
-	const db = new Kysely({
-		dialect: new PostgresDialect({
-			pool: new pg.Pool({ connectionString: url }),
-		}),
-	});
+	// The *owner* connection, not the one a handler gets. Migrations are DDL,
+	// and the role a request runs as holds no grant to create, alter or drop —
+	// which is the point of the split, and the reason this asks the construct
+	// for `owner` rather than reading a URL out of the environment itself.
+	const db = (await database.owner.register({
+		envParser,
+		context: snifferContext,
+	})) as Kysely<unknown>;
 
 	const migrator = new Migrator({
 		db,
@@ -45,7 +37,7 @@ async function migrate() {
 	// verifications — so the app never writes those tables and cannot drift
 	// from them. They live in the tenant the construct was given.
 	const runAuthMigrations = await auth.migrations({
-		envParser: new EnvironmentParser({ ...process.env, ...Credentials }),
+		envParser,
 		context: snifferContext,
 	});
 	await runAuthMigrations();

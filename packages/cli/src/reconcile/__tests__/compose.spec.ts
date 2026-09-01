@@ -76,6 +76,33 @@ describe('composeFor', () => {
 		);
 	});
 
+	it('runs the major the declaration names', () => {
+		// The whole point of the field: one statement reaches the container a
+		// developer runs and the engine a deploy provisions. They used to come
+		// from two places and had drifted a major apart — local on 18, Aurora on
+		// 17.7 — with nothing in any declaration recording it.
+		const declared = composeFor(
+			{
+				stage: 'development',
+				containers: ['postgres'],
+				resources: [
+					{
+						id: 'Orders',
+						kind: 'database',
+						container: 'postgres',
+						name: 'orders',
+						envKey: 'ORDERS_URL',
+						provisions: true,
+						version: 15,
+					},
+				],
+			} as unknown as Plan,
+			{ project: 'toolbox', ports: portsFor(['postgres']) },
+		);
+
+		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
+	});
+
 	it('lets config override an image', () => {
 		// The config half of the split: which containers is derived, which image
 		// stays explicit — a project needing postgis says so.
@@ -93,10 +120,14 @@ describe('composeFor', () => {
 		});
 	});
 
-	it('mounts the postgres volume where 18 keeps its cluster', () => {
-		// The 18 image keeps its data in a version-named subdirectory and refuses
-		// to start when a volume is mounted over the legacy `data` path, so this
-		// is the difference between a container that starts and one that does not.
+	it('mounts the postgres volume at the parent, which every major accepts', () => {
+		// 18 keeps its data in a version-named subdirectory and refuses to start
+		// when a volume is mounted over the legacy `data` path, so this is the
+		// difference between a container that starts and one that does not.
+		// Checked against 17 too, which keeps its cluster in `data` *inside* this
+		// mount and starts cleanly — so the parent mount serves both the default
+		// and the version below it. Older majors share that layout but have not
+		// been run here.
 		expect(compose(['postgres']).services.postgres.volumes).toEqual([
 			'postgres-data:/var/lib/postgresql',
 		]);

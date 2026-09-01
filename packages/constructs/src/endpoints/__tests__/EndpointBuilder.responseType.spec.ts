@@ -24,7 +24,10 @@ describe('EndpointBuilder.responseType', () => {
 		const builder = new EndpointBuilder('/users', 'GET');
 		const result = builder.responseType('text/plain');
 
-		expect(result).toBe(builder);
+		// A new builder rather than the same one: a configured base has to stay
+		// reusable, so a chain step cannot write back into what it came from.
+		expect(result).toBeInstanceOf(EndpointBuilder);
+		expect(result).not.toBe(builder);
 	});
 
 	it('supports any arbitrary MIME type', () => {

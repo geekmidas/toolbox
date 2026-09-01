@@ -3,13 +3,11 @@ import type {
 	ExtractPublisherMessage,
 } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 // Helper type to extract payload types for subscribed events
 type ExtractEventPayloads<
@@ -70,6 +68,11 @@ export class Subscriber<
 		 * (hand-written) publisher instead.
 		 */
 		public readonly topicName?: string,
+		/**
+		 * The construct ids `.dependsOn()` named — last, so no existing positional
+		 * argument moves.
+		 */
+		constructs: string[] = [],
 	) {
 		super(
 			ConstructType.Subscriber,
@@ -78,6 +81,10 @@ export class Subscriber<
 			[],
 			publisherService,
 			outputSchema,
+			timeout,
+			undefined, // memorySize
+			undefined, // auditorStorageService
+			constructs,
 		);
 	}
 

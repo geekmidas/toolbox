@@ -1,3 +1,7 @@
+import {
+	DEFAULT_POSTGRES_VERSION,
+	type PostgresVersion,
+} from '@geekmidas/manifest';
 /**
  * What gkm knows about each container it can derive.
  *
@@ -12,6 +16,16 @@
  */
 
 /**
+ * The Postgres image for a major version.
+ *
+ * One place that knows the tag shape, so a declared version reaches the
+ * container without anyone restating `-alpine` beside it.
+ */
+export function postgresImage(version: PostgresVersion): string {
+	return `postgres:${version}-alpine`;
+}
+
+/**
  * The default image for each container.
  *
  * Pinned to a major rather than `latest` where the image publishes one, so a
@@ -19,7 +33,7 @@
  * per project: a project needing `postgis/postgis` says so in config.
  */
 export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
-	postgres: 'postgres:18-alpine',
+	postgres: postgresImage(DEFAULT_POSTGRES_VERSION),
 	minio: 'minio/minio:latest',
 	mailpit: 'axllent/mailpit:latest',
 	redis: 'redis:8-alpine',

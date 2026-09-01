@@ -15,6 +15,7 @@ import { isAbsolute, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
 import type { Routes } from '../types.js';
+import { cacheBackendOf } from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
@@ -133,9 +134,13 @@ export async function reconcileWorkspace(
 		manifest,
 		stage: options.stage,
 		events: workspace.services.events,
+		// A backend name, not an image pin. `cache: 'db'` says where the cache
+		// lives and implies no container at all.
+		cache: cacheBackendOf(workspace.services.cache),
 		extraContainers: extraContainers(workspace),
 		images: imagePins(workspace),
 		saved: await loadPortState(workspace.root),
+		addresses: surfaceAddresses(workspace, manifest),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 
@@ -156,4 +161,58 @@ function patternsOf(routes: Routes | undefined): string[] {
 	if (!paths) return [];
 
 	return Array.isArray(paths) ? paths : [paths];
+}
+
+/**
+ * Where each declared surface and site answers locally.
+ *
+ * The addresses come from the ports the workspace already assigns; which
+ * construct sits at which one comes from the manifest. That split is the point:
+ * this used to answer "who may call whom" by listing every app the workspace
+ * runs, which is a different question that happened to give the same answer in
+ * a single-repo workspace and no answer at all deployed. Now it answers only
+ * "where does this construct answer", and the graph answers the rest.
+ *
+ * A site is matched to its app by `path`, because that is the one thing a site
+ * declaration and a workspace app both name. Surfaces are matched to the
+ * backend app: every `rest-api` in a process answers on that process's port, so
+ * an app serving both its own API and an auth server publishes one address
+ * twice — which is exactly what it does at runtime.
+ */
+function surfaceAddresses(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): Record<string, string> {
+	const addresses: Record<string, string> = {};
+
+	const backend = Object.values(workspace.apps).find(
+		(app) => app.type === 'backend',
+	);
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind === 'rest-api') {
+			if (backend?.port) addresses[id] = localAddress(backend.port);
+			continue;
+		}
+
+		if (declaration.kind !== 'site') continue;
+
+		const app = Object.values(workspace.apps).find(
+			(candidate) =>
+				normalizePath(candidate.path) === normalizePath(declaration.path),
+		);
+		if (app?.port) addresses[id] = localAddress(app.port);
+	}
+
+	return addresses;
+}
+
+/** Where a local process answers, given the port the workspace gave it. */
+function localAddress(port: number): string {
+	return `http://localhost:${port}`;
+}
+
+/** A workspace path and a declared path, comparable. */
+function normalizePath(path: string): string {
+	return path.replace(/^\.\//, '').replace(/\/+$/, '');
 }

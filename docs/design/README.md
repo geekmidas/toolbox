@@ -12,6 +12,11 @@ This directory contains design documents, architectural decision records (ADRs),
   - Breaking: No - additive; `Service` remains the DI primitive
   - Supersedes: [Environment Variable Detection](./environment-variable-detection.md) as the long-term direction for env derivation
 
+- **[Constructs Paradigm: What Is Outstanding](./constructs-outstanding.md)** - What is not built, and for each item whether it is blocked on a decision or on work
+  - Status: Living
+  - Impact: High - the decisions in it belong to whoever owns the bill and the security model
+  - Companion to: [Constructs Paradigm](./constructs-paradigm.md)
+
 - **[Deploy Walkthrough: Manifest → SST](./deploy-walkthrough.md)** - Walks what `Stack.fromManifest` does with a realistic app's manifest, to find gaps before the shape is frozen
   - Status: Draft
   - Impact: Medium - Validates the manifest contract ahead of implementation
@@ -38,6 +43,7 @@ This directory contains design documents, architectural decision records (ADRs),
 - **Draft**: Initial proposal, open for discussion
 - **Planning**: Approved approach, detailed planning in progress
 - **In Progress**: Implementation has started
+- **Living**: Kept current as work lands; describes state rather than proposing
 - **Implemented**: Feature is complete and released
 - **Deprecated**: Document is outdated or proposal was rejected
 

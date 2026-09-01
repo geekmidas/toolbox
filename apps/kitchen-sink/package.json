@@ -42,9 +42,14 @@
 		"zod": "~4.1.13"
 	},
 	"devDependencies": {
+		"@geekmidas/cloud": "workspace:*",
+		"@pulumi/aws": "7.20.0",
+		"@pulumi/pulumi": "3.215.0",
+		"@pulumi/random": "4.16.6",
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.15.0",
 		"@types/react": "^19.0.0",
+		"sst": "4.15.2",
 		"tsx": "~4.20.6"
 	}
 }

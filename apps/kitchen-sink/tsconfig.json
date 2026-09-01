@@ -6,6 +6,7 @@
 		],
 		"jsx": "react-jsx"
 	},
+	"//include": "`sst.config.ts` is deliberately absent: its `/// <reference>` pulls in SST's vendored platform source, which is authored against a much looser config than this one and reports dozens of errors nobody here wrote or can fix. SST typechecks that file itself.",
 	"include": [
 		"src/**/*",
 		"gkm.config.ts"

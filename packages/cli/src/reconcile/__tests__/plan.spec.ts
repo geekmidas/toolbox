@@ -1,6 +1,7 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import {
+	CacheNeedsDatabase,
 	containerFor,
 	PgBossNeedsDatabase,
 	type PlanOptions,
@@ -278,6 +279,7 @@ describe('planFor', () => {
 		expect(planFor({}, 'test', [])).toEqual({
 			stage: 'test',
 			events: 'pgboss',
+			cache: 'upstash',
 			containers: [],
 			resources: [],
 		});
@@ -293,5 +295,55 @@ describe('planFor', () => {
 		);
 
 		expect(withUnknown.resources).toHaveLength(1);
+	});
+});
+
+describe('cache backends', () => {
+	const withCache = {
+		Sessions: { kind: 'cache', id: 'Sessions' },
+	} as const satisfies ConstructManifest;
+
+	const withDatabase = {
+		...withCache,
+		Orders: { kind: 'database', id: 'Orders' },
+	} as const satisfies ConstructManifest;
+
+	it('runs the HTTP proxy for upstash, so dev speaks what prod speaks', () => {
+		const plan = planFor(withCache, 'development', provisionOrder(withCache));
+
+		// The proxy and the Redis behind it: the client speaks HTTP with a token
+		// wherever it runs.
+		expect(plan.containers.sort()).toEqual(['redis', 'redis-http']);
+	});
+
+	it('runs plain Redis for elasticache, which speaks the wire protocol', () => {
+		const plan = planFor(withCache, 'development', provisionOrder(withCache), {
+			cache: 'elasticache',
+		});
+
+		expect(plan.containers).toEqual(['redis']);
+	});
+
+	it('starts nothing at all for a cache in the database', () => {
+		const plan = planFor(
+			withDatabase,
+			'development',
+			provisionOrder(withDatabase),
+			{ cache: 'db' },
+		);
+
+		// The same relationship pg-boss has: a table in a database that already
+		// exists, so there is no second container and no second credential.
+		expect(plan.containers).toEqual(['postgres']);
+	});
+
+	it('refuses a database-backed cache with no database', () => {
+		// Starting a Postgres to hold only a cache would be the container this
+		// design refuses to invent.
+		expect(() =>
+			planFor(withCache, 'development', provisionOrder(withCache), {
+				cache: 'db',
+			}),
+		).toThrow(CacheNeedsDatabase);
 	});
 });
