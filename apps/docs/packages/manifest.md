@@ -41,8 +41,10 @@ ConstructManifest` checks the shape while keeping the literal types, so
 
 ## Declaration kinds
 
-Thirteen, as a discriminated union — exhaustiveness *and* per-kind fields, with
-no shape carrying a field that belongs to a different kind:
+Fifteen, as a discriminated union — exhaustiveness *and* per-kind fields, with
+no shape carrying a field that belongs to a different kind. Thirteen of them are
+things a target *provisions*; `function` and `cron` carry a handler and reach a
+target through the function pipeline instead:
 
 | Kind | Declared by | Notes |
 |------|-------------|-------|
