@@ -1,3 +1,5 @@
+import type { ServicesConfig } from './workspace/types.js';
+
 export type MainProvider = 'aws' | 'server';
 export type LegacyProvider =
 	| 'server'
@@ -282,6 +284,17 @@ export interface ProvidersConfig {
 }
 
 export interface GkmConfig {
+	/**
+	 * Where the things no construct implies live.
+	 *
+	 * The same block a workspace config carries, and the same split: `db` and
+	 * `storage` are derived from the declared `KyselyDatabase` and
+	 * `ObjectStorage` and are ignored here, while `cache`, `mail`, and `events`
+	 * name a *backend* — where the cache lives, who delivers the mail, which
+	 * broker carries events. A single-app project had no way to say any of that
+	 * before, so its event backend could only be guessed.
+	 */
+	services?: ServicesConfig;
 	/**
 	 * Constructs glob pattern — one glob, every kind.
 	 *

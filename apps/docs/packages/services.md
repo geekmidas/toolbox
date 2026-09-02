@@ -2,6 +2,17 @@
 
 Service discovery and dependency injection system.
 
+::: tip A construct is the better answer for infrastructure
+`Service` is unchanged and is not going anywhere — it is how you reach a
+third-party SDK or a client you assemble yourself. But a database, bucket,
+cache, mail sender, or third-party credential is a **construct**: one
+declaration that yields the infrastructure, the environment, and the client
+together, instead of a service that reads a URL somebody else has to provision.
+
+`.dependsOn()` takes constructs only; `.services()` takes these. See
+[@geekmidas/constructs](/packages/constructs#constructs).
+:::
+
 ## Installation
 
 ```bash
@@ -106,10 +117,11 @@ import { e } from '@geekmidas/constructs/endpoints';
 
 export const endpoint = e
   .get('/users/:id')
-  .services([databaseService, cacheService])
+  .dependsOn([database, cache])          // constructs
+  .services([featureFlagService])        // hand-written services
   .handle(async ({ params, services }) => {
-    // Type-safe access to services
-    const cached = await services.cache.get(`user:${params.id}`);
+    // Type-safe access to both
+    const cached = await services.sessions.get(`user:${params.id}`);
     if (cached) return cached;
 
     const user = await services.database.users.findById(params.id);

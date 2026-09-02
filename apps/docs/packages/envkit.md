@@ -2,6 +2,18 @@
 
 Type-safe environment configuration parser using Zod validation.
 
+::: tip You need this less than you used to
+`EnvironmentParser` is for configuration that is genuinely yours — a port, a
+feature flag, a tunable. Anything a construct provides is derived and injected
+under a key the construct owns (`ORDERS_URL`, `UPLOADS_URL`), and reached
+through `.dependsOn()` rather than by parsing a key by hand; a third-party
+credential with several fields is a
+[`Credential`](/packages/constructs#constructs), validated at registration.
+
+`Credentials` from `@geekmidas/envkit/credentials` stays exactly as it is — it
+is how the encrypted stage secrets reach the parser.
+:::
+
 ## Installation
 
 ```bash

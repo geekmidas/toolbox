@@ -1,3 +1,4 @@
+import { databaseFiles, databaseFor } from '../constructs.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -45,7 +46,10 @@ export const minimalTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure } = options;
+		const { loggerType, routesStructure, name } = options;
+
+		// The id and env keys the scaffolded database owns.
+		const db = databaseFor(name);
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -110,43 +114,9 @@ export const healthEndpoint = e
 			},
 		];
 
-		// Add database service if enabled
+		// The database — a construct, not a hand-written service.
 		if (options.database) {
-			files.push({
-				path: 'src/services/database.ts',
-				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
-
-// Define your database schema
-export interface Database {
-  // Add your tables here
-}
-
-export const databaseService = {
-  serviceName: 'database' as const,
-  async register({ envParser, context }: ServiceRegisterOptions) {
-    const logger = context.getLogger();
-    logger.info('Connecting to database');
-
-    const config = envParser
-      .create((get) => ({
-        url: get('DATABASE_URL').string(),
-      }))
-      .parse();
-
-    const db = new Kysely<Database>({
-      dialect: new PostgresDialect({
-        pool: new pg.Pool({ connectionString: config.url }),
-      }),
-    });
-
-    logger.info('Database connection established');
-    return db;
-  },
-} satisfies Service<'database', Kysely<Database>>;
-`,
-			});
+			files.push(...databaseFiles(name));
 		}
 
 		// Add Telescope config if enabled
@@ -171,13 +141,13 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '~/services/database.ts';
-import { envParser } from '~/config/env.ts';
+import type { Database } from './constructs/database.ts';
+import { envParser } from './config/env.ts';
 
-// Parse database config for Studio
+// The key the database construct publishes — not a hand-written DATABASE_URL.
 const studioConfig = envParser
   .create((get) => ({
-    databaseUrl: get('DATABASE_URL').string(),
+    databaseUrl: get('${db.urlKey}').string(),
   }))
   .parse();
 

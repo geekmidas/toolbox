@@ -486,12 +486,20 @@ function printNextSteps(
 	console.log('Next steps:\n');
 	console.log(`  ${cdCommand}`);
 
-	if (options.services.db) {
+	// A project that declares its infrastructure starts nothing by hand:
+	// `gkm dev` reconciles the containers its constructs imply first.
+	if (options.services.db && options.monorepo) {
 		console.log(`  # Start PostgreSQL (if not running)`);
 		console.log(`  docker compose up -d postgres`);
 	}
 
 	console.log(`  ${devCommand}`);
+
+	if (!options.monorepo && options.services.db) {
+		console.log('');
+		console.log('  # Then, once the container is up:');
+		console.log(`  gkm exec -- pnpm kysely migrate:latest`);
+	}
 	console.log('');
 
 	if (options.monorepo) {

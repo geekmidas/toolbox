@@ -5,11 +5,39 @@ This guide covers deploying @geekmidas workspace applications to various targets
 ## Overview
 
 The CLI provides a complete deployment pipeline for monorepo workspaces:
-- **Environment Sniffing** - Automatic detection of required environment variables
+- **The manifest** - what `gkm build` writes, and the seam every target reads
+- **Environment Sniffing** - detection of required environment variables for the code a construct cannot describe
 - **State Management** - Track deployments across local and remote storage
 - **DNS Automation** - Automatic DNS configuration with multiple providers
 - **Secrets Management** - Encrypted secrets injection during builds
 - **Multi-App Orchestration** - Coordinated deployment of workspace apps
+
+## The manifest is the seam
+
+`gkm build` writes a **manifest**: every construct an app declared, and every
+edge between them. Deploying is a target reading that manifest.
+
+```
+src/constructs/*.ts        the declarations
+        │
+        ▼  gkm build
+   the manifest            what exists, and what depends on what
+        │
+        ├──▶ --target=server / Dokploy   containers and URLs
+        └──▶ --target=aws                RDS, S3, SNS, SQS, Lambda, …
+```
+
+The manifest records **what is depended on**, never what that implies. Turning
+an edge into an IAM policy, a security group, or a link is the target adapter's
+business — which is why the same declaration deploys to a container host and to
+AWS without naming either.
+
+::: warning What is not built yet
+The AWS target provisions twelve of the thirteen declaration kinds; `rest-api`
+is outstanding. Its decisions are unit-tested as pure functions, but **a stack
+has never come up end to end**. The server/Dokploy path below is the one in use
+today.
+:::
 
 ## Quick Start
 
@@ -25,6 +53,7 @@ export default defineWorkspace({
       path: 'apps/api',
       type: 'backend',
       port: 3000,
+      constructs: './src/constructs/**/*.ts',
       routes: './src/endpoints/**/*.ts',
       envParser: './src/config/env',
       logger: './src/config/logger',
@@ -46,8 +75,8 @@ export default defineWorkspace({
     },
   },
 
+  // Backend selection. The Postgres itself comes from the declared database.
   services: {
-    db: true,
     cache: true,
   },
 
@@ -158,15 +187,24 @@ The CLI handles environment variables differently in development and production.
 
 In development, environment variables come from multiple sources:
 
-**1. Docker Compose Services**
+**1. Declared constructs**
 
-When services are configured, connection URLs are auto-generated:
+A declaration is what publishes a URL, under the key it owns:
+
+```typescript
+new KyselyDatabase<Database, 'Orders'>('Orders');  // → ORDERS_URL, ORDERS_OWNER_URL
+new ObjectStorage('Uploads');                      // → UPLOADS_URL
+new Cache('Sessions');                             // → SESSIONS_URL
+new Email('Mail');                                 // → MAIL_URL, MAIL_FROM
+```
+
+Backends that no construct implies are still config, and still generate their
+own URLs:
 
 ```typescript
 services: {
-  db: true,    // → DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
-  cache: true, // → REDIS_URL=redis://localhost:6379
-  mail: true,  // → SMTP_HOST=localhost, SMTP_PORT=1025
+  cache: true,      // → a Redis (or the Upstash proxy, per backend)
+  events: 'pgboss', // → EVENT_PUBLISHER_CONNECTION_STRING, EVENT_SUBSCRIBER_CONNECTION_STRING
 }
 ```
 
@@ -219,7 +257,17 @@ gkm secrets:set SENDGRID_API_KEY SG.xxx --stage production
 
 ## Environment Sniffing
 
-The CLI automatically detects required environment variables by analyzing your code.
+Sniffing is what covers the code a construct cannot describe.
+
+A declared construct needs none of it: the build knows `UPLOADS_URL` exists
+because `ObjectStorage` declared it, and knows which handler needs it because
+the handler named that construct in `.dependsOn()`. Sniffing is the fallback for
+hand-written services and entry files, where the only way to learn which keys
+are touched is to run the code and watch.
+
+That difference is worth knowing when a variable goes missing: a construct's key
+is a fact in the manifest, while a sniffed key is an observation, and an
+observation can be wrong if the service throws before it reads.
 
 ### Detection Strategy (Priority Order)
 
@@ -253,8 +301,8 @@ These variables are automatically resolved without manual configuration:
 | `PORT` | App config or default |
 | `NODE_ENV` | Always `'production'` |
 | `STAGE` | Deployment stage name |
-| `DATABASE_URL` | Generated per-app credentials |
-| `REDIS_URL` | Provisioned Redis service |
+| `DATABASE_URL` | Generated per-app credentials (the hand-written path — a declared database publishes `<NAME>_URL` instead) |
+| `REDIS_URL` | Provisioned Redis service (a declared `Cache` publishes `<NAME>_URL` instead) |
 | `BETTER_AUTH_URL` | Derived from app hostname |
 | `BETTER_AUTH_SECRET` | Generated and persisted |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | All frontend URLs |

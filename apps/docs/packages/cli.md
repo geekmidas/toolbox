@@ -12,6 +12,7 @@ pnpm add -g @geekmidas/cli
 
 ## Features
 
+- **Reconcile** — derive local containers, databases, roles, and buckets from the constructs an app declares
 - **Project scaffolding** with interactive prompts
 - Build AWS Lambda handlers from endpoint definitions
 - Generate OpenAPI specifications
@@ -506,6 +507,37 @@ When `services.events` is configured, additional credentials are generated:
 
 All event backends generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING` for use with `@geekmidas/events`.
 
+## Reconcile
+
+`gkm dev`, `gkm test`, and `gkm setup` all call one convergent function.
+
+It reads the `constructs` glob, inspects every export of every matching module,
+and builds a manifest. From the manifest it computes the containers a stage
+needs, compares that against what is running, and applies the difference:
+allocating ports, writing `.gkm/docker-compose.yml`, starting containers,
+creating databases, roles, schemas, and buckets.
+
+```bash
+gkm setup    # reconcile only
+gkm dev      # reconcile, then serve
+gkm test     # reconcile the `test` stage, then run the suite
+```
+
+It is safe to run repeatedly because its blast radius is entirely local — this
+project's containers and this project's `.gkm/`. It allocates ports, writes
+compose, starts containers, and creates roles; it never seeds, resets, or drops.
+Nothing it does can reach a cloud.
+
+**One plan serves every stage.** `gkm dev` reconciles `development` and
+`gkm test` reconciles `test`; they differ only in what the resources are called,
+never in what infrastructure exists — so one container and one role pair serve
+both, and two projects can run at once without colliding on a port.
+
+::: info It only runs when there is something to read
+Reconcile is reached when at least one app configures a `constructs` glob.
+A project without one keeps the hand-written `docker-compose.yml` path.
+:::
+
 ## Configuration File
 
 Create a `gkm.config.ts` file in your project root:
@@ -514,8 +546,28 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  // Constructs — one glob, every kind.
+  //
+  // What reconcile reads to derive the containers this app needs: a declared
+  // KyselyDatabase is why a Postgres exists, a declared ObjectStorage is why a
+  // MinIO does. A glob per kind could never find them — a resource has no kind
+  // to be listed under.
+  constructs: './src/constructs/**/*.ts',
+
   // Route files (glob pattern or partitioned config)
   routes: './src/endpoints/**/*.ts',
+
+  // What no construct implies.
+  //
+  // `db` and `storage` are deliberately absent: they are derived from the
+  // declarations above and are ignored here, so the two cannot disagree. What
+  // is left is a backend *selection* — where the cache lives, who delivers the
+  // mail, which broker carries events.
+  services: {
+    cache: true,          // or 'upstash' | 'elasticache' | 'db'
+    mail: true,           // or 'ses' | 'resend' | 'smtp'
+    events: 'pgboss',     // 'pgboss' | 'sns' | 'rabbitmq'
+  },
 
   // Environment parser module (named export)
   envParser: './src/config/env#envParser',
@@ -736,11 +788,11 @@ const ping = e
   .output(z.object({ message: z.string() }))
   .handle(async () => ({ message: 'pong' }));
 
-// Standard tier - uses auth and/or services
+// Standard tier - uses auth and/or dependencies
 const getUsers = router
   .get('/users')
-  .services([DatabaseService])
-  .handle(async ({ services }) => services.database.findAll());
+  .dependsOn([database])
+  .handle(async ({ services }) => services.orders.selectFrom('users').selectAll().execute());
 
 // Full tier - uses declarative audits
 const deleteUser = router
@@ -759,7 +811,15 @@ The `docker` configuration controls Docker file generation:
 | `imageName` | `string` | package name | Docker image name |
 | `baseImage` | `string` | `node:22-alpine` | Base Docker image |
 | `port` | `number` | `3000` | Container port |
-| `compose.services` | `string[]` | `[]` | Services for docker-compose |
+| `compose.services` | `string[]` | `[]` | Services for the generated deploy compose |
+
+::: warning Deploy-side only
+`docker.compose.services` describes the compose file `gkm docker` generates for
+a deployment. It does **not** decide what runs locally: `gkm dev` and `gkm test`
+reconcile the containers from the declared constructs and write their own
+`.gkm/docker-compose.yml`. Listing `postgres` here does not start one locally,
+and declaring a `KyselyDatabase` does — which is the point.
+:::
 
 **Available Compose Services:**
 
@@ -1113,12 +1173,29 @@ auth: {
 
 ### Services Configuration
 
-| Service | Key | Default Image | Environment Variables |
-|---------|-----|---------------|----------------------|
-| PostgreSQL | `db` | `postgres:18-alpine` | `DATABASE_URL` |
-| Redis | `cache` | `redis:8-alpine` | `REDIS_URL` |
-| Mailpit | `mail` | `axllent/mailpit` | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` |
-| MinIO | `storage` | `minio/minio:latest` | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` |
+Two halves, and the split is the point: what **exists** is derived from the
+constructs an app declares, and what a stage **selects** stays here.
+
+| Key | Status | What it means |
+|-----|--------|---------------|
+| `db` | derived | Ignored. A declared `KyselyDatabase` is what starts a Postgres and publishes `<NAME>_URL`. |
+| `storage` | derived | Ignored. A declared `ObjectStorage` is what starts a MinIO and publishes `<NAME>_URL`. |
+| `mail` | selection | `true` (Mailpit locally) or `'ses' \| 'resend' \| 'smtp'` — who delivers it deployed. A declared `Email` is what starts a Mailpit. |
+| `cache` | selection | `true`, an image pin, or `'upstash' \| 'elasticache' \| 'db'` — where the cache lives. |
+| `events` | selection | `'pgboss' \| 'sns' \| 'rabbitmq'` — which broker carries events. |
+
+Derived keys are **ignored rather than obeyed**, deliberately: a config and a
+declaration that disagree is the failure this model exists to remove. Set the
+image pin here if you need a specific version; declare the construct to have the
+thing at all.
+
+| Container | Default image | Comes from |
+|-----------|---------------|------------|
+| PostgreSQL | `postgres:18-alpine` (major from the declaration) | a declared database |
+| MinIO | `minio/minio:latest` | a declared bucket |
+| Mailpit | `axllent/mailpit` | a declared email sender |
+| Redis | `redis:8-alpine` | `cache: 'elasticache'` |
+| serverless-redis-http | `hiett/serverless-redis-http` | `cache: 'upstash'` (the default) |
 
 ### Events Configuration
 

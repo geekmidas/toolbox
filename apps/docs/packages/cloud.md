@@ -4,6 +4,20 @@ SST (ion / Pulumi) integration: opinionated, linkable constructs that map 1:1 to
 deployable units and **validate their environment before deploy**, plus the
 runtime helpers that resolve linked resources into environment variables.
 
+::: warning The direction of travel
+This package is the **hand-written** infra layer: you instantiate its constructs
+in `sst.config.ts` and keep them in step with your application code by hand.
+The constructs paradigm moves that the other way — the app declares what it
+needs, `gkm build` writes a manifest, and the target provisions from it, so
+there is no second declaration to keep in step.
+
+The AWS target reads the manifest and covers twelve of the thirteen declaration
+kinds already (`rest-api` is outstanding, and nothing has been deployed end to
+end). Use this package where you still hand-write a stack; prefer declaring
+constructs in application code for anything new. See
+[Constructs Paradigm](/guide/constructs-paradigm).
+:::
+
 ## Installation
 
 ```bash

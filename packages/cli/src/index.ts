@@ -71,7 +71,9 @@ program
 
 program
 	.command('setup')
-	.description('Setup development environment (secrets, Docker, database)')
+	.description(
+		'Reconcile declared constructs — containers, databases, buckets, secrets',
+	)
 	.option('--stage <stage>', 'Stage name', 'development')
 	.option('--force', 'Regenerate secrets even if they exist')
 	.option('--skip-docker', 'Skip starting Docker services')
@@ -91,7 +93,7 @@ program
 
 program
 	.command('build')
-	.description('Build handlers from endpoints, functions, and crons')
+	.description('Build handlers and the manifest from declared constructs')
 	.option(
 		'--provider <provider>',
 		'Target provider for generated handlers (aws, server)',
@@ -174,7 +176,9 @@ program
 
 program
 	.command('dev')
-	.description('Start development server with automatic reload')
+	.description(
+		'Reconcile constructs and start the dev server with automatic reload',
+	)
 	.option('-p, --port <port>', 'Port to run the development server on')
 	.option('--entry <file>', 'Entry file to run (bypasses gkm config)')
 	.option('--watch', 'Watch for file changes (default: true with --entry)')

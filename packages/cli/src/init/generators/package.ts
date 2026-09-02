@@ -14,7 +14,7 @@ export function generatePackageJson(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): GeneratedFile[] {
-	const { name, telescope, database, studio, monorepo } = options;
+	const { name, telescope, database, studio, monorepo, services } = options;
 
 	// Start with template dependencies
 	const dependencies = { ...template.dependencies };
@@ -29,6 +29,37 @@ export function generatePackageJson(
 
 	if (studio) {
 		dependencies['@geekmidas/studio'] = GEEKMIDAS_VERSIONS['@geekmidas/studio'];
+	}
+
+	// Only a project that declares constructs needs them. The workspace path
+	// still reaches its infrastructure through hand-written services.
+	const declares = !monorepo;
+
+	// Every construct resolves its env key through the manifest, so declaring
+	// one at all is what needs this — not any particular kind.
+	if (
+		declares &&
+		(database || services.storage || services.cache || services.mail)
+	) {
+		dependencies['@geekmidas/manifest'] =
+			GEEKMIDAS_VERSIONS['@geekmidas/manifest'];
+	}
+
+	// A construct hands back a client from the package that owns it, and each of
+	// those is an optional peer — an app that declares no bucket resolves no S3
+	// SDK. Installed here because the app declared one.
+	if (declares && services.storage) {
+		dependencies['@geekmidas/storage'] =
+			GEEKMIDAS_VERSIONS['@geekmidas/storage'];
+	}
+
+	if (declares && services.cache) {
+		dependencies['@geekmidas/cache'] = GEEKMIDAS_VERSIONS['@geekmidas/cache'];
+	}
+
+	if (declares && services.mail) {
+		dependencies['@geekmidas/emailkit'] =
+			GEEKMIDAS_VERSIONS['@geekmidas/emailkit'];
 	}
 
 	if (database) {

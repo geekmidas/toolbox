@@ -2,6 +2,21 @@
 
 Unified caching interface with multiple backend implementations.
 
+::: tip Declare the cache
+A `CacheClient` is what a declared `Cache` hands back:
+
+```typescript
+import { Cache } from '@geekmidas/constructs/cache';
+
+export const sessions = new Cache('Sessions');
+```
+
+Where it lives — Upstash, ElastiCache, or a table in the database — is
+`services.cache` in `gkm.config.ts`, because the same application code caches
+into any of them. The scheme in the injected URL picks the driver, so an app
+caching in Postgres never resolves a Redis client.
+:::
+
 ## Installation
 
 ```bash

@@ -232,6 +232,11 @@ export function wrapSingleAppAsWorkspace(
 		}
 	}
 
+	// `services:` on the config itself wins over anything inferred from the
+	// compose block: it is the statement, and the compose block is a deploy-side
+	// list that only happens to name some of the same things.
+	Object.assign(normalizedServices, config.services ?? {});
+
 	const apiApp: NormalizedAppConfig = {
 		type: 'backend',
 		path: '.',

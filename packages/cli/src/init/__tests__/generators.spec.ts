@@ -958,18 +958,25 @@ describe('generateTestFiles', () => {
 		expect(configFile).toBeDefined();
 		expect(configFile!.content).toContain('wrapVitestKyselyTransaction');
 		expect(configFile!.content).toContain('@geekmidas/testkit/kysely');
-		expect(configFile!.content).toContain('~/services/database.ts');
+		// The declared database's schema type, and the key it publishes.
+		expect(configFile!.content).toContain('../src/constructs/database.ts');
+		expect(configFile!.content).toContain('process.env.TEST_PROJECT_URL');
 	});
 
-	it('should use PostgresKyselyMigrator with runInitScript in globalSetup', () => {
+	it('should migrate as the owner role in globalSetup', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
 		const setupFile = files.find((f) => f.path === 'test/globalSetup.ts');
 		expect(setupFile).toBeDefined();
 		expect(setupFile!.content).toContain('PostgresKyselyMigrator');
-		expect(setupFile!.content).toContain('runInitScript');
-		expect(setupFile!.content).toContain('afterCreate');
 		expect(setupFile!.content).toContain('Credentials');
-		expect(setupFile!.content).toContain('PGBOSS_DB_PASSWORD');
+
+		// Migrations connect as the DDL role the database construct declares.
+		expect(setupFile!.content).toContain('TEST_PROJECT_OWNER_URL');
+
+		// Reconcile creates the roles before the suite runs, so there is no init
+		// script left to run and no per-app password to thread through it.
+		expect(setupFile!.content).not.toContain('runInitScript');
+		expect(setupFile!.content).not.toContain('PGBOSS_DB_PASSWORD');
 	});
 
 	it('should use KyselyFactory in factory files', () => {

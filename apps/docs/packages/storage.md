@@ -2,6 +2,22 @@
 
 Cloud storage abstraction layer with provider-agnostic API.
 
+::: tip Declare the bucket
+A `StorageClient` is what a declared `ObjectStorage` hands back — you rarely
+construct one by hand:
+
+```typescript
+import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+export const uploads = new ObjectStorage('Uploads', { versioned: true });
+```
+
+`.dependsOn([uploads])` is what makes `services.uploads` exist and type, and
+what tells the deploy target to grant that handler S3 access and nothing else.
+Use [`FileServer`](/packages/constructs) instead when the objects are also
+served on a domain.
+:::
+
 ## Installation
 
 ```bash

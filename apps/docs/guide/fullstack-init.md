@@ -2,6 +2,20 @@
 
 A detailed walkthrough of everything `gkm init` does when scaffolding a fullstack application.
 
+::: warning This path has not moved to constructs yet
+A single-app project scaffolds `src/constructs/`, gets a `constructs` glob in
+its config, and has its containers reconciled from what it declares. The
+fullstack workspace does not: its per-app database roles are created by
+`docker/postgres/init.sh` and its URLs come from per-app secrets, neither of
+which reconcile knows about — so declaring only the API's half would leave the
+auth app pointing at a container that is no longer the one running.
+
+It moves once the auth app declares its own half, most likely as a
+`database.schema()` tenant of the API's database. Until then this page describes
+what `gkm init --template fullstack` actually produces. For the constructs
+model, see [Getting Started](/guide/getting-started).
+:::
+
 ## Overview
 
 The fullstack template creates a production-ready monorepo with three applications and two shared packages. It sets up authentication, database isolation, encrypted secrets, Docker services, and development tooling — all wired together and ready to run with a single `gkm dev` command.
@@ -227,7 +241,7 @@ export default defineWorkspace({
     //   dependencies: ['api', 'auth'],
     // },
   },
-  services: { db: true, cache: true },
+  services: { db: true, cache: true },  // the pre-constructs shape — see the note at the top
 });
 ```
 

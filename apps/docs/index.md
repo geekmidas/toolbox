@@ -14,22 +14,32 @@ hero:
       link: https://github.com/geekmidas/toolbox
 
 features:
+  - title: Everything Is a Construct
+    details: A database, bucket, cache, or credential is one declaration. The container, the environment, the client, and the cloud resource all derive from it.
+  - title: One Edge, Three Derivations
+    details: .dependsOn([uploads]) gives a handler its client, its environment, and exactly the cloud access it named — and nothing else.
   - title: Type-Safe APIs
     details: Build REST APIs with full TypeScript type inference using @geekmidas/constructs
-  - title: Testing Utilities
-    details: Comprehensive testing factories and utilities with @geekmidas/testkit
-  - title: Environment Config
-    details: Type-safe environment configuration parsing with @geekmidas/envkit
+  - title: Zero Hand-Wired Infra
+    details: gkm dev reconciles the containers your constructs imply. Nothing lists postgres anywhere.
 ---
 
 ::: warning YOU ARE READING THE IN-DEVELOPMENT DOCS
-This is the `main` line, where the **constructs paradigm** is being introduced —
-everything becomes a construct, and the `function → resource` dependency edge
-becomes the single primitive. See the [design RFC](/guide/constructs-paradigm).
+This is the `main` line, where the **constructs paradigm** lands: everything
+becomes a construct, and the `function → resource` dependency edge becomes the
+single primitive. The [design RFC](/guide/constructs-paradigm) argues it in
+full.
 
-The pages below still describe the **current** API. They are rewritten as each
-phase lands, so treat anything outside the RFC as v9 documentation until its
-page says otherwise.
+Rewritten for the new model: [Getting Started](/guide/getting-started),
+[Project Structure](/guide/project-structure),
+[@geekmidas/constructs](/packages/constructs),
+[@geekmidas/cli](/packages/cli), [Development Server](/guide/dev-server),
+[Workspaces](/guide/workspaces), [Testing](/guide/testing), and
+[Deployment](/guide/deployment).
+
+Still describing the pre-constructs shape:
+[Fullstack Init](/guide/fullstack-init) — its auth app has not declared its
+half yet — and [@geekmidas/cloud](/packages/cloud), the hand-written stack.
 
 **For released documentation, switch to [v9](https://geekmidas.github.io/toolbox/).**
 :::

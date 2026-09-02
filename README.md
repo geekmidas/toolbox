@@ -14,8 +14,16 @@
 
 **@geekmidas/toolbox** is a collection of TypeScript utilities and frameworks designed to accelerate web application development. Built with modern tooling and best practices, it provides type-safe, developer-friendly APIs for common tasks.
 
+> **Working on `main` (v10):** everything is a construct. A database, bucket,
+> cache, or credential is one declaration in application code, and the local
+> container, the deployed resource, the handler's environment, and its client
+> all derive from it. See
+> [Constructs Paradigm](./docs/design/constructs-paradigm.md).
+
 ### Key Features
 
+- 🧱 **Declared infrastructure**: `new KyselyDatabase<Database, 'Orders'>('Orders')` is the whole declaration — the container, the roles, the schema, and `ORDERS_URL` all come from it
+- 🔗 **One dependency edge**: `.dependsOn([uploads])` derives the handler's environment, its client, and exactly the cloud access it named
 - 🔒 **Type Safety**: Full TypeScript support with runtime validation
 - 📦 **Monorepo Structure**: Organized packages with clear separation of concerns
 - 🚀 **Modern Tooling**: pnpm, Turbo, tsdown, Biome, and Vitest
@@ -36,8 +44,10 @@
 
 ### [@geekmidas/constructs](./packages/constructs)
 
-A powerful framework for building type-safe HTTP endpoints, cloud functions, cron jobs, and event subscribers.
+A powerful framework for building type-safe HTTP endpoints, cloud functions, cron jobs, event subscribers — and the infrastructure they depend on.
 
+- Declared resources: `KyselyDatabase`, `ObjectStorage`, `FileServer`, `Cache`, `Credential`, `Email`, `Topic`, `Queue`, `RestApi`, `StaticSite`
+- `.dependsOn([…])` — the edge that derives environment, client, and cloud access
 - Type-safe endpoint definitions with automatic type inference
 - Schema validation using StandardSchema (Zod, Valibot, etc.)
 - AWS Lambda support with API Gateway integration
@@ -48,10 +58,16 @@ A powerful framework for building type-safe HTTP endpoints, cloud functions, cro
 - Cloud functions, cron jobs, and event subscriber support
 
 ```typescript
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
 
-const endpoint = e
+// One declaration: the Postgres container, its roles and schema, and ORDERS_URL.
+export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+
+const router = e.database(database);
+
+const endpoint = router
   .get('/users/:id')
   .params(z.object({ id: z.string().uuid() }))
   .query(z.object({
@@ -59,8 +75,12 @@ const endpoint = e
     'filter.status': z.enum(['active', 'inactive']).optional()
   }))
   .output(UserSchema)
-  .handle(async ({ params, query }) => {
-    return getUserById(params.id, query);
+  .handle(async ({ params, query, db }) => {
+    return db
+      .selectFrom('users')
+      .where('id', '=', params.id)
+      .selectAll()
+      .executeTakeFirstOrThrow();
   });
 ```
 
@@ -256,7 +276,9 @@ throw createError.badRequest('Invalid input', { field: 'email' });
 
 ### [@geekmidas/services](./packages/services)
 
-Service discovery and dependency injection system.
+Service discovery and dependency injection system — the escape hatch for
+anything no construct describes. Infrastructure is a construct; a third-party
+SDK or a client you assemble yourself is a `Service`.
 
 - Singleton service registry with lazy initialization
 - Type-safe service registration and retrieval
@@ -570,8 +592,9 @@ toolbox/
 │   ├── cli/          # Command-line tools
 │   ├── client/       # Type-safe API client with React Query
 │   ├── cloud/        # Cloud services (SST integration)
-│   ├── constructs/   # Endpoints, functions, cron jobs, subscribers
+│   ├── constructs/   # Endpoints, functions, crons, subscribers, and declared resources
 │   ├── db/           # Database utilities for Kysely
+│   ├── manifest/     # Declarations, naming, derivation — the build/run seam
 │   ├── emailkit/     # Email sending utilities
 │   ├── envkit/       # Environment configuration parser
 │   ├── errors/       # HTTP error classes and utilities
@@ -631,6 +654,10 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [x] Declarative audit logging in constructs
 
 ### In Progress 🚧
+- [x] Constructs paradigm — thirteen declaration kinds, a construct for each one that needs it
+- [x] Reconcile — local containers, databases, roles, and buckets derived from declarations
+- [ ] AWS target: `rest-api` (twelve of thirteen kinds provision; nothing deployed end to end yet)
+- [ ] Fullstack workspace on the constructs path (its auth app declares no half yet)
 - [ ] Cloud services abstractions (@geekmidas/cloud)
 - [ ] Documentation site improvements
 - [ ] Comprehensive test coverage for all packages
