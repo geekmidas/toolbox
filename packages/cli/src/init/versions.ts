@@ -39,6 +39,7 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/errors': '~9.0.2',
 	'@geekmidas/events': '~9.0.2',
 	'@geekmidas/logger': '~9.0.2',
+	'@geekmidas/manifest': '~9.0.2',
 	'@geekmidas/rate-limit': '~9.0.2',
 	'@geekmidas/schema': '~9.0.2',
 	'@geekmidas/services': '~9.0.2',

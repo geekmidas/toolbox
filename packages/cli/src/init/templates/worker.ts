@@ -1,3 +1,4 @@
+import { databaseFiles } from '../constructs.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -44,7 +45,7 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure } = options;
+		const { loggerType, routesStructure, name } = options;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -195,6 +196,12 @@ export const cleanupCron = cron('0 0 * * *')
 `,
 			},
 		];
+
+		// The database, when this project has one. A `pgboss` events backend
+		// implies one, which is why a worker gets here without asking for it.
+		if (options.database) {
+			files.push(...databaseFiles(name));
+		}
 
 		// Add Telescope config if enabled
 		if (options.telescope) {

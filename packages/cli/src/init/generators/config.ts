@@ -1,3 +1,4 @@
+import { CONSTRUCTS_GLOB } from '../constructs.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -60,7 +61,15 @@ export function generateConfigFiles(
 	// Build gkm.config.ts for single-app
 	let gkmConfig = `import { defineConfig } from '@geekmidas/cli/config';
 
-export default defineConfig({
+export default defineConfig({${
+		options.monorepo
+			? ''
+			: `
+  // One glob, every kind. What reconcile reads to derive the containers this
+  // app needs: a declared database is why a Postgres exists at all, so nothing
+  // lists \`postgres\` anywhere.
+  constructs: '${CONSTRUCTS_GLOB}',`
+	}
   routes: '${getRoutesGlob()}',
   envParser: './src/config/env#envParser',
   logger: './src/config/logger#logger',`;
@@ -68,6 +77,34 @@ export default defineConfig({
 	if (isServerless || hasWorker) {
 		gkmConfig += `
   functions: './src/functions/**/*.ts',`;
+	}
+
+	// What no construct implies. `db` and `storage` are deliberately absent —
+	// the declared KyselyDatabase and ObjectStorage are what bring up the
+	// Postgres and the MinIO, and reconcile ignores those keys rather than
+	// obeying them so the two cannot disagree. What is left is a backend
+	// selection.
+	if (!options.monorepo) {
+		const { cache, mail, events } = options.services;
+
+		if (cache || mail || events) {
+			gkmConfig += `
+  services: {`;
+			if (cache) {
+				gkmConfig += `
+    cache: true,`;
+			}
+			if (mail) {
+				gkmConfig += `
+    mail: true,`;
+			}
+			if (events) {
+				gkmConfig += `
+    events: '${events}',`;
+			}
+			gkmConfig += `
+  },`;
+		}
 	}
 
 	if (hasWorker) {

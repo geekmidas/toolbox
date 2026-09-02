@@ -1,3 +1,10 @@
+import {
+	cacheFor,
+	databaseFiles,
+	databaseFor,
+	emailFor,
+	storageFor,
+} from '../constructs.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -49,7 +56,29 @@ export const apiTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure, monorepo, name } = options;
+		const { loggerType, routesStructure, monorepo, name, services } = options;
+
+		// The ids and env keys the scaffolded constructs own. Derived, so the
+		// files below and the runtime that discovers them cannot disagree.
+		const bucket = storageFor(name);
+		const kv = cacheFor(name);
+		const db = databaseFor(name);
+		const mail = emailFor(name);
+
+		// Single-app projects have no `~/*` alias, so what a generated file
+		// imports depends on where it will sit.
+		const src = (path: string) => (monorepo ? `~/${path}` : `./${path}`);
+
+		// Whether this app declares its infrastructure.
+		//
+		// Single-app projects do: the config gets a `constructs` glob, reconcile
+		// derives their containers, and the handler reaches them by edge. The
+		// fullstack workspace does not yet — its auth app's database role is
+		// created by `docker/postgres/init.sh` and its URL comes from a
+		// per-app secret, neither of which reconcile knows about, so declaring
+		// only the API's half would leave auth pointing at a container that is
+		// no longer the one running.
+		const declares = !monorepo;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -107,9 +136,9 @@ export const config = envParser
 				path: getRoutePath('health.ts'),
 				content: monorepo
 					? `import { z } from 'zod';
-import { publicRouter } from '~/router.ts';
+import { router } from '~/router.ts';
 
-export const healthEndpoint = publicRouter
+export const healthEndpoint = router
   .get('/health')
   .output(z.object({
     status: z.string(),
@@ -120,10 +149,10 @@ export const healthEndpoint = publicRouter
     timestamp: new Date().toISOString(),
   }));
 `
-					: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+					: `import { z } from 'zod';
+import { router } from './router.ts';
 
-export const healthEndpoint = e
+export const healthEndpoint = router
   .get('/health')
   .output(z.object({
     status: z.string(),
@@ -140,48 +169,64 @@ export const healthEndpoint = e
 			{
 				path: getRoutePath('users/list.ts'),
 				content: modelsImport
-					? `import { e } from '@geekmidas/constructs/endpoints';
-import { ListUsersResponseSchema } from '${modelsImport}/user';
+					? `import { ListUsersResponseSchema } from '${modelsImport}/user';
+import { router } from '${src('router.ts')}';
 
-export const listUsersEndpoint = e
+export const listUsersEndpoint = router
   .get('/users')
   .output(ListUsersResponseSchema)
-  .handle(async () => ({
+${
+	options.database
+		? `  // \`db\` is here because the router named the database construct.
+  .handle(async ({ db }) => ({
+    users: await db.selectFrom('users').select(['id', 'name']).execute(),
+  }));
+`
+		: `  .handle(async () => ({
     users: [
       { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Alice' },
       { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Bob' },
     ],
   }));
 `
-					: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+}`
+					: `import { z } from 'zod';
+import { router } from '${src('router.ts')}';
 
 const UserSchema = z.object({
   id: z.string(),
   name: z.string(),
 });
 
-export const listUsersEndpoint = e
+export const listUsersEndpoint = router
   .get('/users')
   .output(z.object({
     users: z.array(UserSchema),
   }))
-  .handle(async () => ({
+${
+	options.database
+		? `  // \`db\` is here because the router named the database construct.
+  .handle(async ({ db }) => ({
+    users: await db.selectFrom('users').select(['id', 'name']).execute(),
+  }));
+`
+		: `  .handle(async () => ({
     users: [
       { id: '1', name: 'Alice' },
       { id: '2', name: 'Bob' },
     ],
   }));
-`,
+`
+}`,
 			},
 			{
 				path: getRoutePath('users/get.ts'),
 				content: modelsImport
-					? `import { e } from '@geekmidas/constructs/endpoints';
-import { IdParamsSchema } from '${modelsImport}/common';
+					? `import { IdParamsSchema } from '${modelsImport}/common';
 import { UserResponseSchema } from '${modelsImport}/user';
+import { router } from '${src('router.ts')}';
 
-export const getUserEndpoint = e
+export const getUserEndpoint = router
   .get('/users/:id')
   .params(IdParamsSchema)
   .output(UserResponseSchema)
@@ -191,10 +236,10 @@ export const getUserEndpoint = e
     email: 'alice@example.com',
   }));
 `
-					: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+					: `import { z } from 'zod';
+import { router } from '${src('router.ts')}';
 
-export const getUserEndpoint = e
+export const getUserEndpoint = router
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .output(z.object({
@@ -260,17 +305,32 @@ export const authService = {
 			files.push({
 				path: 'src/router.ts',
 				content: `import { e } from '@geekmidas/constructs/endpoints';
-import { UnauthorizedError } from '@geekmidas/errors';
+import { UnauthorizedError } from '@geekmidas/errors';${
+					options.database
+						? `
+import { database } from './constructs/database.ts';`
+						: ''
+				}
 import { authService, type Session } from './services/auth.ts';
 import { logger } from './config/logger.ts';
 
-// Public router - no auth required
-export const publicRouter = e.logger(logger);
+/**
+ * The shared endpoint factory — no session required.
+ *${
+		options.database
+			? `
+ * Naming the database construct is what puts \`db\` in every handler built from
+ * this router. Depend on other constructs per endpoint with \`.dependsOn([…])\`.`
+			: `
+ * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
+ }
+ */
+export const router = e.logger(logger)${options.database ? '.database(database)' : ''};
 
-// Router with auth service available (but session not enforced)
-export const r = publicRouter.services([authService]);
+// The auth client available, but the session not enforced.
+export const r = router.services([authService]);
 
-// Session router - requires active session, throws if not authenticated
+// Requires an active session — throws when there is none.
 export const sessionRouter = r.session<Session>(async ({ services, header }) => {
   const cookie = header('cookie') || '';
   const session = await services.auth.getSession(cookie);
@@ -302,8 +362,100 @@ export const profileEndpoint = sessionRouter
 			});
 		}
 
-		// Add database service if enabled
-		if (options.database) {
+		// The non-monorepo router. The monorepo one is written above, with the
+		// session extractor its auth app needs.
+		if (!monorepo) {
+			files.push({
+				path: 'src/router.ts',
+				content: `import { e } from '@geekmidas/constructs/endpoints';
+import { logger } from './config/logger.ts';${
+					options.database
+						? `
+import { database } from './constructs/database.ts';`
+						: ''
+				}
+
+/**
+ * The shared endpoint factory.
+ *${
+		options.database
+			? `
+ * Naming the database construct is what puts \`db\` in every handler built from
+ * this router. Depend on other constructs per endpoint with \`.dependsOn([…])\`.`
+			: `
+ * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
+ }
+ */
+export const router = e.logger(logger)${options.database ? '.database(database)' : ''};
+`,
+			});
+		}
+
+		// The database — a construct, not a hand-written service.
+		if (options.database && declares) {
+			files.push(...databaseFiles(name));
+		}
+
+		// Object storage — MinIO locally, S3 deployed, one declaration for both.
+		if (services.storage && declares) {
+			files.push({
+				path: 'src/constructs/storage.ts',
+				content: `import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+/**
+ * A bucket, declared once.
+ *
+ * Reach it from an endpoint with \`.dependsOn([uploads])\`, which is what makes
+ * \`services.${bucket.service}\` exist and type — and what tells the deploy
+ * target to grant that handler S3 access, and nothing else.
+ */
+export const uploads = new ObjectStorage('${bucket.id}');
+`,
+			});
+		}
+
+		// Mail. Mailpit locally, SES/Resend/SMTP deployed — one client either
+		// way, because every backend speaks SMTP.
+		if (services.mail && declares) {
+			files.push({
+				path: 'src/constructs/email.ts',
+				content: `import { Email } from '@geekmidas/constructs/email';
+
+/**
+ * Outbound mail, declared once.
+ *
+ * Add React templates to \`templates\` and \`sendTemplate\` becomes typed
+ * against them. Reach it with \`.dependsOn([email])\` for
+ * \`services.${mail.service}\`; who delivers it is \`services.mail\` in
+ * \`gkm.config.ts\`.
+ */
+export const email = new Email('${mail.id}', { templates: {} });
+`,
+			});
+		}
+
+		// A cache. Where it lives when deployed is `services.cache` in the
+		// config; the application code is the same either way.
+		if (services.cache && declares) {
+			files.push({
+				path: 'src/constructs/cache.ts',
+				content: `import { Cache } from '@geekmidas/constructs/cache';
+
+/**
+ * A cache, declared once.
+ *
+ * Reach it with \`.dependsOn([cache])\` for \`services.${kv.service}\`. Which
+ * backend serves it — Upstash, ElastiCache, or the database — is
+ * \`services.cache\` in \`gkm.config.ts\`, because the same code caches into
+ * any of them.
+ */
+export const cache = new Cache('${kv.id}');
+`,
+			});
+		}
+
+		// The workspace path, until its auth app declares its own half.
+		if (options.database && !declares) {
 			files.push({
 				path: 'src/services/database.ts',
 				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -368,13 +520,12 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '~/services/database.ts';
-import { envParser } from '~/config/env.ts';
+import type { Database } from '${src(declares ? 'constructs/database.ts' : 'services/database.ts')}';
+import { envParser } from '${src('config/env.ts')}';
 
-// Parse database config for Studio
 const studioConfig = envParser
   .create((get) => ({
-    databaseUrl: get('DATABASE_URL').string(),
+    databaseUrl: get('${declares ? db.urlKey : 'DATABASE_URL'}').string(),
   }))
   .parse();
 

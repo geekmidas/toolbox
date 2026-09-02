@@ -25,6 +25,7 @@ const PACKAGES = [
 	'errors',
 	'events',
 	'logger',
+	'manifest',
 	'rate-limit',
 	'schema',
 	'services',

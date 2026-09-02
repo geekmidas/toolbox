@@ -109,9 +109,24 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'src/endpoints/users/get.ts'))).toBe(
 				true,
 			);
-			expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(
+			// The database is a construct, not a hand-written service.
+			expect(existsSync(join(projectDir, 'src/constructs/database.ts'))).toBe(
 				true,
 			);
+			expect(existsSync(join(projectDir, 'src/services/database.ts'))).toBe(
+				false,
+			);
+
+			const database = await readFile(
+				join(projectDir, 'src/constructs/database.ts'),
+				'utf-8',
+			);
+			expect(database).toContain('KyselyDatabase');
+			expect(database).toContain("new KyselyDatabase<Database, 'MyApi'>");
+
+			// And the config points reconcile at it.
+			const config = await readFile(join(projectDir, 'gkm.config.ts'), 'utf-8');
+			expect(config).toContain("constructs: './src/constructs/**/*.ts'");
 		});
 
 		it('should create serverless template with functions', async () => {

@@ -269,26 +269,33 @@ export const deployTargetChoices = [
 /**
  * Services choices for multi-select prompt
  */
+/**
+ * What the project declares — and therefore which containers it runs.
+ *
+ * Each choice scaffolds a construct rather than a container: the container is
+ * what `gkm dev` derives from the declaration, which is why the descriptions
+ * name the construct and the titles name the thing you will see running.
+ */
 export const servicesChoices = [
 	{
 		title: 'PostgreSQL',
 		value: 'db',
-		description: 'PostgreSQL database',
+		description: 'A declared database — KyselyDatabase construct',
 	},
 	{
 		title: 'Redis',
 		value: 'cache',
-		description: 'Redis cache',
+		description: 'A declared cache — Cache construct',
 	},
 	{
 		title: 'Mailpit',
 		value: 'mail',
-		description: 'Email testing service (dev only)',
+		description: 'Declared outbound mail — Email construct',
 	},
 	{
 		title: 'MinIO',
 		value: 'storage',
-		description: 'S3-compatible object storage (dev only)',
+		description: 'A declared bucket — ObjectStorage construct',
 	},
 ];
 
