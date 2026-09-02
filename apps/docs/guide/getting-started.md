@@ -247,7 +247,7 @@ in step:
 export const database = new KyselyDatabase<Database, 'Example'>('Example');
 
 export const replica = database.reader();       // ExampleReader — read-only role
-export const cache = database.cache();          // ExampleCache — a cache in this DB
+export const cache = database.cache();          // ExampleCache — cached *in* this database
 export const acme = database.schema<TenantDB, 'Acme'>('Acme');  // its own role and URL
 database.owner;                                 // the DDL role, for migrations
 ```
@@ -255,6 +255,26 @@ database.owner;                                 // the DDL role, for migrations
 `reader()` is enforced by the reader role's grants, not by which endpoint it
 reaches — which is why it stays correct even where a stage runs a single
 instance and the reader resolves to the writer's address.
+
+`cache()` gives you a **cache whose storage is this database**: entries are rows
+in a table inside it (`cache` by default, or pass one), in this database's
+schema, reached by this database's role. It is the stronger statement of the
+two — `new Cache('Sessions')` says the app caches and leaves *where* to the
+deployment, while `database.cache()` says it caches **here**, which is a fact
+about the application and so belongs in its code. Declaring it this way pins it:
+`services.cache: 'upstash'` moves a standalone cache and does not move this one.
+
+The client is a `CacheClient` either way — a key/value store, not a query
+builder. Typing it as the parent would be a convenience that lies.
+
+```typescript
+.dependsOn([cache])
+.handle(async ({ services }) => services.exampleCache.get(key))
+```
+
+The table is DDL, so reconcile's owner role creates it. The driver never creates
+it lazily, for the same reason a handler cannot migrate: the role a handler runs
+as may not create anything.
 
 ### Credentials have a shape
 
