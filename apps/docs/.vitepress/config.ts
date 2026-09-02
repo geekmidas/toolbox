@@ -52,6 +52,7 @@ export default defineConfig({
         text: 'Core Packages',
         items: [
           { text: '@geekmidas/constructs', link: '/packages/constructs' },
+          { text: '@geekmidas/manifest', link: '/packages/manifest' },
           { text: '@geekmidas/client', link: '/packages/client' },
           { text: '@geekmidas/cli', link: '/packages/cli' },
         ],

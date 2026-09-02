@@ -2,6 +2,24 @@
 
 Unified event messaging library with support for multiple backends.
 
+::: tip Topics and queues are constructs
+A publisher service written by hand is the case `Topic` removes — declare the
+event contract and the typed producer comes off it:
+
+```typescript
+import { Topic } from '@geekmidas/constructs/topic';
+
+export const users = new Topic('users', {
+  'user.created': z.object({ userId: z.string(), email: z.email() }),
+});
+
+users.publisher;   // an EventPublisher typed to this topic's events
+```
+
+This package is what those constructs are built on, and what you reach for
+directly when you are wiring a broker yourself.
+:::
+
 ## Installation
 
 ```bash
@@ -202,7 +220,7 @@ The dev server discovers your subscribers, connects to pg-boss, and begins polli
 
 ### Event Backend Setup
 
-When PostgreSQL is enabled (`db: true`), the CLI automatically sets up **pg-boss** as the default event backend — no explicit configuration needed. A dedicated `pgboss` user and schema are created in your PostgreSQL database, and `EVENT_PUBLISHER_CONNECTION_STRING` / `EVENT_SUBSCRIBER_CONNECTION_STRING` are set automatically.
+When a database is declared, the CLI automatically sets up **pg-boss** as the default event backend — no explicit configuration needed. A dedicated `pgboss` user and schema are created in your PostgreSQL database, and `EVENT_PUBLISHER_CONNECTION_STRING` / `EVENT_SUBSCRIBER_CONNECTION_STRING` are set automatically.
 
 To use a different backend, set `events` explicitly:
 
@@ -213,10 +231,9 @@ import { defineWorkspace } from '@geekmidas/cli';
 export default defineWorkspace({
   apps: { /* ... */ },
   services: {
-    db: true,
-    // events defaults to pgboss when db is enabled
-    // Override with 'sns' or 'rabbitmq' for a different backend:
-    // events: 'sns',
+    // pgboss is the default. It reuses the Postgres your declared database
+    // already brings up — `db: true` is not needed and is ignored.
+    // events: 'sns',      // or 'rabbitmq'
   },
 });
 ```
@@ -329,12 +346,12 @@ Use the `s` builder from `@geekmidas/constructs/subscribers`:
 import { s } from '@geekmidas/constructs/subscribers';
 
 export const onUserCreated = s
-  .services([databaseService, emailService])
-  .publisher(eventPublisherService) // optional, for chaining events
+  .dependsOn([database, email])
+  .publisher(orders.publisher) // optional, for chaining events
   .subscribe('user.created')
   .handle(async ({ events, services, logger }) => {
     for (const event of events) {
-      await services.email.send('welcome', { to: event.payload.email });
+      await services.mail.sendTemplate('welcome', { to: event.payload.email });
       logger.info({ userId: event.payload.userId }, 'Welcome email sent');
     }
   });
@@ -371,9 +388,9 @@ When PostgreSQL is enabled, the CLI automatically creates pgboss credentials and
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
-  services: {
-    db: true, // pgboss event backend is created automatically
-  },
+  // Nothing to configure: pgboss is the default, and it lives in the Postgres
+  // your declared database already implies.
+  services: {},
 });
 ```
 
@@ -386,7 +403,6 @@ For SNS or RabbitMQ, set `events` explicitly — the CLI then adds the appropria
 
 ```typescript
 services: {
-  db: true,
   events: 'sns',      // adds LocalStack, uses sns:// and sqs:// protocols
   // events: 'rabbitmq', // adds RabbitMQ, uses rabbitmq:// protocol
 },

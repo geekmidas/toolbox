@@ -241,7 +241,8 @@ Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit
 import { EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 const api = new EndpointFactory()
-  .services([databaseService, auditStorageService])
+  .database(database)
+  .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
@@ -290,14 +291,17 @@ const auditStorageService = {
     return new KyselyAuditStorage<Database>({
       db: kyselyDb,
       tableName: 'audit_logs',
-      databaseServiceName: 'database', // matches the endpoint's database service
+      // Must match the endpoint's database service key. For
+      // `new KyselyDatabase<Database, 'Orders'>('Orders')` that is `orders` —
+      // the construct's id, uncapitalised.
+      databaseServiceName: 'orders',
     });
   },
 } satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
 
 const api = new EndpointFactory()
-  .services([databaseService, auditStorageService])
-  .database(databaseService)
+  .database(database)
+  .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 

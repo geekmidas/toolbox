@@ -49,6 +49,9 @@ export default defineWorkspace({
       path: 'apps/api',
       type: 'backend',
       port: 3000,
+      // One glob, every kind — what reconcile reads to derive this app's
+      // containers. Resolved against the app's own path.
+      constructs: './src/constructs/**/*.ts',
       routes: './src/endpoints/**/*.ts',
       envParser: './src/config/env',
       logger: './src/config/logger',
@@ -69,11 +72,15 @@ export default defineWorkspace({
     },
   },
 
+  // What no construct implies.
+  //
+  // `db` and `storage` are derived from the declared KyselyDatabase and
+  // ObjectStorage and are ignored here, so the two cannot disagree. What is
+  // left is a backend selection.
   services: {
-    db: true,
-    cache: true,
-    mail: true,
-    events: 'pgboss', // or 'sns' or 'rabbitmq'
+    cache: true,      // or 'upstash' | 'elasticache' | 'db'
+    mail: true,       // or 'ses' | 'resend' | 'smtp'
+    events: 'pgboss', // or 'sns' | 'rabbitmq'
   },
 
   deploy: {
@@ -81,6 +88,14 @@ export default defineWorkspace({
   },
 });
 ```
+
+::: info Every app declares its own half
+Each app's `constructs` glob is resolved against that app's path, and reconcile
+reads all of them into one manifest. An app that shares a database with another
+declares a derived form of it — `database.schema()` for its own schema and role,
+or `database.reader()` for read-only access — rather than reaching for the same
+URL by string.
+:::
 
 ::: tip
 Use `defineWorkspace()` (not `defineConfig()`) for multi-app workspaces. The `defineWorkspace()` helper provides type-safe dependency validation — `dependencies` values are checked against the app names in your config.
@@ -95,6 +110,7 @@ Each app can have its own `gkm.config.ts`:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  constructs: './src/constructs/**/*.ts',
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',

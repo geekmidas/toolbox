@@ -2,6 +2,20 @@
 
 Type-safe email sending with React template support.
 
+::: tip Declare the sender
+An `EmailClient` is what a declared `Email` hands back, typed by the templates
+you gave it:
+
+```typescript
+import { Email } from '@geekmidas/constructs/email';
+
+export const email = new Email('Mail', { templates: { welcome: WelcomeEmail } });
+```
+
+Every backend speaks SMTP, so the client never changes — Mailpit locally, SES,
+Resend, or your own SMTP deployed, selected by `services.mail`.
+:::
+
 ## Installation
 
 ```bash

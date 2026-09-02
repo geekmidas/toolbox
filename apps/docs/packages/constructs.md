@@ -10,6 +10,8 @@ pnpm add @geekmidas/constructs
 
 ## Features
 
+- ✅ Declared infrastructure — a database, bucket, cache, or credential is one statement
+- ✅ `.dependsOn()` — one edge derives the environment, the client, and the cloud access
 - ✅ Fluent endpoint builder pattern
 - ✅ Full TypeScript type inference
 - ✅ StandardSchema validation (Zod, Valibot, etc.)
@@ -41,8 +43,141 @@ pnpm add @geekmidas/constructs
 | `/hono` | Hono framework adapter (`HonoEndpoint`) |
 | `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSLambdaQueue`, `AWSScheduledFunction`) |
 | `/testing` | Testing utilities (`TestEndpointAdaptor`, `TestFunctionAdaptor`, `TestSubscriberAdaptor`, `TestQueueAdaptor`) |
+| `/construct` | The `Construct` interface, `Consumable`, and `Declaration` types |
+| `/database/kysely` | `KyselyDatabase` — a declared Postgres database, typed by its schema |
+| `/object-storage` | `ObjectStorage` — a declared bucket |
+| `/file-server` | `FileServer` — a domain that serves a bucket's objects |
+| `/cache` | `Cache` — a declared cache |
+| `/credential` | `Credential` — a third-party credential with a shape |
+| `/email` | `Email` — declared outbound mail |
+| `/rest-api` | `RestApi` — an API surface |
+| `/site` | `StaticSite` — a declared static site |
+| `/auth` | `BetterAuth` — a declared auth server |
 
 > **Service integrations moved:** the tRPC and Middy middlewares now live in [`@geekmidas/services`](/packages/services) (`@geekmidas/services/trpc`, `@geekmidas/services/middy`) since they depend only on `@geekmidas/services`, not on the constructs.
+
+## Constructs
+
+A **construct** is one declaration that stands for a piece of infrastructure. It
+is simultaneously an infrastructure *requirement* at build time, a runtime
+*capability*, and something other code can *consume* — which is why the
+interface has exactly three members:
+
+```typescript
+interface Construct<TName extends string = string, TClient = never> {
+  readonly id: TName;
+  declare(): Declaration[];
+  readonly service: [TClient] extends [never] ? never : Service<TName, TClient>;
+}
+```
+
+From that one declaration, three different owners derive three different things:
+
+| Derived | By whom | When |
+|---------|---------|------|
+| The function's **environment** | the framework | `gkm build` |
+| Its **runtime client** | the framework | first request |
+| The **infrastructure** — a container locally, a cloud resource deployed | the target adapter | `gkm dev` / `gkm deploy` |
+
+### The resource constructs
+
+```typescript
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+import { Cache } from '@geekmidas/constructs/cache';
+import { Credential } from '@geekmidas/constructs/credential';
+
+export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+export const uploads = new ObjectStorage('Uploads', { versioned: true });
+export const cache = new Cache('Sessions');
+export const stripe = new Credential('Stripe', {
+  schema: z.object({ secretKey: z.string(), webhookSecret: z.string() }),
+});
+```
+
+Each canonicalises its id — `uploads` and `Uploads` are one construct, not two
+that collide — and derives its env key from it: `UPLOADS_URL`, `SESSIONS_URL`,
+`ORDERS_URL` (plus `ORDERS_OWNER_URL` for the DDL role). The key the target
+publishes and the key the client reads come from the same field, so they cannot
+drift.
+
+| Construct | Import | The client it hands back |
+|---|---|---|
+| `KyselyDatabase` | `/database/kysely` | `Kysely<DB>`, typed by your schema |
+| `ObjectStorage` | `/object-storage` | `StorageClient` — write, delete, presign |
+| `FileServer` | `/file-server` | a `StorageClient` **superset** — plus `url()` and `signedUrl()` |
+| `Cache` | `/cache` | `CacheClient` |
+| `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
+| `Email` | `/email` | an `EmailClient` typed by your templates |
+| `Topic` | `/topic` | `topic.publisher` — a typed `EventPublisher` |
+| `Queue` | `/queue` | `send()` |
+| `RestApi` | `/rest-api` | — a surface; it owns a URL, not a client |
+| `StaticSite` | `/site` | — a surface |
+| `BetterAuth` | `/auth` | the auth server |
+
+### `.dependsOn()` — the one primitive
+
+Every builder takes it: endpoints, functions, crons, queue workers, and
+subscribers.
+
+```typescript
+export const createAvatar = e
+  .post('/avatars')
+  .dependsOn([uploads, stripe])
+  .handle(async ({ services }) => {
+    // Both exist, and both type, because of the edge above.
+    services.uploads.getUploadURL({ path, contentType, contentLength });
+    services.stripe.secretKey;
+  });
+```
+
+The edge records what a handler consumes. The framework derives its environment
+and its runtime binding; the deploy target separately derives cloud access from
+the same edge. **Permissions are not a framework concept and are not in the
+manifest** — what an edge implies on a given cloud is the adapter's business.
+
+`.dependsOn()` takes constructs only. A `Service` (`{ serviceName, register }`)
+does not match the shape, which is what keeps environment sniffing confined to
+`.services()`.
+
+A construct that owns no client — a `Cron`, a `Subscriber` — types its
+`service` as `never`, so depending on one is a compile error rather than a stub
+that throws at runtime. You cannot call a queue worker; you send to its queue.
+
+### The database, and what comes off it
+
+```typescript
+export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+
+export const replica = database.reader();                    // OrdersReader
+export const cache = database.cache();                       // OrdersCache
+export const acme = database.schema<TenantDB, 'Acme'>('Acme'); // its own role + URL
+database.owner;                                              // the DDL role
+```
+
+`.database(database)` on a factory puts the client in the handler context as
+`db`, and the execution wrapper is what opens the transaction and applies the
+RLS context:
+
+```typescript
+export const router = e.logger(logger).database(database);
+
+export const listOrders = router
+  .get('/orders')
+  .handle(async ({ db }) => db.selectFrom('orders').selectAll().execute());
+```
+
+`.owner` is a `Service` rather than a construct, deliberately: `.dependsOn()`
+takes constructs, so a handler cannot ask for DDL rights at all. A migrator asks
+for it by name.
+
+::: tip Discovery
+Point `constructs: './src/constructs/**/*.ts'` at them in `gkm.config.ts`. One
+glob, every kind — a declared `ObjectStorage` has no kind to be listed under, so
+a glob per kind could never find it. Discovery inspects every export of every
+matching module and asks one structural question: does it have an `id`, and can
+it `declare()`?
+:::
 
 ## Basic Usage
 
@@ -110,9 +245,14 @@ throw createError.conflict('Resource already exists');
 throw createError.internalServerError('Something went wrong');
 ```
 
-### Service Pattern
+### Services — the escape hatch
 
-Define services as object literals with dependency injection:
+A `Service` is still how you reach something no construct describes: a
+third-party SDK, an internal client, anything you assemble yourself. Prefer a
+construct where one exists — a hand-written database service is the case the
+`KyselyDatabase` construct replaces, and it is the one the build cannot see
+into, since it has to *run* the service against a sniffer to learn which env
+keys it touches.
 
 ```typescript
 import type { Service } from '@geekmidas/constructs';
@@ -139,6 +279,16 @@ const endpoint = e
     return await db.query('...');
   });
 ```
+
+::: warning
+`.services()` with a hand-written resource service is deprecated — it still
+works and will keep working through this major. The database above is one line
+as a construct:
+
+```typescript
+export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+```
+:::
 
 ## Advanced Usage
 
@@ -647,7 +797,8 @@ Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit
 import { EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 const api = new EndpointFactory()
-  .services([databaseService, auditStorageService])
+  .database(database)
+  .services([auditStorageService])
   .session(extractSession)
   .authorizer('jwt')
   .auditor(auditStorageService)
@@ -685,8 +836,8 @@ When the audit storage uses the same database as the endpoint (e.g., both use th
 
 ```typescript
 const api = new EndpointFactory()
-  .services([databaseService, auditStorageService])
-  .database(databaseService)
+  .database(database)
+  .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
@@ -714,7 +865,7 @@ const endpoint = api
 ```
 
 ::: tip
-When `.database()` is configured and the audit storage's `databaseServiceName` matches the endpoint's database service, the framework automatically wraps the handler and audit flush in a single transaction. No extra configuration is needed.
+When `.database()` is configured and the audit storage's `databaseServiceName` matches the endpoint's database, the framework automatically wraps the handler and the audit flush in a single transaction. No extra configuration is needed.
 :::
 
 ### Row Level Security (RLS)
@@ -729,8 +880,7 @@ Configure RLS once on the factory so all endpoints inherit it:
 import { EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 const api = new EndpointFactory()
-  .services([databaseService])
-  .database(databaseService)
+  .database(database)
   .session(extractSession)
   .authorizer('jwt')
   .rls({
@@ -814,8 +964,7 @@ import { e } from '@geekmidas/constructs/endpoints';
 
 const endpoint = e
   .get('/orders')
-  .services([databaseService])
-  .database(databaseService)
+  .database(database)
   .rls({
     extractor: ({ session, header }) => ({
       user_id: session.userId,
@@ -874,8 +1023,8 @@ import { e } from '@geekmidas/constructs/endpoints';
 
 const createOrder = e
   .post('/orders')
-  .services([databaseService])
-  .publisher(eventPublisherService)
+  .dependsOn([database])
+  .publisher(orders.publisher)
   .body(orderSchema)
   .output(orderResponseSchema)
   .events([
@@ -959,14 +1108,37 @@ const createUser = e
 
 The connection string protocol determines which backend is used (`pgboss://`, `rabbitmq://`, `sns://`, `sqs://`, `basic://`). When using `services.events` in your workspace config, the CLI auto-generates this env var.
 
+::: tip A topic derives its publisher
+Writing the service above by hand is the case `Topic` removes. Declare the event
+contract and the producer comes off it, typed to the union of that topic's
+events:
+
+```typescript
+import { Topic } from '@geekmidas/constructs/topic';
+
+export const users = new Topic('users', {
+  'user.created': z.object({ userId: z.string(), email: z.email() }),
+});
+
+const createUser = e
+  .post('/users')
+  .publisher(users.publisher)   // derived, not hand-written
+  .event({ type: 'user.created', payload: (r) => ({ userId: r.id, email: r.email }) })
+  .handle(async ({ body }) => createUser(body));
+```
+
+A subscriber binds to the topic instead of depending on it — `s.topic(users)` —
+and is granted nothing on it, because at runtime it only reads its own queue.
+:::
+
 ### Factory-Level Publisher
 
 Set a default publisher on the factory so all endpoints inherit it:
 
 ```typescript
 const api = new EndpointFactory()
-  .services([databaseService])
-  .publisher(eventPublisherService);
+  .database(database)
+  .publisher(users.publisher);
 
 // All endpoints can use .event() without specifying .publisher()
 const createOrder = api
@@ -997,21 +1169,21 @@ export const onUserCreated = s
   });
 ```
 
-### With Services
+### With Dependencies
 
 ```typescript
 export const onOrderPlaced = s
-  .services([databaseService, emailService])
+  .dependsOn([database, email])
   .subscribe('order.placed')
   .handle(async ({ events, services, logger }) => {
     for (const event of events) {
-      const order = await services.database
+      const order = await services.orders
         .selectFrom('orders')
         .where('id', '=', event.payload.orderId)
         .selectAll()
         .executeTakeFirstOrThrow();
 
-      await services.email.send('order-confirmation', {
+      await services.email.sendTemplate('order-confirmation', {
         to: order.customerEmail,
         props: { orderId: order.id, total: order.total },
       });
@@ -1170,18 +1342,19 @@ export const ordersQueue = q
   });
 ```
 
-### With Services
+### With Dependencies
 
-Services are an **array** (the same shape endpoints/subscribers use) and are sniffed for the env vars they require — those flow into the manifest so infra provisions them:
+`.dependsOn()` names constructs. The edge is what the manifest records, and what
+a deploy target reads to grant this worker exactly what it named:
 
 ```typescript
 export const ordersQueue = q
   .queue('orders')
-  .services([databaseService])
+  .dependsOn([database])
   .message(z.object({ orderId: z.string() }))
   .handle(async ({ messages, services }) => {
     for (const { orderId } of messages) {
-      await services.database.fulfil(orderId);
+      await fulfil(services.orders, orderId);
     }
   });
 ```
@@ -1333,11 +1506,11 @@ c.schedule('cron(0 12 1 * *)')
 import { c } from '@geekmidas/constructs/crons';
 
 export const syncCron = c
-  .services([databaseService, cacheService])
+  .dependsOn([database, cache])
   .schedule('rate(30 minutes)')
   .handle(async ({ services, logger }) => {
-    const db = services.database;
-    const cache = services.cache;
+    const db = services.orders;
+    const kv = services.sessions;
 
     const staleRecords = await db
       .selectFrom('records')
@@ -1346,7 +1519,7 @@ export const syncCron = c
       .execute();
 
     for (const record of staleRecords) {
-      await cache.delete(`record:${record.id}`);
+      await kv.delete(`record:${record.id}`);
     }
 
     logger.info({ count: staleRecords.length }, 'Cache invalidated');
@@ -1384,8 +1557,7 @@ export const reportCron = c
 import { c } from '@geekmidas/constructs/crons';
 
 export const archiveCron = c
-  .services([databaseService])
-  .database(databaseService)
+  .database(database)
   .schedule('cron(0 2 * * *)')
   .handle(async ({ db, logger }) => {
     const cutoff = new Date(Date.now() - 90 * 24 * 3600000); // 90 days
@@ -1406,11 +1578,11 @@ export const archiveCron = c
 import { c } from '@geekmidas/constructs/crons';
 
 export const reminderCron = c
-  .services([databaseService])
-  .publisher(eventPublisherService)
+  .dependsOn([database])
+  .publisher(orders.publisher)
   .schedule('rate(1 hour)')
   .handle(async ({ services, publish }) => {
-    const users = await services.database
+    const users = await services.orders
       .selectFrom('users')
       .where('reminder_due', '<', new Date())
       .selectAll()

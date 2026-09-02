@@ -6,6 +6,36 @@ A complete guide to `gkm dev` — what it does, how it orchestrates a fullstack 
 
 `gkm dev` is the primary development command. It detects whether you're in a single-app project or a multi-app workspace and adjusts its behavior accordingly. For fullstack workspaces, it orchestrates Docker services, resolves ports, decrypts and injects secrets, starts all apps via Turbo, and watches for changes.
 
+## Two paths
+
+`gkm dev` takes one of two paths, and which one depends on a single question:
+**does any app configure a `constructs` glob?**
+
+| | Declared | Hand-written |
+|---|---|---|
+| Trigger | at least one app sets `constructs:` | no app does |
+| Where containers come from | the manifest — a declared `KyselyDatabase` is why a Postgres exists | a `docker-compose.yml` you wrote |
+| Where URLs come from | derived and injected (`ORDERS_URL`, `UPLOADS_URL`) | secrets, rewritten with resolved ports |
+| Compose file | generated at `.gkm/docker-compose.yml` | yours, at the project root |
+
+Steps 5 through 8 below describe the **hand-written** path. On the declared
+path, all four collapse into one reconcile pass:
+
+```
+🐳 Services: postgres, minio
+   postgres: postgresql://…@localhost:5432/orders
+   minio: http://localhost:9000
+```
+
+Reconcile computes the desired state, compares it against what is running, and
+applies the difference — allocating ports, writing compose, starting containers,
+and creating the databases, roles, schemas, and buckets the declarations name.
+It is safe on every start: the converged case costs one hash and one health
+check, and its blast radius is this project's containers and `.gkm/`.
+
+See [Getting Started](/guide/getting-started) for the declaration side, and
+[@geekmidas/cli](/packages/cli#reconcile) for what reconcile does in detail.
+
 ## Quick Reference
 
 ```bash
@@ -48,6 +78,12 @@ For each backend app that has generated an OpenAPI spec (`.gkm/openapi.ts`), the
 
 ### 5. Resolve Docker Service Ports
 
+::: info Hand-written path
+Steps 5–8 apply when no app declares constructs. Where one does, reconcile
+replaces all four — there is no hand-written compose file left to read ports out
+of.
+:::
+
 ```
 🔌 Resolving service ports...
    ✅ postgres:5432: using default port 5432
@@ -76,6 +112,10 @@ Runs `docker compose up -d` with the resolved port environment variables injecte
 | `services.db: true` | `postgres` |
 | `services.cache: true` | `redis` |
 | `services.mail: true` | `mailpit` |
+
+On the declared path this table does not apply: `db` and `storage` are ignored,
+and the Postgres and MinIO come from the declared `KyselyDatabase` and
+`ObjectStorage` instead.
 
 If `docker-compose.yml` is missing, a warning is printed and services are skipped.
 

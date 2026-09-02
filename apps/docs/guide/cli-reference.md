@@ -23,15 +23,27 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  // Constructs — one glob, every kind. What reconcile reads to derive this
+  // app's containers, databases, roles, and buckets.
+  constructs: 'src/constructs/**/*.ts',
+
   // Required
   routes: 'src/endpoints/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',
 
-  // Optional construct patterns
+  // Function globs. A resource has no kind to be listed under, which is why
+  // `constructs` above is separate from these.
   functions: 'src/functions/**/*.ts',
   crons: 'src/crons/**/*.ts',
   subscribers: 'src/subscribers/**/*.ts',
+
+  // What no construct implies — a backend selection, not a resource list.
+  services: {
+    cache: true,      // or 'upstash' | 'elasticache' | 'db'
+    mail: true,       // or 'ses' | 'resend' | 'smtp'
+    events: 'pgboss', // or 'sns' | 'rabbitmq'
+  },
 
   // Development tools
   telescope: {
@@ -134,6 +146,22 @@ Fixed port mappings (e.g., `'8080:80'`) are intentionally skipped — only env v
 **Port persistence:**
 
 Resolved ports are saved to `.gkm/ports.json` so that external tools (like pgAdmin, database GUIs, etc.) keep working across restarts. The `.gkm/` directory is automatically gitignored.
+
+### `gkm setup`
+
+Reconcile only — derive the containers, databases, roles, schemas, and buckets
+the declared constructs name, and stop there.
+
+```bash
+gkm setup                      # reconcile the development stage
+gkm setup --stage staging      # another stage
+gkm setup --skip-docker        # secrets and validation only
+gkm setup --force              # regenerate secrets even if they exist
+```
+
+`gkm dev` and `gkm test` call the same function before they start anything, so
+this is only needed when you want the infrastructure without the server — after
+a clone, or after adding a construct.
 
 ### `gkm build`
 

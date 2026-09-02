@@ -2,6 +2,21 @@
 
 Database utilities for Kysely with flexible transaction management and Row Level Security (RLS) support.
 
+::: tip Declare the database, don't wire it
+`@geekmidas/db` is the toolkit — transactions, RLS helpers, migration
+utilities. The **connection** comes from a declared construct:
+
+```typescript
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+
+export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+```
+
+One statement gives you the container locally, the RDS instance deployed, the
+owner/runtime role split, the schema, and a typed client in every handler that
+names it. See [Getting Started](/guide/getting-started).
+:::
+
 ## Installation
 
 ```bash
@@ -115,6 +130,10 @@ await withTransaction(db, async (trx) => {
 ```
 
 ## Usage with Services
+
+The hand-written form, for reference — the
+[`KyselyDatabase` construct](/packages/constructs#the-database-and-what-comes-off-it)
+is one line and gives you the container and the roles as well.
 
 ```typescript
 import type { Service } from '@geekmidas/services';
@@ -334,8 +353,7 @@ When using `@geekmidas/constructs`, RLS integrates seamlessly with endpoints. Th
 import { EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 const api = new EndpointFactory()
-  .services([databaseService])
-  .database(databaseService)  // Required: specify which service provides db
+  .database(database)  // the declared KyselyDatabase — `db` in every handler
   .authorizer('jwt')
   .rls({
     extractor: ({ session }) => ({
@@ -393,8 +411,7 @@ import { e } from '@geekmidas/constructs/endpoints';
 
 const endpoint = e
   .get('/orders')
-  .services([databaseService])
-  .database(databaseService)
+  .database(database)
   .rls({
     extractor: ({ session, header }) => ({
       user_id: session.userId,

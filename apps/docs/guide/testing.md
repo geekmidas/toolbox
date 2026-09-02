@@ -35,6 +35,43 @@ export default defineConfig({
 });
 ```
 
+### Where the test database comes from
+
+`gkm test` reconciles the **test** stage before the suite runs: the same
+containers `gkm dev` uses, with the resources named for the stage. So there is
+no `docker compose up` in a test script and no `DATABASE_URL` to set — a
+declared database is what makes a Postgres exist, and its URL is injected under
+the key that database publishes.
+
+```typescript
+// test/config.ts
+import { it as itVitest } from 'vitest';
+import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
+import { Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
+import type { Database } from '../src/constructs/database.ts';
+
+const connection = new Kysely<Database>({
+  dialect: new PostgresDialect({
+    // `ORDERS_URL` for `new KyselyDatabase<Database, 'Orders'>('Orders')`.
+    pool: new pg.Pool({ connectionString: process.env.ORDERS_URL }),
+  }),
+});
+
+export const it = wrapVitestKyselyTransaction<Database>(itVitest, { connection });
+```
+
+Migrations connect as the **owner** role — `ORDERS_OWNER_URL`, the one that may
+create, alter, and drop. A handler is never given it: `.dependsOn()` takes
+constructs, and `.owner` is a `Service`, so a handler cannot ask for DDL rights
+at all.
+
+```bash
+gkm test                    # reconcile the test stage, then run
+gkm test --run --coverage   # once, with coverage
+GKM_AUTO_SETUP=1 gkm test   # CI: generate a fresh stage when none exists
+```
+
 ### Running Tests
 
 ```bash
