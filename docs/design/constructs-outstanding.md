@@ -9,16 +9,26 @@ gets worked top-down, which is how a decision nobody made gets made by whoever
 picks up the ticket. Everything under "blocked on a decision" needs an answer
 before code, and the answer is not obvious from the codebase.
 
-**Status at the time of writing:** the construct half of the model is largely
-complete — thirteen declaration kinds, and a construct for each one that needs
-it. The local target reconciles all thirteen; the AWS target provisions twelve.
+**Status, re-verified against the code (2026-09-02):** the construct half of the
+model is complete. The declaration union has **fifteen** members, thirteen of
+which a target provisions — `function` and `cron` carry a handler and reach a
+target through the function pipeline instead. Every one of the thirteen has a
+construct, and the local target reconciles all of them.
+
+The AWS target now has a provisioner for all thirteen too, which is a change
+from the last writing and a smaller one than it sounds: `rest-api` provisions
+the surface and nothing on it. See §1.4.
+
+Where a claim below was checked rather than remembered, it says so.
 
 ---
 
-## 1. The AWS target — twelve of thirteen kinds
+## 1. The AWS target — thirteen provisioners, one of them empty
 
-`rest-api` is the only kind left, and it is blocked on §2 rather than on a
-decision.
+`PROVISIONERS` in `packages/cloud/src/sst/fromManifest.ts` covers every
+provisionable kind. What is left is not a missing entry but a hollow one:
+`rest-api` provisions an API with no routes on it, and that is blocked on §2
+rather than on a decision.
 
 Nothing in this section has been deployed. The components are verified by their
 decisions being pure functions — `provisionerFor`, `assertProvides`,
@@ -132,12 +142,23 @@ long after the stack reported success. The same page also gave a guard worth
 having: not every region has an SMTP endpoint, and deriving for one that does not
 produces a credential that can never work.
 
-### 1.4 `rest-api` — *blocked on §2*
+### 1.4 `rest-api` — *provisioned, empty; blocked on §2*
 
-`packages/cloud/src/sst/aws/Api.ts` already exists and is not wired in, because
-the surface node declares `endpoints: []` for an application's own API. Routes
-still reach the deploy target through the separate `RouteInfo[]` pipeline. This
-unblocks itself when the endpoint merge lands.
+`RestApiSurface` is wired in and provisions the surface. It is deliberately not
+`Api` — that component takes a route table and validates each route's
+environment at synth, and it needs routes; the manifest's `rest-api` node still
+declares `endpoints: []` for an application's own API.
+
+So an API Gateway comes up that 404s everything, and it is still worth
+provisioning, because what everything downstream needs is the **address**: a
+site inlines it as `VITE_API_URL`, an auth server puts it on its trusted-origin
+list, and the cookie domain derives from it. Those are blocked on the API
+existing, not on it answering.
+
+Routes still reach the target through the separate `RouteInfo[]` pipeline —
+`Api.fromManifest(stack, 'Api', manifest.routes)` — which is the concrete shape
+of §2's "two pipelines describe the same routes". The two components collapse
+into one when the endpoint merge lands.
 
 ---
 
@@ -397,6 +418,62 @@ prototype rather than plan:
 
 Nothing has run against a real Dokploy server.
 
+## 6c. The CLI and what it scaffolds — *partly done*
+
+The model reached the CLI's own output late. Reconcile only runs when an app
+configures a `constructs` glob — `usesConstructs` is a hard switch — and
+`gkm init` did not emit one, so every project the CLI produced took the
+pre-constructs path and the engine was unreachable from the tool that generates
+its users. Single-app templates now declare: a `KyselyDatabase`, plus
+`ObjectStorage`, `Cache`, and `Email` for what init selected, with the glob that
+makes reconcile read them.
+
+### 6c.1 The fullstack workspace — *work*
+
+It stays on the pre-constructs path, and deliberately: the auth app's database
+role is created by `docker/postgres/init.sh` and its URL comes from a per-app
+secret, neither of which reconcile knows about. Declaring only the API's half
+flips the whole workspace onto reconcile — the switch is per *workspace*, not
+per app — and leaves auth pointing at a container that is no longer the one
+running.
+
+It moves when the auth app declares its own half, most likely as a
+`database.schema()` tenant of the API's database: that is exactly the kind whose
+whole purpose is a second app with its own role, its own schema, and its own
+URL. What has to move with it is the per-app secret that carries `DATABASE_URL`
+today, since the tenant publishes its own key.
+
+### 6c.2 A generated `docker-compose.yml` nothing reads — *work*
+
+`gkm init` still writes one at the project root, and on the declared path
+reconcile writes its own at `.gkm/docker-compose.yml` and never reads that one.
+A stale file pinning a Postgres version and a database name beside a declaration
+that decides both is the duplication this design removes, restated in the
+scaffold. Removing it for single-app projects is a gate at the call site plus
+four test rewrites; the fullstack path still needs its copy until §6c.1 lands.
+
+### 6c.3 The glob is a switch with a sharp edge — *documented, no action yet*
+
+Because derived containers are ignored rather than obeyed, adding a `constructs`
+glob to an existing project **removes** its Postgres and MinIO until it declares
+the database and the bucket that imply them. That is the intended semantics —
+a config and a declaration that disagree is the failure the model exists to
+remove — but it is a migration hazard with no warning attached. The cheap
+version is a diagnostic: a glob is configured, `services.db` is set, and no
+`database` kind was discovered, so say which container is about to disappear and
+why.
+
+### 6c.4 `secret` has no construct — *by design*
+
+Twelve of the thirteen provisionable kinds are declared by a construct anyone
+can instantiate. `secret` is not: it is emitted by `BetterAuth` for its signing
+key, and nothing else declares one. This is the lifecycle split §3 argues —
+a secret is generated and rotated by the platform, so there is nothing for an
+author to pass. Recorded because "every kind has a construct" is otherwise the
+obvious thing to assume, and it is off by one.
+
+---
+
 ## 7. Correctness and infrastructure gaps
 
 ### 7.1 `provisionOrder` orders `of`, not `dependencies` — *work*
@@ -435,18 +512,23 @@ being two callers rather than one.
 
 ### 7.4 Test suites that need containers — *environment*
 
-`@geekmidas/events` had **no vitest config**, so its specs were never discovered
-by the root `projects: ['packages/*']`. Adding one runs 114 tests, of which the
-RabbitMQ and pg-boss ones need brokers. The same is true of the Postgres-bound
-integration specs in `constructs` and the LocalStack-bound `deploy` specs in
-`cli`.
+The `@geekmidas/events` half is **resolved** — it has a vitest config, and its
+specs are discovered. What that surfaced remains: the RabbitMQ and pg-boss ones
+need brokers, as do the Postgres-bound integration specs in `constructs` and the
+LocalStack-bound `deploy` specs in `cli`.
+
+Worth knowing, because it is louder than a skipped suite: with nothing running,
+`vitest list` at the repo root fails during **collection** with an
+`ECONNREFUSED` aggregate error rather than reporting the tests it could not
+reach. A collect-time connection is why — the failure is in enumerating the
+suite, not in running it.
 
 None of this is new breakage — it is previously invisible breakage now visible,
 plus a documented port conflict with another project on 5432/4566/8079.
 
 ### 7.5 Dev-server resilience — *parked, documented*
 
-See [dev-server-resilience-design](../../packages/cli/docs/dev-server-resilience-design.md).
+See [dev-server-resilience-design](https://github.com/geekmidas/toolbox/blob/main/packages/cli/docs/dev-server-resilience-design.md).
 The supervisor, the tsx PID registry, and worker-thread hot reload are designed
 and unbuilt; the Zod duplicate-id error on HMR is subsumed by the last of those
 and is worked around today by clearing the registry in `discover` and the
@@ -494,4 +576,7 @@ bill and the security model, and the rest follows them.
    is the largest remaining piece of correctness debt in the model.
 3. **§5 kitchen-sink frontend** — makes four already-built derivations observable
    rather than merely tested, and is cheap.
-4. **§7.2** — small, and the kind of gap that hides others.
+4. **§6c.1 the fullstack workspace** — the last path that still declares its
+   infrastructure twice, and the one a new user is most likely to meet, since it
+   is one of the two templates the init prompt offers.
+5. **§7.2** — small, and the kind of gap that hides others.
