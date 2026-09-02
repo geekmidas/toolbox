@@ -51,7 +51,7 @@ no shape carrying a field that belongs to a different kind:
 | `database-schema` | `database.schema()` | its own role and URL |
 | `objects` | `ObjectStorage` | `versioned` |
 | `file-server` | `FileServer` | derives from `objects` — it shares the parent's *contents*, not its credentials |
-| `cache` | `Cache` | `of` when it lives in a database |
+| `cache` | `Cache` | `of` + `table` when declared from a database — entries are a table in it |
 | `email` | `Email` | |
 | `secret` | — | platform-generated, one opaque string |
 | `credential` | `Credential` | third-party, several fields, validated |

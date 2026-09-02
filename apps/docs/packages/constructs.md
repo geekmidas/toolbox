@@ -150,10 +150,36 @@ that throws at runtime. You cannot call a queue worker; you send to its queue.
 export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
 
 export const replica = database.reader();                    // OrdersReader
-export const cache = database.cache();                       // OrdersCache
+export const cache = database.cache();                       // cached *in* this database
 export const acme = database.schema<TenantDB, 'Acme'>('Acme'); // its own role + URL
 database.owner;                                              // the DDL role
 ```
+
+#### `database.cache()`
+
+A cache **backed by this database** — entries are rows in a table inside it,
+created in this database's schema and reached by its role:
+
+```typescript
+database.cache();                          // OrdersCache, table `cache`
+database.cache('Sessions');                // a different id
+database.cache('Sessions', { table: 'kv' }); // a different table
+```
+
+It is the stronger of the two forms. `new Cache('Sessions')` says the app caches
+and leaves *where* to the deployment; this says it caches **here**, which is a
+fact about the application rather than about a stage — so the declaration wins
+over the config, and `services.cache: 'upstash'` does not move it.
+
+What that buys beyond being explicit: the table's schema and the role that
+reaches it come from this database rather than from a second convention, and the
+backend never has to guess which database "the database" meant in an app that
+declares two.
+
+The client is still a `CacheClient` — a key/value store, not a query builder, so
+this returns a `Cache` and not a `KyselyDatabase`. And the table is DDL, so
+whatever applies DDL creates it: a handler's role may not create anything, which
+is the same reason the Postgres driver does not create it lazily.
 
 `.database(database)` on a factory puts the client in the handler context as
 `db`, and the execution wrapper is what opens the transaction and applies the

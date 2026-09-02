@@ -11,10 +11,18 @@ import { Cache } from '@geekmidas/constructs/cache';
 export const sessions = new Cache('Sessions');
 ```
 
-Where it lives — Upstash, ElastiCache, or a table in the database — is
+Where it lives — Upstash, ElastiCache, or a table in a database — is
 `services.cache` in `gkm.config.ts`, because the same application code caches
 into any of them. The scheme in the injected URL picks the driver, so an app
 caching in Postgres never resolves a Redis client.
+
+To say it caches in a *particular* database rather than leaving the choice to
+the deployment, declare it from that database — entries become a table inside
+it, and the config no longer moves it:
+
+```typescript
+export const cache = database.cache();  // storage is `database`, not a stage decision
+```
 :::
 
 ## Installation
