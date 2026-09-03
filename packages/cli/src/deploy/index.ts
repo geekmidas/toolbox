@@ -44,7 +44,7 @@
  * @module deploy
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
 import { Client as PgClient } from 'pg';
@@ -320,15 +320,90 @@ async function waitForPostgres(
  * needed first: a redeploy is free, and a half-applied run recovers by being
  * run again.
  */
+/**
+ * A high port for one service, the same one every time.
+ *
+ * Derived from the service name rather than random so two deploys of the same
+ * database agree and two different databases do not collide — and in the
+ * ephemeral range, above anything a server is likely to have bound
+ * deliberately.
+ */
+function derivedPort(appName: string): number {
+	const digest = createHash('sha256').update(appName).digest();
+
+	return 49152 + (((digest[0]! << 8) | digest[1]!) % 16000);
+}
+
 async function applyDeclaredStatements(
 	api: DokployApi,
 	postgres: DokployCluster,
 	serverHostname: string,
 	statements: readonly Statement[],
 ): Promise<number> {
-	const externalPort = 5432;
+	// Reuse whatever is already published, and otherwise pick a high port that
+	// nothing on the host is likely to hold.
+	//
+	// 5432 was hardcoded, which fails the moment a server runs a second Postgres
+	// — and this one runs fourteen. The error is `Port 5432 is already in use`,
+	// from Docker rather than from anything the deploy could anticipate.
+	const existing = await api
+		.getPostgres(postgres.postgresId)
+		.then((current) => current.externalPort)
+		.catch(() => null);
 
-	await api.savePostgresExternalPort(postgres.postgresId, externalPort);
+	// 5432 first, then a derived port — and the order matters more than it looks.
+	//
+	// A high port is the tidier choice on a host running several clusters, and it
+	// is also the one a firewall almost certainly drops: a VPS typically permits
+	// 22, 80, 443 and whatever was opened deliberately. Publishing 55337 here
+	// produced thirty polite retries against a port nothing outside could ever
+	// reach, while 5432 had worked minutes earlier.
+	//
+	// So: the conventional port, which is the one an operator has plausibly
+	// allowed, and a derived fallback only when something already holds it.
+	// Already published? Use it. Re-saving the port a container already holds is
+	// rejected by Docker as a conflict with *itself*, which reads like the port
+	// being taken by something else.
+	let externalPort = existing ?? undefined;
+	const opened = externalPort === undefined;
+
+	if (externalPort === undefined) {
+		// Ask the server what it has bound rather than guessing and retrying. A
+		// port free from here can be held by a service in another project, and
+		// the failure names a container the caller has never heard of.
+		const taken = await api.publishedPorts().catch(() => new Set<number>());
+
+		// 5432 first when it is free: it is conventional, and therefore the port
+		// an operator has plausibly allowed through the firewall. Being *free* and
+		// being *reachable* are different questions and only the first has an API.
+		const candidates = [5432, derivedPort(postgres.appName)].filter(
+			(port) => !taken.has(port),
+		);
+
+		for (const candidate of candidates) {
+			try {
+				await api.savePostgresExternalPort(postgres.postgresId, candidate);
+				externalPort = candidate;
+				break;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				if (!message.includes('already in use')) throw error;
+
+				logger.log(`   Port ${candidate} is taken; trying another...`);
+			}
+		}
+
+		if (externalPort === undefined) {
+			throw new Error(
+				`Could not publish a port for ${postgres.appName}. ` +
+					`In use on this server: ${[...taken].sort((a, b) => a - b).join(', ') || 'none reported'}. ` +
+					`The role DDL needs to reach the cluster from here.`,
+			);
+		}
+
+		logger.log(`   Publishing ${postgres.appName} on ${externalPort}...`);
+	}
+
 	await api.deployPostgres(postgres.postgresId);
 	await waitForPostgres(
 		serverHostname,
@@ -368,8 +443,29 @@ async function applyDeclaredStatements(
 	// command`. Retrying is safe because the applier is convergent: every
 	// statement asks whether it is needed, so the second pass reapplies nothing
 	// the first one managed.
+	// Whatever happens below, the database does not stay exposed. Publishing a
+	// port to run DDL is a means; leaving it published is a database on the
+	// public internet, which is what the path this replaces did on every deploy.
+	const unpublish = async () => {
+		// Only what this call opened. A port somebody published deliberately is
+		// theirs, and closing it would be a deploy quietly changing how their
+		// database is reached.
+		if (!opened) return;
+
+		await api
+			.savePostgresExternalPort(postgres.postgresId, null)
+			.then(() => api.deployPostgres(postgres.postgresId))
+			.catch(() => {
+				logger.log(
+					`   ⚠ Could not close external port ${externalPort} on ${postgres.appName} — close it in Dokploy.`,
+				);
+			});
+	};
+
 	try {
-		return await applyDeclared(client, statements);
+		const applied = await applyDeclared(client, statements);
+
+		return applied;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		logger.log(`   ⏳ Cluster still settling (${message}); retrying once...`);
@@ -384,6 +480,12 @@ async function applyDeclaredStatements(
 		);
 
 		return applyDeclared(client, statements);
+	} finally {
+		// Whatever happened, the database does not stay exposed. A port opened to
+		// run DDL and left open is a database on the public internet — which is
+		// what a failure before this point used to leave behind, and how 64614
+		// came to be stuck across three attempts.
+		await unpublish();
 	}
 }
 
@@ -871,7 +973,14 @@ async function ensureDokploySetup(
 
 	let applicationId: string;
 
-	// Try to find existing app from config
+	// Look it up by name, then create.
+	//
+	// This used to reuse an application only when its id was written into
+	// `gkm.config.ts`, and create one unconditionally otherwise — so a project
+	// whose config could not be rewritten got a *new* application on every
+	// single deploy, silently, forever. The id in a source file was never the
+	// right place for it either: the server already knows what it has, and the
+	// name is what identifies it.
 	if (
 		existingConfig &&
 		typeof existingConfig !== 'boolean' &&
@@ -880,15 +989,18 @@ async function ensureDokploySetup(
 		applicationId = existingConfig.applicationId;
 		logger.log(`   Using application from config: ${applicationId}`);
 	} else {
-		// Create new application
-		logger.log(`   Creating application: ${appName}`);
-		const app = await api.createApplication(
+		const { application, created } = await api.findOrCreateApplication(
 			appName,
 			project.projectId,
 			environmentId,
 		);
-		applicationId = app.applicationId;
-		logger.log(`   ✓ Created application: ${applicationId}`);
+
+		applicationId = application.applicationId;
+		logger.log(
+			created
+				? `   ✓ Created application: ${applicationId}`
+				: `   ✓ Found application: ${appName} (${applicationId})`,
+		);
 	}
 
 	// Step 6: Ensure registry is set up

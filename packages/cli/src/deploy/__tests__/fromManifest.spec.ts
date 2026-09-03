@@ -42,7 +42,17 @@ const manifest = {
 		provides: ['ORDERS_READER_URL'],
 	},
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
-	Api: { kind: 'rest-api', id: 'Api', endpoints: [], provides: ['API_URL'] },
+	Api: {
+		kind: 'rest-api',
+		id: 'Api',
+		endpoints: [],
+		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+	},
+	AuthSecret: {
+		kind: 'secret',
+		id: 'AuthSecret',
+		provides: ['AUTH_SECRET'],
+	},
 } as const satisfies ConstructManifest;
 
 /** A Dokploy that creates nothing and remembers what it was asked for. */
@@ -343,6 +353,24 @@ describe('the cache', () => {
 	});
 });
 
+describe('a secret', () => {
+	it('publishes the key the declaration names', async () => {
+		// `environmentCase(id)` — `AuthSecret` is `AUTH_SECRET`. Deriving
+		// `provideKey(id, 'value')` instead produced `AUTH_SECRET_VALUE`, which
+		// nothing reads and nothing reported.
+		const { env } = await provision();
+
+		expect(env.AUTH_SECRET).toBeTruthy();
+		expect(env).not.toHaveProperty('AUTH_SECRET_VALUE');
+	});
+
+	it('is stable across deploys, so live sessions survive one', async () => {
+		const [first, second] = await Promise.all([provision(), provision()]);
+
+		expect(first.env.AUTH_SECRET).toBe(second.env.AUTH_SECRET);
+	});
+});
+
 describe('a surface', () => {
 	it('resolves to the domain Dokploy issued for it', async () => {
 		// Dokploy is the edge here: it runs Traefik and issues the certificate,
@@ -351,6 +379,15 @@ describe('a surface', () => {
 		const { env } = await provision();
 
 		expect(env.API_URL).toBe('https://api.example.com');
+	});
+
+	it('publishes who may call it and where its cookie is readable', async () => {
+		// Three facts, not one. Better Auth rejects an untrusted origin whether or
+		// not it is a browser, so a surface that resolved only its own URL left
+		// every caller locked out.
+		const { env } = await provision();
+
+		expect(env).toHaveProperty('API_TRUSTED_ORIGINS');
 	});
 
 	it('says so when it ran before the domain existed', async () => {

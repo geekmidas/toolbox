@@ -107,6 +107,42 @@ export class DokployApi {
 	}
 
 	/**
+	 * Every external port published on this server, across every project.
+	 *
+	 * Dokploy knows what it has bound; guessing does not. A port that looks free
+	 * from here can be held by a service in a project this deploy has never
+	 * heard of — which surfaces as `Port 5432 is already in use by container
+	 * "…"`, naming something the caller cannot see.
+	 *
+	 * `project.all` is a summary, so each project is fetched: the per-service
+	 * `externalPort` only appears on `project.one`.
+	 */
+	async publishedPorts(): Promise<Set<number>> {
+		const ports = new Set<number>();
+		const projects = await this.listProjects();
+
+		for (const project of projects) {
+			const details = await this.getProject(project.projectId);
+
+			for (const environment of details.environments ?? []) {
+				const resources = [
+					...(environment.postgres ?? []),
+					...(environment.redis ?? []),
+					...(environment.applications ?? []),
+				] as { externalPort?: number | null }[];
+
+				for (const resource of resources) {
+					if (typeof resource.externalPort === 'number') {
+						ports.add(resource.externalPort);
+					}
+				}
+			}
+		}
+
+		return ports;
+	}
+
+	/**
 	 * Validate the API token by making a test request
 	 */
 	async validateToken(): Promise<boolean> {
@@ -211,8 +247,14 @@ export class DokployApi {
 	): Promise<T[]> {
 		const project = await this.getProject(projectId);
 
-		return (project.environments ?? []).flatMap(
-			(environment) => pick(environment) ?? [],
+		// Tagged with the environment they came from: `project.one` nests them,
+		// and a caller filtering by environment has nothing to filter on
+		// otherwise.
+		return (project.environments ?? []).flatMap((environment) =>
+			(pick(environment) ?? []).map((resource) => ({
+				...resource,
+				environmentId: environment.environmentId,
+			})),
 		);
 	}
 
@@ -222,11 +264,23 @@ export class DokployApi {
 	async findApplicationByName(
 		projectId: string,
 		name: string,
+		/**
+		 * The environment to look in.
+		 *
+		 * A project has one application list per environment, and the same name
+		 * legitimately exists in each — `prod` and `staging` both run `api`.
+		 * Searching across all of them finds whichever came back first and
+		 * deploys a stage's image into another stage's application.
+		 */
+		environmentId?: string,
 	): Promise<DokployApplication | undefined> {
 		const applications = await this.listApplications(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
 		return applications.find(
-			(app) => app.name === name || app.appName === normalizedName,
+			(app) =>
+				(!environmentId || app.environmentId === environmentId) &&
+				(app.name === name || app.appName === normalizedName),
 		);
 	}
 
@@ -254,7 +308,11 @@ export class DokployApi {
 		projectId: string,
 		environmentId: string,
 	): Promise<{ application: DokployApplication; created: boolean }> {
-		const existing = await this.findApplicationByName(projectId, name);
+		const existing = await this.findApplicationByName(
+			projectId,
+			name,
+			environmentId,
+		);
 		if (existing) {
 			return { application: existing, created: false };
 		}
@@ -429,9 +487,22 @@ export class DokployApi {
 	): Promise<DokployPostgres | undefined> {
 		const databases = await this.listPostgres(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-		return databases.find(
+		const match = databases.find(
 			(db) => db.name === name || db.appName === normalizedName,
 		);
+
+		if (!match) return undefined;
+
+		// Hydrated, because the listing is a *summary*: `project.one` nests these
+		// with `postgresId`, `name`, `appName` and status, and none of
+		// `databaseUser`, `databasePassword` or `databaseName`.
+		//
+		// Returning the summary meant a *found* cluster came back with undefined
+		// credentials — so the URL built from it named database `undefined`, and
+		// the DDL connection authenticated with nothing and retried thirty times.
+		// A created one was fine, which is why this only appeared on the second
+		// deploy.
+		return this.getPostgres(match.postgresId);
 	}
 
 	/**
@@ -557,9 +628,14 @@ export class DokployApi {
 	): Promise<DokployRedis | undefined> {
 		const instances = await this.listRedis(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-		return instances.find(
+		const match = instances.find(
 			(redis) => redis.name === name || redis.appName === normalizedName,
 		);
+
+		// Hydrated for the same reason the Postgres lookup is: the nested listing
+		// carries no credentials, so a found instance would resolve a URL with an
+		// undefined password in it.
+		return match ? this.getRedis(match.redisId) : undefined;
 	}
 
 	/**

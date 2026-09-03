@@ -42,8 +42,10 @@ import {
 	type ConstructManifest,
 	cacheTable,
 	cloudName,
+	cookieDomain,
 	type Declaration,
 	type DeclarationKind,
+	dependentsOf,
 	provideKey,
 } from '@geekmidas/manifest';
 import { resourceName } from '../reconcile/plan.js';
@@ -393,7 +395,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	secret: async (declaration, context) => {
 		if (declaration.kind !== 'secret') throw new WrongKind(declaration.kind);
 
-		const key = provideKey(declaration.id, 'value');
+		// The key the declaration publishes, not one derived here. A secret's key
+		// is `environmentCase(id)` — `AuthSecret` becomes `AUTH_SECRET` — and
+		// deriving `provideKey(id, 'value')` instead produced `AUTH_SECRET_VALUE`,
+		// which nothing reads. Keys come from the declaration for exactly this
+		// reason: what the build publishes and what the app reads cannot drift.
+		const key = declaration.provides?.[0];
+		if (!key) return { provides: {} };
 
 		return {
 			provides: {
@@ -419,7 +427,34 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const url = context.addresses?.[declaration.id];
 		if (!url) throw new SurfaceHasNoAddress(declaration.id);
 
-		return { provides: { [provideKey(declaration.id, 'url')]: url } };
+		// A surface publishes three facts, not one: where it answers, who may
+		// call it, and where a cookie it sets is readable. The last two are
+		// derived from its *inbound* edges — the constructs that declared they
+		// call it — which is the same derivation the local target makes and the
+		// reason neither is a list anybody maintains.
+		//
+		// Returning only the URL left `AUTH_TRUSTED_ORIGINS` and
+		// `AUTH_COOKIE_DOMAIN` unresolved, and Better Auth rejects an untrusted
+		// origin whether or not it is a browser.
+		const origins = [
+			...new Set(
+				dependentsOf(context.manifest, declaration.id)
+					.map((caller) => context.addresses?.[caller])
+					.filter((address): address is string => Boolean(address)),
+			),
+		].sort();
+
+		const domain = cookieDomain([url, ...origins]);
+
+		return {
+			provides: {
+				[provideKey(declaration.id, 'url')]: url,
+				[provideKey(declaration.id, 'trustedOrigins')]: origins.join(','),
+				...(domain
+					? { [provideKey(declaration.id, 'cookieDomain')]: domain }
+					: {}),
+			},
+		};
 	},
 };
 

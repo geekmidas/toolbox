@@ -110,6 +110,9 @@ describe('provisionDeclared', () => {
 		const { env } = await run(workspaceWith());
 
 		expect(Object.keys(env).sort()).toEqual([
+			// A surface publishes three facts, not one: where it answers, who may
+			// call it, and where its cookie is readable.
+			'API_TRUSTED_ORIGINS',
 			'API_URL',
 			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
