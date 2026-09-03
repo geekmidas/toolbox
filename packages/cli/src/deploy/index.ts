@@ -57,6 +57,8 @@ import {
 import { storeDokployRegistryId } from '../auth/credentials';
 import { buildCommand } from '../build/index';
 import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
+import type { SqlClient, Statement } from '../reconcile/provision.js';
+import { usesConstructs } from '../reconcile/workspace.js';
 import { readStageSecrets } from '../secrets/storage.js';
 import {
 	getAppBuildOrder,
@@ -65,6 +67,7 @@ import {
 	isDeployTargetSupported,
 } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
@@ -283,6 +286,62 @@ async function waitForPostgres(
  * ]);
  * ```
  */
+/**
+ * Run the manifest's DDL against a Dokploy Postgres.
+ *
+ * The cluster is only reachable from outside while an external port is
+ * published, so this opens one, applies, and leaves it as it found it. The
+ * alternative — running DDL from inside the network — needs a container to run
+ * it in, which is what `DatabaseBootstrap` is on AWS and what a Dokploy target
+ * has no equivalent for yet.
+ *
+ * The applier is the local target's, so every statement asks whether it is
+ * needed first: a redeploy is free, and a half-applied run recovers by being
+ * run again.
+ */
+async function applyDeclaredStatements(
+	api: DokployApi,
+	postgres: DokployPostgres,
+	serverHostname: string,
+	statements: readonly Statement[],
+): Promise<number> {
+	const externalPort = 5432;
+
+	await api.savePostgresExternalPort(postgres.postgresId, externalPort);
+	await api.deployPostgres(postgres.postgresId);
+	await waitForPostgres(
+		serverHostname,
+		externalPort,
+		postgres.databaseUser,
+		postgres.databasePassword,
+		postgres.databaseName,
+	);
+
+	// As the cluster master, which is the only credential that exists before any
+	// role does — the same reason the AWS bootstrap connects as one.
+	const client: SqlClient = {
+		async query(database, sql, values) {
+			const connection = new PgClient({
+				host: serverHostname,
+				port: externalPort,
+				user: postgres.databaseUser,
+				password: postgres.databasePassword,
+				database: database ?? postgres.databaseName,
+			});
+
+			await connection.connect();
+			try {
+				const result = await connection.query(sql, values as never[]);
+				return result.rows;
+			} finally {
+				await connection.end();
+			}
+		},
+	};
+
+	return applyDeclared(client, statements);
+}
+
 async function initializePostgresUsers(
 	api: DokployApi,
 	postgres: DokployPostgres,
@@ -1274,6 +1333,78 @@ export async function workspaceDeployCommand(
 		}
 	}
 
+	// Read before the declared block below, which needs it to work out where a
+	// surface will answer — that has to be known before any environment is
+	// saved, and it used to be decided inside the app loop, which is too late.
+	const dokployConfig = workspace.deploy.dokploy;
+
+	// ==================================================================
+	// The declared half: everything the construct manifest says exists
+	// ==================================================================
+	// Separate from the block above on purpose. That one deploys *applications*
+	// — images, registries, domains — which a project has whether or not it
+	// declares anything. This is what exists because the app said so, and it is
+	// skipped entirely for a project that has not adopted the model.
+	//
+	// It runs before any application environment is saved, because the URLs it
+	// resolves are what those applications read.
+	let declaredEnv: Record<string, string> = {};
+
+	if (usesConstructs(workspace)) {
+		logger.log('\n📦 Provisioning declared constructs...');
+
+		// Every surface answers on its process's address, so the address has to
+		// exist before the manifest is walked. Computed here rather than in the
+		// app loop, which is where it used to be decided and is too late.
+		const appUrls: Record<string, string> = {};
+		for (const appName of backendApps) {
+			const app = workspace.apps[appName];
+			if (!app) continue;
+
+			appUrls[appName] = `https://${resolveHost(
+				appName,
+				app,
+				stage,
+				dokployConfig,
+				false,
+			)}`;
+		}
+
+		const declared = await provisionDeclared({
+			api,
+			workspace,
+			projectId: project.projectId,
+			environmentId: environmentId as string,
+			stage,
+			appUrls,
+		});
+
+		declaredEnv = declared.env;
+
+		if (Object.keys(declaredEnv).length > 0) {
+			logger.log(
+				`   🔌 Resolved ${Object.keys(declaredEnv).length} declared URL(s)`,
+			);
+		}
+
+		// The DDL the provisioners deferred. Roles and tables need a connection
+		// to a cluster that only exists once the calls above have been made —
+		// which is why they were accumulated rather than run.
+		if (declared.statements.length > 0 && provisionedPostgres) {
+			const serverHostname = getServerHostname(creds.endpoint);
+			const created = await applyDeclaredStatements(
+				api,
+				provisionedPostgres,
+				serverHostname,
+				declared.statements,
+			);
+
+			logger.log(
+				`   🗄️  Applied ${declared.statements.length} statement(s), ${created} new`,
+			);
+		}
+	}
+
 	// ==================================================================
 	// Provision backup destination if configured
 	// ==================================================================
@@ -1322,7 +1453,6 @@ export async function workspaceDeployCommand(
 	// Track deployed app public URLs for frontend builds
 	const publicUrls: Record<string, string> = {};
 	const results: AppDeployResult[] = [];
-	const dokployConfig = workspace.deploy.dokploy;
 
 	// Track domain IDs and hostnames for DNS orchestration
 	const appHostnames = new Map<string, string>(); // appName -> hostname
@@ -1494,14 +1624,25 @@ export async function workspaceDeployCommand(
 					throw new Error(formatMissingVarsError(appName, missing, stage));
 				}
 
+				// Declared URLs win over anything sniffed or stored, which is the
+				// same precedence the local target applies: the manifest is the
+				// statement of what exists, and a value left over from before it
+				// was declared is exactly the drift this replaces.
+				//
+				// They are merged *after* validation rather than added to the
+				// required list, because the sniffer cannot see them — a construct
+				// reads its own key inside `@geekmidas/constructs`, so requiring
+				// them would fail every app that declares anything.
+				const withDeclared = { ...resolved, ...declaredEnv };
+
 				// Build env vars string for Dokploy
-				const envVars: string[] = Object.entries(resolved).map(
+				const envVars: string[] = Object.entries(withDeclared).map(
 					([key, value]) => `${key}=${value}`,
 				);
 
-				if (Object.keys(resolved).length > 0) {
+				if (Object.keys(withDeclared).length > 0) {
 					logger.log(
-						`      Resolved ${Object.keys(resolved).length} env vars: ${Object.keys(resolved).join(', ')}`,
+						`      Resolved ${Object.keys(withDeclared).length} env vars: ${Object.keys(withDeclared).sort().join(', ')}`,
 					);
 				}
 
