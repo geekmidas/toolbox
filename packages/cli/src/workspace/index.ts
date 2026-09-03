@@ -266,7 +266,12 @@ export function wrapSingleAppAsWorkspace(
 		root: cwd,
 		apps: { api: apiApp },
 		services: normalizedServices,
-		deploy: { default: 'dokploy' },
+		// Carried rather than replaced. A single-app project configures its
+		// deploy in the same shape a workspace does — endpoint, registry,
+		// domains — and hardcoding the default here silently discarded all of it,
+		// which surfaced as `resolveHost` refusing to name a host for a stage the
+		// config had no way to describe.
+		deploy: { default: 'dokploy', ...config.deploy },
 		shared: { packages: [] },
 		secrets: {},
 	};

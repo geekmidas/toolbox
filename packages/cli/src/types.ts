@@ -392,6 +392,19 @@ export interface GkmConfig {
 	 * }
 	 */
 	docker?: DockerConfig;
+	/**
+	 * Where this app deploys, and what the target needs to know.
+	 *
+	 * Absent until now, which meant a single-app project could not configure a
+	 * Dokploy deploy at all: the wrap that turns one into a workspace hardcoded
+	 * `{ default: 'dokploy' }` and dropped everything else, so there was no
+	 * endpoint, no registry and no domain — and `resolveHost` failed with "no
+	 * domain configured for stage" on a config that had nowhere to put one.
+	 *
+	 * The same shape a workspace config uses, so moving from one to the other is
+	 * a rename rather than a rewrite.
+	 */
+	deploy?: import('./workspace/types').DeployConfig;
 }
 
 export interface BuildOptions {

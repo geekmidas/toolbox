@@ -418,6 +418,29 @@ describe('getAppGkmConfig', () => {
 		expect(gkmConfig?.telescope).toBe(true);
 	});
 
+	it('carries a single-app config’s deploy settings through the wrap', () => {
+		// The wrap used to hardcode `{ default: 'dokploy' }` and drop the rest, so
+		// a single-app project had nowhere to put an endpoint, a registry or a
+		// domain — and `resolveHost` refused to name a host for a stage the config
+		// could not describe.
+		const wrapped = wrapSingleAppAsWorkspace(
+			{
+				routes: './src/**/*.ts',
+				deploy: {
+					default: 'dokploy',
+					dokploy: {
+						endpoint: 'http://example:3000',
+						domains: { production: 'example.test' },
+					},
+				},
+			} as never,
+			'/project',
+		);
+
+		expect(wrapped.deploy.dokploy?.domains?.production).toBe('example.test');
+		expect(wrapped.deploy.default).toBe('dokploy');
+	});
+
 	it('carries the workspace backends onto the app config', () => {
 		// The entry point reads these to decide which drivers to register, while
 		// the local target reads the same field to compose the URLs those drivers
