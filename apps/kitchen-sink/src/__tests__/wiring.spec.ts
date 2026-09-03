@@ -1,4 +1,6 @@
+import { provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { auth } from '../constructs/auth.js';
 import { getJson, harness } from './__helpers__/app.js';
 
 /**
@@ -43,6 +45,32 @@ describe('the application boots', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.text()).not.toContain('Not Found');
+	});
+
+	it('scopes a cookie to the domain its callers share', async () => {
+		// The property the local edge exists for. On `http://localhost:<port>`
+		// every address is one host with a different port, which shares no parent
+		// and derives no domain — a *different* cookie model from the deployed
+		// one rather than a less secure version of it. Behind the edge the
+		// surface and the site are siblings under the project's own name, and the
+		// cookie scopes across them exactly as it will in production.
+		//
+		// The auth server, because it is the surface that actually sets cookies —
+		// and the one whose caller is running: the API declares an edge to it, so
+		// the two are siblings the derivation can see. The API's own domain needs
+		// the *site* running, which under `gkm test` it is not.
+		//
+		// Through `provideKey`, never a literal: it is the same derivation the
+		// construct uses to publish the key, so the two cannot drift.
+		const { envParser } = await harness();
+
+		const { domain } = envParser
+			.create((get) => ({
+				domain: get(provideKey(auth.id, 'cookieDomain')).string().optional(),
+			}))
+			.parse();
+
+		expect(domain).toMatch(/^\.[^.]+\.localhost$/);
 	});
 
 	it('applies CORS from the surface rather than from a written list', async () => {

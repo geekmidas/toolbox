@@ -156,6 +156,18 @@ export async function ensureTrusted(
 	if (await isTrusted(url)) return;
 
 	if (options.configured !== true && !options.assumeYes) {
+		// Nothing to answer a prompt in CI, a hook, or a piped shell — and a
+		// setup that stops there waiting is worse than one that leaves the
+		// authority untrusted. Not recorded as declined, because nobody
+		// declined: the next interactive run should still ask.
+		if (!process.stdin.isTTY) {
+			logger.log(
+				'   Local https addresses are not trusted here. Run "gkm trust", ' +
+					'or set services.trustLocalCa.',
+			);
+			return;
+		}
+
 		// A recorded "no" is why this asks once rather than every start. There is
 		// no recorded "yes": trusting is checked directly above, so a yes that
 		// worked answers itself and a yes that did not should ask again.

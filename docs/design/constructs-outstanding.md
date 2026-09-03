@@ -274,11 +274,29 @@ read is still an S3 presign at the bucket. The proxy that could verify one is
 now a *replacement* for the reverse-proxy block rather than a new component,
 which is a much smaller job than it was.
 
-Also still open: surfaces and sites are not behind it. They answer on
-`http://localhost:<port>`, one host with many ports, so `cookieDomain` correctly
-derives nothing and the local cookie model is a *different* one rather than a
-less secure one. Moving them behind the edge is what would make `Secure`,
-`SameSite` and a shared parent domain real locally — and is the larger prize.
+**Surfaces and sites are behind it too**, which was the larger prize and is the
+reason the edge is not a file-server feature. `EDGE_KINDS` is the whole of the
+list, so adding a kind to it is adding it to the edge; a file server routes to
+the object store with its bucket rewritten in, while a surface and a site route
+to the process `gkm dev` started on the host.
+
+What that buys is the cookie model. On `http://localhost:<port>` every address
+is one host with a different port, which shares no parent, so `cookieDomain`
+correctly derived *nothing* — a different model from the deployed one rather
+than a less secure version of it. Behind the edge kitchen-sink resolves
+`AUTH_COOKIE_DOMAIN=.kitchen-sink.localhost`, and the trusted-origin list is the
+sibling's real origin rather than a port.
+
+Two things this made explicit, both now stated in code:
+
+- **The application cannot tell.** It reads whichever address was injected and
+  composes none, so `edge: false` falls back to `http://localhost:<port>` and
+  the path-style bucket address without a line of application code changing.
+  That is what makes this the target's decision rather than an API.
+- **Origins and cookie domains derive from *resolved* addresses**, not from the
+  ones the workspace assigned. `envFor` resolves every construct before any
+  surface reads its callers, because reading them as the loop reached them
+  would make the answer depend on the order the manifest was keyed in.
 
 ### 4.3 `--target=server` — *decided, unbuilt*
 

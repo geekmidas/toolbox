@@ -39,10 +39,63 @@ describe('sitesFor', () => {
 	});
 
 	it('points both at the one bucket behind them', () => {
-		expect(sitesFor(plan(), 'shop').map((s) => s.bucket)).toEqual([
-			'uploads',
-			'uploads',
+		// The bucket is a rewrite on a shared origin rather than part of either
+		// address — which is what lets two servers front one bucket at all.
+		expect(sitesFor(plan(), 'shop').map((s) => s.rewrite)).toEqual([
+			'/uploads{uri}',
+			'/uploads{uri}',
 		]);
+		expect(sitesFor(plan(), 'shop').map((s) => s.upstream)).toEqual([
+			'http://minio:9000',
+			'http://minio:9000',
+		]);
+	});
+
+	it('routes a surface and a site to the process serving them', () => {
+		// Not a container: `gkm dev` starts these on the host, so the edge has to
+		// leave Docker's network to reach them. Their addresses arrive as options
+		// because whatever started them assigned the ports.
+		const withSurface = {
+			Api: { kind: 'rest-api', id: 'Api', endpoints: [] },
+			Web: {
+				kind: 'site',
+				id: 'Web',
+				variant: 'static',
+				path: 'apps/web',
+				dependencies: [{ target: 'Api', kind: 'rest-api' }],
+			},
+		} as const satisfies ConstructManifest;
+
+		const sites = sitesFor(
+			planFor(withSurface, 'development', provisionOrder(withSurface)),
+			'shop',
+			{ Api: 'http://localhost:3000', Web: 'http://localhost:5173' },
+		);
+
+		expect(sites).toEqual([
+			{
+				host: 'api.shop.localhost',
+				upstream: 'http://host.docker.internal:3000',
+			},
+			{
+				host: 'web.shop.localhost',
+				upstream: 'http://host.docker.internal:5173',
+			},
+		]);
+	});
+
+	it('routes nothing to a surface nothing has started', () => {
+		// The ordinary state before `gkm dev` has decided where things listen.
+		const withSurface = {
+			Api: { kind: 'rest-api', id: 'Api', endpoints: [] },
+		} as const satisfies ConstructManifest;
+
+		expect(
+			sitesFor(
+				planFor(withSurface, 'development', provisionOrder(withSurface)),
+				'shop',
+			),
+		).toEqual([]);
 	});
 
 	it('separates stages by host rather than by path', () => {
@@ -50,7 +103,8 @@ describe('sitesFor', () => {
 		// two stages cannot answer on one address.
 		expect(sitesFor(plan('test'), 'shop')[0]).toEqual({
 			host: 'uploadsserver-test.shop.localhost',
-			bucket: 'uploads-test',
+			upstream: 'http://minio:9000',
+			rewrite: '/uploads-test{uri}',
 		});
 	});
 

@@ -151,6 +151,8 @@ export interface ReconcileOptions {
 	cache?: CacheBackend;
 	/** Containers no construct implies — the config exceptions. */
 	extraContainers?: readonly string[];
+	/** Whether the local edge fronts surfaces, sites and file servers. */
+	edge?: boolean;
 	/** Per-container image pins. */
 	images?: Readonly<Record<string, string>>;
 	/** Ports assigned by previous runs, from `.gkm/ports.json`. */
@@ -228,6 +230,7 @@ export async function reconcile(
 		events: options.events,
 		cache: options.cache,
 		extraContainers: options.extraContainers,
+		...(options.edge === undefined ? {} : { edge: options.edge }),
 	});
 
 	const composePath = join(root, COMPOSE_PATH);
@@ -251,7 +254,7 @@ export async function reconcile(
 	// The edge's config is part of what "converged" means: a file server added or
 	// a bucket renamed changes the routing without changing a container, and a
 	// hash that ignored it would leave the old routes in place.
-	const caddyfile = toCaddyfile(sitesFor(plan, project));
+	const caddyfile = toCaddyfile(sitesFor(plan, project, options.addresses));
 	const hash = planHash(plan, compose, { caddyfile });
 	const addresses = addressesFor(plan.containers, ports);
 	const env = envFor(plan, {

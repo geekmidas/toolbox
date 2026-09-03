@@ -25,13 +25,47 @@
 
 import type { Plan, PlannedResource } from './plan';
 
-/** The host a file server answers on, and where its objects really live. */
+/** One host on the edge, and what answers behind it. */
 export interface CaddySite {
-	/** e.g. `uploadsserver.kitchen-sink.localhost` */
+	/** e.g. `api.kitchen-sink.localhost` */
 	host: string;
-	/** The bucket, which becomes the path prefix rewritten in. */
-	bucket: string;
+	/** Where the request is sent, e.g. `http://minio:9000`. */
+	upstream: string;
+	/**
+	 * A path to rewrite to, where the upstream expects a different one.
+	 *
+	 * The bucket prefix on an object store is the case. A surface and a site
+	 * want none: they are already serving the paths the client asked for.
+	 */
+	rewrite?: string;
 }
+
+/**
+ * The kinds the edge serves.
+ *
+ * Everything that owns a *public address*. Deployed, each of these has a real
+ * hostname and a certificate, so this is what makes the local shape the same
+ * one rather than a near-enough one — and the application is indifferent
+ * either way, because it reads whichever address was injected and never
+ * composes one.
+ *
+ * Adding a kind here is the whole of adding it to the edge.
+ */
+export const EDGE_KINDS: Readonly<Record<string, true>> = {
+	'file-server': true,
+	'rest-api': true,
+	site: true,
+};
+
+/**
+ * How the edge reaches the host, from inside its container.
+ *
+ * A surface and a site are served by processes `gkm dev` starts on the host,
+ * not by containers — so the edge has to leave Docker's network to reach them.
+ * Docker Desktop resolves this name already; on Linux the compose definition
+ * maps it to the host gateway.
+ */
+const HOST_GATEWAY = 'host.docker.internal';
 
 /**
  * The suffix every local host shares.
@@ -50,23 +84,63 @@ export const LOCAL_TLD = 'localhost';
  * are a legitimate arrangement — two cache behaviours, one origin — and naming
  * the host after the bucket would make them collide.
  */
-export function sitesFor(plan: Plan, project: string): CaddySite[] {
+export function sitesFor(
+	plan: Plan,
+	project: string,
+	/**
+	 * Where surfaces and sites answer on the host, keyed by construct id.
+	 *
+	 * Assigned by whatever starts them rather than published by a container,
+	 * which is why they arrive here instead of being read off a port.
+	 */
+	addresses: Readonly<Record<string, string>> = {},
+): CaddySite[] {
 	const byId = new Map(plan.resources.map((r) => [r.id, r]));
 	const sites: CaddySite[] = [];
 
 	for (const resource of plan.resources) {
-		if (resource.kind !== 'file-server') continue;
+		if (!EDGE_KINDS[resource.kind]) continue;
 
-		const origin = resource.of ? byId.get(resource.of) : undefined;
-		if (!origin) continue;
+		const host = hostFor(resource, project);
 
-		sites.push({
-			host: hostFor(resource, project),
-			bucket: origin.name,
-		});
+		if (resource.kind === 'file-server') {
+			// The bucket is a prefix on the origin, never part of the address: the
+			// client asks for the key it stored.
+			const origin = resource.of ? byId.get(resource.of) : undefined;
+			if (!origin) continue;
+
+			sites.push({
+				host,
+				upstream: 'http://minio:9000',
+				rewrite: `/${origin.name}{uri}`,
+			});
+			continue;
+		}
+
+		// A surface or a site: a process on the host, at an address something
+		// else assigned. Without one there is nothing to route to — which is the
+		// ordinary state before `gkm dev` has decided where things listen.
+		const address = addresses[resource.id];
+		if (!address) continue;
+
+		const port = portOf(address);
+		if (!port) continue;
+
+		sites.push({ host, upstream: `http://${HOST_GATEWAY}:${port}` });
 	}
 
 	return sites;
+}
+
+/** The port a local address answers on, defaulting by scheme. */
+function portOf(address: string): string | undefined {
+	try {
+		const { port, protocol } = new URL(address);
+
+		return port || (protocol === 'https:' ? '443' : '80');
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -122,13 +196,24 @@ export function toCaddyfile(sites: readonly CaddySite[]): string {
 	}
 
 	const blocks = sites.map(
-		({ host, bucket }) => `
+		({ host, upstream, rewrite }) => `
 https://${host} {
 	tls internal
 
-	reverse_proxy http://minio:9000 {
-		rewrite /${bucket}{uri}
-		header_up Host {upstream_hostport}
+	reverse_proxy ${upstream} {${
+		rewrite
+			? `
+		rewrite ${rewrite}
+		# MinIO routes and signs on the Host header, so forwarding the requested
+		# hostname would make it look for a bucket named after the domain.
+		header_up Host {upstream_hostport}`
+			: `
+		# The application reads whatever address was injected, so it has to see
+		# the one a caller used — that is what makes a redirect, a cookie domain
+		# and a generated link point back here rather than at the upstream.
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}`
+	}
 	}
 }`,
 	);

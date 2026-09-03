@@ -22,6 +22,7 @@ import {
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
+import { EDGE_KINDS } from './caddyfile';
 
 /** The stage whose resources carry no suffix. */
 export const DEFAULT_STAGE = 'development';
@@ -278,6 +279,19 @@ export interface Plan {
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
 	/**
+	 * Whether the local edge fronts the addresses this plan resolves.
+	 *
+	 * On by default, because deployed every surface, site and file server has a
+	 * real hostname and a certificate, and the point of the local target is to
+	 * be the same shape rather than a near-enough one. Off falls back to
+	 * `http://localhost:<port>`.
+	 *
+	 * Config rather than declaration for the same reason `cache` is: the
+	 * application reads whichever address was injected and composes none, so it
+	 * cannot tell the difference.
+	 */
+	edge?: boolean;
+	/**
 	 * Where a declared cache lives, which decides both the container it needs
 	 * locally and the protocol its URL speaks.
 	 *
@@ -334,6 +348,8 @@ export function containerFor(
 	cache: CacheBackend = DEFAULT_CACHE,
 	/** Whether the declaration named a parent — see the `cache` branch. */
 	derived = false,
+	/** Whether the local edge exists — see the `file-server` branch. */
+	edge = true,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
@@ -341,6 +357,11 @@ export function containerFor(
 		// that database's.
 		return EVENT_CONTAINERS[events] ?? CONTAINERS.database;
 	}
+
+	// A file server answers on the edge, which is what gives it a host of its
+	// own. With the edge off it falls back to the object store that holds its
+	// objects — a path under MinIO, which works and is not the deployed shape.
+	if (kind === 'file-server') return edge ? 'caddy' : CONTAINERS.objects;
 
 	// The same shape: a cache in the database lives in the database's container.
 	if (kind === 'cache') {
@@ -383,6 +404,7 @@ export function planFor(
 			events,
 			cache,
 			'of' in declaration && typeof declaration.of === 'string',
+			options.edge !== false,
 		);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
@@ -431,6 +453,22 @@ export function planFor(
 				? { table: declaration.table }
 				: {}),
 		});
+	}
+
+	// The edge serves anything that owns a public address — a surface and a site
+	// as much as a file server. Added here rather than in `containerFor` because
+	// those two are containerless in every other sense: nothing runs them in
+	// Docker, and what the edge does is put a hostname and a certificate in
+	// front of a process on the host.
+	//
+	// `edge: false` opts out, and then every local address is
+	// `http://localhost:<port>` as before. The application cannot tell: it reads
+	// whichever address was injected and composes none.
+	if (
+		options.edge !== false &&
+		resources.some((r) => EDGE_KINDS[r.kind] === true)
+	) {
+		containers.add('caddy');
 	}
 
 	for (const extra of options.extraContainers ?? []) containers.add(extra);

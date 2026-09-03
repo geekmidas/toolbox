@@ -102,6 +102,11 @@ export function envFor(
 ): Record<string, string> {
 	const env: Record<string, string> = {};
 
+	// Resolved once, up front, because a surface's cookie domain and origin list
+	// are derived from *other constructs'* addresses — and reading them as the
+	// loop happened to reach them would make the answer depend on the order the
+	// manifest was keyed in.
+	const resolved: Record<string, string> = {};
 	for (const resource of plan.resources) {
 		const url = urlFor(
 			resource,
@@ -110,6 +115,11 @@ export function envFor(
 			options.project ?? '',
 			options.addresses,
 		);
+		if (url) resolved[resource.id] = url;
+	}
+
+	for (const resource of plan.resources) {
+		const url = resolved[resource.id];
 
 		// A surface carries the origins its callers may come from, and they are
 		// its inbound edges — nothing more. Better Auth's CSRF check applies to
@@ -118,7 +128,7 @@ export function envFor(
 		// graph rather than every app the workspace happens to run is what makes
 		// it the same list deployed, where no workspace is watching.
 		if (resource.kind === 'rest-api') {
-			Object.assign(env, surfaceEnv(resource, url, options.addresses));
+			Object.assign(env, surfaceEnv(resource, url, resolved));
 		}
 		if (url) env[resource.envKey] = url;
 
@@ -209,14 +219,25 @@ function publicEnv(
 function surfaceEnv(
 	resource: PlannedResource,
 	url: string | undefined,
-	addresses: Readonly<Record<string, string>> = {},
+	/**
+	 * Every construct's *resolved* address, keyed by id — not the raw ones the
+	 * workspace assigned.
+	 *
+	 * The difference is the feature. Behind the edge a surface and its callers
+	 * are `api.shop.localhost` and `console.shop.localhost`, which share a
+	 * parent and therefore a cookie; the addresses they were assigned are
+	 * `localhost:3000` and `localhost:5173`, which are one host with two ports
+	 * and share nothing. Deriving from the wrong one produces a local cookie
+	 * model that is *different* from the deployed one rather than matching it.
+	 */
+	resolved: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
 	if (!url) return {};
 
 	const origins = [
 		...new Set(
 			(resource.callers ?? [])
-				.map((caller) => addresses[caller])
+				.map((caller) => resolved[caller])
 				.filter((address): address is string => Boolean(address))
 				.map(originOf)
 				.filter((origin): origin is string => Boolean(origin)),
@@ -341,8 +362,20 @@ function urlFor(
 
 	// A surface answers on the app's own port, and a site on its dev server's —
 	// both assigned by the workspace, neither published by a container.
+	//
+	// Behind the edge when there is one, which is what gives them a hostname and
+	// a certificate rather than a port on localhost. The application cannot tell
+	// the difference: it reads whichever address was injected and composes none,
+	// so this is the target's decision alone.
 	if (resource.kind === 'rest-api' || resource.kind === 'site') {
-		return addresses[resource.id];
+		const address = addresses[resource.id];
+		const edge = plan.containers.includes('caddy')
+			? ports[primaryPortKey('caddy')]
+			: undefined;
+
+		return address && edge !== undefined
+			? `https://${hostFor(resource, project)}:${edge}`
+			: address;
 	}
 
 	if (!resource.container) return undefined;
@@ -416,7 +449,13 @@ function urlFor(
 			const origin = plan.resources.find((r) => r.id === resource.of);
 			if (!origin) return undefined;
 
-			return `https://${hostFor(resource, project)}:${port}`;
+			// With the edge off, the honest local answer is the address that
+			// works: a path under the object store. It is not the deployed shape,
+			// and the application still cannot tell — it reads the key it was
+			// given and never composes one.
+			return plan.containers.includes('caddy')
+				? `https://${hostFor(resource, project)}:${port}`
+				: `http://${LOCAL_HOST}:${port}/${origin.name}`;
 		}
 
 		case 'cache':

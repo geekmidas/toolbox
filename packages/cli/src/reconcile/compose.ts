@@ -207,10 +207,10 @@ function define(
 					'./caddy-sites:/etc/caddy/sites:ro',
 					'caddy-data:/data',
 				],
-				// The edge is useless before its origin answers, and Caddy caches
-				// a failed upstream lookup — so starting them in order is not
-				// only tidiness.
-				depends_on: ['minio'],
+				// A surface and a site are processes on the *host*, not containers,
+				// so the edge has to leave Docker's network to reach them. Docker
+				// Desktop resolves this name already; on Linux it needs saying.
+				extra_hosts: ['host.docker.internal:host-gateway'],
 				healthcheck: {
 					test: ['CMD', 'caddy', 'version'],
 					interval: '10s',
