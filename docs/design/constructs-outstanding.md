@@ -432,11 +432,13 @@ error.
 
 ---
 
-## 6b. Dokploy — *there is no constructs pipeline here at all*
+## 6b. Dokploy — *a pipeline now, and it has never run*
 
-**This is the largest gap in the repo, and it is not about the file server.**
+**This was the largest gap in the repo, and it is now the least verified thing
+in it.** The first slice is built; nothing has deployed.
 
-`packages/cli/src/deploy/` contains no reference to `reconcile`, `discover`,
+What the gap was, because the shape of the fix follows from it:
+`packages/cli/src/deploy/` contained no reference to `reconcile`, `discover`,
 `envFor`, or the construct manifest — checked, not remembered. It resolves
 environment entirely from the **sniffer**, which walks application code for
 `get('X')` calls. A construct reads its own key *inside* `@geekmidas/constructs`,
@@ -459,6 +461,61 @@ written as "should Dokploy become a Pulumi provider?", and it is still a good
 question — but it is now the *second* one. `fromManifest` is already a table of
 provisioners keyed by kind, which is exactly the shape a Dokploy target needs,
 and that is an argument for the provider rather than a separate concern.
+
+### What is built
+
+The provisioner table exists: `packages/cli/src/deploy/fromManifest.ts`, keyed by
+declaration kind over the REST wrapper, with `declared.ts` running it and the
+deploy applying what it defers. Covered today:
+
+| kind | on Dokploy |
+|------|-----------|
+| `database` | a Dokploy Postgres, plus roles from the shared generator |
+| `database-schema` | a schema in the parent's cluster, own role, own URL |
+| `database-reader` | the writer's endpoint through a read-only role |
+| `cache` | a table in the declared database, its name in the URL |
+| `secret` | derived from project and stage, stable across deploys |
+| `rest-api` | the domain Dokploy issued, via its own Traefik |
+| `objects`, `file-server`, `email`, `queue`, `topic` | **skipped** — no Dokploy primitive; Compose stacks, and a decision nobody has taken |
+
+Three properties worth stating because they were decisions, not accidents:
+
+- **The DDL is the shared one.** `roleStatements` and `cacheTableStatements`,
+  the same generators the local and AWS targets call. The hand-rolled `DO $$`
+  block in `initializePostgresUsers` is gated on *not* having adopted the model
+  and marked deprecated — its only remaining caller is §6c.1.
+- **A kind with no primitive is skipped, not fatal.** Refusing to deploy an app
+  because it also declares a bucket would be worse than deploying it without
+  one. The cost is honest: the key is absent, and the construct says so on first
+  use.
+- **Nothing has run against a real Dokploy server.** Twenty-seven assertions
+  cover the decisions against a fake REST wrapper. The decisions are verified;
+  the integration is not — the same distinction §8 draws for AWS.
+
+### Where the state is, and what the declared half does not put in it
+
+Deploy state is a `StateProvider`: `LocalStateProvider` writes
+`.gkm/deploy-<stage>.json` by default, and `state: { provider: 'ssm' }` wraps
+SSM Parameter Store as the source of truth with that file as a cache. It holds
+the Dokploy project and environment ids, application ids, service ids, per-app
+credentials, generated secrets, DNS records and backup state.
+
+**The declared half writes none of it**, and that is the interesting part. It
+finds a Postgres by name and creates one if absent, and it *derives* every
+password from `project:stage:role`. So there is nothing to remember: the name is
+the identity and the credential is a function. Reconciling twice converges
+without a file, which is the same property the local target has.
+
+That sharpens the question below rather than answering it. "Remembering what you
+created is the entire job of a Pulumi state file" is a strong argument for the
+half that genuinely remembers — domains, DNS records, backup destinations,
+application ids — and no argument at all for the half that does not. A provider
+wrapping the declared table would be adding state to something that had shed it.
+
+The cost of statelessness is worth writing down too: **a renamed construct
+orphans what the old name created.** `findOrCreate` makes a new Postgres and
+nothing removes the old one, because nothing recorded that it was ours. The
+local target has the same behaviour and it matters less there.
 
 ### The engine that exists
 
@@ -700,10 +757,12 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
 bill and the security model, and the rest follows them.
 
-1. **§6b, the Dokploy constructs pipeline** — the largest gap, and the one whose
-   failure mode is worst: a declared app deploys, starts, and fails at the first
-   request that needs a URL nothing resolved. Everything the model promises is
-   absent on the target most likely to be used first.
+1. **A real Dokploy deploy** — §6b's pipeline exists now and has never run
+   against a server. Six kinds provision and the decisions are covered by
+   twenty-seven assertions against a fake; what is unverified is the
+   integration, and it is cheap to find out. The external-port dance and whether
+   Dokploy's Postgres takes the role DDL as cleanly as a plain container are the
+   two things to expect trouble from.
 2. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
    in the repo, and everything below is easier to trust once one stack has come
    up.
