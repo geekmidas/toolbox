@@ -86,6 +86,7 @@ async function provision(
 		cache: 'db',
 		addresses: { Api: 'https://api.example.com' },
 		deferred: [],
+		clusters: {},
 		...overrides,
 	};
 

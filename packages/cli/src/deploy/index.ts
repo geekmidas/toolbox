@@ -83,6 +83,7 @@ import {
 	formatMissingVarsError,
 	validateEnvVars,
 } from './env-resolver.js';
+import type { DokployCluster } from './fromManifest';
 import { updateConfig } from './init';
 import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
@@ -287,6 +288,19 @@ async function waitForPostgres(
  * ```
  */
 /**
+ * @deprecated The pre-constructs path, kept only for a project that has not
+ * adopted the model.
+ *
+ * It writes its own `DO $$` block: one user per *app*, on a schema named after
+ * it, with grants spelled out here. A declared project gets one runtime/owner
+ * pair per declared database or tenant from `roleStatements`, the generator the
+ * local and AWS targets already share — so this is the last place three targets
+ * hold three definitions of the same split.
+ *
+ * It goes when the fullstack workspace declares its own half (§6c.1), which is
+ * the only remaining caller.
+ */
+/**
  * Run the manifest's DDL against a Dokploy Postgres.
  *
  * The cluster is only reachable from outside while an external port is
@@ -301,7 +315,7 @@ async function waitForPostgres(
  */
 async function applyDeclaredStatements(
 	api: DokployApi,
-	postgres: DokployPostgres,
+	postgres: DokployCluster,
 	serverHostname: string,
 	statements: readonly Statement[],
 ): Promise<number> {
@@ -1284,7 +1298,20 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	const perAppDbCredentials = new Map<string, AppDbCredentials>();
 
-	if (provisionedPostgres && backendApps.length > 0) {
+	// Skipped where the manifest owns the roles. `initializePostgresUsers` writes
+	// its own `DO $$` block — one user per *app*, on a schema named after it —
+	// while a declared project gets one runtime/owner pair per declared database
+	// or tenant, from the `roleStatements` generator the local and AWS targets
+	// share. Running both would create roles nothing connects as, under a second
+	// definition of the same split.
+	//
+	// It stays for a project that has not adopted the model, which is the only
+	// thing it was ever for.
+	if (
+		provisionedPostgres &&
+		backendApps.length > 0 &&
+		!usesConstructs(workspace)
+	) {
 		// Determine which backend apps need DATABASE_URL
 		const appsNeedingDb = backendApps.filter((appName) => {
 			const requirements = sniffedApps.get(appName);
@@ -1390,18 +1417,31 @@ export async function workspaceDeployCommand(
 		// The DDL the provisioners deferred. Roles and tables need a connection
 		// to a cluster that only exists once the calls above have been made —
 		// which is why they were accumulated rather than run.
-		if (declared.statements.length > 0 && provisionedPostgres) {
+		//
+		// Grouped by the cluster each belongs to, and *the manifest's* cluster
+		// rather than whichever Postgres happens to be around: a project may also
+		// have a legacy `services.postgres`, and applying a construct's roles to
+		// that one would create them where nothing connects.
+		if (declared.statements.length > 0) {
 			const serverHostname = getServerHostname(creds.endpoint);
-			const created = await applyDeclaredStatements(
-				api,
-				provisionedPostgres,
-				serverHostname,
-				declared.statements,
-			);
 
-			logger.log(
-				`   🗄️  Applied ${declared.statements.length} statement(s), ${created} new`,
-			);
+			for (const [databaseName, cluster] of Object.entries(declared.clusters)) {
+				const statements = declared.statements.filter(
+					(statement) => statement.database === databaseName,
+				);
+				if (statements.length === 0) continue;
+
+				const created = await applyDeclaredStatements(
+					api,
+					cluster,
+					serverHostname,
+					statements,
+				);
+
+				logger.log(
+					`   🗄️  ${databaseName}: applied ${statements.length} statement(s), ${created} new`,
+				);
+			}
 		}
 	}
 

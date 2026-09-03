@@ -24,6 +24,7 @@ import { cacheBackendOf } from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { DokployApi } from './dokploy-api';
 import {
+	type DokployCluster,
 	type DokployProvisionContext,
 	type Provisioned,
 	provisionerFor,
@@ -36,6 +37,14 @@ export interface DeclaredResult {
 	statements: Statement[];
 	/** What was provisioned, keyed by construct id. */
 	provisioned: Record<string, Provisioned>;
+	/**
+	 * The cluster each statement's database lives in, keyed by database name.
+	 *
+	 * The DDL has to run against the Postgres *the manifest created*. A project
+	 * may also have a legacy `services.postgres`, and applying a construct's
+	 * roles there would create them where nothing connects.
+	 */
+	clusters: Record<string, DokployCluster>;
 }
 
 export interface DeclaredOptions {
@@ -68,7 +77,12 @@ export async function provisionDeclared(
 	options: DeclaredOptions,
 ): Promise<DeclaredResult> {
 	const { workspace } = options;
-	const empty: DeclaredResult = { env: {}, statements: [], provisioned: {} };
+	const empty: DeclaredResult = {
+		env: {},
+		statements: [],
+		provisioned: {},
+		clusters: {},
+	};
 
 	if (!usesConstructs(workspace)) return empty;
 
@@ -93,6 +107,7 @@ export async function provisionDeclared(
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
 		...(options.secrets ? { secrets: options.secrets } : {}),
 		deferred: [],
+		clusters: {},
 	};
 
 	const env: Record<string, string> = {};
@@ -130,6 +145,7 @@ export async function provisionDeclared(
 			create: statement.sql,
 		})),
 		provisioned: context.provisioned,
+		clusters: context.clusters,
 	};
 }
 

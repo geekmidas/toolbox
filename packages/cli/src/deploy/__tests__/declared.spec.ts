@@ -91,6 +91,7 @@ describe('provisionDeclared', () => {
 			env: {},
 			statements: [],
 			provisioned: {},
+			clusters: {},
 		});
 	});
 
@@ -134,6 +135,24 @@ describe('provisionDeclared', () => {
 		expect(statements.every((s) => typeof s.create === 'string')).toBe(true);
 		expect(statements.map((s) => s.create)).toContainEqual(
 			expect.stringContaining('CREATE ROLE "orders_production"'),
+		);
+	});
+
+	it('records the cluster the manifest created, for the DDL to run against', async () => {
+		// Not whichever Postgres happens to be around. A project may also have a
+		// legacy `services.postgres`, and applying a construct's roles to that one
+		// would create them where nothing connects — which is what the first cut
+		// of this did.
+		const { clusters, statements } = await run(workspaceWith());
+
+		expect(Object.keys(clusters)).toEqual(['orders_production']);
+		expect(clusters.orders_production?.appName).toBe(
+			'orders_production-service',
+		);
+		// Every statement has a cluster to run against, which is the property
+		// that stops one being silently skipped.
+		expect(statements.every((s) => s.database && clusters[s.database])).toBe(
+			true,
 		);
 	});
 

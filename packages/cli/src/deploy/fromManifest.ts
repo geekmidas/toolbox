@@ -96,6 +96,24 @@ export interface DokployProvisionContext {
 	secrets?: Readonly<Record<string, string>>;
 	/** DDL accumulated by the provisioners, applied once at the end. */
 	deferred: DeferredStatement[];
+	/**
+	 * The Postgres each declared database resolved to, keyed by database name.
+	 *
+	 * Recorded because the deferred DDL has to run against *the cluster the
+	 * manifest created*, and nothing else knows which that is: a project may
+	 * also have a legacy `services.postgres`, and applying a construct's roles
+	 * to that one would create them where nothing connects.
+	 */
+	clusters: Record<string, DokployCluster>;
+}
+
+/** The half of a Dokploy Postgres a caller outside this module needs. */
+export interface DokployCluster {
+	postgresId: string;
+	appName: string;
+	databaseName: string;
+	databaseUser: string;
+	databasePassword: string;
 }
 
 type Provisioner = (
@@ -139,6 +157,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		);
 
 		const host = clusterHost(postgres);
+		context.clusters[postgres.databaseName] = postgres;
 		const schema = declaration.schema ?? 'app';
 		const runtime = name;
 		const owner = ownerRole(runtime);
