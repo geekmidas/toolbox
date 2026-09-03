@@ -13,5 +13,9 @@ import { defineProject } from 'vitest/config';
 export default defineProject({
 	test: {
 		name: 'cache',
+		// The Upstash suite talks to the HTTP proxy, which talks to the Redis
+		// behind it — both real, because a cache backend that behaves differently
+		// under test is the one thing a cache test must not do.
+		globalSetup: ['../testkit/test/cacheSetup.ts'],
 	},
 });

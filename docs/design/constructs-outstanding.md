@@ -386,8 +386,9 @@ provider coverage stops (`vercel/providers/dns-record.ts`,
 - One adapter shape across both targets — `fromManifest` is already a table of
   provisioners, and `--target=server` becomes another table rather than a
   parallel engine.
-- Better coverage where it is worst. Every currently failing test in this repo
-  lives in `deploy/`.
+- Better coverage where it is worst. `deploy/` is the least covered subsystem —
+  though no longer the failing one: those suites pass now that §7.4 starts the
+  emulator they are written against.
 
 **What has to be answered first**
 
@@ -510,21 +511,34 @@ like an empty database rather than an error.
 generators — the layering question that had held this up, answered by there
 being two callers rather than one.
 
-### 7.4 Test suites that need containers — *environment*
+### 7.4 Test suites that need containers — **resolved**
 
-The `@geekmidas/events` half is **resolved** — it has a vitest config, and its
-specs are discovered. What that surfaced remains: the RabbitMQ and pg-boss ones
-need brokers, as do the Postgres-bound integration specs in `constructs` and the
-LocalStack-bound `deploy` specs in `cli`.
+A suite now starts what it needs. `ensureServices` in
+`packages/testkit/test/services.ts` runs `docker compose up -d --wait` for the
+named services, and the packages that connect to something call it from their
+`globalSetup`: `db` and the Postgres-bound `constructs` specs get Postgres,
+`cache` gets Redis and the HTTP proxy in front of it, `cli` gets the AWS
+emulator its `deploy` specs drive.
 
-Worth knowing, because it is louder than a skipped suite: with nothing running,
-`vitest list` at the repo root fails during **collection** with an
-`ECONNREFUSED` aggregate error rather than reporting the tests it could not
-reach. A collect-time connection is why — the failure is in enumerating the
-suite, not in running it.
+**This is what `gkm test` already did for an application**, and the gap was that
+the toolbox's own suites did not use it. `gkm test` reconciles what an app
+declares and starts exactly those containers — which is why kitchen-sink's suite
+needs no setup at all. A package suite has no manifest to read, so its
+containers come from the repo's own `docker-compose.yml`, and nothing started
+that.
 
-None of this is new breakage — it is previously invisible breakage now visible,
-plus a documented port conflict with another project on 5432/4566/8079.
+What it cost was not "a few skipped tests". A `globalSetup` that connects at
+collection time takes the whole *project* down with `ECONNREFUSED` when its
+database is missing, so a package reported **zero** tests rather than the ones
+it could have run. `packages/cache` compounded it by having no vitest config at
+all: five suites, 79 tests, never once executed.
+
+The visible result: **the repo has no failing tests.** The 16 in `deploy/` were
+never broken — nothing had started the emulator they are written against, and
+they pass the moment something does. Recreating a container whose definition has
+drifted falls out of the same call, which matters more than it sounds: a
+container created from an older compose file, running and healthy with its ports
+unpublished, is unreachable in a way that reads like a code failure.
 
 ### 7.5 Dev-server resilience — *parked, documented*
 
