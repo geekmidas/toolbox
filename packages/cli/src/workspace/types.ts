@@ -141,6 +141,25 @@ export interface MailServiceConfig extends ServiceImageConfig {
  * ```
  */
 export interface ServicesConfig {
+	/**
+	 * Whether to install the local edge's certificate authority automatically.
+	 *
+	 * A declared `file-server` answers on `https://` locally, which needs a
+	 * certificate, which needs an authority this machine trusts. Everything gkm
+	 * starts trusts it already — reconcile injects `NODE_EXTRA_CA_CERTS` — but a
+	 * *browser* asks the operating system, and until the root is in its store a
+	 * local address reads as "not secure".
+	 *
+	 * Installing it needs `sudo`, so it is never silent by default:
+	 *
+	 * - unset — `gkm setup` asks once, on a machine that does not trust it yet,
+	 *   and remembers a "no" so it stops asking.
+	 * - `true` — install without asking. For a team that has decided, and for
+	 *   any machine where a prompt has nobody to answer it.
+	 * - `false` — never. Correct for CI, and for anyone who only ever reaches
+	 *   these addresses from code, which trusts the root without any of this.
+	 */
+	trustLocalCa?: boolean;
 	/** PostgreSQL database (default: postgres:18-alpine) */
 	db?: boolean | ServiceImageConfig;
 	/**

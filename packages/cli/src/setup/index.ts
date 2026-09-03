@@ -21,6 +21,7 @@ import {
 } from '../secrets/storage.js';
 import { isSSMConfigured, pullSecrets, pushSecrets } from '../secrets/sync.js';
 import type { StageSecrets } from '../secrets/types.js';
+import { ensureTrusted } from '../trust/index.js';
 import type { ComposeServiceName } from '../types.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
 import {
@@ -91,7 +92,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		// from what it declares. One that has not keeps the hand-maintained
 		// compose file — the change is adoptable in pieces, not a flag day.
 		if (usesConstructs(workspace)) {
-			await reconcileLocal(workspace, stage);
+			await reconcileLocal(workspace, stage, options);
 		} else {
 			const composeFile = join(workspace.root, 'docker-compose.yml');
 			if (existsSync(composeFile)) {
@@ -117,6 +118,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 async function reconcileLocal(
 	workspace: NormalizedWorkspace,
 	stage: string,
+	options: SetupOptions,
 ): Promise<void> {
 	const result = await reconcileWorkspace(workspace, { stage });
 
@@ -133,6 +135,20 @@ async function reconcileLocal(
 	logger.log(`🐳 Services: ${result.plan.containers.join(', ')}`);
 	for (const [container, address] of Object.entries(result.addresses)) {
 		logger.log(`   ${container}: ${address}`);
+	}
+
+	// Only where something actually answers on https. A project with no edge has
+	// no authority to trust and should never be asked about one.
+	const served = result.plan.resources.find((r) => r.kind === 'file-server');
+	const url = served ? result.env[served.envKey] : undefined;
+
+	if (url) {
+		await ensureTrusted(workspace.root, url, {
+			...(workspace.services.trustLocalCa === undefined
+				? {}
+				: { configured: workspace.services.trustLocalCa }),
+			...(options.yes ? { assumeYes: true } : {}),
+		});
 	}
 }
 

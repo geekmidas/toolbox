@@ -27,6 +27,7 @@ import {
 } from './secrets';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
+import { trustCommand } from './trust/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
@@ -63,6 +64,25 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('trust')
+	.description(
+		"Trust the local edge's certificate authority, so a browser accepts https",
+	)
+	.option('--dry-run', 'Print the commands instead of running them')
+	.action(async (options: { dryRun?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await trustCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);
