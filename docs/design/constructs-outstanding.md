@@ -298,12 +298,28 @@ Two things this made explicit, both now stated in code:
   surface reads its callers, because reading them as the loop reached them
   would make the answer depend on the order the manifest was keyed in.
 
-### 4.3 `--target=server` — *decided, unbuilt*
+### 4.3 `--target=server` — *the old decision is superseded*
 
-**Decision: MinIO, the same way local works.** The server target grows a MinIO
-container and the file server resolves path-style with the same bucket policy.
-Cheap, because the reconcile pipeline *is* the mechanism. The proxy in §4.2
-serves both targets when it lands.
+The recorded decision was **"MinIO, the same way local works — path-style, with
+the same bucket policy."** That no longer describes local: §4.2 landed, and a
+file server now answers on a host of its own over TLS. Keeping it would
+reintroduce a path-style address on exactly one target, which is the drift the
+model exists to remove.
+
+What replaces it depends on which server target, and they are not the same:
+
+- **A bare `--target=server`** — nothing supplies an ingress, so the same
+  generated Caddyfile is the answer. `sitesFor` → `toCaddyfile` already produces
+  it; what differs is the upstream and real certificates instead of the internal
+  CA. Cheap, and it keeps every target the same shape.
+- **Dokploy** — it *is* the ingress. It runs Traefik and issues Let's Encrypt
+  certificates, and the deploy path already creates domains with
+  `https: true, certificateType: 'letsencrypt'`. A second reverse proxy behind
+  the first would terminate TLS twice and give a route two places to be wrong.
+  So MinIO becomes a Dokploy service with a domain of its own, exactly as the
+  API does, and no Caddy.
+
+Neither is reachable yet, for a reason larger than the file server — see §6b.
 
 ### 4.4 A known asymmetry — *documented, no action*
 
@@ -416,7 +432,35 @@ error.
 
 ---
 
-## 6b. Dokploy as a Pulumi provider — *prototyped, undecided*
+## 6b. Dokploy — *there is no constructs pipeline here at all*
+
+**This is the largest gap in the repo, and it is not about the file server.**
+
+`packages/cli/src/deploy/` contains no reference to `reconcile`, `discover`,
+`envFor`, or the construct manifest — checked, not remembered. It resolves
+environment entirely from the **sniffer**, which walks application code for
+`get('X')` calls. A construct reads its own key *inside* `@geekmidas/constructs`,
+so there is no `get('UPLOADS_URL')` in an app to find: the same blind spot that
+was silently dropping 12 of 25 declared URLs in `gkm test` until §7.4's work.
+
+So a declared app deployed to Dokploy today gets **none** of the model. No
+database roles, no schema tenants, no cache table, no broker connection string,
+no bucket, and none of the declared URLs. The only buckets `deploy/` knows about
+are database *backup* destinations.
+
+The failure mode is the bad kind. Nothing provisions `Uploads`, nothing resolves
+`UPLOADS_URL`, and nothing *reports* it missing — because the sniffer never
+learned it was needed. The deploy succeeds, the app starts, and the first upload
+fails inside the construct at runtime.
+
+The two targets are therefore not two targets for one model: the AWS target
+reads the manifest and Dokploy is what came before it. Everything below was
+written as "should Dokploy become a Pulumi provider?", and it is still a good
+question — but it is now the *second* one. `fromManifest` is already a table of
+provisioners keyed by kind, which is exactly the shape a Dokploy target needs,
+and that is an argument for the provider rather than a separate concern.
+
+### The engine that exists
 
 `packages/cli/src/deploy/` is a deployment engine written by hand. It calls
 Dokploy's REST API, and it remembers what it created — `deploy/state.ts`,
@@ -656,15 +700,18 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
 bill and the security model, and the rest follows them.
 
-1. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
+1. **§6b, the Dokploy constructs pipeline** — the largest gap, and the one whose
+   failure mode is worst: a declared app deploys, starts, and fails at the first
+   request that needs a URL nothing resolved. Everything the model promises is
+   absent on the target most likely to be used first.
+2. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
    in the repo, and everything below is easier to trust once one stack has come
-   up. Re-running kitchen-sink locally against the new roles is the same point
-   in miniature and costs minutes.
-2. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
+   up.
+3. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
    is the largest remaining piece of correctness debt in the model.
-3. **§5 kitchen-sink frontend** — makes four already-built derivations observable
+4. **§5 kitchen-sink frontend** — makes four already-built derivations observable
    rather than merely tested, and is cheap.
-4. **§6c.1 the fullstack workspace** — the last path that still declares its
+5. **§6c.1 the fullstack workspace** — the last path that still declares its
    infrastructure twice, and the one a new user is most likely to meet, since it
    is one of the two templates the init prompt offers.
-5. **§7.2** — small, and the kind of gap that hides others.
+6. **§7.2** — small, and the kind of gap that hides others.
