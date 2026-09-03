@@ -10,6 +10,21 @@ export interface Database {
 		created_at: Generated<Date>;
 		updated_at: Generated<Date>;
 	};
+	/**
+	 * What the topic subscriber writes when it hears about a user.
+	 *
+	 * Fan-out with somewhere to land: the subscriber used to log, which is real
+	 * but not observable — a test could only scrape stdout for it. A row is the
+	 * same evidence in a form both a query and a person can read.
+	 */
+	notifications: {
+		id: Generated<string>;
+		user_id: string;
+		type: string;
+		body: string;
+		read_at: Date | null;
+		created_at: Generated<Date>;
+	};
 }
 
 /**

@@ -542,24 +542,46 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 
 - **Nothing has been deployed.** No AWS credentials in this environment; the AWS
   target's six provisioners are verified as pure decisions, not as a stack.
-- **The file server has not run against MinIO.** Docker was not up. The bucket
-  policy is asserted as a document, not as an applied policy.
-- **kitchen-sink has not been re-run end to end** since the API, file server,
-  auth surface and role changes. It was verified end to end from an empty volume
-  in an earlier session — magic-link sign-in through Mailpit, presigned MinIO
-  upload, pg-boss fan-out, cache in Redis — but not since. The role change is the
-  one most worth re-running: every local URL now carries a derived per-role
-  credential rather than the cluster master, and an existing dev database has
-  tables owned by the old one.
+- ~~**The file server has not run against MinIO.**~~ **Resolved.** It has, from
+  an empty volume: a presigned `PUT` that accepts bytes, the object readable
+  unsigned at the declared `open` prefix, and `403` on a path that is not on the
+  list. The bucket policy is applied and enforced, not asserted as a document.
+- ~~**kitchen-sink has not been re-run end to end.**~~ **Resolved, and it is a
+  suite now** rather than a session someone remembers — `pnpm test` in
+  `apps/kitchen-sink`, 28 assertions against the reconciled `test` stage, run
+  cold from a dropped database and warm. Magic-link sign-in through Mailpit,
+  `user.created` *and* `user.updated` fanning out into rows, the queue worker
+  sending the welcome mail exactly once, the cache serving and being
+  invalidated, and the presigned upload above.
+
+  It drives the **generated entry point** — the same `.gkm/server/app.ts` that
+  `gkm dev` runs — which is the half that had never been covered: driver
+  registration lives there, and a driver that disagrees with the URL the target
+  composed is invisible to every unit test in the repo. That was a real bug, and
+  it is now a test.
+
+  What the run found, all fixed: the cache backend ignored in four places, a
+  schema owned by a role that could not create in it, `services` dropped on the
+  way to the entry point, two caches in one database sharing a table, and
+  `gkm test` filtering away the very URLs it had just resolved.
 - **The database bootstrap has never run.** Its decisions are asserted as pure
   data — the event it composes is fed straight into the DDL generator in a test
   — but no Lambda has connected to a real cluster.
 - **No mail has been sent through SES**, so the SMTP password derivation is
   verified against the documented algorithm and not against the service. See
   §1.3.
-- **No cache backend has run outside its tests.** In particular the Postgres
-  cache's table DDL has never been applied, and the ElastiCache cluster has
-  never been created.
+- **No cache backend has run outside its tests** *except the Postgres one*,
+  which now does on every reconcile: the table is created in the tenant's
+  schema, owned by its owner, and read through the URL that carries its name.
+  The ElastiCache cluster has still never been created.
+- **The `sns` events backend has no local target.** `UnprovisionedEventsBackend`
+  says so rather than composing a URL that would fail at the first publish: SNS
+  and SQS are addressed by ARN, and nothing creates the topic, the queue or the
+  subscription in the emulator. The event clients already accept a custom
+  endpoint, so what is missing is a provisioning step beside the one that
+  creates buckets in MinIO — and until it lands, the claim that the same
+  handlers drain pg-boss here and SQS deployed is asserted rather than tested.
+  `pnpm test:sns` in kitchen-sink is the switch, and it fails on exactly this.
 
 ---
 

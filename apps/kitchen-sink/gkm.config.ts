@@ -52,8 +52,19 @@ export default defineConfig({
 	// which says where its cache lives in the graph rather than in config. A
 	// backend name is for a cache that named nowhere — and naming nowhere is what
 	// forces every reader to guess which database was meant.
+	//
+	// `events` is the opposite case, and belongs here: a queue and a topic are
+	// declared in code, but *what carries them* is a deployment choice, and the
+	// same handlers drain pg-boss locally and SQS deployed. Reading it from the
+	// environment is what lets the same suite run over both — `pnpm test` on
+	// pg-boss, `pnpm test:sns` on SNS and SQS against the local AWS emulator —
+	// which is the only way "the transport is chosen by the connection string"
+	// gets tested rather than asserted.
 	services: {
 		mail: 'ses',
+		events:
+			(process.env.KITCHEN_SINK_EVENTS as 'pgboss' | 'sns' | 'rabbitmq') ??
+			'pgboss',
 	},
 
 	runtime: 'node',

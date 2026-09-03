@@ -1,3 +1,4 @@
+import type { Cache } from '@geekmidas/constructs/cache';
 import { database } from './database.js';
 
 /**
@@ -22,4 +23,4 @@ import { database } from './database.js';
  * `SESSIONS_URL` is unchanged either way: the id decides the key, and the id is
  * the same.
  */
-export const sessions = database.cache('Sessions');
+export const sessions: Cache<'Sessions'> = database.cache('Sessions');
