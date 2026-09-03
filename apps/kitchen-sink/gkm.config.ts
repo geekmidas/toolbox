@@ -75,6 +75,22 @@ export default defineConfig({
 		imageName: 'kitchen-sink',
 	},
 
+	// Where this deploys, when it deploys.
+	//
+	// Read from the environment rather than written down, for the same reason
+	// `sst.config.ts` reads its sending identity that way: an endpoint and a
+	// domain name one person's server, and a literal here would be that person's
+	// infrastructure baked into everybody's example. Unset, the deploy says what
+	// is missing and names the stage.
+	deploy: {
+		default: 'dokploy',
+		dokploy: {
+			endpoint: process.env.DOKPLOY_ENDPOINT ?? '',
+			registry: 'ghcr.io/technanimals',
+			domains: { prod: process.env.KITCHEN_SINK_DOMAIN ?? '' },
+		},
+	},
+
 	providers: {
 		aws: {
 			apiGateway: { v2: true },

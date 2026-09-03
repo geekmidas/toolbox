@@ -20,13 +20,21 @@ const manifest = {
 } as const satisfies ConstructManifest;
 
 const api = {
-	async findOrCreatePostgres(name: string) {
+	async findOrCreatePostgres(
+		name: string,
+		_projectId: string,
+		_environmentId: string,
+		options?: { databaseName?: string },
+	) {
+		// `name` is the Dokploy service; `databaseName` is what Postgres calls it.
+		const databaseName = options?.databaseName ?? name;
+
 		return {
 			postgres: {
 				postgresId: `pg-${name}`,
 				appName: `${name}-service`,
-				databaseName: name,
-				databaseUser: `${name}_master`,
+				databaseName,
+				databaseUser: `${databaseName}_master`,
 				databasePassword: 'master',
 			},
 			created: true,
@@ -146,8 +154,12 @@ describe('provisionDeclared', () => {
 		const { clusters, statements } = await run(workspaceWith());
 
 		expect(Object.keys(clusters)).toEqual(['orders_production']);
+		// Keyed by the *database* name, while the service it lives in carries the
+		// kind — the two names the last fix separated.
+		// Keyed by the *database* name, while the service carries the scoped
+		// cloud name plus its kind — the two rules the last fix separated.
 		expect(clusters.orders_production?.appName).toBe(
-			'orders_production-service',
+			'production-shop-orders-postgres-service',
 		);
 		// Every statement has a cluster to run against, which is the property
 		// that stops one being silently skipped.

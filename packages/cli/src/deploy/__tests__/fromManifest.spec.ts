@@ -8,6 +8,7 @@ import {
 	type Provisioned,
 	provisionerFor,
 	SurfaceHasNoAddress,
+	serviceName,
 	UnresolvedParent,
 } from '../fromManifest';
 
@@ -49,8 +50,18 @@ function fakeApi() {
 	const created: string[] = [];
 
 	const api = {
-		async findOrCreatePostgres(name: string) {
+		async findOrCreatePostgres(
+			name: string,
+			_projectId: string,
+			_environmentId: string,
+			options?: { databaseName?: string },
+		) {
 			created.push(name);
+
+			// Faithful about the distinction the real API draws: `name` is the
+			// Dokploy service, `databaseName` is what Postgres calls the database.
+			// A fake that echoed the service name back hid the two being conflated.
+			const databaseName = options?.databaseName ?? name;
 
 			return {
 				postgres: {
@@ -58,8 +69,8 @@ function fakeApi() {
 					// The service's own name on the Docker network, which is what an
 					// app connects to — never the server's public address.
 					appName: `${name}-service`,
-					databaseName: name,
-					databaseUser: `${name}_master`,
+					databaseName,
+					databaseUser: `${databaseName}_master`,
 					databasePassword: 'master-password',
 				},
 				created: true,
@@ -107,6 +118,40 @@ async function provision(
 	return { context, env };
 }
 
+describe('serviceName', () => {
+	const scope = { stage: 'prod', app: 'toolbox' };
+
+	it('uses the same scoped rule the AWS target does', () => {
+		// `cloudName`, not a third convention. Deriving this from `resourceName`
+		// and swapping underscores agreed with neither the Postgres identifier
+		// rule nor the cloud one.
+		expect(serviceName(scope, 'KitchenSink', 'database')).toBe(
+			'prod-toolbox-kitchen-sink-postgres',
+		);
+		expect(serviceName(scope, 'Uploads', 'objects')).toBe(
+			'prod-toolbox-uploads-minio',
+		);
+	});
+
+	it('adds the kind, which AWS does not need and Dokploy does', () => {
+		// AWS resources are typed by service, so the scoped name alone is
+		// unambiguous there. A Dokploy project is one flat list, where an
+		// application and the database it talks to would otherwise collide.
+		expect(serviceName(scope, 'KitchenSink', 'database')).toContain(
+			'-postgres',
+		);
+	});
+
+	it('is not the name Postgres uses for the database', () => {
+		// Snake inside Postgres, because every identifier touching it is; kebab
+		// and scoped in the provider, because that is where collisions between
+		// stages and apps happen.
+		expect(serviceName(scope, 'KitchenSink', 'database')).not.toBe(
+			'kitchensink_prod',
+		);
+	});
+});
+
 describe('the database', () => {
 	it('connects a handler as the runtime role, never the cluster master', async () => {
 		// The security property the split exists for: a compromised handler
@@ -123,7 +168,9 @@ describe('the database', () => {
 		// same host is a credential on a network that did not need to see it.
 		const { env } = await provision();
 
-		expect(env.ORDERS_URL).toContain('@orders_production-service:5432/');
+		expect(env.ORDERS_URL).toContain(
+			'@production-shop-orders-postgres-service:5432/',
+		);
 	});
 
 	it('keeps the owner URL off every manifest edge', async () => {

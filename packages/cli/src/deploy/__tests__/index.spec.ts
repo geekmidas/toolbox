@@ -22,6 +22,33 @@ const BASE_URL = 'https://dokploy.example.com';
 // MSW server for mocking Dokploy API calls
 const server = setupServer();
 
+/**
+ * An empty project, which is how "nothing exists yet" is now asked.
+ *
+ * The per-kind `*.all?projectId=` endpoints return 404 on current Dokploy —
+ * resources live under environments — so the lookups read `project.one`. These
+ * tests used to pass because the old code caught that failure and returned an
+ * empty list, which is also what made every deploy create a duplicate.
+ */
+function emptyProject() {
+	return http.get(`${BASE_URL}/api/project.one`, () =>
+		HttpResponse.json({
+			projectId: 'proj_1',
+			name: 'myapp',
+			environments: [
+				{
+					environmentId: 'env_1',
+					name: 'production',
+					description: null,
+					applications: [],
+					postgres: [],
+					redis: [],
+				},
+			],
+		}),
+	);
+}
+
 describe('generateTag', () => {
 	it('should generate tag with stage prefix', () => {
 		const tag = generateTag('production');
@@ -117,6 +144,7 @@ describe('provisionServices', () => {
 
 	it('should provision postgres and return DATABASE_URL', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
 				const body = (await request.json()) as { databasePassword?: string };
 				return HttpResponse.json({
@@ -148,6 +176,7 @@ describe('provisionServices', () => {
 
 	it('should provision postgres and return individual connection parameters', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
 				const body = (await request.json()) as { databasePassword?: string };
 				return HttpResponse.json({
@@ -181,6 +210,7 @@ describe('provisionServices', () => {
 
 	it('should provision redis and return REDIS_URL', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
 				const body = (await request.json()) as { databasePassword?: string };
 				return HttpResponse.json({
@@ -210,6 +240,7 @@ describe('provisionServices', () => {
 
 	it('should provision redis and return individual connection parameters', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
 				const body = (await request.json()) as { databasePassword?: string };
 				return HttpResponse.json({
@@ -239,6 +270,7 @@ describe('provisionServices', () => {
 
 	it('should provision both postgres and redis', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
 				const body = (await request.json()) as { databasePassword?: string };
 				return HttpResponse.json({
@@ -281,6 +313,7 @@ describe('provisionServices', () => {
 
 	it('should handle postgres already exists error gracefully', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/postgres.create`, () => {
 				return HttpResponse.json(
 					{ message: 'Resource already exists' },
@@ -301,6 +334,7 @@ describe('provisionServices', () => {
 
 	it('should handle redis already exists error gracefully', async () => {
 		server.use(
+			emptyProject(),
 			http.post(`${BASE_URL}/api/redis.create`, () => {
 				return HttpResponse.json(
 					{ message: 'duplicate key error' },

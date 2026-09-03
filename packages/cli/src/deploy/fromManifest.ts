@@ -41,6 +41,7 @@ import {
 import {
 	type ConstructManifest,
 	cacheTable,
+	cloudName,
 	type Declaration,
 	type DeclarationKind,
 	provideKey,
@@ -132,6 +133,40 @@ function clusterHost(postgres: { appName: string }): string {
 	return postgres.appName;
 }
 
+/**
+ * What a resource is called *in the provider*, as opposed to inside Postgres.
+ *
+ * Two different names, and conflating them was the mistake worth naming. A
+ * database's Postgres identifier is `kitchensink_prod` — snake, because every
+ * identifier that touches it is — while a provider resource is kebab and
+ * scoped, so two stages or two apps sharing an account cannot collide.
+ *
+ * `cloudName` is that second rule, and it is the one the AWS target already
+ * uses. Deriving a Dokploy name from `resourceName` and swapping underscores,
+ * which is what this did first, invents a third convention that agrees with
+ * neither.
+ *
+ * The kind suffix is the one thing added on top, and only because Dokploy needs
+ * it: AWS resources are typed by service, so `prod-toolbox-kitchen-sink` is
+ * unambiguous there. A Dokploy project is one flat list, where the application
+ * and the database it talks to would otherwise be two entries with the same
+ * name.
+ */
+export function serviceName(
+	scope: { stage: string; app: string },
+	id: string,
+	kind: DeclarationKind,
+): string {
+	return `${cloudName(scope, id)}-${SERVICE_KIND[kind] ?? kind}`;
+}
+
+/** What each kind runs as, in the words the thing itself uses. */
+const SERVICE_KIND: Partial<Record<DeclarationKind, string>> = {
+	database: 'postgres',
+	objects: 'minio',
+	email: 'smtp',
+};
+
 const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	/**
 	 * A Postgres service, plus the roles that reach it.
@@ -143,9 +178,15 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	database: async (declaration, context) => {
 		if (declaration.kind !== 'database') throw new WrongKind(declaration.kind);
 
+		// Two names, deliberately: what Postgres calls the database, and what the
+		// Dokploy service list calls the service.
 		const name = resourceName(declaration.id, declaration.kind, context.stage);
 		const { postgres } = await context.api.findOrCreatePostgres(
-			name,
+			serviceName(
+				{ stage: context.stage, app: context.project },
+				declaration.id,
+				declaration.kind,
+			),
 			context.projectId,
 			context.environmentId,
 			{

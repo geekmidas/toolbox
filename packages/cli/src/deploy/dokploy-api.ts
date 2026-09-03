@@ -188,14 +188,32 @@ export class DokployApi {
 	 * List all applications in a project
 	 */
 	async listApplications(projectId: string): Promise<DokployApplication[]> {
-		try {
-			return await this.get<DokployApplication[]>(
-				`application.all?projectId=${projectId}`,
-			);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.applications);
+	}
+
+	/**
+	 * Everything of one kind in a project, across its environments.
+	 *
+	 * From `project.one`, because the per-kind `*.all?projectId=` endpoints
+	 * return **404** on current Dokploy: resources live under environments now.
+	 * Those calls used to be wrapped in `catch { return [] }`, which turned "I
+	 * could not ask" into "there are none" — and for a find-or-create that is
+	 * the worst available answer. Every deploy created a second application, a
+	 * second Postgres and a second Redis, silently, for as long as the project
+	 * existed.
+	 *
+	 * A failure here is not swallowed: creating a duplicate is worse than
+	 * stopping.
+	 */
+	private async listInProject<T>(
+		projectId: string,
+		pick: (environment: DokployEnvironment) => T[] | undefined,
+	): Promise<T[]> {
+		const project = await this.getProject(projectId);
+
+		return (project.environments ?? []).flatMap(
+			(environment) => pick(environment) ?? [],
+		);
 	}
 
 	/**
@@ -399,14 +417,7 @@ export class DokployApi {
 	 * List all Postgres databases in a project
 	 */
 	async listPostgres(projectId: string): Promise<DokployPostgres[]> {
-		try {
-			return await this.get<DokployPostgres[]>(
-				`postgres.all?projectId=${projectId}`,
-			);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.postgres);
 	}
 
 	/**
@@ -534,12 +545,7 @@ export class DokployApi {
 	 * List all Redis instances in a project
 	 */
 	async listRedis(projectId: string): Promise<DokployRedis[]> {
-		try {
-			return await this.get<DokployRedis[]>(`redis.all?projectId=${projectId}`);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.redis);
 	}
 
 	/**
@@ -888,6 +894,16 @@ export interface DokployEnvironment {
 	environmentId: string;
 	name: string;
 	description: string | null;
+	/**
+	 * What lives in this environment.
+	 *
+	 * `project.one` is the only endpoint that answers this. The per-kind
+	 * `*.all?projectId=` endpoints return 404 on current Dokploy — resources
+	 * moved under environments — which is why they are no longer asked.
+	 */
+	applications?: DokployApplication[];
+	postgres?: DokployPostgres[];
+	redis?: DokployRedis[];
 }
 
 export interface DokployProjectDetails extends DokployProject {

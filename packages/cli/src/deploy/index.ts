@@ -191,6 +191,13 @@ interface ServiceUrls {
 interface DokploySetupResult {
 	config: DokployDeployConfig;
 	serviceUrls?: ServiceUrls;
+	/**
+	 * The Dokploy environment the project's resources live in.
+	 *
+	 * Returned because the declared half needs it and had no way to ask: it was
+	 * computed here, used here, and dropped.
+	 */
+	environmentId: string;
 }
 
 /**
@@ -353,7 +360,31 @@ async function applyDeclaredStatements(
 		},
 	};
 
-	return applyDeclared(client, statements);
+	// Once, then once more.
+	//
+	// Publishing an external port *restarts* the container, and a TCP connect
+	// succeeds against an instance that is still settling — so the first attempt
+	// can die partway with `terminating connection due to administrator
+	// command`. Retrying is safe because the applier is convergent: every
+	// statement asks whether it is needed, so the second pass reapplies nothing
+	// the first one managed.
+	try {
+		return await applyDeclared(client, statements);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		logger.log(`   ⏳ Cluster still settling (${message}); retrying once...`);
+
+		await new Promise((resolve) => setTimeout(resolve, 10_000));
+		await waitForPostgres(
+			serverHostname,
+			externalPort,
+			postgres.databaseUser,
+			postgres.databasePassword,
+			postgres.databaseName,
+		);
+
+		return applyDeclared(client, statements);
+	}
 }
 
 async function initializePostgresUsers(
@@ -651,6 +682,34 @@ export async function provisionServices(
 /**
  * Ensure Dokploy is fully configured, recovering/creating resources as needed
  */
+/**
+ * The configured registry, among those the server already has.
+ *
+ * `docker.registry` is a host and optionally a namespace —
+ * `ghcr.io/technanimals` — while Dokploy stores the host alone. Comparing the
+ * first segment is what makes the two the same fact rather than two spellings
+ * of it.
+ */
+function matchingRegistry(
+	registries: readonly {
+		registryId: string;
+		registryName: string;
+		registryUrl: string;
+	}[],
+	configured: string | undefined,
+):
+	| { registryId: string; registryName: string; registryUrl: string }
+	| undefined {
+	if (!configured) return undefined;
+
+	const host = configured.replace(/^https?:\/\//, '').split('/')[0];
+
+	return registries.find(
+		(registry) =>
+			registry.registryUrl.replace(/^https?:\/\//, '').split('/')[0] === host,
+	);
+}
+
 async function ensureDokploySetup(
 	config: GkmConfig,
 	dockerConfig: DockerDeployConfig,
@@ -753,6 +812,7 @@ async function ensureDokploySetup(
 					registryId: storedRegistryId ?? undefined,
 				},
 				serviceUrls: provisionResult?.serviceUrls,
+				environmentId,
 			};
 		} catch {
 			logger.log('⚠ Project not found, will recover...');
@@ -873,6 +933,20 @@ async function ensureDokploySetup(
 					'   ⚠ No registry configured. Set docker.registry in gkm.config.ts',
 				);
 			}
+		} else if (matchingRegistry(registries, dockerConfig.registry)) {
+			// The config already answered this. `docker.registry` names the host
+			// images are pushed to, and a registry on the server with the same
+			// host is the one to use — asking which would be asking a question
+			// whose answer is written down, and it is what made a deploy
+			// impossible without a terminal.
+			const matched = matchingRegistry(registries, dockerConfig.registry);
+			if (!matched) throw new Error('unreachable');
+
+			registryId = matched.registryId;
+			await storeDokployRegistryId(registryId);
+			logger.log(
+				`   ✓ ${matched.registryName} (${matched.registryUrl}) — from docker.registry`,
+			);
 		} else {
 			// Show available registries and let user select or create new
 			logger.log('   Available registries:');
@@ -949,6 +1023,7 @@ async function ensureDokploySetup(
 	return {
 		config: dokployConfig,
 		serviceUrls: provisionResult?.serviceUrls,
+		environmentId,
 	};
 }
 
@@ -2149,6 +2224,93 @@ export async function deployCommand(
 		);
 		dokployConfig = setupResult.config;
 		finalRegistry = dokployConfig.registry ?? dockerConfig.registry;
+
+		// The declared half, before the build — which is the whole reason this
+		// block runs where it does. `bundleServer` validates that every key the
+		// app reads exists, and a construct's key exists only once something has
+		// resolved it. Provisioning after the build would fail on exactly the
+		// URLs provisioning is there to supply.
+		{
+			const { workspace } = await loadWorkspaceConfig();
+
+			if (usesConstructs(workspace)) {
+				logger.log('\n📦 Provisioning declared constructs...');
+
+				// The domain comes from the workspace's own deploy config, which a
+				// single-app project can now carry. `DokployDeployConfig` is the
+				// per-app half — endpoint, project, application — and has never
+				// held domains.
+				const workspaceDokploy = workspace.deploy.dokploy;
+				const appUrls: Record<string, string> = {};
+
+				if (workspaceDokploy?.domains?.[stage]) {
+					appUrls.api = `https://${resolveHost(
+						'api',
+						workspace.apps.api as never,
+						stage,
+						workspaceDokploy,
+						false,
+					)}`;
+				}
+
+				const creds = await getDokployCredentials();
+				const api = new DokployApi({
+					baseUrl: creds?.endpoint ?? dokployConfig.endpoint,
+					token: creds?.token ?? '',
+				});
+
+				const declared = await provisionDeclared({
+					api,
+					workspace,
+					projectId: dokployConfig.projectId,
+					environmentId: setupResult.environmentId,
+					stage,
+					appUrls,
+				});
+
+				if (Object.keys(declared.env).length > 0) {
+					logger.log(
+						`   🔌 Resolved ${Object.keys(declared.env).length} declared URL(s)`,
+					);
+
+					const { readStageSecrets, writeStageSecrets, initStageSecrets } =
+						await import('../secrets/storage');
+					const secrets =
+						(await readStageSecrets(stage)) ?? initStageSecrets(stage);
+
+					// Declared URLs win: the manifest is the statement of what
+					// exists, and a value left from before it was declared is the
+					// drift this replaces.
+					secrets.custom = { ...secrets.custom, ...declared.env };
+					await writeStageSecrets(secrets);
+				}
+
+				if (declared.statements.length > 0) {
+					const serverHostname = getServerHostname(
+						creds?.endpoint ?? dokployConfig.endpoint,
+					);
+
+					for (const [databaseName, cluster] of Object.entries(
+						declared.clusters,
+					)) {
+						const statements = declared.statements.filter(
+							(statement) => statement.database === databaseName,
+						);
+						if (statements.length === 0) continue;
+
+						const created = await applyDeclaredStatements(
+							api,
+							cluster,
+							serverHostname,
+							statements,
+						);
+						logger.log(
+							`   🗄️  ${databaseName}: applied ${statements.length} statement(s), ${created} new`,
+						);
+					}
+				}
+			}
+		}
 
 		// Save provisioned service URLs to secrets before build
 		if (setupResult.serviceUrls) {
