@@ -298,7 +298,7 @@ describe('generateDockerFiles', () => {
 		expect(files[0].content).not.toContain('minio');
 	});
 
-	it('should include localstack when events is sns', () => {
+	it('should include the AWS emulator when events is sns', () => {
 		const options = {
 			...baseOptions,
 			services: {
@@ -312,7 +312,10 @@ describe('generateDockerFiles', () => {
 		const files = generateDockerFiles(options, minimalTemplate);
 		const compose = files[0].content;
 		expect(compose).toContain('localstack');
-		expect(compose).toContain('SERVICES: sns,sqs');
+		expect(compose).toContain('floci/floci');
+		// No SERVICES list: the emulator enables everything, so there is nothing
+		// to keep in step with what the app actually publishes to.
+		expect(compose).not.toContain('SERVICES:');
 		expect(compose).toContain('LOCALSTACK_PORT');
 	});
 
