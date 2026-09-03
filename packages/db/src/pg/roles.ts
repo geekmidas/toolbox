@@ -99,6 +99,20 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 			sql: `CREATE SCHEMA ${ident(schema)} AUTHORIZATION ${ident(owner)}`,
 		},
 		{
+			// And the schema that was already there, which the guard above skips.
+			// A schema created before its roles existed is owned by whoever
+			// created it — the cluster master — and nothing below fixes that, so
+			// the owner cannot create in the schema it is supposed to own. The
+			// failure is `no schema has been selected to create in`, which names
+			// neither the schema nor the owner and reads like a missing
+			// `search_path`.
+			//
+			// Idempotent when the owner is already right, so it costs a statement
+			// rather than a check.
+			describe: `${schema} is owned by ${owner}`,
+			sql: `ALTER SCHEMA ${ident(schema)} OWNER TO ${ident(owner)}`,
+		},
+		{
 			describe: `${runtime} may use ${schema}`,
 			sql: `GRANT USAGE ON SCHEMA ${ident(schema)} TO ${ident(runtime)}`,
 		},

@@ -78,6 +78,11 @@ export function extraContainers(workspace: NormalizedWorkspace): string[] {
 		const container = SERVICE_CONTAINERS[key];
 		if (!container || DERIVED_CONTAINERS.has(container)) continue;
 		if (config === undefined || config === false) continue;
+		// A string names a *backend*, which says where the thing lives rather
+		// than asking for a container — and the plan has already decided which
+		// container that implies, including none. Reading it as a request is how
+		// `cache: 'db'` started a Redis for a cache that is a table in Postgres.
+		if (typeof config === 'string') continue;
 
 		extras.push(container);
 	}

@@ -316,6 +316,15 @@ export function getAppGkmConfig(
 	}
 
 	return {
+		// Workspace-level, and carried here deliberately. These name the backends
+		// a cache and a mailer resolve to, which the *entry point* reads when it
+		// decides which drivers to register — and the local target reads from the
+		// workspace when it composes the URLs those drivers receive. Dropping the
+		// field left the two reading different answers: a project on
+		// `cache: 'db'` was handed a `postgres://` URL by an entry that had
+		// registered only the Upstash driver, and every request failed with
+		// `UnregisteredCacheScheme`.
+		services: workspace.services,
 		constructs: app.constructs,
 		routes: app.routes ?? '',
 		functions: app.functions,

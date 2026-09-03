@@ -418,6 +418,31 @@ describe('getAppGkmConfig', () => {
 		expect(gkmConfig?.telescope).toBe(true);
 	});
 
+	it('carries the workspace backends onto the app config', () => {
+		// The entry point reads these to decide which drivers to register, while
+		// the local target reads the same field to compose the URLs those drivers
+		// receive. Dropping them here is how an app on `cache: 'db'` was handed a
+		// `postgres://` URL by an entry that had registered only Upstash.
+		const config: WorkspaceConfig = {
+			services: { cache: 'db', mail: 'ses' },
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const workspace = normalizeWorkspace(config, '/project');
+
+		expect(getAppGkmConfig(workspace, 'api')?.services).toEqual({
+			cache: 'db',
+			mail: 'ses',
+		});
+	});
+
 	it('should return undefined for frontend app', () => {
 		const config: WorkspaceConfig = {
 			apps: {

@@ -420,28 +420,20 @@ function urlFor(
 			// The scheme is the backend, and the backend is the same one deployed —
 			// which is what lets a driver registered at build time match the URL
 			// resolved at run time.
-			// A cache that named a database is in that one — not in whichever the
-			// backend config would have picked, and not in "the" database when
-			// an app declares two.
-			if (resource.of) {
-				const parent = plan.resources.find((r) => r.id === resource.of);
+			//
+			// A cache in a database has no address of its own: no second host, no
+			// second credential, just the database the app already declared — or
+			// the one it named, which wins over whichever the backend config would
+			// have picked, and settles "which one" when an app declares two.
+			if (resource.of || plan.cache === 'db') {
+				const database = cacheDatabase(resource, plan);
 
-				return parent
-					? urlFor(parent, plan, ports, project, addresses)
+				return database
+					? urlFor(database, plan, ports, project, addresses)
 					: undefined;
 			}
 
 			switch (plan.cache) {
-				case 'db': {
-					// The database the app already declared. No second address, no
-					// second credential: the cache is a table reached by the same
-					// role, which is why this backend costs nothing to run.
-					const database = plan.resources.find((r) => r.kind === 'database');
-					if (!database) return undefined;
-
-					return urlFor(database, plan, ports, project, addresses);
-				}
-
 				case 'elasticache':
 					// The wire protocol, unauthenticated locally. Deployed it is
 					// `rediss://` inside a VPC; the client is the same either way.
@@ -540,6 +532,33 @@ export function localRolePassword(
 		.update(`${project}:${plan.stage}:role:${role}`)
 		.digest('base64url')
 		.slice(0, 32);
+}
+
+/**
+ * The database a cache's rows live in, or nothing when it lives elsewhere.
+ *
+ * Two ways a cache ends up in a database, and only one of them is written on
+ * the declaration: naming a parent puts it in that one, and `cache: 'db'` puts
+ * a parentless cache in whichever database the app declared. Both have to give
+ * the same answer to two different readers — the URL composed here, and the
+ * table's DDL emitted by `provision.ts` — so the rule lives in one function.
+ *
+ * It did not, and the halves disagreed: the URL said `postgres://` while the
+ * DDL was skipped, leaving a cache client pointed at a table nothing created.
+ */
+export function cacheDatabase(
+	resource: PlannedResource,
+	plan: Plan,
+): PlannedResource | undefined {
+	if (resource.kind !== 'cache') return undefined;
+
+	if (resource.of) {
+		return plan.resources.find((r) => r.id === resource.of);
+	}
+
+	return plan.cache === 'db'
+		? plan.resources.find((r) => r.kind === 'database')
+		: undefined;
 }
 
 /**
