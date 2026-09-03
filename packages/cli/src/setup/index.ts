@@ -255,8 +255,19 @@ export function reconcileSecrets(
 		changed = true;
 	}
 
-	// Reconcile events backend
-	const eventsBackend = workspace.services.events;
+	// Reconcile events backend.
+	//
+	// Not on the declared path: reconcile composes the broker's connection
+	// string from the plan — pg-boss is a schema tenant of the database the app
+	// declared, so its address is that database's and there is no separate
+	// credential to hold. Generating one here would produce a second answer to
+	// a question the manifest already answers, and generating one it *cannot*
+	// answer is worse: with no `services.db` there are no postgres credentials
+	// to derive from, so naming `pgboss` explicitly threw where leaving it
+	// defaulted had quietly done nothing.
+	const eventsBackend = usesConstructs(workspace)
+		? undefined
+		: workspace.services.events;
 	if (eventsBackend && result.eventsBackend !== eventsBackend) {
 		result.eventsBackend = eventsBackend;
 

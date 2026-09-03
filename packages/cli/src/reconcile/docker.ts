@@ -10,6 +10,8 @@
  */
 
 import { execFile } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import type { Docker } from './index';
 
@@ -54,6 +56,35 @@ export const dockerCli: Docker = {
 			'--wait',
 			`--wait-timeout=${Math.floor(HEALTH_TIMEOUT_MS / 1000)}`,
 			...services,
+		]);
+	},
+
+	async copyOut(composePath, service, from, to) {
+		await mkdir(dirname(to), { recursive: true });
+		await run('docker', [
+			'compose',
+			'-f',
+			composePath,
+			'cp',
+			`${service}:${from}`,
+			to,
+		]);
+	},
+
+	async reload(composePath, service) {
+		// Caddy's own reload is graceful and validates first, so a config it
+		// refuses leaves the previous one serving rather than dropping the edge.
+		await run('docker', [
+			'compose',
+			'-f',
+			composePath,
+			'exec',
+			'-T',
+			service,
+			'caddy',
+			'reload',
+			'--config',
+			'/etc/caddy/Caddyfile',
 		]);
 	},
 

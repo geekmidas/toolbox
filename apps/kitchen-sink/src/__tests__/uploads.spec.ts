@@ -7,8 +7,27 @@ interface Presigned {
 
 const unique = () => `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 
-/** A presigned URL with its signature removed: the object's public address. */
-const unsigned = (url: string) => url.split('?')[0] as string;
+/**
+ * Where this stage's file server answers.
+ *
+ * The same key the application reads. Composing one here from a bucket name
+ * would be wrong the moment the stage suffix appears — the test stage's server
+ * is `uploadsserver-test` over the bucket `uploads-test` — and the 403 case
+ * below would then pass for the wrong reason, since a missing object and a
+ * private one are refused identically.
+ */
+function served(path: string): string {
+	const base = process.env.UPLOADS_SERVER_URL;
+
+	if (!base) {
+		throw new Error(
+			'No UPLOADS_SERVER_URL. The file server declares it, so this means the ' +
+				'suite is not running under `gkm test`.',
+		);
+	}
+
+	return `${base.replace(/\/+$/, '')}/${path}`;
+}
 
 /**
  * The file server, against the object store it was declared over.
@@ -64,12 +83,11 @@ describe('presigned uploads', () => {
 			body,
 		});
 
-		// The signed URL minus its signature *is* the public address. Composing
-		// one from a bucket name written here would be wrong the moment the stage
-		// suffix appears — the test stage's bucket is `uploads-test` — and the
-		// 403 case below would then pass for the wrong reason, since MinIO
-		// refuses a missing object and a private one identically.
-		const read = await fetch(unsigned(signed.url));
+		// Through the *edge*, not the bucket. This is the shape the file server
+		// has deployed — a domain serving objects — and locally it is a real
+		// certificate from Caddy's own CA, which the suite trusts because
+		// reconcile exported the root and pointed Node at it.
+		const read = await fetch(served(path));
 
 		expect(read.status).toBe(200);
 		expect(await read.text()).toBe(body);
@@ -94,9 +112,20 @@ describe('presigned uploads', () => {
 			body,
 		});
 
-		const read = await fetch(unsigned(signed.url));
+		const read = await fetch(served(path));
 
 		expect(read.status).toBe(403);
+	});
+
+	it('answers on a host of its own, over TLS', () => {
+		// Not a path under the object store, which is what it used to be. The
+		// difference is the whole point: `https://<server>.<project>.localhost`
+		// is the shape it has deployed, so a cookie domain, a CORS origin and a
+		// signed reference all look here the way they will there.
+		const url = new URL(served('brand/x.txt'));
+
+		expect(url.protocol).toBe('https:');
+		expect(url.hostname).toMatch(/^uploadsserver-test\..+\.localhost$/);
 	});
 
 	it('rejects an upload request that is not one', async () => {

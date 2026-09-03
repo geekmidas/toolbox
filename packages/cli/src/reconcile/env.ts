@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import { cacheTable, cookieDomain, provideKey } from '@geekmidas/manifest';
+import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
@@ -401,19 +402,21 @@ function urlFor(
 			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
 
 		case 'file-server': {
-			// Path style, not the deployed shape, and deliberately so. MinIO's
-			// virtual-host mode reads the leading label *as the bucket name*, so
-			// it only produces the CDN shape when the server's id and the
-			// bucket's agree — and never at all for a server fronting two
-			// buckets. The honest local answer is the address that works;
-			// producing the deployed shape needs a small proxy in front of MinIO,
-			// which is additive and changes no construct API. Note that an AWS
-			// emulator does not supply it: CloudFront emulation is control plane
-			// only, and what is needed here is the data plane.
+			// A host of its own, over TLS — the shape it has deployed, and the one
+			// MinIO alone cannot produce: its virtual-host mode reads the leading
+			// label *as the bucket name*, so it matches only when the server's id
+			// and the bucket's agree and never for a server fronting two buckets.
+			// The local edge in front of it does the mapping instead, and issues
+			// the certificate. An AWS emulator supplies neither: CloudFront
+			// emulation is control plane only, and this is the data plane.
+			//
+			// The port is in the address because ports are assigned rather than
+			// fixed, so two projects can run at once. Nothing that reads a
+			// hostname — a cookie domain, a CORS origin — looks at it.
 			const origin = plan.resources.find((r) => r.id === resource.of);
 			if (!origin) return undefined;
 
-			return `http://${LOCAL_HOST}:${port}/${origin.name}`;
+			return `https://${hostFor(resource, project)}:${port}`;
 		}
 
 		case 'cache':

@@ -22,6 +22,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import type { CacheBackend, EventsBackend } from '../types';
+import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
 import { bucketClient, pgClient } from './clients';
 import { type ComposeFile, composeFor, toYaml } from './compose';
 import { portKeys, portsOf, primaryPortKey } from './containers';
@@ -55,6 +56,38 @@ export type { PortAssignments } from './ports';
 export const COMPOSE_PATH = '.gkm/docker-compose.yml';
 
 /**
+ * The local edge's config, beside the compose file that mounts it.
+ *
+ * Relative in the compose volume, so it resolves against `.gkm/` wherever the
+ * project lives.
+ */
+export const CADDYFILE_PATH = '.gkm/Caddyfile';
+
+/**
+ * Where one stage's routes live, imported by the file above.
+ *
+ * Per stage because one edge serves every stage, the same way one Postgres
+ * holds `orders` and `orders_test`. A single file would mean `gkm test`
+ * deleting the routes `gkm dev` is serving.
+ */
+export const caddySitesPath = (stage: string) =>
+	`.gkm/caddy-sites/${stage}.caddy`;
+
+/**
+ * Where the local edge's root certificate is copied to.
+ *
+ * Exported so a process can be pointed at it without installing anything:
+ * `NODE_EXTRA_CA_CERTS` is the whole of the trust story for Node, and it needs
+ * no sudo. A browser is the case that still wants the root in the system store,
+ * which is a one-time `caddy trust` rather than something a reconcile should do
+ * on a developer's behalf.
+ */
+export const LOCAL_CA_PATH = '.gkm/caddy-root.crt';
+
+/** Where Caddy keeps the root of the CA it generated. */
+const CADDY_ROOT_IN_CONTAINER = '/data/caddy/pki/authorities/local/root.crt';
+
+/**
  * The Docker operations reconcile needs.
  *
  * Small on purpose: everything else about containers Docker already remembers,
@@ -78,6 +111,26 @@ export interface Docker {
 	up(composePath: string, services: readonly string[]): Promise<void>;
 	/** Whether every named service is running and passing its health check. */
 	healthy(composePath: string, services: readonly string[]): Promise<boolean>;
+	/**
+	 * Copy a file out of a running container.
+	 *
+	 * One case: the certificate authority the local edge generates. It lives in
+	 * the container's volume, and everything that has to *trust* it — Node, the
+	 * test suite, curl — lives outside.
+	 */
+	copyOut(
+		composePath: string,
+		service: string,
+		from: string,
+		to: string,
+	): Promise<void>;
+	/**
+	 * Ask a running service to re-read its configuration.
+	 *
+	 * The local edge is the case: its routes are a mounted file, and a container
+	 * that is already up will not notice one changing.
+	 */
+	reload(composePath: string, service: string): Promise<void>;
 }
 
 export interface ReconcileOptions {
@@ -195,7 +248,11 @@ export async function reconcile(
 		...(options.images ? { images: options.images } : {}),
 	});
 
-	const hash = planHash(plan, compose);
+	// The edge's config is part of what "converged" means: a file server added or
+	// a bucket renamed changes the routing without changing a container, and a
+	// hash that ignored it would leave the old routes in place.
+	const caddyfile = toCaddyfile(sitesFor(plan, project));
+	const hash = planHash(plan, compose, { caddyfile });
 	const addresses = addressesFor(plan.containers, ports);
 	const env = envFor(plan, {
 		ports,
@@ -203,6 +260,12 @@ export async function reconcile(
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
 		...(options.addresses ? { addresses: options.addresses } : {}),
 	});
+	// Pointed at whether or not it exists yet: the copy below fills it in, and
+	// anything that reads the environment starts after this returns.
+	if (plan.containers.includes('caddy')) {
+		env.NODE_EXTRA_CA_CERTS = join(root, LOCAL_CA_PATH);
+	}
+
 	const result: ReconcileResult = {
 		stage,
 		plan,
@@ -225,8 +288,40 @@ export async function reconcile(
 
 	await write(composePath, toYaml(compose));
 
+	// Before the containers: Caddy reads these at startup, and mounting a file
+	// that does not exist yet gets a directory instead.
+	if (plan.containers.includes('caddy')) {
+		await write(join(root, CADDYFILE_PATH), caddyfileRoot());
+		await write(join(root, caddySitesPath(stage)), caddyfile);
+	}
+
 	if (start && plan.containers.length > 0) {
 		await docker.up(composePath, plan.containers);
+	}
+
+	// A running Caddy does not notice a changed import, so the routes this
+	// reconcile just wrote are inert until it is told. Failing is not fatal: the
+	// container may have only this second come up, in which case it already read
+	// them.
+	if (start && plan.containers.includes('caddy')) {
+		await docker.reload(composePath, 'caddy').catch(() => {});
+	}
+
+	// After `up`, because Caddy generates its CA on first start — and only then,
+	// so copying earlier gets nothing.
+	if (start && plan.containers.includes('caddy')) {
+		await docker
+			.copyOut(
+				composePath,
+				'caddy',
+				CADDY_ROOT_IN_CONTAINER,
+				join(root, LOCAL_CA_PATH),
+			)
+			.catch(() => {
+				// Not fatal. Without it, `https://` local addresses fail to verify
+				// and say so clearly; taking the whole reconcile down would be a
+				// worse trade for a developer who is not using them yet.
+			});
 	}
 
 	// Only once the containers are up: there is nothing to create inside a

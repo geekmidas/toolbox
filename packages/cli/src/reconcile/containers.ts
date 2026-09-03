@@ -40,6 +40,11 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	'redis-http': 'hiett/serverless-redis-http:latest',
 	rabbitmq: 'rabbitmq:4-management-alpine',
 	localstack: 'floci/floci:latest',
+	// The local edge: TLS with its own CA, and host-based routing onto the
+	// bucket behind it. Not a CDN — what is missing locally is the *mapping*
+	// and the certificate, not caching, and a caching proxy would add an
+	// invalidation story no local stack needs.
+	caddy: 'caddy:2-alpine',
 };
 
 /** One port an image listens on. */
@@ -81,6 +86,11 @@ const PORTS: Readonly<Record<string, readonly ContainerPort[]>> = {
 		{ key: 'rabbitmq-management', inside: 15672, label: 'rabbitmq console' },
 	],
 	localstack: [{ key: 'localstack', inside: 4566, label: 'localstack' }],
+	// One port, and an assigned one rather than 443. The whole point of
+	// allocation is that two projects run at once, and an edge that insists on
+	// the privileged port puts that back — at the cost of a port in the URL,
+	// which no cookie or CORS rule looks at.
+	caddy: [{ key: 'caddy', inside: 443, label: 'https edge' }],
 };
 
 /** The ports a container needs published. Empty for one gkm does not know. */
@@ -118,6 +128,9 @@ export function volumeOf(container: string): string | undefined {
 		redis: 'redis-data',
 		rabbitmq: 'rabbitmq-data',
 		localstack: 'localstack-data',
+		// Holds the CA it generated. Losing it means a new root on every start,
+		// and a trust store full of dead authorities.
+		caddy: 'caddy-data',
 	};
 
 	return volumes[container];

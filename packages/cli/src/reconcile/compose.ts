@@ -193,6 +193,32 @@ function define(
 				},
 			};
 
+		case 'caddy':
+			return {
+				image,
+				restart: 'unless-stopped',
+				ports: published,
+				// The generated Caddyfile sits beside this file, so a relative
+				// mount resolves against `.gkm/` wherever the project lives.
+				volumes: [
+					'./Caddyfile:/etc/caddy/Caddyfile:ro',
+					// A directory, not a file: every stage writes its own routes into
+					// it, so `gkm test` cannot delete what `gkm dev` is serving.
+					'./caddy-sites:/etc/caddy/sites:ro',
+					'caddy-data:/data',
+				],
+				// The edge is useless before its origin answers, and Caddy caches
+				// a failed upstream lookup — so starting them in order is not
+				// only tidiness.
+				depends_on: ['minio'],
+				healthcheck: {
+					test: ['CMD', 'caddy', 'version'],
+					interval: '10s',
+					timeout: '5s',
+					retries: 5,
+				},
+			};
+
 		case 'mailpit':
 			return {
 				image,

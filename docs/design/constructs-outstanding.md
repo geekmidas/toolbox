@@ -232,19 +232,53 @@ distribution, a signed read comes from the bucket's own host. It is documented i
 the construct's docblocks rather than smoothed over, because a presign and a
 CloudFront signature share only the word "signed".
 
-### 4.2 The local CDN-shaped host — *work*
+### 4.2 The local CDN-shaped host — **resolved**
 
-`UPLOADS_SERVER_URL` resolves to MinIO's **path-style** address, which works and
-is not the deployed shape. MinIO's virtual-host mode reads the leading label *as
-the bucket name*, so it only produces the CDN shape when the server's id and the
-bucket's agree — and never for a server fronting two buckets.
+`UPLOADS_SERVER_URL` is `https://<server>.<project>.localhost:<port>` — a host
+of its own, over TLS, which is the shape it has deployed. A **Caddy** container
+does the mapping, derived from the declaration exactly as MinIO is: a
+`file-server` implies the edge, and the generated Caddyfile gives each declared
+server a host that rewrites its bucket in as a prefix.
 
-The honest fix is a small proxy in front of MinIO mapping host and path patterns
-onto buckets the way a distribution does. It is additive, changes no construct
-API, and is the only component that could also verify a signature locally. **An
-AWS emulator does not supply it:** CloudFront emulation in LocalStack and in
+Not a CDN, deliberately. Varnish, Apache Traffic Server and the rest are
+*caching* layers, and caching is not what was missing — the mapping and the
+certificate were. **An AWS emulator supplies neither:** CloudFront emulation in
 floci is control plane only — distributions, origins, behaviours, invalidations
 — which provisions a distribution that never serves a byte.
+
+The leading label is the *server's* stage-scoped name rather than the bucket's,
+which is what fixes the case MinIO could never serve: two servers over one
+bucket are a legitimate arrangement — two cache behaviours, one origin — and
+naming the host after the bucket collides them.
+
+Three things fell out of it that are worth more than the shape:
+
+- **Local HTTPS.** Caddy issues per-host certificates from its own CA.
+  Reconcile copies the root out of the container and injects
+  `NODE_EXTRA_CA_CERTS`, so Node and the test suite trust it with no `sudo` and
+  nothing installed; a browser wants a one-time `caddy trust`.
+- **One edge, every stage.** The root Caddyfile only imports; each stage writes
+  `.gkm/caddy-sites/<stage>.caddy`. A single file would have meant `gkm test`
+  deleting the routes `gkm dev` is serving — the first artefact where two
+  stages could collide, since one Postgres already holds `orders` and
+  `orders_test` without trouble.
+- **An assigned port, not 443.** The whole point of allocation is that two
+  projects run at once, and an edge insisting on the privileged port puts that
+  back. Nothing that reads a hostname — a cookie domain, a CORS origin — looks
+  at the port.
+
+Still open, and it is the interesting half: **the edge does not verify
+signatures.** Caddy cannot check a CloudFront signed URL or cookie — that is RSA
+against a key group, and nothing declares key material yet (§4.1) — so a signed
+read is still an S3 presign at the bucket. The proxy that could verify one is
+now a *replacement* for the reverse-proxy block rather than a new component,
+which is a much smaller job than it was.
+
+Also still open: surfaces and sites are not behind it. They answer on
+`http://localhost:<port>`, one host with many ports, so `cookieDomain` correctly
+derives nothing and the local cookie model is a *different* one rather than a
+less secure one. Moving them behind the edge is what would make `Secure`,
+`SameSite` and a shared parent domain real locally — and is the larger prize.
 
 ### 4.3 `--target=server` — *decided, unbuilt*
 

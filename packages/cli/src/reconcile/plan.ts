@@ -38,9 +38,14 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	'database-reader': 'postgres',
 	'database-schema': 'postgres',
 	objects: 'minio',
-	// The server answers on the same MinIO that holds the objects, because
-	// locally there is nothing else for it to answer on — see `urlFor`.
-	'file-server': 'minio',
+	// The server is not the bucket. Its own container is the local edge, which
+	// is what lets it answer on a *host* rather than on a path under MinIO —
+	// the shape it has deployed, and the one MinIO's virtual-host mode cannot
+	// produce because that mode reads the leading label as the bucket name.
+	//
+	// MinIO still runs: it is implied by the bucket this server is declared
+	// over, which is a parent it always has.
+	'file-server': 'caddy',
 	// Every mail backend speaks SMTP, so locally there is one answer whichever
 	// one is selected — which is the same reason the declaration has no
 	// `provider` field.

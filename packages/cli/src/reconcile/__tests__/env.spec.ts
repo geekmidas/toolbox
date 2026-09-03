@@ -283,18 +283,23 @@ describe('envFor', () => {
 		expect(env().AUTH_API_COOKIE_DOMAIN).toBeUndefined();
 	});
 
-	it('serves a bucket on the MinIO that holds it', () => {
-		// Path style, and deliberately not the deployed shape: MinIO's
-		// virtual-host mode reads the leading label as the bucket name, so it
-		// only produces the CDN shape when the server's id and the bucket's
-		// agree — and never for a server fronting two buckets.
+	it('serves a file server on a host of its own, over TLS', () => {
+		// The deployed shape — a domain serving a bucket — which MinIO alone
+		// cannot produce: its virtual-host mode reads the leading label as the
+		// bucket name, so it matches only when the server's id and the bucket's
+		// agree and never for a server fronting two buckets. The edge in front of
+		// it does the mapping, and issues the certificate.
 		expect(env().UPLOADS_SERVER_URL).toBe(
-			`http://localhost:${portsFor('development').minio}/uploads`,
+			`https://uploadsserver.localhost:${portsFor('development').caddy}`,
 		);
 	});
 
-	it('serves the stage-scoped bucket, not the plain one', () => {
-		expect(env('test').UPLOADS_SERVER_URL).toContain('/uploads-test');
+	it('gives each stage its own host rather than its own path', () => {
+		// The stage is in the *name*, which is the leading label — so two stages
+		// cannot answer on one address, and neither carries a bucket in its path.
+		expect(env('test').UPLOADS_SERVER_URL).toContain(
+			'https://uploadsserver-test.',
+		);
 	});
 
 	it('gives a site its API’s address under the name its bundler inlines', () => {
