@@ -444,10 +444,14 @@ export const email = new Email('${mail.id}', { templates: {} });
 /**
  * A cache, declared once.
  *
- * Reach it with \`.dependsOn([cache])\` for \`services.${kv.service}\`. Which
- * backend serves it — Upstash, ElastiCache, or the database — is
- * \`services.cache\` in \`gkm.config.ts\`, because the same code caches into
- * any of them.
+ * Reach it with \`.dependsOn([cache])\` for \`services.${kv.service}\`. This
+ * form says the app caches and leaves *where* to the deployment: which backend
+ * serves it — Upstash, ElastiCache, or a database — is \`services.cache\` in
+ * \`gkm.config.ts\`, because the same code caches into any of them.
+ *
+ * To say it caches in a particular database instead, declare it from that
+ * database — \`database.cache()\` — and entries become a table in it, in its
+ * schema and reached by its role, which config can no longer move.
  */
 export const cache = new Cache('${kv.id}');
 `,
