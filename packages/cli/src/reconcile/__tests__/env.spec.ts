@@ -350,11 +350,13 @@ describe('cache backends', () => {
 		expect(cacheEnv('elasticache').SESSIONS_URL).toMatch(/^redis:\/\//);
 	});
 
-	it('is the declared database for db', () => {
+	it('is the declared database for db, plus the table it reads', () => {
 		// No second address and no second credential: the cache is a table
-		// reached by the same role, which is why the backend costs nothing.
+		// reached by the same role, which is why the backend costs nothing. The
+		// table is in the URL because two caches in one database resolve the same
+		// connection string, and something has to say which is which.
 		const env = cacheEnv('db');
 
-		expect(env.SESSIONS_URL).toBe(env.ORDERS_URL);
+		expect(env.SESSIONS_URL).toBe(`${env.ORDERS_URL}?table=cache_sessions`);
 	});
 });

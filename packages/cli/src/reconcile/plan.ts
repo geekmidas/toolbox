@@ -443,19 +443,47 @@ export function planFor(
 		);
 	}
 
-	// A cache in the database needs one to live in, exactly as pg-boss does.
-	// Starting a Postgres to hold only a cache would be the container this
-	// design refuses to invent. A cache that named its parent is checked by
-	// `assertDerivations` instead, which is stricter — it names the database
-	// that is missing rather than reporting that some database is.
-	if (
-		cache === 'db' &&
-		resources.some((r) => r.kind === 'cache' && !r.of) &&
-		!resources.some((r) => r.kind === 'database')
-	) {
-		throw new CacheNeedsDatabase(
-			resources.filter((r) => r.kind === 'cache').map((r) => r.id),
-		);
+	// A cache the config placed in a database becomes an *edge*, here, once.
+	//
+	// `services.cache: 'db'` names something that exists in this graph, which
+	// makes it different in kind from `upstash` or `elasticache`: those name a
+	// backend nothing declares, while this one names a database sitting right
+	// there. So it is resolved to `of` — the same field `database.cache()` sets
+	// — and every reader downstream follows an edge instead of re-deriving the
+	// answer from a string.
+	//
+	// It also turns a silent guess into an error. "The declared database" is
+	// unambiguous with one and arbitrary with two, and picking whichever came
+	// first would put the cache in a database nobody chose.
+	//
+	// A cache that named its parent is untouched: the declaration is the
+	// stronger statement, and its parent is checked by `assertDerivations`,
+	// which names the database that is missing rather than reporting that some
+	// database is.
+	if (cache === 'db') {
+		const placeless = resources.filter((r) => r.kind === 'cache' && !r.of);
+
+		if (placeless.length > 0) {
+			const databases = resources.filter((r) => r.kind === 'database');
+			const [only] = databases;
+
+			// Starting a Postgres to hold only a cache would be the container this
+			// design refuses to invent.
+			if (!only) {
+				throw new CacheNeedsDatabase(
+					resources.filter((r) => r.kind === 'cache').map((r) => r.id),
+				);
+			}
+
+			if (databases.length > 1) {
+				throw new CacheIsAmbiguous(
+					placeless.map((r) => r.id),
+					databases.map((r) => r.id),
+				);
+			}
+
+			for (const resource of placeless) resource.of = only.id;
+		}
 	}
 
 	return { stage, events, cache, containers: [...containers], resources };
@@ -476,6 +504,31 @@ export class CacheNeedsDatabase extends Error {
 				`'elasticache'. Caches affected: ${ids.join(', ')}.`,
 		);
 		this.name = 'CacheNeedsDatabase';
+	}
+}
+
+/**
+ * `services.cache: 'db'` in an app that declares more than one database.
+ *
+ * The config says *a* database and the graph offers several, so there is no
+ * answer to give — and the wrong kind of failure would be to pick one, since a
+ * cache silently landing in the wrong database is a bug that surfaces as
+ * missing rows much later. The fix is a stronger statement in application code:
+ * `orders.cache('Sessions')` names the database, which is a fact about the
+ * application rather than a deployment choice.
+ */
+export class CacheIsAmbiguous extends Error {
+	constructor(
+		readonly ids: readonly string[],
+		readonly databases: readonly string[],
+	) {
+		super(
+			`A cache backed by the database needs to know which one, and this app ` +
+				`declares ${databases.length}: ${databases.join(', ')}. Declare the ` +
+				`cache from its database — e.g. ${databases[0]}.cache('Sessions') — ` +
+				`rather than with services.cache. Caches affected: ${ids.join(', ')}.`,
+		);
+		this.name = 'CacheIsAmbiguous';
 	}
 }
 

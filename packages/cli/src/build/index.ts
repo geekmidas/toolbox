@@ -23,6 +23,7 @@ import {
 } from '../dev';
 import {
 	CronGenerator,
+	cacheBackendsIn,
 	driversFor,
 	EndpointGenerator,
 	FunctionGenerator,
@@ -168,6 +169,22 @@ export async function buildCommand(
 				}
 		: undefined;
 
+	// `constructs` accepts the partitioned shape every other glob does; only the
+	// flat forms name a construct file.
+	const constructGlobs =
+		typeof config.constructs === 'string' || Array.isArray(config.constructs)
+			? config.constructs
+			: undefined;
+
+	// Discovery imports application code, so it runs once here and everything
+	// downstream reads what it wrote — a deploy config calling it would evaluate
+	// the whole runtime graph inside its own toolchain. It runs before the build
+	// context rather than after the generators because the entry point's drivers
+	// are decided from it.
+	const declared = constructGlobs
+		? await discover({ patterns: constructGlobs, cwd: process.cwd() })
+		: {};
+
 	const buildContext: BuildContext = {
 		envParserPath,
 		envParserImportPattern,
@@ -178,17 +195,17 @@ export async function buildCommand(
 		hooks,
 		production,
 		dockerServices,
-		// The entry point registers the drivers its target needs, so a URL's
-		// scheme can pick one without application code naming a provider.
-		// `constructs` accepts the partitioned shape every other glob does; only
-		// the flat forms name a construct file.
-		constructGlobs:
-			typeof config.constructs === 'string' || Array.isArray(config.constructs)
-				? config.constructs
-				: undefined,
+		constructGlobs,
 		cacheBackend,
 		emailBackend: emailBackendOf(backendConfig?.mail),
-		storageDrivers: driversFor({ appRoot: process.cwd(), cache: cacheBackend }),
+		// Both halves of "where does the cache live": the declaration for one
+		// that named its database, and `services.cache` for one that named
+		// nowhere. Reading only the config registers a driver for a protocol the
+		// target never composes.
+		storageDrivers: driversFor({
+			appRoot: process.cwd(),
+			cache: cacheBackendsIn(declared, cacheBackend),
+		}),
 		markOptional: options.markOptional ?? false,
 	};
 

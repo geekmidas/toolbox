@@ -88,6 +88,27 @@ export function serviceKey(id: string): string {
 }
 
 /**
+ * The table a cache keeps its entries in, when nobody named one.
+ *
+ * Derived from the cache's own id rather than fixed at `cache`, because a
+ * database may hold more than one and two caches sharing a table share a
+ * keyspace — `orders.cache('Sessions')` and `orders.cache('Rates')` would
+ * silently read each other's entries and evict each other's keys.
+ *
+ * Prefixed rather than suffixed so every cache sorts together in `\dt`, and
+ * prefixed at all so a cache named for a thing the application also stores —
+ * `orders.cache('Users')` — cannot collide with the table holding that thing.
+ *
+ * Read by whoever composes the URL and by whoever creates the table, so both
+ * default the same way.
+ *
+ * @example cacheTable('Sessions') // 'cache_sessions'
+ */
+export function cacheTable(id: string): string {
+	return `cache_${id.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}`;
+}
+
+/**
  * The physical name a target provisions a construct under — lowercase kebab,
  * scoped so two stages or apps sharing an account cannot collide.
  *

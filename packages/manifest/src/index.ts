@@ -77,6 +77,7 @@ export {
 	UnknownParent,
 } from './errors';
 export {
+	cacheTable,
 	canonicalId,
 	cloudName,
 	cookieDomain,

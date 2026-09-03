@@ -189,6 +189,45 @@ export class CacheNeedsVpc extends Error {
  * hold only a cache is the resource this design refuses to invent on your
  * behalf.
  */
+/**
+ * A cache's address: its database's URL, carrying the table it reads.
+ *
+ * The table travels in the URL rather than beside it because a database-backed
+ * cache has no address of its own — two caches in one database resolve the same
+ * connection string, so the parameter is the only thing that identifies which
+ * one a client is holding. Mirrors what the local target composes, so the same
+ * application code reads the same shape in both places.
+ */
+export function withCacheTable(url: string, table: string): string {
+	const parsed = new URL(url);
+	parsed.searchParams.set('table', table);
+
+	return parsed.toString();
+}
+
+/**
+ * `services.cache: 'db'` in an app that declares more than one database.
+ *
+ * Picking one would put the cache somewhere nobody chose, and the symptom —
+ * entries that are never found — appears long after the deploy reported
+ * success. The fix is a stronger statement in application code:
+ * `orders.cache('Sessions')` names the database.
+ */
+export class CacheIsAmbiguous extends Error {
+	constructor(
+		readonly id: string,
+		readonly databases: readonly string[],
+	) {
+		super(
+			`'${id}' is a cache backed by the database, and this app declares ` +
+				`${databases.length}: ${databases.join(', ')}. Declare the cache from ` +
+				`its database — e.g. ${databases[0]}.cache('${id}') — rather than ` +
+				`with services.cache.`,
+		);
+		this.name = 'CacheIsAmbiguous';
+	}
+}
+
 export class CacheNeedsDatabase extends Error {
 	constructor(readonly id: string) {
 		super(

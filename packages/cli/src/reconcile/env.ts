@@ -14,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
-import { cookieDomain, provideKey } from '@geekmidas/manifest';
+import { cacheTable, cookieDomain, provideKey } from '@geekmidas/manifest';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
@@ -421,15 +421,23 @@ function urlFor(
 			// which is what lets a driver registered at build time match the URL
 			// resolved at run time.
 			//
-			// A cache in a database has no address of its own: no second host, no
-			// second credential, just the database the app already declared — or
-			// the one it named, which wins over whichever the backend config would
-			// have picked, and settles "which one" when an app declares two.
-			if (resource.of || plan.cache === 'db') {
-				const database = cacheDatabase(resource, plan);
+			// A cache in a database has no address of its own: no second host and
+			// no second credential, just its parent's URL. Reached by following
+			// `of` and nothing else — `planFor` has already resolved a
+			// `cache: 'db'` backend into that edge, so there is one way a cache
+			// lands in a database and one way to find out.
+			if (resource.of) {
+				const parent = plan.resources.find((r) => r.id === resource.of);
+				const url = parent
+					? urlFor(parent, plan, ports, project, addresses)
+					: undefined;
 
-				return database
-					? urlFor(database, plan, ports, project, addresses)
+				// The parent's address plus the one thing that distinguishes this
+				// cache from another in the same database: its table. Two caches on
+				// one database resolve the same connection string, so without it a
+				// client built from the URL cannot tell them apart.
+				return url
+					? withTable(url, resource.table ?? cacheTable(resource.id))
 					: undefined;
 			}
 
@@ -535,30 +543,17 @@ export function localRolePassword(
 }
 
 /**
- * The database a cache's rows live in, or nothing when it lives elsewhere.
+ * A cache's address: its database's URL, carrying the table it reads.
  *
- * Two ways a cache ends up in a database, and only one of them is written on
- * the declaration: naming a parent puts it in that one, and `cache: 'db'` puts
- * a parentless cache in whichever database the app declared. Both have to give
- * the same answer to two different readers — the URL composed here, and the
- * table's DDL emitted by `provision.ts` — so the rule lives in one function.
- *
- * It did not, and the halves disagreed: the URL said `postgres://` while the
- * DDL was skipped, leaving a cache client pointed at a table nothing created.
+ * Appended rather than kept beside the URL as a second key, for the reason the
+ * design gives everywhere else — an address and what it opens are one fact, and
+ * two keys are one more thing to keep in step.
  */
-export function cacheDatabase(
-	resource: PlannedResource,
-	plan: Plan,
-): PlannedResource | undefined {
-	if (resource.kind !== 'cache') return undefined;
+function withTable(url: string, table: string): string {
+	const parsed = new URL(url);
+	parsed.searchParams.set('table', table);
 
-	if (resource.of) {
-		return plan.resources.find((r) => r.id === resource.of);
-	}
-
-	return plan.cache === 'db'
-		? plan.resources.find((r) => r.kind === 'database')
-		: undefined;
+	return parsed.toString();
 }
 
 /**

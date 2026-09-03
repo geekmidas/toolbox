@@ -18,12 +18,8 @@
 
 import { cacheTableStatements } from '@geekmidas/cache/postgres';
 import { ownerRole, readerRole, roleStatements } from '@geekmidas/db/pg/roles';
-import {
-	cacheDatabase,
-	localRole,
-	localRolePassword,
-	rootDatabase,
-} from './env';
+import { cacheTable } from '@geekmidas/manifest';
+import { localRole, localRolePassword, rootDatabase } from './env';
 import type { Plan, PlannedResource } from './plan';
 
 /** One thing to create, and how to tell whether it already exists. */
@@ -106,15 +102,17 @@ export function postgresStatements(
 		// so the owner creates it, not the handler's role, which may not create
 		// anything. The same reason the driver does not do it lazily.
 		//
-		// `cacheDatabase` rather than `resource.of`, because naming a parent is
-		// only one of the two ways a cache lands in a database: `cache: 'db'`
-		// puts a parentless one in whichever database the app declared, and that
-		// is the shape a project gets by configuring the backend rather than by
-		// wiring the construct. Reading only `of` here emitted the URL and not
-		// the table.
-		const cacheHome = cacheDatabase(resource, plan);
+		// `of` is the whole test: `planFor` resolves a `cache: 'db'` backend into
+		// that edge before anything reads the plan, so a cache lands in a
+		// database exactly one way and this does not have to know the config
+		// existed.
+		const cacheHome =
+			resource.kind === 'cache' && resource.of
+				? plan.resources.find((r) => r.id === resource.of)
+				: undefined;
+
 		if (cacheHome) {
-			statements.push(...cacheTable(resource, cacheHome, plan));
+			statements.push(...cacheTableDdl(resource, cacheHome, plan));
 		}
 
 		// A reader provisions nothing: it is a set of grants on an endpoint that
@@ -144,14 +142,17 @@ export function postgresStatements(
  * the master, whose `search_path` finds `public`, and the table it creates
  * there is the table it reads.
  */
-function cacheTable(
+function cacheTableDdl(
 	cache: PlannedResource,
 	home: PlannedResource,
 	plan: Plan,
 ): Statement[] {
 	const database = rootDatabase(home, plan);
 	const schema = home.roles === false ? undefined : home.schema;
-	const table = cache.table ?? (schema ? `${schema}.cache` : 'cache');
+	// The same default the URL carries — `cacheTable` is read by both, so the
+	// table a client reads and the table a target creates cannot drift.
+	const name = cache.table ?? cacheTable(cache.id);
+	const table = schema ? `${schema}.${name}` : name;
 
 	const created = cacheTableStatements({ table }).map((statement) => ({
 		id: cache.id,

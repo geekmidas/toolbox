@@ -1,6 +1,7 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import {
+	CacheIsAmbiguous,
 	CacheNeedsDatabase,
 	CacheNeedsProvider,
 	CacheNeedsVpc,
@@ -42,7 +43,59 @@ describe('cache', () => {
 			}),
 		);
 
-		expect(cache.provides().url).toBe('postgres://app@db/orders');
+		// The table travels in the URL: two caches in one database resolve the
+		// same connection string, so it is the only thing that says which one a
+		// client is holding.
+		expect(cache.provides().url).toBe(
+			'postgres://app@db/orders?table=cache_sessions',
+		);
+	});
+
+	it('gives two caches in one database a table each', () => {
+		// Sharing a table would mean sharing a keyspace: each would read the
+		// other's entries and evict the other's keys.
+		const twoCaches = {
+			...manifest,
+			Rates: {
+				kind: 'cache',
+				id: 'Rates',
+				of: 'Orders',
+				provides: ['RATES_URL'],
+			},
+		} as const satisfies ConstructManifest;
+
+		const urlOf = (id: 'Sessions' | 'Rates') =>
+			provisionerFor('cache')(
+				stack,
+				twoCaches[id],
+				{},
+				context({
+					cache: 'db',
+					manifest: twoCaches,
+					provisioned: {
+						Orders: provided({ url: 'postgres://app@db/orders' }),
+					},
+				}),
+			).provides().url;
+
+		expect(urlOf('Sessions')).not.toBe(urlOf('Rates'));
+		expect(urlOf('Rates')).toContain('table=cache_rates');
+	});
+
+	it('refuses to guess which database, rather than picking the first', () => {
+		const twoDatabases = {
+			...manifest,
+			Reports: { kind: 'database', id: 'Reports', provides: ['REPORTS_URL'] },
+		} as const satisfies ConstructManifest;
+
+		expect(() =>
+			provisionerFor('cache')(
+				stack,
+				twoDatabases.Sessions,
+				{},
+				context({ cache: 'db', manifest: twoDatabases }),
+			),
+		).toThrow(CacheIsAmbiguous);
 	});
 
 	it('refuses a database-backed cache with no database', () => {

@@ -134,13 +134,46 @@ describe('the cache table', () => {
 		expect(statements.every((s) => s.database === 'orders')).toBe(true);
 	});
 
+	it('gives two caches in one database a table each', () => {
+		// Sharing a table would mean sharing a keyspace: each would read the
+		// other's entries and evict the other's keys.
+		const twoCaches = {
+			Orders: {
+				kind: 'database',
+				id: 'Orders',
+				schema: 'app',
+				provides: ['ORDERS_URL'],
+			},
+			Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
+			Rates: {
+				kind: 'cache',
+				id: 'Rates',
+				of: 'Orders',
+				provides: ['RATES_URL'],
+			},
+		} as const satisfies ConstructManifest;
+
+		const created = postgresStatements(
+			planFor(twoCaches, 'development', provisionOrder(twoCaches), {
+				cache: 'db',
+			}),
+		).map((s) => s.create);
+
+		expect(created).toContainEqual(
+			expect.stringContaining('"app"."cache_sessions"'),
+		);
+		expect(created).toContainEqual(
+			expect.stringContaining('"app"."cache_rates"'),
+		);
+	});
+
 	it('creates it in the schema the reading role resolves names in', () => {
 		// The driver names the table unqualified and lets `search_path` place it.
 		// Created from the master connection, whose path is `public`, it lands
 		// where the application cannot see it.
 		expect(
 			postgresStatements(cachePlan('db')).map((s) => s.create),
-		).toContainEqual(expect.stringContaining('"app"."cache"'));
+		).toContainEqual(expect.stringContaining('"app"."cache_sessions"'));
 	});
 
 	it('hands it to the owner and grants the runtime role', () => {
@@ -150,11 +183,11 @@ describe('the cache table', () => {
 		const created = postgresStatements(cachePlan('db')).map((s) => s.create);
 
 		expect(created).toContainEqual(
-			'ALTER TABLE "app"."cache" OWNER TO "orders_owner"',
+			'ALTER TABLE "app"."cache_sessions" OWNER TO "orders_owner"',
 		);
 		expect(created).toContainEqual(
 			expect.stringContaining(
-				'GRANT SELECT, INSERT, UPDATE, DELETE ON "app"."cache"',
+				'GRANT SELECT, INSERT, UPDATE, DELETE ON "app"."cache_sessions"',
 			),
 		);
 	});
