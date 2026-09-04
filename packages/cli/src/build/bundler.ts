@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
 
 /**
@@ -39,6 +40,33 @@ export interface BundleResult {
 	outputPath: string;
 	/** Ephemeral master key for deployment (only if stage was provided) */
 	masterKey?: string;
+}
+
+/**
+ * The esbuild binary, resolved from this package rather than from PATH.
+ *
+ * It used to be `npx esbuild`, which is two assumptions: that esbuild is
+ * installed somewhere npx can find, and that the *app's* directory is where to
+ * look. Neither holds — the CLI did not depend on esbuild at all, so a deploy
+ * run from an app that had not installed it failed at the bundle step with
+ * `sh: esbuild: command not found`, after provisioning had already happened.
+ *
+ * The same fix `bin/gkm.mjs` makes for tsx: resolve from this package's own
+ * `node_modules`, so the tool the CLI shells out to is the one it depends on.
+ */
+function esbuildBinary(): string {
+	const require = createRequire(import.meta.url);
+
+	try {
+		// The package root, then its bin — `require.resolve('esbuild')` gives the
+		// JS entry point, which is a library rather than the CLI.
+		const pkg = require.resolve('esbuild/package.json');
+		return join(dirname(pkg), 'bin', 'esbuild');
+	} catch {
+		// Better a PATH lookup than a hard failure: a project that installed
+		// esbuild itself still works.
+		return 'esbuild';
+	}
 }
 
 /**
@@ -119,8 +147,7 @@ export async function bundleServer(
 
 	// Build command-line arguments for esbuild
 	const args = [
-		'npx',
-		'esbuild',
+		esbuildBinary(),
 		entryPoint,
 		'--bundle',
 		'--platform=node',

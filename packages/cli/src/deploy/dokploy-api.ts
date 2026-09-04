@@ -356,10 +356,21 @@ export class DokployApi {
 	/**
 	 * Save environment variables for an application
 	 */
-	async saveApplicationEnv(applicationId: string, env: string): Promise<void> {
+	async saveApplicationEnv(
+		applicationId: string,
+		env: string,
+		options?: { buildArgs?: string; buildSecrets?: string },
+	): Promise<void> {
+		// `buildArgs`, `buildSecrets` and `createEnvFile` are `nonoptional` on
+		// current Dokploy, the same way the docker provider's credentials are:
+		// they must be present, and null is how "none" is spelled. Omitting them
+		// is rejected with three anonymous validation errors that name no field.
 		await this.post('application.saveEnvironment', {
 			applicationId,
 			env,
+			buildArgs: options?.buildArgs ?? null,
+			buildSecrets: options?.buildSecrets ?? null,
+			createEnvFile: false,
 		});
 	}
 
@@ -384,10 +395,21 @@ export class DokployApi {
 			registryUrl?: string;
 		},
 	): Promise<void> {
+		// All five are `nonoptional` on current Dokploy — including the three
+		// credential fields, which are meaningless when a registry is selected by
+		// id. Omitting them is rejected; sending them as null is accepted. So
+		// they are always present and null is how "this registry needs none" is
+		// spelled.
 		await this.post('application.saveDockerProvider', {
 			applicationId,
 			dockerImage,
+			// Spread first: `registryId` selects a stored registry and is the
+			// usual case, and dropping it silently deploys an image nothing can
+			// pull. The three below are then filled in rather than replaced.
 			...options,
+			username: options?.username ?? null,
+			password: options?.password ?? null,
+			registryUrl: options?.registryUrl ?? null,
 		});
 	}
 

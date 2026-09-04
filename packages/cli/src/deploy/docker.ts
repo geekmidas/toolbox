@@ -116,29 +116,39 @@ async function buildImage(
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
+	// Where the lockfile is no longer decides anything here: the image copies a
+	// bundle that is already built, so a monorepo and a standalone app produce
+	// the same Dockerfile and the same one-directory build context.
 	const cwd = process.cwd();
-	const lockfilePath = findLockfilePath(cwd);
-	const lockfileDir = lockfilePath ? dirname(lockfilePath) : cwd;
-	const inMonorepo = lockfileDir !== cwd;
 
 	// Generate appropriate Dockerfile
-	if (appName || inMonorepo) {
-		logger.log('   Generating Dockerfile for monorepo (turbo prune)...');
-	} else {
-		logger.log('   Generating Dockerfile...');
-	}
-	await dockerCommand({});
+	// The bundle already exists: `gkm build` ran before this and produced a
+	// self-contained `server.mjs`. So the image copies it rather than rebuilding
+	// it, which is both faster and the only version that works from inside the
+	// source monorepo — `turbo prune` honours .gitignore, so a sibling package's
+	// `dist` never arrives, and rebuilding it in the image means bootstrapping
+	// the whole workspace to produce a bundle we are holding.
+	logger.log('   Generating Dockerfile for the pre-built bundle...');
+	await dockerCommand({ slim: true });
 
 	// Determine build context and Dockerfile path
 	// For workspaces with multiple apps, use per-app Dockerfile (Dockerfile.api, etc.)
 	const dockerfileSuffix = appName ? `.${appName}` : '';
-	const dockerfilePath = `.gkm/docker/Dockerfile${dockerfileSuffix}`;
+	// Absolute, because the Dockerfile is written under the *app* and the build
+	// may run from the workspace root — where `.gkm/docker/Dockerfile` resolves
+	// to a path that does not exist, and `docker build` says only
+	// `lstat .gkm: no such file or directory`.
+	const dockerfilePath = join(
+		cwd,
+		'.gkm',
+		'docker',
+		`Dockerfile${dockerfileSuffix}`,
+	);
 
-	// Build from workspace/monorepo root when we have a lockfile elsewhere or appName is provided
-	const buildCwd = lockfilePath && (inMonorepo || appName) ? lockfileDir : cwd;
-	if (buildCwd !== cwd) {
-		logger.log(`   Building from workspace root: ${buildCwd}`);
-	}
+	// The app's own directory, because the bundle is the only thing copied and
+	// it lives there. A monorepo root context was for the build-inside-the-image
+	// path, which this no longer takes.
+	const buildCwd = cwd;
 
 	// Build the build args string
 	const buildArgsString =
