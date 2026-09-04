@@ -104,6 +104,7 @@ export async function provisionDeclared(
 		stage: options.stage,
 		project: workspace.name,
 		cache: cacheBackendOf(workspace.services.cache),
+		...(workspace.services.events ? { events: workspace.services.events } : {}),
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
 		...(options.secrets ? { secrets: options.secrets } : {}),
 		deferred: [],
@@ -114,7 +115,7 @@ export async function provisionDeclared(
 
 	// Parents first. A derived construct reads its parent's resolved URL, and
 	// `provisionOrder` is what guarantees there is one to read.
-	for (const id of provisionOrder(manifest)) {
+	for (const id of carriersLast(provisionOrder(manifest), manifest)) {
 		const declaration = manifest[id];
 		if (!declaration) continue;
 
@@ -163,6 +164,33 @@ export async function applyDeclared(
 	const applied = await applyPostgres(client, statements);
 
 	return applied.filter((entry) => entry.created).length;
+}
+
+/**
+ * The provisioning order, with queues and topics moved to the end.
+ *
+ * `provisionOrder` walks `of` edges, and a carrier has none: a topic is not
+ * *derived from* a database, because under SNS it does not live in one. Where
+ * it lives is a fact about the backend, which is config — so the dependency is
+ * real under pg-boss and absent under SNS, and writing it into the declaration
+ * would state it in the one place that cannot know.
+ *
+ * Here it can. This runs where the backend is known, and the rule needs no
+ * branch on it: nothing depends on a carrier. A queue's worker and a topic's
+ * subscribers are *bound* to it rather than dependent on it, which is why
+ * neither holds a key of its own — so a carrier can always go last, and under
+ * pg-boss that is exactly late enough for the database it reads to be there.
+ */
+function carriersLast(
+	ordered: readonly string[],
+	manifest: ConstructManifest,
+): string[] {
+	const carries = (id: string) => {
+		const kind = manifest[id]?.kind;
+		return kind === 'queue' || kind === 'topic';
+	};
+
+	return [...ordered.filter((id) => !carries(id)), ...ordered.filter(carries)];
 }
 
 /**

@@ -42,23 +42,39 @@ export interface BundleResult {
 }
 
 /**
- * Collect all required environment variables from constructs.
- * Uses the SnifferEnvironmentParser to detect which env vars each service needs.
+ * Collect the environment variables a build cannot proceed without.
+ *
+ * Uses the SnifferEnvironmentParser to detect which env vars each service
+ * reads, and keeps only the ones it cannot do without. `markOptional` is what
+ * separates them: the sniffer already knows which reads went through
+ * `.optional()` or `.default()`, and asking for that distinction is the
+ * difference between a build that stops and one that proceeds correctly.
+ *
+ * Without it, a key that is *absent by design* failed the build. A surface
+ * publishes `AUTH_COOKIE_DOMAIN` only when there is a domain to widen a cookie
+ * to — one host has nothing to share it with, so the derivation correctly
+ * yields nothing, and Better Auth reads it as optional for exactly that
+ * reason. Treating every sniffed read as required made the honest answer
+ * indistinguishable from a missing secret.
  *
  * @param constructs - Array of constructs to analyze
- * @returns Deduplicated array of required environment variable names
+ * @returns Deduplicated, sorted names of the required variables
  */
 async function collectRequiredEnvVars(
 	constructs: Construct[],
 ): Promise<string[]> {
-	const allEnvVars = new Set<string>();
+	// A key read optionally by one construct and required by another stays
+	// required: the strictest read is the one that fails at runtime, and taking
+	// the union of the required reads is what says so.
+	const required = new Set<string>();
 
 	for (const construct of constructs) {
-		const envVars = await construct.getEnvironment();
-		envVars.forEach((v) => allEnvVars.add(v));
+		for (const name of await construct.getEnvironment({ markOptional: true })) {
+			if (!name.endsWith('?')) required.add(name);
+		}
 	}
 
-	return Array.from(allEnvVars).sort();
+	return Array.from(required).sort();
 }
 
 /**

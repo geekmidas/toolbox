@@ -224,7 +224,19 @@ async function waitForPostgres(
 ): Promise<void> {
 	for (let i = 0; i < maxRetries; i++) {
 		try {
-			const client = new PgClient({ host, port, user, password, database });
+			// Bounded, because the interesting failure is not a refused connection
+			// but a dropped one: while the container restarts around a port change,
+			// the host drops the SYN rather than answering it, and an unbounded
+			// connect waits out the OS timeout — a minute and a quarter — and then
+			// reports ETIMEDOUT from inside a retry loop that never got to retry.
+			const client = new PgClient({
+				host,
+				port,
+				user,
+				password,
+				database,
+				connectionTimeoutMillis: 5_000,
+			});
 			await client.connect();
 			await client.end();
 			return;
@@ -238,47 +250,6 @@ async function waitForPostgres(
 	throw new Error(`Postgres not ready after ${maxRetries} retries`);
 }
 
-/**
- * Initialize Postgres with per-app users and schemas.
- *
- * This function implements the same user/schema isolation pattern used in local
- * dev mode (see docker/postgres/init.sh). It:
- *
- * 1. Temporarily enables the external Postgres port
- * 2. Connects using master credentials
- * 3. Creates each user with appropriate schema permissions
- * 4. Disables the external port for security
- *
- * Schema assignment follows this pattern:
- * - `api` app: Uses `public` schema (shared tables, migrations run here)
- * - Other apps: Get their own schema with `search_path` configured
- *
- * @param api - The Dokploy API client
- * @param postgres - The provisioned Postgres service details
- * @param serverHostname - The Dokploy server hostname (for external connection)
- * @param users - Array of users to create with their schema configuration
- *
- * @example
- * ```ts
- * await initializePostgresUsers(api, postgres, 'dokploy.example.com', [
- *   { name: 'api', password: 'xxx', usePublicSchema: true },
- *   { name: 'auth', password: 'yyy', usePublicSchema: false },
- * ]);
- * ```
- */
-/**
- * @deprecated The pre-constructs path, kept only for a project that has not
- * adopted the model.
- *
- * It writes its own `DO $$` block: one user per *app*, on a schema named after
- * it, with grants spelled out here. A declared project gets one runtime/owner
- * pair per declared database or tenant from `roleStatements`, the generator the
- * local and AWS targets already share — so this is the last place three targets
- * hold three definitions of the same split.
- *
- * It goes when the fullstack workspace declares its own half (§6c.1), which is
- * the only remaining caller.
- */
 /**
  * Run the manifest's DDL against a Dokploy Postgres.
  *
@@ -395,6 +366,7 @@ async function applyDeclaredStatements(
 				user: postgres.databaseUser,
 				password: postgres.databasePassword,
 				database: database ?? postgres.databaseName,
+				connectionTimeoutMillis: 15_000,
 			});
 
 			await connection.connect();
@@ -407,14 +379,6 @@ async function applyDeclaredStatements(
 		},
 	};
 
-	// Once, then once more.
-	//
-	// Publishing an external port *restarts* the container, and a TCP connect
-	// succeeds against an instance that is still settling — so the first attempt
-	// can die partway with `terminating connection due to administrator
-	// command`. Retrying is safe because the applier is convergent: every
-	// statement asks whether it is needed, so the second pass reapplies nothing
-	// the first one managed.
 	// Whatever happens below, the database does not stay exposed. Publishing a
 	// port to run DDL is a means; leaving it published is a database on the
 	// public internet, which is what the path this replaces did on every deploy.
@@ -434,24 +398,44 @@ async function applyDeclaredStatements(
 			});
 	};
 
+	// Attempt, then wait for the cluster and attempt again.
+	//
+	// Publishing an external port *restarts* the container, and a TCP connect
+	// succeeds against an instance that is still settling — so a pass can die
+	// partway with `terminating connection due to administrator command`, or
+	// with the connection dropped outright while the port rule is rewritten.
+	// Retrying is safe because the applier is convergent: every statement asks
+	// whether it is needed, so a later pass reapplies nothing an earlier one
+	// managed. Three passes rather than two because the first restart and the
+	// settling after it are separate events, and hitting both in one run is
+	// ordinary rather than exceptional.
+	let lastError: unknown;
+
 	try {
-		const applied = await applyDeclared(client, statements);
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			try {
+				return await applyDeclared(client, statements);
+			} catch (error) {
+				lastError = error;
+				if (attempt === 3) break;
 
-		return applied;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		logger.log(`   ⏳ Cluster still settling (${message}); retrying once...`);
+				const message = error instanceof Error ? error.message : String(error);
+				logger.log(
+					`   ⏳ Cluster still settling (${message}); retrying (${attempt}/2)...`,
+				);
 
-		await new Promise((resolve) => setTimeout(resolve, 10_000));
-		await waitForPostgres(
-			serverHostname,
-			externalPort,
-			postgres.databaseUser,
-			postgres.databasePassword,
-			postgres.databaseName,
-		);
+				await new Promise((resolve) => setTimeout(resolve, 10_000));
+				await waitForPostgres(
+					serverHostname,
+					externalPort,
+					postgres.databaseUser,
+					postgres.databasePassword,
+					postgres.databaseName,
+				).catch(() => {});
+			}
+		}
 
-		return applyDeclared(client, statements);
+		throw lastError;
 	} finally {
 		// Whatever happened, the database does not stay exposed. A port opened to
 		// run DDL and left open is a database on the public internet — which is
@@ -467,33 +451,6 @@ async function applyDeclaredStatements(
 function getServerHostname(endpoint: string): string {
 	const url = new URL(endpoint);
 	return url.hostname;
-}
-
-/**
- * Build per-app DATABASE_URL for internal Docker network communication.
- *
- * The URL uses the Postgres container name (postgresAppName) as the host,
- * which resolves via Docker's internal DNS when apps are in the same network.
- *
- * @param appName - The database username (matches the app name)
- * @param appPassword - The app's database password
- * @param postgresAppName - The Postgres container/service name in Dokploy
- * @param databaseName - The database name (typically the project name)
- * @returns A properly encoded PostgreSQL connection URL
- *
- * @example
- * ```ts
- * const url = buildPerAppDatabaseUrl('api', 'secret123', 'postgres-abc', 'myproject');
- * // Returns: postgresql://api:secret123@postgres-abc:5432/myproject
- * ```
- */
-function _buildPerAppDatabaseUrl(
-	appName: string,
-	appPassword: string,
-	postgresAppName: string,
-	databaseName: string,
-): string {
-	return `postgresql://${appName}:${encodeURIComponent(appPassword)}@${postgresAppName}:5432/${databaseName}`;
 }
 
 /**
@@ -669,6 +626,14 @@ async function ensureDokploySetup(
 
 	// Step 5: Find or create application
 	logger.log('\n📦 Looking for application...');
+
+	// TODO: this is `docker.imageName`, so it carries no stage — deploying
+	// `staging` into the same project finds the production application and
+	// redeploys it. The fix is not to scope this name but to stop deriving it
+	// here at all: an application serves a `rest-api`, and the declaration that
+	// names the surface should name the container. That needs the manifest
+	// discovered *before* applications are created rather than after, which is
+	// the same reordering the auth-server-as-its-own-surface work needs.
 	const appName = dockerConfig.appName!;
 
 	let applicationId: string;

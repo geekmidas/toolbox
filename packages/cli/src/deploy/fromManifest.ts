@@ -85,6 +85,12 @@ export interface DokployProvisionContext {
 	/** Where a declared cache lives — the same config the other targets read. */
 	cache?: 'upstash' | 'elasticache' | 'db';
 	/**
+	 * What carries a declared queue or topic — the same config the local target
+	 * reads, and for the same reason it is config rather than a declaration: the
+	 * handlers are written once and the transport is a deployment choice.
+	 */
+	events?: 'pgboss' | 'sns' | 'rabbitmq';
+	/**
 	 * Where each surface answers, keyed by construct id.
 	 *
 	 * Assigned by whatever created the domain, which is the existing engine —
@@ -372,6 +378,32 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
+	 * A topic, and below it a queue — the same broker either way.
+	 *
+	 * Under pg-boss there is nothing to create in Dokploy: the broker is a
+	 * schema tenant of the database the app already declared, exactly as it is
+	 * locally, so what this resolves is an address rather than a service. Which
+	 * is the point of putting the backend in config — the same handlers drain
+	 * pg-boss here and SQS on AWS because the string they were handed said so.
+	 *
+	 * The tenant gets its own role rather than the cluster master, for the
+	 * reason every other tenant does: pg-boss creates and owns its tables, and
+	 * a broker that could also read the application's is a broker with a grant
+	 * nothing asked for.
+	 */
+	topic: async (declaration, context) => {
+		if (declaration.kind !== 'topic') throw new WrongKind(declaration.kind);
+
+		return broker(declaration.id, context);
+	},
+
+	queue: async (declaration, context) => {
+		if (declaration.kind !== 'queue') throw new WrongKind(declaration.kind);
+
+		return broker(declaration.id, context);
+	},
+
+	/**
 	 * A signing key, generated once and remembered.
 	 *
 	 * Regenerating it on every deploy would invalidate every live session, which
@@ -483,6 +515,93 @@ function statementsFor(options: {
 			...(reader ? { reader: derivedPassword(context, reader) } : {}),
 		},
 	}).map((statement) => ({ ...statement, id, database }));
+}
+
+/**
+ * The connection string a declared queue or topic publishes on.
+ *
+ * One broker for the whole project, which is what the local target does and
+ * what the runtime expects: the generated pollers open a single connection and
+ * subscribe each worker by name on it. So every carrier resolves to the same
+ * address, and the DDL that backs it is pushed once however many are declared.
+ *
+ * Only pg-boss is answered here. SNS needs a topic ARN that has to exist
+ * first, and RabbitMQ needs a broker Dokploy has no primitive for — both are
+ * the §4.3 question, and composing a plausible URL for either would fail at the
+ * first publish instead of here.
+ */
+function broker(id: string, context: DokployProvisionContext): Provisioned {
+	const backend = context.events ?? 'pgboss';
+	if (backend !== 'pgboss') throw new UnprovisionableCarrier(id, backend);
+
+	const parentId = soleDatabase(context);
+	if (!parentId) throw new BrokerNeedsADatabase(id);
+
+	const parent = context.provisioned[parentId];
+	const parentUrl = parent?.provides[provideKey(parentId, 'url')];
+	if (!parentUrl) throw new UnresolvedParent(id, parentId);
+
+	const url = new URL(parentUrl);
+	const database = url.pathname.slice(1);
+	const runtime = `${database}_${PGBOSS_SCHEMA}`;
+	const owner = ownerRole(runtime);
+
+	// Pushed under a fixed id rather than the carrier's, so a project declaring
+	// a topic *and* a queue defers one set of statements rather than two
+	// identical ones. The applier is convergent either way; this keeps the plan
+	// honest about there being one broker.
+	if (!context.provisioned[BROKER_ID]) {
+		context.deferred.push(
+			...statementsFor({
+				id: BROKER_ID,
+				database,
+				runtime,
+				owner,
+				schema: PGBOSS_SCHEMA,
+				context,
+			}),
+		);
+		context.provisioned[BROKER_ID] = { provides: {} };
+	}
+
+	const connection = pgbossUrl(
+		runtime,
+		derivedPassword(context, runtime),
+		url.host,
+		database,
+	);
+
+	return {
+		provides: {
+			[provideKey(id, 'publisherConnectionString')]: connection,
+		},
+	};
+}
+
+/** The schema pg-boss creates its tables in, here as locally. */
+const PGBOSS_SCHEMA = 'pgboss';
+
+/**
+ * The id the broker's DDL is pushed under.
+ *
+ * Not a construct — no declaration names it — but the deferred statements need
+ * an id, and every carrier in the project shares this one.
+ */
+const BROKER_ID = 'PgBoss';
+
+/**
+ * A pg-boss address: a Postgres URL under a scheme that picks the transport.
+ *
+ * The protocol is what a producer branches on, so it never branches — the same
+ * `.publish()` reaches pg-boss here and SQS on AWS.
+ */
+function pgbossUrl(
+	role: string,
+	password: string,
+	host: string,
+	database: string,
+): string {
+	return `pgboss://${role}:${encodeURIComponent(password)}@${host}/${database}?schema=${PGBOSS_SCHEMA}`;
 }
 
 /** Whether anything reads through a reader on this construct. */
@@ -615,5 +734,35 @@ export class SurfaceHasNoAddress extends Error {
 				`ran out of order.`,
 		);
 		this.name = 'SurfaceHasNoAddress';
+	}
+}
+
+/** A queue or topic on a backend this target has no primitive for. */
+export class UnprovisionableCarrier extends Error {
+	constructor(
+		readonly id: string,
+		readonly backend: string,
+	) {
+		super(
+			`'${id}' is carried by '${backend}', which this target cannot ` +
+				`provision. SNS needs a topic ARN that has to exist first and ` +
+				`RabbitMQ needs a broker Dokploy has no primitive for; pg-boss is a ` +
+				`schema tenant of a database this app already declares, which is why ` +
+				`it is the one that works here. Set services.events to 'pgboss', or ` +
+				`deploy this app to a target that has the backend.`,
+		);
+		this.name = 'UnprovisionableCarrier';
+	}
+}
+
+/** A pg-boss carrier in an app that declares no database to host it. */
+export class BrokerNeedsADatabase extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' is carried by pg-boss, which lives in the database the app ` +
+				`declares — and this app declares none. Declare a database, or set ` +
+				`services.events to a backend that brings its own broker.`,
+		);
+		this.name = 'BrokerNeedsADatabase';
 	}
 }

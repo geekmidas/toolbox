@@ -2,6 +2,7 @@ import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { DokployApi } from '../dokploy-api';
 import {
+	BrokerNeedsADatabase,
 	CacheIsAmbiguous,
 	CacheNeedsAHome,
 	type DokployProvisionContext,
@@ -9,6 +10,7 @@ import {
 	provisionerFor,
 	SurfaceHasNoAddress,
 	serviceName,
+	UnprovisionableCarrier,
 	UnresolvedParent,
 } from '../fromManifest';
 
@@ -334,6 +336,88 @@ describe('the cache', () => {
 				Sessions: manifest.Sessions,
 			} as ConstructManifest),
 		).rejects.toThrow(CacheNeedsAHome);
+	});
+});
+
+describe('a carrier', () => {
+	const carrying = {
+		...manifest,
+		Users: {
+			kind: 'topic',
+			id: 'Users',
+			provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+		},
+		Emails: {
+			kind: 'queue',
+			id: 'Emails',
+			provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+		},
+	} as ConstructManifest;
+
+	it('resolves to the database the app already declared', async () => {
+		// Nothing is created in Dokploy for a topic. Under pg-boss the broker is
+		// a schema tenant of the declared database, exactly as it is locally,
+		// which is why the whole of provisioning one is composing an address.
+		const { env } = await provision({}, carrying);
+
+		expect(env.USERS_PUBLISHER_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/orders_production_pgboss:/,
+		);
+		expect(env.USERS_PUBLISHER_CONNECTION_STRING).toContain(
+			'@production-shop-orders-service:5432/orders_production?schema=pgboss',
+		);
+	});
+
+	it('is one broker however many carriers are declared', async () => {
+		// The generated pollers open a single connection and subscribe each
+		// worker by name on it, so a topic and a queue are two names for one
+		// address — and two identical sets of DDL would be a plan that said
+		// otherwise.
+		const { context, env } = await provision({}, carrying);
+
+		expect(env.EMAILS_PUBLISHER_CONNECTION_STRING).toBe(
+			env.USERS_PUBLISHER_CONNECTION_STRING,
+		);
+		expect(
+			context.deferred.filter((statement) => statement.id === 'PgBoss').length,
+		).toBeGreaterThan(0);
+		expect(
+			new Set(
+				context.deferred
+					.filter((statement) => statement.id === 'PgBoss')
+					.map((statement) => statement.sql),
+			).size,
+		).toBe(context.deferred.filter((s) => s.id === 'PgBoss').length);
+	});
+
+	it('connects as its own role, not the cluster master', async () => {
+		// pg-boss creates and owns its tables. A broker that could also read the
+		// application's would be a grant nothing asked for.
+		const { context, env } = await provision({}, carrying);
+
+		expect(env.USERS_PUBLISHER_CONNECTION_STRING).not.toContain(
+			'master-password',
+		);
+		expect(context.deferred.map((s) => s.sql)).toContainEqual(
+			expect.stringContaining('CREATE ROLE "orders_production_pgboss"'),
+		);
+	});
+
+	it('refuses a backend this target has no primitive for', async () => {
+		// SNS needs a topic ARN that has to exist first. Composing a plausible
+		// URL would fail at the first publish instead of here.
+		await expect(provision({ events: 'sns' }, carrying)).rejects.toThrow(
+			UnprovisionableCarrier,
+		);
+	});
+
+	it('says so when there is no database to host it', async () => {
+		const { Orders, AuthDb, OrdersReader, Sessions, ...rest } =
+			carrying as Record<string, unknown>;
+
+		await expect(
+			provision({ cache: undefined }, rest as ConstructManifest),
+		).rejects.toThrow(BrokerNeedsADatabase);
 	});
 });
 
