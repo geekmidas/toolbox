@@ -341,6 +341,46 @@ so nothing it refuses was ever relied on the policy to refuse — but a key fetc
 directly, bypassing the client, can be admitted. Prefer `**` where crossing
 segments is what you meant.
 
+### 4.4b Choosing a backend — *layer one and two done, three is the next step*
+
+`services.storage` exists now, so a bucket can say where it lives the way a
+cache and a mailer already could, and defaults follow the deploy target rather
+than being flat. That closes the question of *what happens when nobody said*.
+What it does not close is **per-construct** choice, which is the point of the
+whole selector: two buckets in one app, one on S3 and one on the box.
+
+The intended shape is three layers, each finer than the last, each overriding
+the one above:
+
+| layer | scope | where | state |
+|---|---|---|---|
+| target-aware default | everything | `DEFAULT_*` in `types.ts` | done |
+| `services.<concern>` | one concern, whole workspace | `gkm.config.ts` | done |
+| `gkm.{stage}.deploy` | **one construct, one stage** | its own file | *work* |
+
+The third is what makes "pick and choose parts" true rather than nearly true.
+`services.storage: 's3'` moves *every* bucket, and a project with a public
+assets bucket on R2 and a private uploads bucket on the box cannot say so. A
+per-stage file naming constructs directly can:
+
+```
+Uploads  → minio
+Assets   → r2
+Sessions → upstash
+```
+
+Two properties worth keeping when it lands. It is **per stage**, so staging can
+put everything on the box and production can put it in S3 without either being
+the odd one out in a shared file. And it **overrides rather than replaces** — a
+construct absent from it falls through to `services.<concern>` and then to the
+target default, so the file stays short and only says what is unusual.
+
+Note this is a resolution layer, not a new vocabulary: the values are the same
+`StorageBackend`, `CacheBackend` and `EmailBackend` the other two layers use, so
+nothing downstream learns a third way to ask the question.
+
+---
+
 ### 4.5 Cache rules do not exist — *undesigned, not a Dokploy gap*
 
 `FileServerDeclaration` is `of` and `open` and nothing else. There is no `maxAge`,
