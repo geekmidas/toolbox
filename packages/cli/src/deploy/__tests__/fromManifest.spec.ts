@@ -10,6 +10,7 @@ import {
 	provisionerFor,
 	SurfaceHasNoAddress,
 	serviceName,
+	UnprovisionableBucket,
 	UnprovisionableCarrier,
 	UnresolvedParent,
 } from '../fromManifest';
@@ -60,6 +61,7 @@ const manifest = {
 /** A Dokploy that creates nothing and remembers what it was asked for. */
 function fakeApi() {
 	const created: string[] = [];
+	const composeFiles = new Map<string, string>();
 
 	const api = {
 		async findOrCreatePostgres(
@@ -88,9 +90,24 @@ function fakeApi() {
 				created: true,
 			};
 		},
+		async findOrCreateCompose(
+			name: string,
+			_projectId: string,
+			_environmentId: string,
+			composeFile: string,
+		) {
+			created.push(name);
+			composeFiles.set(name, composeFile);
+
+			return {
+				compose: { composeId: `compose-${name}`, name, appName: `${name}-x` },
+				created: true,
+			};
+		},
+		async deployCompose() {},
 	} as unknown as DokployApi;
 
-	return { api, created };
+	return { api, created, composeFiles };
 }
 
 async function provision(
@@ -336,6 +353,71 @@ describe('the cache', () => {
 				Sessions: manifest.Sessions,
 			} as ConstructManifest),
 		).rejects.toThrow(CacheNeedsAHome);
+	});
+});
+
+describe('a bucket', () => {
+	const storing = {
+		...manifest,
+		Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+		UploadsServer: {
+			kind: 'file-server',
+			id: 'UploadsServer',
+			of: 'Uploads',
+			open: ['brand/**'],
+			provides: ['UPLOADS_SERVER_URL'],
+		},
+	} as ConstructManifest;
+
+	it('is a compose stack, because Dokploy has no bucket primitive', async () => {
+		// Postgres and Redis are first-class here and object storage is not, so
+		// this is the one kind whose infrastructure the target writes rather
+		// than configures.
+		const { env } = await provision({ storage: 'minio' }, storing);
+
+		// Kebab, not snake: a bucket name is a DNS label, so it takes the
+		// same rule a hostname does rather than the one a Postgres role does.
+		expect(env.UPLOADS_URL).toContain('s3://uploads-production');
+		expect(env.UPLOADS_URL).toContain('forcePathStyle=true');
+	});
+
+	it('is reached by the name every other service is named by', async () => {
+		// Not cosmetic: containers on `dokploy-network` resolve each other by
+		// service name, so the name is the address. Calling it `minio` would
+		// work for exactly one project on the box and then collide.
+		const { env } = await provision({ storage: 'minio' }, storing);
+
+		expect(env.UPLOADS_URL).toContain(
+			'endpoint=http://production-shop-uploads:9000',
+		);
+	});
+
+	it('keeps its credentials beside the URL, not inside it', async () => {
+		// An `s3://` URL carries none deliberately: on AWS the SDK reads them
+		// from an execution role, so a URL that embedded a key would be one more
+		// thing to rotate and leak. There is no role here, so the same chain
+		// reads these.
+		const { env } = await provision({ storage: 'minio' }, storing);
+
+		expect(env.UPLOADS_URL).not.toContain('@');
+		expect(env.AWS_ACCESS_KEY_ID).toBe('uploads-production-root');
+		expect(env.AWS_SECRET_ACCESS_KEY).toBeTruthy();
+	});
+
+	it('refuses a bucket it cannot create rather than inventing one', async () => {
+		// An S3 or R2 bucket belongs to an account this deploy does not hold,
+		// the way an API key does.
+		await expect(provision({ storage: 's3' }, storing)).rejects.toThrow(
+			UnprovisionableBucket,
+		);
+	});
+
+	it('serves the bucket at the address the bucket resolved to', async () => {
+		const { env } = await provision({ storage: 'minio' }, storing);
+
+		expect(env.UPLOADS_SERVER_URL).toBe(
+			'http://production-shop-uploads:9000/uploads-production',
+		);
 	});
 });
 

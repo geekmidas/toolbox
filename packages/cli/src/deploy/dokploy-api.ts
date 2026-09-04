@@ -609,6 +609,80 @@ export class DokployApi {
 	}
 
 	// ============================================
+	// Compose endpoints
+	// ============================================
+
+	/**
+	 * The compose stacks in a project.
+	 *
+	 * Dokploy has first-class primitives for Postgres and Redis and none for
+	 * MinIO, so an object store is a compose stack — the one kind whose contents
+	 * this target writes rather than configures.
+	 */
+	async listCompose(projectId: string): Promise<DokployCompose[]> {
+		return this.listInProject(projectId, (env) => env.compose);
+	}
+
+	/** A compose stack by name, hydrated — `project.one` returns summaries. */
+	async findComposeByName(
+		projectId: string,
+		name: string,
+	): Promise<DokployCompose | undefined> {
+		const summary = (await this.listCompose(projectId)).find(
+			(compose) => compose.name === name,
+		);
+
+		return summary ? this.getCompose(summary.composeId) : undefined;
+	}
+
+	async getCompose(composeId: string): Promise<DokployCompose> {
+		return this.get<DokployCompose>(`compose.one?composeId=${composeId}`);
+	}
+
+	/**
+	 * A compose stack carrying the file this target wrote.
+	 *
+	 * Created empty and then updated, because `compose.create` takes no file:
+	 * it defaults to `sourceType: 'github'` and expects a repository. `raw` is
+	 * what makes the file ours.
+	 */
+	async findOrCreateCompose(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		composeFile: string,
+	): Promise<{ compose: DokployCompose; created: boolean }> {
+		const existing = await this.findComposeByName(projectId, name);
+
+		const compose =
+			existing ??
+			(await this.post<DokployCompose>('compose.create', {
+				name,
+				environmentId,
+				composeType: 'docker-compose',
+			}));
+
+		// Written every time, not only on create: the file is derived from the
+		// manifest, so a redeploy after a declaration changed has to carry the
+		// change. Dokploy redeploys only what differs.
+		await this.post('compose.update', {
+			composeId: compose.composeId,
+			sourceType: 'raw',
+			composeFile,
+		});
+
+		return { compose, created: !existing };
+	}
+
+	async deployCompose(composeId: string): Promise<void> {
+		await this.post('compose.deploy', { composeId });
+	}
+
+	async deleteCompose(composeId: string): Promise<void> {
+		await this.post('compose.delete', { composeId, deleteVolumes: false });
+	}
+
+	// ============================================
 	// Redis endpoints
 	// ============================================
 
@@ -979,6 +1053,7 @@ export interface DokployEnvironment {
 	 */
 	applications?: DokployApplication[];
 	postgres?: DokployPostgres[];
+	compose?: DokployCompose[];
 	redis?: DokployRedis[];
 }
 
@@ -1057,6 +1132,16 @@ export interface DokployRedisUpdate {
 }
 
 export type DokployCertificateType = 'letsencrypt' | 'none' | 'custom';
+/** A Dokploy compose stack. */
+export interface DokployCompose {
+	composeId: string;
+	name: string;
+	/** Dokploy's own generated name, which prefixes the stack's containers. */
+	appName: string;
+	composeFile?: string;
+	composeStatus?: string;
+}
+
 export type DokployDomainType = 'application' | 'compose' | 'preview';
 
 export interface DokployDomainCreate {

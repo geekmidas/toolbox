@@ -84,6 +84,8 @@ export interface DokployProvisionContext {
 	project: string;
 	/** Where a declared cache lives — the same config the other targets read. */
 	cache?: 'upstash' | 'elasticache' | 'db';
+	/** Where a declared bucket lives. Only `minio` has a Dokploy primitive. */
+	storage?: 'minio' | 's3' | 'r2';
 	/**
 	 * What carries a declared queue or topic — the same config the local target
 	 * reads, and for the same reason it is config rather than a declaration: the
@@ -378,6 +380,95 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
+	 * A bucket, as a MinIO stack on the box.
+	 *
+	 * Dokploy has first-class primitives for Postgres and Redis and none for
+	 * object storage, so this is the one kind whose infrastructure this target
+	 * *writes* rather than configures — a compose file with one service in it.
+	 *
+	 * The service is named `cloudName(...)` like everything else, which is not
+	 * cosmetic here: containers on `dokploy-network` resolve each other by
+	 * service name, so the name is the address. Calling it `minio` would work
+	 * for exactly one project on the box and then collide.
+	 *
+	 * `s3://` carries no credentials, deliberately — deployed on AWS the SDK
+	 * reads them from an execution role, so a URL that embedded a key would be
+	 * one more thing to rotate and leak. There is no role here, so the same
+	 * chain reads `AWS_ACCESS_KEY_ID` beside the URL, exactly as it does
+	 * locally.
+	 */
+	objects: async (declaration, context) => {
+		if (declaration.kind !== 'objects') throw new WrongKind(declaration.kind);
+
+		const backend = context.storage ?? 'minio';
+		if (backend !== 'minio')
+			throw new UnprovisionableBucket(declaration.id, backend);
+
+		const service = serviceName(
+			{ stage: context.stage, app: context.project },
+			declaration.id,
+		);
+		const bucket = resourceName(
+			declaration.id,
+			declaration.kind,
+			context.stage,
+		);
+		const user = `${bucket}-root`;
+		const password = derivedPassword(context, `objects:${declaration.id}`);
+
+		const { compose } = await context.api.findOrCreateCompose(
+			service,
+			context.projectId,
+			context.environmentId,
+			minioCompose({ service, bucket, user, password }),
+		);
+
+		await context.api.deployCompose(compose.composeId);
+
+		return {
+			provides: {
+				[provideKey(declaration.id, 'url')]: s3Url(service, bucket),
+				// Beside the URL rather than inside it, for the reason above.
+				AWS_ACCESS_KEY_ID: user,
+				AWS_SECRET_ACCESS_KEY: password,
+				AWS_REGION: MINIO_REGION,
+			},
+		};
+	},
+
+	/**
+	 * The address a bucket's objects are served on.
+	 *
+	 * Nothing is provisioned: Dokploy runs Traefik, so a second reverse proxy
+	 * behind the first would terminate TLS twice — which is why the local
+	 * target's Caddy has no equivalent here. What this resolves is the address,
+	 * and the `open` prefixes are applied to the bucket rather than to an edge,
+	 * so a policy is what makes them public wherever the bucket lives.
+	 *
+	 * Until a Traefik rule exists it answers on MinIO directly, path-style,
+	 * which is honest about the shape it has today: the bucket is in the path
+	 * rather than fronted by a host of its own.
+	 */
+	'file-server': async (declaration, context) => {
+		if (declaration.kind !== 'file-server')
+			throw new WrongKind(declaration.kind);
+
+		const parent = context.provisioned[declaration.of];
+		const parentUrl = parent?.provides[provideKey(declaration.of, 'url')];
+		if (!parentUrl) throw new UnresolvedParent(declaration.id, declaration.of);
+
+		const endpoint = new URL(parentUrl).searchParams.get('endpoint');
+		const bucket = new URL(parentUrl).hostname;
+		if (!endpoint) throw new UnresolvedParent(declaration.id, declaration.of);
+
+		return {
+			provides: {
+				[provideKey(declaration.id, 'url')]: `${endpoint}/${bucket}`,
+			},
+		};
+	},
+
+	/**
 	 * A topic, and below it a queue — the same broker either way.
 	 *
 	 * Under pg-boss there is nothing to create in Dokploy: the broker is a
@@ -604,6 +695,68 @@ function pgbossUrl(
 	return `pgboss://${role}:${encodeURIComponent(password)}@${host}/${database}?schema=${PGBOSS_SCHEMA}`;
 }
 
+/** The region MinIO is addressed with. It has no regions; the SDK wants one. */
+const MINIO_REGION = 'us-east-1';
+
+/** An `s3://` URL pointing the same S3 client at MinIO on the internal network. */
+function s3Url(service: string, bucket: string): string {
+	return (
+		`s3://${bucket}?region=${MINIO_REGION}` +
+		`&endpoint=http://${service}:9000&forcePathStyle=true`
+	);
+}
+
+/**
+ * A one-service compose file for a bucket.
+ *
+ * `dokploy-network` is external and already exists — it is what every Dokploy
+ * service is attached to, and joining it is what makes the app able to resolve
+ * this one by name. The bucket itself is created by MinIO's entrypoint rather
+ * than by a second call, so there is nothing to reconcile afterwards.
+ */
+function minioCompose(options: {
+	service: string;
+	bucket: string;
+	user: string;
+	password: string;
+}): string {
+	const { service, bucket, user, password } = options;
+
+	return [
+		'services:',
+		`  ${service}:`,
+		'    image: minio/minio:latest',
+		`    command: server /data --console-address ":9001"`,
+		'    environment:',
+		`      MINIO_ROOT_USER: ${user}`,
+		`      MINIO_ROOT_PASSWORD: ${password}`,
+		'    volumes:',
+		`      - ${service}-data:/data`,
+		'    networks:',
+		'      - dokploy-network',
+		'    healthcheck:',
+		'      test: ["CMD", "mc", "ready", "local"]',
+		'      interval: 10s',
+		'      retries: 5',
+		`  ${service}-bucket:`,
+		'    image: minio/mc:latest',
+		'    depends_on:',
+		`      ${service}:`,
+		'        condition: service_healthy',
+		'    entrypoint: >',
+		`      /bin/sh -c "mc alias set s3 http://${service}:9000 ${user} ${password} &&`,
+		`      mc mb --ignore-existing s3/${bucket}"`,
+		'    networks:',
+		'      - dokploy-network',
+		'volumes:',
+		`  ${service}-data:`,
+		'networks:',
+		'  dokploy-network:',
+		'    external: true',
+		'',
+	].join('\n');
+}
+
 /** Whether anything reads through a reader on this construct. */
 function readsFrom(manifest: ConstructManifest, id: string): boolean {
 	return Object.values(manifest).some(
@@ -764,5 +917,21 @@ export class BrokerNeedsADatabase extends Error {
 				`services.events to a backend that brings its own broker.`,
 		);
 		this.name = 'BrokerNeedsADatabase';
+	}
+}
+
+/** A bucket on a backend this target has no primitive for. */
+export class UnprovisionableBucket extends Error {
+	constructor(
+		readonly id: string,
+		readonly backend: string,
+	) {
+		super(
+			`'${id}' is stored on '${backend}', which this target cannot ` +
+				`provision: an S3 or R2 bucket belongs to an account this deploy ` +
+				`does not hold, the way an API key does. Set services.storage to ` +
+				`'minio' to run one on the box, or supply the bucket's URL.`,
+		);
+		this.name = 'UnprovisionableBucket';
 	}
 }

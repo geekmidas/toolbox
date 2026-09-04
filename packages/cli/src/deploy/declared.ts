@@ -20,7 +20,11 @@ import {
 	type Statement,
 } from '../reconcile/provision.js';
 import { constructGlobs, usesConstructs } from '../reconcile/workspace.js';
-import { cacheBackendOf, providerOf } from '../workspace/backends.js';
+import {
+	cacheBackendOf,
+	providerOf,
+	storageBackendOf,
+} from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { DokployApi } from './dokploy-api';
 import {
@@ -105,6 +109,10 @@ export async function provisionDeclared(
 		project: workspace.name,
 		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
 		...(workspace.services.events ? { events: workspace.services.events } : {}),
+		storage: storageBackendOf(
+			workspace.services.storage,
+			providerOf(workspace),
+		),
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
 		...(options.secrets ? { secrets: options.secrets } : {}),
 		deferred: [],

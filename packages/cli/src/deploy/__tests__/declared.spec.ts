@@ -14,9 +14,11 @@ const manifest = {
 	},
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
 	Api: { kind: 'rest-api', id: 'Api', endpoints: [], provides: ['API_URL'] },
-	// A kind this target has no primitive for. Dokploy models MinIO as a Compose
-	// stack, which is a separate decision — see §4.3.
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	// A kind this target has no primitive for. `objects` used to be the example
+	// here and no longer is — it provisions a MinIO compose stack now — so the
+	// case is made with mail, which is a SaaS account rather than infrastructure
+	// this deploy can create.
+	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL'] },
 } as const satisfies ConstructManifest;
 
 const api = {
@@ -132,8 +134,8 @@ describe('provisionDeclared', () => {
 		// absent, and the construct that needs it says so on first use.
 		const { env, provisioned } = await run(workspaceWith());
 
-		expect(provisioned).not.toHaveProperty('Uploads');
-		expect(env).not.toHaveProperty('UPLOADS_URL');
+		expect(provisioned).not.toHaveProperty('Mail');
+		expect(env).not.toHaveProperty('MAIL_URL');
 	});
 
 	it('hands back DDL in the applier’s shape rather than running it', async () => {
