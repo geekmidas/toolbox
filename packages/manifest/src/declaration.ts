@@ -319,6 +319,21 @@ export interface CacheDeclaration extends Node {
  */
 export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
+	/**
+	 * Where the process serving it is built from, relative to the workspace
+	 * root — the same thing a `site` says, for the same reason.
+	 *
+	 * A surface is a deploy unit: one of these is one server. Without it the
+	 * deploy had to ask the *config* which apps to build, and a surface could
+	 * never be its own process because it was not in that list. Two surfaces in
+	 * one app then had to share one container, which is how an auth server ended
+	 * up mounted into an API by a hook.
+	 *
+	 * Optional while §2 is open: an app's own API still takes its routes from a
+	 * glob, so a surface that has not been given a path is served by whichever
+	 * app declared it.
+	 */
+	path?: string;
 	authorizers?: readonly string[];
 	/** The authorizer applied where an endpoint names none. */
 	defaultAuthorizer?: string;
