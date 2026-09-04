@@ -111,3 +111,52 @@ describe('discover', () => {
 		}
 	});
 });
+
+/**
+ * A construct is one construct however many files re-export it.
+ *
+ * This matters for a shared `constructs/` folder, which is where infrastructure
+ * belongs once more than one app declares against it: a database is a fact
+ * about the project, not about the process that happens to import it. And the
+ * first thing anyone writes in such a folder is `index.ts`.
+ */
+describe('a construct reached twice', () => {
+	it('is not a duplicate when it is the same construct', async () => {
+		// `export *` re-exports the *binding*, so the second file hands back the
+		// same object. Deduping by file made every construct in a barrel appear
+		// declared twice, which made a barrel impossible to write.
+		const cwd = await mkdtemp(join(tmpdir(), 'gkm-discover-barrel-'));
+		try {
+			await writeFile(
+				join(cwd, 'uploads.ts'),
+				"export const uploads = { id: 'Uploads', declare: () => [{ kind: 'objects', id: 'Uploads' }] };\n",
+			);
+			await writeFile(join(cwd, 'index.ts'), "export * from './uploads.js';\n");
+
+			const manifest = await discover({ patterns: '*.ts', cwd });
+
+			expect(Object.keys(manifest)).toEqual(['Uploads']);
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it('is still a duplicate when it is a different construct', async () => {
+		// The rule that matters is unchanged: two *distinct* constructs may not
+		// claim one id, whichever files they live in.
+		const cwd = await mkdtemp(join(tmpdir(), 'gkm-discover-rogue-'));
+		try {
+			const declare = (name: string) =>
+				`export const ${name} = { id: 'Uploads', declare: () => [{ kind: 'objects', id: 'Uploads' }] };\n`;
+
+			await writeFile(join(cwd, 'a.ts'), declare('first'));
+			await writeFile(join(cwd, 'b.ts'), declare('second'));
+
+			await expect(discover({ patterns: '*.ts', cwd })).rejects.toThrow(
+				DuplicateConstruct,
+			);
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+});
