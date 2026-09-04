@@ -439,8 +439,6 @@ async function sniffRouteFiles(
 					const result = JSON.parse(jsonMatch[0]);
 					resolvePromise({
 						envVars: result.envVars || [],
-						// Routes worker uses getEnvironment() which doesn't track
-						// optionality yet — populated when service register() is sniffed
 						optionalEnvVars: result.optionalEnvVars || [],
 						error: result.error ? new Error(result.error) : undefined,
 					});

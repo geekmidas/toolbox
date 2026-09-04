@@ -111,7 +111,7 @@ export function getImageRef(
  */
 async function buildImage(
 	imageRef: string,
-	appName?: string,
+	_appName?: string,
 	buildArgs?: string[],
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
@@ -133,17 +133,15 @@ async function buildImage(
 
 	// Determine build context and Dockerfile path
 	// For workspaces with multiple apps, use per-app Dockerfile (Dockerfile.api, etc.)
-	const dockerfileSuffix = appName ? `.${appName}` : '';
-	// Absolute, because the Dockerfile is written under the *app* and the build
-	// may run from the workspace root — where `.gkm/docker/Dockerfile` resolves
-	// to a path that does not exist, and `docker build` says only
+	// One file, not `Dockerfile.${appName}`: the suffix belonged to the
+	// generate-every-app-at-once path, and this generates exactly one Dockerfile
+	// for the app being built, immediately above.
+	//
+	// Absolute, because it is written under the *app* while the build may run
+	// from elsewhere — where a relative `.gkm/docker/Dockerfile` resolves to a
+	// path that does not exist, and `docker build` says only
 	// `lstat .gkm: no such file or directory`.
-	const dockerfilePath = join(
-		cwd,
-		'.gkm',
-		'docker',
-		`Dockerfile${dockerfileSuffix}`,
-	);
+	const dockerfilePath = join(cwd, '.gkm', 'docker', 'Dockerfile');
 
 	// The app's own directory, because the bundle is the only thing copied and
 	// it lives there. A monorepo root context was for the build-inside-the-image

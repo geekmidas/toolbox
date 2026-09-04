@@ -55,8 +55,7 @@ import {
 	validateDokployToken,
 } from '../auth';
 import { storeDokployRegistryId } from '../auth/credentials';
-import { buildCommand } from '../build/index';
-import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
+import { type GkmConfig, loadWorkspaceConfig } from '../config';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
 import { readStageSecrets } from '../secrets/storage.js';
 import {
@@ -68,8 +67,7 @@ import {
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
-import { applicationName, deployDocker, resolveDockerConfig } from './docker';
-import { deployDokploy } from './dokploy';
+import { applicationName, deployDocker } from './docker';
 import { DokployApi, type DokployApplication } from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
@@ -484,7 +482,7 @@ function matchingRegistry(
 	);
 }
 
-async function ensureDokploySetup(
+async function _ensureDokploySetup(
 	config: GkmConfig,
 	dockerConfig: DockerDeployConfig,
 	stage: string,
@@ -827,6 +825,33 @@ export function generateTag(stage: string): string {
  *
  * @internal Exported for testing
  */
+/**
+ * The variables an app cannot start without.
+ *
+ * The sniffer reports every key it saw in `requiredEnvVars` and says which of
+ * them were read through `.optional()` or `.default()` in `optionalEnvVars`.
+ * Reading only the first treats a key that is *absent by design* as a missing
+ * secret — `AUTH_COOKIE_DOMAIN` is published only when a surface has a domain
+ * to widen a cookie to, and one host has nothing to share it with.
+ *
+ * The same distinction `bundleServer` draws. It is drawn twice because the
+ * bundle and the deploy each validate, and the deploy was the half still
+ * failing on an answer that was correct.
+ */
+function requiredOf(
+	requirements:
+		| { requiredEnvVars: string[]; optionalEnvVars: string[] }
+		| undefined,
+): string[] {
+	if (!requirements) return [];
+
+	const optional = new Set(requirements.optionalEnvVars);
+
+	return requirements.requiredEnvVars
+		.map((name) => (name.endsWith('?') ? name.slice(0, -1) : name))
+		.filter((name) => !optional.has(name));
+}
+
 export async function workspaceDeployCommand(
 	workspace: NormalizedWorkspace,
 	options: DeployOptions,
@@ -1391,7 +1416,7 @@ export async function workspaceDeployCommand(
 				// Resolve all required environment variables
 				// Always include PORT, NODE_ENV, STAGE even if not explicitly required
 				const appRequirements = sniffedApps.get(appName);
-				const sniffedVars = appRequirements?.requiredEnvVars ?? [];
+				const sniffedVars = requiredOf(appRequirements);
 				const requiredVars = [
 					...new Set(['PORT', 'NODE_ENV', 'STAGE', ...sniffedVars]),
 				];
@@ -1599,7 +1624,7 @@ export async function workspaceDeployCommand(
 
 				// Resolve all env vars BEFORE Docker build (public-prefixed vars
 				// must be present at bundler build time so they get inlined).
-				const sniffedVars = sniffedApps.get(appName)?.requiredEnvVars ?? [];
+				const sniffedVars = requiredOf(sniffedApps.get(appName));
 				const { valid, missing, resolved } = validateEnvVars(
 					sniffedVars,
 					envContext,
@@ -1835,271 +1860,15 @@ export async function deployCommand(
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
 
-	// Route to workspace deploy mode for multi-app workspaces
-	if (loadedConfig.type === 'workspace') {
-		logger.log('📦 Detected workspace configuration');
-		return workspaceDeployCommand(loadedConfig.workspace, options);
-	}
-
-	logger.log(`\n🚀 Deploying to ${provider}...`);
-	logger.log(`   Stage: ${stage}`);
-
-	// Single-app mode - use existing logic
-	const config = await loadConfig();
-
-	// Generate tag if not provided
-	const imageTag = tag ?? generateTag(stage);
-	logger.log(`   Tag: ${imageTag}`);
-
-	// Resolve docker config for image reference
-	const dockerConfig = resolveDockerConfig(config, stage);
-	const imageName = dockerConfig.imageName!;
-	const registry = dockerConfig.registry;
-	const imageRef = registry
-		? `${registry}/${imageName}:${imageTag}`
-		: `${imageName}:${imageTag}`;
-
-	// For Dokploy, set up services BEFORE build so URLs are available
-	let dokployConfig: DokployDeployConfig | undefined;
-	let finalRegistry = registry;
-
-	if (provider === 'dokploy') {
-		// Extract docker compose services config
-		const composeServices = config.docker?.compose?.services;
-		logger.log(
-			`\n🔍 Docker compose config: ${JSON.stringify(config.docker?.compose)}`,
-		);
-		const dockerServices: DockerComposeServices | undefined = composeServices
-			? Array.isArray(composeServices)
-				? {
-						postgres: composeServices.includes('postgres'),
-						redis: composeServices.includes('redis'),
-						rabbitmq: composeServices.includes('rabbitmq'),
-					}
-				: {
-						postgres: Boolean(composeServices.postgres),
-						redis: Boolean(composeServices.redis),
-						rabbitmq: Boolean(composeServices.rabbitmq),
-					}
-			: undefined;
-
-		// Ensure Dokploy is fully set up (credentials, project, app, registry, services)
-		const setupResult = await ensureDokploySetup(
-			config,
-			dockerConfig,
-			stage,
-			dockerServices,
-		);
-		dokployConfig = setupResult.config;
-		finalRegistry = dokployConfig.registry ?? dockerConfig.registry;
-
-		// The declared half, before the build — which is the whole reason this
-		// block runs where it does. `bundleServer` validates that every key the
-		// app reads exists, and a construct's key exists only once something has
-		// resolved it. Provisioning after the build would fail on exactly the
-		// URLs provisioning is there to supply.
-		{
-			const { workspace } = await loadWorkspaceConfig();
-
-			{
-				logger.log('\n📦 Provisioning declared constructs...');
-
-				// The domain comes from the workspace's own deploy config, which a
-				// single-app project can now carry. `DokployDeployConfig` is the
-				// per-app half — endpoint, project, application — and has never
-				// held domains.
-				const workspaceDokploy = workspace.deploy.dokploy;
-				const appUrls: Record<string, string> = {};
-
-				if (workspaceDokploy?.domains?.[stage]) {
-					appUrls.api = `https://${resolveHost(
-						'api',
-						workspace.apps.api as never,
-						stage,
-						workspaceDokploy,
-						false,
-					)}`;
-				}
-
-				const creds = await getDokployCredentials();
-				const api = new DokployApi({
-					baseUrl: creds?.endpoint ?? dokployConfig.endpoint,
-					token: creds?.token ?? '',
-				});
-
-				const declared = await provisionDeclared({
-					api,
-					workspace,
-					projectId: dokployConfig.projectId,
-					environmentId: setupResult.environmentId,
-					stage,
-					appUrls,
-				});
-
-				if (Object.keys(declared.env).length > 0) {
-					logger.log(
-						`   🔌 Resolved ${Object.keys(declared.env).length} declared URL(s)`,
-					);
-
-					const { readStageSecrets, writeStageSecrets, initStageSecrets } =
-						await import('../secrets/storage');
-					const secrets =
-						(await readStageSecrets(stage)) ?? initStageSecrets(stage);
-
-					// Declared URLs win: the manifest is the statement of what
-					// exists, and a value left from before it was declared is the
-					// drift this replaces.
-					secrets.custom = { ...secrets.custom, ...declared.env };
-					await writeStageSecrets(secrets);
-				}
-
-				if (declared.statements.length > 0) {
-					const serverHostname = getServerHostname(
-						creds?.endpoint ?? dokployConfig.endpoint,
-					);
-
-					for (const [databaseName, cluster] of Object.entries(
-						declared.clusters,
-					)) {
-						const statements = declared.statements.filter(
-							(statement) => statement.database === databaseName,
-						);
-						if (statements.length === 0) continue;
-
-						const created = await applyDeclaredStatements(
-							api,
-							cluster,
-							serverHostname,
-							statements,
-						);
-						logger.log(
-							`   🗄️  ${databaseName}: applied ${statements.length} statement(s), ${created} new`,
-						);
-					}
-				}
-			}
-		}
-
-		// Save provisioned service URLs to secrets before build
-		if (setupResult.serviceUrls) {
-			const { readStageSecrets, writeStageSecrets, initStageSecrets } =
-				await import('../secrets/storage');
-			let secrets = await readStageSecrets(stage);
-
-			// Create secrets file if it doesn't exist
-			if (!secrets) {
-				logger.log(`   Creating secrets file for stage "${stage}"...`);
-				secrets = initStageSecrets(stage);
-			}
-
-			let updated = false;
-			// URL fields go to secrets.urls, individual params go to secrets.custom
-			const urlFields = ['DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL'] as const;
-
-			for (const [key, value] of Object.entries(setupResult.serviceUrls)) {
-				if (!value) continue;
-
-				if (urlFields.includes(key as (typeof urlFields)[number])) {
-					// URL fields
-					const urlKey = key as keyof typeof secrets.urls;
-					if (!secrets.urls[urlKey]) {
-						secrets.urls[urlKey] = value;
-						logger.log(`   Saved ${key} to secrets.urls`);
-						updated = true;
-					}
-				} else {
-					// Individual parameters (HOST, PORT, NAME, USER, PASSWORD)
-					if (!secrets.custom[key]) {
-						secrets.custom[key] = value;
-						logger.log(`   Saved ${key} to secrets.custom`);
-						updated = true;
-					}
-				}
-			}
-			if (updated) {
-				await writeStageSecrets(secrets);
-			}
-		}
-	}
-
-	// Build for production with secrets injection (unless skipped)
-	let masterKey: string | undefined;
-	if (!skipBuild) {
-		logger.log(`\n📦 Building for production...`);
-		const buildResult = await buildCommand({
-			provider: 'server',
-			production: true,
-			stage,
-		});
-		masterKey = buildResult.masterKey;
-	} else {
-		logger.log(`\n⏭️  Skipping build (--skip-build)`);
-	}
-
-	// Deploy based on provider
-	let result: DeployResult;
-
-	switch (provider) {
-		case 'docker': {
-			result = await deployDocker({
-				stage,
-				tag: imageTag,
-				skipPush,
-				masterKey,
-				config: dockerConfig,
-			});
-			break;
-		}
-
-		case 'dokploy': {
-			if (!dokployConfig) {
-				throw new Error('Dokploy config not initialized');
-			}
-			const finalImageRef = finalRegistry
-				? `${finalRegistry}/${imageName}:${imageTag}`
-				: `${imageName}:${imageTag}`;
-
-			// First build and push the Docker image
-			await deployDocker({
-				stage,
-				tag: imageTag,
-				skipPush: false, // Dokploy needs the image in registry
-				masterKey,
-				config: {
-					registry: finalRegistry,
-					imageName: dockerConfig.imageName,
-				},
-			});
-
-			// Then trigger Dokploy deployment
-			result = await deployDokploy({
-				stage,
-				tag: imageTag,
-				imageRef: finalImageRef,
-				masterKey,
-				config: dokployConfig,
-			});
-			break;
-		}
-
-		case 'aws-lambda': {
-			logger.log('\n⚠️  AWS Lambda deployment is not yet implemented.');
-			logger.log('   Use SST or AWS CDK for Lambda deployments.');
-			result = { imageRef, masterKey };
-			break;
-		}
-
-		default: {
-			throw new Error(
-				`Unknown deploy provider: ${provider}\n` +
-					'Supported providers: docker, dokploy, aws-lambda',
-			);
-		}
-	}
-
-	logger.log('\n✅ Deployment complete!');
-
-	return result;
+	// One path, whatever the config was written as.
+	//
+	// `defineConfig` is sugar over a one-app workspace, and `processConfig`
+	// already projects it into the same `NormalizedWorkspace` a `defineWorkspace`
+	// produces — so branching here meant a single-app project silently got less.
+	// Domains were the clearest case: `createDomain` is only reached from this
+	// function, so a single-app deploy provisioned everything, pushed an image,
+	// started a container, and left nothing routing to it.
+	return workspaceDeployCommand(loadedConfig.workspace, options);
 }
 
 export type { DeployOptions, DeployProvider, DeployResult };
