@@ -5,7 +5,9 @@ import {
 	cloudName,
 	cookieDomain,
 	environmentCase,
+	kebabCase,
 	provideKey,
+	scopedName,
 	serviceKey,
 } from '../naming';
 
@@ -155,5 +157,48 @@ describe('cookieDomain', () => {
 		expect(
 			cookieDomain(['https://a.eu.example.com', 'https://b.eu.example.com']),
 		).toBe('.eu.example.com');
+	});
+});
+
+/**
+ * One rule, every provider.
+ *
+ * `cloudName` and the SST target's `prefixedName` are the same function under
+ * two signatures, and this is what says so. They were two implementations that
+ * agreed on every id anybody had tried — until an id carried a digit beside a
+ * letter, where lodash's snakecase splits and an acronym-aware kebab does not:
+ * `S3Bucket` was `s-3-bucket` on Dokploy and `s3-bucket` on AWS, for the same
+ * construct.
+ */
+describe('one name, whatever the provider', () => {
+	const scope = { stage: 'production', app: 'kitchen-sink' };
+
+	it('keeps a digit with the word it belongs to', () => {
+		expect(cloudName(scope, 'S3Bucket')).toBe(
+			'production-kitchen-sink-s3-bucket',
+		);
+	});
+
+	it('splits an acronym from the word after it, and not inside itself', () => {
+		expect(cloudName(scope, 'APIKey')).toBe('production-kitchen-sink-api-key');
+		expect(kebabCase('XMLParser')).toBe('xml-parser');
+	});
+
+	it('is the same function the list-shaped signature uses', () => {
+		// Not "produces the same answer" — the same function. An SST stack adds a
+		// segment of its own, which is the only reason there are two signatures.
+		for (const id of ['Database', 'AuthDb', 'S3Bucket', 'APIKey', 'Uploads']) {
+			expect(cloudName(scope, id)).toBe(
+				scopedName([scope.stage, scope.app], id),
+			);
+		}
+	});
+
+	it('does not give an id a prefix it already carries', () => {
+		// Composing a name from one that was already scoped is otherwise how
+		// `production-kitchen-sink-production-kitchen-sink-database` happens.
+		expect(cloudName(scope, 'production-kitchen-sink-database')).toBe(
+			'production-kitchen-sink-database',
+		);
 	});
 });
