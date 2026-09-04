@@ -44,10 +44,7 @@ export const userEventsSubscriber = s
 
 		if (rows.length === 0) return;
 
-		await services.kitchenSink
-			.insertInto('notifications')
-			.values(rows)
-			.execute();
+		await services.database.insertInto('notifications').values(rows).execute();
 
 		logger.info(
 			{ count: rows.length, types: rows.map((r) => r.type) },

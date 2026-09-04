@@ -131,34 +131,20 @@ async function provision(
 describe('serviceName', () => {
 	const scope = { stage: 'prod', app: 'toolbox' };
 
-	it('uses the same scoped rule the AWS target does', () => {
-		// `cloudName`, not a third convention. Deriving this from `resourceName`
-		// and swapping underscores agreed with neither the Postgres identifier
-		// rule nor the cloud one.
-		expect(serviceName(scope, 'KitchenSink', 'database')).toBe(
-			'prod-toolbox-kitchen-sink-postgres',
-		);
-		expect(serviceName(scope, 'Uploads', 'objects')).toBe(
-			'prod-toolbox-uploads-minio',
-		);
-	});
-
-	it('adds the kind, which AWS does not need and Dokploy does', () => {
-		// AWS resources are typed by service, so the scoped name alone is
-		// unambiguous there. A Dokploy project is one flat list, where an
-		// application and the database it talks to would otherwise collide.
-		expect(serviceName(scope, 'KitchenSink', 'database')).toContain(
-			'-postgres',
-		);
+	it('is the same scoped rule the AWS target uses', () => {
+		// `cloudName` and nothing else, so a name reads identically on both
+		// providers. It briefly carried a `-postgres` suffix on the theory that a
+		// Dokploy project is one flat list; it is not — `project.one` returns
+		// typed collections, so the kind is already in the shape of the response.
+		expect(serviceName(scope, 'Database')).toBe('prod-toolbox-database');
+		expect(serviceName(scope, 'Uploads')).toBe('prod-toolbox-uploads');
 	});
 
 	it('is not the name Postgres uses for the database', () => {
 		// Snake inside Postgres, because every identifier touching it is; kebab
 		// and scoped in the provider, because that is where collisions between
 		// stages and apps happen.
-		expect(serviceName(scope, 'KitchenSink', 'database')).not.toBe(
-			'kitchensink_prod',
-		);
+		expect(serviceName(scope, 'Database')).not.toBe('database_prod');
 	});
 });
 
@@ -178,9 +164,7 @@ describe('the database', () => {
 		// same host is a credential on a network that did not need to see it.
 		const { env } = await provision();
 
-		expect(env.ORDERS_URL).toContain(
-			'@production-shop-orders-postgres-service:5432/',
-		);
+		expect(env.ORDERS_URL).toContain('@production-shop-orders-service:5432/');
 	});
 
 	it('keeps the owner URL off every manifest edge', async () => {

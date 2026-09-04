@@ -136,38 +136,25 @@ function clusterHost(postgres: { appName: string }): string {
 }
 
 /**
- * What a resource is called *in the provider*, as opposed to inside Postgres.
+ * What a resource is called in the provider.
  *
- * Two different names, and conflating them was the mistake worth naming. A
- * database's Postgres identifier is `kitchensink_prod` — snake, because every
- * identifier that touches it is — while a provider resource is kebab and
- * scoped, so two stages or two apps sharing an account cannot collide.
+ * `cloudName` and nothing else — the same scoped kebab rule the AWS target
+ * uses, so a name reads identically on both: `production-shop-orders`.
  *
- * `cloudName` is that second rule, and it is the one the AWS target already
- * uses. Deriving a Dokploy name from `resourceName` and swapping underscores,
- * which is what this did first, invents a third convention that agrees with
- * neither.
- *
- * The kind suffix is the one thing added on top, and only because Dokploy needs
- * it: AWS resources are typed by service, so `prod-toolbox-kitchen-sink` is
- * unambiguous there. A Dokploy project is one flat list, where the application
- * and the database it talks to would otherwise be two entries with the same
- * name.
+ * It briefly carried a `-postgres` suffix on the theory that a Dokploy project
+ * is one flat list where an application and its database would collide. It is
+ * not: `project.one` returns typed collections — `applications`, `postgres`,
+ * `redis`, `compose`, `mariadb`, `mongo`, `mysql` — so the kind is already in
+ * the shape of the response and an application and a Postgres of the same name
+ * are different objects with different ids. The suffix was answering a question
+ * nobody had asked.
  */
 export function serviceName(
 	scope: { stage: string; app: string },
 	id: string,
-	kind: DeclarationKind,
 ): string {
-	return `${cloudName(scope, id)}-${SERVICE_KIND[kind] ?? kind}`;
+	return cloudName(scope, id);
 }
-
-/** What each kind runs as, in the words the thing itself uses. */
-const SERVICE_KIND: Partial<Record<DeclarationKind, string>> = {
-	database: 'postgres',
-	objects: 'minio',
-	email: 'smtp',
-};
 
 const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	/**
@@ -187,7 +174,6 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			serviceName(
 				{ stage: context.stage, app: context.project },
 				declaration.id,
-				declaration.kind,
 			),
 			context.projectId,
 			context.environmentId,

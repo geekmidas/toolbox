@@ -162,7 +162,7 @@ describe('provisionDeclared', () => {
 		// Keyed by the *database* name, while the service carries the scoped
 		// cloud name plus its kind — the two rules the last fix separated.
 		expect(clusters.orders_production?.appName).toBe(
-			'production-shop-orders-postgres-service',
+			'production-shop-orders-service',
 		);
 		// Every statement has a cluster to run against, which is the property
 		// that stops one being silently skipped.

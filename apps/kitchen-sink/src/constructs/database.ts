@@ -31,17 +31,20 @@ export interface Database {
  * The app's database — one line where there used to be a service, a
  * `services: ['postgres']` entry, and a DATABASE_URL in three env files.
  *
+ * Called `Database` rather than `KitchenSink`: the id names the construct
+ * *within* the app, and the app is already `kitchen-sink`. Repeating it produced
+ * `production-kitchen-sink-kitchen-sink` on the provider and `KITCHEN_SINK_URL`
+ * for a key whose only reader is this app — both saying the same word twice.
+ *
  * Declaring it is what makes a Postgres exist locally: `gkm dev` reads this,
  * starts the container, creates `kitchensink` inside it, and injects
- * `KITCHEN_SINK_URL`. pg-boss keeps its queues in this same database, in its own
+ * `DATABASE_URL`. pg-boss keeps its queues in this same database, in its own
  * schema — which is why nothing else here mentions a broker.
  *
  * Both type arguments or neither: TypeScript has no partial type-argument
  * inference, so passing only `Database` would widen the service key to `string`.
  */
-export const database = new KyselyDatabase<Database, 'KitchenSink'>(
-	'KitchenSink',
-);
+export const database = new KyselyDatabase<Database, 'Database'>('Database');
 
 /**
  * A read-only endpoint on the same database.

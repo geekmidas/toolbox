@@ -1,26 +1,21 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getAppBuildOrder } from '../../workspace/index.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
-import { DokployApi } from '../dokploy-api';
 import {
 	type EnvResolverContext,
 	resolveEnvVar,
 	resolveEnvVars,
 } from '../env-resolver';
-import {
-	generateTag,
-	provisionServices,
-	workspaceDeployCommand,
-} from '../index';
+import { generateTag, workspaceDeployCommand } from '../index';
 import { createEmptyState } from '../state';
 import type { DeployOptions } from '../types';
 
 const BASE_URL = 'https://dokploy.example.com';
 
 // MSW server for mocking Dokploy API calls
-const server = setupServer();
+const _server = setupServer();
 
 /**
  * An empty project, which is how "nothing exists yet" is now asked.
@@ -30,7 +25,7 @@ const server = setupServer();
  * tests used to pass because the old code caught that failure and returned an
  * empty list, which is also what made every deploy create a duplicate.
  */
-function emptyProject() {
+function _emptyProject() {
 	return http.get(`${BASE_URL}/api/project.one`, () =>
 		HttpResponse.json({
 			projectId: 'proj_1',
@@ -73,283 +68,6 @@ describe('generateTag', () => {
 		const tag = generateTag('dev');
 		expect(tag).not.toContain(':');
 		expect(tag).not.toContain('.');
-	});
-});
-
-describe('provisionServices', () => {
-	beforeEach(() => {
-		server.listen({ onUnhandledRequest: 'bypass' });
-	});
-
-	afterEach(() => {
-		server.resetHandlers();
-		server.close();
-		vi.restoreAllMocks();
-	});
-
-	it('should return undefined when no services configured', async () => {
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			undefined,
-		);
-
-		expect(result).toBeUndefined();
-	});
-
-	it('should return undefined when no environmentId', async () => {
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', undefined, 'myapp', {
-			postgres: true,
-		});
-
-		expect(result).toBeUndefined();
-	});
-
-	it('should skip postgres when already provisioned', async () => {
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ postgres: true },
-			{ postgresId: 'pg_existing' },
-		);
-
-		// Should return undefined since nothing new was provisioned
-		expect(result).toBeUndefined();
-	});
-
-	it('should skip redis when already provisioned', async () => {
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(
-			api,
-			'proj_1',
-			'env_1',
-			'myapp',
-			{ redis: true },
-			{ redisId: 'redis_existing' },
-		);
-
-		expect(result).toBeUndefined();
-	});
-
-	it('should provision postgres and return DATABASE_URL', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					postgresId: 'pg_123',
-					name: 'myapp-db',
-					appName: 'myapp-db',
-					databaseName: 'app',
-					databaseUser: 'postgres',
-					databasePassword: body.databasePassword,
-					applicationStatus: 'idle',
-				});
-			}),
-			http.post(`${BASE_URL}/api/postgres.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			postgres: true,
-		});
-
-		expect(result).toBeDefined();
-		expect(result?.serviceUrls?.DATABASE_URL).toMatch(
-			/^postgresql:\/\/postgres:[a-f0-9]{32}@myapp-db:5432\/app$/,
-		);
-	});
-
-	it('should provision postgres and return individual connection parameters', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					postgresId: 'pg_123',
-					name: 'myapp-db',
-					appName: 'myapp-db',
-					databaseName: 'mydb',
-					databaseUser: 'dbuser',
-					databasePassword: body.databasePassword,
-					applicationStatus: 'idle',
-				});
-			}),
-			http.post(`${BASE_URL}/api/postgres.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			postgres: true,
-		});
-
-		expect(result).toBeDefined();
-		expect(result?.serviceUrls?.DATABASE_HOST).toBe('myapp-db');
-		expect(result?.serviceUrls?.DATABASE_PORT).toBe('5432');
-		expect(result?.serviceUrls?.DATABASE_NAME).toBe('mydb');
-		expect(result?.serviceUrls?.DATABASE_USER).toBe('dbuser');
-		expect(result?.serviceUrls?.DATABASE_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
-	});
-
-	it('should provision redis and return REDIS_URL', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					redisId: 'redis_123',
-					name: 'myapp-cache',
-					appName: 'myapp-cache',
-					databasePassword: body.databasePassword,
-					applicationStatus: 'idle',
-				});
-			}),
-			http.post(`${BASE_URL}/api/redis.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			redis: true,
-		});
-
-		expect(result).toBeDefined();
-		expect(result?.serviceUrls?.REDIS_URL).toMatch(
-			/^redis:\/\/:[a-f0-9]{32}@myapp-cache:6379$/,
-		);
-	});
-
-	it('should provision redis and return individual connection parameters', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					redisId: 'redis_123',
-					name: 'myapp-cache',
-					appName: 'myapp-cache',
-					databasePassword: body.databasePassword,
-					applicationStatus: 'idle',
-				});
-			}),
-			http.post(`${BASE_URL}/api/redis.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			redis: true,
-		});
-
-		expect(result).toBeDefined();
-		expect(result?.serviceUrls?.REDIS_HOST).toBe('myapp-cache');
-		expect(result?.serviceUrls?.REDIS_PORT).toBe('6379');
-		expect(result?.serviceUrls?.REDIS_PASSWORD).toMatch(/^[a-f0-9]{32}$/);
-	});
-
-	it('should provision both postgres and redis', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/postgres.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					postgresId: 'pg_123',
-					name: 'myapp-db',
-					appName: 'myapp-db',
-					databaseName: 'app',
-					databaseUser: 'postgres',
-					databasePassword: body.databasePassword,
-				});
-			}),
-			http.post(`${BASE_URL}/api/postgres.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-			http.post(`${BASE_URL}/api/redis.create`, async ({ request }) => {
-				const body = (await request.json()) as { databasePassword?: string };
-				return HttpResponse.json({
-					redisId: 'redis_123',
-					name: 'myapp-cache',
-					appName: 'myapp-cache',
-					databasePassword: body.databasePassword,
-				});
-			}),
-			http.post(`${BASE_URL}/api/redis.deploy`, () => {
-				return HttpResponse.json({ success: true });
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			postgres: true,
-			redis: true,
-		});
-
-		expect(result).toBeDefined();
-		expect(result?.serviceUrls?.DATABASE_URL).toBeDefined();
-		expect(result?.serviceUrls?.REDIS_URL).toBeDefined();
-	});
-
-	it('should handle postgres already exists error gracefully', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/postgres.create`, () => {
-				return HttpResponse.json(
-					{ message: 'Resource already exists' },
-					{ status: 400 },
-				);
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		// Should not throw, just return undefined for that service
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			postgres: true,
-		});
-
-		expect(result).toBeUndefined();
-	});
-
-	it('should handle redis already exists error gracefully', async () => {
-		server.use(
-			emptyProject(),
-			http.post(`${BASE_URL}/api/redis.create`, () => {
-				return HttpResponse.json(
-					{ message: 'duplicate key error' },
-					{ status: 400 },
-				);
-			}),
-		);
-
-		const api = new DokployApi({ baseUrl: BASE_URL, token: 'test-token' });
-
-		const result = await provisionServices(api, 'proj_1', 'env_1', 'myapp', {
-			redis: true,
-		});
-
-		expect(result).toBeUndefined();
 	});
 });
 
@@ -991,8 +709,8 @@ describe('workspaceDeployCommand', () => {
 		});
 
 		it('should correctly resolve chain of dependencies (db -> api -> web)', () => {
-			// Simulate deploying in order: db (no deps), api (depends on nothing but needs DATABASE_URL),
-			// then web (depends on api)
+			// Simulate deploying in order: api first (no dependencies), then web,
+			// which reads the URL api answers on.
 			const publicUrls: Record<string, string> = {};
 			const state = createEmptyState('production', 'proj_test', 'env-123');
 
@@ -1012,19 +730,11 @@ describe('workspaceDeployCommand', () => {
 				state,
 				appHostname: 'api.example.com',
 				frontendUrls: [],
-				appCredentials: { dbUser: 'api', dbPassword: 'secret' },
-				postgres: { host: 'db', port: 5432, database: 'myapp' },
 				dependencyUrls: {}, // api has no dependencies
 			};
 
-			const apiResult = resolveEnvVars(
-				['PORT', 'NODE_ENV', 'DATABASE_URL'],
-				apiContext,
-			);
+			const apiResult = resolveEnvVars(['PORT', 'NODE_ENV'], apiContext);
 			expect(apiResult.missing).toEqual([]);
-			expect(apiResult.resolved.DATABASE_URL).toBe(
-				'postgresql://api:secret@db:5432/myapp',
-			);
 
 			// Simulate api is now deployed
 			publicUrls.api = 'https://api.example.com';

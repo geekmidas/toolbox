@@ -87,7 +87,7 @@ export default defineConfig({
 		dokploy: {
 			endpoint: process.env.DOKPLOY_ENDPOINT ?? '',
 			registry: 'ghcr.io/technanimals',
-			domains: { prod: process.env.KITCHEN_SINK_DOMAIN ?? '' },
+			domains: { production: process.env.KITCHEN_SINK_DOMAIN ?? '' },
 		},
 	},
 

@@ -1,16 +1,9 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
-import {
-	resolveServicePorts,
-	startWorkspaceServices,
-} from '../credentials/index.js';
-import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
+import { reconcileWorkspace } from '../reconcile/workspace.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
-	generateLocalStackCredentials,
 	generateSecurePassword,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
@@ -88,20 +81,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	if (!options.skipDocker) {
 		logger.log('');
 
-		// An app that has adopted the constructs glob gets its containers derived
-		// from what it declares. One that has not keeps the hand-maintained
-		// compose file — the change is adoptable in pieces, not a flag day.
-		if (usesConstructs(workspace)) {
-			await reconcileLocal(workspace, stage, options);
-		} else {
-			const composeFile = join(workspace.root, 'docker-compose.yml');
-			if (existsSync(composeFile)) {
-				const resolvedPorts = await resolveServicePorts(workspace.root);
-				await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
-			} else {
-				logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
-			}
-		}
+		await reconcileLocal(workspace, stage, options);
 	}
 
 	// Print summary
@@ -268,53 +248,6 @@ export function reconcileSecrets(
 		};
 		result.urls = generateConnectionUrls(result.services, result.eventsBackend);
 		logger.log('   🔄 Adding missing service credentials: pgboss');
-		changed = true;
-	}
-
-	// Reconcile events backend.
-	//
-	// Not on the declared path: reconcile composes the broker's connection
-	// string from the plan — pg-boss is a schema tenant of the database the app
-	// declared, so its address is that database's and there is no separate
-	// credential to hold. Generating one here would produce a second answer to
-	// a question the manifest already answers, and generating one it *cannot*
-	// answer is worse: with no `services.db` there are no postgres credentials
-	// to derive from, so naming `pgboss` explicitly threw where leaving it
-	// defaulted had quietly done nothing.
-	const eventsBackend = usesConstructs(workspace)
-		? undefined
-		: workspace.services.events;
-	if (eventsBackend && result.eventsBackend !== eventsBackend) {
-		result.eventsBackend = eventsBackend;
-
-		// Add localstack credentials if needed
-		if (eventsBackend === 'sns' && !result.services.localstack) {
-			result = {
-				...result,
-				services: {
-					...result.services,
-					localstack: generateLocalStackCredentials(),
-				},
-			};
-			logger.log('   🔄 Adding missing service credentials: localstack');
-			changed = true;
-		}
-
-		// Add rabbitmq credentials if needed (for rabbitmq events)
-		if (eventsBackend === 'rabbitmq' && !result.services.rabbitmq) {
-			result = {
-				...result,
-				services: {
-					...result.services,
-					rabbitmq: generateServiceCredentials('rabbitmq'),
-				},
-			};
-			logger.log('   🔄 Adding missing service credentials: rabbitmq');
-			changed = true;
-		}
-
-		// Regenerate URLs with new events backend
-		result.urls = generateConnectionUrls(result.services, eventsBackend);
 		changed = true;
 	}
 

@@ -44,7 +44,7 @@
  * @module deploy
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
 import { Client as PgClient } from 'pg';
@@ -58,7 +58,6 @@ import { storeDokployRegistryId } from '../auth/credentials';
 import { buildCommand } from '../build/index';
 import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
-import { usesConstructs } from '../reconcile/workspace.js';
 import { readStageSecrets } from '../secrets/storage.js';
 import {
 	getAppBuildOrder,
@@ -71,12 +70,7 @@ import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
 import { deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
-import {
-	DokployApi,
-	type DokployApplication,
-	type DokployPostgres,
-	type DokployRedis,
-} from './dokploy-api';
+import { DokployApi, type DokployApplication } from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
 	type EnvResolverContext,
@@ -84,24 +78,16 @@ import {
 	validateEnvVars,
 } from './env-resolver.js';
 import type { DokployCluster } from './fromManifest';
-import { updateConfig } from './init';
 import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
 import {
-	type AppDbCredentials,
 	createEmptyState,
-	getAllAppCredentials,
 	getApplicationId,
 	getBackupState,
-	getPostgresId,
-	getRedisId,
-	setAppCredentials,
 	setApplicationId,
 	setBackupState,
 	setPostgresBackupId,
-	setPostgresId,
-	setRedisId,
 } from './state.js';
 import type {
 	AppDeployResult,
@@ -209,20 +195,6 @@ export interface ProvisionServicesResult {
 		postgresId?: string;
 		redisId?: string;
 	};
-}
-
-/**
- * Configuration for a database user to create during Dokploy deployment.
- *
- * @property name - The database username (typically matches the app name)
- * @property password - The generated password for this user
- * @property usePublicSchema - If true, user gets access to public schema (for api app).
- *                             If false, user gets their own schema with search_path set.
- */
-interface DbUserConfig {
-	name: string;
-	password: string;
-	usePublicSchema: boolean;
 }
 
 /**
@@ -489,105 +461,6 @@ async function applyDeclaredStatements(
 	}
 }
 
-async function initializePostgresUsers(
-	api: DokployApi,
-	postgres: DokployPostgres,
-	serverHostname: string,
-	users: DbUserConfig[],
-): Promise<void> {
-	logger.log('\n🔧 Initializing database users...');
-
-	// Enable external port temporarily
-	const externalPort = 5432;
-	logger.log(`   Enabling external port ${externalPort}...`);
-	await api.savePostgresExternalPort(postgres.postgresId, externalPort);
-
-	// Redeploy to apply external port change
-	await api.deployPostgres(postgres.postgresId);
-
-	// Wait for Postgres to be ready with external port
-	logger.log(
-		`   Waiting for Postgres to be accessible at ${serverHostname}:${externalPort}...`,
-	);
-	await waitForPostgres(
-		serverHostname,
-		externalPort,
-		postgres.databaseUser,
-		postgres.databasePassword,
-		postgres.databaseName,
-	);
-
-	// Connect and create users
-	const client = new PgClient({
-		host: serverHostname,
-		port: externalPort,
-		user: postgres.databaseUser,
-		password: postgres.databasePassword,
-		database: postgres.databaseName,
-	});
-
-	try {
-		await client.connect();
-
-		for (const user of users) {
-			const schemaName = user.usePublicSchema ? 'public' : user.name;
-			logger.log(
-				`   Creating user "${user.name}" with schema "${schemaName}"...`,
-			);
-
-			// Create or update user with all settings in one DO block
-			// This avoids "tuple already updated by self" errors from multiple ALTER USER calls
-			if (user.usePublicSchema) {
-				// API uses public schema
-				await client.query(`
-					DO $$ BEGIN
-						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
-							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-						ELSE
-							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
-						END IF;
-					END $$;
-				`);
-				await client.query(`
-					GRANT ALL ON SCHEMA public TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${user.name}";
-				`);
-			} else {
-				// Other apps get their own schema - combine user creation and search_path in one block
-				await client.query(`
-					DO $$ BEGIN
-						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
-							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-						ELSE
-							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
-						END IF;
-						-- Set search_path in same transaction to avoid tuple conflict
-						ALTER USER "${user.name}" SET search_path TO "${schemaName}";
-					END $$;
-				`);
-				await client.query(`
-					CREATE SCHEMA IF NOT EXISTS "${schemaName}" AUTHORIZATION "${user.name}";
-					GRANT USAGE ON SCHEMA "${schemaName}" TO "${user.name}";
-					GRANT ALL ON ALL TABLES IN SCHEMA "${schemaName}" TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA "${schemaName}" GRANT ALL ON TABLES TO "${user.name}";
-				`);
-			}
-
-			logger.log(`   ✓ User "${user.name}" configured`);
-		}
-	} finally {
-		await client.end();
-	}
-
-	// Disable external port for security
-	logger.log('   Disabling external port...');
-	await api.savePostgresExternalPort(postgres.postgresId, null);
-	await api.deployPostgres(postgres.postgresId);
-
-	logger.log('   ✓ Database users initialized');
-}
-
 /**
  * Get the server hostname from the Dokploy endpoint URL
  */
@@ -621,164 +494,6 @@ function _buildPerAppDatabaseUrl(
 	databaseName: string,
 ): string {
 	return `postgresql://${appName}:${encodeURIComponent(appPassword)}@${postgresAppName}:5432/${databaseName}`;
-}
-
-/**
- * Provision docker compose services in Dokploy
- * @internal Exported for testing
- */
-export async function provisionServices(
-	api: DokployApi,
-	projectId: string,
-	environmentId: string | undefined,
-	projectName: string,
-	services?: DockerComposeServices,
-	existingServiceIds?: { postgresId?: string; redisId?: string },
-): Promise<ProvisionServicesResult | undefined> {
-	logger.log(
-		`\n🔍 provisionServices called: services=${JSON.stringify(services)}, envId=${environmentId}`,
-	);
-	if (!services || !environmentId) {
-		logger.log('   Skipping: no services or no environmentId');
-		return undefined;
-	}
-
-	const serviceUrls: ServiceUrls = {};
-	const serviceIds: { postgresId?: string; redisId?: string } = {};
-
-	if (services.postgres) {
-		logger.log('\n🐘 Checking PostgreSQL...');
-		const postgresName = 'db';
-
-		try {
-			let postgres: DokployPostgres | null = null;
-			let created = false;
-
-			// Check if we have an existing ID from state
-			if (existingServiceIds?.postgresId) {
-				logger.log(`   Using cached ID: ${existingServiceIds.postgresId}`);
-				postgres = await api.getPostgres(existingServiceIds.postgresId);
-				if (postgres) {
-					logger.log(`   ✓ PostgreSQL found: ${postgres.postgresId}`);
-				} else {
-					logger.log(`   ⚠ Cached ID invalid, will create new`);
-				}
-			}
-
-			// If not found by ID, use findOrCreate
-			if (!postgres) {
-				const databasePassword = randomBytes(16).toString('hex');
-				// Use project name as database name (replace hyphens with underscores for PostgreSQL)
-				const databaseName = projectName.replace(/-/g, '_');
-
-				const result = await api.findOrCreatePostgres(
-					postgresName,
-					projectId,
-					environmentId,
-					{ databaseName, databasePassword },
-				);
-				postgres = result.postgres;
-				created = result.created;
-
-				if (created) {
-					logger.log(`   ✓ Created PostgreSQL: ${postgres.postgresId}`);
-
-					// Deploy the database (only for new instances)
-					await api.deployPostgres(postgres.postgresId);
-					logger.log('   ✓ PostgreSQL deployed');
-				} else {
-					logger.log(`   ✓ PostgreSQL already exists: ${postgres.postgresId}`);
-				}
-			}
-
-			// Store the ID for state
-			serviceIds.postgresId = postgres.postgresId;
-
-			// Store individual connection parameters
-			serviceUrls.DATABASE_HOST = postgres.appName;
-			serviceUrls.DATABASE_PORT = '5432';
-			serviceUrls.DATABASE_NAME = postgres.databaseName;
-			serviceUrls.DATABASE_USER = postgres.databaseUser;
-			serviceUrls.DATABASE_PASSWORD = postgres.databasePassword;
-
-			// Construct connection URL using internal docker network hostname
-			serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
-			logger.log(`   ✓ Database credentials configured`);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
-		}
-	}
-
-	if (services.redis) {
-		logger.log('\n🔴 Checking Redis...');
-		const redisName = 'cache';
-
-		try {
-			let redis: DokployRedis | null = null;
-			let created = false;
-
-			// Check if we have an existing ID from state
-			if (existingServiceIds?.redisId) {
-				logger.log(`   Using cached ID: ${existingServiceIds.redisId}`);
-				redis = await api.getRedis(existingServiceIds.redisId);
-				if (redis) {
-					logger.log(`   ✓ Redis found: ${redis.redisId}`);
-				} else {
-					logger.log(`   ⚠ Cached ID invalid, will create new`);
-				}
-			}
-
-			// If not found by ID, use findOrCreate
-			if (!redis) {
-				const { randomBytes } = await import('node:crypto');
-				const databasePassword = randomBytes(16).toString('hex');
-
-				const result = await api.findOrCreateRedis(
-					redisName,
-					projectId,
-					environmentId,
-					{ databasePassword },
-				);
-				redis = result.redis;
-				created = result.created;
-
-				if (created) {
-					logger.log(`   ✓ Created Redis: ${redis.redisId}`);
-
-					// Deploy the redis instance (only for new instances)
-					await api.deployRedis(redis.redisId);
-					logger.log('   ✓ Redis deployed');
-				} else {
-					logger.log(`   ✓ Redis already exists: ${redis.redisId}`);
-				}
-			}
-
-			// Store the ID for state
-			serviceIds.redisId = redis.redisId;
-
-			// Store individual connection parameters
-			serviceUrls.REDIS_HOST = redis.appName;
-			serviceUrls.REDIS_PORT = '6379';
-			if (redis.databasePassword) {
-				serviceUrls.REDIS_PASSWORD = redis.databasePassword;
-			}
-
-			// Construct connection URL
-			const password = redis.databasePassword
-				? `:${redis.databasePassword}@`
-				: '';
-			serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
-			logger.log(`   ✓ Redis credentials configured`);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`   ⚠ Failed to provision Redis: ${message}`);
-		}
-	}
-
-	return Object.keys(serviceUrls).length > 0
-		? { serviceUrls, serviceIds }
-		: undefined;
 }
 
 /**
@@ -816,7 +531,7 @@ async function ensureDokploySetup(
 	config: GkmConfig,
 	dockerConfig: DockerDeployConfig,
 	stage: string,
-	services?: DockerComposeServices,
+	_services?: DockerComposeServices,
 ): Promise<DokploySetupResult> {
 	logger.log('\n🔧 Checking Dokploy setup...');
 
@@ -891,20 +606,6 @@ async function ensureDokploySetup(
 
 			const environmentId = environment.environmentId;
 
-			// Provision services if configured
-			logger.log(
-				`   Services config: ${JSON.stringify(services)}, envId: ${environmentId}`,
-			);
-			// For single-app mode, we don't have state persistence yet, so pass undefined
-			const provisionResult = await provisionServices(
-				api,
-				existingConfig.projectId,
-				environmentId,
-				dockerConfig.appName!,
-				services,
-				undefined, // No state in single-app mode
-			);
-
 			return {
 				config: {
 					endpoint: existingConfig.endpoint,
@@ -913,7 +614,6 @@ async function ensureDokploySetup(
 					registry: existingConfig.registry,
 					registryId: storedRegistryId ?? undefined,
 				},
-				serviceUrls: provisionResult?.serviceUrls,
 				environmentId,
 			};
 		} catch {
@@ -1112,7 +812,17 @@ async function ensureDokploySetup(
 	};
 
 	// Update gkm.config.ts
-	await updateConfig(dokployConfig);
+	// Deliberately not written back into `gkm.config.ts`.
+	//
+	// It used to be, with a regex that matched to the first closing brace — so a
+	// nested `domains: { … }` orphaned the tail and every key it did not itself
+	// write was dropped. It corrupted a config once here.
+	//
+	// Nothing is lost by not writing: the project, application and registry are
+	// found by name on the next run, and remembered in the deploy state, which is
+	// the artefact whose job that is. Generated ids in a source file were only
+	// ever a cache with no invalidation.
+	logger.log(`   Project ${project.projectId} · application ${applicationId}`);
 
 	logger.log('\n✅ Dokploy setup complete!');
 	logger.log(`   Project: ${project.projectId}`);
@@ -1121,20 +831,8 @@ async function ensureDokploySetup(
 		logger.log(`   Registry: ${registryId}`);
 	}
 
-	// Step 8: Provision docker compose services if configured
-	// For single-app mode, we don't have state persistence yet, so pass undefined
-	const provisionResult = await provisionServices(
-		api,
-		project.projectId,
-		environmentId,
-		dockerConfig.appName!,
-		services,
-		undefined, // No state in single-app mode
-	);
-
 	return {
 		config: dokployConfig,
-		serviceUrls: provisionResult?.serviceUrls,
 		environmentId,
 	};
 }
@@ -1412,53 +1110,6 @@ export async function workspaceDeployCommand(
 		}
 	}
 
-	// Provision infrastructure services if configured
-	const services = workspace.services;
-	const dockerServices = {
-		postgres: services.db !== undefined && services.db !== false,
-		redis: services.cache !== undefined && services.cache !== false,
-	};
-
-	// Track provisioned postgres info for per-app DATABASE_URL
-	let provisionedPostgres: DokployPostgres | null = null;
-	let provisionedRedis: DokployRedis | null = null;
-
-	if (dockerServices.postgres || dockerServices.redis) {
-		logger.log('\n🔧 Provisioning infrastructure services...');
-		// Pass existing service IDs from state (prefer state over URL sniffing)
-		const existingServiceIds = {
-			postgresId: getPostgresId(state),
-			redisId: getRedisId(state),
-		};
-
-		const provisionResult = await provisionServices(
-			api,
-			project.projectId,
-			environmentId,
-			workspace.name,
-			dockerServices,
-			existingServiceIds,
-		);
-
-		// Update state with returned service IDs
-		if (provisionResult?.serviceIds) {
-			if (provisionResult.serviceIds.postgresId) {
-				setPostgresId(state, provisionResult.serviceIds.postgresId);
-				// Fetch full postgres info for later use
-				provisionedPostgres = await api.getPostgres(
-					provisionResult.serviceIds.postgresId,
-				);
-			}
-			if (provisionResult.serviceIds.redisId) {
-				setRedisId(state, provisionResult.serviceIds.redisId);
-				// Fetch full redis info for later use
-				provisionedRedis = await api.getRedis(
-					provisionResult.serviceIds.redisId,
-				);
-			}
-		}
-	}
-
 	// ==================================================================
 	// Separate apps by type for two-phase deployment
 	// ==================================================================
@@ -1483,70 +1134,6 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	// Initialize per-app database users if Postgres is provisioned
 	// ==================================================================
-	const perAppDbCredentials = new Map<string, AppDbCredentials>();
-
-	// Skipped where the manifest owns the roles. `initializePostgresUsers` writes
-	// its own `DO $$` block — one user per *app*, on a schema named after it —
-	// while a declared project gets one runtime/owner pair per declared database
-	// or tenant, from the `roleStatements` generator the local and AWS targets
-	// share. Running both would create roles nothing connects as, under a second
-	// definition of the same split.
-	//
-	// It stays for a project that has not adopted the model, which is the only
-	// thing it was ever for.
-	if (
-		provisionedPostgres &&
-		backendApps.length > 0 &&
-		!usesConstructs(workspace)
-	) {
-		// Determine which backend apps need DATABASE_URL
-		const appsNeedingDb = backendApps.filter((appName) => {
-			const requirements = sniffedApps.get(appName);
-			return requirements?.requiredEnvVars.includes('DATABASE_URL');
-		});
-
-		if (appsNeedingDb.length > 0) {
-			logger.log(`\n🔐 Setting up per-app database credentials...`);
-			logger.log(`   Apps needing DATABASE_URL: ${appsNeedingDb.join(', ')}`);
-
-			// Get or generate credentials for each app
-			const existingCredentials = getAllAppCredentials(state);
-			const usersToCreate: DbUserConfig[] = [];
-
-			for (const appName of appsNeedingDb) {
-				let credentials = existingCredentials[appName];
-
-				if (credentials) {
-					logger.log(`   ${appName}: Using existing credentials from state`);
-				} else {
-					// Generate new credentials
-					const password = randomBytes(16).toString('hex');
-					credentials = { dbUser: appName, dbPassword: password };
-					setAppCredentials(state, appName, credentials);
-					logger.log(`   ${appName}: Generated new credentials`);
-				}
-
-				perAppDbCredentials.set(appName, credentials);
-
-				// Always add to users to create (idempotent - will update if exists)
-				usersToCreate.push({
-					name: appName,
-					password: credentials.dbPassword,
-					usePublicSchema: appName === 'api', // API uses public schema, others get their own
-				});
-			}
-
-			// Initialize database users
-			const serverHostname = getServerHostname(creds.endpoint);
-			await initializePostgresUsers(
-				api,
-				provisionedPostgres,
-				serverHostname,
-				usersToCreate,
-			);
-		}
-	}
-
 	// Read before the declared block below, which needs it to work out where a
 	// surface will answer — that has to be known before any environment is
 	// saved, and it used to be decided inside the app loop, which is too late.
@@ -1563,8 +1150,12 @@ export async function workspaceDeployCommand(
 	// It runs before any application environment is saved, because the URLs it
 	// resolves are what those applications read.
 	let declaredEnv: Record<string, string> = {};
+	// The clusters the manifest provisioned, for anything downstream that needs
+	// one — a backup schedule names a database, and that database is now
+	// declared rather than configured.
+	let declaredClusters: Record<string, DokployCluster> = {};
 
-	if (usesConstructs(workspace)) {
+	{
 		logger.log('\n📦 Provisioning declared constructs...');
 
 		// Every surface answers on its process's address, so the address has to
@@ -1594,6 +1185,7 @@ export async function workspaceDeployCommand(
 		});
 
 		declaredEnv = declared.env;
+		declaredClusters = declared.clusters;
 
 		if (Object.keys(declaredEnv).length > 0) {
 			logger.log(
@@ -1635,7 +1227,12 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	// Provision backup destination if configured
 	// ==================================================================
-	if (workspace.deploy?.backups && provisionedPostgres) {
+	// The first declared database. A workspace that declares two and wants both
+	// backed up needs a per-database schedule, which the config has no way to
+	// express yet — worth saying rather than backing up one and calling it done.
+	const backupCluster = Object.values(declaredClusters)[0];
+
+	if (workspace.deploy?.backups && backupCluster) {
 		logger.log('\n💾 Provisioning backup destination...');
 
 		const { provisionBackupDestination } = await import(
@@ -1665,8 +1262,8 @@ export async function workspaceDeployCommand(
 				schedule: backupSchedule,
 				prefix: `${stage}/postgres`,
 				destinationId: backupState.destinationId,
-				database: provisionedPostgres.databaseName,
-				postgresId: provisionedPostgres.postgresId,
+				database: backupCluster.databaseName,
+				postgresId: backupCluster.postgresId,
 				enabled: true,
 				keepLatestCount: backupRetention,
 			});
@@ -1813,21 +1410,6 @@ export async function workspaceDeployCommand(
 					appName,
 					stage,
 					state,
-					appCredentials: perAppDbCredentials.get(appName),
-					postgres: provisionedPostgres
-						? {
-								host: provisionedPostgres.appName,
-								port: 5432,
-								database: provisionedPostgres.databaseName,
-							}
-						: undefined,
-					redis: provisionedRedis
-						? {
-								host: provisionedRedis.appName,
-								port: 6379,
-								password: provisionedRedis.databasePassword,
-							}
-						: undefined,
 					appHostname: backendHost,
 					frontendUrls,
 					userSecrets: stageSecrets ?? undefined,
@@ -2345,7 +1927,7 @@ export async function deployCommand(
 		{
 			const { workspace } = await loadWorkspaceConfig();
 
-			if (usesConstructs(workspace)) {
+			{
 				logger.log('\n📦 Provisioning declared constructs...');
 
 				// The domain comes from the workspace's own deploy config, which a

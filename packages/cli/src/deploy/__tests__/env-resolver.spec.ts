@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { NormalizedAppConfig } from '../../workspace/types';
 import {
 	AUTO_SUPPORTED_VARS,
-	buildDatabaseUrl,
-	buildRedisUrl,
 	type EnvResolverContext,
 	formatMissingVarsError,
 	generateSecret,
@@ -102,67 +100,6 @@ describe('getOrGenerateSecret', () => {
 	});
 });
 
-describe('buildDatabaseUrl', () => {
-	it('should build correct URL with credentials', () => {
-		const credentials = { dbUser: 'myuser', dbPassword: 'mypassword' };
-		const postgres = { host: 'localhost', port: 5432, database: 'mydb' };
-
-		const url = buildDatabaseUrl(credentials, postgres);
-
-		expect(url).toBe('postgresql://myuser:mypassword@localhost:5432/mydb');
-	});
-
-	it('should encode special characters in username and password', () => {
-		const credentials = { dbUser: 'user@test', dbPassword: 'pass#word!123' };
-		const postgres = { host: 'db.example.com', port: 5432, database: 'app' };
-
-		const url = buildDatabaseUrl(credentials, postgres);
-
-		expect(url).toBe(
-			'postgresql://user%40test:pass%23word!123@db.example.com:5432/app',
-		);
-	});
-
-	it('should handle different port numbers', () => {
-		const credentials = { dbUser: 'user', dbPassword: 'pass' };
-		const postgres = { host: 'localhost', port: 5433, database: 'testdb' };
-
-		const url = buildDatabaseUrl(credentials, postgres);
-
-		expect(url).toBe('postgresql://user:pass@localhost:5433/testdb');
-	});
-});
-
-describe('buildRedisUrl', () => {
-	it('should build URL with password', () => {
-		const redis = { host: 'localhost', port: 6379, password: 'redispass' };
-
-		const url = buildRedisUrl(redis);
-
-		expect(url).toBe('redis://:redispass@localhost:6379');
-	});
-
-	it('should build URL without password', () => {
-		const redis = { host: 'localhost', port: 6379 };
-
-		const url = buildRedisUrl(redis);
-
-		expect(url).toBe('redis://localhost:6379');
-	});
-
-	it('should encode special characters in password', () => {
-		const redis = {
-			host: 'redis.example.com',
-			port: 6380,
-			password: 'p@ss:word',
-		};
-
-		const url = buildRedisUrl(redis);
-
-		expect(url).toBe('redis://:p%40ss%3Aword@redis.example.com:6380');
-	});
-});
-
 describe('resolveEnvVar', () => {
 	const createApp = (
 		overrides: Partial<NormalizedAppConfig> = {},
@@ -209,33 +146,12 @@ describe('resolveEnvVar', () => {
 		).toBe('production');
 	});
 
-	it('should resolve DATABASE_URL when credentials and postgres are provided', () => {
-		const context = createContext({
-			appCredentials: { dbUser: 'api', dbPassword: 'secret123' },
-			postgres: { host: 'postgres', port: 5432, database: 'myproject' },
-		});
-
-		const url = resolveEnvVar('DATABASE_URL', context);
-
-		expect(url).toBe('postgresql://api:secret123@postgres:5432/myproject');
-	});
-
 	it('should return undefined for DATABASE_URL when credentials missing', () => {
 		const context = createContext({
 			postgres: { host: 'postgres', port: 5432, database: 'myproject' },
 		});
 
 		expect(resolveEnvVar('DATABASE_URL', context)).toBeUndefined();
-	});
-
-	it('should resolve REDIS_URL when redis is provided', () => {
-		const context = createContext({
-			redis: { host: 'redis', port: 6379, password: 'redispass' },
-		});
-
-		const url = resolveEnvVar('REDIS_URL', context);
-
-		expect(url).toBe('redis://:redispass@redis:6379');
 	});
 
 	it('should return undefined for REDIS_URL when redis missing', () => {
@@ -568,20 +484,17 @@ describe('resolveEnvVars', () => {
 	});
 
 	it('should resolve all provided variables', () => {
-		const context = createContext({
-			appCredentials: { dbUser: 'api', dbPassword: 'pass' },
-			postgres: { host: 'postgres', port: 5432, database: 'mydb' },
-		});
+		// `DATABASE_URL` is not among them any more. The resolver used to compose
+		// one from a per-app credential it invented; a database address is now
+		// whatever the construct that declared it resolved to, and this function
+		// never sees the manifest.
+		const context = createContext();
 
-		const result = resolveEnvVars(
-			['PORT', 'NODE_ENV', 'DATABASE_URL'],
-			context,
-		);
+		const result = resolveEnvVars(['PORT', 'NODE_ENV'], context);
 
 		expect(result.resolved).toEqual({
 			PORT: '3000',
 			NODE_ENV: 'production',
-			DATABASE_URL: 'postgresql://api:pass@postgres:5432/mydb',
 		});
 		expect(result.missing).toEqual([]);
 	});
@@ -808,8 +721,6 @@ describe('Docker build arg extraction', () => {
 	it('should NOT include server-only vars in build args', () => {
 		const context = createContext({
 			dependencyUrls: { api: 'https://api.example.com' },
-			appCredentials: { dbUser: 'web', dbPassword: 'pass' },
-			postgres: { host: 'postgres', port: 5432, database: 'mydb' },
 		});
 
 		const sniffedVars = [
@@ -820,7 +731,10 @@ describe('Docker build arg extraction', () => {
 
 		const { resolved } = validateEnvVars(sniffedVars, context);
 
-		// Add server-only secret
+		// Server-only values the resolver does not compose: a secret, and a
+		// database address the manifest resolved. Both reach the app the same
+		// way, and neither may reach the image.
+		resolved.DATABASE_URL = 'postgresql://web:pass@postgres:5432/mydb';
 		resolved.STRIPE_SECRET_KEY = 'sk_test_secret';
 
 		const { buildArgs, publicUrlArgNames } = extractBuildArgs(resolved);
