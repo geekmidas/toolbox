@@ -4,7 +4,11 @@ import type {
 	ComposeServicesConfig,
 	ServiceConfig,
 } from '../types';
-import { cacheBackendOf, imagePinOf } from '../workspace/backends.js';
+import {
+	cacheBackendOf,
+	imagePinOf,
+	providerOf,
+} from '../workspace/backends.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -426,10 +430,16 @@ export function generateWorkspaceCompose(
 	const hasPostgres = services.db !== undefined && services.db !== false;
 	// `cache: 'db'` needs no Redis at all: the cache is a table in the database
 	// the app already declared, which is the same relationship pg-boss has.
+	//
+	// Only a *named* backend can say that, though. `cache: true` and an image
+	// pin are requests for the local container, and a target-aware default must
+	// not overrule one — asking for a container and being given none because of
+	// where the app happens to deploy is the sort of answer nobody can find.
 	const hasRedis =
 		services.cache !== undefined &&
 		services.cache !== false &&
-		cacheBackendOf(services.cache) !== 'db';
+		(typeof services.cache !== 'string' ||
+			cacheBackendOf(services.cache, providerOf(workspace)) !== 'db');
 	const hasMail = services.mail !== undefined && services.mail !== false;
 	const hasMinio = services.storage !== undefined && services.storage !== false;
 	const eventsBackend = services.events;
@@ -443,7 +453,9 @@ export function generateWorkspaceCompose(
 	// A backend name is not an image pin — `cache: 'db'` says where the cache
 	// lives deployed and nothing about which container runs locally.
 	const redisImage = getInfraServiceImage('redis', imagePinOf(services.cache));
-	const minioImage = getInfraServiceImage('minio', services.storage);
+	// Same as the cache above: a string names where a bucket lives deployed and
+	// says nothing about the local container.
+	const minioImage = getInfraServiceImage('minio', imagePinOf(services.storage));
 
 	let yaml = `# Docker Compose for ${workspace.name} workspace
 # Use "gkm dev" or "gkm test" to start services.

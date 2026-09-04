@@ -179,8 +179,19 @@ export interface ServicesConfig {
 	 * them is Mailpit, because every one of them speaks SMTP.
 	 */
 	mail?: boolean | MailServiceConfig | import('../types.js').EmailBackend;
-	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
-	storage?: boolean | ServiceImageConfig;
+	/**
+	 * Storage, as a container pin or as a backend name.
+	 *
+	 * `true` or an image config is the local MinIO container; a string names
+	 * where a declared bucket lives when deployed — `'s3'`, `'r2'`, or
+	 * `'minio'`. The default follows the deploy target: `s3` on AWS, `minio` on
+	 * a target that runs its own containers.
+	 *
+	 * The last of the four to get a backend name, which is why a bucket had no
+	 * address on a container target — there was nothing to choose with. Locally
+	 * every one of them is MinIO, because every one of them speaks S3.
+	 */
+	storage?: boolean | ServiceImageConfig | import('../types.js').StorageBackend;
 	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */
 	events?: import('../types.js').EventsBackend;
 }

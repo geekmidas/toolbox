@@ -93,7 +93,7 @@ export function driversFor(options: {
 	const parts = [
 		storageDriversFor(options.appRoot),
 		...[...new Set(backends)].map(
-			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE],
+			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE.aws],
 		),
 	].filter((part) => part.imports || part.setup);
 

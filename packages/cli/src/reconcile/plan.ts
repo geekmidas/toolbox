@@ -345,7 +345,10 @@ export function resourceName(
 export function containerFor(
 	kind: DeclarationKind,
 	events: EventsBackend = DEFAULT_EVENTS,
-	cache: CacheBackend = DEFAULT_CACHE,
+	// The target-aware choice is made upstream, in `reconcile/workspace.ts`,
+	// where the workspace knows where it deploys. This fires only for a caller
+	// that passed nothing at all.
+	cache: CacheBackend = DEFAULT_CACHE.aws,
 	/** Whether the declaration named a parent — see the `cache` branch. */
 	derived = false,
 	/** Whether the local edge exists — see the `file-server` branch. */
@@ -393,7 +396,7 @@ export function planFor(
 	const resources: PlannedResource[] = [];
 
 	const events = options.events ?? DEFAULT_EVENTS;
-	const cache = options.cache ?? DEFAULT_CACHE;
+	const cache = options.cache ?? DEFAULT_CACHE.aws;
 
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
