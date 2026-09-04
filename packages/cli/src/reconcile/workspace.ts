@@ -12,30 +12,14 @@
  */
 
 import { isAbsolute, join } from 'node:path';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
 import type { Routes } from '../types.js';
 import { cacheBackendOf, providerOf } from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
-
-/**
- * Containers a construct can imply, so config only has to name the rest.
- *
- * `services: { cache: true }` is still how you get Redis — no construct implies
- * one yet — while `services: { db: true }` is now redundant with declaring a
- * database and is ignored rather than obeyed, so the two cannot disagree.
- */
-const DERIVED_CONTAINERS = new Set(['postgres', 'minio', 'mailpit']);
-
-/** How a `services:` key names a container. */
-const SERVICE_CONTAINERS: Readonly<Record<string, string>> = {
-	db: 'postgres',
-	cache: 'redis',
-	storage: 'minio',
-	mail: 'mailpit',
-};
+import { planFor } from './plan.js';
 
 /**
  * Every constructs glob in the workspace, resolved against its app.
@@ -65,47 +49,45 @@ export function usesConstructs(workspace: NormalizedWorkspace): boolean {
 }
 
 /**
- * Containers config asks for that no construct implies.
+ * Image pins, by container. The config half of the derived/config split.
  *
- * A list of exceptions rather than a list you maintain: everything derivable is
- * already in the plan before this is read, and naming one here is a no-op rather
- * than a conflict.
+ * Read from `services.images` rather than from the backend keys beside it.
+ * They used to share one key, which is how `cache: true` came to mean "start a
+ * Redis" — the last way a container could exist because config asked for one
+ * instead of because something declared it.
  */
-export function extraContainers(workspace: NormalizedWorkspace): string[] {
-	const extras: string[] = [];
-
-	for (const [key, config] of Object.entries(workspace.services)) {
-		const container = SERVICE_CONTAINERS[key];
-		if (!container || DERIVED_CONTAINERS.has(container)) continue;
-		if (config === undefined || config === false) continue;
-		// A string names a *backend*, which says where the thing lives rather
-		// than asking for a container — and the plan has already decided which
-		// container that implies, including none. Reading it as a request is how
-		// `cache: 'db'` started a Redis for a cache that is a table in Postgres.
-		if (typeof config === 'string') continue;
-
-		extras.push(container);
-	}
-
-	return extras;
-}
-
-/** Image pins, by container. The config half of the derived/config split. */
 export function imagePins(
 	workspace: NormalizedWorkspace,
 ): Record<string, string> {
-	const images: Record<string, string> = {};
+	return { ...workspace.services.images };
+}
 
-	for (const [key, config] of Object.entries(workspace.services)) {
-		const container = SERVICE_CONTAINERS[key];
-		if (!container || typeof config !== 'object' || config === null) continue;
+/**
+ * The containers a workspace's declarations imply, without reconciling.
+ *
+ * The same derivation `reconcileWorkspace` makes, available to callers that
+ * need to know *what would run* without starting anything or writing ports —
+ * `gkm setup` deciding which credentials to generate, `gkm docker` writing a
+ * compose file. Those used to each read a boolean per service out of config,
+ * which is how a container could exist because config asked for one rather than
+ * because something declared it.
+ */
+export async function derivedContainers(
+	workspace: NormalizedWorkspace,
+	stage: string,
+	manifest?: ConstructManifest,
+): Promise<readonly string[]> {
+	const found =
+		manifest ??
+		(await discover({
+			patterns: constructGlobs(workspace),
+			cwd: workspace.root,
+		}));
 
-		const pin = config as { image?: string; version?: string };
-		if (pin.image) images[container] = pin.image;
-		else if (pin.version) images[container] = `${container}:${pin.version}`;
-	}
-
-	return images;
+	return planFor(found, stage, provisionOrder(found), {
+		events: workspace.services.events,
+		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
+	}).containers;
 }
 
 export interface WorkspaceReconcileOptions {
@@ -142,7 +124,6 @@ export async function reconcileWorkspace(
 		// A backend name, not an image pin. `cache: 'db'` says where the cache
 		// lives and implies no container at all.
 		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
-		extraContainers: extraContainers(workspace),
 		images: imagePins(workspace),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),

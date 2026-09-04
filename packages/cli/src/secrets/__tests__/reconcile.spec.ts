@@ -27,7 +27,7 @@ function createMultiAppWorkspace(
 				framework: 'nextjs',
 			},
 		},
-		services: { db: true },
+		services: {},
 		deploy: {},
 		shared: {},
 		secrets: {},
@@ -76,7 +76,7 @@ describe('reconcileMissingSecrets', () => {
 		const workspace = createMultiAppWorkspace();
 		const secrets = createSecrets();
 
-		const result = reconcileMissingSecrets(secrets, workspace);
+		const result = reconcileMissingSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.addedKeys.length).toBeGreaterThan(0);
@@ -92,7 +92,7 @@ describe('reconcileMissingSecrets', () => {
 			JWT_SECRET: existingValue,
 		});
 
-		const result = reconcileMissingSecrets(secrets, workspace);
+		const result = reconcileMissingSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.secrets.custom.JWT_SECRET).toBe(existingValue);
@@ -104,7 +104,7 @@ describe('reconcileMissingSecrets', () => {
 		const secrets = createSecrets();
 		const originalUpdatedAt = secrets.updatedAt;
 
-		const result = reconcileMissingSecrets(secrets, workspace);
+		const result = reconcileMissingSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.secrets.updatedAt).not.toBe(originalUpdatedAt);
@@ -114,7 +114,7 @@ describe('reconcileMissingSecrets', () => {
 		const workspace = createMultiAppWorkspace();
 		const secrets = createSecrets();
 
-		const result = reconcileMissingSecrets(secrets, workspace);
+		const result = reconcileMissingSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.secrets.custom.WEB_URL).toBe('http://localhost:3001');

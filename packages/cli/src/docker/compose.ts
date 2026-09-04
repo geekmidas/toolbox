@@ -4,11 +4,6 @@ import type {
 	ComposeServicesConfig,
 	ServiceConfig,
 } from '../types';
-import {
-	cacheBackendOf,
-	imagePinOf,
-	providerOf,
-} from '../workspace/backends.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -411,6 +406,16 @@ networks:
 export interface WorkspaceComposeOptions {
 	/** Container registry URL */
 	registry?: string;
+	/**
+	 * The containers the manifest derived, by reconcile's names.
+	 *
+	 * Passed in rather than sniffed, because whether a Postgres exists is a fact
+	 * about what the app declared and this file cannot see declarations. Absent
+	 * means none, which is the right answer for a workspace that declares
+	 * nothing — and no longer the wrong one for a workspace that declared
+	 * everything and set no flags.
+	 */
+	containers?: readonly string[];
 }
 
 /**
@@ -426,36 +431,35 @@ export function generateWorkspaceCompose(
 	const apps = Object.entries(workspace.apps);
 	const services = workspace.services;
 
-	// Determine which infrastructure services to include
-	const hasPostgres = services.db !== undefined && services.db !== false;
-	// `cache: 'db'` needs no Redis at all: the cache is a table in the database
-	// the app already declared, which is the same relationship pg-boss has.
+	// Which containers exist is the manifest's answer, not this file's.
 	//
-	// Only a *named* backend can say that, though. `cache: true` and an image
-	// pin are requests for the local container, and a target-aware default must
-	// not overrule one — asking for a container and being given none because of
-	// where the app happens to deploy is the sort of answer nobody can find.
-	const hasRedis =
-		services.cache !== undefined &&
-		services.cache !== false &&
-		(typeof services.cache !== 'string' ||
-			cacheBackendOf(services.cache, providerOf(workspace)) !== 'db');
-	const hasMail = services.mail !== undefined && services.mail !== false;
-	const hasMinio = services.storage !== undefined && services.storage !== false;
-	const eventsBackend = services.events;
-	const hasLocalStack = eventsBackend === 'sns';
-	const hasRabbitMQ =
-		eventsBackend === 'rabbitmq' ||
-		(services as Record<string, unknown>).rabbitmq !== undefined;
+	// It used to be one boolean per service — `db: true` starts a Postgres — and
+	// that was the last place a container could exist because config asked for
+	// one rather than because something declared it. A database implies Postgres,
+	// a bucket implies MinIO, a declared cache implies whichever container its
+	// backend needs. The caller derives the list once, from the same plan
+	// reconcile builds, and hands it here.
+	const containers = new Set(options.containers ?? []);
 
-	// Get image versions from config
-	const postgresImage = getInfraServiceImage('postgres', services.db);
-	// A backend name is not an image pin — `cache: 'db'` says where the cache
-	// lives deployed and nothing about which container runs locally.
-	const redisImage = getInfraServiceImage('redis', imagePinOf(services.cache));
-	// Same as the cache above: a string names where a bucket lives deployed and
-	// says nothing about the local container.
-	const minioImage = getInfraServiceImage('minio', imagePinOf(services.storage));
+	const hasPostgres = containers.has('postgres');
+	// `redis-http` is the Upstash-protocol proxy and `redis` is the wire
+	// protocol; a project on the proxy runs both, because the proxy needs
+	// something to proxy. Either one means a Redis in this file.
+	const hasRedis = containers.has('redis') || containers.has('redis-http');
+	const hasMail = containers.has('mailpit');
+	const hasMinio = containers.has('minio');
+	const hasLocalStack = containers.has('localstack');
+	const hasRabbitMQ = containers.has('rabbitmq');
+	const eventsBackend = services.events;
+
+	// Image pins, which stay config: which container runs is derived, which
+	// image it runs is not something a declaration could know.
+	const postgresImage = getInfraServiceImage(
+		'postgres',
+		services.images?.postgres,
+	);
+	const redisImage = getInfraServiceImage('redis', services.images?.redis);
+	const minioImage = getInfraServiceImage('minio', services.images?.minio);
 
 	let yaml = `# Docker Compose for ${workspace.name} workspace
 # Use "gkm dev" or "gkm test" to start services.
@@ -661,7 +665,7 @@ networks:
  */
 function getInfraServiceImage(
 	serviceName: 'postgres' | 'redis' | 'minio',
-	config: boolean | { version?: string; image?: string } | undefined,
+	pin: string | undefined,
 ): string {
 	const defaults: Record<'postgres' | 'redis' | 'minio', string> = {
 		postgres: 'postgres:18-alpine',
@@ -669,27 +673,10 @@ function getInfraServiceImage(
 		minio: 'minio/minio:latest',
 	};
 
-	if (!config || config === true) {
-		return defaults[serviceName];
-	}
-
-	if (typeof config === 'object') {
-		if (config.image) {
-			return config.image;
-		}
-		if (config.version) {
-			const baseImages: Record<'postgres' | 'redis' | 'minio', string> = {
-				postgres: 'postgres',
-				redis: 'redis',
-				minio: 'minio/minio',
-			};
-			return `${baseImages[serviceName]}:${config.version}`;
-		}
-	}
-
-	return defaults[serviceName];
+	// A pin is a whole image reference now — `services.images` holds one string
+	// per container, rather than a version this had to rebuild a reference from.
+	return pin || defaults[serviceName];
 }
-
 /**
  * Generate a service definition for an app.
  */

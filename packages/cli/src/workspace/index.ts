@@ -214,28 +214,16 @@ export function wrapSingleAppAsWorkspace(
 ): NormalizedWorkspace {
 	const name = getPackageName(cwd) ?? basename(cwd);
 
-	// Extract docker compose services if configured
-	const services = config.docker?.compose?.services;
-	const normalizedServices: NormalizedWorkspace['services'] = {};
-
-	if (services) {
-		if (Array.isArray(services)) {
-			// Legacy array format
-			for (const svc of services) {
-				if (svc === 'postgres') normalizedServices.db = true;
-				if (svc === 'redis') normalizedServices.cache = true;
-			}
-		} else {
-			// Object format
-			if (services.postgres) normalizedServices.db = services.postgres;
-			if (services.redis) normalizedServices.cache = services.redis;
-		}
-	}
-
-	// `services:` on the config itself wins over anything inferred from the
-	// compose block: it is the statement, and the compose block is a deploy-side
-	// list that only happens to name some of the same things.
-	Object.assign(normalizedServices, config.services ?? {});
+	// `docker.compose.services` no longer decides anything here.
+	//
+	// It used to seed `services.db` and `services.cache`, which is to say a
+	// container existed because a compose list named it. Which containers exist
+	// is the manifest's answer now — a database implies Postgres, a declared
+	// cache implies whichever container its backend needs — so the compose block
+	// is left to be what its name says: a deploy-side list.
+	const normalizedServices: NormalizedWorkspace['services'] = {
+		...(config.services ?? {}),
+	};
 
 	const apiApp: NormalizedAppConfig = {
 		type: 'backend',

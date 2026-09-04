@@ -160,40 +160,43 @@ export interface ServicesConfig {
 	 *   these addresses from code, which trusts the root without any of this.
 	 */
 	trustLocalCa?: boolean;
-	/** PostgreSQL database (default: postgres:18-alpine) */
-	db?: boolean | ServiceImageConfig;
 	/**
-	 * The cache, as a container pin or as a backend name.
+	 * Where a declared cache lives — `'upstash'`, `'elasticache'` or `'db'`.
 	 *
-	 * `true` or an image config is the local container; a string names where the
-	 * cache lives when deployed — `'upstash'` (default), `'elasticache'`, or
-	 * `'db'`. Naming a backend also decides the local shape, so dev and prod
-	 * speak the same protocol either way.
+	 * A backend name and nothing else. Whether there *is* a cache comes from the
+	 * manifest: declaring one implies its container the way declaring a database
+	 * implies Postgres, so this only ever answers the second question.
+	 *
+	 * Defaults by target — see `DEFAULT_CACHE`.
 	 */
-	cache?: boolean | ServiceImageConfig | import('../types.js').CacheBackend;
+	cache?: import('../types.js').CacheBackend;
 	/**
-	 * Mail, as a container pin or as a backend name.
+	 * Who delivers a declared app's mail — `'ses'`, `'resend'` or `'smtp'`.
 	 *
-	 * `true` or a config is Mailpit locally; a string names who delivers it
-	 * deployed — `'ses'` (default), `'resend'`, or `'smtp'`. Locally every one of
-	 * them is Mailpit, because every one of them speaks SMTP.
+	 * Locally every one of them is Mailpit, because every one speaks SMTP.
 	 */
-	mail?: boolean | MailServiceConfig | import('../types.js').EmailBackend;
-	/**
-	 * Storage, as a container pin or as a backend name.
-	 *
-	 * `true` or an image config is the local MinIO container; a string names
-	 * where a declared bucket lives when deployed — `'s3'`, `'r2'`, or
-	 * `'minio'`. The default follows the deploy target: `s3` on AWS, `minio` on
-	 * a target that runs its own containers.
-	 *
-	 * The last of the four to get a backend name, which is why a bucket had no
-	 * address on a container target — there was nothing to choose with. Locally
-	 * every one of them is MinIO, because every one of them speaks S3.
-	 */
-	storage?: boolean | ServiceImageConfig | import('../types.js').StorageBackend;
-	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */
+	mail?: import('../types.js').EmailBackend;
+	/** Where a declared bucket lives — `'minio'`, `'s3'` or `'r2'`. */
+	storage?: import('../types.js').StorageBackend;
+	/** What carries a declared queue or topic — pgboss, sns or rabbitmq. */
 	events?: import('../types.js').EventsBackend;
+	/**
+	 * Image pins for the containers the manifest derives.
+	 *
+	 * Separate from the backend names above, because they answer unrelated
+	 * questions: a backend says where a thing lives, a pin says which image runs
+	 * locally. They shared one key until `cache: true` meant "start a Redis" —
+	 * which was the last way a container could exist because config asked for
+	 * it rather than because something declared it.
+	 *
+	 * ```ts
+	 * services: { cache: 'elasticache', images: { redis: 'redis:6-alpine' } }
+	 * ```
+	 *
+	 * Pinning an image for a container nothing declares is a no-op, not an
+	 * error: it says which image *would* run, and nothing runs.
+	 */
+	images?: Partial<Record<import('../types.js').ComposeServiceName, string>>;
 }
 
 /**

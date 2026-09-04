@@ -563,7 +563,12 @@ program
 
 			const secrets = await readStageSecrets(options.stage, workspace.root);
 			if (secrets) {
-				const result = reconcileMissingSecrets(secrets, workspace);
+				const { derivedContainers } = await import('./reconcile/workspace');
+				const result = reconcileMissingSecrets(
+					secrets,
+					workspace,
+					await derivedContainers(workspace, options.stage),
+				);
 				if (result) {
 					await writeStageSecrets(result.secrets, workspace.root);
 					console.log(
@@ -607,7 +612,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 			if (result) {
 				secrets = result.secrets;
 				console.log(
@@ -653,7 +663,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 
 			if (!result) {
 				console.log(`\n✓ Secrets for stage "${options.stage}" are up-to-date`);

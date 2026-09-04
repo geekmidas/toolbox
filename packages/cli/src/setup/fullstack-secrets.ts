@@ -38,8 +38,11 @@ export function generateDbUrl(
  */
 export function generateFullstackCustomSecrets(
 	workspace: NormalizedWorkspace,
+	containers: readonly string[] = [],
 ): Record<string, string> {
-	const hasDb = !!workspace.services.db;
+	// A Postgres exists because something declared a database, not because
+	// config carried a flag saying so.
+	const hasDb = containers.includes('postgres');
 	const customs: Record<string, string> = {
 		NODE_ENV: 'development',
 		PORT: '3000',

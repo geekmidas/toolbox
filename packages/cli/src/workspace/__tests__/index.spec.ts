@@ -299,7 +299,11 @@ describe('wrapSingleAppAsWorkspace', () => {
 		expect(result.apps.api.telescope).toBe(true);
 	});
 
-	it('should extract docker compose services', () => {
+	it('does not let a compose list decide which services exist', () => {
+		// It used to seed `services.db` and `services.cache` from here, which is
+		// to say a container existed because a deploy-side list named it. Which
+		// containers exist is the manifest's answer — a declared database implies
+		// Postgres — so this block is left to be what its name says.
 		const config: GkmConfig = {
 			routes: './src/**/*.ts',
 			envParser: './src/env',
@@ -313,8 +317,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 
 		const result = wrapSingleAppAsWorkspace(config, '/project');
 
-		expect(result.services.db).toBe(true);
-		expect(result.services.cache).toBe(true);
+		expect(result.services).toEqual({});
 	});
 
 	it('carries the constructs glob through', () => {
