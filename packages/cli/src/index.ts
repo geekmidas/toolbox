@@ -821,7 +821,11 @@ program
 program
 	.command('login')
 	.description('Authenticate with a deployment service')
-	.option('--service <service>', 'Service to login to (dokploy)', 'dokploy')
+	.option(
+		'--service <service>',
+		'Service to login to (dokploy, hostinger)',
+		'dokploy',
+	)
 	.option('--token <token>', 'API token (will prompt if not provided)')
 	.option('--endpoint <url>', 'Service endpoint URL')
 	.action(
@@ -832,15 +836,15 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 
-				if (options.service !== 'dokploy') {
+				if (!['dokploy', 'hostinger'].includes(options.service)) {
 					console.error(
-						`Unknown service: ${options.service}. Supported: dokploy`,
+						`Unknown service: ${options.service}. Supported: dokploy, hostinger`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					service: options.service as 'dokploy',
+					service: options.service as 'dokploy' | 'hostinger',
 					token: options.token,
 					endpoint: options.endpoint,
 				});
