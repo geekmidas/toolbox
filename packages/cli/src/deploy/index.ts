@@ -68,7 +68,7 @@ import {
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
-import { deployDocker, resolveDockerConfig } from './docker';
+import { applicationName, deployDocker, resolveDockerConfig } from './docker';
 import { deployDokploy } from './dokploy';
 import { DokployApi, type DokployApplication } from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
@@ -627,13 +627,16 @@ async function ensureDokploySetup(
 	// Step 5: Find or create application
 	logger.log('\n📦 Looking for application...');
 
-	// TODO: this is `docker.imageName`, so it carries no stage — deploying
-	// `staging` into the same project finds the production application and
-	// redeploys it. The fix is not to scope this name but to stop deriving it
-	// here at all: an application serves a `rest-api`, and the declaration that
-	// names the surface should name the container. That needs the manifest
-	// discovered *before* applications are created rather than after, which is
-	// the same reordering the auth-server-as-its-own-surface work needs.
+	// Scoped by `resolveDockerConfig` from the gkm config's `name`, through the
+	// same `scopedName` the SST target builds every physical name with.
+	//
+	// It used to be the cwd package.json name, unscoped — so deploying `staging`
+	// into the same project matched the production application by name and
+	// redeployed it.
+	//
+	// Still one application for two surfaces: `Api` and `Auth` are both
+	// `rest-api` declarations served by one container, so neither names it. That
+	// needs the manifest read before applications are created — see §6b.
 	const appName = dockerConfig.appName!;
 
 	let applicationId: string;
@@ -1277,7 +1280,10 @@ export async function workspaceDeployCommand(
 
 			try {
 				// Use simple app name - project already provides namespace
-				const dokployAppName = appName;
+				// Scoped exactly as a construct is, and by the same function. It
+				// used to be the bare app key, so a project held an `api` and a
+				// `web` that every stage would collide on.
+				const dokployAppName = applicationName(stage, workspace.name, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1515,7 +1521,10 @@ export async function workspaceDeployCommand(
 
 			try {
 				// Use simple app name - project already provides namespace
-				const dokployAppName = appName;
+				// Scoped exactly as a construct is, and by the same function. It
+				// used to be the bare app key, so a project held an `api` and a
+				// `web` that every stage would collide on.
+				const dokployAppName = applicationName(stage, workspace.name, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1843,7 +1852,7 @@ export async function deployCommand(
 	logger.log(`   Tag: ${imageTag}`);
 
 	// Resolve docker config for image reference
-	const dockerConfig = resolveDockerConfig(config);
+	const dockerConfig = resolveDockerConfig(config, stage);
 	const imageName = dockerConfig.imageName!;
 	const registry = dockerConfig.registry;
 	const imageRef = registry

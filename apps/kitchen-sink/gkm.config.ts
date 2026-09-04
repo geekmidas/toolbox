@@ -25,6 +25,12 @@ import { defineConfig } from '@geekmidas/cli/config';
  * - `topics`      → the topics themselves (`t`)     — SNS topics deployed
  */
 export default defineConfig({
+	// The same statement `sst.config.ts` makes, and the scope every physical name
+	// is built from: `Database` here is `production-kitchen-sink-database` on
+	// Dokploy and on AWS. Written down rather than inferred from the directory,
+	// so the two providers cannot disagree about what this app is called.
+	name: 'kitchen-sink',
+
 	constructs:
 		'./src/{constructs,crons,endpoints,functions,queues,subscribers}/**/*.ts',
 

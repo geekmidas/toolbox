@@ -340,6 +340,24 @@ export interface ProvidersConfig {
 
 export interface GkmConfig {
 	/**
+	 * What this app is called, and therefore how everything it declares is named.
+	 *
+	 * The same field `sst.config.ts` carries, doing the same job: every physical
+	 * name is `{stage}-{name}-{construct}`, so `Database` in the `production`
+	 * stage of `kitchen-sink` is `production-kitchen-sink-database` on AWS and on
+	 * Dokploy alike. One statement, in the config, rather than a rule each
+	 * provider restates.
+	 *
+	 * `defineWorkspace` has always had this. A single-app config did not, so its
+	 * names fell back to whatever the directory happened to be called — the
+	 * monorepo's package name for the project and the app's for the application,
+	 * two accidents of layout standing in for a decision.
+	 *
+	 * Defaults to the package.json name with any scope stripped, then the
+	 * directory name.
+	 */
+	name?: string;
+	/**
 	 * Where the things no construct implies live.
 	 *
 	 * The same block a workspace config carries, and the same split: `db` and

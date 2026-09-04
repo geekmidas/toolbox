@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { scopedName } from '@geekmidas/manifest';
 import type { GkmConfig } from '../config';
 import { dockerCommand, findLockfilePath } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
@@ -236,20 +237,64 @@ export async function deployDocker(
 }
 
 /**
- * Resolve Docker deploy config from gkm config
- * - imageName: from config, or cwd package.json, or 'app' (for Docker image)
- * - projectName: from root package.json, or 'app' (for Dokploy project)
- * - appName: from cwd package.json, or projectName (for Dokploy app within project)
+ * What one application is called on a provider.
+ *
+ * The same rule the constructs use, through the same `scopedName`: the
+ * application beside `production-kitchen-sink-database` is
+ * `production-kitchen-sink-api`, not `api`. Both deploy paths call this — the
+ * workspace one named its applications by the bare app key, so a project held
+ * an `api` and a `web` that every stage would collide on.
+ *
+ * The app id is dropped when it repeats the project, so a project named for its
+ * one application is `production-kitchen-sink` rather than
+ * `production-kitchen-sink-kitchen-sink`.
  */
-export function resolveDockerConfig(config: GkmConfig): DockerDeployConfig {
-	// projectName comes from root package.json (monorepo name)
-	const projectName = getAppNameFromPackageJson() ?? 'app';
+export function applicationName(
+	stage: string,
+	project: string,
+	app: string,
+): string {
+	return app === project
+		? `${stage}-${project}`.toLowerCase()
+		: scopedName([stage, project], app);
+}
 
-	// appName comes from cwd package.json (the app being deployed)
-	const appName = getAppNameFromCwd() ?? projectName;
+/**
+ * Resolve Docker deploy config from gkm config.
+ *
+ * **`name` is the scope, exactly as it is in an SST config.** `sst.config.ts`
+ * declares `name: 'kitchen-sink'` and every physical name is built from
+ * `[stage, name]`; this is the same statement in the same place, so a construct
+ * carries one name across providers rather than two that happen to match.
+ *
+ * A package.json name is the fallback, not the source. It used to be the source,
+ * which put the *monorepo* name on the Dokploy project and the *package* name on
+ * the application — two accidents of directory layout standing in for a
+ * decision, neither of them scoped by stage.
+ *
+ * - `projectName` — the gkm config's `name`. The Dokploy project, and the `app`
+ *   half of every scoped name, the way `$app.name` is in SST.
+ * - `appName` — the application within it, scoped `{stage}-{name}` by the
+ *   shared rule. Dropped to the project alone when the app *is* the project, so
+ *   a workspace named for its one app is not `…-kitchen-sink-kitchen-sink`.
+ * - `imageName` — the Docker image, which is a different question: an image is
+ *   pushed to a registry under a name a human reads, and it carries no stage
+ *   because one image is deployed to several.
+ */
+export function resolveDockerConfig(
+	config: GkmConfig,
+	stage?: string,
+): DockerDeployConfig {
+	const projectName =
+		config.name ?? getAppNameFromPackageJson() ?? getAppNameFromCwd() ?? 'app';
 
-	// imageName defaults to appName (cwd package.json)
-	const imageName = config.docker?.imageName ?? appName;
+	const appId = getAppNameFromCwd() ?? projectName;
+	const appName =
+		stage === undefined ? appId : applicationName(stage, projectName, appId);
+
+	// The image keeps the app's own name: it is what somebody types after
+	// `docker pull`, and the registry path already scopes it.
+	const imageName = config.docker?.imageName ?? appId;
 
 	return {
 		registry: config.docker?.registry,

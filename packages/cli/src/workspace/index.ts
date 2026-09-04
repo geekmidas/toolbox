@@ -212,7 +212,10 @@ export function wrapSingleAppAsWorkspace(
 	config: GkmConfig,
 	cwd: string,
 ): NormalizedWorkspace {
-	const name = getPackageName(cwd) ?? basename(cwd);
+	// `config.name` first, the way `defineWorkspace` already reads it. It was
+	// only honoured on the workspace path, so the same field decided the scope
+	// in a monorepo and was ignored in a single-app project.
+	const name = config.name ?? getPackageName(cwd) ?? basename(cwd);
 
 	// `docker.compose.services` no longer decides anything here.
 	//
