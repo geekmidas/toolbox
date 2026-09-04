@@ -831,3 +831,66 @@ describe('getEndpointForStage', () => {
 		);
 	});
 });
+
+/**
+ * A single-app config is a one-app workspace, and the projection has to be
+ * faithful.
+ *
+ * `defineConfig` stays as the authoring surface, but there is one internal
+ * model. What made that a fiction rather than a fact was the fields this
+ * dropped on the way: every hardcoded value below was something the config
+ * could already state.
+ */
+describe('a single-app config as a workspace', () => {
+	const base = {
+		routes: './src/**/*.ts',
+		envParser: './src/env',
+		logger: './src/logger',
+	} as GkmConfig;
+
+	it('deploys where the config says, not always to Dokploy', () => {
+		// The worst of the dropped fields: a project deploying to Vercel was
+		// normalised into one that deploys to Dokploy, and nothing said so.
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, deploy: { default: 'vercel' } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.resolvedDeployTarget).toBe('vercel');
+	});
+
+	it('serves on the port the config names', () => {
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, providers: { server: { port: 4000 } } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.port).toBe(4000);
+	});
+
+	it('still has a port when `server: true` names none', () => {
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, providers: { server: true } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.port).toBe(3000);
+	});
+
+	it('takes its name from the config, the way a workspace does', () => {
+		expect(
+			wrapSingleAppAsWorkspace({ ...base, name: 'acme' } as GkmConfig, '/p')
+				.name,
+		).toBe('acme');
+	});
+
+	it('keys its one app the way a workspace would', () => {
+		// The key is what names the application — `production-acme-api`, beside
+		// the `production-acme-database` its constructs get. The deploy asks the
+		// workspace what its apps are called rather than asking the filesystem.
+		const result = wrapSingleAppAsWorkspace(base, '/project');
+
+		expect(Object.keys(result.apps)).toEqual(['api']);
+		expect(result.apps.api?.type).toBe('backend');
+	});
+});

@@ -288,13 +288,19 @@ export function resolveDockerConfig(
 	const projectName =
 		config.name ?? getAppNameFromPackageJson() ?? getAppNameFromCwd() ?? 'app';
 
-	const appId = getAppNameFromCwd() ?? projectName;
+	// `api`, because that is the key the workspace projection gives a single-app
+	// backend — the same key a workspace config would write. Asking the
+	// filesystem instead is what put the *package* name here and the *monorepo*
+	// name on the project: two accidents of layout, neither scoped.
+	const appId = 'api';
 	const appName =
 		stage === undefined ? appId : applicationName(stage, projectName, appId);
 
-	// The image keeps the app's own name: it is what somebody types after
-	// `docker pull`, and the registry path already scopes it.
-	const imageName = config.docker?.imageName ?? appId;
+	// The project's name, not the app key: an image is what somebody types after
+	// `docker pull`, so `kitchen-sink` and not `api`. It carries no stage
+	// either — one image is deployed to several, and the registry path already
+	// scopes it.
+	const imageName = config.docker?.imageName ?? projectName;
 
 	return {
 		registry: config.docker?.registry,

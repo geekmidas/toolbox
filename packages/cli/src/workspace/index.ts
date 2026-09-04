@@ -228,12 +228,22 @@ export function wrapSingleAppAsWorkspace(
 		...(config.services ?? {}),
 	};
 
-	const apiApp: NormalizedAppConfig = {
+	// A projection, not a default-filled stand-in.
+	//
+	// Every hardcoded value here was a field the config could already state and
+	// this quietly dropped: the port it serves on, and the target it deploys to.
+	// `resolvedDeployTarget` was the worse of the two — a project deploying to
+	// Vercel was normalised into one that deploys to Dokploy, and nothing said
+	// so.
+	const app: NormalizedAppConfig = {
 		type: 'backend',
 		path: '.',
-		port: 3000,
+		port:
+			(typeof config.providers?.server === 'object'
+				? config.providers.server.port
+				: undefined) ?? 3000,
 		dependencies: [],
-		resolvedDeployTarget: 'dokploy',
+		resolvedDeployTarget: config.deploy?.default ?? 'dokploy',
 		constructs: config.constructs,
 		routes: config.routes,
 		functions: config.functions,
@@ -255,7 +265,13 @@ export function wrapSingleAppAsWorkspace(
 	return {
 		name,
 		root: cwd,
-		apps: { api: apiApp },
+		// Keyed `api` because that is what a single-app backend is, and because
+		// the key is what names the application: `applicationName(stage, name,
+		// 'api')` is `production-<name>-api`, beside the
+		// `production-<name>-database` its constructs get. One model, so the
+		// deploy asks the workspace what its apps are called rather than asking
+		// the filesystem.
+		apps: { api: app },
 		services: normalizedServices,
 		// Carried rather than replaced. A single-app project configures its
 		// deploy in the same shape a workspace does — endpoint, registry,
