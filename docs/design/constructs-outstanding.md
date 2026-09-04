@@ -321,6 +321,16 @@ What replaces it depends on which server target, and they are not the same:
 
 Neither is reachable yet, for a reason larger than the file server — see §6b.
 
+**And the open paths do not survive the trip.** `bucketPolicies()` and
+`bucketPolicy()` already turn `open: ['brand/**']` into an anonymous
+`s3:GetObject` policy on those prefixes, and MinIO accepts an S3 bucket policy
+verbatim — so the mechanism needs no porting. What is missing is upstream of it:
+both take the *local reconcile plan*, and the Dokploy provisioner table has no
+`objects` entry and no `file-server` entry, so the bucket is never created there
+and the policy is never applied. A deploy that reached this point would serve
+nothing publicly and report no error, which is the same shape of silence as a
+kind being skipped. One provisioner, not a feature.
+
 ### 4.4 A known asymmetry — *documented, no action*
 
 A single `*` is **stricter in the client than in the S3 policy**. The construct's
@@ -330,6 +340,26 @@ the policy and is refused by the client. The client is the stricter of the two,
 so nothing it refuses was ever relied on the policy to refuse — but a key fetched
 directly, bypassing the client, can be admitted. Prefer `**` where crossing
 segments is what you meant.
+
+### 4.5 Cache rules do not exist — *undesigned, not a Dokploy gap*
+
+`FileServerDeclaration` is `of` and `open` and nothing else. There is no `maxAge`,
+no `Cache-Control`, no TTL, on any target.
+
+Worth stating because the code reads as though there were. `file-server.ts:58`
+says a pattern is enforced "by the bucket policy, by **the cache behaviour**, and
+by this construct's own runtime check" — and that is CloudFront's *path-pattern
+behaviour* being used as the signing boundary. It is an authorization mechanism
+that happens to be named cache, and reading it as a caching feature suggests a
+port to Dokploy that has no source to port from.
+
+If it is wanted, note that it lands three different ways at the edge — a
+CloudFront cache policy, Traefik middleware, a `header` directive in the
+Caddyfile — while `Cache-Control` set as **S3 object metadata at upload time**
+behaves identically on all three, because it travels with the object rather than
+with the edge. `getUploadURL` already presigns the PUT, which is the natural
+place to carry it. That would make a cache rule a property of the object rather
+than a rule three targets have to agree on.
 
 ---
 
@@ -572,6 +602,42 @@ prototype rather than plan:
 
 Nothing has run against a real Dokploy server.
 
+### The application is named by its image, and serves two surfaces
+
+Two findings from the first deploy that reached Dokploy, both about the same
+thing: an application is created before anything has read the manifest.
+
+**It carries no stage.** The name comes from `docker.imageName`, so the database
+beside it reads `production-kitchen-sink-database` — scoped, from `cloudName`,
+the rule the AWS target uses — and the application reads `kitchen-sink`.
+Deploying `staging` into the same project would match that by name and redeploy
+production. The fix is not to scope this name but to stop deriving it here: an
+application serves a `rest-api`, and the declaration that names the surface
+should name the container. That needs the manifest discovered *before*
+applications are created rather than after — a reordering, not a rename, which
+is why the interim scoping was reverted rather than shipped.
+
+**It serves two surfaces in one process.** `Api` and `Auth` are both `rest-api`
+declarations, and the auth half is mounted by a server hook whose own comment
+says it "goes away when the build emits surfaces". `constructs-paradigm.md`
+already decided this — *"The auth server is its own surface"* — with its own
+scaling, blast radius and `AUTH_URL`.
+
+**§2 blocks the general case but not this one.** A surface cannot drive route
+generation because `RestApi` declares `endpoints: []` and the build never fills
+it, so `Api`'s routes still come from the glob. But `Auth` is self-describing:
+`auth.ts:154` declares its `rest-api` node with the endpoint already on it —
+`ANY {basePath}/*` → `Auth.handler`, with its dependencies and required secret.
+So the auth server can be generated from the manifest today.
+
+Two things stop being degenerate when it is. `cookieDomain` currently returns
+nothing because there is one host; with `api.` and `auth.` under one domain it
+derives a real parent, which is the case it was written for. And
+`surfaceAddresses` stops handing every surface the same address under a comment
+apologising for it.
+
+---
+
 ## 6c. The CLI and what it scaffolds — *partly done*
 
 The model reached the CLI's own output late. Reconcile only runs when an app
@@ -731,6 +797,11 @@ Stated plainly, because "tests pass" and "it works" are different claims.
   schema owned by a role that could not create in it, `services` dropped on the
   way to the entry point, two caches in one database sharing a table, and
   `gkm test` filtering away the very URLs it had just resolved.
+- **The declared DDL has not been applied on Dokploy.** The statements are
+  generated and the cluster is created; what has not completed is the applier
+  running against it, because the deploy now stops earlier — see the suggested
+  order. Locally and in the fake this path is covered; against a real Dokploy
+  Postgres it is not.
 - **The database bootstrap has never run.** Its decisions are asserted as pure
   data — the event it composes is fed straight into the DDL generator in a test
   — but no Lambda has connected to a real cluster.
@@ -757,12 +828,17 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
 bill and the security model, and the rest follows them.
 
-1. **A real Dokploy deploy** — §6b's pipeline exists now and has never run
-   against a server. Six kinds provision and the decisions are covered by
-   twenty-seven assertions against a fake; what is unverified is the
-   integration, and it is cheap to find out. The external-port dance and whether
-   Dokploy's Postgres takes the role DDL as cleanly as a plain container are the
-   two things to expect trouble from.
+1. **A real Dokploy deploy** — *begun, not finished.* It reaches the server now:
+   the project is found, the application created, and
+   `production-kitchen-sink-database` created under the scoped name, with eleven
+   declared URLs resolved. Two of the three things this predicted trouble from
+   were right. The external-port dance is the fragile part — the port is only
+   reachable while published, and a container restarting around that change
+   drops the SYN rather than refusing it, which is now bounded and retried three
+   times. What stops it today is neither: the bundle step refuses to build
+   without `MAIL_URL`, `MAIL_FROM`, `UPLOADS_URL` and `UPLOADS_SERVER_URL` —
+   the two kinds with no Dokploy provisioner, §4.3 and §1.3. So the role DDL
+   against Dokploy's Postgres is still the untested half.
 2. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
    in the repo, and everything below is easier to trust once one stack has come
    up.
