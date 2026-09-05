@@ -23,7 +23,7 @@ function createWorkspace(
 				dependencies: [],
 			},
 		},
-		services: { db: true },
+		services: {},
 		deploy: {},
 		shared: {},
 		secrets: {},
@@ -31,11 +31,18 @@ function createWorkspace(
 	} as NormalizedWorkspace;
 }
 
+/** What the manifest derived, which is what decides a credential is needed. */
+const POSTGRES = ['postgres'] as const;
+
 describe('createFreshWorkspaceSecrets', () => {
-	it('generates postgres credentials when db service is enabled', () => {
+	it('generates postgres credentials for a declared database', () => {
+		// The container list, not a `db: true` in config: a credential is
+		// generated because something declared a database, and a project that
+		// declares none gets none rather than an unused password.
 		const secrets = createFreshWorkspaceSecrets(
 			'development',
 			createWorkspace(),
+			POSTGRES,
 		);
 
 		expect(secrets.stage).toBe('development');
@@ -45,18 +52,38 @@ describe('createFreshWorkspaceSecrets', () => {
 	});
 
 	it('generates a randomized password each call', () => {
-		const a = createFreshWorkspaceSecrets('development', createWorkspace());
-		const b = createFreshWorkspaceSecrets('development', createWorkspace());
+		const a = createFreshWorkspaceSecrets(
+			'development',
+			createWorkspace(),
+			POSTGRES,
+		);
+		const b = createFreshWorkspaceSecrets(
+			'development',
+			createWorkspace(),
+			POSTGRES,
+		);
 
 		expect(a.services.postgres?.password).not.toBe(
 			b.services.postgres?.password,
 		);
 	});
 
+	it('generates nothing for a project that declares nothing', () => {
+		// The other half of the same rule, and the one that used to be wrong in
+		// the opposite direction: no flag, no credential, whatever config says.
+		const secrets = createFreshWorkspaceSecrets(
+			'development',
+			createWorkspace(),
+		);
+
+		expect(secrets.services.postgres).toBeUndefined();
+	});
+
 	it('adds single-app custom secrets', () => {
 		const secrets = createFreshWorkspaceSecrets(
 			'development',
 			createWorkspace(),
+			POSTGRES,
 		);
 
 		expect(secrets.custom.NODE_ENV).toBe('development');
@@ -92,7 +119,7 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
   },
-  services: { db: true },
+  services: {},
 });
 `,
 		);
@@ -130,8 +157,14 @@ export default defineWorkspace({
 		expect(secretsExist('development', testDir)).toBe(true);
 
 		// Round-trips through the keystore the same way `gkm test` reads it.
+		//
+		// Asserted on a custom secret rather than a Postgres credential: this
+		// project declares no constructs, so there is no database and correctly
+		// no credential for one. It used to get one from `services: { db: true }`,
+		// which is the config-says-so path this no longer has.
 		const read = await readStageSecrets('development', testDir);
-		expect(read?.services.postgres).toBeDefined();
+		expect(read?.custom.NODE_ENV).toBe('development');
+		expect(read?.services.postgres).toBeUndefined();
 	});
 
 	it('is a no-op when secrets already exist', async () => {

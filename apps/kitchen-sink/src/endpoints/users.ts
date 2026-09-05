@@ -1,6 +1,8 @@
+import { NotFoundError } from '@geekmidas/errors';
 import { z } from 'zod';
 import { emailsQueue } from '../queues/emails.js';
 import { router } from './router.js';
+import { requireUser } from './session.js';
 
 export const UserSchema = z
 	.object({
@@ -106,8 +108,11 @@ export const createUser = router
 	});
 
 /**
- * Get a user by id — protected with `.authorizer('iam')` to show the auth
- * integration point, and uses the `auth` service + `auditor` from context.
+ * Get a user by id — the session gate, actually closed.
+ *
+ * `.authorizer('iam')` is the deployed half; `requireUser` is the half that
+ * runs everywhere, including here. Before, this endpoint called `getSession`
+ * and threw the answer away, which reads as protected and is not.
  */
 export const getUser = router
 	.get('/users/:id')
@@ -115,18 +120,15 @@ export const getUser = router
 	.authorizer('iam')
 	.output(UserSchema)
 	.handle(async ({ params, services, auditor, db, header }) => {
-		// The auth server, consumed like any other construct. This is the real
-		// Better Auth instance — `services.auth.api` is its server API, reading
-		// the session out of the request's own cookies.
-		await services.auth.api.getSession({
-			headers: new Headers({ cookie: header('cookie') ?? '' }),
-		});
+		await requireUser({ services, header, db });
 
 		const user = await db
 			.selectFrom('users')
 			.selectAll()
 			.where('id', '=', params.id)
-			.executeTakeFirstOrThrow();
+			.executeTakeFirst();
+
+		if (!user) throw new NotFoundError(`No user ${params.id}`);
 
 		auditor.audit('user.viewed', { userId: user.id });
 
@@ -135,5 +137,91 @@ export const getUser = router
 			name: user.name,
 			email: user.email,
 			created_at: user.created_at.toISOString(),
+		};
+	});
+
+/**
+ * Update your own profile — the topic's *second* event, published for the first
+ * time.
+ *
+ * `user.updated` has been in the topic's contract from the start with nothing
+ * emitting it, so the subscriber's branch for it had never run. A declared
+ * event nothing publishes is a contract that has never been tested.
+ *
+ * The session decides whose profile this is, rather than a path parameter: an
+ * id in the URL would be an authorization question ("may I edit that one?")
+ * dressed up as routing.
+ */
+export const updateMe = router
+	.patch('/me')
+	.body(z.object({ name: z.string().min(1) }))
+	.output(UserSchema)
+	.event({
+		type: 'user.updated',
+		payload: (r) => ({ userId: r.id, changes: ['name'] }),
+	})
+	.handle(async ({ body, services, auditor, db, header }) => {
+		const session = await requireUser({ services, header, db });
+
+		const user = await db
+			.updateTable('users')
+			.set({ name: body.name, updated_at: new Date() })
+			.where('id', '=', session.id)
+			.returningAll()
+			.executeTakeFirst();
+
+		if (!user) throw new NotFoundError('Signed in as a user that is not here');
+
+		auditor.audit('user.viewed', { userId: user.id });
+
+		// The list is now stale in exactly the way it is after a create.
+		await services.sessions.delete(USERS_CACHE_KEY);
+
+		return {
+			id: user.id,
+			name: user.name,
+			email: user.email,
+			created_at: user.created_at.toISOString(),
+		};
+	});
+
+/**
+ * The notifications the topic subscriber wrote — the read side of fan-out.
+ *
+ * This is what makes the topic a feature rather than a demonstration: an
+ * endpoint whose contents exist only because a subscriber ran.
+ */
+export const listNotifications = router
+	.get('/notifications')
+	.output(
+		z.object({
+			notifications: z
+				.object({
+					id: z.string(),
+					type: z.string(),
+					body: z.string(),
+					created_at: z.string(),
+				})
+				.array(),
+		}),
+	)
+	.handle(async ({ services, db, header }) => {
+		const session = await requireUser({ services, header, db });
+
+		const rows = await db
+			.selectFrom('notifications')
+			.selectAll()
+			.where('user_id', '=', session.id)
+			.orderBy('created_at', 'desc')
+			.limit(50)
+			.execute();
+
+		return {
+			notifications: rows.map((n) => ({
+				id: n.id,
+				type: n.type,
+				body: n.body,
+				created_at: n.created_at.toISOString(),
+			})),
 		};
 	});

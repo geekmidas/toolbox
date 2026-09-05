@@ -53,6 +53,7 @@ function isConstruct(value: unknown): value is Construct {
  */
 async function sniff(): Promise<void> {
 	const envVars = new Set<string>();
+	const optionalEnvVars = new Set<string>();
 	let error: string | null = null;
 
 	try {
@@ -71,8 +72,20 @@ async function sniff(): Promise<void> {
 				for (const [, exportValue] of Object.entries(module)) {
 					if (isConstruct(exportValue)) {
 						try {
-							const constructEnvVars = await exportValue.getEnvironment();
-							constructEnvVars.forEach((v) => envVars.add(v));
+							// `markOptional`, so a key read through `.optional()` or
+							// `.default()` comes back suffixed `?` and is reported
+							// apart from the rest. Without it every sniffed read
+							// looked required, and a key that is *absent by design*
+							// — `AUTH_COOKIE_DOMAIN`, published only when a surface
+							// has a domain to widen a cookie to — failed the deploy
+							// as though it were a missing secret.
+							const constructEnvVars = await exportValue.getEnvironment({
+								markOptional: true,
+							});
+							for (const name of constructEnvVars) {
+								if (name.endsWith('?')) optionalEnvVars.add(name.slice(0, -1));
+								else envVars.add(name);
+							}
 						} catch {
 							// Individual construct may fail, continue with others
 						}
@@ -89,7 +102,17 @@ async function sniff(): Promise<void> {
 	}
 
 	// Output result as JSON (last line of stdout)
-	console.log(JSON.stringify({ envVars: Array.from(envVars).sort(), error }));
+	// A key required by one construct and optional in another is required: the
+	// strictest read is the one that fails at runtime.
+	for (const name of envVars) optionalEnvVars.delete(name);
+
+	console.log(
+		JSON.stringify({
+			envVars: Array.from(envVars).sort(),
+			optionalEnvVars: Array.from(optionalEnvVars).sort(),
+			error,
+		}),
+	);
 }
 
 // Handle unhandled rejections

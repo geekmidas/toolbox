@@ -12,7 +12,7 @@ export const cleanupStaleUsers = c
 	.schedule('rate(1 day)')
 	.handle(async ({ services, logger }) => {
 		const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
-		const result = await services.kitchenSink
+		const result = await services.database
 			.deleteFrom('users')
 			.where('updated_at', '<', cutoff)
 			.executeTakeFirst();

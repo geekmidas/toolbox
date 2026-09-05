@@ -44,9 +44,10 @@
  * @module deploy
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
+import { type ConstructManifest, kebabCase } from '@geekmidas/manifest';
 import { Client as PgClient } from 'pg';
 import {
 	getDokployCredentials,
@@ -55,8 +56,10 @@ import {
 	validateDokployToken,
 } from '../auth';
 import { storeDokployRegistryId } from '../auth/credentials';
-import { buildCommand } from '../build/index';
-import { type GkmConfig, loadConfig, loadWorkspaceConfig } from '../config';
+import { type GkmConfig, loadWorkspaceConfig } from '../config';
+import { discover } from '../reconcile/discover.js';
+import type { SqlClient, Statement } from '../reconcile/provision.js';
+import { constructGlobs } from '../reconcile/workspace.js';
 import { readStageSecrets } from '../secrets/storage.js';
 import {
 	getAppBuildOrder,
@@ -64,40 +67,31 @@ import {
 	getPublicEnvPrefix,
 	isDeployTargetSupported,
 } from '../workspace/index.js';
-import type { NormalizedWorkspace } from '../workspace/types.js';
+import type {
+	NormalizedAppConfig,
+	NormalizedWorkspace,
+} from '../workspace/types.js';
+import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
-import { deployDocker, resolveDockerConfig } from './docker';
-import { deployDokploy } from './dokploy';
-import {
-	DokployApi,
-	type DokployApplication,
-	type DokployPostgres,
-	type DokployRedis,
-} from './dokploy-api';
+import { applicationName, deployDocker } from './docker';
+import { DokployApi, type DokployApplication } from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
 	type EnvResolverContext,
 	formatMissingVarsError,
 	validateEnvVars,
 } from './env-resolver.js';
-import { updateConfig } from './init';
+import type { DokployCluster } from './fromManifest';
 import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
 import {
-	type AppDbCredentials,
 	createEmptyState,
-	getAllAppCredentials,
 	getApplicationId,
 	getBackupState,
-	getPostgresId,
-	getRedisId,
-	setAppCredentials,
 	setApplicationId,
 	setBackupState,
 	setPostgresBackupId,
-	setPostgresId,
-	setRedisId,
 } from './state.js';
 import type {
 	AppDeployResult,
@@ -187,6 +181,13 @@ interface ServiceUrls {
 interface DokploySetupResult {
 	config: DokployDeployConfig;
 	serviceUrls?: ServiceUrls;
+	/**
+	 * The Dokploy environment the project's resources live in.
+	 *
+	 * Returned because the declared half needs it and had no way to ask: it was
+	 * computed here, used here, and dropped.
+	 */
+	environmentId: string;
 }
 
 /**
@@ -198,20 +199,6 @@ export interface ProvisionServicesResult {
 		postgresId?: string;
 		redisId?: string;
 	};
-}
-
-/**
- * Configuration for a database user to create during Dokploy deployment.
- *
- * @property name - The database username (typically matches the app name)
- * @property password - The generated password for this user
- * @property usePublicSchema - If true, user gets access to public schema (for api app).
- *                             If false, user gets their own schema with search_path set.
- */
-interface DbUserConfig {
-	name: string;
-	password: string;
-	usePublicSchema: boolean;
 }
 
 /**
@@ -241,7 +228,19 @@ async function waitForPostgres(
 ): Promise<void> {
 	for (let i = 0; i < maxRetries; i++) {
 		try {
-			const client = new PgClient({ host, port, user, password, database });
+			// Bounded, because the interesting failure is not a refused connection
+			// but a dropped one: while the container restarts around a port change,
+			// the host drops the SYN rather than answering it, and an unbounded
+			// connect waits out the OS timeout — a minute and a quarter — and then
+			// reports ETIMEDOUT from inside a retry loop that never got to retry.
+			const client = new PgClient({
+				host,
+				port,
+				user,
+				password,
+				database,
+				connectionTimeoutMillis: 5_000,
+			});
 			await client.connect();
 			await client.end();
 			return;
@@ -256,53 +255,103 @@ async function waitForPostgres(
 }
 
 /**
- * Initialize Postgres with per-app users and schemas.
+ * Run the manifest's DDL against a Dokploy Postgres.
  *
- * This function implements the same user/schema isolation pattern used in local
- * dev mode (see docker/postgres/init.sh). It:
+ * The cluster is only reachable from outside while an external port is
+ * published, so this opens one, applies, and leaves it as it found it. The
+ * alternative — running DDL from inside the network — needs a container to run
+ * it in, which is what `DatabaseBootstrap` is on AWS and what a Dokploy target
+ * has no equivalent for yet.
  *
- * 1. Temporarily enables the external Postgres port
- * 2. Connects using master credentials
- * 3. Creates each user with appropriate schema permissions
- * 4. Disables the external port for security
- *
- * Schema assignment follows this pattern:
- * - `api` app: Uses `public` schema (shared tables, migrations run here)
- * - Other apps: Get their own schema with `search_path` configured
- *
- * @param api - The Dokploy API client
- * @param postgres - The provisioned Postgres service details
- * @param serverHostname - The Dokploy server hostname (for external connection)
- * @param users - Array of users to create with their schema configuration
- *
- * @example
- * ```ts
- * await initializePostgresUsers(api, postgres, 'dokploy.example.com', [
- *   { name: 'api', password: 'xxx', usePublicSchema: true },
- *   { name: 'auth', password: 'yyy', usePublicSchema: false },
- * ]);
- * ```
+ * The applier is the local target's, so every statement asks whether it is
+ * needed first: a redeploy is free, and a half-applied run recovers by being
+ * run again.
  */
-async function initializePostgresUsers(
+/**
+ * A high port for one service, the same one every time.
+ *
+ * Derived from the service name rather than random so two deploys of the same
+ * database agree and two different databases do not collide — and in the
+ * ephemeral range, above anything a server is likely to have bound
+ * deliberately.
+ */
+function derivedPort(appName: string): number {
+	const digest = createHash('sha256').update(appName).digest();
+
+	return 49152 + (((digest[0]! << 8) | digest[1]!) % 16000);
+}
+
+async function applyDeclaredStatements(
 	api: DokployApi,
-	postgres: DokployPostgres,
+	postgres: DokployCluster,
 	serverHostname: string,
-	users: DbUserConfig[],
-): Promise<void> {
-	logger.log('\n🔧 Initializing database users...');
+	statements: readonly Statement[],
+): Promise<number> {
+	// Reuse whatever is already published, and otherwise pick a high port that
+	// nothing on the host is likely to hold.
+	//
+	// 5432 was hardcoded, which fails the moment a server runs a second Postgres
+	// — and this one runs fourteen. The error is `Port 5432 is already in use`,
+	// from Docker rather than from anything the deploy could anticipate.
+	const existing = await api
+		.getPostgres(postgres.postgresId)
+		.then((current) => current.externalPort)
+		.catch(() => null);
 
-	// Enable external port temporarily
-	const externalPort = 5432;
-	logger.log(`   Enabling external port ${externalPort}...`);
-	await api.savePostgresExternalPort(postgres.postgresId, externalPort);
+	// 5432 first, then a derived port — and the order matters more than it looks.
+	//
+	// A high port is the tidier choice on a host running several clusters, and it
+	// is also the one a firewall almost certainly drops: a VPS typically permits
+	// 22, 80, 443 and whatever was opened deliberately. Publishing 55337 here
+	// produced thirty polite retries against a port nothing outside could ever
+	// reach, while 5432 had worked minutes earlier.
+	//
+	// So: the conventional port, which is the one an operator has plausibly
+	// allowed, and a derived fallback only when something already holds it.
+	// Already published? Use it. Re-saving the port a container already holds is
+	// rejected by Docker as a conflict with *itself*, which reads like the port
+	// being taken by something else.
+	let externalPort = existing ?? undefined;
+	const opened = externalPort === undefined;
 
-	// Redeploy to apply external port change
+	if (externalPort === undefined) {
+		// Ask the server what it has bound rather than guessing and retrying. A
+		// port free from here can be held by a service in another project, and
+		// the failure names a container the caller has never heard of.
+		const taken = await api.publishedPorts().catch(() => new Set<number>());
+
+		// 5432 first when it is free: it is conventional, and therefore the port
+		// an operator has plausibly allowed through the firewall. Being *free* and
+		// being *reachable* are different questions and only the first has an API.
+		const candidates = [5432, derivedPort(postgres.appName)].filter(
+			(port) => !taken.has(port),
+		);
+
+		for (const candidate of candidates) {
+			try {
+				await api.savePostgresExternalPort(postgres.postgresId, candidate);
+				externalPort = candidate;
+				break;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				if (!message.includes('already in use')) throw error;
+
+				logger.log(`   Port ${candidate} is taken; trying another...`);
+			}
+		}
+
+		if (externalPort === undefined) {
+			throw new Error(
+				`Could not publish a port for ${postgres.appName}. ` +
+					`In use on this server: ${[...taken].sort((a, b) => a - b).join(', ') || 'none reported'}. ` +
+					`The role DDL needs to reach the cluster from here.`,
+			);
+		}
+
+		logger.log(`   Publishing ${postgres.appName} on ${externalPort}...`);
+	}
+
 	await api.deployPostgres(postgres.postgresId);
-
-	// Wait for Postgres to be ready with external port
-	logger.log(
-		`   Waiting for Postgres to be accessible at ${serverHostname}:${externalPort}...`,
-	);
 	await waitForPostgres(
 		serverHostname,
 		externalPort,
@@ -311,75 +360,93 @@ async function initializePostgresUsers(
 		postgres.databaseName,
 	);
 
-	// Connect and create users
-	const client = new PgClient({
-		host: serverHostname,
-		port: externalPort,
-		user: postgres.databaseUser,
-		password: postgres.databasePassword,
-		database: postgres.databaseName,
-	});
+	// As the cluster master, which is the only credential that exists before any
+	// role does — the same reason the AWS bootstrap connects as one.
+	const client: SqlClient = {
+		async query(database, sql, values) {
+			const connection = new PgClient({
+				host: serverHostname,
+				port: externalPort,
+				user: postgres.databaseUser,
+				password: postgres.databasePassword,
+				database: database ?? postgres.databaseName,
+				connectionTimeoutMillis: 15_000,
+			});
+
+			await connection.connect();
+			try {
+				const result = await connection.query(sql, values as never[]);
+				return result.rows;
+			} finally {
+				await connection.end();
+			}
+		},
+	};
+
+	// Whatever happens below, the database does not stay exposed. Publishing a
+	// port to run DDL is a means; leaving it published is a database on the
+	// public internet, which is what the path this replaces did on every deploy.
+	const unpublish = async () => {
+		// Only what this call opened. A port somebody published deliberately is
+		// theirs, and closing it would be a deploy quietly changing how their
+		// database is reached.
+		if (!opened) return;
+
+		await api
+			.savePostgresExternalPort(postgres.postgresId, null)
+			.then(() => api.deployPostgres(postgres.postgresId))
+			.catch(() => {
+				logger.log(
+					`   ⚠ Could not close external port ${externalPort} on ${postgres.appName} — close it in Dokploy.`,
+				);
+			});
+	};
+
+	// Attempt, then wait for the cluster and attempt again.
+	//
+	// Publishing an external port *restarts* the container, and a TCP connect
+	// succeeds against an instance that is still settling — so a pass can die
+	// partway with `terminating connection due to administrator command`, or
+	// with the connection dropped outright while the port rule is rewritten.
+	// Retrying is safe because the applier is convergent: every statement asks
+	// whether it is needed, so a later pass reapplies nothing an earlier one
+	// managed. Three passes rather than two because the first restart and the
+	// settling after it are separate events, and hitting both in one run is
+	// ordinary rather than exceptional.
+	let lastError: unknown;
 
 	try {
-		await client.connect();
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			try {
+				return await applyDeclared(client, statements);
+			} catch (error) {
+				lastError = error;
+				if (attempt === 3) break;
 
-		for (const user of users) {
-			const schemaName = user.usePublicSchema ? 'public' : user.name;
-			logger.log(
-				`   Creating user "${user.name}" with schema "${schemaName}"...`,
-			);
+				const message = error instanceof Error ? error.message : String(error);
+				logger.log(
+					`   ⏳ Cluster still settling (${message}); retrying (${attempt}/2)...`,
+				);
 
-			// Create or update user with all settings in one DO block
-			// This avoids "tuple already updated by self" errors from multiple ALTER USER calls
-			if (user.usePublicSchema) {
-				// API uses public schema
-				await client.query(`
-					DO $$ BEGIN
-						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
-							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-						ELSE
-							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
-						END IF;
-					END $$;
-				`);
-				await client.query(`
-					GRANT ALL ON SCHEMA public TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "${user.name}";
-				`);
-			} else {
-				// Other apps get their own schema - combine user creation and search_path in one block
-				await client.query(`
-					DO $$ BEGIN
-						IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user.name}') THEN
-							CREATE USER "${user.name}" WITH PASSWORD '${user.password}';
-						ELSE
-							ALTER USER "${user.name}" WITH PASSWORD '${user.password}';
-						END IF;
-						-- Set search_path in same transaction to avoid tuple conflict
-						ALTER USER "${user.name}" SET search_path TO "${schemaName}";
-					END $$;
-				`);
-				await client.query(`
-					CREATE SCHEMA IF NOT EXISTS "${schemaName}" AUTHORIZATION "${user.name}";
-					GRANT USAGE ON SCHEMA "${schemaName}" TO "${user.name}";
-					GRANT ALL ON ALL TABLES IN SCHEMA "${schemaName}" TO "${user.name}";
-					ALTER DEFAULT PRIVILEGES IN SCHEMA "${schemaName}" GRANT ALL ON TABLES TO "${user.name}";
-				`);
+				await new Promise((resolve) => setTimeout(resolve, 10_000));
+				await waitForPostgres(
+					serverHostname,
+					externalPort,
+					postgres.databaseUser,
+					postgres.databasePassword,
+					postgres.databaseName,
+				).catch(() => {});
 			}
-
-			logger.log(`   ✓ User "${user.name}" configured`);
 		}
+
+		throw lastError;
 	} finally {
-		await client.end();
+		// Whatever happened, the database does not stay exposed. A port opened to
+		// run DDL and left open is a database on the public internet — which is
+		// what a failure before this point used to leave behind, and how 64614
+		// came to be stuck across three attempts.
+		await unpublish();
 	}
-
-	// Disable external port for security
-	logger.log('   Disabling external port...');
-	await api.savePostgresExternalPort(postgres.postgresId, null);
-	await api.deployPostgres(postgres.postgresId);
-
-	logger.log('   ✓ Database users initialized');
 }
 
 /**
@@ -391,198 +458,41 @@ function getServerHostname(endpoint: string): string {
 }
 
 /**
- * Build per-app DATABASE_URL for internal Docker network communication.
- *
- * The URL uses the Postgres container name (postgresAppName) as the host,
- * which resolves via Docker's internal DNS when apps are in the same network.
- *
- * @param appName - The database username (matches the app name)
- * @param appPassword - The app's database password
- * @param postgresAppName - The Postgres container/service name in Dokploy
- * @param databaseName - The database name (typically the project name)
- * @returns A properly encoded PostgreSQL connection URL
- *
- * @example
- * ```ts
- * const url = buildPerAppDatabaseUrl('api', 'secret123', 'postgres-abc', 'myproject');
- * // Returns: postgresql://api:secret123@postgres-abc:5432/myproject
- * ```
- */
-function _buildPerAppDatabaseUrl(
-	appName: string,
-	appPassword: string,
-	postgresAppName: string,
-	databaseName: string,
-): string {
-	return `postgresql://${appName}:${encodeURIComponent(appPassword)}@${postgresAppName}:5432/${databaseName}`;
-}
-
-/**
- * Provision docker compose services in Dokploy
- * @internal Exported for testing
- */
-export async function provisionServices(
-	api: DokployApi,
-	projectId: string,
-	environmentId: string | undefined,
-	projectName: string,
-	services?: DockerComposeServices,
-	existingServiceIds?: { postgresId?: string; redisId?: string },
-): Promise<ProvisionServicesResult | undefined> {
-	logger.log(
-		`\n🔍 provisionServices called: services=${JSON.stringify(services)}, envId=${environmentId}`,
-	);
-	if (!services || !environmentId) {
-		logger.log('   Skipping: no services or no environmentId');
-		return undefined;
-	}
-
-	const serviceUrls: ServiceUrls = {};
-	const serviceIds: { postgresId?: string; redisId?: string } = {};
-
-	if (services.postgres) {
-		logger.log('\n🐘 Checking PostgreSQL...');
-		const postgresName = 'db';
-
-		try {
-			let postgres: DokployPostgres | null = null;
-			let created = false;
-
-			// Check if we have an existing ID from state
-			if (existingServiceIds?.postgresId) {
-				logger.log(`   Using cached ID: ${existingServiceIds.postgresId}`);
-				postgres = await api.getPostgres(existingServiceIds.postgresId);
-				if (postgres) {
-					logger.log(`   ✓ PostgreSQL found: ${postgres.postgresId}`);
-				} else {
-					logger.log(`   ⚠ Cached ID invalid, will create new`);
-				}
-			}
-
-			// If not found by ID, use findOrCreate
-			if (!postgres) {
-				const databasePassword = randomBytes(16).toString('hex');
-				// Use project name as database name (replace hyphens with underscores for PostgreSQL)
-				const databaseName = projectName.replace(/-/g, '_');
-
-				const result = await api.findOrCreatePostgres(
-					postgresName,
-					projectId,
-					environmentId,
-					{ databaseName, databasePassword },
-				);
-				postgres = result.postgres;
-				created = result.created;
-
-				if (created) {
-					logger.log(`   ✓ Created PostgreSQL: ${postgres.postgresId}`);
-
-					// Deploy the database (only for new instances)
-					await api.deployPostgres(postgres.postgresId);
-					logger.log('   ✓ PostgreSQL deployed');
-				} else {
-					logger.log(`   ✓ PostgreSQL already exists: ${postgres.postgresId}`);
-				}
-			}
-
-			// Store the ID for state
-			serviceIds.postgresId = postgres.postgresId;
-
-			// Store individual connection parameters
-			serviceUrls.DATABASE_HOST = postgres.appName;
-			serviceUrls.DATABASE_PORT = '5432';
-			serviceUrls.DATABASE_NAME = postgres.databaseName;
-			serviceUrls.DATABASE_USER = postgres.databaseUser;
-			serviceUrls.DATABASE_PASSWORD = postgres.databasePassword;
-
-			// Construct connection URL using internal docker network hostname
-			serviceUrls.DATABASE_URL = `postgresql://${postgres.databaseUser}:${postgres.databasePassword}@${postgres.appName}:5432/${postgres.databaseName}`;
-			logger.log(`   ✓ Database credentials configured`);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`   ⚠ Failed to provision PostgreSQL: ${message}`);
-		}
-	}
-
-	if (services.redis) {
-		logger.log('\n🔴 Checking Redis...');
-		const redisName = 'cache';
-
-		try {
-			let redis: DokployRedis | null = null;
-			let created = false;
-
-			// Check if we have an existing ID from state
-			if (existingServiceIds?.redisId) {
-				logger.log(`   Using cached ID: ${existingServiceIds.redisId}`);
-				redis = await api.getRedis(existingServiceIds.redisId);
-				if (redis) {
-					logger.log(`   ✓ Redis found: ${redis.redisId}`);
-				} else {
-					logger.log(`   ⚠ Cached ID invalid, will create new`);
-				}
-			}
-
-			// If not found by ID, use findOrCreate
-			if (!redis) {
-				const { randomBytes } = await import('node:crypto');
-				const databasePassword = randomBytes(16).toString('hex');
-
-				const result = await api.findOrCreateRedis(
-					redisName,
-					projectId,
-					environmentId,
-					{ databasePassword },
-				);
-				redis = result.redis;
-				created = result.created;
-
-				if (created) {
-					logger.log(`   ✓ Created Redis: ${redis.redisId}`);
-
-					// Deploy the redis instance (only for new instances)
-					await api.deployRedis(redis.redisId);
-					logger.log('   ✓ Redis deployed');
-				} else {
-					logger.log(`   ✓ Redis already exists: ${redis.redisId}`);
-				}
-			}
-
-			// Store the ID for state
-			serviceIds.redisId = redis.redisId;
-
-			// Store individual connection parameters
-			serviceUrls.REDIS_HOST = redis.appName;
-			serviceUrls.REDIS_PORT = '6379';
-			if (redis.databasePassword) {
-				serviceUrls.REDIS_PASSWORD = redis.databasePassword;
-			}
-
-			// Construct connection URL
-			const password = redis.databasePassword
-				? `:${redis.databasePassword}@`
-				: '';
-			serviceUrls.REDIS_URL = `redis://${password}${redis.appName}:6379`;
-			logger.log(`   ✓ Redis credentials configured`);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.log(`   ⚠ Failed to provision Redis: ${message}`);
-		}
-	}
-
-	return Object.keys(serviceUrls).length > 0
-		? { serviceUrls, serviceIds }
-		: undefined;
-}
-
-/**
  * Ensure Dokploy is fully configured, recovering/creating resources as needed
  */
-async function ensureDokploySetup(
+/**
+ * The configured registry, among those the server already has.
+ *
+ * `docker.registry` is a host and optionally a namespace —
+ * `ghcr.io/technanimals` — while Dokploy stores the host alone. Comparing the
+ * first segment is what makes the two the same fact rather than two spellings
+ * of it.
+ */
+function matchingRegistry(
+	registries: readonly {
+		registryId: string;
+		registryName: string;
+		registryUrl: string;
+	}[],
+	configured: string | undefined,
+):
+	| { registryId: string; registryName: string; registryUrl: string }
+	| undefined {
+	if (!configured) return undefined;
+
+	const host = configured.replace(/^https?:\/\//, '').split('/')[0];
+
+	return registries.find(
+		(registry) =>
+			registry.registryUrl.replace(/^https?:\/\//, '').split('/')[0] === host,
+	);
+}
+
+async function _ensureDokploySetup(
 	config: GkmConfig,
 	dockerConfig: DockerDeployConfig,
 	stage: string,
-	services?: DockerComposeServices,
+	_services?: DockerComposeServices,
 ): Promise<DokploySetupResult> {
 	logger.log('\n🔧 Checking Dokploy setup...');
 
@@ -657,20 +567,6 @@ async function ensureDokploySetup(
 
 			const environmentId = environment.environmentId;
 
-			// Provision services if configured
-			logger.log(
-				`   Services config: ${JSON.stringify(services)}, envId: ${environmentId}`,
-			);
-			// For single-app mode, we don't have state persistence yet, so pass undefined
-			const provisionResult = await provisionServices(
-				api,
-				existingConfig.projectId,
-				environmentId,
-				dockerConfig.appName!,
-				services,
-				undefined, // No state in single-app mode
-			);
-
 			return {
 				config: {
 					endpoint: existingConfig.endpoint,
@@ -679,7 +575,7 @@ async function ensureDokploySetup(
 					registry: existingConfig.registry,
 					registryId: storedRegistryId ?? undefined,
 				},
-				serviceUrls: provisionResult?.serviceUrls,
+				environmentId,
 			};
 		} catch {
 			logger.log('⚠ Project not found, will recover...');
@@ -734,11 +630,29 @@ async function ensureDokploySetup(
 
 	// Step 5: Find or create application
 	logger.log('\n📦 Looking for application...');
+
+	// Scoped by `resolveDockerConfig` from the gkm config's `name`, through the
+	// same `scopedName` the SST target builds every physical name with.
+	//
+	// It used to be the cwd package.json name, unscoped — so deploying `staging`
+	// into the same project matched the production application by name and
+	// redeployed it.
+	//
+	// Still one application for two surfaces: `Api` and `Auth` are both
+	// `rest-api` declarations served by one container, so neither names it. That
+	// needs the manifest read before applications are created — see §6b.
 	const appName = dockerConfig.appName!;
 
 	let applicationId: string;
 
-	// Try to find existing app from config
+	// Look it up by name, then create.
+	//
+	// This used to reuse an application only when its id was written into
+	// `gkm.config.ts`, and create one unconditionally otherwise — so a project
+	// whose config could not be rewritten got a *new* application on every
+	// single deploy, silently, forever. The id in a source file was never the
+	// right place for it either: the server already knows what it has, and the
+	// name is what identifies it.
 	if (
 		existingConfig &&
 		typeof existingConfig !== 'boolean' &&
@@ -747,15 +661,18 @@ async function ensureDokploySetup(
 		applicationId = existingConfig.applicationId;
 		logger.log(`   Using application from config: ${applicationId}`);
 	} else {
-		// Create new application
-		logger.log(`   Creating application: ${appName}`);
-		const app = await api.createApplication(
+		const { application, created } = await api.findOrCreateApplication(
 			appName,
 			project.projectId,
 			environmentId,
 		);
-		applicationId = app.applicationId;
-		logger.log(`   ✓ Created application: ${applicationId}`);
+
+		applicationId = application.applicationId;
+		logger.log(
+			created
+				? `   ✓ Created application: ${applicationId}`
+				: `   ✓ Found application: ${appName} (${applicationId})`,
+		);
 	}
 
 	// Step 6: Ensure registry is set up
@@ -800,6 +717,20 @@ async function ensureDokploySetup(
 					'   ⚠ No registry configured. Set docker.registry in gkm.config.ts',
 				);
 			}
+		} else if (matchingRegistry(registries, dockerConfig.registry)) {
+			// The config already answered this. `docker.registry` names the host
+			// images are pushed to, and a registry on the server with the same
+			// host is the one to use — asking which would be asking a question
+			// whose answer is written down, and it is what made a deploy
+			// impossible without a terminal.
+			const matched = matchingRegistry(registries, dockerConfig.registry);
+			if (!matched) throw new Error('unreachable');
+
+			registryId = matched.registryId;
+			await storeDokployRegistryId(registryId);
+			logger.log(
+				`   ✓ ${matched.registryName} (${matched.registryUrl}) — from docker.registry`,
+			);
 		} else {
 			// Show available registries and let user select or create new
 			logger.log('   Available registries:');
@@ -853,7 +784,17 @@ async function ensureDokploySetup(
 	};
 
 	// Update gkm.config.ts
-	await updateConfig(dokployConfig);
+	// Deliberately not written back into `gkm.config.ts`.
+	//
+	// It used to be, with a regex that matched to the first closing brace — so a
+	// nested `domains: { … }` orphaned the tail and every key it did not itself
+	// write was dropped. It corrupted a config once here.
+	//
+	// Nothing is lost by not writing: the project, application and registry are
+	// found by name on the next run, and remembered in the deploy state, which is
+	// the artefact whose job that is. Generated ids in a source file were only
+	// ever a cache with no invalidation.
+	logger.log(`   Project ${project.projectId} · application ${applicationId}`);
 
 	logger.log('\n✅ Dokploy setup complete!');
 	logger.log(`   Project: ${project.projectId}`);
@@ -862,20 +803,9 @@ async function ensureDokploySetup(
 		logger.log(`   Registry: ${registryId}`);
 	}
 
-	// Step 8: Provision docker compose services if configured
-	// For single-app mode, we don't have state persistence yet, so pass undefined
-	const provisionResult = await provisionServices(
-		api,
-		project.projectId,
-		environmentId,
-		dockerConfig.appName!,
-		services,
-		undefined, // No state in single-app mode
-	);
-
 	return {
 		config: dokployConfig,
-		serviceUrls: provisionResult?.serviceUrls,
+		environmentId,
 	};
 }
 
@@ -901,11 +831,145 @@ export function generateTag(stage: string): string {
  *
  * @internal Exported for testing
  */
-export async function workspaceDeployCommand(
+/**
+ * The things this deploy creates a container for, taken from the manifest.
+ *
+ * A deploy unit is a *declaration*, not a config entry. One `rest-api` is one
+ * server and one `site` is one site, which is what makes an auth server able to
+ * be its own process rather than something a hook mounts into an API — the
+ * config never knew about it, because a surface is not an app.
+ *
+ * Each unit is expressed as an app record because that is what the phases below
+ * consume; what changed is where the *list* comes from.
+ *
+ * - A `site` is fully self-describing: it carries `path` and `variant`, so it
+ *   deploys whether or not the config mentions it. That is the frontend that
+ *   was silently never deployed.
+ * - A `rest-api` carries a `path` once it has been given one, and otherwise
+ *   falls back to the app that declared it — an app's own routes still come
+ *   from a glob until §2 lands, so its surface cannot yet be built alone.
+ *
+ * A configured app matching a declaration keeps its settings: the manifest says
+ * *what* to deploy, the config still says how to run it.
+ */
+export function deployUnits(
+	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
+): Record<string, NormalizedAppConfig> {
+	const units: Record<string, NormalizedAppConfig> = {};
+	const backend = Object.entries(workspace.apps).find(
+		([, app]) => app.type === 'backend',
+	);
+
+	const FRAMEWORKS: Record<string, NormalizedAppConfig['framework']> = {
+		static: 'vite',
+		next: 'nextjs',
+		tanstack: 'tanstack-start',
+	};
+
+	// Surfaces that have not been given a path are all served by the app that
+	// declared them — one process, however many of them there are. Emitting one
+	// unit each would deploy that whole app twice under two names, which is
+	// worse than the shared container it was meant to replace. So they collapse
+	// onto their host, and separate when they can actually be built separately.
+	let sharesHost = false;
+
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind === 'rest-api') {
+			const own = declaration.path;
+
+			if (!own) {
+				sharesHost = true;
+				continue;
+			}
+
+			units[kebabCase(declaration.id)] = {
+				...(backend?.[1] ?? {}),
+				type: 'backend',
+				path: own,
+				port: backend?.[1]?.port ?? 3000,
+				dependencies: [],
+				resolvedDeployTarget: backend?.[1]?.resolvedDeployTarget ?? 'dokploy',
+			} as NormalizedAppConfig;
+			continue;
+		}
+
+		if (declaration.kind !== 'site') continue;
+
+		const name = kebabCase(declaration.id);
+		// Matched by path, the one thing a site declaration and a configured app
+		// both name — so a configured `web` keeps its port and framework.
+		const configured = Object.values(workspace.apps).find(
+			(app) => app.path === declaration.path,
+		);
+
+		units[name] = {
+			...(configured ?? {}),
+			type: 'web',
+			path: declaration.path,
+			port: configured?.port ?? 3001,
+			dependencies: [],
+			framework: configured?.framework ?? FRAMEWORKS[declaration.variant],
+			resolvedDeployTarget: configured?.resolvedDeployTarget ?? 'dokploy',
+		} as NormalizedAppConfig;
+	}
+
+	if (sharesHost && backend) units[backend[0]] = backend[1];
+
+	return units;
+}
+
+/**
+ * The variables an app cannot start without.
+ *
+ * The sniffer reports every key it saw in `requiredEnvVars` and says which of
+ * them were read through `.optional()` or `.default()` in `optionalEnvVars`.
+ * Reading only the first treats a key that is *absent by design* as a missing
+ * secret — `AUTH_COOKIE_DOMAIN` is published only when a surface has a domain
+ * to widen a cookie to, and one host has nothing to share it with.
+ *
+ * The same distinction `bundleServer` draws. It is drawn twice because the
+ * bundle and the deploy each validate, and the deploy was the half still
+ * failing on an answer that was correct.
+ */
+function requiredOf(
+	requirements:
+		| { requiredEnvVars: string[]; optionalEnvVars: string[] }
+		| undefined,
+): string[] {
+	if (!requirements) return [];
+
+	const optional = new Set(requirements.optionalEnvVars);
+
+	return requirements.requiredEnvVars
+		.map((name) => (name.endsWith('?') ? name.slice(0, -1) : name))
+		.filter((name) => !optional.has(name));
+}
+
+export async function workspaceDeployCommand(
+	configured: NormalizedWorkspace,
 	options: DeployOptions,
 ): Promise<WorkspaceDeployResult> {
 	const { provider, stage, tag, apps: selectedApps } = options;
+
+	// What to deploy comes from the manifest.
+	//
+	// Discovered here rather than inside `provisionDeclared`, because the list of
+	// things to build is the *declarations* — one `rest-api` is one server, one
+	// `site` is one site — and the config only says how to run each. It read the
+	// config before, which is why a declared site nobody had listed as an app was
+	// silently never deployed, and why two surfaces in one app had to share a
+	// container.
+	//
+	// A project that declares no surfaces keeps its configured apps, so adopting
+	// constructs stays something you do a piece at a time.
+	const manifest = await discover({
+		patterns: constructGlobs(configured),
+		cwd: configured.root,
+	});
+	const units = deployUnits(manifest, configured);
+	const workspace: NormalizedWorkspace =
+		Object.keys(units).length > 0 ? { ...configured, apps: units } : configured;
 
 	if (provider !== 'dokploy') {
 		throw new Error(
@@ -1152,53 +1216,6 @@ export async function workspaceDeployCommand(
 		}
 	}
 
-	// Provision infrastructure services if configured
-	const services = workspace.services;
-	const dockerServices = {
-		postgres: services.db !== undefined && services.db !== false,
-		redis: services.cache !== undefined && services.cache !== false,
-	};
-
-	// Track provisioned postgres info for per-app DATABASE_URL
-	let provisionedPostgres: DokployPostgres | null = null;
-	let provisionedRedis: DokployRedis | null = null;
-
-	if (dockerServices.postgres || dockerServices.redis) {
-		logger.log('\n🔧 Provisioning infrastructure services...');
-		// Pass existing service IDs from state (prefer state over URL sniffing)
-		const existingServiceIds = {
-			postgresId: getPostgresId(state),
-			redisId: getRedisId(state),
-		};
-
-		const provisionResult = await provisionServices(
-			api,
-			project.projectId,
-			environmentId,
-			workspace.name,
-			dockerServices,
-			existingServiceIds,
-		);
-
-		// Update state with returned service IDs
-		if (provisionResult?.serviceIds) {
-			if (provisionResult.serviceIds.postgresId) {
-				setPostgresId(state, provisionResult.serviceIds.postgresId);
-				// Fetch full postgres info for later use
-				provisionedPostgres = await api.getPostgres(
-					provisionResult.serviceIds.postgresId,
-				);
-			}
-			if (provisionResult.serviceIds.redisId) {
-				setRedisId(state, provisionResult.serviceIds.redisId);
-				// Fetch full redis info for later use
-				provisionedRedis = await api.getRedis(
-					provisionResult.serviceIds.redisId,
-				);
-			}
-		}
-	}
-
 	// ==================================================================
 	// Separate apps by type for two-phase deployment
 	// ==================================================================
@@ -1223,61 +1240,108 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	// Initialize per-app database users if Postgres is provisioned
 	// ==================================================================
-	const perAppDbCredentials = new Map<string, AppDbCredentials>();
+	// Read before the declared block below, which needs it to work out where a
+	// surface will answer — that has to be known before any environment is
+	// saved, and it used to be decided inside the app loop, which is too late.
+	const dokployConfig = workspace.deploy.dokploy;
 
-	if (provisionedPostgres && backendApps.length > 0) {
-		// Determine which backend apps need DATABASE_URL
-		const appsNeedingDb = backendApps.filter((appName) => {
-			const requirements = sniffedApps.get(appName);
-			return requirements?.requiredEnvVars.includes('DATABASE_URL');
+	// ==================================================================
+	// The declared half: everything the construct manifest says exists
+	// ==================================================================
+	// Separate from the block above on purpose. That one deploys *applications*
+	// — images, registries, domains — which a project has whether or not it
+	// declares anything. This is what exists because the app said so, and it is
+	// skipped entirely for a project that has not adopted the model.
+	//
+	// It runs before any application environment is saved, because the URLs it
+	// resolves are what those applications read.
+	let declaredEnv: Record<string, string> = {};
+	// The clusters the manifest provisioned, for anything downstream that needs
+	// one — a backup schedule names a database, and that database is now
+	// declared rather than configured.
+	let declaredClusters: Record<string, DokployCluster> = {};
+
+	{
+		logger.log('\n📦 Provisioning declared constructs...');
+
+		// Every surface answers on its process's address, so the address has to
+		// exist before the manifest is walked. Computed here rather than in the
+		// app loop, which is where it used to be decided and is too late.
+		const appUrls: Record<string, string> = {};
+		for (const appName of backendApps) {
+			const app = workspace.apps[appName];
+			if (!app) continue;
+
+			appUrls[appName] = `https://${resolveHost(
+				appName,
+				app,
+				stage,
+				dokployConfig,
+				false,
+			)}`;
+		}
+
+		const declared = await provisionDeclared({
+			api,
+			workspace,
+			projectId: project.projectId,
+			environmentId: environmentId as string,
+			stage,
+			appUrls,
+			// The one already discovered above, so a deploy reads the manifest once
+			// and cannot act on two different versions of it.
+			manifest,
 		});
 
-		if (appsNeedingDb.length > 0) {
-			logger.log(`\n🔐 Setting up per-app database credentials...`);
-			logger.log(`   Apps needing DATABASE_URL: ${appsNeedingDb.join(', ')}`);
+		declaredEnv = declared.env;
+		declaredClusters = declared.clusters;
 
-			// Get or generate credentials for each app
-			const existingCredentials = getAllAppCredentials(state);
-			const usersToCreate: DbUserConfig[] = [];
-
-			for (const appName of appsNeedingDb) {
-				let credentials = existingCredentials[appName];
-
-				if (credentials) {
-					logger.log(`   ${appName}: Using existing credentials from state`);
-				} else {
-					// Generate new credentials
-					const password = randomBytes(16).toString('hex');
-					credentials = { dbUser: appName, dbPassword: password };
-					setAppCredentials(state, appName, credentials);
-					logger.log(`   ${appName}: Generated new credentials`);
-				}
-
-				perAppDbCredentials.set(appName, credentials);
-
-				// Always add to users to create (idempotent - will update if exists)
-				usersToCreate.push({
-					name: appName,
-					password: credentials.dbPassword,
-					usePublicSchema: appName === 'api', // API uses public schema, others get their own
-				});
-			}
-
-			// Initialize database users
-			const serverHostname = getServerHostname(creds.endpoint);
-			await initializePostgresUsers(
-				api,
-				provisionedPostgres,
-				serverHostname,
-				usersToCreate,
+		if (Object.keys(declaredEnv).length > 0) {
+			logger.log(
+				`   🔌 Resolved ${Object.keys(declaredEnv).length} declared URL(s)`,
 			);
+		}
+
+		// The DDL the provisioners deferred. Roles and tables need a connection
+		// to a cluster that only exists once the calls above have been made —
+		// which is why they were accumulated rather than run.
+		//
+		// Grouped by the cluster each belongs to, and *the manifest's* cluster
+		// rather than whichever Postgres happens to be around: a project may also
+		// have a legacy `services.postgres`, and applying a construct's roles to
+		// that one would create them where nothing connects.
+		if (declared.statements.length > 0) {
+			const serverHostname = getServerHostname(creds.endpoint);
+
+			for (const [databaseName, cluster] of Object.entries(declared.clusters)) {
+				const statements = declared.statements.filter(
+					(statement) => statement.database === databaseName,
+				);
+				if (statements.length === 0) continue;
+
+				const created = await applyDeclaredStatements(
+					api,
+					cluster,
+					serverHostname,
+					statements,
+				);
+
+				logger.log(
+					`   🗄️  ${databaseName}: applied ${statements.length} statement(s), ${created} new`,
+				);
+			}
 		}
 	}
 
 	// ==================================================================
 	// Provision backup destination if configured
 	// ==================================================================
-	if (workspace.deploy?.backups && provisionedPostgres) {
+	// The first declared database. A workspace that declares two and wants both
+	// backed up needs a per-database schedule, which the config has no way to
+	// express yet — worth saying rather than backing up one and calling it done.
+	const backupCluster = Object.values(declaredClusters)[0];
+
+	if (workspace.deploy?.backups && backupCluster) {
 		logger.log('\n💾 Provisioning backup destination...');
 
 		const { provisionBackupDestination } = await import(
@@ -1307,8 +1371,8 @@ export async function workspaceDeployCommand(
 				schedule: backupSchedule,
 				prefix: `${stage}/postgres`,
 				destinationId: backupState.destinationId,
-				database: provisionedPostgres.databaseName,
-				postgresId: provisionedPostgres.postgresId,
+				database: backupCluster.databaseName,
+				postgresId: backupCluster.postgresId,
 				enabled: true,
 				keepLatestCount: backupRetention,
 			});
@@ -1322,7 +1386,6 @@ export async function workspaceDeployCommand(
 	// Track deployed app public URLs for frontend builds
 	const publicUrls: Record<string, string> = {};
 	const results: AppDeployResult[] = [];
-	const dokployConfig = workspace.deploy.dokploy;
 
 	// Track domain IDs and hostnames for DNS orchestration
 	const appHostnames = new Map<string, string>(); // appName -> hostname
@@ -1358,7 +1421,10 @@ export async function workspaceDeployCommand(
 
 			try {
 				// Use simple app name - project already provides namespace
-				const dokployAppName = appName;
+				// Scoped exactly as a construct is, and by the same function. It
+				// used to be the bare app key, so a project held an `api` and a
+				// `web` that every stage would collide on.
+				const dokployAppName = applicationName(stage, workspace.name, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1456,21 +1522,6 @@ export async function workspaceDeployCommand(
 					appName,
 					stage,
 					state,
-					appCredentials: perAppDbCredentials.get(appName),
-					postgres: provisionedPostgres
-						? {
-								host: provisionedPostgres.appName,
-								port: 5432,
-								database: provisionedPostgres.databaseName,
-							}
-						: undefined,
-					redis: provisionedRedis
-						? {
-								host: provisionedRedis.appName,
-								port: 6379,
-								password: provisionedRedis.databasePassword,
-							}
-						: undefined,
 					appHostname: backendHost,
 					frontendUrls,
 					userSecrets: stageSecrets ?? undefined,
@@ -1481,7 +1532,7 @@ export async function workspaceDeployCommand(
 				// Resolve all required environment variables
 				// Always include PORT, NODE_ENV, STAGE even if not explicitly required
 				const appRequirements = sniffedApps.get(appName);
-				const sniffedVars = appRequirements?.requiredEnvVars ?? [];
+				const sniffedVars = requiredOf(appRequirements);
 				const requiredVars = [
 					...new Set(['PORT', 'NODE_ENV', 'STAGE', ...sniffedVars]),
 				];
@@ -1494,14 +1545,25 @@ export async function workspaceDeployCommand(
 					throw new Error(formatMissingVarsError(appName, missing, stage));
 				}
 
+				// Declared URLs win over anything sniffed or stored, which is the
+				// same precedence the local target applies: the manifest is the
+				// statement of what exists, and a value left over from before it
+				// was declared is exactly the drift this replaces.
+				//
+				// They are merged *after* validation rather than added to the
+				// required list, because the sniffer cannot see them — a construct
+				// reads its own key inside `@geekmidas/constructs`, so requiring
+				// them would fail every app that declares anything.
+				const withDeclared = { ...resolved, ...declaredEnv };
+
 				// Build env vars string for Dokploy
-				const envVars: string[] = Object.entries(resolved).map(
+				const envVars: string[] = Object.entries(withDeclared).map(
 					([key, value]) => `${key}=${value}`,
 				);
 
-				if (Object.keys(resolved).length > 0) {
+				if (Object.keys(withDeclared).length > 0) {
 					logger.log(
-						`      Resolved ${Object.keys(resolved).length} env vars: ${Object.keys(resolved).join(', ')}`,
+						`      Resolved ${Object.keys(withDeclared).length} env vars: ${Object.keys(withDeclared).sort().join(', ')}`,
 					);
 				}
 
@@ -1600,7 +1662,10 @@ export async function workspaceDeployCommand(
 
 			try {
 				// Use simple app name - project already provides namespace
-				const dokployAppName = appName;
+				// Scoped exactly as a construct is, and by the same function. It
+				// used to be the bare app key, so a project held an `api` and a
+				// `web` that every stage would collide on.
+				const dokployAppName = applicationName(stage, workspace.name, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1675,7 +1740,7 @@ export async function workspaceDeployCommand(
 
 				// Resolve all env vars BEFORE Docker build (public-prefixed vars
 				// must be present at bundler build time so they get inlined).
-				const sniffedVars = sniffedApps.get(appName)?.requiredEnvVars ?? [];
+				const sniffedVars = requiredOf(sniffedApps.get(appName));
 				const { valid, missing, resolved } = validateEnvVars(
 					sniffedVars,
 					envContext,
@@ -1911,184 +1976,15 @@ export async function deployCommand(
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
 
-	// Route to workspace deploy mode for multi-app workspaces
-	if (loadedConfig.type === 'workspace') {
-		logger.log('📦 Detected workspace configuration');
-		return workspaceDeployCommand(loadedConfig.workspace, options);
-	}
-
-	logger.log(`\n🚀 Deploying to ${provider}...`);
-	logger.log(`   Stage: ${stage}`);
-
-	// Single-app mode - use existing logic
-	const config = await loadConfig();
-
-	// Generate tag if not provided
-	const imageTag = tag ?? generateTag(stage);
-	logger.log(`   Tag: ${imageTag}`);
-
-	// Resolve docker config for image reference
-	const dockerConfig = resolveDockerConfig(config);
-	const imageName = dockerConfig.imageName!;
-	const registry = dockerConfig.registry;
-	const imageRef = registry
-		? `${registry}/${imageName}:${imageTag}`
-		: `${imageName}:${imageTag}`;
-
-	// For Dokploy, set up services BEFORE build so URLs are available
-	let dokployConfig: DokployDeployConfig | undefined;
-	let finalRegistry = registry;
-
-	if (provider === 'dokploy') {
-		// Extract docker compose services config
-		const composeServices = config.docker?.compose?.services;
-		logger.log(
-			`\n🔍 Docker compose config: ${JSON.stringify(config.docker?.compose)}`,
-		);
-		const dockerServices: DockerComposeServices | undefined = composeServices
-			? Array.isArray(composeServices)
-				? {
-						postgres: composeServices.includes('postgres'),
-						redis: composeServices.includes('redis'),
-						rabbitmq: composeServices.includes('rabbitmq'),
-					}
-				: {
-						postgres: Boolean(composeServices.postgres),
-						redis: Boolean(composeServices.redis),
-						rabbitmq: Boolean(composeServices.rabbitmq),
-					}
-			: undefined;
-
-		// Ensure Dokploy is fully set up (credentials, project, app, registry, services)
-		const setupResult = await ensureDokploySetup(
-			config,
-			dockerConfig,
-			stage,
-			dockerServices,
-		);
-		dokployConfig = setupResult.config;
-		finalRegistry = dokployConfig.registry ?? dockerConfig.registry;
-
-		// Save provisioned service URLs to secrets before build
-		if (setupResult.serviceUrls) {
-			const { readStageSecrets, writeStageSecrets, initStageSecrets } =
-				await import('../secrets/storage');
-			let secrets = await readStageSecrets(stage);
-
-			// Create secrets file if it doesn't exist
-			if (!secrets) {
-				logger.log(`   Creating secrets file for stage "${stage}"...`);
-				secrets = initStageSecrets(stage);
-			}
-
-			let updated = false;
-			// URL fields go to secrets.urls, individual params go to secrets.custom
-			const urlFields = ['DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL'] as const;
-
-			for (const [key, value] of Object.entries(setupResult.serviceUrls)) {
-				if (!value) continue;
-
-				if (urlFields.includes(key as (typeof urlFields)[number])) {
-					// URL fields
-					const urlKey = key as keyof typeof secrets.urls;
-					if (!secrets.urls[urlKey]) {
-						secrets.urls[urlKey] = value;
-						logger.log(`   Saved ${key} to secrets.urls`);
-						updated = true;
-					}
-				} else {
-					// Individual parameters (HOST, PORT, NAME, USER, PASSWORD)
-					if (!secrets.custom[key]) {
-						secrets.custom[key] = value;
-						logger.log(`   Saved ${key} to secrets.custom`);
-						updated = true;
-					}
-				}
-			}
-			if (updated) {
-				await writeStageSecrets(secrets);
-			}
-		}
-	}
-
-	// Build for production with secrets injection (unless skipped)
-	let masterKey: string | undefined;
-	if (!skipBuild) {
-		logger.log(`\n📦 Building for production...`);
-		const buildResult = await buildCommand({
-			provider: 'server',
-			production: true,
-			stage,
-		});
-		masterKey = buildResult.masterKey;
-	} else {
-		logger.log(`\n⏭️  Skipping build (--skip-build)`);
-	}
-
-	// Deploy based on provider
-	let result: DeployResult;
-
-	switch (provider) {
-		case 'docker': {
-			result = await deployDocker({
-				stage,
-				tag: imageTag,
-				skipPush,
-				masterKey,
-				config: dockerConfig,
-			});
-			break;
-		}
-
-		case 'dokploy': {
-			if (!dokployConfig) {
-				throw new Error('Dokploy config not initialized');
-			}
-			const finalImageRef = finalRegistry
-				? `${finalRegistry}/${imageName}:${imageTag}`
-				: `${imageName}:${imageTag}`;
-
-			// First build and push the Docker image
-			await deployDocker({
-				stage,
-				tag: imageTag,
-				skipPush: false, // Dokploy needs the image in registry
-				masterKey,
-				config: {
-					registry: finalRegistry,
-					imageName: dockerConfig.imageName,
-				},
-			});
-
-			// Then trigger Dokploy deployment
-			result = await deployDokploy({
-				stage,
-				tag: imageTag,
-				imageRef: finalImageRef,
-				masterKey,
-				config: dokployConfig,
-			});
-			break;
-		}
-
-		case 'aws-lambda': {
-			logger.log('\n⚠️  AWS Lambda deployment is not yet implemented.');
-			logger.log('   Use SST or AWS CDK for Lambda deployments.');
-			result = { imageRef, masterKey };
-			break;
-		}
-
-		default: {
-			throw new Error(
-				`Unknown deploy provider: ${provider}\n` +
-					'Supported providers: docker, dokploy, aws-lambda',
-			);
-		}
-	}
-
-	logger.log('\n✅ Deployment complete!');
-
-	return result;
+	// One path, whatever the config was written as.
+	//
+	// `defineConfig` is sugar over a one-app workspace, and `processConfig`
+	// already projects it into the same `NormalizedWorkspace` a `defineWorkspace`
+	// produces — so branching here meant a single-app project silently got less.
+	// Domains were the clearest case: `createDomain` is only reached from this
+	// function, so a single-app deploy provisioned everything, pushed an image,
+	// started a container, and left nothing routing to it.
+	return workspaceDeployCommand(loadedConfig.workspace, options);
 }
 
 export type { DeployOptions, DeployProvider, DeployResult };

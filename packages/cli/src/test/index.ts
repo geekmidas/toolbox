@@ -81,7 +81,16 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		);
 
 		if (sniffed.requiredEnvVars.length > 0) {
-			const needed = new Set(sniffed.requiredEnvVars);
+			// Sniffed *plus* declared. A construct reads its own key inside
+			// `@geekmidas/constructs` rather than in application code, so a walk of
+			// the app finds no `get('MAIL_URL')` and sniffing alone reports it as
+			// unneeded — which is how a suite that resolved 25 declared URLs
+			// started with 13 and failed on the first construct to look for one of
+			// the other 12.
+			const needed = new Set([
+				...sniffed.requiredEnvVars,
+				...result.declaredKeys,
+			]);
 			const filtered: Record<string, string> = {};
 			for (const [key, value] of Object.entries(finalCredentials)) {
 				if (needed.has(key)) {
@@ -90,7 +99,10 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			}
 			finalCredentials = filtered;
 			console.log(
-				`  🔍 Sniffed ${sniffed.requiredEnvVars.length} required env var(s)`,
+				`  🔍 Sniffed ${sniffed.requiredEnvVars.length} required env var(s)` +
+					(result.declaredKeys.length > 0
+						? `, kept ${result.declaredKeys.length} declared`
+						: ''),
 			);
 		}
 	}

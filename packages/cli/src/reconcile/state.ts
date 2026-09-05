@@ -39,9 +39,21 @@ const STATE_DIR = '.gkm/reconcile';
  * keys its provisioner invocation on the same idea, and the two must not be able
  * to disagree about what counts as a change.
  */
-export function planHash(plan: Plan, compose: ComposeFile): string {
+export function planHash(
+	plan: Plan,
+	compose: ComposeFile,
+	/**
+	 * Anything else generated from the plan that a container reads.
+	 *
+	 * The edge's Caddyfile is the case: a file server added or a bucket renamed
+	 * changes the routing without changing a single container, so a hash over
+	 * the compose document alone would report convergence and leave the old
+	 * routes serving.
+	 */
+	generated: Readonly<Record<string, string>> = {},
+): string {
 	return createHash('sha256')
-		.update(JSON.stringify({ stage: plan.stage, plan, compose }))
+		.update(JSON.stringify({ stage: plan.stage, plan, compose, generated }))
 		.digest('hex');
 }
 

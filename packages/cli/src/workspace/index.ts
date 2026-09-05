@@ -212,37 +212,38 @@ export function wrapSingleAppAsWorkspace(
 	config: GkmConfig,
 	cwd: string,
 ): NormalizedWorkspace {
-	const name = getPackageName(cwd) ?? basename(cwd);
+	// `config.name` first, the way `defineWorkspace` already reads it. It was
+	// only honoured on the workspace path, so the same field decided the scope
+	// in a monorepo and was ignored in a single-app project.
+	const name = config.name ?? getPackageName(cwd) ?? basename(cwd);
 
-	// Extract docker compose services if configured
-	const services = config.docker?.compose?.services;
-	const normalizedServices: NormalizedWorkspace['services'] = {};
+	// `docker.compose.services` no longer decides anything here.
+	//
+	// It used to seed `services.db` and `services.cache`, which is to say a
+	// container existed because a compose list named it. Which containers exist
+	// is the manifest's answer now — a database implies Postgres, a declared
+	// cache implies whichever container its backend needs — so the compose block
+	// is left to be what its name says: a deploy-side list.
+	const normalizedServices: NormalizedWorkspace['services'] = {
+		...(config.services ?? {}),
+	};
 
-	if (services) {
-		if (Array.isArray(services)) {
-			// Legacy array format
-			for (const svc of services) {
-				if (svc === 'postgres') normalizedServices.db = true;
-				if (svc === 'redis') normalizedServices.cache = true;
-			}
-		} else {
-			// Object format
-			if (services.postgres) normalizedServices.db = services.postgres;
-			if (services.redis) normalizedServices.cache = services.redis;
-		}
-	}
-
-	// `services:` on the config itself wins over anything inferred from the
-	// compose block: it is the statement, and the compose block is a deploy-side
-	// list that only happens to name some of the same things.
-	Object.assign(normalizedServices, config.services ?? {});
-
-	const apiApp: NormalizedAppConfig = {
+	// A projection, not a default-filled stand-in.
+	//
+	// Every hardcoded value here was a field the config could already state and
+	// this quietly dropped: the port it serves on, and the target it deploys to.
+	// `resolvedDeployTarget` was the worse of the two — a project deploying to
+	// Vercel was normalised into one that deploys to Dokploy, and nothing said
+	// so.
+	const app: NormalizedAppConfig = {
 		type: 'backend',
 		path: '.',
-		port: 3000,
+		port:
+			(typeof config.providers?.server === 'object'
+				? config.providers.server.port
+				: undefined) ?? 3000,
 		dependencies: [],
-		resolvedDeployTarget: 'dokploy',
+		resolvedDeployTarget: config.deploy?.default ?? 'dokploy',
 		constructs: config.constructs,
 		routes: config.routes,
 		functions: config.functions,
@@ -264,9 +265,20 @@ export function wrapSingleAppAsWorkspace(
 	return {
 		name,
 		root: cwd,
-		apps: { api: apiApp },
+		// Keyed `api` because that is what a single-app backend is, and because
+		// the key is what names the application: `applicationName(stage, name,
+		// 'api')` is `production-<name>-api`, beside the
+		// `production-<name>-database` its constructs get. One model, so the
+		// deploy asks the workspace what its apps are called rather than asking
+		// the filesystem.
+		apps: { api: app },
 		services: normalizedServices,
-		deploy: { default: 'dokploy' },
+		// Carried rather than replaced. A single-app project configures its
+		// deploy in the same shape a workspace does — endpoint, registry,
+		// domains — and hardcoding the default here silently discarded all of it,
+		// which surfaced as `resolveHost` refusing to name a host for a stage the
+		// config had no way to describe.
+		deploy: { default: 'dokploy', ...config.deploy },
 		shared: { packages: [] },
 		secrets: {},
 	};
@@ -316,6 +328,15 @@ export function getAppGkmConfig(
 	}
 
 	return {
+		// Workspace-level, and carried here deliberately. These name the backends
+		// a cache and a mailer resolve to, which the *entry point* reads when it
+		// decides which drivers to register — and the local target reads from the
+		// workspace when it composes the URLs those drivers receive. Dropping the
+		// field left the two reading different answers: a project on
+		// `cache: 'db'` was handed a `postgres://` URL by an entry that had
+		// registered only the Upstash driver, and every request failed with
+		// `UnregisteredCacheScheme`.
+		services: workspace.services,
 		constructs: app.constructs,
 		routes: app.routes ?? '',
 		functions: app.functions,

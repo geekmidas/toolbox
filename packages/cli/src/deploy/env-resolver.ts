@@ -11,7 +11,6 @@ import type { StageSecrets } from '../secrets/types';
 import { stripPublicPrefix } from '../workspace/publicEnv';
 import type { NormalizedAppConfig } from '../workspace/types';
 import {
-	type AppDbCredentials,
 	type DokployStageState,
 	getGeneratedSecret,
 	setGeneratedSecret,
@@ -29,20 +28,6 @@ export interface EnvResolverContext {
 	stage: string;
 	/** Deploy state (for persisting generated secrets) */
 	state: DokployStageState;
-	/** Per-app database credentials (if postgres is enabled) */
-	appCredentials?: AppDbCredentials;
-	/** Postgres connection info (internal hostname) */
-	postgres?: {
-		host: string;
-		port: number;
-		database: string;
-	};
-	/** Redis connection info (internal hostname) */
-	redis?: {
-		host: string;
-		port: number;
-		password?: string;
-	};
 	/** Public hostname for this app */
 	appHostname: string;
 	/** All frontend app URLs (for BETTER_AUTH_TRUSTED_ORIGINS) */
@@ -124,33 +109,6 @@ export function getOrGenerateSecret(
 }
 
 /**
- * Build a DATABASE_URL for an app with per-app credentials
- */
-export function buildDatabaseUrl(
-	credentials: AppDbCredentials,
-	postgres: { host: string; port: number; database: string },
-): string {
-	const { dbUser, dbPassword } = credentials;
-	const { host, port, database } = postgres;
-	return `postgresql://${encodeURIComponent(dbUser)}:${encodeURIComponent(dbPassword)}@${host}:${port}/${database}`;
-}
-
-/**
- * Build a REDIS_URL
- */
-export function buildRedisUrl(redis: {
-	host: string;
-	port: number;
-	password?: string;
-}): string {
-	const { host, port, password } = redis;
-	if (password) {
-		return `redis://:${encodeURIComponent(password)}@${host}:${port}`;
-	}
-	return `redis://${host}:${port}`;
-}
-
-/**
  * Resolve a single environment variable
  */
 export function resolveEnvVar(
@@ -168,20 +126,6 @@ export function resolveEnvVar(
 
 		case 'STAGE':
 			return context.stage;
-
-		case 'DATABASE_URL':
-			if (context.appCredentials && context.postgres) {
-				return buildDatabaseUrl(context.appCredentials, context.postgres);
-			}
-			// Fall through to check user secrets
-			break;
-
-		case 'REDIS_URL':
-			if (context.redis) {
-				return buildRedisUrl(context.redis);
-			}
-			// Fall through to check user secrets
-			break;
 
 		case 'BETTER_AUTH_URL':
 			return `https://${context.appHostname}`;

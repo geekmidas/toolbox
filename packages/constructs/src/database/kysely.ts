@@ -175,8 +175,11 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	 * exists is safe rather than a silently writable connection behind a name
 	 * that says reader. There is no `writer()`: the database *is* the writer, so
 	 * a replica can never be reached by accident.
+	 *
+	 * The return type is narrower than this class on purpose — see
+	 * {@link ReadOnlyDatabase}.
 	 */
-	reader(): KyselyDatabase<DB, `${TName}Reader`> {
+	reader(): ReadOnlyDatabase<DB, `${TName}Reader`> {
 		return new KyselyDatabase<DB, `${TName}Reader`>(
 			`${this.id}Reader` as ConstructName<`${TName}Reader`>,
 			this.options,
@@ -298,3 +301,25 @@ function pool(url: string): pg.Pool {
 		options: `-c search_path=${searchPath}`,
 	});
 }
+
+/**
+ * A database you may read through, and derive nothing from.
+ *
+ * A reader is terminal in the graph, and this is that fact in the type system.
+ * `DERIVES_FROM` gives `cache` and `database-schema` no `database-reader`
+ * parent, and there is no reader of a reader — so `orders.reader().cache(…)`
+ * has always been illegal, but it type-checked and failed later at
+ * `assertDerivations`. That is a long way round to learn that a read-only
+ * endpoint cannot own a table something writes to.
+ *
+ * Omitting the three deriving methods rather than making them throw keeps the
+ * failure where it costs least: the editor, on the line that wrote it.
+ *
+ * The result is deliberately not assignable back to `KyselyDatabase` — a
+ * reader is not one, and anything that genuinely needs the writer should say
+ * so.
+ */
+export type ReadOnlyDatabase<DB, TName extends string> = Omit<
+	KyselyDatabase<DB, TName>,
+	'reader' | 'cache' | 'schema'
+>;

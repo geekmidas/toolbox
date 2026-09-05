@@ -18,6 +18,7 @@
 
 import { cacheTableStatements } from '@geekmidas/cache/postgres';
 import { ownerRole, readerRole, roleStatements } from '@geekmidas/db/pg/roles';
+import { cacheTable } from '@geekmidas/manifest';
 import { localRole, localRolePassword, rootDatabase } from './env';
 import type { Plan, PlannedResource } from './plan';
 
@@ -100,18 +101,18 @@ export function postgresStatements(
 		// A cache that lives in a database is a table in it, and a table is DDL —
 		// so the owner creates it, not the handler's role, which may not create
 		// anything. The same reason the driver does not do it lazily.
-		if (resource.kind === 'cache' && resource.of) {
-			statements.push(
-				...cacheTableStatements({
-					...(resource.table ? { table: resource.table } : {}),
-				}).map((statement) => ({
-					id: resource.id,
-					describe: statement.describe,
-					database: rootDatabase(resource, plan),
-					...(statement.exists ? { exists: statement.exists } : {}),
-					create: statement.sql,
-				})),
-			);
+		//
+		// `of` is the whole test: `planFor` resolves a `cache: 'db'` backend into
+		// that edge before anything reads the plan, so a cache lands in a
+		// database exactly one way and this does not have to know the config
+		// existed.
+		const cacheHome =
+			resource.kind === 'cache' && resource.of
+				? plan.resources.find((r) => r.id === resource.of)
+				: undefined;
+
+		if (cacheHome) {
+			statements.push(...cacheTableDdl(resource, cacheHome, plan));
 		}
 
 		// A reader provisions nothing: it is a set of grants on an endpoint that
@@ -120,6 +121,73 @@ export function postgresStatements(
 	}
 
 	return statements;
+}
+
+/**
+ * A cache's table, in the schema the role that reads it resolves names in.
+ *
+ * Two things have to line up, and neither is the table's contents. The driver
+ * names the table unqualified and lets the connection's `search_path` place it
+ * — which the role carries — so creating it from the master connection, whose
+ * path is `public`, leaves a table the application cannot see and a
+ * `relation "cache" does not exist` on the first request. And the default
+ * privileges that make a tenant's tables reachable are granted *for the owner
+ * role*, so nothing covers a table the master created.
+ *
+ * Hence: qualified with the tenant's schema, handed to its owner, and granted
+ * explicitly — `roleStatements` grants what exists at the time it runs, and
+ * this table does not exist yet.
+ *
+ * A database that opted out of roles needs none of it: everything connects as
+ * the master, whose `search_path` finds `public`, and the table it creates
+ * there is the table it reads.
+ */
+function cacheTableDdl(
+	cache: PlannedResource,
+	home: PlannedResource,
+	plan: Plan,
+): Statement[] {
+	const database = rootDatabase(home, plan);
+	const schema = home.roles === false ? undefined : home.schema;
+	// The same default the URL carries — `cacheTable` is read by both, so the
+	// table a client reads and the table a target creates cannot drift.
+	const name = cache.table ?? cacheTable(cache.id);
+	const table = schema ? `${schema}.${name}` : name;
+
+	const created = cacheTableStatements({ table }).map((statement) => ({
+		id: cache.id,
+		describe: statement.describe,
+		database,
+		...(statement.exists ? { exists: statement.exists } : {}),
+		create: statement.sql,
+	}));
+
+	if (!schema) return created;
+
+	const runtime = localRole(home);
+	const owner = ownerRole(runtime);
+	const qualified = table
+		.split('.')
+		.map((part) => quoteIdentifier(part))
+		.join('.');
+
+	return [
+		...created,
+		{
+			id: cache.id,
+			describe: `cache table ${table} is owned by ${owner}`,
+			database,
+			create: `ALTER TABLE ${qualified} OWNER TO ${quoteIdentifier(owner)}`,
+		},
+		{
+			id: cache.id,
+			describe: `${runtime} may read and write ${table}`,
+			database,
+			create:
+				`GRANT SELECT, INSERT, UPDATE, DELETE ON ${qualified} ` +
+				`TO ${quoteIdentifier(runtime)}`,
+		},
+	];
 }
 
 /**

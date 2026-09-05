@@ -254,17 +254,45 @@ describe('envFor', () => {
 		);
 	});
 
-	it('answers a surface on the app’s own port, not a container’s', () => {
-		// The first kind whose address belongs to something gkm starts rather
-		// than something Docker published.
-		expect(env().AUTH_API_URL).toBe('http://localhost:3000');
+	it('answers a surface on a host of its own, behind the edge', () => {
+		// Deployed, a surface has a real hostname and a certificate. Locally it
+		// now has both too — which is the point of the edge, and is invisible to
+		// the application: it reads whichever address was injected and composes
+		// none, so this is the target's decision alone.
+		expect(env().AUTH_API_URL).toBe(
+			`https://authapi.localhost:${portsFor('development').caddy}`,
+		);
+	});
+
+	it('answers on the assigned port when there is no edge', () => {
+		// The other half of the same statement. `edge: false` and the address is
+		// the one whatever started the process assigned — and not one line of
+		// application code differs between the two.
+		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			edge: false,
+		});
+
+		const resolved = envFor(plan, {
+			ports: portsFor('development'),
+			addresses: {
+				AuthApi: 'http://localhost:3000',
+				Console: 'http://localhost:5173',
+			},
+		});
+
+		expect(resolved.AUTH_API_URL).toBe('http://localhost:3000');
 	});
 
 	it('derives who may call a surface from its inbound edges', () => {
 		// Better Auth rejects an untrusted origin whether or not it is a browser,
 		// so a sibling service calling it needs to be on this list — and the one
 		// thing that declared it calls this surface is the console's edge.
-		expect(env().AUTH_API_TRUSTED_ORIGINS).toBe('http://localhost:5173');
+		// The caller's *resolved* address, which behind the edge is its own host —
+		// the same origin a browser would send, and the one it will send
+		// deployed.
+		expect(env().AUTH_API_TRUSTED_ORIGINS).toBe(
+			`https://console.localhost:${portsFor('development').caddy}`,
+		);
 	});
 
 	it('leaves a surface out of its own origin list', () => {
@@ -283,24 +311,31 @@ describe('envFor', () => {
 		expect(env().AUTH_API_COOKIE_DOMAIN).toBeUndefined();
 	});
 
-	it('serves a bucket on the MinIO that holds it', () => {
-		// Path style, and deliberately not the deployed shape: MinIO's
-		// virtual-host mode reads the leading label as the bucket name, so it
-		// only produces the CDN shape when the server's id and the bucket's
-		// agree — and never for a server fronting two buckets.
+	it('serves a file server on a host of its own, over TLS', () => {
+		// The deployed shape — a domain serving a bucket — which MinIO alone
+		// cannot produce: its virtual-host mode reads the leading label as the
+		// bucket name, so it matches only when the server's id and the bucket's
+		// agree and never for a server fronting two buckets. The edge in front of
+		// it does the mapping, and issues the certificate.
 		expect(env().UPLOADS_SERVER_URL).toBe(
-			`http://localhost:${portsFor('development').minio}/uploads`,
+			`https://uploadsserver.localhost:${portsFor('development').caddy}`,
 		);
 	});
 
-	it('serves the stage-scoped bucket, not the plain one', () => {
-		expect(env('test').UPLOADS_SERVER_URL).toContain('/uploads-test');
+	it('gives each stage its own host rather than its own path', () => {
+		// The stage is in the *name*, which is the leading label — so two stages
+		// cannot answer on one address, and neither carries a bucket in its path.
+		expect(env('test').UPLOADS_SERVER_URL).toContain(
+			'https://uploadsserver-test.',
+		);
 	});
 
 	it('gives a site its API’s address under the name its bundler inlines', () => {
 		// The same value the server reads, renamed — not a second derivation, so
 		// the two cannot come to disagree about where the API is.
-		expect(env().VITE_AUTH_API_URL).toBe('http://localhost:3000');
+		expect(env().VITE_AUTH_API_URL).toBe(
+			`https://authapi.localhost:${portsFor('development').caddy}`,
+		);
 	});
 
 	it('keeps a credential-bearing URL out of a bundle', () => {
@@ -312,9 +347,31 @@ describe('envFor', () => {
 	});
 
 	it('scopes a cookie to the domain a surface and its callers share', () => {
+		// The prize the edge buys, and the reason a project names the hosts: a
+		// surface and a site under one parent share a cookie locally, exactly as
+		// they will deployed. On `http://localhost:<port>` they are one host with
+		// two ports, which derives nothing — a *different* cookie model rather
+		// than a less secure one.
 		const plan = planFor(manifest, 'development', provisionOrder(manifest));
 
-		const env = envFor(plan, {
+		const resolved = envFor(plan, {
+			ports: portsFor('development'),
+			project: 'shop',
+			addresses: {
+				AuthApi: 'http://localhost:3000',
+				Console: 'http://localhost:5173',
+			},
+		});
+
+		expect(resolved.AUTH_API_COOKIE_DOMAIN).toBe('.shop.localhost');
+	});
+
+	it('derives it from real addresses when there is no edge', () => {
+		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			edge: false,
+		});
+
+		const resolved = envFor(plan, {
 			ports: portsFor('development'),
 			addresses: {
 				AuthApi: 'https://api.example.com',
@@ -322,7 +379,7 @@ describe('envFor', () => {
 			},
 		});
 
-		expect(env.AUTH_API_COOKIE_DOMAIN).toBe('.example.com');
+		expect(resolved.AUTH_API_COOKIE_DOMAIN).toBe('.example.com');
 	});
 });
 
@@ -350,11 +407,13 @@ describe('cache backends', () => {
 		expect(cacheEnv('elasticache').SESSIONS_URL).toMatch(/^redis:\/\//);
 	});
 
-	it('is the declared database for db', () => {
+	it('is the declared database for db, plus the table it reads', () => {
 		// No second address and no second credential: the cache is a table
-		// reached by the same role, which is why the backend costs nothing.
+		// reached by the same role, which is why the backend costs nothing. The
+		// table is in the URL because two caches in one database resolve the same
+		// connection string, and something has to say which is which.
 		const env = cacheEnv('db');
 
-		expect(env.SESSIONS_URL).toBe(env.ORDERS_URL);
+		expect(env.SESSIONS_URL).toBe(`${env.ORDERS_URL}?table=cache_sessions`);
 	});
 });

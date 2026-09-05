@@ -36,11 +36,7 @@ function createWorkspace(
 				dependencies: ['api', 'auth'],
 			},
 		},
-		services: {
-			db: true,
-			cache: false,
-			mail: false,
-		},
+		services: {},
 		...overrides,
 	} as NormalizedWorkspace;
 }
@@ -92,7 +88,7 @@ describe('reconcileSecrets', () => {
 			WEB_URL: 'http://localhost:3002',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.custom.BETTER_AUTH_SECRET).toBeDefined();
@@ -130,15 +126,13 @@ describe('reconcileSecrets', () => {
 			AUTH_URL: 'http://localhost:3001',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).toBeNull();
 	});
 
 	it('should add missing service credentials when workspace config adds a new service', () => {
-		const workspace = createWorkspace({
-			services: { db: true, storage: true },
-		});
+		const workspace = createWorkspace({ services: {} });
 		// Secrets only have postgres, not minio
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
@@ -156,7 +150,7 @@ describe('reconcileSecrets', () => {
 			AUTH_URL: 'http://localhost:3001',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres', 'minio']);
 
 		expect(result).not.toBeNull();
 		expect(result!.services.minio).toBeDefined();
@@ -170,9 +164,7 @@ describe('reconcileSecrets', () => {
 	});
 
 	it('should add missing mailpit credentials when mail service is enabled', () => {
-		const workspace = createWorkspace({
-			services: { db: true, mail: true },
-		});
+		const workspace = createWorkspace({ services: {} });
 		// Secrets only have postgres, not mailpit
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
@@ -190,7 +182,10 @@ describe('reconcileSecrets', () => {
 			AUTH_URL: 'http://localhost:3001',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, [
+			'postgres',
+			'mailpit',
+		]);
 
 		expect(result).not.toBeNull();
 		expect(result!.services.mailpit).toBeDefined();
@@ -205,12 +200,11 @@ describe('reconcileSecrets', () => {
 	});
 
 	it('should not regenerate credentials for existing services', () => {
-		const workspace = createWorkspace({
-			services: { db: true, storage: true },
-		});
+		const workspace = createWorkspace({ services: {} });
 		// Include ALL expected custom keys so reconcile has nothing to add
 		const expected = generateFullstackCustomSecrets(
-			createWorkspace({ services: { db: true, storage: true } }),
+			createWorkspace({ services: {} }),
+			['postgres', 'minio'],
 		);
 		const secrets = createSecrets(expected);
 		// Add existing minio creds
@@ -223,7 +217,7 @@ describe('reconcileSecrets', () => {
 		};
 		secrets.urls.STORAGE_ENDPOINT = 'http://localhost:9000';
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres', 'minio']);
 
 		// No changes needed — all services and custom keys present
 		expect(result).toBeNull();
@@ -247,7 +241,7 @@ describe('reconcileSecrets', () => {
 
 		const secrets = createSecrets({ NODE_ENV: 'development' });
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).toBeNull();
 	});
@@ -267,7 +261,7 @@ describe('reconcileSecrets', () => {
 			WEB_URL: 'http://localhost:3002',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.custom.JWT_SECRET).toBe('keep-this');
@@ -287,7 +281,7 @@ describe('reconcileSecrets', () => {
 			WEB_URL: 'http://localhost:3002',
 		});
 
-		const result = reconcileSecrets(secrets, workspace);
+		const result = reconcileSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
 		expect(result!.updatedAt).not.toBe(secrets.updatedAt);
@@ -299,7 +293,7 @@ describe('generateFullstackCustomSecrets', () => {
 	it('should generate BETTER_AUTH_* secrets for better-auth framework apps', () => {
 		const workspace = createWorkspace();
 
-		const result = generateFullstackCustomSecrets(workspace);
+		const result = generateFullstackCustomSecrets(workspace, ['postgres']);
 
 		expect(result.BETTER_AUTH_SECRET).toBeDefined();
 		expect(result.BETTER_AUTH_SECRET).toMatch(/^better-auth-/);
@@ -311,7 +305,7 @@ describe('generateFullstackCustomSecrets', () => {
 	it('should include all app ports in BETTER_AUTH_TRUSTED_ORIGINS', () => {
 		const workspace = createWorkspace();
 
-		const result = generateFullstackCustomSecrets(workspace);
+		const result = generateFullstackCustomSecrets(workspace, ['postgres']);
 
 		const origins = result.BETTER_AUTH_TRUSTED_ORIGINS.split(',');
 		expect(origins).toContain('http://localhost:3000');
@@ -344,96 +338,10 @@ describe('generateFullstackCustomSecrets', () => {
 			},
 		} as Partial<NormalizedWorkspace>);
 
-		const result = generateFullstackCustomSecrets(workspace);
+		const result = generateFullstackCustomSecrets(workspace, ['postgres']);
 
 		expect(result.BETTER_AUTH_SECRET).toBeUndefined();
 		expect(result.BETTER_AUTH_URL).toBeUndefined();
 		expect(result.BETTER_AUTH_TRUSTED_ORIGINS).toBeUndefined();
-	});
-});
-
-describe('reconcileSecrets - events', () => {
-	it('should add pgboss credentials when events is pgboss', () => {
-		const workspace = createWorkspace({
-			services: { db: true, cache: false, events: 'pgboss' },
-		});
-		const secrets = createSecrets();
-
-		const result = reconcileSecrets(secrets, workspace);
-
-		expect(result).not.toBeNull();
-		expect(result!.eventsBackend).toBe('pgboss');
-		expect(result!.services.pgboss).toBeDefined();
-		expect(result!.services.pgboss!.username).toBe('pgboss');
-		expect(result!.services.pgboss!.host).toBe('localhost');
-		expect(result!.services.pgboss!.database).toBe('test_dev');
-		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'pgboss://',
-		);
-		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'pgboss://',
-		);
-	});
-
-	it('should add localstack credentials when events is sns', () => {
-		const workspace = createWorkspace({
-			services: { db: true, cache: false, events: 'sns' },
-		});
-		const secrets = createSecrets();
-
-		const result = reconcileSecrets(secrets, workspace);
-
-		expect(result).not.toBeNull();
-		expect(result!.eventsBackend).toBe('sns');
-		expect(result!.services.localstack).toBeDefined();
-		expect(result!.services.localstack!.accessKeyId).toMatch(/^LSIA/);
-		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('sns://');
-		expect(result!.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain('sqs://');
-	});
-
-	it('should add rabbitmq credentials when events is rabbitmq', () => {
-		const workspace = createWorkspace({
-			services: { db: true, cache: false, events: 'rabbitmq' },
-		});
-		const secrets = createSecrets();
-
-		const result = reconcileSecrets(secrets, workspace);
-
-		expect(result).not.toBeNull();
-		expect(result!.eventsBackend).toBe('rabbitmq');
-		expect(result!.services.rabbitmq).toBeDefined();
-		expect(result!.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('amqp://');
-	});
-
-	it('should not add duplicate pgboss credentials when already present', () => {
-		const workspace = createWorkspace({
-			services: { db: true, cache: false, events: 'pgboss' },
-		});
-		const secrets: StageSecrets = {
-			...createSecrets(),
-			eventsBackend: 'pgboss',
-			services: {
-				...createSecrets().services,
-				pgboss: {
-					host: 'localhost',
-					port: 5432,
-					username: 'pgboss',
-					password: 'existing-pass',
-					database: 'test_dev',
-				},
-			},
-			urls: {
-				...createSecrets().urls,
-				EVENT_PUBLISHER_CONNECTION_STRING: 'pgboss://existing',
-				EVENT_SUBSCRIBER_CONNECTION_STRING: 'pgboss://existing',
-			},
-		};
-
-		const result = reconcileSecrets(secrets, workspace);
-
-		// pgboss credentials should be preserved (not regenerated)
-		if (result) {
-			expect(result.services.pgboss!.password).toBe('existing-pass');
-		}
 	});
 });

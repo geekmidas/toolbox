@@ -27,6 +27,7 @@ import {
 } from './secrets';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
+import { trustCommand } from './trust/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
@@ -63,6 +64,25 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('trust')
+	.description(
+		"Trust the local edge's certificate authority, so a browser accepts https",
+	)
+	.option('--dry-run', 'Print the commands instead of running them')
+	.action(async (options: { dryRun?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await trustCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);
@@ -543,7 +563,12 @@ program
 
 			const secrets = await readStageSecrets(options.stage, workspace.root);
 			if (secrets) {
-				const result = reconcileMissingSecrets(secrets, workspace);
+				const { derivedContainers } = await import('./reconcile/workspace');
+				const result = reconcileMissingSecrets(
+					secrets,
+					workspace,
+					await derivedContainers(workspace, options.stage),
+				);
 				if (result) {
 					await writeStageSecrets(result.secrets, workspace.root);
 					console.log(
@@ -587,7 +612,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 			if (result) {
 				secrets = result.secrets;
 				console.log(
@@ -633,7 +663,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 
 			if (!result) {
 				console.log(`\n✓ Secrets for stage "${options.stage}" are up-to-date`);
@@ -801,7 +836,11 @@ program
 program
 	.command('login')
 	.description('Authenticate with a deployment service')
-	.option('--service <service>', 'Service to login to (dokploy)', 'dokploy')
+	.option(
+		'--service <service>',
+		'Service to login to (dokploy, hostinger)',
+		'dokploy',
+	)
 	.option('--token <token>', 'API token (will prompt if not provided)')
 	.option('--endpoint <url>', 'Service endpoint URL')
 	.action(
@@ -812,15 +851,15 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 
-				if (options.service !== 'dokploy') {
+				if (!['dokploy', 'hostinger'].includes(options.service)) {
 					console.error(
-						`Unknown service: ${options.service}. Supported: dokploy`,
+						`Unknown service: ${options.service}. Supported: dokploy, hostinger`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					service: options.service as 'dokploy',
+					service: options.service as 'dokploy' | 'hostinger',
 					token: options.token,
 					endpoint: options.endpoint,
 				});

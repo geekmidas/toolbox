@@ -107,6 +107,42 @@ export class DokployApi {
 	}
 
 	/**
+	 * Every external port published on this server, across every project.
+	 *
+	 * Dokploy knows what it has bound; guessing does not. A port that looks free
+	 * from here can be held by a service in a project this deploy has never
+	 * heard of — which surfaces as `Port 5432 is already in use by container
+	 * "…"`, naming something the caller cannot see.
+	 *
+	 * `project.all` is a summary, so each project is fetched: the per-service
+	 * `externalPort` only appears on `project.one`.
+	 */
+	async publishedPorts(): Promise<Set<number>> {
+		const ports = new Set<number>();
+		const projects = await this.listProjects();
+
+		for (const project of projects) {
+			const details = await this.getProject(project.projectId);
+
+			for (const environment of details.environments ?? []) {
+				const resources = [
+					...(environment.postgres ?? []),
+					...(environment.redis ?? []),
+					...(environment.applications ?? []),
+				] as { externalPort?: number | null }[];
+
+				for (const resource of resources) {
+					if (typeof resource.externalPort === 'number') {
+						ports.add(resource.externalPort);
+					}
+				}
+			}
+		}
+
+		return ports;
+	}
+
+	/**
 	 * Validate the API token by making a test request
 	 */
 	async validateToken(): Promise<boolean> {
@@ -188,14 +224,38 @@ export class DokployApi {
 	 * List all applications in a project
 	 */
 	async listApplications(projectId: string): Promise<DokployApplication[]> {
-		try {
-			return await this.get<DokployApplication[]>(
-				`application.all?projectId=${projectId}`,
-			);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.applications);
+	}
+
+	/**
+	 * Everything of one kind in a project, across its environments.
+	 *
+	 * From `project.one`, because the per-kind `*.all?projectId=` endpoints
+	 * return **404** on current Dokploy: resources live under environments now.
+	 * Those calls used to be wrapped in `catch { return [] }`, which turned "I
+	 * could not ask" into "there are none" — and for a find-or-create that is
+	 * the worst available answer. Every deploy created a second application, a
+	 * second Postgres and a second Redis, silently, for as long as the project
+	 * existed.
+	 *
+	 * A failure here is not swallowed: creating a duplicate is worse than
+	 * stopping.
+	 */
+	private async listInProject<T>(
+		projectId: string,
+		pick: (environment: DokployEnvironment) => T[] | undefined,
+	): Promise<T[]> {
+		const project = await this.getProject(projectId);
+
+		// Tagged with the environment they came from: `project.one` nests them,
+		// and a caller filtering by environment has nothing to filter on
+		// otherwise.
+		return (project.environments ?? []).flatMap((environment) =>
+			(pick(environment) ?? []).map((resource) => ({
+				...resource,
+				environmentId: environment.environmentId,
+			})),
+		);
 	}
 
 	/**
@@ -204,11 +264,23 @@ export class DokployApi {
 	async findApplicationByName(
 		projectId: string,
 		name: string,
+		/**
+		 * The environment to look in.
+		 *
+		 * A project has one application list per environment, and the same name
+		 * legitimately exists in each — `prod` and `staging` both run `api`.
+		 * Searching across all of them finds whichever came back first and
+		 * deploys a stage's image into another stage's application.
+		 */
+		environmentId?: string,
 	): Promise<DokployApplication | undefined> {
 		const applications = await this.listApplications(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
 		return applications.find(
-			(app) => app.name === name || app.appName === normalizedName,
+			(app) =>
+				(!environmentId || app.environmentId === environmentId) &&
+				(app.name === name || app.appName === normalizedName),
 		);
 	}
 
@@ -236,7 +308,11 @@ export class DokployApi {
 		projectId: string,
 		environmentId: string,
 	): Promise<{ application: DokployApplication; created: boolean }> {
-		const existing = await this.findApplicationByName(projectId, name);
+		const existing = await this.findApplicationByName(
+			projectId,
+			name,
+			environmentId,
+		);
 		if (existing) {
 			return { application: existing, created: false };
 		}
@@ -280,10 +356,21 @@ export class DokployApi {
 	/**
 	 * Save environment variables for an application
 	 */
-	async saveApplicationEnv(applicationId: string, env: string): Promise<void> {
+	async saveApplicationEnv(
+		applicationId: string,
+		env: string,
+		options?: { buildArgs?: string; buildSecrets?: string },
+	): Promise<void> {
+		// `buildArgs`, `buildSecrets` and `createEnvFile` are `nonoptional` on
+		// current Dokploy, the same way the docker provider's credentials are:
+		// they must be present, and null is how "none" is spelled. Omitting them
+		// is rejected with three anonymous validation errors that name no field.
 		await this.post('application.saveEnvironment', {
 			applicationId,
 			env,
+			buildArgs: options?.buildArgs ?? null,
+			buildSecrets: options?.buildSecrets ?? null,
+			createEnvFile: false,
 		});
 	}
 
@@ -308,10 +395,21 @@ export class DokployApi {
 			registryUrl?: string;
 		},
 	): Promise<void> {
+		// All five are `nonoptional` on current Dokploy — including the three
+		// credential fields, which are meaningless when a registry is selected by
+		// id. Omitting them is rejected; sending them as null is accepted. So
+		// they are always present and null is how "this registry needs none" is
+		// spelled.
 		await this.post('application.saveDockerProvider', {
 			applicationId,
 			dockerImage,
+			// Spread first: `registryId` selects a stored registry and is the
+			// usual case, and dropping it silently deploys an image nothing can
+			// pull. The three below are then filled in rather than replaced.
 			...options,
+			username: options?.username ?? null,
+			password: options?.password ?? null,
+			registryUrl: options?.registryUrl ?? null,
 		});
 	}
 
@@ -399,14 +497,7 @@ export class DokployApi {
 	 * List all Postgres databases in a project
 	 */
 	async listPostgres(projectId: string): Promise<DokployPostgres[]> {
-		try {
-			return await this.get<DokployPostgres[]>(
-				`postgres.all?projectId=${projectId}`,
-			);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.postgres);
 	}
 
 	/**
@@ -418,9 +509,22 @@ export class DokployApi {
 	): Promise<DokployPostgres | undefined> {
 		const databases = await this.listPostgres(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-		return databases.find(
+		const match = databases.find(
 			(db) => db.name === name || db.appName === normalizedName,
 		);
+
+		if (!match) return undefined;
+
+		// Hydrated, because the listing is a *summary*: `project.one` nests these
+		// with `postgresId`, `name`, `appName` and status, and none of
+		// `databaseUser`, `databasePassword` or `databaseName`.
+		//
+		// Returning the summary meant a *found* cluster came back with undefined
+		// credentials — so the URL built from it named database `undefined`, and
+		// the DDL connection authenticated with nothing and retried thirty times.
+		// A created one was fine, which is why this only appeared on the second
+		// deploy.
+		return this.getPostgres(match.postgresId);
 	}
 
 	/**
@@ -527,6 +631,80 @@ export class DokployApi {
 	}
 
 	// ============================================
+	// Compose endpoints
+	// ============================================
+
+	/**
+	 * The compose stacks in a project.
+	 *
+	 * Dokploy has first-class primitives for Postgres and Redis and none for
+	 * MinIO, so an object store is a compose stack — the one kind whose contents
+	 * this target writes rather than configures.
+	 */
+	async listCompose(projectId: string): Promise<DokployCompose[]> {
+		return this.listInProject(projectId, (env) => env.compose);
+	}
+
+	/** A compose stack by name, hydrated — `project.one` returns summaries. */
+	async findComposeByName(
+		projectId: string,
+		name: string,
+	): Promise<DokployCompose | undefined> {
+		const summary = (await this.listCompose(projectId)).find(
+			(compose) => compose.name === name,
+		);
+
+		return summary ? this.getCompose(summary.composeId) : undefined;
+	}
+
+	async getCompose(composeId: string): Promise<DokployCompose> {
+		return this.get<DokployCompose>(`compose.one?composeId=${composeId}`);
+	}
+
+	/**
+	 * A compose stack carrying the file this target wrote.
+	 *
+	 * Created empty and then updated, because `compose.create` takes no file:
+	 * it defaults to `sourceType: 'github'` and expects a repository. `raw` is
+	 * what makes the file ours.
+	 */
+	async findOrCreateCompose(
+		name: string,
+		projectId: string,
+		environmentId: string,
+		composeFile: string,
+	): Promise<{ compose: DokployCompose; created: boolean }> {
+		const existing = await this.findComposeByName(projectId, name);
+
+		const compose =
+			existing ??
+			(await this.post<DokployCompose>('compose.create', {
+				name,
+				environmentId,
+				composeType: 'docker-compose',
+			}));
+
+		// Written every time, not only on create: the file is derived from the
+		// manifest, so a redeploy after a declaration changed has to carry the
+		// change. Dokploy redeploys only what differs.
+		await this.post('compose.update', {
+			composeId: compose.composeId,
+			sourceType: 'raw',
+			composeFile,
+		});
+
+		return { compose, created: !existing };
+	}
+
+	async deployCompose(composeId: string): Promise<void> {
+		await this.post('compose.deploy', { composeId });
+	}
+
+	async deleteCompose(composeId: string): Promise<void> {
+		await this.post('compose.delete', { composeId, deleteVolumes: false });
+	}
+
+	// ============================================
 	// Redis endpoints
 	// ============================================
 
@@ -534,12 +712,7 @@ export class DokployApi {
 	 * List all Redis instances in a project
 	 */
 	async listRedis(projectId: string): Promise<DokployRedis[]> {
-		try {
-			return await this.get<DokployRedis[]>(`redis.all?projectId=${projectId}`);
-		} catch {
-			// Fallback: endpoint might not exist in older Dokploy versions
-			return [];
-		}
+		return this.listInProject(projectId, (env) => env.redis);
 	}
 
 	/**
@@ -551,9 +724,14 @@ export class DokployApi {
 	): Promise<DokployRedis | undefined> {
 		const instances = await this.listRedis(projectId);
 		const normalizedName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-		return instances.find(
+		const match = instances.find(
 			(redis) => redis.name === name || redis.appName === normalizedName,
 		);
+
+		// Hydrated for the same reason the Postgres lookup is: the nested listing
+		// carries no credentials, so a found instance would resolve a URL with an
+		// undefined password in it.
+		return match ? this.getRedis(match.redisId) : undefined;
 	}
 
 	/**
@@ -888,6 +1066,17 @@ export interface DokployEnvironment {
 	environmentId: string;
 	name: string;
 	description: string | null;
+	/**
+	 * What lives in this environment.
+	 *
+	 * `project.one` is the only endpoint that answers this. The per-kind
+	 * `*.all?projectId=` endpoints return 404 on current Dokploy — resources
+	 * moved under environments — which is why they are no longer asked.
+	 */
+	applications?: DokployApplication[];
+	postgres?: DokployPostgres[];
+	compose?: DokployCompose[];
+	redis?: DokployRedis[];
 }
 
 export interface DokployProjectDetails extends DokployProject {
@@ -965,6 +1154,16 @@ export interface DokployRedisUpdate {
 }
 
 export type DokployCertificateType = 'letsencrypt' | 'none' | 'custom';
+/** A Dokploy compose stack. */
+export interface DokployCompose {
+	composeId: string;
+	name: string;
+	/** Dokploy's own generated name, which prefixes the stack's containers. */
+	appName: string;
+	composeFile?: string;
+	composeStatus?: string;
+}
+
 export type DokployDomainType = 'application' | 'compose' | 'preview';
 
 export interface DokployDomainCreate {

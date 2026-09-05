@@ -74,14 +74,27 @@ const CACHE_DRIVERS: Record<CacheBackend, RuntimeDrivers> = {
  */
 export function driversFor(options: {
 	appRoot: string;
-	/** Absent means nothing declared a cache, so no cache driver is registered. */
-	cache?: CacheBackend | false;
+	/**
+	 * The cache backends actually in play — normally one, and more than one only
+	 * where an app declares two caches that live in different places.
+	 *
+	 * Absent or empty means nothing declared a cache, so no cache driver is
+	 * registered at all.
+	 */
+	cache?: CacheBackend | readonly CacheBackend[] | false;
 }): RuntimeDrivers {
+	const backends =
+		options.cache === false || options.cache === undefined
+			? []
+			: typeof options.cache === 'string'
+				? [options.cache]
+				: options.cache;
+
 	const parts = [
 		storageDriversFor(options.appRoot),
-		options.cache === false || options.cache === undefined
-			? NONE
-			: (CACHE_DRIVERS[options.cache] ?? CACHE_DRIVERS[DEFAULT_CACHE]),
+		...[...new Set(backends)].map(
+			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE.aws],
+		),
 	].filter((part) => part.imports || part.setup);
 
 	if (parts.length === 0) return NONE;
@@ -90,6 +103,28 @@ export function driversFor(options: {
 		imports: parts.map((part) => part.imports).join('\n'),
 		setup: parts.map((part) => part.setup).join('\n'),
 	};
+}
+
+/**
+ * Which cache backends an app's entry actually has to speak.
+ *
+ * The config answers this for a cache that named nowhere, and the *declaration*
+ * answers it for one that named a database — `orders.cache('Sessions')` is a
+ * statement about the application, so a deployment cannot move that cache and
+ * the entry cannot register a driver for somewhere else.
+ *
+ * Reading only the config is how an entry ends up registering the Upstash
+ * driver for a URL the target composed as `postgres://`, which fails at the
+ * first request with `UnregisteredCacheScheme` and a stack that points at the
+ * cache rather than at the config that disagreed.
+ */
+export function cacheBackendsIn(
+	manifest: Record<string, { kind: string; of?: string }>,
+	configured: CacheBackend,
+): CacheBackend[] {
+	const caches = Object.values(manifest).filter((d) => d.kind === 'cache');
+
+	return [...new Set(caches.map((c) => (c.of ? 'db' : configured)))];
 }
 
 /**

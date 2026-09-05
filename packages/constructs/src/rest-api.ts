@@ -32,6 +32,18 @@ import { type Declarable, edgeTo } from './construct-interface';
 
 export interface RestApiConfig {
 	/**
+	 * Where the process serving this surface is built from, relative to the
+	 * workspace root.
+	 *
+	 * What makes a surface a deploy unit rather than something a deploy has to
+	 * be told about separately: one `RestApi` is one server. A `StaticSite`
+	 * already says this, and the two are the same kind of statement.
+	 *
+	 * Omit it while an app serves its surfaces from one process — the deploy
+	 * then builds it from the app that declared it.
+	 */
+	path?: string;
+	/**
 	 * The authorizer names this surface exposes. Names only — what verifies a
 	 * request legitimately differs between local and deployed, so the mechanism
 	 * belongs to the target and never to portable code.
@@ -115,6 +127,7 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
+				...(this.config.path ? { path: this.config.path } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

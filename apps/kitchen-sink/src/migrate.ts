@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { snifferContext } from '@geekmidas/constructs';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { Credentials } from '@geekmidas/envkit/credentials';
@@ -14,7 +14,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const envParser = new EnvironmentParser({ ...process.env, ...Credentials });
 
-async function migrate() {
+/**
+ * Bring both schemas up to date: Better Auth's, then the application's.
+ *
+ * Exported rather than only run, because the test suite needs exactly this and
+ * a suite that shells out to `tsx src/migrate.ts` would be running a second
+ * process against a second set of resolved credentials. One function, called
+ * from the CLI entry below and from the suite's global setup.
+ *
+ * @returns the names of the application migrations that ran.
+ */
+export async function migrate(): Promise<string[]> {
 	// The *owner* connection, not the one a handler gets. Migrations are DDL,
 	// and the role a request runs as holds no grant to create, alter or drop —
 	// which is the point of the split, and the reason this asks the construct
@@ -44,16 +54,32 @@ async function migrate() {
 
 	const { error, results } = await migrator.migrateToLatest();
 
-	for (const result of results ?? []) {
-		console.log(`migration ${result.migrationName}: ${result.status}`);
-	}
-
-	if (error) {
-		console.error('migration failed', error);
-		process.exit(1);
-	}
-
 	await db.destroy();
+
+	// Thrown rather than `process.exit`, so a caller that is not a CLI — the
+	// test suite's global setup — reports the failure instead of taking the
+	// whole runner down with an exit code and no message.
+	if (error) throw error;
+
+	return (results ?? []).map((result) => result.migrationName);
 }
 
-migrate();
+/**
+ * The CLI entry: run only when this module *is* the program.
+ *
+ * Importing it would otherwise migrate as a side effect, which is the one thing
+ * an import should never do — and the suite does import it.
+ */
+if (
+	process.argv[1] &&
+	import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+	migrate()
+		.then((names) => {
+			for (const name of names) console.log(`migration ${name}: Success`);
+		})
+		.catch((error) => {
+			console.error('migration failed', error);
+			process.exit(1);
+		});
+}

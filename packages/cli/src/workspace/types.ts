@@ -141,29 +141,62 @@ export interface MailServiceConfig extends ServiceImageConfig {
  * ```
  */
 export interface ServicesConfig {
-	/** PostgreSQL database (default: postgres:18-alpine) */
-	db?: boolean | ServiceImageConfig;
 	/**
-	 * The cache, as a container pin or as a backend name.
+	 * Whether to install the local edge's certificate authority automatically.
 	 *
-	 * `true` or an image config is the local container; a string names where the
-	 * cache lives when deployed — `'upstash'` (default), `'elasticache'`, or
-	 * `'db'`. Naming a backend also decides the local shape, so dev and prod
-	 * speak the same protocol either way.
+	 * A declared `file-server` answers on `https://` locally, which needs a
+	 * certificate, which needs an authority this machine trusts. Everything gkm
+	 * starts trusts it already — reconcile injects `NODE_EXTRA_CA_CERTS` — but a
+	 * *browser* asks the operating system, and until the root is in its store a
+	 * local address reads as "not secure".
+	 *
+	 * Installing it needs `sudo`, so it is never silent by default:
+	 *
+	 * - unset — `gkm setup` asks once, on a machine that does not trust it yet,
+	 *   and remembers a "no" so it stops asking.
+	 * - `true` — install without asking. For a team that has decided, and for
+	 *   any machine where a prompt has nobody to answer it.
+	 * - `false` — never. Correct for CI, and for anyone who only ever reaches
+	 *   these addresses from code, which trusts the root without any of this.
 	 */
-	cache?: boolean | ServiceImageConfig | import('../types.js').CacheBackend;
+	trustLocalCa?: boolean;
 	/**
-	 * Mail, as a container pin or as a backend name.
+	 * Where a declared cache lives — `'upstash'`, `'elasticache'` or `'db'`.
 	 *
-	 * `true` or a config is Mailpit locally; a string names who delivers it
-	 * deployed — `'ses'` (default), `'resend'`, or `'smtp'`. Locally every one of
-	 * them is Mailpit, because every one of them speaks SMTP.
+	 * A backend name and nothing else. Whether there *is* a cache comes from the
+	 * manifest: declaring one implies its container the way declaring a database
+	 * implies Postgres, so this only ever answers the second question.
+	 *
+	 * Defaults by target — see `DEFAULT_CACHE`.
 	 */
-	mail?: boolean | MailServiceConfig | import('../types.js').EmailBackend;
-	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
-	storage?: boolean | ServiceImageConfig;
-	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */
+	cache?: import('../types.js').CacheBackend;
+	/**
+	 * Who delivers a declared app's mail — `'ses'`, `'resend'` or `'smtp'`.
+	 *
+	 * Locally every one of them is Mailpit, because every one speaks SMTP.
+	 */
+	mail?: import('../types.js').EmailBackend;
+	/** Where a declared bucket lives — `'minio'`, `'s3'` or `'r2'`. */
+	storage?: import('../types.js').StorageBackend;
+	/** What carries a declared queue or topic — pgboss, sns or rabbitmq. */
 	events?: import('../types.js').EventsBackend;
+	/**
+	 * Image pins for the containers the manifest derives.
+	 *
+	 * Separate from the backend names above, because they answer unrelated
+	 * questions: a backend says where a thing lives, a pin says which image runs
+	 * locally. They shared one key until `cache: true` meant "start a Redis" —
+	 * which was the last way a container could exist because config asked for
+	 * it rather than because something declared it.
+	 *
+	 * ```ts
+	 * services: { cache: 'elasticache', images: { redis: 'redis:6-alpine' } }
+	 * ```
+	 *
+	 * Pinning an image for a container nothing declares is a no-op, not an
+	 * error: it says which image *would* run, and nothing runs.
+	 */
+	images?: Partial<Record<import('../types.js').ComposeServiceName, string>>;
 }
 
 /**

@@ -14,7 +14,7 @@ export const reindexUsers = f
 	.input(z.object({ since: z.iso.datetime().optional() }))
 	.output(z.object({ reindexed: z.number() }))
 	.handle(async ({ input, services, logger }) => {
-		let query = services.kitchenSink.selectFrom('users').selectAll();
+		let query = services.database.selectFrom('users').selectAll();
 		if (input.since) {
 			query = query.where('updated_at', '>=', new Date(input.since));
 		}

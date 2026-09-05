@@ -69,12 +69,13 @@ services:
       retries: 3
       start_period: 30s
   localstack:
-    image: localstack/localstack:3.5.0
+    # floci speaks the same wire protocol on the same port, in a third of the
+    # memory and a quarter of the image. It enables every service rather than a
+    # list, so there is no SERVICES to keep in step with what the tests use.
+    image: floci/floci:latest
     ports:
-      - "4566:4566" # LocalStack Gateway
+      - "4566:4566" # AWS emulator gateway
     environment:
-      - SERVICES=sqs,sns,ssm,route53,iam,s3
-      - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test

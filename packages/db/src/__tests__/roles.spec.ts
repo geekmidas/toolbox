@@ -29,6 +29,19 @@ describe('roleStatements', () => {
 		expect(sql[schema]).toContain('AUTHORIZATION "orders_owner"');
 	});
 
+	it('adopts a schema that already existed under another owner', () => {
+		// The CREATE is guarded by an existence check, so a schema created before
+		// its roles did — by the cluster master, on an older dev volume — keeps
+		// the master as its owner and the owner role cannot create in it. The
+		// failure is `no schema has been selected to create in`, which names
+		// neither the schema nor the owner.
+		const sql = sqlOf(spec);
+		const alter = sql.indexOf('ALTER SCHEMA "app" OWNER TO "orders_owner"');
+		const create = sql.findIndex((s) => s.includes('CREATE SCHEMA'));
+
+		expect(alter).toBeGreaterThan(create);
+	});
+
 	it('gives the runtime role no ability to create anything', () => {
 		// The property the whole split exists for: a compromised handler cannot
 		// DROP TABLE, because its role holds no such grant.

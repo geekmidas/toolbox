@@ -82,6 +82,20 @@ export async function discover(
 	const manifest: Record<string, Declaration> = {};
 	/** Which file declared each id, for the error when two of them do. */
 	const sources: Record<string, string> = {};
+	/**
+	 * Constructs already seen, by identity.
+	 *
+	 * A re-export is the *same object* reached through a second file — ESM
+	 * bindings are live, so `export * from './database.js'` hands back the
+	 * binding rather than a copy. Without this, a barrel file made every
+	 * construct in it appear declared twice, and `constructs/index.ts` is the
+	 * first thing anyone writes in a shared folder.
+	 *
+	 * Identity rather than file is also the more honest rule: what may not
+	 * happen twice is two *different* constructs claiming one id, and that is
+	 * still an error below.
+	 */
+	const seen = new WeakSet<object>();
 
 	const files = fg.stream(
 		Array.isArray(patterns) ? [...patterns] : [patterns as string],
@@ -94,6 +108,12 @@ export async function discover(
 
 		for (const exported of Object.values(module)) {
 			if (!isDeclarable(exported)) continue;
+
+			// The same construct, reached again through a re-export. Skipped
+			// rather than re-declared: it has already claimed its id, from the
+			// file that defined it.
+			if (seen.has(exported as object)) continue;
+			seen.add(exported as object);
 
 			for (const declaration of exported.declare()) {
 				// Canonicalise here too: a construct built by hand rather than through

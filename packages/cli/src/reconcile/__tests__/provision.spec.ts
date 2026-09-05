@@ -106,6 +106,99 @@ function fakePostgres(existing: string[] = []) {
 	return { client, ran };
 }
 
+describe('the cache table', () => {
+	const withCache = {
+		Orders: {
+			kind: 'database',
+			id: 'Orders',
+			schema: 'app',
+			provides: ['ORDERS_URL'],
+		},
+		Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
+	} as const satisfies ConstructManifest;
+
+	const cachePlan = (cache: 'db' | 'upstash') =>
+		planFor(withCache, 'development', provisionOrder(withCache), { cache });
+
+	it('is created for a parentless cache when the backend is the database', () => {
+		// `cache: 'db'` puts a cache that named no parent in whichever database
+		// the app declared — the shape a project gets by configuring the backend
+		// rather than by wiring the construct. Reading only `of` here emitted the
+		// `postgres://` URL and skipped the table it names, so every request
+		// failed on a relation that did not exist.
+		const statements = postgresStatements(cachePlan('db')).filter(
+			(s) => s.id === 'Sessions',
+		);
+
+		expect(statements.length).toBeGreaterThan(0);
+		expect(statements.every((s) => s.database === 'orders')).toBe(true);
+	});
+
+	it('gives two caches in one database a table each', () => {
+		// Sharing a table would mean sharing a keyspace: each would read the
+		// other's entries and evict the other's keys.
+		const twoCaches = {
+			Orders: {
+				kind: 'database',
+				id: 'Orders',
+				schema: 'app',
+				provides: ['ORDERS_URL'],
+			},
+			Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
+			Rates: {
+				kind: 'cache',
+				id: 'Rates',
+				of: 'Orders',
+				provides: ['RATES_URL'],
+			},
+		} as const satisfies ConstructManifest;
+
+		const created = postgresStatements(
+			planFor(twoCaches, 'development', provisionOrder(twoCaches), {
+				cache: 'db',
+			}),
+		).map((s) => s.create);
+
+		expect(created).toContainEqual(
+			expect.stringContaining('"app"."cache_sessions"'),
+		);
+		expect(created).toContainEqual(
+			expect.stringContaining('"app"."cache_rates"'),
+		);
+	});
+
+	it('creates it in the schema the reading role resolves names in', () => {
+		// The driver names the table unqualified and lets `search_path` place it.
+		// Created from the master connection, whose path is `public`, it lands
+		// where the application cannot see it.
+		expect(
+			postgresStatements(cachePlan('db')).map((s) => s.create),
+		).toContainEqual(expect.stringContaining('"app"."cache_sessions"'));
+	});
+
+	it('hands it to the owner and grants the runtime role', () => {
+		// Default privileges are granted *for the owner role*, so nothing covers
+		// a table the master created — and `roleStatements` grants what exists
+		// when it runs, which is before this table does.
+		const created = postgresStatements(cachePlan('db')).map((s) => s.create);
+
+		expect(created).toContainEqual(
+			'ALTER TABLE "app"."cache_sessions" OWNER TO "orders_owner"',
+		);
+		expect(created).toContainEqual(
+			expect.stringContaining(
+				'GRANT SELECT, INSERT, UPDATE, DELETE ON "app"."cache_sessions"',
+			),
+		);
+	});
+
+	it('is not created when the cache lives somewhere else', () => {
+		expect(
+			postgresStatements(cachePlan('upstash')).some((s) => s.id === 'Sessions'),
+		).toBe(false);
+	});
+});
+
 describe('postgresStatements', () => {
 	it('creates a database for each declared one', () => {
 		expect(postgresStatements(plan()).map((s) => s.describe)).toContain(

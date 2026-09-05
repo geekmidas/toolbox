@@ -45,7 +45,11 @@ describe('HostingerProvider', () => {
 					);
 				}
 
-				return HttpResponse.json({ data: mockRecords });
+				// The shape the real API sends: a bare array, not `{ data: [...] }`.
+				// The mock used the envelope the client expected, so every test
+				// passed while `getRecords` returned zero records against
+				// Hostinger — silently, with no error to notice.
+				return HttpResponse.json(mockRecords);
 			},
 		),
 
@@ -117,6 +121,75 @@ describe('HostingerProvider', () => {
 	});
 
 	describe('getRecords', () => {
+		it('reads a zone sent as a bare array', async () => {
+			// What Hostinger actually returns. Verified against a live zone: the
+			// client expected `{ data: [...] }` and so read `response.data || []`,
+			// which is `[]` for every real call. Nothing errored — `upsertRecords`
+			// simply saw an empty zone and reported every write as a creation.
+			server.use(
+				http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, () =>
+					HttpResponse.json([
+						{
+							name: 'www',
+							type: 'CNAME',
+							ttl: 300,
+							records: [{ content: 'example.com.' }],
+						},
+						{
+							name: '@',
+							type: 'A',
+							ttl: 50,
+							records: [{ content: '2.57.91.91' }],
+						},
+					]),
+				),
+			);
+
+			const records = await new HostingerProvider().getRecords('example.com');
+
+			expect(records).toEqual([
+				{ name: 'www', type: 'CNAME', ttl: 300, values: ['example.com.'] },
+				{ name: '@', type: 'A', ttl: 50, values: ['2.57.91.91'] },
+			]);
+		});
+
+		it('still reads one wrapped in an envelope', async () => {
+			// The envelope was a guess from documentation rather than something
+			// observed, so tolerating it costs a line and survives it appearing.
+			server.use(
+				http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, () =>
+					HttpResponse.json({
+						data: [
+							{
+								name: 'api',
+								type: 'A',
+								ttl: 300,
+								records: [{ content: '1.2.3.4' }],
+							},
+						],
+					}),
+				),
+			);
+
+			const records = await new HostingerProvider().getRecords('example.com');
+
+			expect(records).toEqual([
+				{ name: 'api', type: 'A', ttl: 300, values: ['1.2.3.4'] },
+			]);
+		});
+
+		it('reads an empty zone as empty rather than failing', async () => {
+			server.use(
+				http.get(`${HOSTINGER_API_BASE}/api/dns/v1/zones/:domain`, () =>
+					HttpResponse.json([]),
+				),
+			);
+
+			expect(await new HostingerProvider().getRecords('example.com')).toEqual(
+				[],
+			);
+		});
+
 		it('should throw error when token is invalid', async () => {
 			// Use an invalid token
 			const savedToken = process.env.HOSTINGER_API_TOKEN;

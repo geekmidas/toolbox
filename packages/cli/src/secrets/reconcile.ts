@@ -21,13 +21,14 @@ export interface ReconcileResult {
 export function reconcileMissingSecrets(
 	secrets: StageSecrets,
 	workspace: NormalizedWorkspace,
+	containers: readonly string[] = [],
 ): ReconcileResult | null {
 	const isMultiApp = Object.keys(workspace.apps).length > 1;
 	if (!isMultiApp) {
 		return null;
 	}
 
-	const expectedCustom = generateFullstackCustomSecrets(workspace);
+	const expectedCustom = generateFullstackCustomSecrets(workspace, containers);
 	const addedKeys: string[] = [];
 	const mergedCustom = { ...secrets.custom };
 

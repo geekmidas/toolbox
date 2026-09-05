@@ -252,8 +252,32 @@ const MailServiceConfigSchema = ServiceImageConfigSchema.extend({
  */
 const ServicesConfigSchema = z.object({
 	db: z.union([z.boolean(), ServiceImageConfigSchema]).optional(),
-	cache: z.union([z.boolean(), ServiceImageConfigSchema]).optional(),
-	mail: z.union([z.boolean(), MailServiceConfigSchema]).optional(),
+	// A string is a backend name, not an image pin — see `ServicesConfig`. The
+	// union accepts both because one key answers both questions: what runs
+	// locally, and what backs it when deployed.
+	cache: z
+		.union([
+			z.boolean(),
+			ServiceImageConfigSchema,
+			z.enum(['upstash', 'elasticache', 'db']),
+		])
+		.optional(),
+	mail: z
+		.union([
+			z.boolean(),
+			MailServiceConfigSchema,
+			z.enum(['resend', 'ses', 'smtp']),
+		])
+		.optional(),
+	storage: z
+		.union([
+			z.boolean(),
+			ServiceImageConfigSchema,
+			z.enum(['minio', 's3', 'r2']),
+		])
+		.optional(),
+	events: z.enum(['pgboss', 'sns', 'rabbitmq']).optional(),
+	trustLocalCa: z.boolean().optional(),
 });
 
 /**
