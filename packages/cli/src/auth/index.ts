@@ -11,8 +11,8 @@ import {
 const logger = console;
 
 export interface LoginOptions {
-	/** Service to login to */
-	service: 'dokploy' | 'hostinger';
+	/** Which provider's credentials to store — the same word `gkm deploy` uses. */
+	provider: 'dokploy' | 'hostinger';
 	/** API token (if not provided, will prompt) */
 	token?: string;
 	/** Endpoint URL */
@@ -20,8 +20,8 @@ export interface LoginOptions {
 }
 
 export interface LogoutOptions {
-	/** Service to logout from */
-	service?: 'dokploy' | 'all';
+	/** Whose credentials to remove — `all` clears every stored provider. */
+	provider?: 'dokploy' | 'all';
 }
 
 /**
@@ -107,9 +107,13 @@ async function prompt(message: string, hidden = false): Promise<string> {
  * Login to a service
  */
 export async function loginCommand(options: LoginOptions): Promise<void> {
-	const { service, token: providedToken, endpoint: providedEndpoint } = options;
+	const {
+		provider,
+		token: providedToken,
+		endpoint: providedEndpoint,
+	} = options;
 
-	if (service === 'dokploy') {
+	if (provider === 'dokploy') {
 		logger.log('\n🔐 Logging in to Dokploy...\n');
 
 		// Get endpoint
@@ -165,7 +169,7 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		);
 	}
 
-	if (service === 'hostinger') {
+	if (provider === 'hostinger') {
 		// The DNS provider has told people to run this since it was written, and
 		// this branch did not exist — so the only way to supply the token was the
 		// environment variable, which the message does not mention.
@@ -207,9 +211,9 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
  * Logout from a service
  */
 export async function logoutCommand(options: LogoutOptions): Promise<void> {
-	const { service = 'dokploy' } = options;
+	const { provider = 'dokploy' } = options;
 
-	if (service === 'all') {
+	if (provider === 'all') {
 		const dokployRemoved = await removeDokployCredentials();
 
 		if (dokployRemoved) {
@@ -220,7 +224,7 @@ export async function logoutCommand(options: LogoutOptions): Promise<void> {
 		return;
 	}
 
-	if (service === 'dokploy') {
+	if (provider === 'dokploy') {
 		const removed = await removeDokployCredentials();
 
 		if (removed) {

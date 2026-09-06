@@ -467,7 +467,7 @@ export default defineWorkspace({
 
 **Setup:**
 1. Get API token from Hostinger hPanel profile
-2. Store with `gkm login --service hostinger`
+2. Store with `gkm login --provider hostinger`
 
 ### Manual DNS
 
@@ -567,7 +567,7 @@ During deployment:
 
 ```bash
 # Login to Dokploy instance
-gkm login --service dokploy
+gkm login --provider dokploy
 
 # The CLI will prompt for:
 # - Dokploy endpoint URL

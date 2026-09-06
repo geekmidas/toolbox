@@ -1019,10 +1019,10 @@ Authenticate with deployment providers.
 
 ```bash
 # Login to Dokploy
-gkm login --service dokploy
+gkm login --provider dokploy
 
 # Login to Hostinger DNS
-gkm login --service hostinger
+gkm login --provider hostinger
 ```
 
 **Providers:**
@@ -1223,6 +1223,6 @@ thing at all.
 | Provider | Setup |
 |----------|-------|
 | `route53` | AWS credential chain (or `profile` config) |
-| `hostinger` | `gkm login --service hostinger` |
+| `hostinger` | `gkm login --provider hostinger` |
 | `cloudflare` | Coming soon |
 | `manual` | Prints required records |

@@ -835,31 +835,47 @@ program
 // Login command
 program
 	.command('login')
-	.description('Authenticate with a deployment service')
+	.description('Authenticate with a deployment or DNS provider')
+	// `--provider`, the same word `gkm deploy` and the DNS config already use for
+	// these same names. It was `--service`, which made `dokploy` a provider in
+	// one command and a service in the next — and `service` is the most
+	// overloaded word in this codebase already: the DI interface, the
+	// `services:` backend block, and a Dokploy resource name.
 	.option(
-		'--service <service>',
-		'Service to login to (dokploy, hostinger)',
+		'--provider <provider>',
+		'Provider to log in to (dokploy, hostinger)',
 		'dokploy',
 	)
+	// Kept working rather than removed: it is what shipped, and a flag rename is
+	// not worth breaking somebody's CI over.
+	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
 	.option('--token <token>', 'API token (will prompt if not provided)')
 	.option('--endpoint <url>', 'Service endpoint URL')
 	.action(
-		async (options: { service: string; token?: string; endpoint?: string }) => {
+		async (options: {
+			provider: string;
+			service?: string;
+			token?: string;
+			endpoint?: string;
+		}) => {
 			try {
 				const globalOptions = program.opts();
 				if (globalOptions.cwd) {
 					process.chdir(globalOptions.cwd);
 				}
 
-				if (!['dokploy', 'hostinger'].includes(options.service)) {
+				// The alias wins when given, because a default is not a choice.
+				const provider = options.service ?? options.provider;
+
+				if (!['dokploy', 'hostinger'].includes(provider)) {
 					console.error(
-						`Unknown service: ${options.service}. Supported: dokploy, hostinger`,
+						`Unknown provider: ${provider}. Supported: dokploy, hostinger`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					service: options.service as 'dokploy' | 'hostinger',
+					provider: provider as 'dokploy' | 'hostinger',
 					token: options.token,
 					endpoint: options.endpoint,
 				});
@@ -875,11 +891,12 @@ program
 	.command('logout')
 	.description('Remove stored credentials')
 	.option(
-		'--service <service>',
-		'Service to logout from (dokploy, all)',
+		'--provider <provider>',
+		'Whose credentials to remove (dokploy, all)',
 		'dokploy',
 	)
-	.action(async (options: { service: string }) => {
+	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
+	.action(async (options: { provider: string; service?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -887,7 +904,7 @@ program
 			}
 
 			await logoutCommand({
-				service: options.service as 'dokploy' | 'all',
+				provider: (options.service ?? options.provider) as 'dokploy' | 'all',
 			});
 		} catch (error) {
 			console.error(formatError(error));
