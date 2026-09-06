@@ -412,6 +412,83 @@ interface DokployStageState {
 
 ---
 
+## Sites and hostnames
+
+Every `StaticSite` you declare becomes its own deploy unit — its own container,
+its own image, its own domain. Nothing lists them; declaring one is what deploys
+it.
+
+```ts
+// src/constructs/site.ts
+export const web   = new StaticSite('Web',   { path: 'apps/web'   }).dependsOn([api, auth]);
+export const admin = new StaticSite('Admin', { path: 'apps/admin' }).dependsOn([api, auth]);
+```
+
+With `domains: { production: 'example.com' }`, that deploys:
+
+| construct | container | hostname |
+|---|---|---|
+| `StaticSite('Web')` | `production-acme-web` | `example.com` |
+| `StaticSite('Admin')` | `production-acme-admin` | `admin.example.com` |
+| `RestApi('Api')` | `production-acme-api` | `api.example.com` |
+
+**The construct id is the subdomain.** `Admin` is what makes it `admin.` — the
+same property that makes `Database` name `production-acme-database`. Rename the
+construct and the hostname moves with it.
+
+### Which site gets the base domain
+
+One of them holds `example.com` itself, and it is never guessed:
+
+1. **One site** — it is the root. Nothing to say.
+2. **A site named `web`** — the convention wins, as above.
+3. **Otherwise** — the site says so:
+
+```ts
+export const admin   = new StaticSite('Admin',   { path: 'apps/admin',   root: true });
+export const console = new StaticSite('Console', { path: 'apps/console' });
+```
+
+Anything else is an error:
+
+```
+AmbiguousRootSite: 2 sites and nothing says which holds the base domain:
+admin, console. Name one of them `web`, or declare `root: true` on the one
+the base domain points at.
+```
+
+::: tip Why this throws instead of picking
+It used to take whichever site the constructs glob reached first. Two sites with
+neither named `web` meant **renaming a file could move your production root
+domain**, and nothing reported it — you would find out when the wrong app
+answered. Unambiguous with one and arbitrary with two, so two is an error.
+:::
+
+`root` is on the declaration rather than in config because *which* site is
+primary does not vary by stage. Its hostname does — that is `app.domain`:
+
+```ts
+apps: {
+  admin: {
+    domain: {
+      production: 'console.example.com',
+      staging: 'admin.staging.example.com',
+    },
+  },
+}
+```
+
+### What each site is built with
+
+Frontends are built after backends, so their dependencies resolve to real URLs
+at build time rather than placeholders. A site that declares
+`.dependsOn([api, auth])` gets `VITE_API_URL` and `VITE_AUTH_URL` — or
+`NEXT_PUBLIC_*`, per framework — baked into its bundle.
+
+The same edge does three more things without being listed anywhere: it puts the
+site on the API's CORS origins, on the auth server's trusted origins, and into
+the cookie domain the two share.
+
 ## DNS Providers
 
 Automatically configure DNS records for your deployed applications.

@@ -79,10 +79,11 @@ it is config rather than derivation:
 - everything else gets `{name}.{base}` — `api.example.com`, `admin.example.com`
 - `app.domain` overrides either, per stage
 
-Which site holds the base domain is itself declared, not guessed. One site is
-the root because it is the only one; a site named `web` wins by convention; past
-that a site says `root: true` and anything else is an error rather than a coin
-toss.
+Which site holds the base domain is itself declared, not guessed — one site is
+the root because it is the only one, a site named `web` wins by convention, and
+past that a site says `root: true`. Anything else is an error rather than a coin
+toss. See [Sites and hostnames](/guide/deployment#sites-and-hostnames) for the
+worked two-site example.
 
 ## Renaming
 
