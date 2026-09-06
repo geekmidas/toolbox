@@ -1,26 +1,28 @@
-/**
- * Kebab-cases an identifier: `userName` → `user-name`, `my_handler` →
- * `my-handler`, and acronym-aware (`APIKey` → `api-key`, `XMLParser` →
- * `xml-parser`).
- */
-export function kebab(value: string): string {
-	return value
-		.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
-		.replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-		.replace(/[\s_]+/g, '-')
-		.toLowerCase();
-}
+import { kebabCase, scopedName } from '@geekmidas/manifest';
 
 /**
- * Builds a kebab-cased, prefixed physical resource name. The `prefix` parts
- * (e.g. `[stage, name]`) are joined and lower-cased; if `resource` already
- * starts with that prefix it is returned as-is (kebab-cased) to avoid doubling.
+ * Kebab-cases an identifier: `userName` → `user-name`, `my_handler` →
+ * `my-handler`, acronym-aware (`APIKey` → `api-key`) and digit-aware
+ * (`S3Bucket` → `s3-bucket`).
+ *
+ * Re-exported from `@geekmidas/manifest` rather than implemented here. It used
+ * to be implemented here, beside a second spelling of the same rule in the
+ * manifest — which agreed on every id anyone had tried and disagreed on
+ * `S3Bucket`.
  */
-export function prefixedName(prefix: string[], resource: string): string {
-	const joined = prefix.join('-').toLowerCase();
-	const name = kebab(resource);
-	return name.startsWith(joined) ? name : `${joined}-${name}`;
-}
+export const kebab = kebabCase;
+
+/**
+ * A kebab-cased, prefixed physical resource name — `[stage, app]` and the
+ * resource, joined and lower-cased, without doubling a prefix the resource
+ * already carries.
+ *
+ * The same rule every other target names by: this is `cloudName` for a caller
+ * whose prefix is a list, because an SST stack contributes a segment of its
+ * own. A construct is named the same thing here and on Dokploy, which is the
+ * property that lets one name be read across providers.
+ */
+export const prefixedName = scopedName;
 
 /**
  * The region out of an AWS ARN — `arn:aws:sqs:eu-west-1:123:emails` →

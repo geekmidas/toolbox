@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
 import { getPublicUrlArgNames } from '../deploy/domain.js';
+import { derivedContainers } from '../reconcile/workspace.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
 	generateDockerCompose,
@@ -495,6 +496,9 @@ export async function workspaceDockerCommand(
 	// Generate docker-compose.yml for workspace
 	const dockerCompose = generateWorkspaceCompose(workspace, {
 		registry: options.registry,
+		// Which infrastructure this file describes is the manifest's answer, the
+		// same one reconcile derives — not a boolean per service in config.
+		containers: await derivedContainers(workspace, 'development'),
 	});
 	const composePath = join(dockerDir, 'docker-compose.yml');
 	await writeFile(composePath, dockerCompose);

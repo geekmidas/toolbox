@@ -15,7 +15,10 @@ import {
 	type CacheBackend,
 	DEFAULT_CACHE,
 	DEFAULT_EMAIL,
+	DEFAULT_STORAGE,
 	type EmailBackend,
+	type MainProvider,
+	type StorageBackend,
 } from '../types.js';
 
 const CACHE_BACKENDS: readonly CacheBackend[] = [
@@ -24,6 +27,7 @@ const CACHE_BACKENDS: readonly CacheBackend[] = [
 	'db',
 ];
 const EMAIL_BACKENDS: readonly EmailBackend[] = ['resend', 'ses', 'smtp'];
+const STORAGE_BACKENDS: readonly StorageBackend[] = ['minio', 's3', 'r2'];
 
 /**
  * The image pin in a `services:` value, if it carries one.
@@ -37,18 +41,57 @@ export function imagePinOf<T>(value: T): Exclude<T, string> | undefined {
 }
 
 /**
- * The cache backend a workspace selected, defaulting to Upstash.
+ * The cache backend a workspace selected, or the one its target implies.
  *
  * Defaulted here rather than by every caller, so "what happens when nobody
- * said" is answered once and the answer is greppable.
+ * said" is answered once and the answer is greppable — and now answered by
+ * *where it deploys*, because there is no single right answer for both a
+ * Lambda and a box running its own Postgres.
+ *
+ * `on` is the deploy target, not where this code happens to be running. A
+ * local `gkm dev` for an AWS app still defaults to Upstash, because a backend
+ * that differed between local and deployed would be worse than a slower one —
+ * which is the property the type's own documentation asks for.
  */
-export function cacheBackendOf(value: unknown): CacheBackend {
-	return isBackend(value, CACHE_BACKENDS) ? value : DEFAULT_CACHE;
+export function cacheBackendOf(
+	value: unknown,
+	on: MainProvider = 'aws',
+): CacheBackend {
+	return isBackend(value, CACHE_BACKENDS) ? value : DEFAULT_CACHE[on];
 }
 
-/** The email backend a workspace selected, defaulting to Resend. */
+/** The email backend a workspace selected, defaulting to SES on every target. */
 export function emailBackendOf(value: unknown): EmailBackend {
 	return isBackend(value, EMAIL_BACKENDS) ? value : DEFAULT_EMAIL;
+}
+
+/** The storage backend a workspace selected, or the one its target implies. */
+export function storageBackendOf(
+	value: unknown,
+	on: MainProvider = 'aws',
+): StorageBackend {
+	return isBackend(value, STORAGE_BACKENDS) ? value : DEFAULT_STORAGE[on];
+}
+
+/**
+ * Which family of defaults a workspace's deploy target belongs to.
+ *
+ * One question, asked once: **does this target run containers the project
+ * controls?** Dokploy and a bare server do, so a bucket or a cache can live
+ * beside the app; AWS, Vercel and Cloudflare do not, so the default has to be
+ * something managed. That is the whole of the distinction, and it is why
+ * `MainProvider` is the right axis rather than the deploy target's own name —
+ * three targets share one answer.
+ *
+ * An AWS deploy names no `deploy.default` at all, because it goes through SST,
+ * which is why the absence is what selects `aws`.
+ */
+export function providerOf(workspace: {
+	deploy?: { default?: string } | undefined;
+}): MainProvider {
+	const target = workspace.deploy?.default;
+
+	return target === 'dokploy' || target === 'server' ? 'server' : 'aws';
 }
 
 /**
@@ -75,17 +118,20 @@ function isBackend<T extends string>(
  */
 export function unknownBackend(
 	value: unknown,
-	kind: 'cache' | 'mail',
+	kind: BackendKind,
 ): string | undefined {
 	if (typeof value !== 'string') return undefined;
 
-	const backends: readonly string[] =
-		kind === 'cache' ? CACHE_BACKENDS : EMAIL_BACKENDS;
-
-	return backends.includes(value) ? undefined : value;
+	return backendsFor(kind).includes(value) ? undefined : value;
 }
 
+/** A `services:` key that selects a backend. */
+export type BackendKind = 'cache' | 'mail' | 'storage';
+
 /** What a `services:` key accepts, for an error that can list it. */
-export function backendsFor(kind: 'cache' | 'mail'): readonly string[] {
-	return kind === 'cache' ? CACHE_BACKENDS : EMAIL_BACKENDS;
+export function backendsFor(kind: BackendKind): readonly string[] {
+	if (kind === 'cache') return CACHE_BACKENDS;
+	if (kind === 'storage') return STORAGE_BACKENDS;
+
+	return EMAIL_BACKENDS;
 }

@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import { ensureServices } from './services';
 
 const TEST_DATABASE_NAME = 'geekmidas_test';
 
@@ -11,6 +12,11 @@ export const TEST_DATABASE_CONFIG = {
 };
 
 export default async function globalSetup() {
+	// Before connecting, not after failing to. This used to assume a Postgres
+	// somebody had started by hand, and its absence took the whole project down
+	// during collection — reporting no tests rather than a missing database.
+	await ensureServices('postgres');
+
 	const adminConfig = {
 		host: TEST_DATABASE_CONFIG.host,
 		port: TEST_DATABASE_CONFIG.port,

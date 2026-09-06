@@ -7,7 +7,7 @@ import { Credentials } from '@geekmidas/envkit/credentials';
  * the secrets — is visible here.
  *
  * Nothing about infrastructure is read below any more. A construct declares its
- * own key and reads it when its client is built, so `KITCHEN_SINK_URL`,
+ * own key and reads it when its client is built, so `DATABASE_URL`,
  * `UPLOADS_URL`, `MAIL_URL` and the broker strings never appear in application
  * config. What is left is what genuinely belongs to the process.
  */

@@ -56,6 +56,13 @@ thing holding them together was a string literal typed three times:
 export const uploads = new ObjectStorage('Uploads');
 ```
 
+![One declaration in application code, the manifest it becomes, and the infrastructure a target builds from it](/architecture/constructs-pipeline.png)
+
+*Click to zoom.* One declaration on the left, the manifest in the middle, and
+what a Dokploy deploy actually built on the right — a Postgres with its roles, a
+MinIO stack, a container, a site, and pg-boss living inside the database that was
+already declared.
+
 Rename the construct and every consumer moves with it, because there is no
 string to keep in step.
 
@@ -133,6 +140,38 @@ all.**
 ::: info Structural, not `instanceof`
 A construct from a linked workspace or a second copy in the lockfile is still a
 construct. `instanceof` is exactly the check that would say otherwise.
+:::
+
+::: warning The glob is how things are found — a file it misses does not exist
+Discovery works by **importing every file the glob matches** and inspecting the
+exports. A declaration in a file the glob does not match is never imported, so
+as far as gkm is concerned it was never written.
+
+Nothing reports this. There is no error and no warning, because an unmatched
+file is indistinguishable from a file that was never created. What you get
+instead is absence:
+
+| You wrote | The glob missed it | What you see |
+|---|---|---|
+| a `KyselyDatabase` | no Postgres container starts | the app fails on its first query |
+| an `ObjectStorage` | no bucket, no `UPLOADS_URL` | `undefined` where a URL should be |
+| an endpoint | the route is not generated | a 404, and it is absent from the OpenAPI spec too |
+
+The failure always appears somewhere other than the cause, which is what makes
+it worth knowing in advance. If something you declared seems not to exist, check
+the glob before anything else.
+
+Two shapes that catch people:
+
+```ts
+constructs: './src/constructs/*.ts'    // ❌ one level — misses src/constructs/db/orders.ts
+constructs: './src/constructs/**/*.ts' // ✅ any depth
+```
+
+Widening it is free. Discovery keeps only exports with an `id` that can
+`declare()`, so pointing at `./src/**/*.ts` costs a little startup time and
+nothing else — and colocating a bucket with the feature that uses it is a
+perfectly good layout.
 :::
 
 ## 2. Use It From an Endpoint

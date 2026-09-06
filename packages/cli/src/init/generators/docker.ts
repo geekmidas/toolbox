@@ -187,11 +187,10 @@ export function generateDockerFiles(
 	// LocalStack for SNS events
 	if (options.services?.events === 'sns') {
 		services.push(`  localstack:
-    image: localstack/localstack:latest
+    image: floci/floci:latest
     container_name: ${options.name}-localstack
     restart: unless-stopped
     environment:
-      SERVICES: sns,sqs
       AWS_DEFAULT_REGION: \${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: \${AWS_ACCESS_KEY_ID:-localstack}
       AWS_SECRET_ACCESS_KEY: \${AWS_SECRET_ACCESS_KEY:-localstack}

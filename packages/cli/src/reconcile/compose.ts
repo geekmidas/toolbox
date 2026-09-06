@@ -193,6 +193,32 @@ function define(
 				},
 			};
 
+		case 'caddy':
+			return {
+				image,
+				restart: 'unless-stopped',
+				ports: published,
+				// The generated Caddyfile sits beside this file, so a relative
+				// mount resolves against `.gkm/` wherever the project lives.
+				volumes: [
+					'./Caddyfile:/etc/caddy/Caddyfile:ro',
+					// A directory, not a file: every stage writes its own routes into
+					// it, so `gkm test` cannot delete what `gkm dev` is serving.
+					'./caddy-sites:/etc/caddy/sites:ro',
+					'caddy-data:/data',
+				],
+				// A surface and a site are processes on the *host*, not containers,
+				// so the edge has to leave Docker's network to reach them. Docker
+				// Desktop resolves this name already; on Linux it needs saying.
+				extra_hosts: ['host.docker.internal:host-gateway'],
+				healthcheck: {
+					test: ['CMD', 'caddy', 'version'],
+					interval: '10s',
+					timeout: '5s',
+					retries: 5,
+				},
+			};
+
 		case 'mailpit':
 			return {
 				image,
@@ -284,9 +310,10 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					SERVICES: 'sns,sqs',
 					AWS_DEFAULT_REGION: 'us-east-1',
-					// LocalStack requires this prefix on access keys it issues.
+					// The prefix LocalStack required on issued keys. floci does not
+					// care, and keeping it means a project that pins the old image
+					// still works.
 					AWS_ACCESS_KEY_ID: 'LSIAQAAAAAAVNCBMPNSG',
 					AWS_SECRET_ACCESS_KEY: LOCAL_USER,
 				},

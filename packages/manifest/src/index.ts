@@ -77,12 +77,15 @@ export {
 	UnknownParent,
 } from './errors';
 export {
+	cacheTable,
 	canonicalId,
 	cloudName,
 	cookieDomain,
 	environmentCase,
+	kebabCase,
 	providedKeyFor,
 	provideKey,
+	scopedName,
 	serviceKey,
 } from './naming';
 

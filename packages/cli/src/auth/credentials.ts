@@ -124,14 +124,30 @@ export async function getDokployCredentials(
 } | null> {
 	const credentials = await readCredentials(options);
 
-	if (!credentials.dokploy) {
-		return null;
-	}
+	// The environment first, and each half independently.
+	//
+	// `getDokployToken` has always read `DOKPLOY_API_TOKEN` while this — the
+	// function the deploy path actually calls — read only the file. So a CI job
+	// given the token as a secret had a token and nowhere to send it, and the
+	// only way through was committing a credentials file or running an
+	// interactive login on the runner.
+	//
+	// Read separately rather than as a pair because they arrive separately: a
+	// token is a secret and belongs in the environment, while an endpoint is
+	// configuration and usually belongs in `deploy.dokploy.endpoint`. Requiring
+	// both from the same place is what made either one useless alone.
+	const token = process.env.DOKPLOY_API_TOKEN ?? credentials.dokploy?.token;
+	const endpoint =
+		process.env.DOKPLOY_ENDPOINT ?? credentials.dokploy?.endpoint;
+
+	if (!token || !endpoint) return null;
 
 	return {
-		token: credentials.dokploy.token,
-		endpoint: credentials.dokploy.endpoint,
-		registryId: credentials.dokploy.registryId,
+		token,
+		endpoint: endpoint.replace(/\/$/, ''),
+		...(credentials.dokploy?.registryId
+			? { registryId: credentials.dokploy.registryId }
+			: {}),
 	};
 }
 

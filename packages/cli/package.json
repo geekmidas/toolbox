@@ -99,6 +99,7 @@
 		"chokidar": "~4.0.3",
 		"commander": "^12.1.0",
 		"dotenv": "~17.2.3",
+		"esbuild": "^0.28.2",
 		"fast-glob": "^3.3.2",
 		"hono": "~4.8.0",
 		"lodash.kebabcase": "^4.1.1",

@@ -1,16 +1,12 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
 import {
-	resolveServicePorts,
-	startWorkspaceServices,
-} from '../credentials/index.js';
-import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
+	derivedContainers,
+	reconcileWorkspace,
+} from '../reconcile/workspace.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
-	generateLocalStackCredentials,
 	generateSecurePassword,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
@@ -21,6 +17,7 @@ import {
 } from '../secrets/storage.js';
 import { isSSMConfigured, pullSecrets, pushSecrets } from '../secrets/sync.js';
 import type { StageSecrets } from '../secrets/types.js';
+import { ensureTrusted } from '../trust/index.js';
 import type { ComposeServiceName } from '../types.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
 import {
@@ -78,7 +75,9 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	}
 
 	// 3. Write docker/.env from secrets (always regenerated as derived file)
-	if (isMultiApp && workspace.services.db) {
+	const containers = await derivedContainers(workspace, stage);
+
+	if (isMultiApp && containers.includes('postgres')) {
 		await writeDockerEnvFromSecrets(secrets, workspace.root);
 		logger.log('📄 Generated docker/.env with database passwords');
 	}
@@ -87,20 +86,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	if (!options.skipDocker) {
 		logger.log('');
 
-		// An app that has adopted the constructs glob gets its containers derived
-		// from what it declares. One that has not keeps the hand-maintained
-		// compose file — the change is adoptable in pieces, not a flag day.
-		if (usesConstructs(workspace)) {
-			await reconcileLocal(workspace, stage);
-		} else {
-			const composeFile = join(workspace.root, 'docker-compose.yml');
-			if (existsSync(composeFile)) {
-				const resolvedPorts = await resolveServicePorts(workspace.root);
-				await startWorkspaceServices(workspace, resolvedPorts.dockerEnv);
-			} else {
-				logger.log('⚠️  No docker-compose.yml found. Skipping Docker services.');
-			}
-		}
+		await reconcileLocal(workspace, stage, options);
 	}
 
 	// Print summary
@@ -117,6 +103,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 async function reconcileLocal(
 	workspace: NormalizedWorkspace,
 	stage: string,
+	options: SetupOptions,
 ): Promise<void> {
 	const result = await reconcileWorkspace(workspace, { stage });
 
@@ -133,6 +120,20 @@ async function reconcileLocal(
 	logger.log(`🐳 Services: ${result.plan.containers.join(', ')}`);
 	for (const [container, address] of Object.entries(result.addresses)) {
 		logger.log(`   ${container}: ${address}`);
+	}
+
+	// Only where something actually answers on https. A project with no edge has
+	// no authority to trust and should never be asked about one.
+	const served = result.plan.resources.find((r) => r.kind === 'file-server');
+	const url = served ? result.env[served.envKey] : undefined;
+
+	if (url) {
+		await ensureTrusted(workspace.root, url, {
+			...(workspace.services.trustLocalCa === undefined
+				? {}
+				: { configured: workspace.services.trustLocalCa }),
+			...(options.yes ? { assumeYes: true } : {}),
+		});
 	}
 }
 
@@ -161,7 +162,11 @@ async function resolveSecrets(
 		const secrets = await readStageSecrets(stage, workspace.root);
 		if (secrets) {
 			// Reconcile: add any missing workspace-derived keys without overwriting
-			const reconciled = reconcileSecrets(secrets, workspace);
+			const reconciled = reconcileSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, stage),
+			);
 			if (reconciled) {
 				await writeStageSecrets(reconciled, workspace.root);
 			}
@@ -196,26 +201,46 @@ async function resolveSecrets(
  * Returns the updated secrets if changes were made, or null if no changes needed.
  * @internal Exported for testing
  */
+/**
+ * Which containers hold a credential worth generating.
+ *
+ * Reconcile's container names, mapped to the service a credential is stored
+ * under. `redis-http` is the Upstash-protocol proxy in front of Redis and holds
+ * no credential of its own — its token is derived — so it maps to nothing, and
+ * `caddy` is an edge with nothing to log into.
+ */
+function credentialedServices(
+	containers: readonly string[],
+): ComposeServiceName[] {
+	const byContainer: Readonly<Record<string, ComposeServiceName>> = {
+		postgres: 'postgres',
+		redis: 'redis',
+		minio: 'minio',
+		mailpit: 'mailpit',
+		localstack: 'localstack',
+		rabbitmq: 'rabbitmq',
+	};
+
+	return [
+		...new Set(
+			containers
+				.map((container) => byContainer[container])
+				.filter((name): name is ComposeServiceName => Boolean(name)),
+		),
+	];
+}
+
 export function reconcileSecrets(
 	secrets: StageSecrets,
 	workspace: NormalizedWorkspace,
+	containers: readonly string[] = [],
 ): StageSecrets | null {
 	let changed = false;
 	let result = { ...secrets };
 
 	// Reconcile service credentials: add missing services
-	const serviceMap: {
-		key: keyof typeof workspace.services;
-		name: ComposeServiceName;
-	}[] = [
-		{ key: 'db', name: 'postgres' },
-		{ key: 'cache', name: 'redis' },
-		{ key: 'storage', name: 'minio' },
-		{ key: 'mail', name: 'mailpit' },
-	];
-
-	for (const { key, name } of serviceMap) {
-		if (workspace.services[key] && !result.services[name]) {
+	for (const name of credentialedServices(containers)) {
+		if (!result.services[name]) {
 			const creds = generateServiceCredentials(name);
 			// Override defaults with project-derived names
 			if (name === 'minio') {
@@ -255,46 +280,10 @@ export function reconcileSecrets(
 		changed = true;
 	}
 
-	// Reconcile events backend
-	const eventsBackend = workspace.services.events;
-	if (eventsBackend && result.eventsBackend !== eventsBackend) {
-		result.eventsBackend = eventsBackend;
-
-		// Add localstack credentials if needed
-		if (eventsBackend === 'sns' && !result.services.localstack) {
-			result = {
-				...result,
-				services: {
-					...result.services,
-					localstack: generateLocalStackCredentials(),
-				},
-			};
-			logger.log('   🔄 Adding missing service credentials: localstack');
-			changed = true;
-		}
-
-		// Add rabbitmq credentials if needed (for rabbitmq events)
-		if (eventsBackend === 'rabbitmq' && !result.services.rabbitmq) {
-			result = {
-				...result,
-				services: {
-					...result.services,
-					rabbitmq: generateServiceCredentials('rabbitmq'),
-				},
-			};
-			logger.log('   🔄 Adding missing service credentials: rabbitmq');
-			changed = true;
-		}
-
-		// Regenerate URLs with new events backend
-		result.urls = generateConnectionUrls(result.services, eventsBackend);
-		changed = true;
-	}
-
 	// Reconcile custom secrets for multi-app workspaces
 	const isMultiApp = Object.keys(workspace.apps).length > 1;
 	if (isMultiApp) {
-		const expected = generateFullstackCustomSecrets(workspace);
+		const expected = generateFullstackCustomSecrets(workspace, containers);
 		const missing: Record<string, string> = {};
 
 		for (const [key, value] of Object.entries(expected)) {
@@ -335,15 +324,13 @@ export function reconcileSecrets(
 export function createFreshWorkspaceSecrets(
 	stage: string,
 	workspace: NormalizedWorkspace,
+	containers: readonly string[] = [],
 ): StageSecrets {
-	// Determine services from workspace config
-	const serviceNames: ComposeServiceName[] = [];
-	if (workspace.services.db) serviceNames.push('postgres');
-	if (workspace.services.cache) serviceNames.push('redis');
-	if (workspace.services.storage) serviceNames.push('minio');
-	if (workspace.services.mail) serviceNames.push('mailpit');
-	if (workspace.services.events === 'sns') serviceNames.push('localstack');
-	if (workspace.services.events === 'rabbitmq') serviceNames.push('rabbitmq');
+	// Which services need a credential is which containers exist, and that is
+	// the manifest's answer. It used to be a boolean per service read from
+	// config, which generated a Postgres password for a project with no
+	// database and none for a project that declared one and set no flag.
+	const serviceNames = credentialedServices(containers);
 
 	// Create base secrets with service credentials
 	const secrets = createStageSecrets(stage, serviceNames, {
@@ -354,7 +341,7 @@ export function createFreshWorkspaceSecrets(
 	// Generate fullstack-aware custom secrets
 	const isMultiApp = Object.keys(workspace.apps).length > 1;
 	if (isMultiApp) {
-		secrets.custom = generateFullstackCustomSecrets(workspace);
+		secrets.custom = generateFullstackCustomSecrets(workspace, containers);
 	} else {
 		secrets.custom = {
 			NODE_ENV: 'development',
@@ -387,7 +374,11 @@ export async function ensureStageSecrets(
 		return false;
 	}
 
-	const secrets = createFreshWorkspaceSecrets(stage, workspace);
+	const secrets = createFreshWorkspaceSecrets(
+		stage,
+		workspace,
+		await derivedContainers(workspace, stage),
+	);
 	await writeStageSecrets(secrets, workspace.root);
 	return true;
 }
@@ -400,7 +391,11 @@ async function generateFreshSecrets(
 	workspace: NormalizedWorkspace,
 	options: SetupOptions,
 ) {
-	const secrets = createFreshWorkspaceSecrets(stage, workspace);
+	const secrets = createFreshWorkspaceSecrets(
+		stage,
+		workspace,
+		await derivedContainers(workspace, stage),
+	);
 
 	// Write secrets
 	await writeStageSecrets(secrets, workspace.root);

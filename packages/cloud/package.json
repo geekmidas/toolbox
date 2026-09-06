@@ -8,7 +8,7 @@
 		"src/dokploy"
 	],
 	"scripts": {
-		"sst:install": "sst install",
+		"sst:install": "node -e \"process.exit(require('fs').existsSync('sst.config.ts')?0:1)\" && sst install || true",
 		"ts:check:sst": "tsc --noEmit -p src/sst/tsconfig.json 2>&1 | grep -E 'src/sst/.*error TS' && exit 1 || exit 0"
 	},
 	"exports": {

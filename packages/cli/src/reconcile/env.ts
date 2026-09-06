@@ -14,7 +14,8 @@
 
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
-import { cookieDomain, provideKey } from '@geekmidas/manifest';
+import { cacheTable, cookieDomain, provideKey } from '@geekmidas/manifest';
+import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
@@ -101,6 +102,11 @@ export function envFor(
 ): Record<string, string> {
 	const env: Record<string, string> = {};
 
+	// Resolved once, up front, because a surface's cookie domain and origin list
+	// are derived from *other constructs'* addresses — and reading them as the
+	// loop happened to reach them would make the answer depend on the order the
+	// manifest was keyed in.
+	const resolved: Record<string, string> = {};
 	for (const resource of plan.resources) {
 		const url = urlFor(
 			resource,
@@ -109,6 +115,11 @@ export function envFor(
 			options.project ?? '',
 			options.addresses,
 		);
+		if (url) resolved[resource.id] = url;
+	}
+
+	for (const resource of plan.resources) {
+		const url = resolved[resource.id];
 
 		// A surface carries the origins its callers may come from, and they are
 		// its inbound edges — nothing more. Better Auth's CSRF check applies to
@@ -117,7 +128,7 @@ export function envFor(
 		// graph rather than every app the workspace happens to run is what makes
 		// it the same list deployed, where no workspace is watching.
 		if (resource.kind === 'rest-api') {
-			Object.assign(env, surfaceEnv(resource, url, options.addresses));
+			Object.assign(env, surfaceEnv(resource, url, resolved));
 		}
 		if (url) env[resource.envKey] = url;
 
@@ -208,14 +219,25 @@ function publicEnv(
 function surfaceEnv(
 	resource: PlannedResource,
 	url: string | undefined,
-	addresses: Readonly<Record<string, string>> = {},
+	/**
+	 * Every construct's *resolved* address, keyed by id — not the raw ones the
+	 * workspace assigned.
+	 *
+	 * The difference is the feature. Behind the edge a surface and its callers
+	 * are `api.shop.localhost` and `console.shop.localhost`, which share a
+	 * parent and therefore a cookie; the addresses they were assigned are
+	 * `localhost:3000` and `localhost:5173`, which are one host with two ports
+	 * and share nothing. Deriving from the wrong one produces a local cookie
+	 * model that is *different* from the deployed one rather than matching it.
+	 */
+	resolved: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
 	if (!url) return {};
 
 	const origins = [
 		...new Set(
 			(resource.callers ?? [])
-				.map((caller) => addresses[caller])
+				.map((caller) => resolved[caller])
 				.filter((address): address is string => Boolean(address))
 				.map(originOf)
 				.filter((origin): origin is string => Boolean(origin)),
@@ -340,8 +362,20 @@ function urlFor(
 
 	// A surface answers on the app's own port, and a site on its dev server's —
 	// both assigned by the workspace, neither published by a container.
+	//
+	// Behind the edge when there is one, which is what gives them a hostname and
+	// a certificate rather than a port on localhost. The application cannot tell
+	// the difference: it reads whichever address was injected and composes none,
+	// so this is the target's decision alone.
 	if (resource.kind === 'rest-api' || resource.kind === 'site') {
-		return addresses[resource.id];
+		const address = addresses[resource.id];
+		const edge = plan.containers.includes('caddy')
+			? ports[primaryPortKey('caddy')]
+			: undefined;
+
+		return address && edge !== undefined
+			? `https://${hostFor(resource, project)}:${edge}`
+			: address;
 	}
 
 	if (!resource.container) return undefined;
@@ -401,47 +435,55 @@ function urlFor(
 			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
 
 		case 'file-server': {
-			// Path style, not the deployed shape, and deliberately so. MinIO's
-			// virtual-host mode reads the leading label *as the bucket name*, so
-			// it only produces the CDN shape when the server's id and the
-			// bucket's agree — and never at all for a server fronting two
-			// buckets. The honest local answer is the address that works;
-			// producing the deployed shape needs a small proxy in front of MinIO,
-			// which is additive and changes no construct API. Note that an AWS
-			// emulator does not supply it: CloudFront emulation is control plane
-			// only, and what is needed here is the data plane.
+			// A host of its own, over TLS — the shape it has deployed, and the one
+			// MinIO alone cannot produce: its virtual-host mode reads the leading
+			// label *as the bucket name*, so it matches only when the server's id
+			// and the bucket's agree and never for a server fronting two buckets.
+			// The local edge in front of it does the mapping instead, and issues
+			// the certificate. An AWS emulator supplies neither: CloudFront
+			// emulation is control plane only, and this is the data plane.
+			//
+			// The port is in the address because ports are assigned rather than
+			// fixed, so two projects can run at once. Nothing that reads a
+			// hostname — a cookie domain, a CORS origin — looks at it.
 			const origin = plan.resources.find((r) => r.id === resource.of);
 			if (!origin) return undefined;
 
-			return `http://${LOCAL_HOST}:${port}/${origin.name}`;
+			// With the edge off, the honest local answer is the address that
+			// works: a path under the object store. It is not the deployed shape,
+			// and the application still cannot tell — it reads the key it was
+			// given and never composes one.
+			return plan.containers.includes('caddy')
+				? `https://${hostFor(resource, project)}:${port}`
+				: `http://${LOCAL_HOST}:${port}/${origin.name}`;
 		}
 
 		case 'cache':
 			// The scheme is the backend, and the backend is the same one deployed —
 			// which is what lets a driver registered at build time match the URL
 			// resolved at run time.
-			// A cache that named a database is in that one — not in whichever the
-			// backend config would have picked, and not in "the" database when
-			// an app declares two.
+			//
+			// A cache in a database has no address of its own: no second host and
+			// no second credential, just its parent's URL. Reached by following
+			// `of` and nothing else — `planFor` has already resolved a
+			// `cache: 'db'` backend into that edge, so there is one way a cache
+			// lands in a database and one way to find out.
 			if (resource.of) {
 				const parent = plan.resources.find((r) => r.id === resource.of);
-
-				return parent
+				const url = parent
 					? urlFor(parent, plan, ports, project, addresses)
+					: undefined;
+
+				// The parent's address plus the one thing that distinguishes this
+				// cache from another in the same database: its table. Two caches on
+				// one database resolve the same connection string, so without it a
+				// client built from the URL cannot tell them apart.
+				return url
+					? withTable(url, resource.table ?? cacheTable(resource.id))
 					: undefined;
 			}
 
 			switch (plan.cache) {
-				case 'db': {
-					// The database the app already declared. No second address, no
-					// second credential: the cache is a table reached by the same
-					// role, which is why this backend costs nothing to run.
-					const database = plan.resources.find((r) => r.kind === 'database');
-					if (!database) return undefined;
-
-					return urlFor(database, plan, ports, project, addresses);
-				}
-
 				case 'elasticache':
 					// The wire protocol, unauthenticated locally. Deployed it is
 					// `rediss://` inside a VPC; the client is the same either way.
@@ -540,6 +582,20 @@ export function localRolePassword(
 		.update(`${project}:${plan.stage}:role:${role}`)
 		.digest('base64url')
 		.slice(0, 32);
+}
+
+/**
+ * A cache's address: its database's URL, carrying the table it reads.
+ *
+ * Appended rather than kept beside the URL as a second key, for the reason the
+ * design gives everywhere else — an address and what it opens are one fact, and
+ * two keys are one more thing to keep in step.
+ */
+function withTable(url: string, table: string): string {
+	const parsed = new URL(url);
+	parsed.searchParams.set('table', table);
+
+	return parsed.toString();
 }
 
 /**

@@ -37,6 +37,7 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Getting Started', link: '/guide/getting-started' },
+          { text: 'Architecture', link: '/guide/architecture' },
           { text: 'Constructs Paradigm (RFC)', link: '/guide/constructs-paradigm' },
           { text: 'What Is Outstanding', link: '/guide/constructs-outstanding' },
           { text: 'Deploy Walkthrough (RFC)', link: '/guide/deploy-walkthrough' },

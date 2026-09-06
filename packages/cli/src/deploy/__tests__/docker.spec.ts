@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GkmConfig } from '../../types';
 import {
+	applicationName,
 	getAppNameFromCwd,
 	getAppNameFromPackageJson,
 	getImageRef,
@@ -145,5 +146,78 @@ describe('resolveDockerConfig', () => {
 		const dockerConfig = resolveDockerConfig(config);
 
 		expect(dockerConfig.imageName).toBe('explicit-name');
+	});
+});
+
+/**
+ * The name in the config is the scope, exactly as it is in an SST config.
+ *
+ * `sst.config.ts` declares `name: 'kitchen-sink'` and builds every physical name
+ * from `[stage, name]`. This is the same statement in the same place, so a
+ * construct carries one name across providers rather than two that happen to
+ * match — and the application beside a `production-kitchen-sink-database` is no
+ * longer called something from a different scheme entirely.
+ */
+describe('the name that scopes a deploy', () => {
+	const config = (name?: string): GkmConfig =>
+		({
+			name,
+			routes: './src/endpoints',
+			envParser: './src/env',
+			logger: './src/logger',
+		}) as GkmConfig;
+
+	it('takes the project from the config, not the directory', () => {
+		expect(resolveDockerConfig(config('acme'), 'production').projectName).toBe(
+			'acme',
+		);
+	});
+
+	it('scopes the application by stage, so two stages cannot collide', () => {
+		// The bug this closes: the application name carried no stage, so
+		// deploying `staging` into the same project matched the production
+		// application by name and redeployed it.
+		expect(applicationName('production', 'shop', 'api')).not.toBe(
+			applicationName('staging', 'shop', 'api'),
+		);
+		expect(resolveDockerConfig(config('shop'), 'staging').appName).toContain(
+			'staging',
+		);
+	});
+
+	it('names an application the way it names a construct', () => {
+		// The application beside `production-shop-database` is
+		// `production-shop-api`, through the same `scopedName`. It used to be the
+		// bare app key on the workspace path — a project holding an `api` and a
+		// `web` that every stage would collide on.
+		expect(applicationName('production', 'shop', 'api')).toBe(
+			'production-shop-api',
+		);
+		expect(applicationName('production', 'shop', 'web')).toBe(
+			'production-shop-web',
+		);
+	});
+
+	it('does not repeat a project name the app already is', () => {
+		// A project named for its one application would otherwise be
+		// `production-shop-shop`.
+		expect(applicationName('production', 'shop', 'shop')).toBe(
+			'production-shop',
+		);
+	});
+
+	it('leaves the image out of it, because an image has no stage', () => {
+		// One image is deployed to several stages, and the registry path already
+		// scopes it. It is also what somebody types after `docker pull`.
+		const resolved = resolveDockerConfig(config('shop'), 'production');
+
+		expect(resolved.imageName).not.toContain('production');
+	});
+
+	it('falls back to the package when the config names nothing', () => {
+		// A fallback, not the source — which is what it used to be.
+		expect(
+			resolveDockerConfig(config(), 'production').projectName,
+		).toBeTruthy();
 	});
 });

@@ -564,8 +564,8 @@ export default defineConfig({
   // is left is a backend *selection* — where the cache lives, who delivers the
   // mail, which broker carries events.
   services: {
-    cache: true,          // or 'upstash' | 'elasticache' | 'db'
-    mail: true,           // or 'ses' | 'resend' | 'smtp'
+    cache: 'db',          // 'upstash' | 'elasticache' | 'db'
+    mail: 'ses',          // 'ses' | 'resend' | 'smtp'
     events: 'pgboss',     // 'pgboss' | 'sns' | 'rabbitmq'
   },
 
@@ -1107,11 +1107,13 @@ export default defineWorkspace({
   },
 
   services: {
-    db: { version: '16-alpine' },
-    cache: true,
-    mail: true,
-    storage: true,
-    events: 'pgboss', // or 'sns' or 'rabbitmq'
+    cache: 'db',      // 'upstash' | 'elasticache' | 'db'
+    storage: 's3',    // 'minio' | 's3' | 'r2'
+    mail: 'ses',      // 'ses' | 'resend' | 'smtp'
+    events: 'pgboss', // 'pgboss' | 'sns' | 'rabbitmq'
+
+    // Image pins live here now, one whole reference per container.
+    images: { postgres: 'postgres:16-alpine' },
   },
 
   deploy: {

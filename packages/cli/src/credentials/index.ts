@@ -679,6 +679,16 @@ export interface EntryCredentialsResult {
 	secretsRoot: string;
 	/** Workspace app info (if in a workspace) */
 	appInfo?: WorkspaceAppInfo;
+	/**
+	 * The keys the manifest declared, as opposed to those a secret store held.
+	 *
+	 * Kept apart because they cannot be *sniffed*. A construct reads its own key
+	 * inside `@geekmidas/constructs`, not in application code, so a walk of the
+	 * app finds no `get('MAIL_URL')` to find — and a caller that filters the
+	 * environment down to what it sniffed would drop every URL the target just
+	 * resolved. `gkm test` did exactly that.
+	 */
+	declaredKeys: string[];
 }
 
 /**
@@ -746,6 +756,8 @@ export async function prepareEntryCredentials(options: {
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);
 
+	const declaredKeys: string[] = [];
+
 	// An app that has adopted the constructs glob derives its containers, ports,
 	// and URLs from what it declares. The branch below is what it replaces:
 	// parsing a hand-written compose file for ports and rewriting URLs to match.
@@ -760,6 +772,7 @@ export async function prepareEntryCredentials(options: {
 		// statement of what exists, and a stale secret naming an old port is
 		// exactly the drift this replaces.
 		Object.assign(credentials, reconciled.env);
+		declaredKeys.push(...Object.keys(reconciled.env));
 
 		if (Object.keys(reconciled.env).length > 0) {
 			logger.log(
@@ -870,5 +883,6 @@ export async function prepareEntryCredentials(options: {
 		appName,
 		secretsRoot,
 		appInfo,
+		declaredKeys,
 	};
 }

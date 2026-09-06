@@ -299,7 +299,11 @@ describe('wrapSingleAppAsWorkspace', () => {
 		expect(result.apps.api.telescope).toBe(true);
 	});
 
-	it('should extract docker compose services', () => {
+	it('does not let a compose list decide which services exist', () => {
+		// It used to seed `services.db` and `services.cache` from here, which is
+		// to say a container existed because a deploy-side list named it. Which
+		// containers exist is the manifest's answer — a declared database implies
+		// Postgres — so this block is left to be what its name says.
 		const config: GkmConfig = {
 			routes: './src/**/*.ts',
 			envParser: './src/env',
@@ -313,8 +317,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 
 		const result = wrapSingleAppAsWorkspace(config, '/project');
 
-		expect(result.services.db).toBe(true);
-		expect(result.services.cache).toBe(true);
+		expect(result.services).toEqual({});
 	});
 
 	it('carries the constructs glob through', () => {
@@ -416,6 +419,54 @@ describe('getAppGkmConfig', () => {
 		expect(gkmConfig?.envParser).toBe('./src/env');
 		expect(gkmConfig?.logger).toBe('./src/logger');
 		expect(gkmConfig?.telescope).toBe(true);
+	});
+
+	it('carries a single-app config’s deploy settings through the wrap', () => {
+		// The wrap used to hardcode `{ default: 'dokploy' }` and drop the rest, so
+		// a single-app project had nowhere to put an endpoint, a registry or a
+		// domain — and `resolveHost` refused to name a host for a stage the config
+		// could not describe.
+		const wrapped = wrapSingleAppAsWorkspace(
+			{
+				routes: './src/**/*.ts',
+				deploy: {
+					default: 'dokploy',
+					dokploy: {
+						endpoint: 'http://example:3000',
+						domains: { production: 'example.test' },
+					},
+				},
+			} as never,
+			'/project',
+		);
+
+		expect(wrapped.deploy.dokploy?.domains?.production).toBe('example.test');
+		expect(wrapped.deploy.default).toBe('dokploy');
+	});
+
+	it('carries the workspace backends onto the app config', () => {
+		// The entry point reads these to decide which drivers to register, while
+		// the local target reads the same field to compose the URLs those drivers
+		// receive. Dropping them here is how an app on `cache: 'db'` was handed a
+		// `postgres://` URL by an entry that had registered only Upstash.
+		const config: WorkspaceConfig = {
+			services: { cache: 'db', mail: 'ses' },
+			apps: {
+				api: {
+					type: 'backend',
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
+				},
+			},
+		};
+
+		const workspace = normalizeWorkspace(config, '/project');
+
+		expect(getAppGkmConfig(workspace, 'api')?.services).toEqual({
+			cache: 'db',
+			mail: 'ses',
+		});
 	});
 
 	it('should return undefined for frontend app', () => {
@@ -778,5 +829,68 @@ describe('getEndpointForStage', () => {
 		expect(getEndpointForStage(config, 'production')).toBe(
 			'https://prod.example.com:3000',
 		);
+	});
+});
+
+/**
+ * A single-app config is a one-app workspace, and the projection has to be
+ * faithful.
+ *
+ * `defineConfig` stays as the authoring surface, but there is one internal
+ * model. What made that a fiction rather than a fact was the fields this
+ * dropped on the way: every hardcoded value below was something the config
+ * could already state.
+ */
+describe('a single-app config as a workspace', () => {
+	const base = {
+		routes: './src/**/*.ts',
+		envParser: './src/env',
+		logger: './src/logger',
+	} as GkmConfig;
+
+	it('deploys where the config says, not always to Dokploy', () => {
+		// The worst of the dropped fields: a project deploying to Vercel was
+		// normalised into one that deploys to Dokploy, and nothing said so.
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, deploy: { default: 'vercel' } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.resolvedDeployTarget).toBe('vercel');
+	});
+
+	it('serves on the port the config names', () => {
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, providers: { server: { port: 4000 } } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.port).toBe(4000);
+	});
+
+	it('still has a port when `server: true` names none', () => {
+		const result = wrapSingleAppAsWorkspace(
+			{ ...base, providers: { server: true } } as GkmConfig,
+			'/project',
+		);
+
+		expect(result.apps.api?.port).toBe(3000);
+	});
+
+	it('takes its name from the config, the way a workspace does', () => {
+		expect(
+			wrapSingleAppAsWorkspace({ ...base, name: 'acme' } as GkmConfig, '/p')
+				.name,
+		).toBe('acme');
+	});
+
+	it('keys its one app the way a workspace would', () => {
+		// The key is what names the application — `production-acme-api`, beside
+		// the `production-acme-database` its constructs get. The deploy asks the
+		// workspace what its apps are called rather than asking the filesystem.
+		const result = wrapSingleAppAsWorkspace(base, '/project');
+
+		expect(Object.keys(result.apps)).toEqual(['api']);
+		expect(result.apps.api?.type).toBe('backend');
 	});
 });

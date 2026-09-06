@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
 
 /**
@@ -42,23 +43,66 @@ export interface BundleResult {
 }
 
 /**
- * Collect all required environment variables from constructs.
- * Uses the SnifferEnvironmentParser to detect which env vars each service needs.
+ * The esbuild binary, resolved from this package rather than from PATH.
+ *
+ * It used to be `npx esbuild`, which is two assumptions: that esbuild is
+ * installed somewhere npx can find, and that the *app's* directory is where to
+ * look. Neither holds — the CLI did not depend on esbuild at all, so a deploy
+ * run from an app that had not installed it failed at the bundle step with
+ * `sh: esbuild: command not found`, after provisioning had already happened.
+ *
+ * The same fix `bin/gkm.mjs` makes for tsx: resolve from this package's own
+ * `node_modules`, so the tool the CLI shells out to is the one it depends on.
+ */
+function esbuildBinary(): string {
+	const require = createRequire(import.meta.url);
+
+	try {
+		// The package root, then its bin — `require.resolve('esbuild')` gives the
+		// JS entry point, which is a library rather than the CLI.
+		const pkg = require.resolve('esbuild/package.json');
+		return join(dirname(pkg), 'bin', 'esbuild');
+	} catch {
+		// Better a PATH lookup than a hard failure: a project that installed
+		// esbuild itself still works.
+		return 'esbuild';
+	}
+}
+
+/**
+ * Collect the environment variables a build cannot proceed without.
+ *
+ * Uses the SnifferEnvironmentParser to detect which env vars each service
+ * reads, and keeps only the ones it cannot do without. `markOptional` is what
+ * separates them: the sniffer already knows which reads went through
+ * `.optional()` or `.default()`, and asking for that distinction is the
+ * difference between a build that stops and one that proceeds correctly.
+ *
+ * Without it, a key that is *absent by design* failed the build. A surface
+ * publishes `AUTH_COOKIE_DOMAIN` only when there is a domain to widen a cookie
+ * to — one host has nothing to share it with, so the derivation correctly
+ * yields nothing, and Better Auth reads it as optional for exactly that
+ * reason. Treating every sniffed read as required made the honest answer
+ * indistinguishable from a missing secret.
  *
  * @param constructs - Array of constructs to analyze
- * @returns Deduplicated array of required environment variable names
+ * @returns Deduplicated, sorted names of the required variables
  */
 async function collectRequiredEnvVars(
 	constructs: Construct[],
 ): Promise<string[]> {
-	const allEnvVars = new Set<string>();
+	// A key read optionally by one construct and required by another stays
+	// required: the strictest read is the one that fails at runtime, and taking
+	// the union of the required reads is what says so.
+	const required = new Set<string>();
 
 	for (const construct of constructs) {
-		const envVars = await construct.getEnvironment();
-		envVars.forEach((v) => allEnvVars.add(v));
+		for (const name of await construct.getEnvironment({ markOptional: true })) {
+			if (!name.endsWith('?')) required.add(name);
+		}
 	}
 
-	return Array.from(allEnvVars).sort();
+	return Array.from(required).sort();
 }
 
 /**
@@ -103,8 +147,7 @@ export async function bundleServer(
 
 	// Build command-line arguments for esbuild
 	const args = [
-		'npx',
-		'esbuild',
+		esbuildBinary(),
 		entryPoint,
 		'--bundle',
 		'--platform=node',

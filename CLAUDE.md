@@ -106,7 +106,7 @@ This uses `globalThis` instead of mutating the export to survive CJS/ESM module 
 Configured via `services.events` in workspace config: `'pgboss'` | `'sns'` | `'rabbitmq'`
 
 - **pgboss**: Reuses PostgreSQL (dedicated user/schema). NOT a `ComposeServiceName` — uses separate `PGBOSS_DEFAULTS`.
-- **sns**: Adds LocalStack container. Access keys must be `LSIA`-prefixed.
+- **sns**: Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required.
 - **rabbitmq**: Adds RabbitMQ container.
 
 All generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`.

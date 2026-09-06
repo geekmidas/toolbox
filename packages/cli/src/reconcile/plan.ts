@@ -22,6 +22,7 @@ import {
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
+import { EDGE_KINDS } from './caddyfile';
 
 /** The stage whose resources carry no suffix. */
 export const DEFAULT_STAGE = 'development';
@@ -38,9 +39,14 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	'database-reader': 'postgres',
 	'database-schema': 'postgres',
 	objects: 'minio',
-	// The server answers on the same MinIO that holds the objects, because
-	// locally there is nothing else for it to answer on — see `urlFor`.
-	'file-server': 'minio',
+	// The server is not the bucket. Its own container is the local edge, which
+	// is what lets it answer on a *host* rather than on a path under MinIO —
+	// the shape it has deployed, and the one MinIO's virtual-host mode cannot
+	// produce because that mode reads the leading label as the bucket name.
+	//
+	// MinIO still runs: it is implied by the bucket this server is declared
+	// over, which is a parent it always has.
+	'file-server': 'caddy',
 	// Every mail backend speaks SMTP, so locally there is one answer whichever
 	// one is selected — which is the same reason the declaration has no
 	// `provider` field.
@@ -273,6 +279,19 @@ export interface Plan {
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
 	/**
+	 * Whether the local edge fronts the addresses this plan resolves.
+	 *
+	 * On by default, because deployed every surface, site and file server has a
+	 * real hostname and a certificate, and the point of the local target is to
+	 * be the same shape rather than a near-enough one. Off falls back to
+	 * `http://localhost:<port>`.
+	 *
+	 * Config rather than declaration for the same reason `cache` is: the
+	 * application reads whichever address was injected and composes none, so it
+	 * cannot tell the difference.
+	 */
+	edge?: boolean;
+	/**
 	 * Where a declared cache lives, which decides both the container it needs
 	 * locally and the protocol its URL speaks.
 	 *
@@ -326,9 +345,14 @@ export function resourceName(
 export function containerFor(
 	kind: DeclarationKind,
 	events: EventsBackend = DEFAULT_EVENTS,
-	cache: CacheBackend = DEFAULT_CACHE,
+	// The target-aware choice is made upstream, in `reconcile/workspace.ts`,
+	// where the workspace knows where it deploys. This fires only for a caller
+	// that passed nothing at all.
+	cache: CacheBackend = DEFAULT_CACHE.aws,
 	/** Whether the declaration named a parent — see the `cache` branch. */
 	derived = false,
+	/** Whether the local edge exists — see the `file-server` branch. */
+	edge = true,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
@@ -336,6 +360,11 @@ export function containerFor(
 		// that database's.
 		return EVENT_CONTAINERS[events] ?? CONTAINERS.database;
 	}
+
+	// A file server answers on the edge, which is what gives it a host of its
+	// own. With the edge off it falls back to the object store that holds its
+	// objects — a path under MinIO, which works and is not the deployed shape.
+	if (kind === 'file-server') return edge ? 'caddy' : CONTAINERS.objects;
 
 	// The same shape: a cache in the database lives in the database's container.
 	if (kind === 'cache') {
@@ -367,7 +396,7 @@ export function planFor(
 	const resources: PlannedResource[] = [];
 
 	const events = options.events ?? DEFAULT_EVENTS;
-	const cache = options.cache ?? DEFAULT_CACHE;
+	const cache = options.cache ?? DEFAULT_CACHE.aws;
 
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
@@ -378,6 +407,7 @@ export function planFor(
 			events,
 			cache,
 			'of' in declaration && typeof declaration.of === 'string',
+			options.edge !== false,
 		);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
@@ -428,6 +458,22 @@ export function planFor(
 		});
 	}
 
+	// The edge serves anything that owns a public address — a surface and a site
+	// as much as a file server. Added here rather than in `containerFor` because
+	// those two are containerless in every other sense: nothing runs them in
+	// Docker, and what the edge does is put a hostname and a certificate in
+	// front of a process on the host.
+	//
+	// `edge: false` opts out, and then every local address is
+	// `http://localhost:<port>` as before. The application cannot tell: it reads
+	// whichever address was injected and composes none.
+	if (
+		options.edge !== false &&
+		resources.some((r) => EDGE_KINDS[r.kind] === true)
+	) {
+		containers.add('caddy');
+	}
+
 	for (const extra of options.extraContainers ?? []) containers.add(extra);
 
 	// pg-boss lives in a declared database. Without one there is nothing for it
@@ -443,19 +489,47 @@ export function planFor(
 		);
 	}
 
-	// A cache in the database needs one to live in, exactly as pg-boss does.
-	// Starting a Postgres to hold only a cache would be the container this
-	// design refuses to invent. A cache that named its parent is checked by
-	// `assertDerivations` instead, which is stricter — it names the database
-	// that is missing rather than reporting that some database is.
-	if (
-		cache === 'db' &&
-		resources.some((r) => r.kind === 'cache' && !r.of) &&
-		!resources.some((r) => r.kind === 'database')
-	) {
-		throw new CacheNeedsDatabase(
-			resources.filter((r) => r.kind === 'cache').map((r) => r.id),
-		);
+	// A cache the config placed in a database becomes an *edge*, here, once.
+	//
+	// `services.cache: 'db'` names something that exists in this graph, which
+	// makes it different in kind from `upstash` or `elasticache`: those name a
+	// backend nothing declares, while this one names a database sitting right
+	// there. So it is resolved to `of` — the same field `database.cache()` sets
+	// — and every reader downstream follows an edge instead of re-deriving the
+	// answer from a string.
+	//
+	// It also turns a silent guess into an error. "The declared database" is
+	// unambiguous with one and arbitrary with two, and picking whichever came
+	// first would put the cache in a database nobody chose.
+	//
+	// A cache that named its parent is untouched: the declaration is the
+	// stronger statement, and its parent is checked by `assertDerivations`,
+	// which names the database that is missing rather than reporting that some
+	// database is.
+	if (cache === 'db') {
+		const placeless = resources.filter((r) => r.kind === 'cache' && !r.of);
+
+		if (placeless.length > 0) {
+			const databases = resources.filter((r) => r.kind === 'database');
+			const [only] = databases;
+
+			// Starting a Postgres to hold only a cache would be the container this
+			// design refuses to invent.
+			if (!only) {
+				throw new CacheNeedsDatabase(
+					resources.filter((r) => r.kind === 'cache').map((r) => r.id),
+				);
+			}
+
+			if (databases.length > 1) {
+				throw new CacheIsAmbiguous(
+					placeless.map((r) => r.id),
+					databases.map((r) => r.id),
+				);
+			}
+
+			for (const resource of placeless) resource.of = only.id;
+		}
 	}
 
 	return { stage, events, cache, containers: [...containers], resources };
@@ -476,6 +550,31 @@ export class CacheNeedsDatabase extends Error {
 				`'elasticache'. Caches affected: ${ids.join(', ')}.`,
 		);
 		this.name = 'CacheNeedsDatabase';
+	}
+}
+
+/**
+ * `services.cache: 'db'` in an app that declares more than one database.
+ *
+ * The config says *a* database and the graph offers several, so there is no
+ * answer to give — and the wrong kind of failure would be to pick one, since a
+ * cache silently landing in the wrong database is a bug that surfaces as
+ * missing rows much later. The fix is a stronger statement in application code:
+ * `orders.cache('Sessions')` names the database, which is a fact about the
+ * application rather than a deployment choice.
+ */
+export class CacheIsAmbiguous extends Error {
+	constructor(
+		readonly ids: readonly string[],
+		readonly databases: readonly string[],
+	) {
+		super(
+			`A cache backed by the database needs to know which one, and this app ` +
+				`declares ${databases.length}: ${databases.join(', ')}. Declare the ` +
+				`cache from its database — e.g. ${databases[0]}.cache('Sessions') — ` +
+				`rather than with services.cache. Caches affected: ${ids.join(', ')}.`,
+		);
+		this.name = 'CacheIsAmbiguous';
 	}
 }
 

@@ -88,8 +88,60 @@ export function serviceKey(id: string): string {
 }
 
 /**
+ * The table a cache keeps its entries in, when nobody named one.
+ *
+ * Derived from the cache's own id rather than fixed at `cache`, because a
+ * database may hold more than one and two caches sharing a table share a
+ * keyspace — `orders.cache('Sessions')` and `orders.cache('Rates')` would
+ * silently read each other's entries and evict each other's keys.
+ *
+ * Prefixed rather than suffixed so every cache sorts together in `\dt`, and
+ * prefixed at all so a cache named for a thing the application also stores —
+ * `orders.cache('Users')` — cannot collide with the table holding that thing.
+ *
+ * Read by whoever composes the URL and by whoever creates the table, so both
+ * default the same way.
+ *
+ * @example cacheTable('Sessions') // 'cache_sessions'
+ */
+export function cacheTable(id: string): string {
+	return `cache_${id.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}`;
+}
+
+/**
+ * Kebab-cases an identifier, acronym- and digit-aware.
+ *
+ * `userName` → `user-name`, `APIKey` → `api-key`, `S3Bucket` → `s3-bucket`.
+ *
+ * The last of those is why this is here rather than `snakecase(id)` with the
+ * underscores swapped: lodash splits a digit from the letter beside it, so
+ * `S3Bucket` became `s-3-bucket` on one provider and `s3-bucket` on the other.
+ * Two implementations of one rule, agreeing on every id anybody had tried.
+ *
+ * `environmentCase` already corrected for the same thing in the other
+ * direction — `api2` keeps its digit — so the two spellings of "kebab this id"
+ * in this file did not even agree with each other.
+ */
+export function kebabCase(value: string): string {
+	return value
+		.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+		.replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+		.replace(/[\s_]+/g, '-')
+		.toLowerCase();
+}
+
+/**
  * The physical name a target provisions a construct under — lowercase kebab,
  * scoped so two stages or apps sharing an account cannot collide.
+ *
+ * **One rule, every provider.** A construct is named the same thing on AWS and
+ * on Dokploy, which is what lets a name be read across them: `Database` in the
+ * `production` stage of `kitchen-sink` is `production-kitchen-sink-database`
+ * wherever it lands. The SST target's `prefixedName` is this function under
+ * another signature and defers to it.
+ *
+ * Idempotent in its prefix: an id that already carries the scope is not given a
+ * second one, so composing names cannot double up.
  *
  * @example cloudName({ stage: 'prod', app: 'myapp' }, 'UserUploads')
  * //        'prod-myapp-user-uploads'
@@ -98,9 +150,20 @@ export function cloudName(
 	scope: { stage: string; app: string },
 	id: string,
 ): string {
-	return [scope.stage, scope.app, snakecase(id).replace(/_/g, '-')]
-		.join('-')
-		.toLowerCase();
+	return scopedName([scope.stage, scope.app], id);
+}
+
+/**
+ * {@link cloudName} for a caller that holds its scope as a list.
+ *
+ * The SST target's stacks add a segment of their own, so the prefix is not
+ * always two parts — which is the only reason this signature exists.
+ */
+export function scopedName(scope: readonly string[], id: string): string {
+	const prefix = scope.join('-').toLowerCase();
+	const name = kebabCase(id);
+
+	return name.startsWith(prefix) ? name : `${prefix}-${name}`;
 }
 
 /**

@@ -162,13 +162,11 @@ into one when the endpoint merge lands.
 
 ---
 
-## 2. The endpoints → manifest merge — *work*
+## 2. The surface is the factory — *decided, unbuilt*
 
-`RestApi` names a `routes` glob and declares `endpoints: []`; the build never
-fills it. This is a debt introduced deliberately — the construct cannot import
-route modules to answer "what paths exist" without evaluating the whole runtime
-graph — but it is a seam, not a resting place. Three things stay broken while it
-is open:
+`RestApi` declares `endpoints: []` and the build never fills it, so the manifest
+*claims no routes* while seven exist. Three things stay broken while that is
+true:
 
 - **A surface cannot drive route generation.** Two pipelines describe the same
   routes: the manifest's `rest-api` node, and `EndpointGenerator`'s `RouteInfo[]`.
@@ -179,11 +177,103 @@ is open:
   origin appears on an auth server's trusted list only because the *surface*
   declares that edge explicitly, not because its routes do.
 
-**The obstacle is real and worth stating.** `EndpointFactory.dependsOn()`
-immediately collapses into `.services()`, so the construct identity is gone by
-the time an endpoint exists — only the `Service` objects survive. Recovering ids
-means threading the constructs through every copy-on-write branch of the factory
-(a dozen call sites), or registering endpoints onto their surface at build time.
+### The resolution: an endpoint is created *from* its surface
+
+This was written up as a merge problem — infer, after the fact, which surface a
+glob-discovered endpoint belongs to. It is not one. The endpoint has no surface
+because `e` is a **free factory**: `e.post('/users')` produces an endpoint that
+belongs to nothing, and everything downstream is an attempt to recover an owner
+that was never recorded.
+
+So the surface owns the factory:
+
+```ts
+const api = new RestApi('Api', { default: 'none' });
+
+export const listUsers = api.get('/users').dependsOn([database]).handle(…);
+```
+
+`.handle()` is terminal, and that is where the endpoint registers onto `api`.
+`api.declare()` then returns its real endpoints because it collected them —
+no merge, no inference, no second pipeline.
+
+**`e` is a v9 concern and is not used going forward.** An endpoint nothing serves
+is not a thing, and keeping the free factory would keep the unattributed case
+alive beside the fix.
+
+**The glob does not go away, and does not do attribution.** It loads the modules
+so the registrations happen as an import side effect. Discovery and attribution
+were the same question only because nothing recorded an owner; they are now
+separate, and the glob answers only the first.
+
+**The glob's failure mode gets sharper, and is worth a warning.** Registration
+becomes an *import side effect*, so a module the glob does not match never
+registers its endpoints — and they are then missing from the manifest, the
+generated server and the deploy at once, with no error. That is the same silence
+an unmatched `database` already produces, and nothing reports either: `discover`
+streams the matches and never asks whether there were none. Documented in the
+public guide now (getting-started, project-structure); the diagnostic §6c.3
+proposes for the container case would cover this one too.
+
+**This makes `Auth` and `Api` the same shape.** `BetterAuth` already declares its
+own endpoint — one wildcard, `ANY {basePath}/*` → `Auth.handler`, because
+better-auth routes internally and enumerating its paths would be a copy of its
+router that goes stale. That looked like an asymmetry worth designing around: auth
+splittable today, `Api` blocked. It was an artefact of `e` being unowned. Both
+surfaces declare their own endpoints; one happens to have a single wildcard.
+
+**Cost, stated.** `EndpointFactory` is copy-on-write — every `.services()`,
+`.dependsOn()`, `.output()` returns a new factory, at ten-plus sites. The
+registration has to reach the *original* surface, so one owner reference is
+carried through the copies, the way `defaultConstructs` and `defaultRlsConfig`
+already are in `createBuilder`. The earlier estimate — "threading the constructs
+through every copy-on-write branch" — was pricing a different fix.
+
+One thing to decide when building it: `.handle()` registering means the side
+effect happens on import whether or not the export is read, which is what a glob
+needs, but a builder constructed and discarded still registers.
+
+**Migration.** 35 files and 213 call sites use `e`, but the meaningful surface is
+small: four `init` templates, which is what a new project starts from, and two
+files each in kitchen-sink and example. The rest are tests, fixtures and
+benchmarks that follow the templates.
+
+### What it unblocks: one bundle per surface
+
+Tree shaking is already on — esbuild `--bundle --format=esm` — and can do nothing,
+because the generated entry reaches every endpoint by construction:
+
+```
+app.ts
+ ├── setupEndpoints → endpoints/index.ts → minimal/ + standard/ + full/ → all 7
+ └── serverHooks    → hooks.ts → mounts auth.handler
+```
+
+`better-auth` is in the deployed API bundle for that reason. **The bundle boundary
+is the generator's, not the bundler's.**
+
+The generated tree groups by **optimisation tier** — `minimal` (no auth, services,
+audits, events, rate-limit or RLS: near-raw Hono), `standard` (auth and/or
+services), `full` (audits, RLS or rate-limiting). That is a property of *an
+endpoint*, and orthogonal to which server serves it. Grouping directories by it
+means no cut in the tree separates one surface from another.
+
+The two axes compose. Tier stays what it is; the *entry* becomes per-surface:
+
+```
+endpoints/
+  api/   standard/listUsers.ts …  → api/index.ts   → .gkm/server/api.ts
+  auth/  standard/handler.ts      → auth/index.ts  → .gkm/server/auth.ts
+```
+
+Each entry then imports only its own endpoints and tree shaking does the rest for
+free — no new machinery, because the generator already writes one file per
+endpoint and knows the path it wrote.
+
+**This retires `path` on `rest-api`.** It was added so a surface could say where
+to build from, and a surface's build input is not a directory — it is the
+generated entry above. `site` keeps `path`, because a Vite app genuinely is a
+directory.
 
 ---
 
@@ -232,26 +322,104 @@ distribution, a signed read comes from the bucket's own host. It is documented i
 the construct's docblocks rather than smoothed over, because a presign and a
 CloudFront signature share only the word "signed".
 
-### 4.2 The local CDN-shaped host — *work*
+### 4.2 The local CDN-shaped host — **resolved**
 
-`UPLOADS_SERVER_URL` resolves to MinIO's **path-style** address, which works and
-is not the deployed shape. MinIO's virtual-host mode reads the leading label *as
-the bucket name*, so it only produces the CDN shape when the server's id and the
-bucket's agree — and never for a server fronting two buckets.
+`UPLOADS_SERVER_URL` is `https://<server>.<project>.localhost:<port>` — a host
+of its own, over TLS, which is the shape it has deployed. A **Caddy** container
+does the mapping, derived from the declaration exactly as MinIO is: a
+`file-server` implies the edge, and the generated Caddyfile gives each declared
+server a host that rewrites its bucket in as a prefix.
 
-The honest fix is a small proxy in front of MinIO mapping host and path patterns
-onto buckets the way a distribution does. It is additive, changes no construct
-API, and is the only component that could also verify a signature locally. **An
-AWS emulator does not supply it:** CloudFront emulation in LocalStack and in
+Not a CDN, deliberately. Varnish, Apache Traffic Server and the rest are
+*caching* layers, and caching is not what was missing — the mapping and the
+certificate were. **An AWS emulator supplies neither:** CloudFront emulation in
 floci is control plane only — distributions, origins, behaviours, invalidations
 — which provisions a distribution that never serves a byte.
 
-### 4.3 `--target=server` — *decided, unbuilt*
+The leading label is the *server's* stage-scoped name rather than the bucket's,
+which is what fixes the case MinIO could never serve: two servers over one
+bucket are a legitimate arrangement — two cache behaviours, one origin — and
+naming the host after the bucket collides them.
 
-**Decision: MinIO, the same way local works.** The server target grows a MinIO
-container and the file server resolves path-style with the same bucket policy.
-Cheap, because the reconcile pipeline *is* the mechanism. The proxy in §4.2
-serves both targets when it lands.
+Three things fell out of it that are worth more than the shape:
+
+- **Local HTTPS.** Caddy issues per-host certificates from its own CA.
+  Reconcile copies the root out of the container and injects
+  `NODE_EXTRA_CA_CERTS`, so Node and the test suite trust it with no `sudo` and
+  nothing installed; a browser wants a one-time `caddy trust`.
+- **One edge, every stage.** The root Caddyfile only imports; each stage writes
+  `.gkm/caddy-sites/<stage>.caddy`. A single file would have meant `gkm test`
+  deleting the routes `gkm dev` is serving — the first artefact where two
+  stages could collide, since one Postgres already holds `orders` and
+  `orders_test` without trouble.
+- **An assigned port, not 443.** The whole point of allocation is that two
+  projects run at once, and an edge insisting on the privileged port puts that
+  back. Nothing that reads a hostname — a cookie domain, a CORS origin — looks
+  at the port.
+
+Still open, and it is the interesting half: **the edge does not verify
+signatures.** Caddy cannot check a CloudFront signed URL or cookie — that is RSA
+against a key group, and nothing declares key material yet (§4.1) — so a signed
+read is still an S3 presign at the bucket. The proxy that could verify one is
+now a *replacement* for the reverse-proxy block rather than a new component,
+which is a much smaller job than it was.
+
+**Surfaces and sites are behind it too**, which was the larger prize and is the
+reason the edge is not a file-server feature. `EDGE_KINDS` is the whole of the
+list, so adding a kind to it is adding it to the edge; a file server routes to
+the object store with its bucket rewritten in, while a surface and a site route
+to the process `gkm dev` started on the host.
+
+What that buys is the cookie model. On `http://localhost:<port>` every address
+is one host with a different port, which shares no parent, so `cookieDomain`
+correctly derived *nothing* — a different model from the deployed one rather
+than a less secure version of it. Behind the edge kitchen-sink resolves
+`AUTH_COOKIE_DOMAIN=.kitchen-sink.localhost`, and the trusted-origin list is the
+sibling's real origin rather than a port.
+
+Two things this made explicit, both now stated in code:
+
+- **The application cannot tell.** It reads whichever address was injected and
+  composes none, so `edge: false` falls back to `http://localhost:<port>` and
+  the path-style bucket address without a line of application code changing.
+  That is what makes this the target's decision rather than an API.
+- **Origins and cookie domains derive from *resolved* addresses**, not from the
+  ones the workspace assigned. `envFor` resolves every construct before any
+  surface reads its callers, because reading them as the loop reached them
+  would make the answer depend on the order the manifest was keyed in.
+
+### 4.3 `--target=server` — *the old decision is superseded*
+
+The recorded decision was **"MinIO, the same way local works — path-style, with
+the same bucket policy."** That no longer describes local: §4.2 landed, and a
+file server now answers on a host of its own over TLS. Keeping it would
+reintroduce a path-style address on exactly one target, which is the drift the
+model exists to remove.
+
+What replaces it depends on which server target, and they are not the same:
+
+- **A bare `--target=server`** — nothing supplies an ingress, so the same
+  generated Caddyfile is the answer. `sitesFor` → `toCaddyfile` already produces
+  it; what differs is the upstream and real certificates instead of the internal
+  CA. Cheap, and it keeps every target the same shape.
+- **Dokploy** — it *is* the ingress. It runs Traefik and issues Let's Encrypt
+  certificates, and the deploy path already creates domains with
+  `https: true, certificateType: 'letsencrypt'`. A second reverse proxy behind
+  the first would terminate TLS twice and give a route two places to be wrong.
+  So MinIO becomes a Dokploy service with a domain of its own, exactly as the
+  API does, and no Caddy.
+
+Neither is reachable yet, for a reason larger than the file server — see §6b.
+
+**And the open paths do not survive the trip.** `bucketPolicies()` and
+`bucketPolicy()` already turn `open: ['brand/**']` into an anonymous
+`s3:GetObject` policy on those prefixes, and MinIO accepts an S3 bucket policy
+verbatim — so the mechanism needs no porting. What is missing is upstream of it:
+both take the *local reconcile plan*, and the Dokploy provisioner table has no
+`objects` entry and no `file-server` entry, so the bucket is never created there
+and the policy is never applied. A deploy that reached this point would serve
+nothing publicly and report no error, which is the same shape of silence as a
+kind being skipped. One provisioner, not a feature.
 
 ### 4.4 A known asymmetry — *documented, no action*
 
@@ -262,6 +430,66 @@ the policy and is refused by the client. The client is the stricter of the two,
 so nothing it refuses was ever relied on the policy to refuse — but a key fetched
 directly, bypassing the client, can be admitted. Prefer `**` where crossing
 segments is what you meant.
+
+### 4.4b Choosing a backend — *layer one and two done, three is the next step*
+
+`services.storage` exists now, so a bucket can say where it lives the way a
+cache and a mailer already could, and defaults follow the deploy target rather
+than being flat. That closes the question of *what happens when nobody said*.
+What it does not close is **per-construct** choice, which is the point of the
+whole selector: two buckets in one app, one on S3 and one on the box.
+
+The intended shape is three layers, each finer than the last, each overriding
+the one above:
+
+| layer | scope | where | state |
+|---|---|---|---|
+| target-aware default | everything | `DEFAULT_*` in `types.ts` | done |
+| `services.<concern>` | one concern, whole workspace | `gkm.config.ts` | done |
+| `gkm.{stage}.deploy` | **one construct, one stage** | its own file | *work* |
+
+The third is what makes "pick and choose parts" true rather than nearly true.
+`services.storage: 's3'` moves *every* bucket, and a project with a public
+assets bucket on R2 and a private uploads bucket on the box cannot say so. A
+per-stage file naming constructs directly can:
+
+```
+Uploads  → minio
+Assets   → r2
+Sessions → upstash
+```
+
+Two properties worth keeping when it lands. It is **per stage**, so staging can
+put everything on the box and production can put it in S3 without either being
+the odd one out in a shared file. And it **overrides rather than replaces** — a
+construct absent from it falls through to `services.<concern>` and then to the
+target default, so the file stays short and only says what is unusual.
+
+Note this is a resolution layer, not a new vocabulary: the values are the same
+`StorageBackend`, `CacheBackend` and `EmailBackend` the other two layers use, so
+nothing downstream learns a third way to ask the question.
+
+---
+
+### 4.5 Cache rules do not exist — *undesigned, not a Dokploy gap*
+
+`FileServerDeclaration` is `of` and `open` and nothing else. There is no `maxAge`,
+no `Cache-Control`, no TTL, on any target.
+
+Worth stating because the code reads as though there were. `file-server.ts:58`
+says a pattern is enforced "by the bucket policy, by **the cache behaviour**, and
+by this construct's own runtime check" — and that is CloudFront's *path-pattern
+behaviour* being used as the signing boundary. It is an authorization mechanism
+that happens to be named cache, and reading it as a caching feature suggests a
+port to Dokploy that has no source to port from.
+
+If it is wanted, note that it lands three different ways at the edge — a
+CloudFront cache policy, Traefik middleware, a `header` directive in the
+Caddyfile — while `Cache-Control` set as **S3 object metadata at upload time**
+behaves identically on all three, because it travels with the object rather than
+with the edge. `getUploadURL` already presigns the PUT, which is the natural
+place to carry it. That would make a cache rule a property of the object rather
+than a rule three targets have to agree on.
 
 ---
 
@@ -364,7 +592,95 @@ error.
 
 ---
 
-## 6b. Dokploy as a Pulumi provider — *prototyped, undecided*
+## 6b. Dokploy — *deployed, and what that cost*
+
+**This was the largest gap in the repo. It is now the most exercised path in
+it.** A stage is deployed: the project, the application, a Postgres carrying
+forty-five applied role statements, a MinIO compose stack, twenty-one resolved
+environment keys, and a Let's Encrypt domain. What it cost to get there is
+below, because most of it was only findable by deploying.
+
+What the gap was, because the shape of the fix follows from it:
+`packages/cli/src/deploy/` contained no reference to `reconcile`, `discover`,
+`envFor`, or the construct manifest — checked, not remembered. It resolves
+environment entirely from the **sniffer**, which walks application code for
+`get('X')` calls. A construct reads its own key *inside* `@geekmidas/constructs`,
+so there is no `get('UPLOADS_URL')` in an app to find: the same blind spot that
+was silently dropping 12 of 25 declared URLs in `gkm test` until §7.4's work.
+
+So a declared app deployed to Dokploy today gets **none** of the model. No
+database roles, no schema tenants, no cache table, no broker connection string,
+no bucket, and none of the declared URLs. The only buckets `deploy/` knows about
+are database *backup* destinations.
+
+The failure mode is the bad kind. Nothing provisions `Uploads`, nothing resolves
+`UPLOADS_URL`, and nothing *reports* it missing — because the sniffer never
+learned it was needed. The deploy succeeds, the app starts, and the first upload
+fails inside the construct at runtime.
+
+The two targets are therefore not two targets for one model: the AWS target
+reads the manifest and Dokploy is what came before it. Everything below was
+written as "should Dokploy become a Pulumi provider?", and it is still a good
+question — but it is now the *second* one. `fromManifest` is already a table of
+provisioners keyed by kind, which is exactly the shape a Dokploy target needs,
+and that is an argument for the provider rather than a separate concern.
+
+### What is built
+
+The provisioner table exists: `packages/cli/src/deploy/fromManifest.ts`, keyed by
+declaration kind over the REST wrapper, with `declared.ts` running it and the
+deploy applying what it defers. Covered today:
+
+| kind | on Dokploy |
+|------|-----------|
+| `database` | a Dokploy Postgres, plus roles from the shared generator |
+| `database-schema` | a schema in the parent's cluster, own role, own URL |
+| `database-reader` | the writer's endpoint through a read-only role |
+| `cache` | a table in the declared database, its name in the URL |
+| `secret` | derived from project and stage, stable across deploys |
+| `rest-api` | the domain Dokploy issued, via its own Traefik |
+| `objects`, `file-server`, `email`, `queue`, `topic` | **skipped** — no Dokploy primitive; Compose stacks, and a decision nobody has taken |
+
+Three properties worth stating because they were decisions, not accidents:
+
+- **The DDL is the shared one.** `roleStatements` and `cacheTableStatements`,
+  the same generators the local and AWS targets call. The hand-rolled `DO $$`
+  block in `initializePostgresUsers` is gated on *not* having adopted the model
+  and marked deprecated — its only remaining caller is §6c.1.
+- **A kind with no primitive is skipped, not fatal.** Refusing to deploy an app
+  because it also declares a bucket would be worse than deploying it without
+  one. The cost is honest: the key is absent, and the construct says so on first
+  use.
+- **Nothing has run against a real Dokploy server.** Twenty-seven assertions
+  cover the decisions against a fake REST wrapper. The decisions are verified;
+  the integration is not — the same distinction §8 draws for AWS.
+
+### Where the state is, and what the declared half does not put in it
+
+Deploy state is a `StateProvider`: `LocalStateProvider` writes
+`.gkm/deploy-<stage>.json` by default, and `state: { provider: 'ssm' }` wraps
+SSM Parameter Store as the source of truth with that file as a cache. It holds
+the Dokploy project and environment ids, application ids, service ids, per-app
+credentials, generated secrets, DNS records and backup state.
+
+**The declared half writes none of it**, and that is the interesting part. It
+finds a Postgres by name and creates one if absent, and it *derives* every
+password from `project:stage:role`. So there is nothing to remember: the name is
+the identity and the credential is a function. Reconciling twice converges
+without a file, which is the same property the local target has.
+
+That sharpens the question below rather than answering it. "Remembering what you
+created is the entire job of a Pulumi state file" is a strong argument for the
+half that genuinely remembers — domains, DNS records, backup destinations,
+application ids — and no argument at all for the half that does not. A provider
+wrapping the declared table would be adding state to something that had shed it.
+
+The cost of statelessness is worth writing down too: **a renamed construct
+orphans what the old name created.** `findOrCreate` makes a new Postgres and
+nothing removes the old one, because nothing recorded that it was ours. The
+local target has the same behaviour and it matters less there.
+
+### The engine that exists
 
 `packages/cli/src/deploy/` is a deployment engine written by hand. It calls
 Dokploy's REST API, and it remembers what it created — `deploy/state.ts`,
@@ -386,8 +702,9 @@ provider coverage stops (`vercel/providers/dns-record.ts`,
 - One adapter shape across both targets — `fromManifest` is already a table of
   provisioners, and `--target=server` becomes another table rather than a
   parallel engine.
-- Better coverage where it is worst. Every currently failing test in this repo
-  lives in `deploy/`.
+- Better coverage where it is worst. `deploy/` is the least covered subsystem —
+  though no longer the failing one: those suites pass now that §7.4 starts the
+  emulator they are written against.
 
 **What has to be answered first**
 
@@ -417,6 +734,42 @@ prototype rather than plan:
    a spectacular way to lose one.
 
 Nothing has run against a real Dokploy server.
+
+### What the first deploys found — **resolved**
+
+Two findings from the first deploy that reached Dokploy, both about the same
+thing: an application is created before anything has read the manifest.
+
+**It carries no stage.** The name comes from `docker.imageName`, so the database
+beside it reads `production-kitchen-sink-database` — scoped, from `cloudName`,
+the rule the AWS target uses — and the application reads `kitchen-sink`.
+Deploying `staging` into the same project would match that by name and redeploy
+production. The fix is not to scope this name but to stop deriving it here: an
+application serves a `rest-api`, and the declaration that names the surface
+should name the container. That needs the manifest discovered *before*
+applications are created rather than after — a reordering, not a rename, which
+is why the interim scoping was reverted rather than shipped.
+
+**It serves two surfaces in one process.** `Api` and `Auth` are both `rest-api`
+declarations, and the auth half is mounted by a server hook whose own comment
+says it "goes away when the build emits surfaces". `constructs-paradigm.md`
+already decided this — *"The auth server is its own surface"* — with its own
+scaling, blast radius and `AUTH_URL`.
+
+**§2 blocks the general case but not this one.** A surface cannot drive route
+generation because `RestApi` declares `endpoints: []` and the build never fills
+it, so `Api`'s routes still come from the glob. But `Auth` is self-describing:
+`auth.ts:154` declares its `rest-api` node with the endpoint already on it —
+`ANY {basePath}/*` → `Auth.handler`, with its dependencies and required secret.
+So the auth server can be generated from the manifest today.
+
+Two things stop being degenerate when it is. `cookieDomain` currently returns
+nothing because there is one host; with `api.` and `auth.` under one domain it
+derives a real parent, which is the case it was written for. And
+`surfaceAddresses` stops handing every surface the same address under a comment
+apologising for it.
+
+---
 
 ## 6c. The CLI and what it scaffolds — *partly done*
 
@@ -452,16 +805,27 @@ that decides both is the duplication this design removes, restated in the
 scaffold. Removing it for single-app projects is a gate at the call site plus
 four test rewrites; the fullstack path still needs its copy until §6c.1 lands.
 
-### 6c.3 The glob is a switch with a sharp edge — *documented, no action yet*
+### 6c.3 The glob is a switch with a sharp edge — *diagnostic built; the migration case remains*
 
 Because derived containers are ignored rather than obeyed, adding a `constructs`
 glob to an existing project **removes** its Postgres and MinIO until it declares
 the database and the bucket that imply them. That is the intended semantics —
 a config and a declaration that disagree is the failure the model exists to
-remove — but it is a migration hazard with no warning attached. The cheap
-version is a diagnostic: a glob is configured, `services.db` is set, and no
-`database` kind was discovered, so say which container is about to disappear and
-why.
+remove — but it is a migration hazard with no warning attached.
+
+**Half of this is now built**, for the neighbouring failure rather than this one.
+An *under-inclusive* glob is the same silence from the other direction: nothing
+appears, because a file the glob missed is a declaration that does not exist.
+`discover` now warns on the two unambiguous cases — a configured glob that
+matched no files, and matched files that declared nothing — and stays quiet when
+no glob is configured, which is a project that has not adopted constructs and has
+nothing to be missing. It is explicit in the public guide too, since the symptom
+always appears somewhere other than the cause.
+
+What remains is the *migration* case above: a glob is configured, a container
+was previously implied by config, and no declaration of that kind was found — so
+name the container that is about to disappear and why. It needs the previous
+state to compare against, which the diagnostic in `discover` does not have.
 
 ### 6c.4 `secret` has no construct — *by design*
 
@@ -510,21 +874,34 @@ like an empty database rather than an error.
 generators — the layering question that had held this up, answered by there
 being two callers rather than one.
 
-### 7.4 Test suites that need containers — *environment*
+### 7.4 Test suites that need containers — **resolved**
 
-The `@geekmidas/events` half is **resolved** — it has a vitest config, and its
-specs are discovered. What that surfaced remains: the RabbitMQ and pg-boss ones
-need brokers, as do the Postgres-bound integration specs in `constructs` and the
-LocalStack-bound `deploy` specs in `cli`.
+A suite now starts what it needs. `ensureServices` in
+`packages/testkit/test/services.ts` runs `docker compose up -d --wait` for the
+named services, and the packages that connect to something call it from their
+`globalSetup`: `db` and the Postgres-bound `constructs` specs get Postgres,
+`cache` gets Redis and the HTTP proxy in front of it, `cli` gets the AWS
+emulator its `deploy` specs drive.
 
-Worth knowing, because it is louder than a skipped suite: with nothing running,
-`vitest list` at the repo root fails during **collection** with an
-`ECONNREFUSED` aggregate error rather than reporting the tests it could not
-reach. A collect-time connection is why — the failure is in enumerating the
-suite, not in running it.
+**This is what `gkm test` already did for an application**, and the gap was that
+the toolbox's own suites did not use it. `gkm test` reconciles what an app
+declares and starts exactly those containers — which is why kitchen-sink's suite
+needs no setup at all. A package suite has no manifest to read, so its
+containers come from the repo's own `docker-compose.yml`, and nothing started
+that.
 
-None of this is new breakage — it is previously invisible breakage now visible,
-plus a documented port conflict with another project on 5432/4566/8079.
+What it cost was not "a few skipped tests". A `globalSetup` that connects at
+collection time takes the whole *project* down with `ECONNREFUSED` when its
+database is missing, so a package reported **zero** tests rather than the ones
+it could have run. `packages/cache` compounded it by having no vitest config at
+all: five suites, 79 tests, never once executed.
+
+The visible result: **the repo has no failing tests.** The 16 in `deploy/` were
+never broken — nothing had started the emulator they are written against, and
+they pass the moment something does. Recreating a container whose definition has
+drifted falls out of the same call, which matters more than it sounds: a
+container created from an older compose file, running and healthy with its ports
+unpublished, is unreachable in a way that reads like a code failure.
 
 ### 7.5 Dev-server resilience — *parked, documented*
 
@@ -540,43 +917,122 @@ generators.
 
 Stated plainly, because "tests pass" and "it works" are different claims.
 
-- **Nothing has been deployed.** No AWS credentials in this environment; the AWS
-  target's six provisioners are verified as pure decisions, not as a stack.
-- **The file server has not run against MinIO.** Docker was not up. The bucket
-  policy is asserted as a document, not as an applied policy.
-- **kitchen-sink has not been re-run end to end** since the API, file server,
-  auth surface and role changes. It was verified end to end from an empty volume
-  in an earlier session — magic-link sign-in through Mailpit, presigned MinIO
-  upload, pg-boss fan-out, cache in Redis — but not since. The role change is the
-  one most worth re-running: every local URL now carries a derived per-role
-  credential rather than the cluster master, and an existing dev database has
-  tables owned by the old one.
+- **Nothing has been deployed to AWS.** No credentials in this environment; the
+  AWS target's six provisioners are verified as pure decisions, not as a stack.
+  Dokploy is the opposite now — see §6b.
+- ~~**The file server has not run against MinIO.**~~ **Resolved.** It has, from
+  an empty volume: a presigned `PUT` that accepts bytes, the object readable
+  unsigned at the declared `open` prefix, and `403` on a path that is not on the
+  list. The bucket policy is applied and enforced, not asserted as a document.
+- ~~**kitchen-sink has not been re-run end to end.**~~ **Resolved, and it is a
+  suite now** rather than a session someone remembers — `pnpm test` in
+  `apps/kitchen-sink`, 28 assertions against the reconciled `test` stage, run
+  cold from a dropped database and warm. Magic-link sign-in through Mailpit,
+  `user.created` *and* `user.updated` fanning out into rows, the queue worker
+  sending the welcome mail exactly once, the cache serving and being
+  invalidated, and the presigned upload above.
+
+  It drives the **generated entry point** — the same `.gkm/server/app.ts` that
+  `gkm dev` runs — which is the half that had never been covered: driver
+  registration lives there, and a driver that disagrees with the URL the target
+  composed is invisible to every unit test in the repo. That was a real bug, and
+  it is now a test.
+
+  What the run found, all fixed: the cache backend ignored in four places, a
+  schema owned by a role that could not create in it, `services` dropped on the
+  way to the entry point, two caches in one database sharing a table, and
+  `gkm test` filtering away the very URLs it had just resolved.
+- ~~**The declared DDL has not been applied on Dokploy.**~~ **Resolved.**
+  Forty-five statements applied against a real Dokploy Postgres, convergent —
+  the second pass reports `0 new`. The roles, the schema ownership and the
+  `search_path` pinned on the role all exist on a cluster nothing in this repo
+  created by hand.
+- **The frontend has never been built.** `web` is a deploy unit derived from the
+  manifest now, but no run has reached the Vite build, so that path is asserted
+  rather than exercised — see §5.
 - **The database bootstrap has never run.** Its decisions are asserted as pure
   data — the event it composes is fed straight into the DDL generator in a test
   — but no Lambda has connected to a real cluster.
 - **No mail has been sent through SES**, so the SMTP password derivation is
   verified against the documented algorithm and not against the service. See
   §1.3.
-- **No cache backend has run outside its tests.** In particular the Postgres
-  cache's table DDL has never been applied, and the ElastiCache cluster has
-  never been created.
+- **No cache backend has run outside its tests** *except the Postgres one*,
+  which now does on every reconcile: the table is created in the tenant's
+  schema, owned by its owner, and read through the URL that carries its name.
+  The ElastiCache cluster has still never been created.
+- **The `sns` events backend has no local target.** `UnprovisionedEventsBackend`
+  says so rather than composing a URL that would fail at the first publish: SNS
+  and SQS are addressed by ARN, and nothing creates the topic, the queue or the
+  subscription in the emulator. The event clients already accept a custom
+  endpoint, so what is missing is a provisioning step beside the one that
+  creates buckets in MinIO — and until it lands, the claim that the same
+  handlers drain pg-boss here and SQS deployed is asserted rather than tested.
+  `pnpm test:sns` in kitchen-sink is the switch, and it fails on exactly this.
 
 ---
 
-## Suggested order
+## What happens next
 
-Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
-bill and the security model, and the rest follows them.
+Ordered. Each is small enough to finish, and the first two block publishing
+anything at all.
 
-1. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
-   in the repo, and everything below is easier to trust once one stack has come
-   up. Re-running kitchen-sink locally against the new roles is the same point
-   in miniature and costs minutes.
-2. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
-   is the largest remaining piece of correctness debt in the model.
-3. **§5 kitchen-sink frontend** — makes four already-built derivations observable
-   rather than merely tested, and is cheap.
-4. **§6c.1 the fullstack workspace** — the last path that still declares its
-   infrastructure twice, and the one a new user is most likely to meet, since it
-   is one of the two templates the init prompt offers.
-5. **§7.2** — small, and the kind of gap that hides others.
+### 1. The v10 docs, before this merges
+
+The published guide teaches config that no longer compiles, which is worse than
+teaching nothing. Four concrete breaks:
+
+- `cli-reference.md` documents `cache: true`. That is a **type error** now — the
+  key takes a backend name and nothing else.
+- `dev-server.md` carries a table mapping `services.db: true` → a Postgres
+  container. That mechanism is gone; containers come from the manifest. Its
+  caveat — "on the declared path this table does not apply" — described a world
+  with two paths, and there is one.
+- `fullstack-init.md` scaffolds `services: { db: true, cache: true }`.
+- Both doc sites give `gkm login --provider hostinger`. The flag is `--service`;
+  `--provider` errors.
+
+And the Dokploy section of `deployment.md` documents **deleted behaviour** — a
+"Phase 1" that provisions per-app database users, with `CREATE USER "api"` SQL.
+That was `initializePostgresUsers`, removed with the legacy path. The model is
+runtime/owner/reader roles per *declared database*, not a user per app.
+
+Undocumented and new: `services.images`, and `name` in the gkm config — which is
+the scope every deployed resource is named from, so its absence is the largest
+single hole.
+
+### 2. Retire `path` on `rest-api`
+
+The design says a surface's build input is its generated entry; the code still
+carries a `path` that says it is a directory. One of the two is wrong and it is
+the code. `site` keeps `path`, because a Vite app genuinely is a directory.
+
+### 3. §2 — the surface is the factory
+
+The largest remaining piece of correctness debt, and mechanical now rather than
+open. An endpoint is created from its surface, so it registers on one; `e`
+retires with v9; the glob returns to loading modules. It unblocks per-route IAM,
+`rest-api` on AWS, and one bundle per surface — the last of which is what makes
+a declared server actually its own process.
+
+### 4. §5 — build the frontend
+
+`web` is a deploy unit derived from the manifest now, and has still never been
+built. The first run will find something; that path has never executed.
+
+### 5. §6c.1 — the fullstack workspace
+
+The last shape that declares its infrastructure twice, and the one a new user
+meets first, since it is one of two templates `init` offers.
+
+### 6. §7.2 — spec files in the project typecheck
+
+Small, and the kind of gap that hides others.
+
+---
+
+**Not in the queue, waiting on a decision or on someone else.** Mail has no
+Dokploy provisioner and the deployed stage carries placeholder credentials, so
+magic-link sign-in fails at send — it needs real SES or Resend keys, not code.
+Ports 80 and 443 are filtered on the test host, so the issued domain resolves
+and cannot be reached. And §1's AWS provisioners remain verified as decisions
+rather than as a stack.

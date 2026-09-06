@@ -241,7 +241,7 @@ export default defineWorkspace({
     //   dependencies: ['api', 'auth'],
     // },
   },
-  services: { db: true, cache: true },  // the pre-constructs shape — see the note at the top
+  services: { cache: 'db' },  // where the cache lives; the database is declared, not flagged
 });
 ```
 

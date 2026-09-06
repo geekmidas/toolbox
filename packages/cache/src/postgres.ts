@@ -144,15 +144,51 @@ export class PostgresCache implements Cache {
 export const postgresCacheDriver: CacheDriver = {
 	scheme: 'postgres:',
 	create(url) {
-		const existing = pools.get(url);
-		if (existing) return new PostgresCache(existing);
+		// The table travels in the URL, the way pg-boss's schema does.
+		//
+		// It has to, because a database-backed cache has no address of its own:
+		// two caches in one database resolve the *same* connection string, so a
+		// client built from the URL alone cannot tell them apart and both would
+		// read and write one table — sharing a keyspace and evicting each other's
+		// keys. The parameter is what makes the address identify the cache.
+		const { connectionString, table } = split(url);
 
-		const pool = new pg.Pool({ connectionString: url });
-		pools.set(url, pool);
+		const existing = pools.get(connectionString);
+		const pool = existing ?? new pg.Pool({ connectionString });
+		if (!existing) pools.set(connectionString, pool);
 
-		return new PostgresCache(pool);
+		// One pool per database, shared by every cache in it — the table is the
+		// client's, not the pool's.
+		return new PostgresCache(pool, table ? { table } : {});
 	},
 };
+
+/**
+ * A cache URL as its two facts: where to connect, and what to read.
+ *
+ * `table` is removed from the string handed to `pg` rather than left on it,
+ * because a Postgres connection string carries libpq parameters and an unknown
+ * one is not guaranteed to be ignored — and because the pool should be shared
+ * by every cache in the database, which only works if the key does not vary
+ * per cache.
+ */
+function split(url: string): { connectionString: string; table?: string } {
+	try {
+		const parsed = new URL(url);
+		const table = parsed.searchParams.get('table') ?? undefined;
+
+		if (!table) return { connectionString: url };
+
+		parsed.searchParams.delete('table');
+
+		return { connectionString: parsed.toString(), table };
+	} catch {
+		// Not a URL `URL` can parse. The driver's job is not to validate one, so
+		// this hands it to `pg` unchanged and lets that failure be the one
+		// reported.
+		return { connectionString: url };
+	}
+}
 
 const pools = new Map<string, Pool>();
 

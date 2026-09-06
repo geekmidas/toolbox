@@ -109,8 +109,56 @@ export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
  */
 export type CacheBackend = 'upstash' | 'elasticache' | 'db';
 
-/** The backend a project gets when it declares a cache and says nothing. */
-export const DEFAULT_CACHE: CacheBackend = 'upstash';
+/**
+ * Where a declared bucket actually lives.
+ *
+ * The fourth of these selectors and the last to arrive, which is why
+ * `UPLOADS_URL` had no answer on a container target: there was nothing to
+ * choose with. Like the others it changes no application code — the `s3://`
+ * scheme picks the driver, and every one of these speaks it.
+ *
+ * - `s3` — a real bucket. Nothing is created on the host; the URL is composed
+ *   against credentials you already hold, the same way `resend` is an API key
+ *   rather than infrastructure.
+ * - `r2` — Cloudflare's, reached through the same S3 API and differing only in
+ *   its endpoint.
+ * - `minio` — a container. Everything the app declares lives on the box, which
+ *   is what makes a single-host deploy self-contained, and what makes it a
+ *   single disk with no replication. Locally this is what every backend is.
+ */
+export type StorageBackend = 'minio' | 's3' | 'r2';
+
+/**
+ * The backend a project gets when it says nothing, by where it deploys.
+ *
+ * Flat defaults could not be right for both: `upstash` on a single box means a
+ * SaaS round-trip for a cache the database could have held, and `minio` on AWS
+ * means running a bucket beside S3. So the default is a function of the target,
+ * and an app that says nothing gets the obvious answer in both places — which
+ * is the whole of what "zero config" can mean once there is more than one
+ * target.
+ *
+ * `server` covers Dokploy and a bare host alike: the question these answer is
+ * whether the app is next to a managed cloud or next to its own containers, and
+ * on that question the two are the same.
+ *
+ * A per-construct, per-stage override is the layer above this — see
+ * `constructs-outstanding.md` — so two buckets in one app can differ. This is
+ * only what happens when nobody has said anything at all.
+ */
+export const DEFAULT_CACHE: Record<MainProvider, CacheBackend> = {
+	// Reachable from a Lambda with no VPC and no connection pool.
+	aws: 'upstash',
+	// The database is already there and already has a connection pool open to
+	// it. Anything else is a second service to run for a table.
+	server: 'db',
+};
+
+/** Where a bucket lives when nobody said — see {@link DEFAULT_CACHE}. */
+export const DEFAULT_STORAGE: Record<MainProvider, StorageBackend> = {
+	aws: 's3',
+	server: 'minio',
+};
 
 /**
  * Who delivers a declared app's mail.
@@ -134,7 +182,14 @@ export const DEFAULT_CACHE: CacheBackend = 'upstash';
  */
 export type EmailBackend = 'resend' | 'ses' | 'smtp';
 
-/** The backend a project gets when it declares email and says nothing. */
+/**
+ * Who delivers mail when nobody said.
+ *
+ * Flat, unlike the others, and deliberately: mail is a SaaS on every target.
+ * There is no self-hosted preset to default a container deploy to — Mailpit is
+ * a development inbox, not a sender — so `server` has no answer of its own to
+ * give and would only be `ses` written twice.
+ */
 export const DEFAULT_EMAIL: EmailBackend = 'ses';
 
 /** Supported docker-compose service names */
@@ -285,6 +340,24 @@ export interface ProvidersConfig {
 
 export interface GkmConfig {
 	/**
+	 * What this app is called, and therefore how everything it declares is named.
+	 *
+	 * The same field `sst.config.ts` carries, doing the same job: every physical
+	 * name is `{stage}-{name}-{construct}`, so `Database` in the `production`
+	 * stage of `kitchen-sink` is `production-kitchen-sink-database` on AWS and on
+	 * Dokploy alike. One statement, in the config, rather than a rule each
+	 * provider restates.
+	 *
+	 * `defineWorkspace` has always had this. A single-app config did not, so its
+	 * names fell back to whatever the directory happened to be called — the
+	 * monorepo's package name for the project and the app's for the application,
+	 * two accidents of layout standing in for a decision.
+	 *
+	 * Defaults to the package.json name with any scope stripped, then the
+	 * directory name.
+	 */
+	name?: string;
+	/**
 	 * Where the things no construct implies live.
 	 *
 	 * The same block a workspace config carries, and the same split: `db` and
@@ -392,6 +465,19 @@ export interface GkmConfig {
 	 * }
 	 */
 	docker?: DockerConfig;
+	/**
+	 * Where this app deploys, and what the target needs to know.
+	 *
+	 * Absent until now, which meant a single-app project could not configure a
+	 * Dokploy deploy at all: the wrap that turns one into a workspace hardcoded
+	 * `{ default: 'dokploy' }` and dropped everything else, so there was no
+	 * endpoint, no registry and no domain — and `resolveHost` failed with "no
+	 * domain configured for stage" on a config that had nowhere to put one.
+	 *
+	 * The same shape a workspace config uses, so moving from one to the other is
+	 * a rename rather than a rewrite.
+	 */
+	deploy?: import('./workspace/types').DeployConfig;
 }
 
 export interface BuildOptions {

@@ -27,6 +27,7 @@ import {
 } from './secrets';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
+import { trustCommand } from './trust/index';
 import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
@@ -63,6 +64,25 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await initCommand(name, options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('trust')
+	.description(
+		"Trust the local edge's certificate authority, so a browser accepts https",
+	)
+	.option('--dry-run', 'Print the commands instead of running them')
+	.action(async (options: { dryRun?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await trustCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);
@@ -543,7 +563,12 @@ program
 
 			const secrets = await readStageSecrets(options.stage, workspace.root);
 			if (secrets) {
-				const result = reconcileMissingSecrets(secrets, workspace);
+				const { derivedContainers } = await import('./reconcile/workspace');
+				const result = reconcileMissingSecrets(
+					secrets,
+					workspace,
+					await derivedContainers(workspace, options.stage),
+				);
 				if (result) {
 					await writeStageSecrets(result.secrets, workspace.root);
 					console.log(
@@ -587,7 +612,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 			if (result) {
 				secrets = result.secrets;
 				console.log(
@@ -633,7 +663,12 @@ program
 				process.exit(1);
 			}
 
-			const result = reconcileMissingSecrets(secrets, workspace);
+			const { derivedContainers } = await import('./reconcile/workspace');
+			const result = reconcileMissingSecrets(
+				secrets,
+				workspace,
+				await derivedContainers(workspace, options.stage),
+			);
 
 			if (!result) {
 				console.log(`\n✓ Secrets for stage "${options.stage}" are up-to-date`);
@@ -800,27 +835,47 @@ program
 // Login command
 program
 	.command('login')
-	.description('Authenticate with a deployment service')
-	.option('--service <service>', 'Service to login to (dokploy)', 'dokploy')
+	.description('Authenticate with a deployment or DNS provider')
+	// `--provider`, the same word `gkm deploy` and the DNS config already use for
+	// these same names. It was `--service`, which made `dokploy` a provider in
+	// one command and a service in the next — and `service` is the most
+	// overloaded word in this codebase already: the DI interface, the
+	// `services:` backend block, and a Dokploy resource name.
+	.option(
+		'--provider <provider>',
+		'Provider to log in to (dokploy, hostinger)',
+		'dokploy',
+	)
+	// Kept working rather than removed: it is what shipped, and a flag rename is
+	// not worth breaking somebody's CI over.
+	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
 	.option('--token <token>', 'API token (will prompt if not provided)')
 	.option('--endpoint <url>', 'Service endpoint URL')
 	.action(
-		async (options: { service: string; token?: string; endpoint?: string }) => {
+		async (options: {
+			provider: string;
+			service?: string;
+			token?: string;
+			endpoint?: string;
+		}) => {
 			try {
 				const globalOptions = program.opts();
 				if (globalOptions.cwd) {
 					process.chdir(globalOptions.cwd);
 				}
 
-				if (options.service !== 'dokploy') {
+				// The alias wins when given, because a default is not a choice.
+				const provider = options.service ?? options.provider;
+
+				if (!['dokploy', 'hostinger'].includes(provider)) {
 					console.error(
-						`Unknown service: ${options.service}. Supported: dokploy`,
+						`Unknown provider: ${provider}. Supported: dokploy, hostinger`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					service: options.service as 'dokploy',
+					provider: provider as 'dokploy' | 'hostinger',
 					token: options.token,
 					endpoint: options.endpoint,
 				});
@@ -836,11 +891,12 @@ program
 	.command('logout')
 	.description('Remove stored credentials')
 	.option(
-		'--service <service>',
-		'Service to logout from (dokploy, all)',
+		'--provider <provider>',
+		'Whose credentials to remove (dokploy, all)',
 		'dokploy',
 	)
-	.action(async (options: { service: string }) => {
+	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
+	.action(async (options: { provider: string; service?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -848,7 +904,7 @@ program
 			}
 
 			await logoutCommand({
-				service: options.service as 'dokploy' | 'all',
+				provider: (options.service ?? options.provider) as 'dokploy' | 'all',
 			});
 		} catch (error) {
 			console.error(formatError(error));

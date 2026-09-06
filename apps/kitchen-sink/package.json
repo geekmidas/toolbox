@@ -9,7 +9,10 @@
 		"build": "gkm build --providers server,aws-apigatewayv2",
 		"start": "node .gkm/server/app.js",
 		"openapi": "gkm openapi",
-		"migrate": "gkm exec -- tsx src/migrate.ts"
+		"migrate": "gkm exec -- tsx src/migrate.ts",
+		"test": "gkm test --run",
+		"test:watch": "gkm test",
+		"test:sns": "KITCHEN_SINK_EVENTS=sns gkm test --run"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "~3.844.0",

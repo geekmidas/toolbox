@@ -25,6 +25,12 @@ import { defineConfig } from '@geekmidas/cli/config';
  * - `topics`      → the topics themselves (`t`)     — SNS topics deployed
  */
 export default defineConfig({
+	// The same statement `sst.config.ts` makes, and the scope every physical name
+	// is built from: `Database` here is `production-kitchen-sink-database` on
+	// Dokploy and on AWS. Written down rather than inferred from the directory,
+	// so the two providers cannot disagree about what this app is called.
+	name: 'kitchen-sink',
+
 	constructs:
 		'./src/{constructs,crons,endpoints,functions,queues,subscribers}/**/*.ts',
 
@@ -46,12 +52,25 @@ export default defineConfig({
 		server: './src/config/hooks',
 	},
 
-	// Where the backends that are deployment choices resolve to. Read once by
-	// the build — it registers the matching cache driver and records the answer
-	// in the manifest, so a deploy cannot pick differently.
+	// Where the backends that are genuinely deployment choices resolve to.
+	//
+	// There is no `cache` here any more: this app declares `database.cache(...)`,
+	// which says where its cache lives in the graph rather than in config. A
+	// backend name is for a cache that named nowhere — and naming nowhere is what
+	// forces every reader to guess which database was meant.
+	//
+	// `events` is the opposite case, and belongs here: a queue and a topic are
+	// declared in code, but *what carries them* is a deployment choice, and the
+	// same handlers drain pg-boss locally and SQS deployed. Reading it from the
+	// environment is what lets the same suite run over both — `pnpm test` on
+	// pg-boss, `pnpm test:sns` on SNS and SQS against the local AWS emulator —
+	// which is the only way "the transport is chosen by the connection string"
+	// gets tested rather than asserted.
 	services: {
-		cache: 'db',
 		mail: 'ses',
+		events:
+			(process.env.KITCHEN_SINK_EVENTS as 'pgboss' | 'sns' | 'rabbitmq') ??
+			'pgboss',
 	},
 
 	runtime: 'node',
@@ -60,6 +79,22 @@ export default defineConfig({
 	docker: {
 		registry: 'ghcr.io/technanimals',
 		imageName: 'kitchen-sink',
+	},
+
+	// Where this deploys, when it deploys.
+	//
+	// Read from the environment rather than written down, for the same reason
+	// `sst.config.ts` reads its sending identity that way: an endpoint and a
+	// domain name one person's server, and a literal here would be that person's
+	// infrastructure baked into everybody's example. Unset, the deploy says what
+	// is missing and names the stage.
+	deploy: {
+		default: 'dokploy',
+		dokploy: {
+			endpoint: process.env.DOKPLOY_ENDPOINT ?? '',
+			registry: 'ghcr.io/technanimals',
+			domains: { production: process.env.KITCHEN_SINK_DOMAIN ?? '' },
+		},
 	},
 
 	providers: {

@@ -292,6 +292,14 @@ WORKDIR /app
 # Copy source (deps already installed)
 COPY . .
 
+# Build any workspace packages the app depends on.
+#
+# A no-op for a project whose dependencies come from a registry, and required
+# for one whose CLI is a sibling package: \`turbo prune\` honours .gitignore, so a
+# workspace package's \`dist\` never reaches the image and its bin has nothing to
+# import. \`--if-present\` is what makes the same Dockerfile correct for both.
+RUN ${pm.run} --if-present build
+
 # Build production server using gkm
 RUN ${pm.exec} gkm build --provider server --production
 
@@ -382,6 +390,14 @@ WORKDIR /app
 
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
+
+# Build any workspace packages the app depends on.
+#
+# A no-op for a project whose dependencies come from a registry, and required
+# for one whose CLI is a sibling package: \`turbo prune\` honours .gitignore, so a
+# workspace package's \`dist\` never reaches the image and its bin has nothing to
+# import. \`--if-present\` is what makes the same Dockerfile correct for both.
+RUN ${pm.run} --if-present build
 
 # Build production server using gkm
 RUN ${pm.exec} gkm build --provider server --production
@@ -754,6 +770,14 @@ RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
       echo "$GKM_ENCRYPTED_CREDENTIALS" > ${appPath}/.gkm/credentials.enc && \
       echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
     fi
+
+# Build any workspace packages the app depends on.
+#
+# A no-op for a project whose dependencies come from a registry, and required
+# for one whose CLI is a sibling package: \`turbo prune\` honours .gitignore, so a
+# workspace package's \`dist\` never reaches the image and its bin has nothing to
+# import. \`--if-present\` is what makes the same Dockerfile correct for both.
+RUN ${pm.run} --if-present build
 
 # Build production server using gkm
 RUN cd ${appPath} && ${pm.exec} gkm build --provider server --production

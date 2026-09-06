@@ -143,21 +143,25 @@ export class HostingerApi {
 	 * @param domain - Root domain (e.g., 'traflabs.io')
 	 */
 	async getRecords(domain: string): Promise<DnsRecord[]> {
-		interface RecordResponse {
-			data: Array<{
-				name: string;
-				type: DnsRecordType;
-				ttl: number;
-				records: Array<{ content: string }>;
-			}>;
-		}
-
-		const response = await this.request<RecordResponse>(
+		// The zone comes back as a **bare array**, not `{ data: [...] }`.
+		//
+		// This read `response.data || []`, so every call returned zero records
+		// against the real API while every mocked test passed. Silently: no error,
+		// no warning, just an empty zone. `upsertRecords` uses this to decide what
+		// already exists, so everything looked new and every write was reported as
+		// a creation — harmless only because the PUT merges rather than replaces.
+		//
+		// Both shapes are accepted because one of them is a guess: the wrapper was
+		// written against documentation and the array is what the API actually
+		// sends, so tolerating an envelope costs a line and survives it appearing.
+		const response = await this.request<DnsRecord[] | { data?: DnsRecord[] }>(
 			'GET',
 			`/api/dns/v1/zones/${domain}`,
 		);
 
-		return response.data || [];
+		if (Array.isArray(response)) return response;
+
+		return response?.data ?? [];
 	}
 
 	/**

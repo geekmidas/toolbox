@@ -1,6 +1,7 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import {
+	CacheIsAmbiguous,
 	CacheNeedsDatabase,
 	containerFor,
 	PgBossNeedsDatabase,
@@ -345,5 +346,49 @@ describe('cache backends', () => {
 				cache: 'db',
 			}),
 		).toThrow(CacheNeedsDatabase);
+	});
+
+	it('resolves the backend into an edge, so nothing downstream re-derives it', () => {
+		// `cache: 'db'` names something that is *in the graph*, unlike upstash or
+		// elasticache — so it becomes the same `of` that `orders.cache()` sets,
+		// and every reader follows an edge instead of testing a string.
+		const plan = planFor(
+			withDatabase,
+			'development',
+			provisionOrder(withDatabase),
+			{ cache: 'db' },
+		);
+
+		expect(plan.resources.find((r) => r.id === 'Sessions')?.of).toBe('Orders');
+	});
+
+	it('leaves a cache that named its own database alone', () => {
+		// The declaration is the stronger statement: config choosing otherwise
+		// would move a cache the app said lives somewhere.
+		const named = {
+			Orders: { kind: 'database', id: 'Orders' },
+			Reports: { kind: 'database', id: 'Reports' },
+			Sessions: { kind: 'cache', id: 'Sessions', of: 'Reports' },
+		} as const satisfies ConstructManifest;
+
+		const plan = planFor(named, 'development', provisionOrder(named), {
+			cache: 'db',
+		});
+
+		expect(plan.resources.find((r) => r.id === 'Sessions')?.of).toBe('Reports');
+	});
+
+	it('refuses to guess which database, rather than picking the first', () => {
+		// A cache silently landing in the wrong database surfaces as missing rows
+		// much later, so two candidates is an error and not a coin toss.
+		const two = {
+			Orders: { kind: 'database', id: 'Orders' },
+			Reports: { kind: 'database', id: 'Reports' },
+			Sessions: { kind: 'cache', id: 'Sessions' },
+		} as const satisfies ConstructManifest;
+
+		expect(() =>
+			planFor(two, 'development', provisionOrder(two), { cache: 'db' }),
+		).toThrow(CacheIsAmbiguous);
 	});
 });

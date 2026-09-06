@@ -897,9 +897,11 @@ describe('generateWorkspaceCompose', () => {
 	describe('infrastructure services', () => {
 		it('should add postgres service when db is configured', () => {
 			const workspace = createWorkspace({
-				services: { db: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			expect(yaml).toContain('postgres:');
 			expect(yaml).toContain('image: postgres:18-alpine');
@@ -908,9 +910,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add DATABASE_URL for backend apps when postgres is enabled', () => {
 			const workspace = createWorkspace({
-				services: { db: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			expect(yaml).toContain(
 				'DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}}',
@@ -919,9 +923,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add redis service when cache is configured', () => {
 			const workspace = createWorkspace({
-				services: { cache: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['redis'],
+			});
 
 			expect(yaml).toContain('redis:');
 			expect(yaml).toContain('image: redis:7-alpine');
@@ -930,18 +936,22 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add REDIS_URL for backend apps when redis is enabled', () => {
 			const workspace = createWorkspace({
-				services: { cache: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['redis'],
+			});
 
 			expect(yaml).toContain('REDIS_URL=${REDIS_URL:-redis://redis:6379}');
 		});
 
 		it('should add mailpit service when mail is configured', () => {
 			const workspace = createWorkspace({
-				services: { mail: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['mailpit'],
+			});
 
 			expect(yaml).toContain('mailpit:');
 			expect(yaml).toContain('image: axllent/mailpit:latest');
@@ -952,9 +962,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add SMTP env vars for backend apps when mail is enabled', () => {
 			const workspace = createWorkspace({
-				services: { mail: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['mailpit'],
+			});
 
 			expect(yaml).toContain('SMTP_HOST=${SMTP_HOST:-mailpit}');
 			expect(yaml).toContain('SMTP_PORT=${SMTP_PORT:-1025}');
@@ -964,18 +976,22 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add mailpit to depends_on for backend apps', () => {
 			const workspace = createWorkspace({
-				services: { mail: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['mailpit'],
+			});
 
 			expect(yaml).toMatch(/mailpit:\s+condition: service_healthy/);
 		});
 
 		it('should add postgres_data volume when postgres is enabled', () => {
 			const workspace = createWorkspace({
-				services: { db: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			expect(yaml).toContain('dbdata:');
 			expect(yaml).toContain('dbdata:/var/lib/postgresql');
@@ -983,9 +999,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add redis_data volume when redis is enabled', () => {
 			const workspace = createWorkspace({
-				services: { cache: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['redis'],
+			});
 
 			expect(yaml).toContain('redis_data:');
 			expect(yaml).toContain('redis_data:/data');
@@ -993,9 +1011,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should include healthchecks for infrastructure services', () => {
 			const workspace = createWorkspace({
-				services: { db: true, cache: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres', 'redis'],
+			});
 
 			expect(yaml).toContain('pg_isready');
 			expect(yaml).toContain('redis-cli');
@@ -1003,9 +1023,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add depends_on for infrastructure services', () => {
 			const workspace = createWorkspace({
-				services: { db: true, cache: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres', 'redis'],
+			});
 
 			// Backend apps should depend on postgres and redis
 			expect(yaml).toMatch(/postgres:\s+condition: service_healthy/);
@@ -1024,9 +1046,11 @@ describe('generateWorkspaceCompose', () => {
 						resolvedDeployTarget: 'dokploy',
 					},
 				},
-				services: { db: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			// Frontend should not depend on postgres
 			const webSection = yaml.split('web:')[1]?.split(/^ {2}\w+:/m)[0];
@@ -1035,36 +1059,44 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should support custom postgres version', () => {
 			const workspace = createWorkspace({
-				services: { db: { version: '15-alpine' } },
+				services: { images: { postgres: 'postgres:15-alpine' } },
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			expect(yaml).toContain('image: postgres:15-alpine');
 		});
 
 		it('should support custom postgres image', () => {
 			const workspace = createWorkspace({
-				services: { db: { image: 'postgis/postgis:16-3.4-alpine' } },
+				services: { images: { postgres: 'postgis/postgis:16-3.4-alpine' } },
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['postgres'],
+			});
 
 			expect(yaml).toContain('image: postgis/postgis:16-3.4-alpine');
 		});
 
 		it('should support custom redis version', () => {
 			const workspace = createWorkspace({
-				services: { cache: { version: '6-alpine' } },
+				services: { images: { redis: 'redis:6-alpine' } },
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['redis'],
+			});
 
 			expect(yaml).toContain('image: redis:6-alpine');
 		});
 
 		it('should add minio service when storage is configured', () => {
 			const workspace = createWorkspace({
-				services: { storage: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['minio'],
+			});
 
 			expect(yaml).toContain('minio:');
 			expect(yaml).toContain('image: minio/minio:latest');
@@ -1073,9 +1105,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add S3 env vars for backend apps when minio is enabled', () => {
 			const workspace = createWorkspace({
-				services: { storage: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['minio'],
+			});
 
 			expect(yaml).toContain(
 				'STORAGE_ENDPOINT=${STORAGE_ENDPOINT:-http://minio:9000}',
@@ -1085,9 +1119,11 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add minio_data volume when minio is enabled', () => {
 			const workspace = createWorkspace({
-				services: { storage: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['minio'],
+			});
 
 			expect(yaml).toContain('minio_data:');
 			expect(yaml).toContain('minio_data:/data');
@@ -1095,18 +1131,26 @@ describe('generateWorkspaceCompose', () => {
 
 		it('should add depends_on minio for backend apps', () => {
 			const workspace = createWorkspace({
-				services: { storage: true },
+				services: {},
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['minio'],
+			});
 
 			expect(yaml).toMatch(/minio:\s+condition: service_healthy/);
 		});
 
 		it('should support custom minio version', () => {
+			// A whole reference, not a version this has to rebuild one from —
+			// which is the case that used to get it wrong: MinIO's image is
+			// `minio/minio`, so appending a tag to the container name produced
+			// `minio:RELEASE...`, an image that does not exist.
 			const workspace = createWorkspace({
-				services: { storage: { version: 'RELEASE.2024-01-01' } },
+				services: { images: { minio: 'minio/minio:RELEASE.2024-01-01' } },
 			});
-			const yaml = generateWorkspaceCompose(workspace);
+			const yaml = generateWorkspaceCompose(workspace, {
+				containers: ['minio'],
+			});
 
 			expect(yaml).toContain('image: minio/minio:RELEASE.2024-01-01');
 		});

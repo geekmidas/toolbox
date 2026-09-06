@@ -22,6 +22,7 @@ import type {
 	SiteDeclaration,
 } from '@geekmidas/manifest';
 import {
+	cacheTable,
 	cookieDomain,
 	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
@@ -30,7 +31,13 @@ import {
 	providedKeyFor,
 	provisionOrder,
 } from '@geekmidas/manifest';
-import { Cache, CacheNeedsDatabase, type CacheProps } from './aws/Cache';
+import {
+	Cache,
+	CacheIsAmbiguous,
+	CacheNeedsDatabase,
+	type CacheProps,
+	withCacheTable,
+} from './aws/Cache';
 import { Credential } from './aws/Credential';
 import { Database, DatabaseNeedsVpc } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
@@ -284,24 +291,37 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		// A cache that named a database is in *that* one, whatever the backend
 		// config says — the declaration is the stronger statement. Without one,
-		// the `db` backend falls back to the declared database, which is
-		// unambiguous with one and arbitrary with two.
-		const parentId =
-			d.kind === 'cache' && d.of
-				? d.of
-				: backend === 'db'
-					? Object.entries(context.manifest).find(
-							([, declaration]) => declaration.kind === 'database',
-						)?.[0]
-					: undefined;
+		// the `db` backend resolves to the declared database, which is an answer
+		// only while there is one of them: picking the first of two would put a
+		// cache in a database nobody chose, and that surfaces as missing entries
+		// long after the deploy reported success.
+		const databases =
+			d.kind === 'cache' && !d.of && backend === 'db'
+				? Object.entries(context.manifest)
+						.filter(([, declaration]) => declaration.kind === 'database')
+						.map(([id]) => id)
+				: [];
+
+		if (databases.length > 1) throw new CacheIsAmbiguous(d.id, databases);
+
+		const parentId = d.kind === 'cache' && d.of ? d.of : databases[0];
 
 		if (parentId) {
 			const parent = context.provisioned[parentId];
 			if (!parent) throw new CacheNeedsDatabase(d.id);
 
 			// Same address, same role, one more table — which is what makes this
-			// backend cost nothing to run.
-			return new Cache(stack, d.id, { url: parent.provides().url! });
+			// backend cost nothing to run. The table travels *in* the URL, because
+			// two caches in one database resolve the same connection string and a
+			// client built from the URL alone could not tell them apart.
+			const table =
+				(d.kind === 'cache' && d.table) || cacheTable(d.id as string);
+
+			return new Cache(stack, d.id, {
+				url: $util
+					.output(parent.provides().url!)
+					.apply((url) => withCacheTable(url, table)),
+			});
 		}
 
 		const supplied = props as {

@@ -1,7 +1,7 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { resolveProviders } from '../build/providerResolver';
@@ -31,6 +31,7 @@ import {
 } from '../credentials';
 import {
 	CronGenerator,
+	cacheBackendsIn,
 	driversFor,
 	EndpointGenerator,
 	FunctionGenerator,
@@ -43,6 +44,7 @@ import {
 	OPENAPI_OUTPUT_PATH,
 	resolveOpenApiConfig,
 } from '../openapi';
+import { discover } from '../reconcile/discover.js';
 import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
@@ -1191,6 +1193,38 @@ async function workspaceDevCommand(
 	});
 }
 
+/**
+ * What the app declares, or nothing when it declares in the old way.
+ *
+ * Discovery imports the application's construct modules, which is why this is
+ * guarded rather than unconditional: a project with no `constructs` glob has
+ * not adopted the model, and there is nothing to import.
+ */
+async function declaredConstructs(
+	config: any,
+	appRoot: string,
+): Promise<Record<string, { kind: string; of?: string }>> {
+	const patterns =
+		typeof config?.constructs === 'string' || Array.isArray(config?.constructs)
+			? config.constructs
+			: undefined;
+
+	if (!patterns) return {};
+
+	try {
+		return (await discover({
+			patterns: (Array.isArray(patterns) ? patterns : [patterns]).map((p) =>
+				isAbsolute(p) ? p : join(appRoot, p),
+			),
+			cwd: appRoot,
+		})) as Record<string, { kind: string; of?: string }>;
+	} catch {
+		// A discovery failure here is not fatal: the generators below import the
+		// same modules and will report it with a better message than "no drivers".
+		return {};
+	}
+}
+
 async function buildServer(
 	config: any,
 	context: BuildContext,
@@ -1202,15 +1236,19 @@ async function buildServer(
 	// The entry point registers the drivers its target needs — see
 	// `generators/drivers.ts`. Decided here because this is where the app root is
 	// known, and read by every generator that writes an entry.
+	//
+	// Both halves of the answer, because both halves decide where a cache lives:
+	// the declaration for a cache that named its database, and `services.cache`
+	// for one that named nowhere. Reading only the config registered a driver
+	// for a protocol the target had not composed.
 	context = {
 		...context,
 		storageDrivers: driversFor({
 			appRoot,
-			// The backend picks exactly one cache driver, so a project caching in
-			// Postgres never resolves a Redis client. `config.services` is the same
-			// value the local target reads when it decides what to run, so the
-			// driver and the URL cannot disagree about which protocol this is.
-			cache: cacheBackendOf(config?.services?.cache),
+			cache: cacheBackendsIn(
+				await declaredConstructs(config, appRoot),
+				cacheBackendOf(config?.services?.cache),
+			),
 		}),
 	};
 
