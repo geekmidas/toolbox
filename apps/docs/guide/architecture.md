@@ -14,7 +14,11 @@ once changes it in all five.
 ![One declaration, the manifest it becomes, and what a target builds](/architecture/constructs-pipeline.png)
 
 A declaration on the left. The manifest — ids, kinds, and the edges between them
-— in the middle. On the right, what a real Dokploy deploy built from it.
+— in the middle. On the right, what a target builds from it.
+
+The boxes are labelled with the hostnames you would actually visit. The physical
+names underneath them are derived from the construct id and the stage, and that
+rule has [its own page](/guide/naming).
 
 ## A surface is a server
 
