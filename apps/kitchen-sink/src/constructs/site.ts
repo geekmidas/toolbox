@@ -27,3 +27,21 @@ export const web = new StaticSite('Web', {
 	// the same string.
 	path: '../kitchen-sink-web',
 }).dependsOn([api, auth, uploads.server]);
+
+/**
+ * The admin console — the second site, and the second *variant*.
+ *
+ * `Web` is Vite and this is Next, deliberately. A `site` declaration carries a
+ * `variant`, and the deploy reads it to pick a Dockerfile template and an env
+ * prefix: `VITE_` there, `NEXT_PUBLIC_` here. One neutral name from the
+ * construct, one serialisation per framework — which is only proven with two.
+ *
+ * It also settles which site holds the base domain. `Web` is named `web`, so
+ * the convention gives it `example.com` and this one becomes `admin.` — from
+ * the construct id, with no hostname written down. Were neither called `web`,
+ * one of them would have to say `root: true` rather than the deploy guessing.
+ */
+export const admin = new StaticSite('Admin', {
+	path: '../kitchen-sink-admin',
+	variant: 'next',
+}).dependsOn([api, auth]);
