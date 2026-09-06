@@ -162,13 +162,11 @@ into one when the endpoint merge lands.
 
 ---
 
-## 2. The endpoints → manifest merge — *work*
+## 2. The surface is the factory — *decided, unbuilt*
 
-`RestApi` names a `routes` glob and declares `endpoints: []`; the build never
-fills it. This is a debt introduced deliberately — the construct cannot import
-route modules to answer "what paths exist" without evaluating the whole runtime
-graph — but it is a seam, not a resting place. Three things stay broken while it
-is open:
+`RestApi` declares `endpoints: []` and the build never fills it, so the manifest
+*claims no routes* while seven exist. Three things stay broken while that is
+true:
 
 - **A surface cannot drive route generation.** Two pipelines describe the same
   routes: the manifest's `rest-api` node, and `EndpointGenerator`'s `RouteInfo[]`.
@@ -179,11 +177,94 @@ is open:
   origin appears on an auth server's trusted list only because the *surface*
   declares that edge explicitly, not because its routes do.
 
-**The obstacle is real and worth stating.** `EndpointFactory.dependsOn()`
-immediately collapses into `.services()`, so the construct identity is gone by
-the time an endpoint exists — only the `Service` objects survive. Recovering ids
-means threading the constructs through every copy-on-write branch of the factory
-(a dozen call sites), or registering endpoints onto their surface at build time.
+### The resolution: an endpoint is created *from* its surface
+
+This was written up as a merge problem — infer, after the fact, which surface a
+glob-discovered endpoint belongs to. It is not one. The endpoint has no surface
+because `e` is a **free factory**: `e.post('/users')` produces an endpoint that
+belongs to nothing, and everything downstream is an attempt to recover an owner
+that was never recorded.
+
+So the surface owns the factory:
+
+```ts
+const api = new RestApi('Api', { default: 'none' });
+
+export const listUsers = api.get('/users').dependsOn([database]).handle(…);
+```
+
+`.handle()` is terminal, and that is where the endpoint registers onto `api`.
+`api.declare()` then returns its real endpoints because it collected them —
+no merge, no inference, no second pipeline.
+
+**`e` is a v9 concern and is not used going forward.** An endpoint nothing serves
+is not a thing, and keeping the free factory would keep the unattributed case
+alive beside the fix.
+
+**The glob does not go away, and does not do attribution.** It loads the modules
+so the registrations happen as an import side effect. Discovery and attribution
+were the same question only because nothing recorded an owner; they are now
+separate, and the glob answers only the first.
+
+**This makes `Auth` and `Api` the same shape.** `BetterAuth` already declares its
+own endpoint — one wildcard, `ANY {basePath}/*` → `Auth.handler`, because
+better-auth routes internally and enumerating its paths would be a copy of its
+router that goes stale. That looked like an asymmetry worth designing around: auth
+splittable today, `Api` blocked. It was an artefact of `e` being unowned. Both
+surfaces declare their own endpoints; one happens to have a single wildcard.
+
+**Cost, stated.** `EndpointFactory` is copy-on-write — every `.services()`,
+`.dependsOn()`, `.output()` returns a new factory, at ten-plus sites. The
+registration has to reach the *original* surface, so one owner reference is
+carried through the copies, the way `defaultConstructs` and `defaultRlsConfig`
+already are in `createBuilder`. The earlier estimate — "threading the constructs
+through every copy-on-write branch" — was pricing a different fix.
+
+One thing to decide when building it: `.handle()` registering means the side
+effect happens on import whether or not the export is read, which is what a glob
+needs, but a builder constructed and discarded still registers.
+
+**Migration.** 35 files and 213 call sites use `e`, but the meaningful surface is
+small: four `init` templates, which is what a new project starts from, and two
+files each in kitchen-sink and example. The rest are tests, fixtures and
+benchmarks that follow the templates.
+
+### What it unblocks: one bundle per surface
+
+Tree shaking is already on — esbuild `--bundle --format=esm` — and can do nothing,
+because the generated entry reaches every endpoint by construction:
+
+```
+app.ts
+ ├── setupEndpoints → endpoints/index.ts → minimal/ + standard/ + full/ → all 7
+ └── serverHooks    → hooks.ts → mounts auth.handler
+```
+
+`better-auth` is in the deployed API bundle for that reason. **The bundle boundary
+is the generator's, not the bundler's.**
+
+The generated tree groups by **optimisation tier** — `minimal` (no auth, services,
+audits, events, rate-limit or RLS: near-raw Hono), `standard` (auth and/or
+services), `full` (audits, RLS or rate-limiting). That is a property of *an
+endpoint*, and orthogonal to which server serves it. Grouping directories by it
+means no cut in the tree separates one surface from another.
+
+The two axes compose. Tier stays what it is; the *entry* becomes per-surface:
+
+```
+endpoints/
+  api/   standard/listUsers.ts …  → api/index.ts   → .gkm/server/api.ts
+  auth/  standard/handler.ts      → auth/index.ts  → .gkm/server/auth.ts
+```
+
+Each entry then imports only its own endpoints and tree shaking does the rest for
+free — no new machinery, because the generator already writes one file per
+endpoint and knows the path it wrote.
+
+**This retires `path` on `rest-api`.** It was added so a surface could say where
+to build from, and a surface's build input is not a directory — it is the
+generated entry above. `site` keeps `path`, because a Vite app genuinely is a
+directory.
 
 ---
 
@@ -882,8 +963,11 @@ bill and the security model, and the rest follows them.
 2. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
    in the repo, and everything below is easier to trust once one stack has come
    up.
-3. **§2 the endpoint merge** — unblocks `rest-api` on AWS and per-route IAM, and
-   is the largest remaining piece of correctness debt in the model.
+3. **§2 the surface as factory** — unblocks `rest-api` on AWS, per-route IAM, and
+   a bundle per surface, and is the largest remaining piece of correctness debt
+   in the model. Now a mechanical change rather than an open question: an
+   endpoint is created from its surface, `e` retires with v9, and the glob goes
+   back to loading modules.
 4. **§5 kitchen-sink frontend** — makes four already-built derivations observable
    rather than merely tested, and is cheap.
 5. **§6c.1 the fullstack workspace** — the last path that still declares its
