@@ -57,6 +57,9 @@ importers:
 
   apps/docs:
     devDependencies:
+      medium-zoom:
+        specifier: ~1.1.0
+        version: 1.1.0
       vitepress:
         specifier: ^1.5.0
         version: 1.6.3(@algolia/client-search@5.34.1)(@types/node@24.9.1)(@types/react@18.3.23)(axios@1.11.0)(change-case@5.4.4)(lightningcss@1.30.2)(postcss@8.5.6)(react@18.3.1)(search-insights@2.17.3)(terser@5.43.1)(typescript@5.8.2)
@@ -8935,6 +8938,9 @@ packages:
   mdast-util-to-hast@13.2.0:
     resolution: {integrity: sha512-QGYKEuUsYT9ykKBCMOEDLsU5JRObWQusAolFMeko/tYPufNkRffBAQjIE+99jbA87xv6FgmjLtwjh9wBWajwAA==}
 
+  medium-zoom@1.1.0:
+    resolution: {integrity: sha512-ewyDsp7k4InCUp3jRmwHBRFGyjBimKps/AJLjRSox+2q/2H4p/PNpQf+pwONWlJiOudkBXtbdmVbFjqyybfTmQ==}
+
   memoize-one@5.2.1:
     resolution: {integrity: sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==}
 
@@ -14058,6 +14064,17 @@ snapshots:
       nanostores: 1.1.0
       zod: 4.1.13
 
+  '@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)':
+    dependencies:
+      '@better-auth/utils': 0.3.0
+      '@better-fetch/fetch': 1.1.21
+      '@standard-schema/spec': 1.0.0
+      better-call: 1.1.8(zod@4.3.6)
+      jose: 6.1.2
+      kysely: 0.29.4
+      nanostores: 1.1.0
+      zod: 4.3.6
+
   '@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)':
     dependencies:
       '@better-auth/utils': 0.3.0
@@ -14077,7 +14094,7 @@ snapshots:
 
   '@better-auth/telemetry@1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))':
     dependencies:
-      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
 
@@ -16938,9 +16955,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
@@ -19022,14 +19037,14 @@ snapshots:
       msw: 2.10.3(@types/node@24.9.1)(typescript@5.8.2)
       vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2)
 
-  '@vitest/mocker@3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))':
+  '@vitest/mocker@3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
       msw: 2.11.5(@types/node@24.9.1)(typescript@5.8.2)
-      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2)
+      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2)
 
   '@vitest/mocker@4.0.17(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))':
     dependencies:
@@ -19041,14 +19056,14 @@ snapshots:
       vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2)
     optional: true
 
-  '@vitest/mocker@4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))':
+  '@vitest/mocker@4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.0.17
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       msw: 2.11.5(@types/node@24.9.1)(typescript@5.8.2)
-      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2)
+      vite: 6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2)
     optional: true
 
   '@vitest/pretty-format@2.0.5':
@@ -19113,7 +19128,7 @@ snapshots:
       sirv: 3.0.1
       tinyglobby: 0.2.14
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2)
+      vitest: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2)
 
   '@vitest/utils@2.0.5':
     dependencies:
@@ -19578,7 +19593,7 @@ snapshots:
 
   better-auth@1.4.18(pg@8.16.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4(vitest@3.2.4))(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.10.3(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))(vue@3.5.18(typescript@5.8.2)):
     dependencies:
-      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0)
+      '@better-auth/core': 1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.1.13))(jose@6.1.2)(kysely@0.29.4)(nanostores@1.1.0)
       '@better-auth/telemetry': 1.4.18(@better-auth/core@1.4.18(@better-auth/utils@0.3.0)(@better-fetch/fetch@1.1.21)(better-call@1.1.8(zod@4.3.6))(jose@6.1.2)(kysely@0.28.8)(nanostores@1.1.0))
       '@better-auth/utils': 0.3.0
       '@better-fetch/fetch': 1.1.21
@@ -21602,6 +21617,8 @@ snapshots:
       unist-util-position: 5.0.0
       unist-util-visit: 5.0.0
       vfile: 6.0.3
+
+  medium-zoom@1.1.0: {}
 
   memoize-one@5.2.1: {}
 
@@ -24249,7 +24266,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.2
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))
+      '@vitest/mocker': 3.2.4(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4
@@ -24332,7 +24349,7 @@ snapshots:
   vitest@4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.9.1)(@vitest/ui@3.2.4(vitest@3.2.4))(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.17
-      '@vitest/mocker': 4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.17(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(vite@6.3.5(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.17
       '@vitest/runner': 4.0.17
       '@vitest/snapshot': 4.0.17

@@ -56,6 +56,13 @@ thing holding them together was a string literal typed three times:
 export const uploads = new ObjectStorage('Uploads');
 ```
 
+![One declaration in application code, the manifest it becomes, and the infrastructure a target builds from it](/architecture/constructs-pipeline.png)
+
+*Click to zoom.* One declaration on the left, the manifest in the middle, and
+what a Dokploy deploy actually built on the right — a Postgres with its roles, a
+MinIO stack, a container, a site, and pg-boss living inside the database that was
+already declared.
+
 Rename the construct and every consumer moves with it, because there is no
 string to keep in step.
 

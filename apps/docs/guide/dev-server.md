@@ -105,17 +105,26 @@ Resolved ports are persisted to `.gkm/ports.json` so external tools (database GU
 🐳 Starting services: postgres, redis, mailpit
 ```
 
-Runs `docker compose up -d` with the resolved port environment variables injected. Only services configured in the workspace config are started:
+Starts the containers the manifest implies, with resolved ports injected.
 
-| Config | Service Started |
-|--------|----------------|
-| `services.db: true` | `postgres` |
-| `services.cache: true` | `redis` |
-| `services.mail: true` | `mailpit` |
+**Which containers exist is derived, not configured.** A declared
+`KyselyDatabase` is why a Postgres runs; a declared `ObjectStorage` is why MinIO
+does; a declared cache runs whichever container its backend needs — `redis` for
+`elasticache`, the Upstash-protocol proxy for `upstash`, and nothing at all for
+`db`, which is a table in the database you already declared.
 
-On the declared path this table does not apply: `db` and `storage` are ignored,
-and the Postgres and MinIO come from the declared `KyselyDatabase` and
-`ObjectStorage` instead.
+| You declared | What starts |
+|---|---|
+| `new KyselyDatabase('…')` | `postgres` |
+| `new ObjectStorage('…')` / `new FileServer('…')` | `minio`, and `caddy` for a file server |
+| `database.cache('…')` with `services.cache: 'elasticache'` | `redis` |
+| `database.cache('…')` with `services.cache: 'upstash'` | `redis` + the HTTP proxy |
+| `database.cache('…')` with `services.cache: 'db'` | nothing — it is a table |
+| `new Email('…')` | `mailpit` |
+| a topic or queue on `services.events: 'rabbitmq'` | `rabbitmq` |
+
+There is no `services.db: true` any more, and no flag that starts a container.
+A container exists because something declared it.
 
 If `docker-compose.yml` is missing, a warning is printed and services are skipped.
 

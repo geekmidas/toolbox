@@ -77,10 +77,13 @@ export default defineWorkspace({
   // `db` and `storage` are derived from the declared KyselyDatabase and
   // ObjectStorage and are ignored here, so the two cannot disagree. What is
   // left is a backend selection.
+  // Every key is a backend name and every one is optional — the default
+  // follows the deploy target.
   services: {
-    cache: true,      // or 'upstash' | 'elasticache' | 'db'
-    mail: true,       // or 'ses' | 'resend' | 'smtp'
-    events: 'pgboss', // or 'sns' | 'rabbitmq'
+    cache: 'db',      // 'upstash' | 'elasticache' | 'db'
+    storage: 's3',    // 'minio' | 's3' | 'r2'
+    mail: 'ses',      // 'ses' | 'resend' | 'smtp'
+    events: 'pgboss', // 'pgboss' | 'sns' | 'rabbitmq'
   },
 
   deploy: {

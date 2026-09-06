@@ -38,11 +38,18 @@ export default defineConfig({
   crons: 'src/crons/**/*.ts',
   subscribers: 'src/subscribers/**/*.ts',
 
-  // What no construct implies — a backend selection, not a resource list.
+  // Where each thing lives when deployed — a backend name, never a flag.
+  // Whether a cache *exists* comes from declaring one; this only says where.
+  // Every key is optional: the default follows the deploy target.
   services: {
-    cache: true,      // or 'upstash' | 'elasticache' | 'db'
-    mail: true,       // or 'ses' | 'resend' | 'smtp'
-    events: 'pgboss', // or 'sns' | 'rabbitmq'
+    cache: 'db',        // 'upstash' | 'elasticache' | 'db'
+    storage: 's3',      // 'minio' | 's3' | 'r2'
+    mail: 'ses',        // 'ses' | 'resend' | 'smtp'
+    events: 'pgboss',   // 'pgboss' | 'sns' | 'rabbitmq'
+
+    // Image pins are a separate question: which container runs locally,
+    // not where the thing lives when deployed.
+    images: { redis: 'redis:7-alpine' },
   },
 
   // Development tools
@@ -307,7 +314,9 @@ gkm deploy [options]
 Options:
   --stage, -s <name>     Deployment stage (development, staging, production)
   --provider <name>      Deploy provider: docker, dokploy, aws-lambda
-  --dry-run              Show what would be deployed
+  --tag <tag>            Image tag (default: stage-timestamp)
+  --skip-push            Skip pushing the image to the registry
+  --skip-build           Skip the build step and use an existing one
 ```
 
 ### `gkm docker`

@@ -77,7 +77,7 @@ export default defineWorkspace({
 
   // Backend selection. The Postgres itself comes from the declared database.
   services: {
-    cache: true,
+    cache: 'db',
   },
 
   deploy: {
@@ -106,10 +106,18 @@ export default defineWorkspace({
 
 ```bash
 # Deploy to production
-gkm deploy --stage production
+gkm deploy --provider dokploy --stage production
 ```
 
 ---
+
+## What each kind becomes
+
+![Eight construct kinds and what each resolves to on local, Dokploy and AWS](/architecture/kind-per-target.png)
+
+*Click to zoom.* The declaration does not change between targets; what gets built
+from it does. Two cells are red because they have no Dokploy provisioner yet — a
+file server's edge rule, and email.
 
 ## Build Providers
 
@@ -203,8 +211,8 @@ own URLs:
 
 ```typescript
 services: {
-  cache: true,      // → a Redis (or the Upstash proxy, per backend)
-  events: 'pgboss', // → EVENT_PUBLISHER_CONNECTION_STRING, EVENT_SUBSCRIBER_CONNECTION_STRING
+  cache: 'elasticache', // → a Redis; 'upstash' → the HTTP proxy; 'db' → a table
+  events: 'pgboss',     // → EVENT_PUBLISHER_CONNECTION_STRING, EVENT_SUBSCRIBER_CONNECTION_STRING
 }
 ```
 
@@ -459,7 +467,7 @@ export default defineWorkspace({
 
 **Setup:**
 1. Get API token from Hostinger hPanel profile
-2. Store with `gkm login --provider hostinger`
+2. Store with `gkm login --service hostinger`
 
 ### Manual DNS
 
@@ -559,7 +567,7 @@ During deployment:
 
 ```bash
 # Login to Dokploy instance
-gkm login --provider dokploy
+gkm login --service dokploy
 
 # The CLI will prompt for:
 # - Dokploy endpoint URL
@@ -572,56 +580,59 @@ gkm login --provider dokploy
 # Deploy to production
 gkm deploy --stage production
 
-# Preview what would be deployed
-gkm deploy --stage production --dry-run
-
 # Skip building (use existing image)
 gkm deploy --stage production --skip-build
 ```
 
-### Workspace Deployment Flow
+![Local and deployed side by side, converging on one unchanged call site](/architecture/local-and-deployed.png)
 
-For monorepos, the CLI orchestrates deployment in phases:
+*Click to zoom.* Locally Caddy is the edge because nothing else is; on Dokploy
+Traefik already is one. Only the URL differs — the call site does not.
 
-**Phase 1: Infrastructure**
-- Provision PostgreSQL (if configured)
-- Provision Redis (if configured)
-- Create per-app database users with schema isolation
+### What a deploy does
 
-**Phase 2: Backend Apps**
-- Build Docker images with encrypted secrets
-- Deploy in dependency order
-- Configure domains and SSL
+The unit list comes from the **manifest**, not from config: one `rest-api` is one
+server, one `site` is one site. An app you never listed in config still deploys
+if something declared it.
 
-**Phase 3: Frontend Apps**
-- Generate public URLs from deployed backends
-- Build with `NEXT_PUBLIC_*` environment variables
-- Deploy and configure domains
+**Provision what the manifest declares**
+- a Postgres per declared database, and the role DDL for it — a runtime role, an
+  owner, and a reader where anything reads through one
+- a MinIO compose stack per declared bucket
+- pg-boss as a schema tenant of the database that already exists, when a queue
+  or topic is carried by it
+- every URL the app needs, resolved and encrypted into the build
 
-**Phase 4: DNS & Verification**
-- Create DNS records via configured provider
-- Verify propagation
-- Trigger SSL certificate generation
+**Deploy the backends**
+- build each image and push it to the registry
+- create the application, its domain, and its Let's Encrypt certificate
 
-### Per-App Database Isolation
+**Then the frontends**
+- built with the backend URLs already known, so `VITE_*` / `NEXT_PUBLIC_*` are
+  real values at build time rather than placeholders
 
-When PostgreSQL is provisioned:
-- Each app gets its own database user
-- `api` app uses the `public` schema (for shared migrations)
-- Other apps get their own schema with `search_path` set
+**Then DNS**, through the configured provider.
+
+### Roles, not per-app users
+
+Each **declared database** gets a role split — not each app:
 
 ```sql
--- API app
-CREATE USER "api" WITH PASSWORD '...';
-GRANT ALL ON SCHEMA public TO "api";
-
--- Other apps
-CREATE USER "worker" WITH PASSWORD '...';
-CREATE SCHEMA "worker" AUTHORIZATION "worker";
-ALTER USER "worker" SET search_path TO "worker";
+CREATE ROLE "orders_production"        -- what handlers connect as
+CREATE ROLE "orders_production_owner"  -- owns the schema, runs migrations
+CREATE ROLE "orders_production_reader" -- only where something reads through one
+ALTER ROLE "orders_production" SET search_path TO "app"
 ```
 
----
+The application's own role holds no DDL rights, and the owner URL is never on a
+manifest edge — a handler cannot reach for it. A schema tenant
+(`database.schema('AuthDb')`) gets the same split inside the same cluster.
+
+::: warning Not yet a privilege boundary
+No target creates the per-schema role today: the tenant and its parent both
+connect as the owner, which makes a tenant a `search_path` rather than an
+isolation boundary. See the outstanding design notes.
+:::
 
 ## Docker Deployment
 
