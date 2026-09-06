@@ -1,0 +1,23 @@
+/* medium-zoom overlay must sit above the VitePress nav/sidebar (z-index 30s) */
+.medium-zoom-overlay,
+.medium-zoom-image--opened {
+	z-index: 100;
+}
+
+.vp-doc img {
+	cursor: zoom-in;
+}
+
+/*
+ * The architecture diagrams are dark by design, so a light-mode page needs a
+ * frame around them or they read as a hole punched in the page.
+ *
+ * `*=` rather than `^=`: the site is served under a base path, so VitePress
+ * rewrites `/architecture/x.png` to `/toolbox/next/architecture/x.png` and a
+ * starts-with match never fires.
+ */
+.vp-doc img[src*='/architecture/'] {
+	border-radius: 12px;
+	border: 1px solid var(--vp-c-divider);
+	width: 100%;
+}
