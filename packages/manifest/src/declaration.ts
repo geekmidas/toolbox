@@ -391,6 +391,17 @@ export interface SiteDeclaration extends Node {
 	/** Where its source lives, relative to the workspace root. */
 	path: string;
 	/**
+	 * Whether this is the site the base domain points at.
+	 *
+	 * Structural rather than config: *which* site is primary does not vary by
+	 * stage, even though its hostname does — that is what `app.domain` is for.
+	 *
+	 * Only meaningful when a project has more than one site, and then only when
+	 * none of them is named `web`. The convention still holds first, because it
+	 * is a convention people already rely on.
+	 */
+	root?: boolean;
+	/**
 	 * What it calls. On a node rather than on a handler because a site has no
 	 * single entrypoint — the whole app is the consumer.
 	 */

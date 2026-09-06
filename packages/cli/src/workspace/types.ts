@@ -931,6 +931,15 @@ export interface WorkspaceConfig {
  * All optional fields have been resolved to their defaults.
  */
 export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
+	/**
+	 * Whether the base domain points at this site.
+	 *
+	 * Carried from the `site` declaration rather than configured, because which
+	 * site is primary is structural — its *hostname* is what varies by stage,
+	 * and that is `domain`.
+	 */
+	root?: boolean;
+
 	/** App type (always defined after normalization) */
 	type: 'backend' | 'web' | 'mobile';
 	/** Path to the app */

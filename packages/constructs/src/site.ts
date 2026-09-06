@@ -36,6 +36,15 @@ export interface StaticSiteConfig {
 	/** Where its source lives, relative to the workspace root. */
 	path: string;
 	/**
+	 * Whether the base domain points at this site.
+	 *
+	 * A project with one site needs this no more than a project with one
+	 * database needs to say which database. It matters when there are several
+	 * and none is called `web`: the base domain then belongs to whichever site
+	 * says so, rather than to whichever file the glob happened to reach first.
+	 */
+	root?: boolean;
+	/**
 	 * Which framework builds it.
 	 *
 	 * It selects how values are delivered — `VITE_`, `NEXT_PUBLIC_`, a fetched
@@ -92,6 +101,7 @@ export class StaticSite<TName extends string = string>
 				id: this.id,
 				variant: this.config.variant ?? 'static',
 				path: this.config.path,
+				...(this.config.root ? { root: true } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.url],
 			},

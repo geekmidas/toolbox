@@ -56,39 +56,67 @@ export function resolveHost(
 }
 
 /**
- * Determine if an app is the "main" frontend (gets base domain).
+ * Which site the base domain points at.
  *
- * An app is considered the main frontend if:
- * 1. It's named 'web' and is a frontend type
- * 2. It's the first frontend app in the apps list
+ * Three rules, in order, and the last one is the point:
  *
- * @param appName - The name of the app to check
- * @param app - The app configuration
- * @param allApps - All apps in the workspace
- * @returns True if this is the main frontend app
+ * 1. **One site** — it is the root. Unambiguous, so nothing has to be said.
+ * 2. **Named `web`** — the convention wins, because people already rely on it.
+ * 3. **Declared `root: true`** — the site says so itself.
+ *
+ * Anything else throws. It used to take the *first* `type: 'web'` it iterated,
+ * and that object is built from the manifest, which is built in glob traversal
+ * order — so two sites with neither named `web` meant renaming a file could
+ * move the production root domain, silently. The same shape as
+ * `CacheIsAmbiguous`: unambiguous with one and arbitrary with two, so two is an
+ * error rather than a coin toss.
+ *
+ * @throws {AmbiguousRootSite} when several sites could be the root and none says it is
  */
 export function isMainFrontendApp(
 	appName: string,
 	app: NormalizedAppConfig,
 	allApps: Record<string, NormalizedAppConfig>,
 ): boolean {
-	if (app.type !== 'web') {
-		return false;
-	}
+	if (app.type !== 'web') return false;
 
-	// App named 'web' is always main
-	if (appName === 'web') {
-		return true;
-	}
+	const sites = Object.entries(allApps).filter(([, a]) => a.type === 'web');
 
-	// Otherwise, check if this is the first frontend
-	for (const [name, a] of Object.entries(allApps)) {
-		if (a.type === 'web') {
-			return name === appName;
-		}
-	}
+	// 1. The only site there is.
+	if (sites.length === 1) return true;
 
-	return false;
+	// 2. The convention.
+	const named = sites.filter(([name]) => name === 'web');
+	if (named.length > 0) return appName === 'web';
+
+	// 3. What a site declared about itself.
+	const declared = sites.filter(([, a]) => a.root === true);
+	if (declared.length === 1) return declared[0]![0] === appName;
+
+	throw new AmbiguousRootSite(
+		sites.map(([name]) => name),
+		declared.length > 1,
+	);
+}
+
+/** Several sites could hold the base domain, and none of them says it does. */
+export class AmbiguousRootSite extends Error {
+	constructor(
+		readonly sites: readonly string[],
+		readonly tooMany = false,
+	) {
+		super(
+			tooMany
+				? `More than one site declares \`root: true\` — ${sites.join(', ')}. ` +
+						`The base domain points at one of them.`
+				: `${sites.length} sites and nothing says which holds the base ` +
+						`domain: ${sites.join(', ')}. Name one of them \`web\`, or ` +
+						`declare \`root: true\` on the one the base domain points at. ` +
+						`It used to be whichever the glob reached first, which is not a ` +
+						`thing to decide a production hostname.`,
+		);
+		this.name = 'AmbiguousRootSite';
+	}
 }
 
 /**

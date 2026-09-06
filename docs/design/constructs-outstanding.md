@@ -592,10 +592,13 @@ error.
 
 ---
 
-## 6b. Dokploy — *a pipeline now, and it has never run*
+## 6b. Dokploy — *deployed, and what that cost*
 
-**This was the largest gap in the repo, and it is now the least verified thing
-in it.** The first slice is built; nothing has deployed.
+**This was the largest gap in the repo. It is now the most exercised path in
+it.** A stage is deployed: the project, the application, a Postgres carrying
+forty-five applied role statements, a MinIO compose stack, twenty-one resolved
+environment keys, and a Let's Encrypt domain. What it cost to get there is
+below, because most of it was only findable by deploying.
 
 What the gap was, because the shape of the fix follows from it:
 `packages/cli/src/deploy/` contained no reference to `reconcile`, `discover`,
@@ -732,7 +735,7 @@ prototype rather than plan:
 
 Nothing has run against a real Dokploy server.
 
-### The application is named by its image, and serves two surfaces
+### What the first deploys found — **resolved**
 
 Two findings from the first deploy that reached Dokploy, both about the same
 thing: an application is created before anything has read the manifest.
@@ -914,8 +917,9 @@ generators.
 
 Stated plainly, because "tests pass" and "it works" are different claims.
 
-- **Nothing has been deployed.** No AWS credentials in this environment; the AWS
-  target's six provisioners are verified as pure decisions, not as a stack.
+- **Nothing has been deployed to AWS.** No credentials in this environment; the
+  AWS target's six provisioners are verified as pure decisions, not as a stack.
+  Dokploy is the opposite now — see §6b.
 - ~~**The file server has not run against MinIO.**~~ **Resolved.** It has, from
   an empty volume: a presigned `PUT` that accepts bytes, the object readable
   unsigned at the declared `open` prefix, and `403` on a path that is not on the
@@ -938,11 +942,14 @@ Stated plainly, because "tests pass" and "it works" are different claims.
   schema owned by a role that could not create in it, `services` dropped on the
   way to the entry point, two caches in one database sharing a table, and
   `gkm test` filtering away the very URLs it had just resolved.
-- **The declared DDL has not been applied on Dokploy.** The statements are
-  generated and the cluster is created; what has not completed is the applier
-  running against it, because the deploy now stops earlier — see the suggested
-  order. Locally and in the fake this path is covered; against a real Dokploy
-  Postgres it is not.
+- ~~**The declared DDL has not been applied on Dokploy.**~~ **Resolved.**
+  Forty-five statements applied against a real Dokploy Postgres, convergent —
+  the second pass reports `0 new`. The roles, the schema ownership and the
+  `search_path` pinned on the role all exist on a cluster nothing in this repo
+  created by hand.
+- **The frontend has never been built.** `web` is a deploy unit derived from the
+  manifest now, but no run has reached the Vite build, so that path is asserted
+  rather than exercised — see §5.
 - **The database bootstrap has never run.** Its decisions are asserted as pure
   data — the event it composes is fed straight into the DDL generator in a test
   — but no Lambda has connected to a real cluster.
@@ -964,33 +971,68 @@ Stated plainly, because "tests pass" and "it works" are different claims.
 
 ---
 
-## Suggested order
+## What happens next
 
-Not a plan, a suggestion — the decisions in §1 and §3 belong to whoever owns the
-bill and the security model, and the rest follows them.
+Ordered. Each is small enough to finish, and the first two block publishing
+anything at all.
 
-1. **A real Dokploy deploy** — *begun, not finished.* It reaches the server now:
-   the project is found, the application created, and
-   `production-kitchen-sink-database` created under the scoped name, with eleven
-   declared URLs resolved. Two of the three things this predicted trouble from
-   were right. The external-port dance is the fragile part — the port is only
-   reachable while published, and a container restarting around that change
-   drops the SYN rather than refusing it, which is now bounded and retried three
-   times. What stops it today is neither: the bundle step refuses to build
-   without `MAIL_URL`, `MAIL_FROM`, `UPLOADS_URL` and `UPLOADS_SERVER_URL` —
-   the two kinds with no Dokploy provisioner, §4.3 and §1.3. So the role DDL
-   against Dokploy's Postgres is still the untested half.
-2. **A real deploy** — §1.1 and the bootstrap are the largest untested surface
-   in the repo, and everything below is easier to trust once one stack has come
-   up.
-3. **§2 the surface as factory** — unblocks `rest-api` on AWS, per-route IAM, and
-   a bundle per surface, and is the largest remaining piece of correctness debt
-   in the model. Now a mechanical change rather than an open question: an
-   endpoint is created from its surface, `e` retires with v9, and the glob goes
-   back to loading modules.
-4. **§5 kitchen-sink frontend** — makes four already-built derivations observable
-   rather than merely tested, and is cheap.
-5. **§6c.1 the fullstack workspace** — the last path that still declares its
-   infrastructure twice, and the one a new user is most likely to meet, since it
-   is one of the two templates the init prompt offers.
-6. **§7.2** — small, and the kind of gap that hides others.
+### 1. The v10 docs, before this merges
+
+The published guide teaches config that no longer compiles, which is worse than
+teaching nothing. Four concrete breaks:
+
+- `cli-reference.md` documents `cache: true`. That is a **type error** now — the
+  key takes a backend name and nothing else.
+- `dev-server.md` carries a table mapping `services.db: true` → a Postgres
+  container. That mechanism is gone; containers come from the manifest. Its
+  caveat — "on the declared path this table does not apply" — described a world
+  with two paths, and there is one.
+- `fullstack-init.md` scaffolds `services: { db: true, cache: true }`.
+- Both doc sites give `gkm login --provider hostinger`. The flag is `--service`;
+  `--provider` errors.
+
+And the Dokploy section of `deployment.md` documents **deleted behaviour** — a
+"Phase 1" that provisions per-app database users, with `CREATE USER "api"` SQL.
+That was `initializePostgresUsers`, removed with the legacy path. The model is
+runtime/owner/reader roles per *declared database*, not a user per app.
+
+Undocumented and new: `services.images`, and `name` in the gkm config — which is
+the scope every deployed resource is named from, so its absence is the largest
+single hole.
+
+### 2. Retire `path` on `rest-api`
+
+The design says a surface's build input is its generated entry; the code still
+carries a `path` that says it is a directory. One of the two is wrong and it is
+the code. `site` keeps `path`, because a Vite app genuinely is a directory.
+
+### 3. §2 — the surface is the factory
+
+The largest remaining piece of correctness debt, and mechanical now rather than
+open. An endpoint is created from its surface, so it registers on one; `e`
+retires with v9; the glob returns to loading modules. It unblocks per-route IAM,
+`rest-api` on AWS, and one bundle per surface — the last of which is what makes
+a declared server actually its own process.
+
+### 4. §5 — build the frontend
+
+`web` is a deploy unit derived from the manifest now, and has still never been
+built. The first run will find something; that path has never executed.
+
+### 5. §6c.1 — the fullstack workspace
+
+The last shape that declares its infrastructure twice, and the one a new user
+meets first, since it is one of two templates `init` offers.
+
+### 6. §7.2 — spec files in the project typecheck
+
+Small, and the kind of gap that hides others.
+
+---
+
+**Not in the queue, waiting on a decision or on someone else.** Mail has no
+Dokploy provisioner and the deployed stage carries placeholder credentials, so
+magic-link sign-in fails at send — it needs real SES or Resend keys, not code.
+Ports 80 and 443 are filtered on the test host, so the issued domain resolves
+and cannot be reached. And §1's AWS provisioners remain verified as decisions
+rather than as a stack.

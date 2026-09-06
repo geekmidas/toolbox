@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NormalizedAppConfig } from '../../workspace/types';
 import {
+	AmbiguousRootSite,
 	generatePublicUrlBuildArgs,
 	getPublicUrlArgNames,
 	isMainFrontendApp,
@@ -99,55 +100,76 @@ describe('resolveHost', () => {
 	});
 });
 
-describe('isMainFrontendApp', () => {
-	const createApp = (type: 'backend' | 'web'): NormalizedAppConfig => ({
-		type,
-		path: 'apps/test',
-		port: 3000,
-		dependencies: [],
-		resolvedDeployTarget: 'dokploy',
-	});
+describe('which site holds the base domain', () => {
+	const app = (type: 'backend' | 'web', root?: boolean): NormalizedAppConfig =>
+		({
+			type,
+			path: 'apps/test',
+			port: 3000,
+			dependencies: [],
+			resolvedDeployTarget: 'dokploy',
+			...(root ? { root: true } : {}),
+		}) as NormalizedAppConfig;
 
-	it('should return false for backend apps', () => {
-		const apps = {
-			api: createApp('backend'),
-			web: createApp('web'),
-		};
+	it('is never a backend', () => {
+		const apps = { api: app('backend'), web: app('web') };
+
 		expect(isMainFrontendApp('api', apps.api, apps)).toBe(false);
 	});
 
-	it('should return true for app named "web" if it is frontend', () => {
-		const apps = {
-			api: createApp('backend'),
-			web: createApp('web'),
-			admin: createApp('web'),
-		};
+	it('is the only site, when there is only one', () => {
+		// Nothing has to be said for the case that cannot be ambiguous.
+		const apps = { api: app('backend'), admin: app('web') };
+
+		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(true);
+	});
+
+	it('is the one named `web`, because that convention is already relied on', () => {
+		const apps = { api: app('backend'), web: app('web'), admin: app('web') };
+
 		expect(isMainFrontendApp('web', apps.web, apps)).toBe(true);
-	});
-
-	it('should return true for first frontend app when no "web" app', () => {
-		const apps = {
-			api: createApp('backend'),
-			dashboard: createApp('web'),
-			admin: createApp('web'),
-		};
-		expect(isMainFrontendApp('dashboard', apps.dashboard, apps)).toBe(true);
 		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(false);
 	});
 
-	it('should return false for non-first frontend when no "web" app', () => {
+	it('is the one that declared itself root', () => {
 		const apps = {
-			api: createApp('backend'),
-			dashboard: createApp('web'),
-			admin: createApp('web'),
+			api: app('backend'),
+			console: app('web'),
+			admin: app('web', true),
 		};
-		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(false);
+
+		expect(isMainFrontendApp('admin', apps.admin, apps)).toBe(true);
+		expect(isMainFrontendApp('console', apps.console, apps)).toBe(false);
 	});
 
-	it('should return false when no frontend apps in allApps (edge case)', () => {
-		// Edge case: checking a frontend app against an empty allApps
-		const frontendApp = createApp('web');
-		expect(isMainFrontendApp('myapp', frontendApp, {})).toBe(false);
+	it('does not depend on the order they were declared in', () => {
+		// The bug this replaces: the rule took the *first* site it iterated, and
+		// that object is built from the manifest, which is built in glob
+		// traversal order — so renaming a file could move the production root
+		// domain, with nothing reporting it.
+		const forward = { admin: app('web', true), console: app('web') };
+		const reversed = { console: app('web'), admin: app('web', true) };
+
+		expect(isMainFrontendApp('admin', forward.admin, forward)).toBe(true);
+		expect(isMainFrontendApp('admin', reversed.admin, reversed)).toBe(true);
+	});
+
+	it('refuses to guess when several sites could be it', () => {
+		// The same shape as `CacheIsAmbiguous`: unambiguous with one and
+		// arbitrary with two, so two is an error rather than a coin toss.
+		const apps = { admin: app('web'), console: app('web') };
+
+		expect(() => isMainFrontendApp('admin', apps.admin, apps)).toThrow(
+			AmbiguousRootSite,
+		);
+	});
+
+	it('refuses when more than one claims it', () => {
+		const apps = { admin: app('web', true), console: app('web', true) };
+
+		expect(() => isMainFrontendApp('admin', apps.admin, apps)).toThrow(
+			AmbiguousRootSite,
+		);
 	});
 });
 

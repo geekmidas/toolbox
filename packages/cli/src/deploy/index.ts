@@ -910,6 +910,9 @@ export function deployUnits(
 			port: configured?.port ?? 3001,
 			dependencies: [],
 			framework: configured?.framework ?? FRAMEWORKS[declaration.variant],
+			// Carried from the declaration: which site the base domain points at
+			// is a fact the site states, not one the deploy infers from order.
+			...(declaration.root ? { root: true } : {}),
 			resolvedDeployTarget: configured?.resolvedDeployTarget ?? 'dokploy',
 		} as NormalizedAppConfig;
 	}
