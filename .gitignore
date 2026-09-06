@@ -45,7 +45,13 @@ playground.ts
 src/playground/**
 
 .gkm
-.vitepress
+
+# VitePress build output and cache — not the source beside them. This used to
+# be a bare `.vitepress`, which ignored `theme/` too: the docs site shipped
+# without its own theme, and the only reason `config.ts` was there at all is
+# that somebody force-added it once.
+.vitepress/dist
+.vitepress/cache
 
 bad-migrations
 
