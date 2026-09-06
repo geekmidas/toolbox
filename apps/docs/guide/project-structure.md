@@ -43,6 +43,17 @@ an `id` that can `declare()`. Point it at `./src/**/*.ts` and colocate a bucket
 with the feature that uses it if you prefer.
 :::
 
+::: warning An under-inclusive glob silently drops declarations
+The glob is not a filter over things gkm already knows about — it is **how they
+are found at all**. A file it does not match is never imported, so its
+declarations do not exist: no container, no env key, no deployed resource, and
+no error saying so.
+
+`*.ts` matches one level; `**/*.ts` matches any depth. Moving a declaration into
+a subdirectory is enough to lose it. Widening the glob costs startup time and
+nothing else, so prefer the wider one.
+:::
+
 ## A workspace
 
 ```

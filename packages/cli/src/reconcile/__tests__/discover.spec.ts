@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UnknownParent } from '@geekmidas/manifest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DuplicateConstruct, discover, isDeclarable } from '../discover';
 
 const fixtures = join(__dirname, '__fixtures__');
@@ -157,6 +157,77 @@ describe('a construct reached twice', () => {
 			);
 		} finally {
 			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+});
+
+/**
+ * A glob that finds nothing says so.
+ *
+ * The glob is how declarations are found, not a filter over ones already known,
+ * so a file it misses is a declaration that does not exist — and every symptom
+ * appears somewhere other than the cause: no container, no env key, and an app
+ * failing against a resource it can see in its own source.
+ */
+describe('a glob that found nothing', () => {
+	it('warns when it matched no files at all', async () => {
+		const cwd = await mkdtemp(join(tmpdir(), 'gkm-discover-empty-'));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			await discover({ patterns: 'constructs/**/*.ts', cwd });
+
+			expect(warn).toHaveBeenCalledOnce();
+			// The depth mistake is the common one, so the message names it.
+			expect(warn.mock.calls[0]?.[0]).toContain('matched no files');
+			expect(warn.mock.calls[0]?.[0]).toContain('**/*.ts');
+		} finally {
+			warn.mockRestore();
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it('warns when it matched files that declared nothing', async () => {
+		// A different mistake with the same symptom: the glob is right and the
+		// construct was never exported.
+		const cwd = await mkdtemp(join(tmpdir(), 'gkm-discover-silent-'));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			await writeFile(join(cwd, 'helpers.ts'), 'export const two = 2;\n');
+
+			await discover({ patterns: '*.ts', cwd });
+
+			expect(warn).toHaveBeenCalledOnce();
+			expect(warn.mock.calls[0]?.[0]).toContain('none declared anything');
+		} finally {
+			warn.mockRestore();
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it('says nothing when no glob was configured', async () => {
+		// A project that has not adopted constructs has nothing to be missing.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			await discover({ patterns: [], cwd: fixtures });
+
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it('says nothing when it found something', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			await found();
+
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
 		}
 	});
 });

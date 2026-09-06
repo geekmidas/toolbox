@@ -24,6 +24,9 @@ import {
 import fg from 'fast-glob';
 import { clearZodGlobalRegistry } from '../generators/Generator';
 
+/** Matches the rest of the CLI, which logs through `console` directly. */
+const logger = console;
+
 /** The construct face discovery needs: an id, and the ability to declare. */
 interface Declarable {
 	id: string;
@@ -97,12 +100,14 @@ export async function discover(
 	 */
 	const seen = new WeakSet<object>();
 
-	const files = fg.stream(
-		Array.isArray(patterns) ? [...patterns] : [patterns as string],
-		{ cwd, absolute: true },
-	);
+	const globs = Array.isArray(patterns) ? [...patterns] : [patterns as string];
+	const files = fg.stream(globs, { cwd, absolute: true });
+
+	/** Matched files, for the diagnostic below. */
+	let matched = 0;
 
 	for await (const found of files) {
+		matched++;
 		const file = found.toString();
 		const module = await import(bustCache ? `${file}?t=${Date.now()}` : file);
 
@@ -136,7 +141,57 @@ export async function discover(
 	// database that was deleted is a manifest error, not a reconcile failure.
 	assertDerivations(manifest);
 
+	warnIfNothingFound(globs, matched, Object.keys(manifest).length);
+
 	return manifest;
+}
+
+/**
+ * Say so when a glob was configured and found nothing.
+ *
+ * The glob is not a filter over declarations already known — it is *how they
+ * are found*, by importing what it matches. So a file it misses is a
+ * declaration that does not exist, and every symptom of that appears somewhere
+ * other than the cause: no container starts, no env key is written, and the
+ * application fails on first use against a resource it can see in its own
+ * source.
+ *
+ * Nothing reported it before, because an unmatched file is indistinguishable
+ * from a file nobody wrote. These two cases are the ones that are *not*
+ * ambiguous — a glob was configured, so something was expected.
+ *
+ * Silent when no glob is configured at all: that is a project which has not
+ * adopted constructs, and has nothing to be missing.
+ */
+function warnIfNothingFound(
+	globs: readonly string[],
+	matched: number,
+	declared: number,
+): void {
+	if (globs.length === 0) return;
+
+	if (matched === 0) {
+		logger.warn(
+			`\n⚠️  The constructs glob matched no files, so nothing was declared.\n` +
+				`   Patterns: ${globs.join(', ')}\n` +
+				`   Nothing will be provisioned — no containers, no env keys, no ` +
+				`resources.\n` +
+				`   A common cause is depth: '*.ts' matches one level, '**/*.ts' ` +
+				`matches any.`,
+		);
+		return;
+	}
+
+	if (declared === 0) {
+		logger.warn(
+			`\n⚠️  The constructs glob matched ${matched} file(s) but none declared ` +
+				`anything.\n` +
+				`   Patterns: ${globs.join(', ')}\n` +
+				`   Discovery keeps exports with an 'id' that can 'declare()'. A ` +
+				`construct that is\n` +
+				`   built but never exported is invisible to it.`,
+		);
+	}
 }
 
 /** Two constructs claiming one id. */

@@ -206,6 +206,15 @@ so the registrations happen as an import side effect. Discovery and attribution
 were the same question only because nothing recorded an owner; they are now
 separate, and the glob answers only the first.
 
+**The glob's failure mode gets sharper, and is worth a warning.** Registration
+becomes an *import side effect*, so a module the glob does not match never
+registers its endpoints — and they are then missing from the manifest, the
+generated server and the deploy at once, with no error. That is the same silence
+an unmatched `database` already produces, and nothing reports either: `discover`
+streams the matches and never asks whether there were none. Documented in the
+public guide now (getting-started, project-structure); the diagnostic §6c.3
+proposes for the container case would cover this one too.
+
 **This makes `Auth` and `Api` the same shape.** `BetterAuth` already declares its
 own endpoint — one wildcard, `ANY {basePath}/*` → `Auth.handler`, because
 better-auth routes internally and enumerating its paths would be a copy of its
@@ -793,16 +802,27 @@ that decides both is the duplication this design removes, restated in the
 scaffold. Removing it for single-app projects is a gate at the call site plus
 four test rewrites; the fullstack path still needs its copy until §6c.1 lands.
 
-### 6c.3 The glob is a switch with a sharp edge — *documented, no action yet*
+### 6c.3 The glob is a switch with a sharp edge — *diagnostic built; the migration case remains*
 
 Because derived containers are ignored rather than obeyed, adding a `constructs`
 glob to an existing project **removes** its Postgres and MinIO until it declares
 the database and the bucket that imply them. That is the intended semantics —
 a config and a declaration that disagree is the failure the model exists to
-remove — but it is a migration hazard with no warning attached. The cheap
-version is a diagnostic: a glob is configured, `services.db` is set, and no
-`database` kind was discovered, so say which container is about to disappear and
-why.
+remove — but it is a migration hazard with no warning attached.
+
+**Half of this is now built**, for the neighbouring failure rather than this one.
+An *under-inclusive* glob is the same silence from the other direction: nothing
+appears, because a file the glob missed is a declaration that does not exist.
+`discover` now warns on the two unambiguous cases — a configured glob that
+matched no files, and matched files that declared nothing — and stays quiet when
+no glob is configured, which is a project that has not adopted constructs and has
+nothing to be missing. It is explicit in the public guide too, since the symptom
+always appears somewhere other than the cause.
+
+What remains is the *migration* case above: a glob is configured, a container
+was previously implied by config, and no declaration of that kind was found — so
+name the container that is about to disappear and why. It needs the previous
+state to compare against, which the diagnostic in `discover` does not have.
 
 ### 6c.4 `secret` has no construct — *by design*
 
