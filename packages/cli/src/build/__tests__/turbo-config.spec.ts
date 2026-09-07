@@ -79,9 +79,9 @@ describe('turboFilters', () => {
 		mkdirSync(join(wsRoot, 'apps/api'), { recursive: true });
 		writeFileSync(join(wsRoot, 'apps/api/package.json'), '{"private":true}');
 
-		expect(turboFilters(workspace({ api: app('apps/api') })).unpackaged).toEqual(
-			['api'],
-		);
+		expect(
+			turboFilters(workspace({ api: app('apps/api') })).unpackaged,
+		).toEqual(['api']);
 	});
 });
 
@@ -107,7 +107,9 @@ describe('writeTurboConfigs', async () => {
 		expect(written.tasks.build.inputs).toContain(
 			'$TURBO_ROOT$/apps/shop/constructs/**/*.ts',
 		);
-		expect(written.tasks.build.inputs).toContain('$TURBO_ROOT$/apps/shop/gkm.config.ts');
+		expect(written.tasks.build.inputs).toContain(
+			'$TURBO_ROOT$/apps/shop/gkm.config.ts',
+		);
 		expect(written.tasks.build.outputs).toEqual(['.gkm/**']);
 	});
 
