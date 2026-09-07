@@ -592,6 +592,52 @@ error.
 
 ---
 
+### 6.3 What `services.auth` is when auth is elsewhere — *the actual blocker*
+
+Splitting the auth server is discussed as a build problem (§2, one generated
+entry per surface). It is not only that, and the other half is undocumented.
+
+Today `.dependsOn([auth])` dissolves the construct into the handler's service
+record and a handler calls it **in process**:
+
+```ts
+services.auth.api.getSession({ headers })   // endpoints/session.ts
+```
+
+That is `betterAuth()`'s own object, reached by a function call. Put the auth
+server in its own container and that call has to cross a network — so the split
+is blocked on a question the bundle work does not answer: *what does a construct
+hand a consumer that is no longer co-located?*
+
+**It must be a facade, and it must always be one.** §6.1 already proposes the
+vocabulary — `signIn`, `session`, `signOut` — for the generated browser client.
+The same contract answers this: if consumption always goes through a facade with
+a fixed surface, whether it is backed by the in-process server or by HTTP to
+`AUTH_URL` is an implementation detail, and no handler changes when that flips.
+
+The alternative — two shapes depending on co-location — is the worst outcome
+available: the same call site behaving differently based on deployment, which is
+precisely what the model exists to remove.
+
+**Sequence, and only the second step is real work:**
+
+1. **Fix the facade's surface.** §6.1's capabilities. This is a decision, not
+   code.
+2. **`.dependsOn([auth])` returns the facade**, backed in-process exactly as it
+   is now. No behaviour change and no deployment change — but better-auth's own
+   shape leaves application code, which §6.1 already lists as a deviation worth
+   removing on its own merits. `endpoints/session.ts` is the only caller.
+3. **Add the HTTP backing** for the same facade, over `AUTH_URL`. Co-location
+   becomes a deployment choice rather than an assumption.
+4. **Then §2 splits them**, and the split is a config change rather than a
+   rewrite.
+
+Step 2 is worth doing whether or not the split ever happens, which is the
+argument for doing it first: it pays for itself as decoupling, and it happens to
+be the thing that unblocks everything else.
+
+---
+
 ## 6b. Dokploy — *deployed, and what that cost*
 
 **This was the largest gap in the repo. It is now the most exercised path in
@@ -1006,7 +1052,13 @@ The design says a surface's build input is its generated entry; the code still
 carries a `path` that says it is a directory. One of the two is wrong and it is
 the code. `site` keeps `path`, because a Vite app genuinely is a directory.
 
-### 3. §2 — the surface is the factory
+### 3. §6.3 — make `services.auth` a facade
+
+Backed in-process, so nothing changes at runtime. It removes better-auth's shape
+from application code, and it is what lets a surface move out of the process
+later without touching a handler. One caller today.
+
+### 4. §2 — the surface is the factory
 
 The largest remaining piece of correctness debt, and mechanical now rather than
 open. An endpoint is created from its surface, so it registers on one; `e`
@@ -1014,17 +1066,17 @@ retires with v9; the glob returns to loading modules. It unblocks per-route IAM,
 `rest-api` on AWS, and one bundle per surface — the last of which is what makes
 a declared server actually its own process.
 
-### 4. §5 — build the frontend
+### 5. §5 — build the frontend
 
 `web` is a deploy unit derived from the manifest now, and has still never been
 built. The first run will find something; that path has never executed.
 
-### 5. §6c.1 — the fullstack workspace
+### 6. §6c.1 — the fullstack workspace
 
 The last shape that declares its infrastructure twice, and the one a new user
 meets first, since it is one of two templates `init` offers.
 
-### 6. §7.2 — spec files in the project typecheck
+### 7. §7.2 — spec files in the project typecheck
 
 Small, and the kind of gap that hides others.
 
