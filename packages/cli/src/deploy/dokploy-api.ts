@@ -64,14 +64,45 @@ export class DokployApi {
 	): Promise<T> {
 		const url = `${this.baseUrl}/api/${endpoint}`;
 
-		const response = await fetch(url, {
-			method,
-			headers: {
-				'Content-Type': 'application/json',
-				'x-api-key': this.token,
-			},
-			body: body ? JSON.stringify(body) : undefined,
-		});
+		// Retried, because the *transport* fails in one specific way here: a
+		// deploy pushes an image for several minutes, and the first call after
+		// that finds a keep-alive socket the server has since closed. `fetch`
+		// reports it as a bare `fetch failed` with no status, which aborted a
+		// deploy that had already built and pushed everything.
+		//
+		// Only connection failures. A response — including a 4xx — means the
+		// request arrived, and repeating it would be repeating a decision the
+		// server already made.
+		let response: Response | undefined;
+		let lastError: unknown;
+
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			try {
+				response = await fetch(url, {
+					method,
+					headers: {
+						'Content-Type': 'application/json',
+						'x-api-key': this.token,
+					},
+					body: body ? JSON.stringify(body) : undefined,
+				});
+				break;
+			} catch (error) {
+				lastError = error;
+				if (attempt === 3) break;
+				await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+			}
+		}
+
+		if (!response) {
+			const detail =
+				lastError instanceof Error ? lastError.message : String(lastError);
+			throw new DokployApiError(
+				`Could not reach Dokploy at ${this.baseUrl} (${endpoint}): ${detail}`,
+				0,
+				'Network error',
+			);
+		}
 
 		if (!response.ok) {
 			let errorMessage = `Dokploy API error: ${response.status} ${response.statusText}`;

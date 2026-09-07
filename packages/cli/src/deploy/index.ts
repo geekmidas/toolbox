@@ -241,6 +241,11 @@ async function waitForPostgres(
 				database,
 				connectionTimeoutMillis: 5_000,
 			});
+			// A socket that dies *after* connecting emits on the client, and an
+			// unhandled 'error' event takes the whole process down — which is how
+			// a deploy went from "retrying" to a Node stack trace mid-run. The
+			// retry loop below is the thing that decides what to do about it.
+			client.on('error', () => {});
 			await client.connect();
 			await client.end();
 			return;
@@ -372,6 +377,11 @@ async function applyDeclaredStatements(
 				database: database ?? postgres.databaseName,
 				connectionTimeoutMillis: 15_000,
 			});
+			// See `waitForPostgres`: the port is only reachable while published,
+			// and the container restarts around that change, so the socket can
+			// drop mid-statement. Swallowed here and surfaced by the awaited
+			// call, which the retry can actually act on.
+			connection.on('error', () => {});
 
 			await connection.connect();
 			try {
