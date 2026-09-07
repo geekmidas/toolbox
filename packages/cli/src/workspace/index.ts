@@ -176,6 +176,7 @@ export function normalizeWorkspace(
 	return {
 		name,
 		root: cwd,
+		...(config.constructs ? { constructs: config.constructs } : {}),
 		apps: normalizedApps,
 		services: config.services ?? {},
 		deploy: config.deploy ?? { default: 'dokploy' },

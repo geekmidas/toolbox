@@ -30,6 +30,13 @@ import { planFor } from './plan.js';
 export function constructGlobs(workspace: NormalizedWorkspace): string[] {
 	const globs: string[] = [];
 
+	// The workspace's own, first: infrastructure two apps share is a fact about
+	// the product, and declaring it inside one of them makes moving that app a
+	// change to the other's database.
+	for (const pattern of patternsOf(workspace.constructs)) {
+		globs.push(isAbsolute(pattern) ? pattern : join(workspace.root, pattern));
+	}
+
 	for (const app of Object.values(workspace.apps)) {
 		for (const pattern of patternsOf(app.constructs)) {
 			const root = isAbsolute(app.path)

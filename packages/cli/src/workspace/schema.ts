@@ -745,6 +745,15 @@ const AppConfigSchema = z
 export const WorkspaceConfigSchema = z
 	.object({
 		name: z.string().optional(),
+		/**
+		 * Where the workspace's own constructs live, relative to its root.
+		 *
+		 * Infrastructure is a fact about the product, not about the process that
+		 * happens to import it — so a database two apps share is declared once,
+		 * at the top, and both find it. An app-level glob still works and is
+		 * additive, for something only one app uses.
+		 */
+		constructs: RoutesSchema.optional(),
 		apps: z
 			.record(z.string(), AppConfigSchema)
 			.refine((apps) => Object.keys(apps).length > 0, {

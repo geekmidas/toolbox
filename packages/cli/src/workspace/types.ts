@@ -902,6 +902,13 @@ export type WorkspaceConfigInput<
  * @deprecated Use WorkspaceInput with defineWorkspace for type inference
  */
 export interface WorkspaceConfig {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	/** Workspace name (defaults to root package.json name) */
 	name?: string;
 
@@ -971,6 +978,13 @@ export interface NormalizedWorkspace {
 	name: string;
 	/** Absolute path to workspace root */
 	root: string;
+	/**
+	 * The workspace's own constructs glob, relative to `root`.
+	 *
+	 * Where the product's shared infrastructure is declared. Additive with each
+	 * app's glob, so an app can still declare something only it uses.
+	 */
+	constructs?: Routes;
 	/** Normalized app configurations */
 	apps: Record<string, NormalizedAppConfig>;
 	/** Services configuration (empty object if not specified) */
