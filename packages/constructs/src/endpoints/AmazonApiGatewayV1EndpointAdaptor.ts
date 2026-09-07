@@ -87,7 +87,6 @@ export class AmazonApiGatewayV1Endpoint<
 		};
 	}
 	constructor(
-		protected override envParser: EnvironmentParser<{}>,
 		protected override readonly endpoint: Endpoint<
 			TRoute,
 			TMethod,
@@ -100,6 +99,6 @@ export class AmazonApiGatewayV1Endpoint<
 		>,
 		options: AmazonApiGatewayEndpointOptions = {},
 	) {
-		super(envParser, endpoint, options);
+		super(endpoint, options);
 	}
 }

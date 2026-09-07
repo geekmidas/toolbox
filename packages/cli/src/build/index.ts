@@ -34,7 +34,10 @@ import {
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
-import { discover } from '../reconcile/discover.js';
+import {
+	type ConstructSource,
+	discover,
+} from '../reconcile/discover.js';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -183,8 +186,13 @@ export async function buildCommand(
 	// the whole runtime graph inside its own toolchain. It runs before the build
 	// context rather than after the generators because the entry point's drivers
 	// are decided from it.
+	const constructSources: Record<string, ConstructSource> = {};
 	const declared = constructGlobs
-		? await discover({ patterns: constructGlobs, cwd: process.cwd() })
+		? await discover({
+				patterns: constructGlobs,
+				cwd: process.cwd(),
+				sources: constructSources,
+			})
 		: {};
 
 	// Which surface this server answers on, so the entry can derive its CORS.
@@ -204,6 +212,14 @@ export async function buildCommand(
 						id: primary.id,
 						trustedOriginsKey: provideKey(primary.id, 'trustedOrigins'),
 						...(primary.cors ? { cors: primary.cors } : {}),
+						...(constructSources[primary.id]
+							? {
+									module: {
+										specifier: constructSources[primary.id]!.file,
+										exportName: constructSources[primary.id]!.exportName,
+									},
+								}
+							: {}),
 					},
 				}
 			: {}),

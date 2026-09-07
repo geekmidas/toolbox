@@ -2,6 +2,7 @@ import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { withRlsContext } from '@geekmidas/db/rls';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
+import { envParserFor } from './surfaceEnv';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type {
@@ -59,7 +60,7 @@ export interface AmazonApiGatewayEndpointOptions {
 	 * ```typescript
 	 * import { telescopeMiddleware } from '@geekmidas/telescope/lambda';
 	 *
-	 * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+	 * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
 	 *   telescope: { middleware: telescopeMiddleware(telescope) },
 	 * });
 	 * ```
@@ -74,7 +75,7 @@ export interface AmazonApiGatewayEndpointOptions {
 	 * ```typescript
 	 * import { OTelTelemetry } from '@geekmidas/telescope/instrumentation';
 	 *
-	 * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+	 * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
 	 *   telemetry: new OTelTelemetry(),
 	 * });
 	 * ```
@@ -105,8 +106,18 @@ export abstract class AmazonApiGatewayEndpoint<
 > {
 	protected options: AmazonApiGatewayEndpointOptions;
 
+	/**
+	 * The parser this adaptor discovers services with.
+	 *
+	 * Taken from the endpoint's surface rather than handed in. An endpoint built
+	 * with `api.get()` carries its API, and the API carries the parser — so a
+	 * generated handler is `new AmazonApiGatewayV2Endpoint(endpoint)` with no
+	 * import written for it, which is the whole reason the surface is the
+	 * factory.
+	 */
+	protected envParser: EnvironmentParser<{}>;
+
 	constructor(
-		protected envParser: EnvironmentParser<{}>,
 		protected readonly endpoint: Endpoint<
 			TRoute,
 			TMethod,
@@ -124,6 +135,7 @@ export abstract class AmazonApiGatewayEndpoint<
 		options: AmazonApiGatewayEndpointOptions = {},
 	) {
 		this.options = options;
+		this.envParser = envParserFor(endpoint.surface);
 	}
 
 	private error(): Middleware<TEvent, TInput, TServices, TLogger> {

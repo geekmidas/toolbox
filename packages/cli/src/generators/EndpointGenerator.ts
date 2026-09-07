@@ -20,6 +20,57 @@ import {
 } from './Generator';
 
 /**
+ * How a generated entry gets its logger and environment parser.
+ *
+ * From the surface it serves, when there is one: the surface holds both as
+ * *objects*, and discovery already recorded which module declares it, so the
+ * entry imports that module and reads them off it.
+ *
+ * The alternative — the shape this replaces — was naming both in config as
+ * module paths, `envParser: './config/env#envParser'`, and printing an import
+ * for each. Two strings per app, checked by nothing, describing files the
+ * surface was already holding the contents of.
+ *
+ * Falls back to the configured paths for an app that declares no surface.
+ */
+export function runtimeFor(
+	context: BuildContext,
+	fromDir: string,
+): { imports: string; bindings: string } {
+	const module = context.surface?.module;
+
+	if (module) {
+		const specifier = importSpecifier(fromDir, module.specifier);
+
+		// Bound to the same names the rest of the entry already uses, so what
+		// changes is where they come from and nothing else.
+		return {
+			imports: `import { ${module.exportName} as __surface } from '${specifier}';`,
+			bindings: [
+				'// The logger and environment parser this surface was declared with.',
+				'const envParser = __surface.envParser;',
+				'const logger = __surface.logger;',
+			].join('\n'),
+		};
+	}
+
+	return {
+		imports: [
+			`import ${context.envParserImportPattern} from '${importSpecifier(fromDir, context.envParserPath)}';`,
+			`import ${context.loggerImportPattern} from '${importSpecifier(fromDir, context.loggerPath)}';`,
+		].join('\n'),
+		bindings: '',
+	};
+}
+
+/** A relative specifier ESM will accept: always prefixed, never bare. */
+function importSpecifier(fromDir: string, target: string): string {
+	const rel = relative(fromDir, target).replace(/\.ts$/, '.js');
+
+	return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/**
  * CORS for a surface, derived rather than hand-written.
  *
  * Who may call a surface is already in the graph — every construct that
@@ -267,11 +318,6 @@ export class EndpointGenerator extends ConstructGenerator<
 		const relativePath = relative(dirname(handlerPath), sourceFile);
 		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-		const relativeEnvParserPath = relative(
-			dirname(handlerPath),
-			context.envParserPath,
-		);
-
 		let content: string;
 
 		switch (provider) {
@@ -279,8 +325,6 @@ export class EndpointGenerator extends ConstructGenerator<
 				content = this.generateAWSApiGatewayV1Handler(
 					importPath,
 					exportName,
-					relativeEnvParserPath,
-					context.envParserImportPattern,
 					context.storageDrivers,
 				);
 				break;
@@ -288,8 +332,6 @@ export class EndpointGenerator extends ConstructGenerator<
 				content = this.generateAWSApiGatewayV2Handler(
 					importPath,
 					exportName,
-					relativeEnvParserPath,
-					context.envParserImportPattern,
 					context.storageDrivers,
 				);
 				break;
@@ -516,12 +558,8 @@ export async function setupEndpoints(
 		const appFileName = 'app.ts';
 		const appPath = join(outputDir, appFileName);
 
-		const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
-
-		const relativeEnvParserPath = relative(
-			dirname(appPath),
-			context.envParserPath,
-		);
+		// The logger and the env parser, from the surface that already holds them.
+		const runtime = runtimeFor(context, dirname(appPath));
 
 		// Generate telescope imports and setup if enabled
 		const telescopeEnabled = context.telescope?.enabled;
@@ -682,13 +720,14 @@ import type { Hono as HonoType } from 'hono';
 import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
 import { setupQueues } from './queues.js';
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
-import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+${runtime.imports}
 ${telescopeImports}
 ${studioImports}
 ${hooksImports}
 ${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
+
+${runtime.bindings}
 
 ${
 	context.storageDrivers?.setup
@@ -790,37 +829,51 @@ export default createApp;
 		return appPath;
 	}
 
+	/**
+	 * One Lambda, one endpoint — and no environment import.
+	 *
+	 * The endpoint was built from its surface, so it carries the parser the
+	 * adaptor needs. This used to read
+	 * `import { envParser } from '../../config/env'`, a line the build wrote
+	 * because a generator can print a module specifier and cannot print an
+	 * object. Nothing has to be printed now, which is also why nothing has to be
+	 * named in config.
+	 */
 	private generateAWSApiGatewayV1Handler(
 		importPath: string,
 		exportName: string,
-		envParserPath: string,
-		envParserImportPattern: string,
 		drivers?: StorageDrivers,
 	): string {
 		return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
-import ${envParserImportPattern} from '${envParserPath}';
 ${drivers?.imports ?? ''}
 ${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
-const adapter = new AmazonApiGatewayV1Endpoint(envParser, ${exportName});
+const adapter = new AmazonApiGatewayV1Endpoint(${exportName});
 
 export const handler = adapter.handler;
 `;
 	}
 
+	/**
+	 * One Lambda, one endpoint — and no environment import.
+	 *
+	 * The endpoint was built from its surface, so it carries the parser the
+	 * adaptor needs. This used to read
+	 * `import { envParser } from '../../config/env'`, a line the build wrote
+	 * because a generator can print a module specifier and cannot print an
+	 * object. Nothing has to be printed now, which is also why nothing has to be
+	 * named in config.
+	 */
 	private generateAWSApiGatewayV2Handler(
 		importPath: string,
 		exportName: string,
-		envParserPath: string,
-		envParserImportPattern: string,
 		drivers?: StorageDrivers,
 	): string {
 		return `import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
-import ${envParserImportPattern} from '${envParserPath}';
 ${drivers?.imports ?? ''}
 ${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
-const adapter = new AmazonApiGatewayV2Endpoint(envParser, ${exportName});
+const adapter = new AmazonApiGatewayV2Endpoint(${exportName});
 
 export const handler = adapter.handler;
 `;

@@ -22,7 +22,7 @@ import {
 	type SecurityScheme,
 } from './Authorizer';
 import type { ActorExtractor } from './audit';
-import type { AuthorizeFn, SessionFn } from './Endpoint';
+import type { AuthorizeFn, EndpointSurface, SessionFn } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { RlsConfig } from './rls';
 
@@ -83,6 +83,14 @@ export class EndpointFactory<
 		TDatabase
 	>;
 	private defaultLogger: TLogger;
+	/**
+	 * The surface this factory belongs to, stamped onto everything it builds.
+	 *
+	 * Set only by `RestApi`, which is the only thing that has one. A factory
+	 * with no surface produces endpoints that carry none, which is what a
+	 * standalone endpoint has always been.
+	 */
+	private surface?: EndpointSurface;
 	private availableAuthorizers: Authorizer[];
 	private defaultAuthorizerName?: TAuthorizers[number];
 	private defaultAuditorStorage:
@@ -111,6 +119,7 @@ export class EndpointFactory<
 		defaultActorExtractor,
 		customSecuritySchemes = {} as TSecuritySchemes,
 		defaultRlsConfig,
+		surface,
 	}: EndpointFactoryOptions<
 		TServices,
 		TBasePath,
@@ -145,6 +154,7 @@ export class EndpointFactory<
 		this.defaultActorExtractor = defaultActorExtractor;
 		this.customSecuritySchemes = customSecuritySchemes;
 		this.defaultRlsConfig = defaultRlsConfig;
+		this.surface = surface;
 	}
 
 	static joinPaths<TBasePath extends string, P extends string>(
@@ -236,6 +246,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -306,6 +317,7 @@ export class EndpointFactory<
 				...this.customSecuritySchemes,
 				...schemes,
 			} as TSecuritySchemes & T,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -387,6 +399,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -440,6 +453,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -492,6 +506,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -610,6 +625,7 @@ export class EndpointFactory<
 				| ActorExtractor<[...S, ...TServices], TSession, TLogger>
 				| undefined,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<[...S, ...TServices], TSession, TLogger>
 				| undefined,
@@ -677,6 +693,7 @@ export class EndpointFactory<
 				L
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, TSession, L>
 				| undefined,
@@ -733,6 +750,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -793,6 +811,7 @@ export class EndpointFactory<
 				TLogger
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, T, TLogger>
 				| undefined,
@@ -857,6 +876,7 @@ export class EndpointFactory<
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: service,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -918,6 +938,7 @@ export class EndpointFactory<
 				TLogger
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -973,6 +994,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: extractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -1042,6 +1064,7 @@ export class EndpointFactory<
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
 			defaultRlsConfig: config,
 		});
 	}
@@ -1100,6 +1123,10 @@ export class EndpointFactory<
 
 		if (this.defaultLogger) {
 			builder._logger = this.defaultLogger as TLogger;
+		}
+
+		if (this.surface) {
+			builder._surface = this.surface;
 		}
 
 		if (this.defaultSessionExtractor) {
@@ -1240,6 +1267,14 @@ export interface EndpointFactoryOptions<
 	defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	customSecuritySchemes?: TSecuritySchemes;
 	defaultRlsConfig?: TRlsConfig;
+	/**
+	 * The surface this factory belongs to.
+	 *
+	 * Set by `RestApi` and carried through every derived factory, so a
+	 * `api.endpoints.database(db)` still produces endpoints that know which API
+	 * serves them — and therefore which env parser they run with.
+	 */
+	surface?: EndpointSurface;
 }
 
 export const e = new EndpointFactory();

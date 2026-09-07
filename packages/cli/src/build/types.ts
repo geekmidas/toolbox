@@ -85,6 +85,16 @@ export interface BuildContext {
 	surface?: {
 		id: string;
 		trustedOriginsKey: string;
+		/**
+		 * Where the surface is declared, so the entry can import it.
+		 *
+		 * The logger a surface was given is an *object*, and a generator can
+		 * print a specifier but not an object — which is why the logger used to
+		 * be named in config as a module path. Discovery already knows the path,
+		 * so the entry imports the surface and reads the logger off it, and
+		 * nothing is written down twice.
+		 */
+		module?: { specifier: string; exportName: string };
 		cors?: {
 			maxAge?: number;
 			credentials?: boolean;

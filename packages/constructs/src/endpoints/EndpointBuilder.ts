@@ -29,7 +29,11 @@ import type {
 	SessionFn,
 	SuccessStatus,
 } from './Endpoint';
-import { Endpoint, type EndpointSchemas } from './Endpoint';
+import {
+	Endpoint,
+	type EndpointSchemas,
+	type EndpointSurface,
+} from './Endpoint';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 
@@ -79,6 +83,8 @@ export class EndpointBuilder<
 	_authorizerName?: TAuthorizers[number];
 	_actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	_audits: MappedAudit<TAuditAction, OutSchema>[] = [];
+	/** Internal: the surface this builder came from, carried to the endpoint. */
+	_surface?: EndpointSurface;
 	_customSecuritySchemes: Record<string, SecurityScheme> = {};
 	_rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	_rlsBypass?: boolean;
@@ -810,6 +816,7 @@ export class EndpointBuilder<
 			publisherService: this._publisher,
 			events: this._events,
 			authorizer,
+			...(this._surface ? { surface: this._surface } : {}),
 			auditorStorageService: this._auditorStorage,
 			actorExtractor: this._actorExtractor,
 			audits: this._audits,
