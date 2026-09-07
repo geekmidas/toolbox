@@ -592,49 +592,47 @@ error.
 
 ---
 
-### 6.3 What `services.auth` is when auth is elsewhere — *the actual blocker*
+### 6.3 Splitting the auth server — *a build concern after all*
 
-Splitting the auth server is discussed as a build problem (§2, one generated
-entry per surface). It is not only that, and the other half is undocumented.
+This was written up as blocked on a client: `.dependsOn([auth])` hands a handler
+`betterAuth()`'s own object, so moving the auth server to its own container
+looked like it forced that call across a network, and therefore forced a facade.
 
-Today `.dependsOn([auth])` dissolves the construct into the handler's service
-record and a handler calls it **in process**:
+**It does not, and the reason is what `BetterAuth` actually is.** Its `connect()`
+needs a secret, the resolved URLs, and a connection to the schema tenant it was
+given. Nothing in it depends on being the process that serves the routes. It is
+a library over a database, not a service you call — and `getSession` is a cookie
+looked up in that database.
 
-```ts
-services.auth.api.getSession({ headers })   // endpoints/session.ts
-```
+So two processes can both instantiate it against the same declared `AuthDb`, and
+both validate sessions with no hop between them. The split is only about which
+bundle carries the *routes*:
 
-That is `betterAuth()`'s own object, reached by a function call. Put the auth
-server in its own container and that call has to cross a network — so the split
-is blocked on a question the bundle work does not answer: *what does a construct
-hand a consumer that is no longer co-located?*
+| container | what it runs | why |
+|---|---|---|
+| `auth` | `/api/auth/*` — sign-in, magic links, callbacks | the browser-facing surface |
+| `api` | better-auth in-process, session reads only | `getSession` is a database read |
 
-**It must be a facade, and it must always be one.** §6.1 already proposes the
-vocabulary — `signIn`, `session`, `signOut` — for the generated browser client.
-The same contract answers this: if consumption always goes through a facade with
-a fixed surface, whether it is backed by the in-process server or by HTTP to
-`AUTH_URL` is an implementation detail, and no handler changes when that flips.
+`services.auth` keeps better-auth's own type, resolved from the service as it is
+now. No facade, no generated server-to-server client, and no handler changes —
+`endpoints/session.ts` keeps calling `services.auth.api.getSession({ headers })`
+whichever container it lands in.
 
-The alternative — two shapes depending on co-location — is the worst outcome
-available: the same call site behaving differently based on deployment, which is
-precisely what the model exists to remove.
+**What actually changes** is one value: `AUTH_URL` on the api container stops
+being its own address and becomes the auth container's. That is already resolved
+from the manifest rather than configured, and it is *correct* — a magic link
+minted anywhere should point at the server that serves the callback.
 
-**Sequence, and only the second step is real work:**
+**What to watch.** Both containers need `AUTH_SECRET` and the tenant URL, which
+they already resolve today. The two must agree on the secret, which they do by
+construction: it is one `secret` declaration with one derived value. And a
+schema tenant is still a `search_path` rather than a privilege boundary until
+the per-schema role exists — two processes reading it does not make that worse,
+but it does double the number of places it matters.
 
-1. **Fix the facade's surface.** §6.1's capabilities. This is a decision, not
-   code.
-2. **`.dependsOn([auth])` returns the facade**, backed in-process exactly as it
-   is now. No behaviour change and no deployment change — but better-auth's own
-   shape leaves application code, which §6.1 already lists as a deviation worth
-   removing on its own merits. `endpoints/session.ts` is the only caller.
-3. **Add the HTTP backing** for the same facade, over `AUTH_URL`. Co-location
-   becomes a deployment choice rather than an assumption.
-4. **Then §2 splits them**, and the split is a config change rather than a
-   rewrite.
-
-Step 2 is worth doing whether or not the split ever happens, which is the
-argument for doing it first: it pays for itself as decoupling, and it happens to
-be the thing that unblocks everything else.
+So this needs §2 and nothing else. The earlier framing — that a facade had to
+come first — was reasoning from the shape of the object rather than from what
+the object does.
 
 ---
 
@@ -1052,13 +1050,7 @@ The design says a surface's build input is its generated entry; the code still
 carries a `path` that says it is a directory. One of the two is wrong and it is
 the code. `site` keeps `path`, because a Vite app genuinely is a directory.
 
-### 3. §6.3 — make `services.auth` a facade
-
-Backed in-process, so nothing changes at runtime. It removes better-auth's shape
-from application code, and it is what lets a surface move out of the process
-later without touching a handler. One caller today.
-
-### 4. §2 — the surface is the factory
+### 3. §2 — the surface is the factory
 
 The largest remaining piece of correctness debt, and mechanical now rather than
 open. An endpoint is created from its surface, so it registers on one; `e`
@@ -1066,17 +1058,17 @@ retires with v9; the glob returns to loading modules. It unblocks per-route IAM,
 `rest-api` on AWS, and one bundle per surface — the last of which is what makes
 a declared server actually its own process.
 
-### 5. §5 — build the frontend
+### 4. §5 — build the frontend
 
 `web` is a deploy unit derived from the manifest now, and has still never been
 built. The first run will find something; that path has never executed.
 
-### 6. §6c.1 — the fullstack workspace
+### 5. §6c.1 — the fullstack workspace
 
 The last shape that declares its infrastructure twice, and the one a new user
 meets first, since it is one of two templates `init` offers.
 
-### 7. §7.2 — spec files in the project typecheck
+### 6. §7.2 — spec files in the project typecheck
 
 Small, and the kind of gap that hides others.
 
