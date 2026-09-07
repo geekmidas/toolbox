@@ -334,6 +334,27 @@ export interface RestApiDeclaration extends Node {
 	 * app declared it.
 	 */
 	path?: string;
+	/**
+	 * CORS tunables for this surface.
+	 *
+	 * *Who* may call it is never here — that is derived from the constructs
+	 * declaring an edge to this surface, and arrives as `<ID>_TRUSTED_ORIGINS`.
+	 * A hand-written origin list is the thing this model removes; these are the
+	 * knobs that genuinely cannot be derived from a graph.
+	 *
+	 * Omitted entirely, a surface still gets CORS — with the derived origins and
+	 * sensible defaults. There is nothing to opt into.
+	 */
+	cors?: {
+		/** Preflight cache lifetime in seconds. Default 86400. */
+		maxAge?: number;
+		/** Whether the browser may send credentials. Default true. */
+		credentials?: boolean;
+		/** Extra request headers to allow, beyond content-type and authorization. */
+		allowHeaders?: readonly string[];
+		/** Response headers the browser may read. */
+		exposeHeaders?: readonly string[];
+	};
 	authorizers?: readonly string[];
 	/** The authorizer applied where an endpoint names none. */
 	defaultAuthorizer?: string;

@@ -44,6 +44,17 @@ export interface RestApiConfig {
 	 */
 	path?: string;
 	/**
+	 * CORS tunables. The *origins* are never here — they are read off the
+	 * constructs that declared an edge to this surface, which is the whole point
+	 * of declaring one. These are the parts a graph cannot answer.
+	 */
+	cors?: {
+		maxAge?: number;
+		credentials?: boolean;
+		allowHeaders?: readonly string[];
+		exposeHeaders?: readonly string[];
+	};
+	/**
 	 * The authorizer names this surface exposes. Names only — what verifies a
 	 * request legitimately differs between local and deployed, so the mechanism
 	 * belongs to the target and never to portable code.
@@ -128,6 +139,7 @@ export class RestApi<TName extends string = string>
 				kind: 'rest-api',
 				id: this.id,
 				...(this.config.path ? { path: this.config.path } : {}),
+				...(this.config.cors ? { cors: this.config.cors } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

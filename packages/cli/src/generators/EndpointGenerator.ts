@@ -19,6 +19,63 @@ import {
 	type GeneratorOptions,
 } from './Generator';
 
+/**
+ * CORS for a surface, derived rather than hand-written.
+ *
+ * Who may call a surface is already in the graph — every construct that
+ * declared an edge to it — and reaches the process as one comma-separated
+ * value. An application that maintained this by hand maintained a list that was
+ * wrong in two directions at once: it trusted origins nothing was serving, and
+ * it could not name hosts a deploy had not chosen yet.
+ *
+ * Only the parts a graph cannot answer are configurable, and every one has a
+ * default: a surface that says nothing about CORS still gets it.
+ */
+export function corsFor(surface: BuildContext['surface']): {
+	imports: string;
+	setup: string;
+} {
+	if (!surface) return { imports: '', setup: '' };
+
+	const cors = surface.cors ?? {};
+	const allowHeaders = [
+		'content-type',
+		'authorization',
+		...(cors.allowHeaders ?? []),
+	];
+
+	return {
+		imports: `import { cors } from 'hono/cors';`,
+		setup: `
+  // Who may call ${surface.id}, read off the graph rather than listed here.
+  {
+    const { origins } = envParser
+      .create((get) => ({
+        origins: get('${surface.trustedOriginsKey}')
+          .string()
+          .default('')
+          .transform((value: string) =>
+            value.split(',').map((origin) => origin.trim()).filter(Boolean),
+          ),
+      }))
+      .parse();
+
+    honoApp.use('*', cors({
+      origin: origins,
+      allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowHeaders: ${JSON.stringify(allowHeaders)},${
+				cors.exposeHeaders
+					? `\n      exposeHeaders: ${JSON.stringify(cors.exposeHeaders)},`
+					: ''
+			}
+      credentials: ${cors.credentials ?? true},
+      maxAge: ${cors.maxAge ?? 86400},
+    }));
+  }
+`,
+	};
+}
+
 export class EndpointGenerator extends ConstructGenerator<
 	Endpoint<
 		any,
@@ -508,6 +565,7 @@ import { createStudioApp } from '@geekmidas/studio/server/hono';`;
 		}
 
 		// Generate imports for server hooks
+		const cors = corsFor(context.surface);
 		let hooksImports = '';
 		let beforeSetupCall = '';
 		let afterSetupCall = '';
@@ -629,6 +687,7 @@ import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${telescopeImports}
 ${studioImports}
 ${hooksImports}
+${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
 
 ${
@@ -684,7 +743,7 @@ export interface ServerApp {
  */
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
-${telescopeSetup}${beforeSetupCall}${studioSetup}
+${telescopeSetup}${cors.setup}${beforeSetupCall}${studioSetup}
   // Setup HTTP endpoints
   await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 ${afterSetupCall}
@@ -802,6 +861,7 @@ export const handler = ${exportName};
 		const includeSubscribers = production.subscribers === 'include';
 
 		// Generate imports for server hooks
+		const cors = corsFor(context.surface);
 		let hooksImports = '';
 		let beforeSetupCall = '';
 		let afterSetupCall = '';
@@ -885,6 +945,7 @@ ${subscriberImport}
 import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
 import ${context.loggerImportPattern} from '${relativeLoggerPath}';
 ${hooksImports}
+${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
 
 ${
@@ -911,7 +972,7 @@ export async function createApp(app?: HonoType): Promise<ServerApp> {
   // Health check endpoint (always first)
   honoApp.get('${healthCheckPath}', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
   honoApp.get('/ready', (c) => c.json({ ready: true }));
-${beforeSetupCall}
+${cors.setup}${beforeSetupCall}
   // Setup HTTP endpoints (OpenAPI: ${enableOpenApi})
   await setupEndpoints(honoApp, envParser, logger, ${enableOpenApi});
 ${afterSetupCall}

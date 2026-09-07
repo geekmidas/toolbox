@@ -8,6 +8,7 @@ import type { Function } from '@geekmidas/constructs/functions';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
+import { provideKey } from '@geekmidas/manifest';
 import {
 	loadAppConfig,
 	loadConfig,
@@ -185,7 +186,26 @@ export async function buildCommand(
 		? await discover({ patterns: constructGlobs, cwd: process.cwd() })
 		: {};
 
+	// Which surface this server answers on, so the entry can derive its CORS.
+	//
+	// The app's own API, not the auth server it may also mount: an auth surface
+	// declares its own endpoints, and the origins that may call *it* are a
+	// different list from the ones that may call the API.
+	const surfaces = Object.values(declared).filter(
+		(d): d is Extract<typeof d, { kind: 'rest-api' }> => d.kind === 'rest-api',
+	);
+	const primary = surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
+
 	const buildContext: BuildContext = {
+		...(primary
+			? {
+					surface: {
+						id: primary.id,
+						trustedOriginsKey: provideKey(primary.id, 'trustedOrigins'),
+						...(primary.cors ? { cors: primary.cors } : {}),
+					},
+				}
+			: {}),
 		envParserPath,
 		envParserImportPattern,
 		loggerPath,

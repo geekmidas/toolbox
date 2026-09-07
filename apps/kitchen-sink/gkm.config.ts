@@ -48,9 +48,6 @@ export default defineConfig({
 	telescope: './src/config/telescope#telescope',
 	studio: './src/config/studio#studio',
 	openapi: true,
-	hooks: {
-		server: './src/config/hooks',
-	},
 
 	// Where the backends that are genuinely deployment choices resolve to.
 	//

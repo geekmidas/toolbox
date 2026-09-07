@@ -75,6 +75,23 @@ export interface NormalizedProductionConfig {
 }
 
 export interface BuildContext {
+	/**
+	 * The surface this server serves, if the app declared one.
+	 *
+	 * Carried so the generated entry can set up CORS from the graph instead of a
+	 * hand-written hook: the origins arrive as `<ID>_TRUSTED_ORIGINS`, resolved
+	 * from whatever declared an edge to this surface.
+	 */
+	surface?: {
+		id: string;
+		trustedOriginsKey: string;
+		cors?: {
+			maxAge?: number;
+			credentials?: boolean;
+			allowHeaders?: readonly string[];
+			exposeHeaders?: readonly string[];
+		};
+	};
 	envParserPath: string;
 	envParserImportPattern: string;
 	loggerPath: string;

@@ -17,4 +17,8 @@ import { auth } from './auth.js';
 export const api = new RestApi('Api', {
 	authorizers: ['iam'],
 	default: 'none',
+	// Only what a graph cannot answer. The *origins* are not here — they are read
+	// off whatever declared an edge to this surface, which is the whole reason
+	// the edge exists.
+	cors: { maxAge: 3600 },
 }).calls([auth]);
