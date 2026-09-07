@@ -554,6 +554,30 @@ that a shared kind would be nearly empty: better-auth owns a database, a surface
 and a secret (`rest-api` + `secret`, accurate), while OIDC owns a client secret
 and nothing else (`secret`, also accurate). Neither needs a kind of its own.
 
+**A third sibling worth designing for: [OpenAuth](https://openauth.js.org).** It
+is a standards-based OAuth 2.0 issuer you self-host, and it sits differently from
+both cases above — better-auth is a *library you mount*, OIDC is a *provider you
+point at*, and OpenAuth is a *service you run*.
+
+That difference lands squarely on §6.3. The conclusion there — that splitting the
+auth server needs no client, because two processes can both instantiate
+better-auth against the same schema tenant and read sessions from it — is a fact
+about **better-auth**, not about auth. OpenAuth has no equivalent: it is its own
+backend by construction, there is nothing to co-locate, and a consumer verifies a
+token rather than calling a server object.
+
+So the split work should not assume the in-process reading stays available. It
+does for `BetterAuth` and it is free there, which is the right thing to build
+first — but the deploy-shape question it answers ("may these two share a
+container?") is one only `BetterAuth` gets to answer with "yes".
+
+What that argues for is unchanged and is the good news: the abstraction stays the
+**authorizer**, because `verify(request) → Session | null` is the one thing all
+three genuinely share. A handler that reaches for `services.auth.api.getSession`
+is reaching for better-auth specifically, and is the thing that would have to
+change if OpenAuth ever arrives — worth knowing when counting the cost of leaving
+it as it is, which remains the right call while there is one provider.
+
 **Revisit when** `OidcAuth` is actually written — that is when the neutral shape
 becomes discoverable rather than guessed, and when the naming pays for itself.
 
