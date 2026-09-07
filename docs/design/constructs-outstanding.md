@@ -616,47 +616,101 @@ error.
 
 ---
 
-### 6.3 Splitting the auth server — *a build concern after all*
+### 6.3 Surfaces do not share a process — *decided*
 
-This was written up as blocked on a client: `.dependsOn([auth])` hands a handler
-`betterAuth()`'s own object, so moving the auth server to its own container
-looked like it forced that call across a network, and therefore forced a facade.
+**A surface gets its own container. Sharing one is opt-in, and it is a security
+decision, not a packaging one.**
 
-**It does not, and the reason is what `BetterAuth` actually is.** Its `connect()`
-needs a secret, the resolved URLs, and a connection to the schema tenant it was
-given. Nothing in it depends on being the process that serves the routes. It is
-a library over a database, not a service you call — and `getSession` is a cookie
-looked up in that database.
+The default was the other way round, by accident rather than by argument:
+`deployUnits` collapses a surface onto its host app unless something says
+otherwise, so co-location is what a project gets for saying nothing. That is
+backwards for auth specifically and wrong in general.
 
-So two processes can both instantiate it against the same declared `AuthDb`, and
-both validate sessions with no hop between them. The split is only about which
-bundle carries the *routes*:
+**What sharing a process actually grants.** An auth server in the same process
+as an API means every handler has, in memory and with no authentication in the
+way:
 
-| container | what it runs | why |
-|---|---|---|
-| `auth` | `/api/auth/*` — sign-in, magic links, callbacks | the browser-facing surface |
-| `api` | better-auth in-process, session reads only | `getSession` is a database read |
+- the signing secret, so it can mint sessions rather than verify them
+- the auth tenant's connection, so it reads and writes session and credential
+  tables directly
+- `auth.api.*` — the whole server object, callable without a request
 
-`services.auth` keeps better-auth's own type, resolved from the service as it is
-now. No facade, no generated server-to-server client, and no handler changes —
-`endpoints/session.ts` keeps calling `services.auth.api.getSession({ headers })`
-whichever container it lands in.
+So a bug in any one of seven endpoints is an auth compromise, not an endpoint
+compromise. The blast radius of the least careful route becomes the blast radius
+of the credential store.
 
-**What actually changes** is one value: `AUTH_URL` on the api container stops
-being its own address and becomes the auth container's. That is already resolved
-from the manifest rather than configured, and it is *correct* — a magic link
-minted anywhere should point at the server that serves the callback.
+That is precisely the isolation the schema tenant is *for*. `AuthDb` exists so
+the application's own role holds no grant on session tables — and running both
+in one process hands the application everything the grant was withholding,
+through a different door. The tenant is not yet a privilege boundary anyway (no
+target creates the per-schema role), and co-location means it could never become
+one.
 
-**What to watch.** Both containers need `AUTH_SECRET` and the tenant URL, which
-they already resolve today. The two must agree on the secret, which they do by
-construction: it is one `secret` declaration with one derived value. And a
-schema tenant is still a `search_path` rather than a privilege boundary until
-the per-schema role exists — two processes reading it does not make that worse,
-but it does double the number of places it matters.
+**Why the earlier reasoning got this wrong.** The previous note concluded the
+split needed no client, because two processes can both instantiate better-auth
+against the same tenant and read sessions. That is true and still useful — it is
+why the split is *cheap* — but it answered "can they be separated?" when the
+question worth asking was "should they ever not be?". A thing being free to
+separate is an argument for separating by default, not for leaving them
+together.
 
-So this needs §2 and nothing else. The earlier framing — that a facade had to
-come first — was reasoning from the shape of the object rather than from what
-the object does.
+It is also provider-specific. OpenAuth is its own backend by construction, so
+the co-located shape is not available there at all — the default that suits it
+is the one that suits better-auth too.
+
+**Shape.** A surface is its own deploy unit when the manifest knows its
+endpoints, which is exactly when the build can generate an entry for it. `Auth`
+fills its own; an app's own API stays empty until §2. Sharing is then a
+statement a surface makes, naming what it shares with, so the grant is visible
+at the point somebody accepts it:
+
+```ts
+new BetterAuth('Auth', { database: authDb, colocate: api })
+```
+
+**The shape, and it is the one the frontends already use.** A surface being its
+own process is the same statement as a site being its own app — so it should look
+the same on disk:
+
+```
+constructs/          shared: database, authDb, auth, api, cache, storage, topics
+apps/
+  api/               the endpoints, and the Api surface
+  auth/              the auth server, and nothing else
+  web/               Vite
+  admin/             Next
+```
+
+`web` and `admin` are already two directories with two builds and two containers,
+and nobody finds that surprising. Auth is the same kind of thing and reads
+oddly *because* it is currently the exception — a server living inside another
+server's process, mounted by a hook.
+
+**This is the case that forces the shared `constructs/` folder.** Today
+`database`, `authDb` and `auth` live under `apps/kitchen-sink/src/constructs/`,
+which is fine while one app declares everything. The moment `auth` is its own
+app, both apps need the same `authDb` — and the manifest already handles that
+correctly: identity is the construct id, two globs reaching one file produce one
+node, and `cloudName` scopes by workspace rather than by app, so nothing renames
+when a construct moves. What is missing is only a workspace-level `constructs`
+glob; it is app-level today, so a shared folder works only by every app pointing
+at the same relative path.
+
+**One open question this raises.** If `apps/auth` is a real directory, does its
+entry get *generated* from the manifest, or does it contain the four lines that
+mount `auth.handler`? Generated is consistent with §2 and means an auth app is an
+empty directory plus a config. Hand-written is four lines in the app whose entire
+job is those four lines, which is a different thing from the CORS boilerplate
+every project was copying. Worth deciding before building either.
+
+**Cost, stated.** Two containers is two of everything — image, deploy,
+certificate — and a magic link minted by one is verified by the other, which
+already works because both read the same tenant. For an app that genuinely wants
+one process, `colocate` says so in one line and a reviewer can see it.
+
+**Blocked on** the build emitting an entry per surface. Auth's is the four lines
+`hooks.ts` used to write by hand and its endpoint is already in the manifest, so
+this is the smaller half of §2 and does not wait for the endpoint merge.
 
 ---
 
