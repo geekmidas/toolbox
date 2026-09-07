@@ -4,8 +4,8 @@ import {
 	InMemoryMonitoringStorage,
 	Studio,
 } from '@geekmidas/studio';
-import type { Database } from '../constructs/database.js';
-import { database } from '../constructs/database.js';
+import type { Database } from '@kitchen-sink/constructs/database.js';
+import { database } from '@kitchen-sink/constructs/database.js';
 import { envParser } from './env.js';
 
 /**

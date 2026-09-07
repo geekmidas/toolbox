@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
@@ -501,21 +501,66 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 
 /**
  * Get the turbo command for running builds.
+ *
+ * `filters` names the packages to build. Passing none lets turbo infer its own
+ * scope from the working directory, which for a workspace root means the
+ * workspace package itself — and since that package's `build` script is
+ * `gkm build`, inferring is how you get a build that runs itself forever.
+ * `workspaceBuildCommand` always names the apps.
+ *
  * @internal Exported for testing
  */
 export function getTurboCommand(
 	pm: 'pnpm' | 'npm' | 'yarn',
-	filter?: string,
+	filters: string | readonly string[] = [],
 ): string {
-	const filterArg = filter ? ` --filter=${filter}` : '';
+	const list = typeof filters === 'string' ? [filters] : filters;
+	const filterArgs = list.map((f) => ` --filter=${f}`).join('');
 	switch (pm) {
 		case 'pnpm':
-			return `pnpm exec turbo run build${filterArg}`;
+			return `pnpm exec turbo run build${filterArgs}`;
 		case 'yarn':
-			return `yarn turbo run build${filterArg}`;
+			return `yarn turbo run build${filterArgs}`;
 		case 'npm':
-			return `npx turbo run build${filterArg}`;
+			return `npx turbo run build${filterArgs}`;
 	}
+}
+
+/**
+ * The package names turbo should build: one per app in the workspace.
+ *
+ * Read from each app's own `package.json`, because that is the name turbo
+ * knows it by — and the name `loadAppConfig` reads back when turbo runs
+ * `gkm build` inside the app, which is what routes that invocation to the
+ * single-app path instead of back here.
+ *
+ * An app without a `package.json` is not a package turbo can run, so it is
+ * reported rather than silently skipped.
+ *
+ * @internal Exported for testing
+ */
+export function turboFilters(workspace: NormalizedWorkspace): {
+	filters: string[];
+	unpackaged: string[];
+} {
+	const filters: string[] = [];
+	const unpackaged: string[] = [];
+
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		const pkgPath = join(workspace.root, app.path, 'package.json');
+		if (!existsSync(pkgPath)) {
+			unpackaged.push(appName);
+			continue;
+		}
+		const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
+		if (typeof name === 'string' && name.length > 0) {
+			filters.push(name);
+		} else {
+			unpackaged.push(appName);
+		}
+	}
+
+	return { filters, unpackaged };
 }
 
 /**
@@ -553,7 +598,15 @@ export async function workspaceBuildCommand(
 
 	try {
 		// Run turbo build which handles dependency ordering and parallelization
-		const turboCommand = getTurboCommand(pm);
+		const { filters, unpackaged } = turboFilters(workspace);
+		if (unpackaged.length > 0) {
+			throw new Error(
+				`No package.json for workspace app(s): ${unpackaged.join(', ')}. ` +
+					`Each app needs one — turbo builds packages, and gkm reads the ` +
+					`name back to know which app it is building.`,
+			);
+		}
+		const turboCommand = getTurboCommand(pm, filters);
 		logger.log(`Running: ${turboCommand}`);
 
 		await new Promise<void>((resolve, reject) => {

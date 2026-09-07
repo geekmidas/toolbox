@@ -345,6 +345,20 @@ export interface RestApiDeclaration extends Node {
 	 * Omitted entirely, a surface still gets CORS — with the derived origins and
 	 * sensible defaults. There is nothing to opt into.
 	 */
+	/**
+	 * The construct that authenticates this surface.
+	 *
+	 * An edge like any other — so the auth server learns this surface's origin,
+	 * and the two share a cookie domain — but a *named* one, because "who
+	 * authenticates me" is a different fact from "who I happen to call", and
+	 * only one of them decides what a request is allowed to be.
+	 *
+	 * It is the id rather than the client: what every endpoint consumes is
+	 * `verify(request) → Session | null`, and that is the one thing every
+	 * provider shares. A surface names its authenticator; the target decides
+	 * what verifying means.
+	 */
+	auth?: ConstructId;
 	cors?: {
 		/** Preflight cache lifetime in seconds. Default 86400. */
 		maxAge?: number;

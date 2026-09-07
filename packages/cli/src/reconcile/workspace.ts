@@ -11,11 +11,13 @@
  * same state, differing only in the stage they pass.
  */
 
-import { isAbsolute, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
-import type { Routes } from '../types.js';
 import { cacheBackendOf, providerOf } from '../workspace/backends.js';
+import {
+	appConstructGlobs,
+	workspaceConstructGlobs,
+} from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
@@ -28,26 +30,20 @@ import { planFor } from './plan.js';
  * different directories.
  */
 export function constructGlobs(workspace: NormalizedWorkspace): string[] {
-	const globs: string[] = [];
+	// Per app, through the same resolver the build uses when turbo runs it from
+	// its own directory — so what a deploy provisions and what an app's entry
+	// point registers drivers for are read off one list. The workspace's own
+	// globs stand on their own too: a workspace can declare infrastructure
+	// before it has an app that consumes it.
+	const globs = [
+		...workspaceConstructGlobs(workspace),
+		...Object.keys(workspace.apps).flatMap((appName) =>
+			appConstructGlobs(workspace, appName),
+		),
+	];
 
-	// The workspace's own, first: infrastructure two apps share is a fact about
-	// the product, and declaring it inside one of them makes moving that app a
-	// change to the other's database.
-	for (const pattern of patternsOf(workspace.constructs)) {
-		globs.push(isAbsolute(pattern) ? pattern : join(workspace.root, pattern));
-	}
-
-	for (const app of Object.values(workspace.apps)) {
-		for (const pattern of patternsOf(app.constructs)) {
-			const root = isAbsolute(app.path)
-				? app.path
-				: join(workspace.root, app.path);
-
-			globs.push(isAbsolute(pattern) ? pattern : join(root, pattern));
-		}
-	}
-
-	return globs;
+	// Every app's list starts with the workspace's, so they repeat.
+	return [...new Set(globs)];
 }
 
 /** Whether any app has adopted the constructs glob. */
@@ -140,20 +136,6 @@ export async function reconcileWorkspace(
 	await savePortState(workspace.root, { ...result.ports });
 
 	return result;
-}
-
-/** A `Routes` value as a flat list of patterns. */
-function patternsOf(routes: Routes | undefined): string[] {
-	if (!routes) return [];
-	if (typeof routes === 'string') return [routes];
-	if (Array.isArray(routes)) return routes;
-
-	// Partitioned form: surfaces are the deploy slices now, but the shape is
-	// still accepted until it retires.
-	const paths = (routes as { paths?: string | string[] }).paths;
-	if (!paths) return [];
-
-	return Array.isArray(paths) ? paths : [paths];
 }
 
 /**

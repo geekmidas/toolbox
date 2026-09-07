@@ -1,5 +1,9 @@
 packages:
   - "apps/*"
+  # kitchen-sink is a workspace of its own — the shape a real product has, with
+  # shared constructs at its root and its apps beneath. Its members need naming
+  # here or pnpm only sees the outer directory.
+  - "apps/kitchen-sink/apps/*"
   - "packages/*"
   - "packages/telescope/ui"
   - "packages/studio/ui"

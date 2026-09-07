@@ -22,10 +22,11 @@ import { uploads } from './storage.js';
  * for the half that is safe to ship.
  */
 export const web = new StaticSite('Web', {
-	// Relative to the app, not the workspace: the deploy target resolves it from
-	// wherever the config runs, and the local target matches a workspace app by
-	// the same string.
-	path: '../kitchen-sink-web',
+	// Relative to the workspace root, which is now a real place rather than
+	// whichever app happened to hold the constructs. It used to be
+	// `../kitchen-sink-web` — a construct escaping its own app to point at a
+	// sibling, which is the shape this layout removes.
+	path: 'apps/web',
 }).dependsOn([api, auth, uploads.server]);
 
 /**
@@ -42,6 +43,6 @@ export const web = new StaticSite('Web', {
  * one of them would have to say `root: true` rather than the deploy guessing.
  */
 export const admin = new StaticSite('Admin', {
-	path: '../kitchen-sink-admin',
+	path: 'apps/admin',
 	variant: 'next',
 }).dependsOn([api, auth]);

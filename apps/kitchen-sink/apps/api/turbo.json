@@ -1,0 +1,19 @@
+{
+	"$schema": "https://turborepo.com/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			// The constructs this app builds against live above it, in the
+			// workspace that declares them for every app. Turbo hashes a
+			// package's own files by default, so without these an edit to a
+			// construct leaves the cached build in place and the app keeps
+			// serving a graph that no longer exists.
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/apps/kitchen-sink/constructs/**",
+				"$TURBO_ROOT$/apps/kitchen-sink/gkm.config.ts"
+			],
+			"outputs": [".gkm/**"]
+		}
+	}
+}

@@ -1,8 +1,8 @@
 import { q } from '@geekmidas/constructs/queue';
+import { sessions } from '@kitchen-sink/constructs/cache.js';
+import { mail } from '@kitchen-sink/constructs/email.js';
 import { z } from 'zod';
 import logger from '../config/logger.js';
-import { sessions } from '../constructs/cache.js';
-import { mail } from '../constructs/email.js';
 
 /** The job payload — point-to-point work for a single consumer. */
 export const EmailJob = z.object({

@@ -1,5 +1,5 @@
 {
-	"name": "@geekmidas/kitchen-sink-admin",
+	"name": "@kitchen-sink/admin",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {

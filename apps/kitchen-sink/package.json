@@ -1,15 +1,15 @@
 {
-	"name": "@geekmidas/kitchen-sink",
+	"name": "@kitchen-sink/workspace",
 	"version": "0.0.4",
 	"private": true,
 	"type": "module",
 	"description": "Kitchen-sink example exercising every @geekmidas/toolbox integration point: endpoints, functions, crons, subscribers, queues, services/DI, storage, cache, audit, events, telescope, studio and OpenAPI.",
 	"scripts": {
 		"dev": "gkm dev",
-		"build": "gkm build --providers server,aws-apigatewayv2",
-		"start": "node .gkm/server/app.js",
+		"build": "gkm build",
+		"start": "node apps/api/.gkm/server/app.js",
 		"openapi": "gkm openapi",
-		"migrate": "gkm exec -- tsx src/migrate.ts",
+		"migrate": "pnpm --filter @kitchen-sink/api migrate",
 		"test": "gkm test --run",
 		"test:watch": "gkm test",
 		"test:sns": "KITCHEN_SINK_EVENTS=sns gkm test --run"

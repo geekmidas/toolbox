@@ -1,6 +1,6 @@
 import { provideKey } from '@geekmidas/manifest';
+import { auth } from '@kitchen-sink/constructs/auth.js';
 import { describe, expect, it } from 'vitest';
-import { auth } from '../constructs/auth.js';
 import { getJson, harness } from './__helpers__/app.js';
 
 /**

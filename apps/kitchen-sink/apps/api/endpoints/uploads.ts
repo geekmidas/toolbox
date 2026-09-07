@@ -1,7 +1,7 @@
 import { e } from '@geekmidas/constructs/endpoints';
+import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
 import logger from '../config/logger.js';
-import { uploads } from '../constructs/storage.js';
 
 /**
  * A presigned upload URL. Uses its own lean factory — only the bucket — to show

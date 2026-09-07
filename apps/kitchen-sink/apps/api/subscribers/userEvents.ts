@@ -1,7 +1,7 @@
 import { s } from '@geekmidas/constructs/subscribers';
+import { database } from '@kitchen-sink/constructs/database.js';
+import { users } from '@kitchen-sink/constructs/topics.js';
 import logger from '../config/logger.js';
-import { database } from '../constructs/database.js';
-import { users } from '../constructs/topics.js';
 
 /**
  * A topic subscriber — fan-out. `.topic(users)` types the events and their

@@ -91,6 +91,8 @@ export class RestApi<TName extends string = string>
 		private readonly config: RestApiConfig,
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
+		/** Internal: how `.auth()` carries the authenticator into its copy. */
+		private readonly authenticator?: string,
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -101,6 +103,29 @@ export class RestApi<TName extends string = string>
 			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
 			cookieDomain: provideKey(canonical, 'cookieDomain'),
 		};
+	}
+
+	/**
+	 * What authenticates this surface.
+	 *
+	 * An edge like `.calls()` — the auth server learns this origin, and the two
+	 * share a cookie domain — but a named one, because *who authenticates me* is
+	 * a different fact from *who I happen to call*, and only one of them decides
+	 * what a request is allowed to be. A surface with two of the first is a
+	 * mistake; two of the second is Tuesday.
+	 *
+	 * It records the id, not a client. Every endpoint consumes the same thing —
+	 * `verify(request) → Session | null` — and that is what every provider
+	 * shares, whether the server is mounted in this process, deployed beside it,
+	 * or an OIDC issuer somebody else runs.
+	 */
+	auth(construct: Declarable): RestApi<TName> {
+		return new RestApi<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, edgeTo(construct)],
+			construct.id,
+		);
 	}
 
 	/**
@@ -118,10 +143,12 @@ export class RestApi<TName extends string = string>
 	 * Immutable, like every other builder here.
 	 */
 	calls(constructs: readonly Declarable[]): RestApi<TName> {
-		return new RestApi<TName>(this.id as ConstructName<TName>, this.config, [
-			...this.dependencies,
-			...constructs.map(edgeTo),
-		]);
+		return new RestApi<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, ...constructs.map(edgeTo)],
+			this.authenticator,
+		);
 	}
 
 	/**
@@ -140,6 +167,7 @@ export class RestApi<TName extends string = string>
 				id: this.id,
 				...(this.config.path ? { path: this.config.path } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
+				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

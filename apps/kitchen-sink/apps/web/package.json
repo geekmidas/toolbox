@@ -1,5 +1,5 @@
 {
-	"name": "@geekmidas/kitchen-sink-web",
+	"name": "@kitchen-sink/web",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",

@@ -771,6 +771,13 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
  * ```
  */
 export type WorkspaceInput<TApps extends AppsRecord> = {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	/** Workspace name (defaults to root package.json name) */
 	name?: string;
 	/** App definitions */
@@ -796,6 +803,13 @@ export type InferAppNames<TApps extends AppsRecord> = keyof TApps & string;
  * Inferred workspace config with proper app name types.
  */
 export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	name?: string;
 	apps: {
 		[K in keyof TApps]: Omit<TApps[K], 'dependencies'> & {

@@ -1,6 +1,6 @@
 import { snifferContext } from '@geekmidas/constructs';
+import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { describe, expect, it } from 'vitest';
-import { uploads } from '../constructs/storage.js';
 import { harness, postJson } from './__helpers__/app.js';
 
 interface Presigned {

@@ -1,6 +1,6 @@
 import { ForbiddenError, UnauthorizedError } from '@geekmidas/errors';
+import type { Database } from '@kitchen-sink/constructs/database.js';
 import type { Kysely } from 'kysely';
-import type { Database } from '../constructs/database.js';
 
 /** The signed-in user, as the *application* knows them. */
 export interface SessionUser {

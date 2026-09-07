@@ -1,9 +1,9 @@
 import { e } from '@geekmidas/constructs/endpoints';
+import { auth } from '@kitchen-sink/constructs/auth.js';
+import { sessions } from '@kitchen-sink/constructs/cache.js';
+import { database } from '@kitchen-sink/constructs/database.js';
+import { users } from '@kitchen-sink/constructs/topics.js';
 import logger from '../config/logger.js';
-import { auth } from '../constructs/auth.js';
-import { sessions } from '../constructs/cache.js';
-import { database } from '../constructs/database.js';
-import { users } from '../constructs/topics.js';
 import { AuditStorageService } from '../services/AuditStorageService.js';
 
 /**

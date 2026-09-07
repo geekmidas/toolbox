@@ -4,11 +4,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { snifferContext } from '@geekmidas/constructs';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { Credentials } from '@geekmidas/envkit/credentials';
+import { auth } from '@kitchen-sink/constructs/auth.js';
+import { database } from '@kitchen-sink/constructs/database.js';
 import type { Kysely } from 'kysely';
 // `Migrator`/`FileMigrationProvider` moved to the 'kysely/migration' subpath in kysely 0.29+.
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
-import { auth } from './constructs/auth.js';
-import { database } from './constructs/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
