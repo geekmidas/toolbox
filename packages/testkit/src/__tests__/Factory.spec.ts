@@ -47,9 +47,9 @@ describe('Factory', () => {
 	describe('createSeed static method', () => {
 		it('should return the seed function unchanged', () => {
 			const seedFn = async ({
-				attrs,
-				factory,
-				db,
+				attrs: _attrs,
+				factory: _factory,
+				db: _db,
 			}: {
 				attrs: any;
 				factory: any;

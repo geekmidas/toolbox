@@ -3,19 +3,17 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 /**
  * kitchen-sink, as a workspace.
  *
- * The shape a real product has, and the reason it changed: constructs used to
- * live inside the API app, which meant `site.ts` declared
- * `path: '../kitchen-sink-web'` — a construct escaping its own app to point at
- * a sibling. That only worked because one app was quietly acting as the
- * workspace root while also being an app.
+ * There is no `apps` block. There used to be one, naming three apps with their
+ * types, paths, ports, frameworks and dependencies — every one of which was
+ * already declared. `StaticSite('Web', { path: 'apps/web' })` and
+ * `apps.web = { type: 'web', path: 'apps/web', framework: 'vite',
+ * dependencies: ['api'] }` are the same sentence written twice, and only one of
+ * the two was checked against anything. So the copy that could drift is gone
+ * and the apps are read off the graph.
  *
- * Now there is a root. Infrastructure is declared once at the top, every app
- * resolves it through `@kitchen-sink/constructs` (mapped in `tsconfig.json`),
- * and an app's path is relative to something that exists.
- *
- * `constructs` here is the workspace's own glob — one place for the product's
- * infrastructure. Apps may still carry their own for something only they use;
- * the two are additive.
+ * What is left here is what no graph can answer: the name every physical name
+ * is scoped by, where the constructs live, which backends a cache and a mailer
+ * resolve to, and where a deploy sends things.
  */
 export default defineWorkspace({
 	// The scope every physical name is built from: `Database` becomes
@@ -23,50 +21,9 @@ export default defineWorkspace({
 	name: 'kitchen-sink',
 
 	// One glob, every kind. A database implies Postgres, a bucket implies MinIO,
-	// mail implies Mailpit — none of it listed anywhere.
+	// mail implies Mailpit — none of it listed anywhere. It is also where the
+	// apps come from: a `site` is an app, and so is a `rest-api` that named one.
 	constructs: './constructs/**/*.ts',
-
-	apps: {
-		api: {
-			type: 'backend',
-			path: 'apps/api',
-			port: 3000,
-			dependencies: [],
-
-			routes: './endpoints/**/*.ts',
-			functions: './functions/**/*.ts',
-			crons: './crons/**/*.ts',
-			subscribers: './subscribers/**/*.ts',
-			queues: './queues/**/*.ts',
-
-			envParser: './config/env#envParser',
-			logger: './config/logger',
-			telescope: './config/telescope#telescope',
-			studio: './config/studio#studio',
-			openapi: true,
-			runtime: 'node',
-			env: ['.env', '.env.example'],
-		},
-
-		// Two sites, two variants — which is the only way the variant selection
-		// is proven rather than asserted: `web` builds to files behind nginx,
-		// `admin` to a Node process. `web` holds the base domain by convention;
-		// `admin` gets `admin.` from its construct id.
-		web: {
-			type: 'web',
-			path: 'apps/web',
-			port: 3001,
-			framework: 'vite',
-			dependencies: ['api'],
-		},
-		admin: {
-			type: 'web',
-			path: 'apps/admin',
-			port: 3002,
-			framework: 'nextjs',
-			dependencies: ['api'],
-		},
-	},
 
 	// Where the things no construct implies actually live. Backend names only —
 	// whether a cache exists comes from declaring one.

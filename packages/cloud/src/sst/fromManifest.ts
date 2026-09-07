@@ -187,7 +187,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		if (d.kind !== 'site') throw new UnknownDeclarationKind(d.kind, []);
 
 		return new StaticSite(stack, d.id, {
-			path: d.path,
+			path: d.app.path,
 			variant: d.variant,
 			environment: siteEnvironment(d, context),
 			...props,
@@ -244,7 +244,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		return cluster;
 	},
 
-	'database-reader': (stack, d, props, context) =>
+	'database-reader': (_stack, d, _props, context) =>
 		derived(d, context, (id, parent) => {
 			// A reader reads through the *parent's* read-only role: read-only is
 			// enforced by the grants, which is what makes falling back to the
@@ -257,7 +257,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			return new DatabaseReader(id, parent, reader);
 		}),
 
-	'database-schema': (stack, d, props, context) => {
+	'database-schema': (_stack, d, _props, context) => {
 		if (d.kind !== 'database-schema')
 			throw new UnknownDeclarationKind(d.kind, []);
 

@@ -132,7 +132,7 @@ export function defineWorkspace<const TApps extends AppsRecord>(
 	config: WorkspaceInput<TApps>,
 ): InferredWorkspaceConfig<TApps> {
 	// Validate dependencies at runtime
-	validateDependencies(config.apps as unknown as TApps);
+	if (config.apps) validateDependencies(config.apps as unknown as TApps);
 
 	// Validate with Zod schema
 	const result = safeValidateWorkspaceConfig(config);
@@ -169,7 +169,7 @@ export function normalizeWorkspace(
 
 	const normalizedApps: Record<string, NormalizedAppConfig> = {};
 
-	for (const [appName, app] of Object.entries(config.apps)) {
+	for (const [appName, app] of Object.entries(config.apps ?? {})) {
 		normalizedApps[appName] = normalizeAppConfig(app, defaultTarget);
 	}
 
@@ -357,6 +357,23 @@ export function appConstructGlobs(
 	}
 
 	return globs;
+}
+/**
+ * Every constructs glob in the workspace: its own, plus each app's.
+ *
+ * One list, so what a deploy provisions and what an app's entry point
+ * registers drivers for are read off the same globs.
+ */
+export function allConstructGlobs(workspace: NormalizedWorkspace): string[] {
+	const globs = [
+		...workspaceConstructGlobs(workspace),
+		...Object.keys(workspace.apps).flatMap((appName) =>
+			appConstructGlobs(workspace, appName),
+		),
+	];
+
+	// Every app's list starts with the workspace's, so they repeat.
+	return [...new Set(globs)];
 }
 
 /** A `Routes` in any of its accepted shapes, as a flat list of patterns. */

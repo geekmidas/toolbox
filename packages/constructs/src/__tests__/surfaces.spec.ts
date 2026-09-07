@@ -68,7 +68,7 @@ describe('StaticSite', () => {
 			kind: 'site',
 			id: 'Console',
 			variant: 'static',
-			path: 'apps/console',
+			app: { path: 'apps/console' },
 			dependencies: [],
 			provides: ['CONSOLE_URL'],
 		});

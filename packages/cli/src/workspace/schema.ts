@@ -754,11 +754,16 @@ export const WorkspaceConfigSchema = z
 		 * additive, for something only one app uses.
 		 */
 		constructs: RoutesSchema.optional(),
-		apps: z
-			.record(z.string(), AppConfigSchema)
-			.refine((apps) => Object.keys(apps).length > 0, {
-				message: 'At least one app must be defined',
-			}),
+		/**
+		 * Apps that nothing declares.
+		 *
+		 * Optional, and normally absent: a `site` is an app and so is a
+		 * `rest-api` that named one, so the list is read off the graph. This is
+		 * the escape hatch for what no construct describes — a mobile app, a
+		 * process someone runs by hand — and for overriding one field of a
+		 * derived app without restating it.
+		 */
+		apps: z.record(z.string(), AppConfigSchema).optional(),
 		shared: SharedConfigSchema.optional(),
 		deploy: DeployConfigSchema.optional(),
 		services: ServicesConfigSchema.optional(),
@@ -768,8 +773,8 @@ export const WorkspaceConfigSchema = z
 	.refine(
 		(data) => {
 			// Validate dependencies reference existing apps
-			const appNames = Object.keys(data.apps);
-			for (const [appName, app] of Object.entries(data.apps)) {
+			const appNames = Object.keys(data.apps ?? {});
+			for (const [appName, app] of Object.entries(data.apps ?? {})) {
 				for (const dep of app.dependencies ?? []) {
 					if (!appNames.includes(dep)) {
 						return false;
@@ -790,7 +795,7 @@ export const WorkspaceConfigSchema = z
 	.refine(
 		(data) => {
 			// Check for circular dependencies
-			const appNames = Object.keys(data.apps);
+			const appNames = Object.keys(data.apps ?? {});
 			const visited = new Set<string>();
 			const recStack = new Set<string>();
 
@@ -801,7 +806,7 @@ export const WorkspaceConfigSchema = z
 				visited.add(app);
 				recStack.add(app);
 
-				const deps = data.apps[app]?.dependencies ?? [];
+				const deps = (data.apps ?? {})[app]?.dependencies ?? [];
 				for (const dep of deps) {
 					if (hasCycle(dep)) return true;
 				}
@@ -833,7 +838,7 @@ export const WorkspaceConfigSchema = z
 			return;
 		}
 
-		for (const [appName, app] of Object.entries(data.apps)) {
+		for (const [appName, app] of Object.entries(data.apps ?? {})) {
 			if (app.deploy && !isDeployTargetSupported(app.deploy)) {
 				ctx.addIssue({
 					code: 'custom',

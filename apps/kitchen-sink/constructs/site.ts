@@ -26,6 +26,10 @@ export const web = new StaticSite('Web', {
 	// whichever app happened to hold the constructs. It used to be
 	// `../kitchen-sink-web` — a construct escaping its own app to point at a
 	// sibling, which is the shape this layout removes.
+	//
+	// No `variant`: static is the default, and Vite builds it. No `port`: ports
+	// are assigned in a stable order, and this one holds the base domain so it
+	// gets the first of them.
 	path: 'apps/web',
 }).dependsOn([api, auth, uploads.server]);
 

@@ -37,19 +37,19 @@ const workspace = {
 } as unknown as NormalizedWorkspace;
 
 const manifest = {
-	Api: { kind: 'rest-api', id: 'Api', endpoints: [] },
+	Api: { kind: 'rest-api', id: 'Api', endpoints: [], app: { path: '.' } },
 	Web: {
 		kind: 'site',
 		id: 'Web',
 		variant: 'static',
-		path: '../acme-web',
+		app: { path: '../acme-web' },
 		dependencies: [],
 	},
 	Admin: {
 		kind: 'site',
 		id: 'Admin',
 		variant: 'next',
-		path: '../acme-admin',
+		app: { path: '../acme-admin' },
 		dependencies: [],
 	},
 } as unknown as ConstructManifest;

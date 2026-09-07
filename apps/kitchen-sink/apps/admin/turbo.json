@@ -9,7 +9,7 @@
 				"$TURBO_ROOT$/apps/kitchen-sink/constructs/**/*.ts",
 				"$TURBO_ROOT$/apps/kitchen-sink/gkm.config.ts"
 			],
-			"outputs": [".gkm/**"]
+			"outputs": ["dist/**", ".next/**", "!.next/cache/**"]
 		}
 	}
 }

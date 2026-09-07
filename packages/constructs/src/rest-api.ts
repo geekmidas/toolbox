@@ -22,6 +22,7 @@
  */
 
 import {
+	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -32,17 +33,19 @@ import { type Declarable, edgeTo } from './construct-interface';
 
 export interface RestApiConfig {
 	/**
-	 * Where the process serving this surface is built from, relative to the
-	 * workspace root.
+	 * The app that serves this surface: where its source lives, which globs
+	 * find its code, how it is run.
 	 *
 	 * What makes a surface a deploy unit rather than something a deploy has to
-	 * be told about separately: one `RestApi` is one server. A `StaticSite`
-	 * already says this, and the two are the same kind of statement.
+	 * be told about separately: one `RestApi` is one server. A `StaticSite` says
+	 * the same thing, and the two are the same kind of statement.
 	 *
-	 * Omit it while an app serves its surfaces from one process — the deploy
-	 * then builds it from the app that declared it.
+	 * Omit it and this surface has no process of its own — it is served by the
+	 * surface that named it as its authenticator. An auth server usually wants
+	 * exactly that until it is worth its own container, at which point giving it
+	 * an `app` is the whole change.
 	 */
-	path?: string;
+	app?: AppSpec;
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -165,7 +168,7 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
-				...(this.config.path ? { path: this.config.path } : {}),
+				...(this.config.app ? { app: this.config.app } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per

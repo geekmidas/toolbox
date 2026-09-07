@@ -127,16 +127,27 @@ describe('WorkspaceConfigSchema', () => {
 	});
 
 	describe('validation errors', () => {
-		it('should reject config without apps', () => {
-			const config = { name: 'test' };
+		it('accepts a config with no apps', () => {
+			// A `site` is an app and so is a `rest-api` that named one, so the
+			// list is read off the graph. A config that names none is the normal
+			// case, not a mistake.
+			const config = { name: 'test', constructs: './constructs/**/*.ts' };
 
-			expect(() => validateWorkspaceConfig(config)).toThrow();
+			expect(() => validateWorkspaceConfig(config)).not.toThrow();
 		});
 
-		it('should reject empty apps object', () => {
-			const config = { apps: {} };
+		it('accepts an empty apps object', () => {
+			const result = safeValidateWorkspaceConfig({ apps: {} });
 
-			const result = safeValidateWorkspaceConfig(config);
+			expect(result.success).toBe(true);
+		});
+
+		it('still rejects an app missing what nothing can derive', () => {
+			// A configured app is the escape hatch for something no construct
+			// describes, and an escape hatch that says nothing is a typo.
+			const result = safeValidateWorkspaceConfig({
+				apps: { api: { type: 'backend' } },
+			});
 
 			expect(result.success).toBe(false);
 			expect(result.error).toBeDefined();
@@ -303,14 +314,14 @@ describe('WorkspaceConfigSchema', () => {
 		});
 
 		it('should format root-level errors', () => {
-			const config = { apps: {} };
+			const config = { apps: { api: { type: 'backend' } } };
 
 			const result = safeValidateWorkspaceConfig(config);
 
 			expect(result.success).toBe(false);
 			if (result.error) {
 				const formatted = formatValidationErrors(result.error);
-				expect(formatted).toContain('At least one app must be defined');
+				expect(formatted).toContain('apps.api.path');
 			}
 		});
 	});

@@ -67,7 +67,6 @@ export class DatabaseBootstrap {
 		reader?: string;
 	}): { runtime: $util.Output<string>; reader?: $util.Output<string> } {
 		const runtime = this.password(tenant.runtime);
-		const owner = this.password(tenant.owner);
 		const reader = tenant.reader ? this.password(tenant.reader) : undefined;
 
 		this.tenants.push({

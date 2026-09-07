@@ -27,4 +27,29 @@ export const api = new RestApi('Api', {
 	// off whatever declared an edge to this surface, which is the whole reason
 	// the edge exists.
 	cors: { maxAge: 3600 },
+
+	// The app that serves it. Where its source lives and which globs find its
+	// code is the half of an application no graph can derive — it is a fact
+	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
+	// beside a `path` and a `port` that the declaration already implied, which
+	// meant the same app was described twice and only one copy was checked.
+	app: {
+		path: 'apps/api',
+
+		// Discovery is glob-driven: an endpoint outside these never loads, and
+		// nothing will tell you at runtime that it is missing.
+		routes: './endpoints/**/*.ts',
+		functions: './functions/**/*.ts',
+		crons: './crons/**/*.ts',
+		subscribers: './subscribers/**/*.ts',
+		queues: './queues/**/*.ts',
+
+		envParser: './config/env#envParser',
+		logger: './config/logger',
+		telescope: './config/telescope#telescope',
+		studio: './config/studio#studio',
+		openapi: true,
+		runtime: 'node',
+		env: ['.env', '.env.example'],
+	},
 }).auth(auth);

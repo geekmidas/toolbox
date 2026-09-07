@@ -14,10 +14,8 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
 import { cacheBackendOf, providerOf } from '../workspace/backends.js';
-import {
-	appConstructGlobs,
-	workspaceConstructGlobs,
-} from '../workspace/index.js';
+import { appKey, hostOf } from '../workspace/derive.js';
+import { allConstructGlobs } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
@@ -30,20 +28,7 @@ import { planFor } from './plan.js';
  * different directories.
  */
 export function constructGlobs(workspace: NormalizedWorkspace): string[] {
-	// Per app, through the same resolver the build uses when turbo runs it from
-	// its own directory — so what a deploy provisions and what an app's entry
-	// point registers drivers for are read off one list. The workspace's own
-	// globs stand on their own too: a workspace can declare infrastructure
-	// before it has an app that consumes it.
-	const globs = [
-		...workspaceConstructGlobs(workspace),
-		...Object.keys(workspace.apps).flatMap((appName) =>
-			appConstructGlobs(workspace, appName),
-		),
-	];
-
-	// Every app's list starts with the workspace's, so they repeat.
-	return [...new Set(globs)];
+	return allConstructGlobs(workspace);
 }
 
 /** Whether any app has adopted the constructs glob. */
@@ -160,26 +145,29 @@ function surfaceAddresses(
 ): Record<string, string> {
 	const addresses: Record<string, string> = {};
 
-	const backend = Object.values(workspace.apps).find(
-		(app) => app.type === 'backend',
-	);
-
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind === 'rest-api') {
-			if (backend?.port) addresses[id] = localAddress(backend.port);
+		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
 			continue;
-		}
 
-		if (declaration.kind !== 'site') continue;
+		// The app serving it, by the same name the derivation gave it — a surface
+		// mounted into another answers at its host's port, not at one of its own.
+		const host =
+			declaration.kind === 'site' ? appKey(id) : appKeyOfHost(manifest, id);
+		const app = host ? workspace.apps[host] : undefined;
 
-		const app = Object.values(workspace.apps).find(
-			(candidate) =>
-				normalizePath(candidate.path) === normalizePath(declaration.path),
-		);
 		if (app?.port) addresses[id] = localAddress(app.port);
 	}
 
 	return addresses;
+}
+
+/** The app key serving a surface, following a mount to its host. */
+function appKeyOfHost(
+	manifest: ConstructManifest,
+	id: string,
+): string | undefined {
+	const host = hostOf(manifest, id);
+	return host ? appKey(host) : undefined;
 }
 
 /** Where a local process answers, given the port the workspace gave it. */
@@ -188,6 +176,6 @@ function localAddress(port: number): string {
 }
 
 /** A workspace path and a declared path, comparable. */
-function normalizePath(path: string): string {
+function _normalizePath(path: string): string {
 	return path.replace(/^\.\//, '').replace(/\/+$/, '');
 }

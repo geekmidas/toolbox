@@ -47,7 +47,7 @@
 import { createHash } from 'node:crypto';
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
-import { type ConstructManifest, kebabCase } from '@geekmidas/manifest';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import { Client as PgClient } from 'pg';
 import {
 	getDokployCredentials,
@@ -61,6 +61,7 @@ import { discover } from '../reconcile/discover.js';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { readStageSecrets } from '../secrets/storage.js';
+import { derivedApps } from '../workspace/derive.js';
 import {
 	getAppBuildOrder,
 	getDeployTargetError,
@@ -842,94 +843,17 @@ export function generateTag(stage: string): string {
  * @internal Exported for testing
  */
 /**
- * The things this deploy creates a container for, taken from the manifest.
+ * The things this deploy creates a container for.
  *
- * A deploy unit is a *declaration*, not a config entry. One `rest-api` is one
- * server and one `site` is one site, which is what makes an auth server able to
- * be its own process rather than something a hook mounts into an API — the
- * config never knew about it, because a surface is not an app.
- *
- * Each unit is expressed as an app record because that is what the phases below
- * consume; what changed is where the *list* comes from.
- *
- * - A `site` is fully self-describing: it carries `path` and `variant`, so it
- *   deploys whether or not the config mentions it. That is the frontend that
- *   was silently never deployed.
- * - A `rest-api` carries a `path` once it has been given one, and otherwise
- *   falls back to the app that declared it — an app's own routes still come
- *   from a glob until §2 lands, so its surface cannot yet be built alone.
- *
- * A configured app matching a declaration keeps its settings: the manifest says
- * *what* to deploy, the config still says how to run it.
+ * A deploy unit is a *declaration*, not a config entry — and since that is now
+ * true of every app, not just the ones being deployed, this is the workspace's
+ * own derivation under the name the deploy phases call it by.
  */
 export function deployUnits(
 	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
 ): Record<string, NormalizedAppConfig> {
-	const units: Record<string, NormalizedAppConfig> = {};
-	const backend = Object.entries(workspace.apps).find(
-		([, app]) => app.type === 'backend',
-	);
-
-	const FRAMEWORKS: Record<string, NormalizedAppConfig['framework']> = {
-		static: 'vite',
-		next: 'nextjs',
-		tanstack: 'tanstack-start',
-	};
-
-	// Surfaces that have not been given a path are all served by the app that
-	// declared them — one process, however many of them there are. Emitting one
-	// unit each would deploy that whole app twice under two names, which is
-	// worse than the shared container it was meant to replace. So they collapse
-	// onto their host, and separate when they can actually be built separately.
-	let sharesHost = false;
-
-	for (const declaration of Object.values(manifest)) {
-		if (declaration.kind === 'rest-api') {
-			const own = declaration.path;
-
-			if (!own) {
-				sharesHost = true;
-				continue;
-			}
-
-			units[kebabCase(declaration.id)] = {
-				...(backend?.[1] ?? {}),
-				type: 'backend',
-				path: own,
-				port: backend?.[1]?.port ?? 3000,
-				dependencies: [],
-				resolvedDeployTarget: backend?.[1]?.resolvedDeployTarget ?? 'dokploy',
-			} as NormalizedAppConfig;
-			continue;
-		}
-
-		if (declaration.kind !== 'site') continue;
-
-		const name = kebabCase(declaration.id);
-		// Matched by path, the one thing a site declaration and a configured app
-		// both name — so a configured `web` keeps its port and framework.
-		const configured = Object.values(workspace.apps).find(
-			(app) => app.path === declaration.path,
-		);
-
-		units[name] = {
-			...(configured ?? {}),
-			type: 'web',
-			path: declaration.path,
-			port: configured?.port ?? 3001,
-			dependencies: [],
-			framework: configured?.framework ?? FRAMEWORKS[declaration.variant],
-			// Carried from the declaration: which site the base domain points at
-			// is a fact the site states, not one the deploy infers from order.
-			...(declaration.root ? { root: true } : {}),
-			resolvedDeployTarget: configured?.resolvedDeployTarget ?? 'dokploy',
-		} as NormalizedAppConfig;
-	}
-
-	if (sharesHost && backend) units[backend[0]] = backend[1];
-
-	return units;
+	return derivedApps(manifest, workspace);
 }
 
 /**
@@ -1984,8 +1908,6 @@ export async function workspaceDeployCommand(
 export async function deployCommand(
 	options: DeployOptions,
 ): Promise<DeployResult | WorkspaceDeployResult> {
-	const { provider, stage, tag, skipPush, skipBuild } = options;
-
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
 

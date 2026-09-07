@@ -4,7 +4,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
-// biome-ignore lint/style/useImportType: <explanation>
+// biome-ignore lint/style/useImportType: JSX in this file compiles to React.createElement, so the value is used even though only types are named.
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { paths } from '../openapi-types';

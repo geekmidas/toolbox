@@ -34,12 +34,23 @@ describe('defineWorkspace', () => {
 
 	it('should throw on invalid config', () => {
 		const config = {
-			apps: {},
-		} as WorkspaceConfig;
+			apps: { api: { type: 'backend' } },
+		} as unknown as WorkspaceConfig;
 
 		expect(() => defineWorkspace(config)).toThrow(
 			'Workspace configuration validation failed',
 		);
+	});
+
+	it('accepts a workspace whose apps are all declared', () => {
+		// No `apps` block at all: a `site` is an app and so is a `rest-api` that
+		// named one, so the list is read off the graph rather than written here.
+		const config = {
+			name: 'shop',
+			constructs: './constructs/**/*.ts',
+		} as WorkspaceConfig;
+
+		expect(() => defineWorkspace(config)).not.toThrow();
 	});
 
 	it('should allow backend apps without routes (e.g., auth servers)', () => {
@@ -385,9 +396,9 @@ describe('processConfig', () => {
 	});
 
 	it('should throw on invalid workspace config', () => {
-		const config: WorkspaceConfig = {
-			apps: {},
-		};
+		const config = {
+			apps: { api: { type: 'backend' } },
+		} as unknown as WorkspaceConfig;
 
 		expect(() => processConfig(config, '/project')).toThrow(
 			'Workspace configuration validation failed',

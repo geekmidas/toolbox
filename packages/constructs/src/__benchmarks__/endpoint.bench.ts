@@ -381,7 +381,7 @@ describe('Endpoint Handling - Manual Audit', () => {
 		.auditor(AuditStorageService)
 		.body(z.object({ name: z.string(), email: z.string() }))
 		.output(z.object({ id: z.string() }))
-		.handle(async ({ body, auditor }) => {
+		.handle(async ({ body: _body, auditor }) => {
 			const id = crypto.randomUUID();
 			auditor?.audit('user.created', { userId: id });
 			return { id };

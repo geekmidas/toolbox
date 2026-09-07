@@ -1,4 +1,4 @@
-// biome-ignore lint/correctness/noUnusedImports: <explanation>
+// biome-ignore lint/correctness/noUnusedImports: JSX in this file compiles to React.createElement, so the import is used by the emitted code.
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmailClient, type SMTPClient } from '../client';

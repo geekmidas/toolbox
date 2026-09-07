@@ -36,7 +36,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 					),
 				}),
 			)
-			.handle(async ({ query }) => ({
+			.handle(async ({ query: _query }) => ({
 				users: [],
 			}));
 
@@ -115,7 +115,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 			.query(z.object({ notify: z.coerce.boolean().optional() }))
 			.body(z.object({ name: z.string() }))
 			.output(z.object({ id: z.string(), name: z.string() }))
-			.handle(async ({ params, query, body }) => ({
+			.handle(async ({ params, query: _query, body }) => ({
 				id: params.id,
 				name: body.name,
 			}));
@@ -160,7 +160,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 		const deleteUserEndpoint = e
 			.delete('/users/{id}')
 			.params(z.object({ id: z.string() }))
-			.handle(async ({ params }) => {
+			.handle(async ({ params: _params }) => {
 				// No return value
 			});
 

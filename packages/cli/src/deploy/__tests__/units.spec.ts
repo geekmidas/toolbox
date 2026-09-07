@@ -29,7 +29,12 @@ const workspace = {
 } as unknown as NormalizedWorkspace;
 
 const surface = (id: string, path?: string) =>
-	({ kind: 'rest-api', id, endpoints: [], ...(path ? { path } : {}) }) as const;
+	({
+		kind: 'rest-api',
+		id,
+		endpoints: [],
+		...(path ? { app: { path } } : {}),
+	}) as const;
 
 describe('deployUnits', () => {
 	it('deploys a site the config never mentioned', () => {
@@ -40,7 +45,7 @@ describe('deployUnits', () => {
 				kind: 'site',
 				id: 'Web',
 				variant: 'static',
-				path: '../web',
+				app: { path: '../web' },
 				dependencies: [],
 			},
 		} as unknown as ConstructManifest;
@@ -65,11 +70,11 @@ describe('deployUnits', () => {
 	});
 
 	it('does not deploy one app twice for two surfaces it serves', () => {
-		// Both are served by one process until the build emits a bundle per
-		// surface. A unit each would deploy that whole app twice under two
+		// An auth server with no app of its own is mounted into the surface that
+		// named it. A unit each would deploy that whole process twice under two
 		// names — worse than the shared container it was meant to replace.
 		const manifest = {
-			Api: surface('Api'),
+			Api: { ...surface('Api', 'apps/api'), auth: 'Auth' },
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
@@ -99,7 +104,7 @@ describe('deployUnits', () => {
 				kind: 'site',
 				id: 'Web',
 				variant: 'static',
-				path: '../web',
+				app: { path: '../web' },
 				dependencies: [],
 			},
 		} as unknown as ConstructManifest;
@@ -111,7 +116,10 @@ describe('deployUnits', () => {
 	});
 
 	it('leaves a project that declares no surfaces alone', () => {
-		// Adopting constructs stays something done a piece at a time.
-		expect(deployUnits({} as ConstructManifest, workspace)).toEqual({});
+		// Adopting constructs stays something done a piece at a time: a workspace
+		// that declares nothing keeps exactly the apps its config named.
+		expect(
+			Object.keys(deployUnits({} as ConstructManifest, workspace)),
+		).toEqual(['api']);
 	});
 });

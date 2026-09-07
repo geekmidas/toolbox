@@ -144,7 +144,7 @@ export const authDbEndpoint = e
 	.authorizer('jwt')
 	.services([databaseService])
 	.output(z.array(z.object({ id: z.string(), total: z.number() })))
-	.handle(async ({ services, session }) => {
+	.handle(async ({ services: _services, session: _session }) => {
 		// Simulated DB query
 		return [
 			{ id: 'order-1', total: 99.99 },
@@ -176,7 +176,7 @@ export const complexEndpoint = e
 	.services([databaseService, cacheService])
 	.body(orderSchema)
 	.output(orderResponseSchema)
-	.handle(async ({ body, services, session }) => {
+	.handle(async ({ body, services: _services, session: _session }) => {
 		// Simulate complex business logic
 		const total = body.items.reduce((sum, item) => sum + item.qty * 10, 0);
 		return {
@@ -214,7 +214,7 @@ export const queryEndpoint = e
 		}),
 	)
 	.output(z.object({ results: z.array(z.string()), total: z.number() }))
-	.handle(async ({ query }) => ({
+	.handle(async ({ query: _query }) => ({
 		results: ['result1', 'result2', 'result3'],
 		total: 100,
 	}));
