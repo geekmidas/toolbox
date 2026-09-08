@@ -47,7 +47,8 @@ export function runtimeFor(
 		return {
 			imports: `import { ${module.exportName} as __surface } from '${specifier}';`,
 			bindings: [
-				'// The logger and environment parser this surface was declared with.',
+				'// What this surface was declared with. Objects, not module paths:',
+				'// the entry imports the surface, so there is nothing to print.',
 				'const envParser = __surface.envParser;',
 				'const logger = __surface.logger;',
 			].join('\n'),
@@ -571,9 +572,17 @@ export async function setupEndpoints(
 		const usesExternalStudio = !!context.studio?.studioPath;
 
 		// Generate imports based on whether telescope is external or inline
+		const telescopeFromSurface =
+			!!context.surface?.module && !usesExternalTelescope;
+
 		let telescopeImports = '';
 		if (telescopeEnabled) {
-			if (usesExternalTelescope) {
+			if (telescopeFromSurface) {
+				// The surface was declared with a Telescope, and the entry already
+				// imports the surface. Nothing to print but the middleware.
+				telescopeImports =
+					"import { createMiddleware, createUI } from '@geekmidas/telescope/hono';";
+			} else if (usesExternalTelescope) {
 				const relativeTelescopePath = relative(
 					dirname(appPath),
 					context.telescope?.telescopePath!,
@@ -664,7 +673,7 @@ import { createStudioApp } from '@geekmidas/studio/server/hono';`;
 		// Generate telescope setup - either use external instance or create inline
 		let telescopeSetup = '';
 		if (telescopeEnabled) {
-			if (usesExternalTelescope) {
+			if (telescopeFromSurface || usesExternalTelescope) {
 				// Use external telescope instance - no need to create one
 				telescopeSetup = `
 ${telescopeWebSocketSetupCode}
@@ -728,6 +737,7 @@ ${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
 
 ${runtime.bindings}
+${telescopeFromSurface ? 'const telescope = __surface.telescope;' : ''}
 
 ${
 	context.storageDrivers?.setup

@@ -160,6 +160,19 @@ export function derivedApps(
 						...(spec.config ? { config: spec.config } : {}),
 					}
 				: {}),
+			// One glob fans out to the six the build reads, because each generator
+			// already inspects every export and keeps what it recognises. A
+			// per-kind field still wins where one was given.
+			...(spec.code !== undefined
+				? {
+						routes: spec.code,
+						functions: spec.code,
+						crons: spec.code,
+						queues: spec.code,
+						topics: spec.code,
+						subscribers: spec.code,
+					}
+				: {}),
 			...(spec.routes !== undefined ? { routes: spec.routes } : {}),
 			...(spec.functions !== undefined ? { functions: spec.functions } : {}),
 			...(spec.crons !== undefined ? { crons: spec.crons } : {}),

@@ -1,6 +1,7 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
-import logger from '../apps/api/config/logger.js';
 import { auth } from './auth.js';
+import logger from './logger.js';
+import { telescope } from './telescope.js';
 
 /**
  * The application's own HTTP surface.
@@ -38,6 +39,10 @@ export const api = new RestApi('Api', {
 	// that had one.
 	logger,
 
+	// The Telescope the logger already streams into, declared once beside it
+	// rather than named again as a module path in the app block.
+	telescope,
+
 	// The app that serves it. Where its source lives and which globs find its
 	// code is the half of an application no graph can derive — it is a fact
 	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
@@ -46,18 +51,18 @@ export const api = new RestApi('Api', {
 	app: {
 		path: 'apps/api',
 
-		// Discovery is glob-driven: an endpoint outside these never loads, and
-		// nothing will tell you at runtime that it is missing.
-		routes: './endpoints/**/*.ts',
-		functions: './functions/**/*.ts',
-		crons: './crons/**/*.ts',
-		subscribers: './subscribers/**/*.ts',
-		queues: './queues/**/*.ts',
+		// One glob, every kind — the same rule the constructs glob follows. Five
+		// patterns, one per kind, was five things to keep in step; a handler in
+		// the wrong directory simply never loaded and nothing said so.
+		//
+		// Still glob-driven, and that is worth knowing: a file outside this
+		// pattern does not exist as far as the build is concerned.
+		code: './{endpoints,functions,crons,subscribers,queues}/**/*.ts',
 
-		telescope: './config/telescope#telescope',
+		// Studio resolves a database client while it imports, which needs URLs
+		// that only exist once a target has provisioned them — so unlike the
+		// logger and the telescope it cannot live in the constructs glob, which
+		// discovery imports before any URL exists.
 		studio: './config/studio#studio',
-		openapi: true,
-		runtime: 'node',
-		env: ['.env', '.env.example'],
 	},
 }).auth(auth);

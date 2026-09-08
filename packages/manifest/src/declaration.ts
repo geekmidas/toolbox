@@ -438,7 +438,20 @@ export interface AppSpec {
 	 * something outside the workspace has to know it in advance.
 	 */
 	port?: number;
-	/** Globs that find this app's code, relative to `path`. */
+	/**
+	 * One glob that finds everything this app defines, relative to `path`.
+	 *
+	 * Every export of every matching module is inspected, and each kind is
+	 * picked out by whatever recognises it — the same rule the `constructs`
+	 * glob already follows. A glob per kind was the specialness this model
+	 * removes: five patterns that had to be kept in step, where a handler in the
+	 * wrong directory simply never loaded and nothing said so.
+	 *
+	 * The per-kind fields below still work, and still win where both are given,
+	 * because a single-app `defineConfig` has always been written that way.
+	 */
+	code?: Glob;
+	/** Globs that find one kind of thing. Prefer `code`. */
 	routes?: Glob;
 	functions?: Glob;
 	crons?: Glob;
