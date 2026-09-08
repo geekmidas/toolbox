@@ -72,9 +72,9 @@ export interface TelescopeLogTable {
  * ```
  */
 export interface TelescopeTables {
-	telescope_requests: TelescopeRequestTable;
-	telescope_exceptions: TelescopeExceptionTable;
-	telescope_logs: TelescopeLogTable;
+	requests: TelescopeRequestTable;
+	exceptions: TelescopeExceptionTable;
+	logs: TelescopeLogTable;
 }
 
 /**
@@ -84,10 +84,18 @@ export interface KyselyStorageConfig<DB> {
 	/** Kysely database instance */
 	db: Kysely<DB>;
 	/**
-	 * Table name prefix (default: 'telescope').
-	 * Tables will be named: {prefix}_requests, {prefix}_exceptions, {prefix}_logs
+	 * The schema holding `requests`, `exceptions` and `logs`.
+	 *
+	 * Normally omitted. A telescope derived from a database gets a schema of its
+	 * own and a role whose `search_path` is pinned to it, so an unqualified name
+	 * already resolves there — which is the same rule every other tenant here
+	 * follows, and the reason a connection string never has to remember where
+	 * its tables live.
+	 *
+	 * Name one only when the connection is *not* pinned: a shared pool, a
+	 * migration run as an owner whose `search_path` finds `public` first.
 	 */
-	tablePrefix?: string;
+	schema?: string;
 }
 
 /**
@@ -113,16 +121,25 @@ export interface KyselyStorageConfig<DB> {
  */
 export class KyselyStorage<DB> implements TelescopeStorage {
 	private readonly db: Kysely<DB>;
-	private readonly requestsTable: string;
-	private readonly exceptionsTable: string;
-	private readonly logsTable: string;
+
+	/**
+	 * Unqualified, and deliberately.
+	 *
+	 * These were `telescope_requests`, `telescope_exceptions` and
+	 * `telescope_logs` — a prefix, which is what you reach for when the tables
+	 * have to share a schema with an application's own. They do not: a telescope
+	 * derived from a database is a schema tenant, so the names are just the
+	 * names, and `DROP SCHEMA telescope CASCADE` is the whole cleanup.
+	 */
+	private readonly requestsTable = 'requests';
+	private readonly exceptionsTable = 'exceptions';
+	private readonly logsTable = 'logs';
 
 	constructor(config: KyselyStorageConfig<DB>) {
-		this.db = config.db;
-		const prefix = config.tablePrefix ?? 'telescope';
-		this.requestsTable = `${prefix}_requests`;
-		this.exceptionsTable = `${prefix}_exceptions`;
-		this.logsTable = `${prefix}_logs`;
+		// `withSchema` only where the connection is not already pinned to one.
+		this.db = config.schema
+			? (config.db.withSchema(config.schema) as Kysely<DB>)
+			: config.db;
 	}
 
 	// ============================================
@@ -504,8 +521,11 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 }
 
 /**
- * SQL migration to create telescope tables.
- * Use this to set up the required tables in your database.
+ * SQL migration to create telescope's tables.
+ *
+ * Pass a schema to have them created in one, and to have `down` drop the whole
+ * schema rather than three tables. Pass nothing where the connection's
+ * `search_path` already places them.
  *
  * @example
  * ```typescript
@@ -523,14 +543,20 @@ export class KyselyStorage<DB> implements TelescopeStorage {
  * }
  * ```
  */
-export function getTelescopeMigration(tablePrefix = 'telescope'): {
+export function getTelescopeMigration(schema?: string): {
 	up: string;
 	down: string;
 } {
+	// Qualified only when a schema is named. Unqualified otherwise, so the
+	// connection's `search_path` places them — the same rule the tables
+	// themselves follow at query time.
+	const q = (name: string) => (schema ? `${schema}.${name}` : name);
+	const idx = (name: string) => (schema ? `${schema}_${name}` : name);
+
 	return {
-		up: `
--- Telescope requests table
-CREATE TABLE IF NOT EXISTS ${tablePrefix}_requests (
+		up: `${schema ? `CREATE SCHEMA IF NOT EXISTS ${schema};\n` : ''}
+-- Telescope requests
+CREATE TABLE IF NOT EXISTS ${q('requests')} (
   id VARCHAR(21) PRIMARY KEY,
   method VARCHAR(10) NOT NULL,
   path TEXT NOT NULL,
@@ -548,15 +574,15 @@ CREATE TABLE IF NOT EXISTS ${tablePrefix}_requests (
   tags JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_requests_timestamp
-  ON ${tablePrefix}_requests (timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_requests_path
-  ON ${tablePrefix}_requests (path);
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_requests_status
-  ON ${tablePrefix}_requests (status);
+CREATE INDEX IF NOT EXISTS idx_${idx('requests')}_timestamp
+  ON ${q('requests')} (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_${idx('requests')}_path
+  ON ${q('requests')} (path);
+CREATE INDEX IF NOT EXISTS idx_${idx('requests')}_status
+  ON ${q('requests')} (status);
 
--- Telescope exceptions table
-CREATE TABLE IF NOT EXISTS ${tablePrefix}_exceptions (
+-- Telescope exceptions
+CREATE TABLE IF NOT EXISTS ${q('exceptions')} (
   id VARCHAR(21) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   message TEXT NOT NULL,
@@ -568,13 +594,13 @@ CREATE TABLE IF NOT EXISTS ${tablePrefix}_exceptions (
   tags JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_exceptions_timestamp
-  ON ${tablePrefix}_exceptions (timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_exceptions_request_id
-  ON ${tablePrefix}_exceptions (request_id);
+CREATE INDEX IF NOT EXISTS idx_${idx('exceptions')}_timestamp
+  ON ${q('exceptions')} (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_${idx('exceptions')}_request_id
+  ON ${q('exceptions')} (request_id);
 
--- Telescope logs table
-CREATE TABLE IF NOT EXISTS ${tablePrefix}_logs (
+-- Telescope logs
+CREATE TABLE IF NOT EXISTS ${q('logs')} (
   id VARCHAR(21) PRIMARY KEY,
   level VARCHAR(10) NOT NULL,
   message TEXT NOT NULL,
@@ -583,17 +609,20 @@ CREATE TABLE IF NOT EXISTS ${tablePrefix}_logs (
   timestamp TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_logs_timestamp
-  ON ${tablePrefix}_logs (timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_logs_level
-  ON ${tablePrefix}_logs (level);
-CREATE INDEX IF NOT EXISTS idx_${tablePrefix}_logs_request_id
-  ON ${tablePrefix}_logs (request_id);
+CREATE INDEX IF NOT EXISTS idx_${idx('logs')}_timestamp
+  ON ${q('logs')} (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_${idx('logs')}_level
+  ON ${q('logs')} (level);
+CREATE INDEX IF NOT EXISTS idx_${idx('logs')}_request_id
+  ON ${q('logs')} (request_id);
 `,
-		down: `
-DROP TABLE IF EXISTS ${tablePrefix}_logs;
-DROP TABLE IF EXISTS ${tablePrefix}_exceptions;
-DROP TABLE IF EXISTS ${tablePrefix}_requests;
+		// A schema tenant drops whole; only the unqualified case drops tables.
+		down: schema
+			? `DROP SCHEMA IF EXISTS ${schema} CASCADE;\n`
+			: `
+DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS exceptions;
+DROP TABLE IF EXISTS requests;
 `,
 	};
 }
