@@ -1,8 +1,8 @@
 import { NotFoundError } from '@geekmidas/errors';
-import { z } from 'zod';
-import { emailsQueue } from '../queues/emails.js';
 import { auth } from '@kitchen-sink/constructs/auth.js';
 import { sessions } from '@kitchen-sink/constructs/cache.js';
+import { z } from 'zod';
+import { emailsQueue } from '../queues/emails.js';
 import { router } from './router.js';
 import { requireUser } from './session.js';
 

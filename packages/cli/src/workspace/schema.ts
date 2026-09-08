@@ -806,7 +806,7 @@ export const WorkspaceConfigSchema = z
 				visited.add(app);
 				recStack.add(app);
 
-				const deps = (data.apps ?? {})[app]?.dependencies ?? [];
+				const deps = data.apps?.[app]?.dependencies ?? [];
 				for (const dep of deps) {
 					if (hasCycle(dep)) return true;
 				}

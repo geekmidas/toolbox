@@ -1,4 +1,3 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';

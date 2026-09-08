@@ -167,7 +167,9 @@ export class RestApi<TName extends string = string>
 
 		this.logger = config.logger ?? DEFAULT_LOGGER;
 		this.envParser = envParserFor(
-			config.envParser ? { id: canonical, envParser: config.envParser } : undefined,
+			config.envParser
+				? { id: canonical, envParser: config.envParser }
+				: undefined,
 		);
 
 		this.endpoints = new EndpointFactory({

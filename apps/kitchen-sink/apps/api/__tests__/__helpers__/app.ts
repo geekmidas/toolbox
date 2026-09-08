@@ -12,8 +12,8 @@
  * `app.request()`, so a port would only add a way for two runs to collide.
  */
 
-import type { Hono } from 'hono';
 import { api } from '@kitchen-sink/constructs/api.js';
+import type { Hono } from 'hono';
 
 /** A booted application, and the handles a spec needs to drive it. */
 export interface Harness {

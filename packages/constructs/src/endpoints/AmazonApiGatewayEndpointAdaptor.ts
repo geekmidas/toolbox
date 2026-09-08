@@ -2,7 +2,6 @@ import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import { withRlsContext } from '@geekmidas/db/rls';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { envParserFor } from './surfaceEnv';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type {
@@ -14,6 +13,7 @@ import set from 'lodash.set';
 import type { Telemetry } from '../telemetry';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
+import { envParserFor } from './surfaceEnv';
 
 /**
  * Telescope integration for request recording.

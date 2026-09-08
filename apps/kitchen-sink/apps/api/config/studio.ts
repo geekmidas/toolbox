@@ -1,4 +1,5 @@
 import { snifferContext } from '@geekmidas/constructs';
+import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
 import {
 	Direction,
 	InMemoryMonitoringStorage,
@@ -6,7 +7,6 @@ import {
 } from '@geekmidas/studio';
 import type { Database } from '@kitchen-sink/constructs/database.js';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
 
 /**
  * Studio — database browsing and query monitoring at `/__studio`.

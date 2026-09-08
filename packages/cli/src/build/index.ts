@@ -34,10 +34,7 @@ import {
 	TopicGenerator,
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
-import {
-	type ConstructSource,
-	discover,
-} from '../reconcile/discover.js';
+import { type ConstructSource, discover } from '../reconcile/discover.js';
 import {
 	type BuildOptions,
 	type BuildResult,

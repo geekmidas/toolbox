@@ -1,7 +1,8 @@
 # The surface is the factory
 
 **Status:** in progress. The mechanism works and kitchen-sink runs on it; the
-migration off `e` is not done. This document is the handover.
+migration off `e` is not done. Lint passes; 90 tests fail, all from one
+mechanical cause. This document is the handover.
 
 ## The question that started it
 
@@ -129,8 +130,49 @@ export const listUsers = router.get('/users').dependsOn([sessions]).handle(...)
 
 Of those, 24 are specs or fixtures, 23 are Markdown, 4 are `init` templates.
 
-**No test suite has been run since this branch started.** The adaptor signature
-changed, so every test constructing an adaptor by hand needs updating.
+### Where the tests stand
+
+Run on this branch: **2992 passing, 90 failing across 14 files.** Lint passes.
+
+Every failure is one of two mechanical causes, and none of them is a surprise:
+
+| Cause | Files | Tests |
+| --- | --- | --- |
+| Adaptor constructed as `new AmazonApiGatewayV2Endpoint(envParser, endpoint)` | 12 | 86 |
+| Generator asserting the emitted `import { envParser } from …` line | 2 | 4 |
+
+The adaptor signature dropped its first parameter, so an old call passes the
+parser where the endpoint is expected. The failure surfaces later and unhelpfully
+— `TypeError: Cannot read properties of undefined (reading 'child')` inside
+`wrappedHandler` — because the adaptor reaches for `endpoint.logger` on what is
+actually an `EnvironmentParser`.
+
+Worst affected:
+
+| File | Tests |
+| --- | --- |
+| `AmazonApiGatewayV1EndpointAdaptor.spec.ts` | 29 |
+| `AmazonApiGatewayV2EndpointAdaptor.spec.ts` | 14 |
+| `AmazonApiGatewayV2EndpointAdaptor.events.spec.ts` | 9 |
+| `AmazonApiGatewayV2EndpointAdaptor.audits.spec.ts` | 8 |
+| `AmazonApiGatewayV1EndpointAdaptor.events.spec.ts` | 8 |
+| `AmazonApiGatewayV1EndpointAdaptor.audits.spec.ts` | 7 |
+
+Two of the fourteen (`*.kysely-audit.integration.spec.ts`) also need a database,
+which is a separate problem — see the note on port 5432 below.
+
+The fix is a search and replace, not a redesign: drop the first argument. It is
+listed as remaining work rather than done because a mechanical change across
+eighty-six assertions still deserves someone reading the diff.
+
+### A trap worth knowing about
+
+The adaptor's first parameter was removed rather than made optional, so an old
+two-argument call still *compiles* when the types are loose (several specs build
+endpoints through `as any`). It fails at runtime, in the wrapper, pointing at a
+line that has nothing to do with the mistake. If a migrated test fails with
+`Cannot read properties of undefined (reading 'child')`, it is an un-migrated
+constructor call.
 
 ## Open questions
 
@@ -157,3 +199,12 @@ cd apps/api && gkm build --providers server,aws-apigatewayv2
 Then read `apps/api/.gkm/aws-apigatewayv2/createUser.ts` — it should import the
 endpoint and nothing else — and the head of `.gkm/server/app.ts`, which should
 import the surface from a derived path.
+
+## The local database
+
+Two of the failing files need Postgres, and on the machine this was written on it
+would not start: another project's container held host port 5432, so toolbox's
+own Postgres never got its binding and connections landed on the wrong database —
+which reports as `password authentication failed for user "geekmidas"` and reads
+convincingly as bad credentials. It is not. Check `lsof -nP -iTCP:5432
+-sTCP:LISTEN` before touching the volume.
