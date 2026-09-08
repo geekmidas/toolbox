@@ -1276,5 +1276,3 @@ export interface EndpointFactoryOptions<
 	 */
 	surface?: EndpointSurface;
 }
-
-export const e = new EndpointFactory();

@@ -2,9 +2,12 @@ import { UnprocessableEntityError } from '@geekmidas/errors';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { RestApi } from '../../rest-api';
 import { SuccessStatus } from '../Endpoint';
-import { e } from '../EndpointFactory';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('TestEndpointAdaptor', () => {
 	const mockServices = {};
@@ -12,7 +15,7 @@ describe('TestEndpointAdaptor', () => {
 
 	describe('request', () => {
 		it('should handle simple endpoint without schemas', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/test')
 				.output(z.object({ message: z.string() }))
 				.handle(() => ({ message: 'Hello World' }));
@@ -28,7 +31,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle endpoint with body schema', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string(), email: z.email() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -49,7 +52,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle endpoint with params schema', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/users/:id')
 				.params(z.object({ id: z.string() }))
 				.output(z.object({ id: z.string(), found: z.boolean() }))
@@ -70,7 +73,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle endpoint with query schema', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/search')
 				.query(z.object({ q: z.string(), page: z.coerce.number().default(1) }))
 				.output(z.object({ query: z.string(), page: z.number() }))
@@ -91,7 +94,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle endpoint with all schemas', async () => {
-			const endpoint = e
+			const endpoint = api
 				.put('/users/:id')
 				.params(z.object({ id: z.string() }))
 				.body(z.object({ name: z.string(), email: z.email() }))
@@ -127,7 +130,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should throw validation error for invalid body', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string(), age: z.number().min(18) }))
 				.handle(async ({ body }) => ({ id: '123' }));
@@ -144,7 +147,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle headers correctly', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/headers')
 				.output(z.object({ auth: z.string().optional(), host: z.string() }))
 				.handle(async ({ header }) => ({
@@ -170,7 +173,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle session correctly', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/profile')
 				.output(z.object({ userId: z.string() }))
 				.handle(async ({ session }) => ({
@@ -197,7 +200,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should validate output schema', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/invalid')
 				.output(z.object({ id: z.string(), count: z.number() }))
 				.handle(() => ({ id: '123', count: 'not-a-number' as any }));
@@ -213,7 +216,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle case-insensitive headers', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/headers-case')
 				.output(z.object({ contentType: z.string().optional() }))
 				.handle(async ({ header }) => ({
@@ -236,7 +239,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should read cookies from request', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/cookies')
 				.output(
 					z.object({
@@ -266,7 +269,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle missing cookies gracefully', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/cookies-optional')
 				.output(
 					z.object({
@@ -292,7 +295,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle URL encoded cookie values', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/cookies-encoded')
 				.output(z.object({ user: z.string() }))
 				.handle(async ({ cookie }) => ({
@@ -315,7 +318,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should use cookies in session extraction', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/profile')
 				.output(z.object({ userId: z.string() }))
 				.handle(async ({ session }) => ({
@@ -351,7 +354,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle multiple cookies with same name (uses last)', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/duplicate-cookies')
 				.output(z.object({ value: z.string() }))
 				.handle(async ({ cookie }) => ({
@@ -378,7 +381,7 @@ describe('TestEndpointAdaptor', () => {
 	describe('authorization with body, query, and params', () => {
 		it('should pass body to authorize function', async () => {
 			const authorizeSpy = vi.fn(() => true);
-			const endpoint = e
+			const endpoint = api
 				.post('/resources')
 				.body(z.object({ role: z.string() }))
 				.output(z.object({ ok: z.boolean() }))
@@ -401,7 +404,7 @@ describe('TestEndpointAdaptor', () => {
 
 		it('should pass query to authorize function', async () => {
 			const authorizeSpy = vi.fn(() => true);
-			const endpoint = e
+			const endpoint = api
 				.get('/resources')
 				.query(z.object({ tenant: z.string() }))
 				.output(z.object({ ok: z.boolean() }))
@@ -424,7 +427,7 @@ describe('TestEndpointAdaptor', () => {
 
 		it('should pass params to authorize function', async () => {
 			const authorizeSpy = vi.fn(() => true);
-			const endpoint = e
+			const endpoint = api
 				.get('/resources/:id')
 				.params(z.object({ id: z.string() }))
 				.output(z.object({ ok: z.boolean() }))
@@ -447,7 +450,7 @@ describe('TestEndpointAdaptor', () => {
 
 		it('should pass body, query, and params together to authorize', async () => {
 			const authorizeSpy = vi.fn(() => true);
-			const endpoint = e
+			const endpoint = api
 				.post('/orgs/:orgId/members')
 				.params(z.object({ orgId: z.string() }))
 				.query(z.object({ notify: z.string() }))
@@ -476,7 +479,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should reject when authorize uses body to deny', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/resources')
 				.body(z.object({ role: z.string() }))
 				.output(z.object({ ok: z.boolean() }))
@@ -495,7 +498,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should allow when authorize uses body to allow', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/resources')
 				.body(z.object({ role: z.string() }))
 				.output(z.object({ ok: z.boolean() }))
@@ -527,7 +530,7 @@ describe('TestEndpointAdaptor', () => {
 				return db.query !== undefined;
 			});
 
-			const endpoint = e
+			const endpoint = api
 				.get('/protected')
 				.database(DatabaseService)
 				.output(z.object({ ok: z.boolean() }))
@@ -550,7 +553,7 @@ describe('TestEndpointAdaptor', () => {
 		it('should not include db in authorize when database is not configured', async () => {
 			const authorizeSpy = vi.fn(() => true);
 
-			const endpoint = e
+			const endpoint = api
 				.get('/public')
 				.output(z.object({ ok: z.boolean() }))
 				.authorize(authorizeSpy)
@@ -570,7 +573,7 @@ describe('TestEndpointAdaptor', () => {
 
 	describe('response handling', () => {
 		it('should set response cookies', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/auth/login')
 				.body(z.object({ email: z.string(), password: z.string() }))
 				.output(z.object({ id: z.string(), email: z.string() }))
@@ -602,7 +605,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should set custom response headers', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -632,7 +635,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should set custom status code', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/resources')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
@@ -651,7 +654,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should delete cookies', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/auth/logout')
 				.output(z.object({ success: z.boolean() }))
 				.handle(async (_ctx, response) => {
@@ -675,7 +678,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should combine cookies, headers, and status', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/complete')
 				.body(z.object({ data: z.string() }))
 				.output(z.object({ id: z.string(), result: z.string() }))
@@ -709,7 +712,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should return simple response without metadata when not using response builder', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/simple')
 				.output(z.object({ message: z.string() }))
 				.handle(async () => {
@@ -729,7 +732,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should combine request cookies and response cookies', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/preferences')
 				.output(z.object({ theme: z.string(), updated: z.boolean() }))
 				.handle(async ({ cookie }, response) => {
@@ -762,7 +765,7 @@ describe('TestEndpointAdaptor', () => {
 
 	describe('fullRequest', () => {
 		it('should return full HTTP response with body, status, and headers', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/test')
 				.output(z.object({ message: z.string() }))
 				.handle(() => ({ message: 'Hello World' }));
@@ -782,7 +785,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should return custom status code in HTTP response', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/resources')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
@@ -802,7 +805,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should include custom headers in HTTP response', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -832,7 +835,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should convert cookies to Set-Cookie headers', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/auth/login')
 				.body(z.object({ email: z.string(), password: z.string() }))
 				.output(z.object({ id: z.string(), email: z.string() }))
@@ -864,7 +867,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle multiple cookies as array of Set-Cookie headers', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/complete')
 				.body(z.object({ data: z.string() }))
 				.output(z.object({ id: z.string(), result: z.string() }))
@@ -890,7 +893,7 @@ describe('TestEndpointAdaptor', () => {
 
 		it('should serialize all cookie options correctly', async () => {
 			const expires = new Date('2025-12-31T23:59:59Z');
-			const endpoint = e
+			const endpoint = api
 				.get('/cookies-full')
 				.output(z.object({ success: z.boolean() }))
 				.handle(async (_ctx, response) => {
@@ -919,7 +922,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle cookie deletion in Set-Cookie header', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/auth/logout')
 				.output(z.object({ success: z.boolean() }))
 				.handle(async (_ctx, response) => {
@@ -944,7 +947,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should combine headers and cookies in HTTP response', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/complete')
 				.body(z.object({ data: z.string() }))
 				.output(z.object({ id: z.string(), result: z.string() }))
@@ -980,7 +983,7 @@ describe('TestEndpointAdaptor', () => {
 		});
 
 		it('should handle empty response metadata', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/simple')
 				.output(z.object({ message: z.string() }))
 				.handle(async () => ({ message: 'Hello' }));
@@ -1001,7 +1004,7 @@ describe('TestEndpointAdaptor', () => {
 
 	describe('request method delegation', () => {
 		it('should return only body from fullRequest', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))

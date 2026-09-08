@@ -155,10 +155,10 @@ export const SQL: Story = {
 	},
 };
 
-const endpointCode = `import { e } from '@geekmidas/constructs/endpoints';
+const endpointCode = `import { api } from './constructs/api';
 import { z } from 'zod';
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({
     name: z.string().min(1),

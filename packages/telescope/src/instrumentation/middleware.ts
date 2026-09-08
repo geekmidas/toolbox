@@ -77,7 +77,7 @@ export function getContextFromEvent(event: any): any {
  * ```typescript
  * import { telemetryMiddleware } from '@geekmidas/telescope/instrumentation';
  *
- * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+ * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
  *   telemetry: { middleware: telemetryMiddleware() },
  * });
  * ```

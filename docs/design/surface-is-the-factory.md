@@ -1,8 +1,8 @@
 # The surface is the factory
 
-**Status:** in progress. The mechanism works and kitchen-sink runs on it; the
-migration off `e` is not done. Lint passes; 90 tests fail, all from one
-mechanical cause. This document is the handover.
+**Status:** done. `e` is deleted, every caller builds from a surface, lint
+passes and 3303 tests pass. The two suites that still fail need a database the
+machine could not start — see the last section.
 
 ## The question that started it
 
@@ -115,70 +115,51 @@ export const listUsers = router.get('/users').dependsOn([sessions]).handle(...)
    endpoint-scoped — CORS, queues, subscribers — so it imports the surface
    module by a path **derived from discovery** rather than one written in config.
 
-## What is not done
+## The migration
 
-`e` is still exported and still used. Roughly sixty files reference it:
+`e` is gone from both places it was exported — `endpoints/index.ts` and
+`endpoints/EndpointFactory.ts`, which were two separate `new EndpointFactory()`
+instances, so which one you got depended on your import path.
 
-| Area | Files |
-| --- | --- |
-| `packages/constructs` (tests, benchmarks) | 17 |
-| `apps/docs` (guides, examples) | 15 |
-| `packages/cli` (init templates, fixtures, generator tests) | 14 |
-| `packages/client` | 3 |
-| `apps/example` | 3 |
-| others (`ui`, `services`, `schema`, `rate-limit`, `cloud`, `audit`) | 6 |
+Every caller now builds from a surface. Three shapes came up:
 
-Of those, 24 are specs or fixtures, 23 are Markdown, 4 are `init` templates.
+- **A single route.** `api.get('/users')` — the surface's own sugar.
+- **A group sharing something.** `api.endpoints.database(db).auditor(store)`,
+  which is what `apps/example`'s router and kitchen-sink's became. The grant is
+  opted into by the group rather than handed to every route on the surface.
+- **A fixture that emits source as text.** The CLI's test helpers and `init`
+  templates write endpoint files as strings, so the *string* had to grow a
+  surface and an import, not the file doing the writing.
+
+`gkm init` now scaffolds `src/constructs/api.ts` alongside the storage, email
+and cache constructs it already wrote, and the scaffolded `router.ts` branches
+from it instead of from `e`.
+
+### The adaptors
+
+`new AmazonApiGatewayV2Endpoint(envParser, endpoint)` became
+`new AmazonApiGatewayV2Endpoint(endpoint)` at 124 call sites. The parser comes
+from `endpoint.surface`, falling back to
+`new EnvironmentParser({ ...process.env, ...Credentials })` — which is what
+every application's `config/env.ts` was, so kitchen-sink deleted its own.
+
+A trap worth knowing if any of this is revisited: the parameter was *removed*
+rather than made optional, so an old two-argument call still compiles wherever a
+spec builds its endpoint through `as any`. It fails at runtime inside
+`wrappedHandler` with `Cannot read properties of undefined (reading 'child')` —
+the adaptor reaching for `endpoint.logger` on what is really an
+`EnvironmentParser`. Nothing in that message points at the constructor.
 
 ### Where the tests stand
 
-Run on this branch: **2992 passing, 90 failing across 14 files.** Lint passes.
-
-Every failure is one of two mechanical causes, and none of them is a surprise:
-
-| Cause | Files | Tests |
-| --- | --- | --- |
-| Adaptor constructed as `new AmazonApiGatewayV2Endpoint(envParser, endpoint)` | 12 | 86 |
-| Generator asserting the emitted `import { envParser } from …` line | 2 | 4 |
-
-The adaptor signature dropped its first parameter, so an old call passes the
-parser where the endpoint is expected. The failure surfaces later and unhelpfully
-— `TypeError: Cannot read properties of undefined (reading 'child')` inside
-`wrappedHandler` — because the adaptor reaches for `endpoint.logger` on what is
-actually an `EnvironmentParser`.
-
-Worst affected:
-
-| File | Tests |
-| --- | --- |
-| `AmazonApiGatewayV1EndpointAdaptor.spec.ts` | 29 |
-| `AmazonApiGatewayV2EndpointAdaptor.spec.ts` | 14 |
-| `AmazonApiGatewayV2EndpointAdaptor.events.spec.ts` | 9 |
-| `AmazonApiGatewayV2EndpointAdaptor.audits.spec.ts` | 8 |
-| `AmazonApiGatewayV1EndpointAdaptor.events.spec.ts` | 8 |
-| `AmazonApiGatewayV1EndpointAdaptor.audits.spec.ts` | 7 |
-
-Two of the fourteen (`*.kysely-audit.integration.spec.ts`) also need a database,
-which is a separate problem — see the note on port 5432 below.
-
-The fix is a search and replace, not a redesign: drop the first argument. It is
-listed as remaining work rather than done because a mechanical change across
-eighty-six assertions still deserves someone reading the diff.
-
-### A trap worth knowing about
-
-The adaptor's first parameter was removed rather than made optional, so an old
-two-argument call still *compiles* when the types are loose (several specs build
-endpoints through `as any`). It fails at runtime, in the wrapper, pointing at a
-line that has nothing to do with the mistake. If a migrated test fails with
-`Cannot read properties of undefined (reading 'child')`, it is an un-migrated
-constructor call.
+3303 passing, 0 failing, across every project that does not need Postgres. Two
+integration suites and one publisher suite could not run at all; see below.
 
 ## Open questions
 
-- **Does `e` keep working for a standalone endpoint?** An endpoint with no
-  surface is already supported — `envParserFor(undefined)` returns the default —
-  so retiring `e` is a decision about the API, not a technical requirement.
+- **A standalone endpoint still works** — `envParserFor(undefined)` returns the
+  default parser — but there is no longer a factory to build one from. If that
+  turns out to be wanted, it is a one-line export, not a redesign.
 - **`telescope` and `studio` are still module-path strings** in `AppSpec`, with
   exactly the same shape and the same problem. The surface import added for the
   logger would carry them too.

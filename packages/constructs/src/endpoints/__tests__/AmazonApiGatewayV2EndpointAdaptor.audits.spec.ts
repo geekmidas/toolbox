@@ -98,7 +98,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -183,7 +183,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -261,7 +261,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -332,7 +332,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -397,7 +397,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -466,7 +466,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -531,7 +531,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -595,7 +595,7 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({

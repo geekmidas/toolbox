@@ -353,7 +353,13 @@ describe('EndpointGenerator', () => {
 			expect(handlerContent).toContain(
 				"from '../src/api/endpoints/deepEndpoint.js'",
 			);
-			expect(handlerContent).toMatch(/from ['"]\.\.\/\.\.\/\.\.\/.*\/env['"]/);
+
+			// And that it is the only relative import. The handler used to carry a
+			// second one the build composed for the environment parser, which is
+			// why a module path had to be named in config; an endpoint built from
+			// its surface already carries the parser.
+			const relative = handlerContent.match(/from '\.[^']*'/g) ?? [];
+			expect(relative).toEqual(["from '../src/api/endpoints/deepEndpoint.js'"]);
 		},
 	);
 

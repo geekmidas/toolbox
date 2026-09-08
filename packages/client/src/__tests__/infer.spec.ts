@@ -1,12 +1,15 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import type { InferOpenApi, InferOpenApiFromEndpoint } from '../infer';
 
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
 describe('InferOpenApi', () => {
 	describe('single endpoint', () => {
 		it('should infer OpenAPI structure for GET endpoint', () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/users/{id}')
 				.params(z.object({ id: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -33,7 +36,7 @@ describe('InferOpenApi', () => {
 		});
 
 		it('should infer OpenAPI structure for POST endpoint with body', () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string(), email: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -62,7 +65,7 @@ describe('InferOpenApi', () => {
 
 	describe('multiple endpoints', () => {
 		it('should merge OpenAPI specs from multiple endpoints', () => {
-			const getUserEndpoint = e
+			const getUserEndpoint = api
 				.get('/users/{id}')
 				.params(z.object({ id: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -71,7 +74,7 @@ describe('InferOpenApi', () => {
 					name: 'John',
 				}));
 
-			const createUserEndpoint = e
+			const createUserEndpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -98,14 +101,14 @@ describe('InferOpenApi', () => {
 		});
 
 		it('should handle endpoints with different HTTP methods on same path', () => {
-			const getUserEndpoint = e
+			const getUserEndpoint = api
 				.get('/users')
 				.output(z.object({ users: z.array(z.object({ id: z.string() })) }))
 				.handle(async () => ({
 					users: [],
 				}));
 
-			const createUserEndpoint = e
+			const createUserEndpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
@@ -131,7 +134,7 @@ describe('InferOpenApi', () => {
 
 	describe('complex schemas', () => {
 		it('should handle endpoints with query parameters', () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/users')
 				.query(
 					z.object({
@@ -160,7 +163,7 @@ describe('InferOpenApi', () => {
 		});
 
 		it('should handle endpoints with body, params, and query', () => {
-			const endpoint = e
+			const endpoint = api
 				.put('/users/{id}')
 				.params(z.object({ id: z.string() }))
 				.query(z.object({ notify: z.coerce.boolean().optional() }))

@@ -1,7 +1,10 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { OpenApiTsGenerator } from '../OpenApiTsGenerator';
+
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('OpenApiTsGenerator — zod global registry', () => {
 	beforeEach(() => {
@@ -27,7 +30,7 @@ describe('OpenApiTsGenerator — zod global registry', () => {
 			email: true,
 		});
 
-		const endpoint = e
+		const endpoint = api
 			.get('/users/:id')
 			.output(UserResponseSchema)
 			.handle(async () => ({ id: '1', name: 'a', email: 'a@b.c' }));
@@ -47,7 +50,7 @@ describe('OpenApiTsGenerator — zod global registry', () => {
 			})
 			.meta({ id: 'User' });
 
-		const endpoint = e
+		const endpoint = api
 			.get('/users/:id')
 			.output(UserSchema)
 			.handle(async () => ({ id: '1', name: 'a', email: 'a@b.c' }));
@@ -63,7 +66,7 @@ describe('OpenApiTsGenerator — zod global registry', () => {
 		z.object({ id: z.string() }).meta({ id: 'Foo' });
 		z.object({ id: z.string() }).meta({ id: 'Bar' });
 
-		const endpoint = e
+		const endpoint = api
 			.get('/ping')
 			.output(z.object({ ok: z.boolean() }))
 			.handle(async () => ({ ok: true }));
@@ -82,7 +85,7 @@ describe('OpenApiTsGenerator — zod global registry', () => {
 
 		z.object({ user: UserSchema, role: z.string() }).meta({ id: 'UserRole' });
 
-		const endpoint = e
+		const endpoint = api
 			.get('/ping')
 			.output(z.object({ ok: z.boolean() }))
 			.handle(async () => ({ ok: true }));

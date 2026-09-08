@@ -1,10 +1,13 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
-import { e } from '../EndpointFactory';
+import { RestApi } from '../../rest-api';
+
+/** Endpoints are built from a surface now, so the tests build one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('Endpoint type inference', () => {
 	it('should not include body/params/query when not defined', () => {
-		const _endpoint = e.get('/test').handle((ctx) => {
+		const _endpoint = api.get('/test').handle((ctx) => {
 			expectTypeOf(ctx).toHaveProperty('services');
 			expectTypeOf(ctx).toHaveProperty('logger');
 			expectTypeOf(ctx).toHaveProperty('header');
@@ -20,7 +23,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include body when defined', () => {
-		const _endpoint = e
+		const _endpoint = api
 			.post('/test')
 			.body(z.object({ name: z.string() }))
 			.handle((ctx) => {
@@ -36,7 +39,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include params when defined', () => {
-		const _endpoint = e
+		const _endpoint = api
 			.get('/test/:id')
 			.params(z.object({ id: z.string() }))
 			.handle((ctx) => {
@@ -52,7 +55,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include query when defined', () => {
-		const _endpoint = e
+		const _endpoint = api
 			.get('/test')
 			.query(z.object({ filter: z.string() }))
 			.handle((ctx) => {
@@ -68,7 +71,7 @@ describe('Endpoint type inference', () => {
 	});
 
 	it('should include all properties when all are defined', () => {
-		const _endpoint = e
+		const _endpoint = api
 			.post('/test/:id')
 			.body(z.object({ name: z.string() }))
 			.params(z.object({ id: z.string() }))

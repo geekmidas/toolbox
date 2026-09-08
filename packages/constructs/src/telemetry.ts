@@ -71,7 +71,7 @@ export interface TelemetryResponse {
  *   },
  * };
  *
- * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+ * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
  *   telemetry,
  * });
  * ```

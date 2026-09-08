@@ -85,7 +85,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -161,7 +161,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -251,7 +251,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -320,7 +320,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: undefined, // No publisher service
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -380,7 +380,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -450,7 +450,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -531,7 +531,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -609,7 +609,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -687,7 +687,7 @@ describe('AmazonApiGatewayV2Endpoint Events', () => {
 			publisherService: mockPublisherService,
 		});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({

@@ -151,7 +151,7 @@ export class EndpointBuilder<
 	 *
 	 * @example
 	 * ```typescript
-	 * e.get('/checkout-page')
+	 * api.get('/checkout-page')
 	 *   .output(z.string())
 	 *   .responseType('text/html')
 	 *   .handle(async () => '<html>...</html>');

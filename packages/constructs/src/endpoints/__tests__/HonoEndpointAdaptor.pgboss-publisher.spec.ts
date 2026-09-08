@@ -11,8 +11,11 @@ import { Hono } from 'hono';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { e } from '../EndpointFactory';
+import { RestApi } from '../../rest-api';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 type OrderEvent =
 	| PublishableMessage<'order.created', { orderId: string; total: number }>
@@ -74,7 +77,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			total: z.number(),
 		});
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)
@@ -149,7 +152,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			isHighValue: z.boolean(),
 		});
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)
@@ -239,7 +242,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			isHighValue: z.boolean(),
 		});
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)

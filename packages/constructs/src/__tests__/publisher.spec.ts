@@ -4,8 +4,11 @@ import type { Logger } from '@geekmidas/logger';
 import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { e } from '../endpoints';
 import { publishConstructEvents } from '../publisher';
+import { RestApi } from '../rest-api';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 // Test event types
 type TestEvent =
@@ -36,7 +39,7 @@ describe('publishEndpointEvents', () => {
 	});
 
 	it('should return early when no events are defined', async () => {
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.post('/test')
 			.output(z.object({ success: z.boolean() }))
@@ -61,7 +64,7 @@ describe('publishEndpointEvents', () => {
 			register: vi.fn().mockResolvedValue(mockPublisher),
 		};
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -81,7 +84,7 @@ describe('publishEndpointEvents', () => {
 	it('should warn when publisher is not available', async () => {
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.post('/test')
 			.output(outputSchema)
@@ -121,7 +124,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -172,7 +175,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.publisher(mockPublisherService)
 
 			.post('/test')
@@ -228,7 +231,7 @@ describe('publishEndpointEvents', () => {
 			isNew: z.boolean(),
 		});
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -283,7 +286,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -327,7 +330,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -372,7 +375,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')
@@ -414,7 +417,7 @@ describe('publishEndpointEvents', () => {
 
 		const outputSchema = z.object({ id: z.string(), email: z.string() });
 
-		const endpoint = e
+		const endpoint = api.endpoints
 			.logger(mockLogger)
 			.publisher(mockPublisherService)
 			.post('/test')

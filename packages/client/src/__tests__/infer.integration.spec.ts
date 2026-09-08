@@ -1,12 +1,15 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import type { InferOpenApi } from '../infer';
 
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
 describe('InferOpenApi - TypedFetcher Integration', () => {
 	it('should generate paths structure compatible with TypedFetcher', () => {
 		// Define some endpoints
-		const getUserEndpoint = e
+		const getUserEndpoint = api
 			.get('/users/{id}')
 			.params(z.object({ id: z.string() }))
 			.output(z.object({ id: z.string(), name: z.string(), email: z.string() }))
@@ -16,7 +19,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 				email: 'john@example.com',
 			}));
 
-		const createUserEndpoint = e
+		const createUserEndpoint = api
 			.post('/users')
 			.body(z.object({ name: z.string(), email: z.string() }))
 			.output(z.object({ id: z.string(), name: z.string(), email: z.string() }))
@@ -26,7 +29,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 				email: body.email,
 			}));
 
-		const listUsersEndpoint = e
+		const listUsersEndpoint = api
 			.get('/users')
 			.query(z.object({ page: z.coerce.number().optional() }))
 			.output(
@@ -109,7 +112,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 	});
 
 	it('should handle endpoints with multiple parameter types', () => {
-		const updateUserEndpoint = e
+		const updateUserEndpoint = api
 			.put('/users/{id}')
 			.params(z.object({ id: z.string() }))
 			.query(z.object({ notify: z.coerce.boolean().optional() }))
@@ -157,7 +160,7 @@ describe('InferOpenApi - TypedFetcher Integration', () => {
 	});
 
 	it('should handle endpoints without output schema', () => {
-		const deleteUserEndpoint = e
+		const deleteUserEndpoint = api
 			.delete('/users/{id}')
 			.params(z.object({ id: z.string() }))
 			.handle(async ({ params: _params }) => {

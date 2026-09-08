@@ -98,7 +98,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -170,7 +170,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -227,7 +227,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -291,7 +291,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -347,7 +347,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits, // But has declarative audits
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -407,7 +407,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({
@@ -479,7 +479,7 @@ describe('AmazonApiGatewayV1Endpoint Audits', () => {
 			audits,
 		});
 
-		const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint as any);
+		const adapter = new AmazonApiGatewayV1Endpoint(endpoint as any);
 		const handler = adapter.handler;
 
 		const event = createMockV1Event({

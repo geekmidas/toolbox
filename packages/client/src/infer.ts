@@ -79,7 +79,7 @@ type InferOperation<
  *
  * @example
  * ```typescript
- * import { e } from '@geekmidas/constructs';
+ * import { api } from './constructs/api.js';
  * import { createTypedFetcher, type InferOpenApiFromEndpoint } from '@geekmidas/client';
  * import { z } from 'zod';
  *
@@ -121,7 +121,7 @@ export type InferOpenApiFromEndpoint<T> =
  *
  * @example
  * ```typescript
- * import { e } from '@geekmidas/constructs';
+ * import { api } from './constructs/api.js';
  * import { createTypedFetcher, type InferOpenApi } from '@geekmidas/client';
  * import { z } from 'zod';
  *

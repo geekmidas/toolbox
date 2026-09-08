@@ -1,11 +1,14 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { OpenApiTsGenerator } from '../OpenApiTsGenerator';
 
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
 describe('OpenApiTsGenerator — responseType', () => {
 	it("emits 'application/json' in paths when responseType is default", async () => {
-		const endpoint = e
+		const endpoint = api
 			.get('/users')
 			.output(z.object({ id: z.string() }))
 			.handle(async () => ({ id: '1' }));
@@ -18,7 +21,7 @@ describe('OpenApiTsGenerator — responseType', () => {
 	});
 
 	it("emits 'text/html' when the endpoint declares responseType('text/html')", async () => {
-		const endpoint = e
+		const endpoint = api
 			.get('/checkout-page')
 			.output(z.string())
 			.responseType('text/html')
@@ -33,13 +36,13 @@ describe('OpenApiTsGenerator — responseType', () => {
 	});
 
 	it('keeps JSON content-type for other endpoints when one uses a custom responseType', async () => {
-		const htmlEndpoint = e
+		const htmlEndpoint = api
 			.get('/page')
 			.output(z.string())
 			.responseType('text/html')
 			.handle(async () => '<html></html>');
 
-		const jsonEndpoint = e
+		const jsonEndpoint = api
 			.get('/users')
 			.output(z.object({ id: z.string() }))
 			.handle(async () => ({ id: '1' }));

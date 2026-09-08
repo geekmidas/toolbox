@@ -99,14 +99,14 @@ interface OTelContext extends TelemetryContext {
  * ```typescript
  * import { OTelTelemetry } from '@geekmidas/telescope/instrumentation';
  *
- * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+ * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
  *   telemetry: new OTelTelemetry(),
  * });
  * ```
  *
  * @example With options
  * ```typescript
- * const adaptor = new AmazonApiGatewayV2Endpoint(envParser, endpoint, {
+ * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
  *   telemetry: new OTelTelemetry({
  *     recordBody: true,
  *     getUserId: (event) => event.requestContext?.authorizer?.userId,

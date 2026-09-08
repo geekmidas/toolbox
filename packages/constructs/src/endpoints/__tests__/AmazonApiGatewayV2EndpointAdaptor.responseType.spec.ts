@@ -3,8 +3,11 @@ import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
-import { e } from '../EndpointFactory';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 	let envParser: EnvironmentParser<{}>;
@@ -16,13 +19,13 @@ describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 	});
 
 	it('JSON-stringifies body with no content-type header when responseType is default', async () => {
-		const endpoint = e
+		const endpoint = api
 			.get('/users/:id')
 			.params(z.object({ id: z.string() }))
 			.output(z.object({ id: z.string() }))
 			.handle(async ({ params }) => ({ id: params.id }));
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 		const event = createMockV2Event({
 			routeKey: 'GET /users/{id}',
@@ -40,13 +43,13 @@ describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 
 	it('emits raw string body and text/html header when responseType is text/html', async () => {
 		const html = '<html><body>Checkout</body></html>';
-		const endpoint = e
+		const endpoint = api
 			.get('/checkout-page')
 			.output(z.string())
 			.responseType('text/html')
 			.handle(async () => html);
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 		const event = createMockV2Event({
 			routeKey: 'GET /checkout-page',
@@ -63,13 +66,13 @@ describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 	});
 
 	it('emits raw plain text for text/plain', async () => {
-		const endpoint = e
+		const endpoint = api
 			.get('/robots.txt')
 			.output(z.string())
 			.responseType('text/plain')
 			.handle(async () => 'User-agent: *');
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 		const event = createMockV2Event({
 			routeKey: 'GET /robots.txt',
@@ -84,7 +87,7 @@ describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 	});
 
 	it('lets r.header() runtime override win over endpoint.responseType', async () => {
-		const endpoint = e
+		const endpoint = api
 			.get('/dynamic')
 			.output(z.string())
 			.responseType('text/html')
@@ -93,7 +96,7 @@ describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 				return r.send('<xml></xml>');
 			});
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 		const event = createMockV2Event({
 			routeKey: 'GET /dynamic',
