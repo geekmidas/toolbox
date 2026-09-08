@@ -11,11 +11,11 @@
  * same state, differing only in the stage they pass.
  */
 
-import { isAbsolute, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
-import type { Routes } from '../types.js';
 import { cacheBackendOf, providerOf } from '../workspace/backends.js';
+import { appKey, hostOf } from '../workspace/derive.js';
+import { allConstructGlobs } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
@@ -28,19 +28,7 @@ import { planFor } from './plan.js';
  * different directories.
  */
 export function constructGlobs(workspace: NormalizedWorkspace): string[] {
-	const globs: string[] = [];
-
-	for (const app of Object.values(workspace.apps)) {
-		for (const pattern of patternsOf(app.constructs)) {
-			const root = isAbsolute(app.path)
-				? app.path
-				: join(workspace.root, app.path);
-
-			globs.push(isAbsolute(pattern) ? pattern : join(root, pattern));
-		}
-	}
-
-	return globs;
+	return allConstructGlobs(workspace);
 }
 
 /** Whether any app has adopted the constructs glob. */
@@ -135,20 +123,6 @@ export async function reconcileWorkspace(
 	return result;
 }
 
-/** A `Routes` value as a flat list of patterns. */
-function patternsOf(routes: Routes | undefined): string[] {
-	if (!routes) return [];
-	if (typeof routes === 'string') return [routes];
-	if (Array.isArray(routes)) return routes;
-
-	// Partitioned form: surfaces are the deploy slices now, but the shape is
-	// still accepted until it retires.
-	const paths = (routes as { paths?: string | string[] }).paths;
-	if (!paths) return [];
-
-	return Array.isArray(paths) ? paths : [paths];
-}
-
 /**
  * Where each declared surface and site answers locally.
  *
@@ -171,26 +145,29 @@ function surfaceAddresses(
 ): Record<string, string> {
 	const addresses: Record<string, string> = {};
 
-	const backend = Object.values(workspace.apps).find(
-		(app) => app.type === 'backend',
-	);
-
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind === 'rest-api') {
-			if (backend?.port) addresses[id] = localAddress(backend.port);
+		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
 			continue;
-		}
 
-		if (declaration.kind !== 'site') continue;
+		// The app serving it, by the same name the derivation gave it — a surface
+		// mounted into another answers at its host's port, not at one of its own.
+		const host =
+			declaration.kind === 'site' ? appKey(id) : appKeyOfHost(manifest, id);
+		const app = host ? workspace.apps[host] : undefined;
 
-		const app = Object.values(workspace.apps).find(
-			(candidate) =>
-				normalizePath(candidate.path) === normalizePath(declaration.path),
-		);
 		if (app?.port) addresses[id] = localAddress(app.port);
 	}
 
 	return addresses;
+}
+
+/** The app key serving a surface, following a mount to its host. */
+function appKeyOfHost(
+	manifest: ConstructManifest,
+	id: string,
+): string | undefined {
+	const host = hostOf(manifest, id);
+	return host ? appKey(host) : undefined;
 }
 
 /** Where a local process answers, given the port the workspace gave it. */
@@ -199,6 +176,6 @@ function localAddress(port: number): string {
 }
 
 /** A workspace path and a declared path, comparable. */
-function normalizePath(path: string): string {
+function _normalizePath(path: string): string {
 	return path.replace(/^\.\//, '').replace(/\/+$/, '');
 }

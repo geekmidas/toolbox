@@ -257,7 +257,11 @@ export default {
 
 		expect(result.appName).toBe('example');
 		expect(result.app.constructs).toBe('./src/constructs/**/*.ts');
-		expect(result.gkmConfig.constructs).toBe('./src/constructs/**/*.ts');
+		// Absolute, because the build resolves an app's globs once here rather
+		// than leaving each caller to guess which directory they are relative to.
+		expect(result.gkmConfig.constructs).toEqual([
+			join(result.workspaceRoot, 'src/constructs/**/*.ts'),
+		]);
 	});
 
 	it('should throw error if app not found in workspace', async () => {

@@ -3,7 +3,7 @@ import type {
 	NormalizedWorkspace,
 	ServicesConfig,
 } from '../../workspace/types';
-import { imagePins } from '../workspace';
+import { constructGlobs, imagePins } from '../workspace';
 
 /** A workspace that declares nothing but the services under test. */
 function workspaceWith(services: ServicesConfig): NormalizedWorkspace {
@@ -56,5 +56,63 @@ describe('imagePins', () => {
 		expect(
 			imagePins(workspaceWith({ images: { minio: 'minio/minio:RELEASE' } })),
 		).toEqual({ minio: 'minio/minio:RELEASE' });
+	});
+});
+
+/**
+ * Where a workspace's constructs live.
+ *
+ * Infrastructure is a fact about the product, not about the process that
+ * imports it — so a database two apps share is declared once, at the top. An
+ * app's own glob is additive rather than replaced, for something only it uses.
+ */
+describe('constructGlobs', () => {
+	const ws = (overrides: Partial<NormalizedWorkspace>): NormalizedWorkspace =>
+		({
+			name: 'shop',
+			root: '/ws',
+			apps: {},
+			services: {},
+			deploy: { default: 'dokploy' },
+			shared: { packages: [] },
+			secrets: {},
+			...overrides,
+		}) as NormalizedWorkspace;
+
+	it('resolves the workspace glob against the workspace root', () => {
+		expect(constructGlobs(ws({ constructs: './constructs/**/*.ts' }))).toEqual([
+			'/ws/constructs/**/*.ts',
+		]);
+	});
+
+	it('keeps an app glob alongside it, resolved against the app', () => {
+		// Additive, so adopting a shared folder does not silently drop whatever
+		// an app was already declaring for itself.
+		const globs = constructGlobs(
+			ws({
+				constructs: './constructs/**/*.ts',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						dependencies: [],
+						resolvedDeployTarget: 'dokploy',
+						constructs: './src/**/*.ts',
+					},
+				} as NormalizedWorkspace['apps'],
+			}),
+		);
+
+		expect(globs).toEqual([
+			'/ws/constructs/**/*.ts',
+			'/ws/apps/api/src/**/*.ts',
+		]);
+	});
+
+	it('is empty for a workspace that declares nothing', () => {
+		// The hard switch reconcile reads: a project that has not adopted
+		// constructs is untouched.
+		expect(constructGlobs(ws({}))).toEqual([]);
 	});
 });

@@ -18,7 +18,6 @@ import {
 	dependentsOf,
 	type PostgresVersion,
 	providedKeyFor,
-	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';

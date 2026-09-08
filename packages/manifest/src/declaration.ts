@@ -329,11 +329,47 @@ export interface RestApiDeclaration extends Node {
 	 * one app then had to share one container, which is how an auth server ended
 	 * up mounted into an API by a hook.
 	 *
-	 * Optional while §2 is open: an app's own API still takes its routes from a
-	 * glob, so a surface that has not been given a path is served by whichever
-	 * app declared it.
+	 * Optional, and its absence is meaningful: a surface with no app of its own
+	 * is served by the surface that named it — an auth server mounted into the
+	 * API that called `.auth()` on it, rather than a second container nobody
+	 * asked for.
 	 */
-	path?: string;
+	app?: AppSpec;
+	/**
+	 * The construct that authenticates this surface.
+	 *
+	 * An edge like any other — so the auth server learns this surface's origin,
+	 * and the two share a cookie domain — but a *named* one, because "who
+	 * authenticates me" is a different fact from "who I happen to call", and
+	 * only one of them decides what a request is allowed to be.
+	 *
+	 * It is the id rather than the client: what every endpoint consumes is
+	 * `verify(request) → Session | null`, and that is the one thing every
+	 * provider shares. A surface names its authenticator; the target decides
+	 * what verifying means.
+	 */
+	auth?: ConstructId;
+	/**
+	 * CORS tunables for this surface.
+	 *
+	 * *Who* may call it is never here — that is derived from the constructs
+	 * declaring an edge to this surface, and arrives as `<ID>_TRUSTED_ORIGINS`.
+	 * A hand-written origin list is the thing this model removes; these are the
+	 * knobs that genuinely cannot be derived from a graph.
+	 *
+	 * Omitted entirely, a surface still gets CORS — with the derived origins and
+	 * sensible defaults. There is nothing to opt into.
+	 */
+	cors?: {
+		/** Preflight cache lifetime in seconds. Default 86400. */
+		maxAge?: number;
+		/** Whether the browser may send credentials. Default true. */
+		credentials?: boolean;
+		/** Extra request headers to allow, beyond content-type and authorization. */
+		allowHeaders?: readonly string[];
+		/** Response headers the browser may read. */
+		exposeHeaders?: readonly string[];
+	};
 	authorizers?: readonly string[];
 	/** The authorizer applied where an endpoint names none. */
 	defaultAuthorizer?: string;
@@ -370,6 +406,60 @@ export interface RestApiDeclaration extends Node {
 	calls?: readonly Dependency[];
 }
 
+/** One glob, or several. Mirrors the CLI's `Routes` without depending on it. */
+export type Glob = string | readonly string[];
+
+/**
+ * How the process serving a declaration is built and run.
+ *
+ * The half of an application that a graph genuinely cannot derive. *What*
+ * exists — a surface, a site, the edges between them — is declared and read
+ * back from the manifest. *Where its source lives and which globs find its
+ * code* is not derivable from anything: it is a fact about a directory.
+ *
+ * It lives on the declaration rather than in a config `apps` block because the
+ * two were the same list written twice, and the copy in config was the one that
+ * could disagree. A site declared `path: 'apps/web'` and an app entry declared
+ * `path: 'apps/web'`, and nothing checked them against each other; a surface
+ * that config had no entry for simply never deployed.
+ *
+ * Only the declaration that *is* an app carries one. Two surfaces in one
+ * process means one of them has the spec and the other collapses onto it —
+ * which is the same rule that decides deploy units, now stated once.
+ */
+export interface AppSpec {
+	/** Where its source lives, relative to the workspace root. */
+	path: string;
+	/**
+	 * The port it answers on locally.
+	 *
+	 * Optional, and normally omitted: ports are assigned in a stable order so
+	 * that adding a site does not renumber the others. Set one only when
+	 * something outside the workspace has to know it in advance.
+	 */
+	port?: number;
+	/** Globs that find this app's code, relative to `path`. */
+	routes?: Glob;
+	functions?: Glob;
+	crons?: Glob;
+	queues?: Glob;
+	topics?: Glob;
+	subscribers?: Glob;
+	/** `./config/env#envParser` — module, optionally with an export. */
+	envParser?: string;
+	logger?: string;
+	telescope?: string | boolean | Record<string, unknown>;
+	studio?: string | boolean | Record<string, unknown>;
+	openapi?: boolean | Record<string, unknown>;
+	runtime?: 'node' | 'bun';
+	/** Env files to load, in order. */
+	env?: Glob;
+	/** Entry module for an app the build does not generate. */
+	entry?: string;
+	/** Modules to import when sniffing which env vars a frontend reads. */
+	config?: { client?: string; server?: string };
+}
+
 /**
  * A frontend — a construct like any other, which is what removes the last
  * mechanism that ran in parallel to the graph.
@@ -388,8 +478,13 @@ export interface RestApiDeclaration extends Node {
 export interface SiteDeclaration extends Node {
 	kind: 'site';
 	variant: 'static' | 'next' | 'tanstack';
-	/** Where its source lives, relative to the workspace root. */
-	path: string;
+	/**
+	 * How it is built and run, `path` included.
+	 *
+	 * Required, where a surface's is optional: a site is always its own app.
+	 * There is no arrangement in which two sites are one process.
+	 */
+	app: AppSpec;
 	/**
 	 * Whether this is the site the base domain points at.
 	 *

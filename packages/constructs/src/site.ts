@@ -32,9 +32,31 @@ import {
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
 
+/**
+ * A site's config is flat, where a surface's nests its `app`.
+ *
+ * Not an inconsistency: a `RestApi` may or may not have a process of its own,
+ * so "what the surface is" and "how its process is built" are separable there
+ * and worth separating. A site *is* its app — there is nothing to separate it
+ * from, and `{ app: { path } }` would be a wrapper around the only thing in it.
+ */
 export interface StaticSiteConfig {
 	/** Where its source lives, relative to the workspace root. */
 	path: string;
+	/**
+	 * The port it answers on locally.
+	 *
+	 * Normally omitted: ports are assigned in a stable order, so adding a site
+	 * does not renumber the ones already running.
+	 */
+	port?: number;
+	/**
+	 * Modules to import when sniffing which env vars this site reads.
+	 *
+	 * A frontend's values are inlined at build time, so the build has to know
+	 * which ones it reads before it reads them.
+	 */
+	config?: { client?: string; server?: string };
 	/**
 	 * Whether the base domain points at this site.
 	 *
@@ -100,7 +122,11 @@ export class StaticSite<TName extends string = string>
 				kind: 'site',
 				id: this.id,
 				variant: this.config.variant ?? 'static',
-				path: this.config.path,
+				app: {
+					path: this.config.path,
+					...(this.config.port ? { port: this.config.port } : {}),
+					...(this.config.config ? { config: this.config.config } : {}),
+				},
 				...(this.config.root ? { root: true } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.url],

@@ -271,6 +271,7 @@ export class HonoEndpoint<
 		}
 	}
 
+	// biome-ignore lint/suspicious/useAdjacentOverloadSignatures: not an overload — the instance `addRoute` above registers this adaptor's own endpoint, this one registers any endpoint on a given app. They share a name because they do the same thing to different subjects.
 	static addRoute<
 		TRoute extends string,
 		TMethod extends HttpMethod,

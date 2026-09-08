@@ -554,6 +554,30 @@ that a shared kind would be nearly empty: better-auth owns a database, a surface
 and a secret (`rest-api` + `secret`, accurate), while OIDC owns a client secret
 and nothing else (`secret`, also accurate). Neither needs a kind of its own.
 
+**A third sibling worth designing for: [OpenAuth](https://openauth.js.org).** It
+is a standards-based OAuth 2.0 issuer you self-host, and it sits differently from
+both cases above — better-auth is a *library you mount*, OIDC is a *provider you
+point at*, and OpenAuth is a *service you run*.
+
+That difference lands squarely on §6.3. The conclusion there — that splitting the
+auth server needs no client, because two processes can both instantiate
+better-auth against the same schema tenant and read sessions from it — is a fact
+about **better-auth**, not about auth. OpenAuth has no equivalent: it is its own
+backend by construction, there is nothing to co-locate, and a consumer verifies a
+token rather than calling a server object.
+
+So the split work should not assume the in-process reading stays available. It
+does for `BetterAuth` and it is free there, which is the right thing to build
+first — but the deploy-shape question it answers ("may these two share a
+container?") is one only `BetterAuth` gets to answer with "yes".
+
+What that argues for is unchanged and is the good news: the abstraction stays the
+**authorizer**, because `verify(request) → Session | null` is the one thing all
+three genuinely share. A handler that reaches for `services.auth.api.getSession`
+is reaching for better-auth specifically, and is the thing that would have to
+change if OpenAuth ever arrives — worth knowing when counting the cost of leaving
+it as it is, which remains the right call while there is one provider.
+
 **Revisit when** `OidcAuth` is actually written — that is when the neutral shape
 becomes discoverable rather than guessed, and when the naming pays for itself.
 
@@ -589,6 +613,104 @@ So, in order of preference:
 The thing to avoid is inferring from the plugin objects: it reads as clever, it
 works for the plugin you test with, and it fails by omission rather than by
 error.
+
+---
+
+### 6.3 Surfaces do not share a process — *decided*
+
+**A surface gets its own container. Sharing one is opt-in, and it is a security
+decision, not a packaging one.**
+
+The default was the other way round, by accident rather than by argument:
+`deployUnits` collapses a surface onto its host app unless something says
+otherwise, so co-location is what a project gets for saying nothing. That is
+backwards for auth specifically and wrong in general.
+
+**What sharing a process actually grants.** An auth server in the same process
+as an API means every handler has, in memory and with no authentication in the
+way:
+
+- the signing secret, so it can mint sessions rather than verify them
+- the auth tenant's connection, so it reads and writes session and credential
+  tables directly
+- `auth.api.*` — the whole server object, callable without a request
+
+So a bug in any one of seven endpoints is an auth compromise, not an endpoint
+compromise. The blast radius of the least careful route becomes the blast radius
+of the credential store.
+
+That is precisely the isolation the schema tenant is *for*. `AuthDb` exists so
+the application's own role holds no grant on session tables — and running both
+in one process hands the application everything the grant was withholding,
+through a different door. The tenant is not yet a privilege boundary anyway (no
+target creates the per-schema role), and co-location means it could never become
+one.
+
+**Why the earlier reasoning got this wrong.** The previous note concluded the
+split needed no client, because two processes can both instantiate better-auth
+against the same tenant and read sessions. That is true and still useful — it is
+why the split is *cheap* — but it answered "can they be separated?" when the
+question worth asking was "should they ever not be?". A thing being free to
+separate is an argument for separating by default, not for leaving them
+together.
+
+It is also provider-specific. OpenAuth is its own backend by construction, so
+the co-located shape is not available there at all — the default that suits it
+is the one that suits better-auth too.
+
+**Shape.** A surface is its own deploy unit when the manifest knows its
+endpoints, which is exactly when the build can generate an entry for it. `Auth`
+fills its own; an app's own API stays empty until §2. Sharing is then a
+statement a surface makes, naming what it shares with, so the grant is visible
+at the point somebody accepts it:
+
+```ts
+new BetterAuth('Auth', { database: authDb, colocate: api })
+```
+
+**The shape, and it is the one the frontends already use.** A surface being its
+own process is the same statement as a site being its own app — so it should look
+the same on disk:
+
+```
+constructs/          shared: database, authDb, auth, api, cache, storage, topics
+apps/
+  api/               the endpoints, and the Api surface
+  auth/              the auth server, and nothing else
+  web/               Vite
+  admin/             Next
+```
+
+`web` and `admin` are already two directories with two builds and two containers,
+and nobody finds that surprising. Auth is the same kind of thing and reads
+oddly *because* it is currently the exception — a server living inside another
+server's process, mounted by a hook.
+
+**This is the case that forces the shared `constructs/` folder.** Today
+`database`, `authDb` and `auth` live under `apps/kitchen-sink/src/constructs/`,
+which is fine while one app declares everything. The moment `auth` is its own
+app, both apps need the same `authDb` — and the manifest already handles that
+correctly: identity is the construct id, two globs reaching one file produce one
+node, and `cloudName` scopes by workspace rather than by app, so nothing renames
+when a construct moves. What is missing is only a workspace-level `constructs`
+glob; it is app-level today, so a shared folder works only by every app pointing
+at the same relative path.
+
+**One open question this raises.** If `apps/auth` is a real directory, does its
+entry get *generated* from the manifest, or does it contain the four lines that
+mount `auth.handler`? Generated is consistent with §2 and means an auth app is an
+empty directory plus a config. Hand-written is four lines in the app whose entire
+job is those four lines, which is a different thing from the CORS boilerplate
+every project was copying. Worth deciding before building either.
+
+**Cost, stated.** Two containers is two of everything — image, deploy,
+certificate — and a magic link minted by one is verified by the other, which
+already works because both read the same tenant. For an app that genuinely wants
+one process, `colocate` says so in one line and a reviewer can see it.
+
+**Blocked on** the build emitting an entry per surface. Auth's is the four lines
+`hooks.ts` used to write by hand and its endpoint is already in the manifest, so
+this is the smaller half of §2 and does not wait for the endpoint merge.
 
 ---
 

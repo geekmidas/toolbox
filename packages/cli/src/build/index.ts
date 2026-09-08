@@ -1,13 +1,14 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
+import { provideKey } from '@geekmidas/manifest';
 import {
 	loadAppConfig,
 	loadConfig,
@@ -44,6 +45,7 @@ import {
 } from '../types';
 import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
 import {
+	allConstructGlobs,
 	getAppBuildOrder,
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
@@ -185,7 +187,26 @@ export async function buildCommand(
 		? await discover({ patterns: constructGlobs, cwd: process.cwd() })
 		: {};
 
+	// Which surface this server answers on, so the entry can derive its CORS.
+	//
+	// The app's own API, not the auth server it may also mount: an auth surface
+	// declares its own endpoints, and the origins that may call *it* are a
+	// different list from the ones that may call the API.
+	const surfaces = Object.values(declared).filter(
+		(d): d is Extract<typeof d, { kind: 'rest-api' }> => d.kind === 'rest-api',
+	);
+	const primary = surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
+
 	const buildContext: BuildContext = {
+		...(primary
+			? {
+					surface: {
+						id: primary.id,
+						trustedOriginsKey: provideKey(primary.id, 'trustedOrigins'),
+						...(primary.cors ? { cors: primary.cors } : {}),
+					},
+				}
+			: {}),
 		envParserPath,
 		envParserImportPattern,
 		loggerPath,
@@ -481,22 +502,149 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 
 /**
  * Get the turbo command for running builds.
+ *
+ * `filters` names the packages to build. Passing none lets turbo infer its own
+ * scope from the working directory, which for a workspace root means the
+ * workspace package itself — and since that package's `build` script is
+ * `gkm build`, inferring is how you get a build that runs itself forever.
+ * `workspaceBuildCommand` always names the apps.
+ *
  * @internal Exported for testing
  */
 export function getTurboCommand(
 	pm: 'pnpm' | 'npm' | 'yarn',
-	filter?: string,
+	filters: string | readonly string[] = [],
 ): string {
-	const filterArg = filter ? ` --filter=${filter}` : '';
+	const list = typeof filters === 'string' ? [filters] : filters;
+	const filterArgs = list.map((f) => ` --filter=${f}`).join('');
 	switch (pm) {
 		case 'pnpm':
-			return `pnpm exec turbo run build${filterArg}`;
+			return `pnpm exec turbo run build${filterArgs}`;
 		case 'yarn':
-			return `yarn turbo run build${filterArg}`;
+			return `yarn turbo run build${filterArgs}`;
 		case 'npm':
-			return `npx turbo run build${filterArg}`;
+			return `npx turbo run build${filterArgs}`;
 	}
 }
+
+/**
+ * The package names turbo should build: one per app in the workspace.
+ *
+ * Read from each app's own `package.json`, because that is the name turbo
+ * knows it by — and the name `loadAppConfig` reads back when turbo runs
+ * `gkm build` inside the app, which is what routes that invocation to the
+ * single-app path instead of back here.
+ *
+ * An app without a `package.json` is not a package turbo can run, so it is
+ * reported rather than silently skipped.
+ *
+ * @internal Exported for testing
+ */
+export function turboFilters(workspace: NormalizedWorkspace): {
+	filters: string[];
+	unpackaged: string[];
+} {
+	const filters: string[] = [];
+	const unpackaged: string[] = [];
+
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		const pkgPath = join(workspace.root, app.path, 'package.json');
+		if (!existsSync(pkgPath)) {
+			unpackaged.push(appName);
+			continue;
+		}
+		const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
+		if (typeof name === 'string' && name.length > 0) {
+			filters.push(name);
+		} else {
+			unpackaged.push(appName);
+		}
+	}
+
+	return { filters, unpackaged };
+}
+
+/**
+ * The directory turbo treats as the repo root: the nearest ancestor with a
+ * `turbo.json`. Its own path is what `$TURBO_ROOT$` resolves to.
+ */
+function turboRoot(from: string): string | undefined {
+	let dir = resolve(from);
+
+	for (;;) {
+		if (existsSync(join(dir, 'turbo.json'))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) return undefined;
+		dir = parent;
+	}
+}
+
+/**
+ * Write each app's turbo task config, so a construct edit invalidates the build
+ * that read it.
+ *
+ * Turbo hashes a package's own files. An app's constructs live *above* it, in
+ * the workspace that declares them for everybody — so without this, editing a
+ * database or a surface leaves every cached app build in place and the apps
+ * keep serving a graph that no longer exists. It is a silent wrong answer,
+ * which is the worst kind: the build succeeds and the output is stale.
+ *
+ * Generated rather than documented because the globs are already known here and
+ * a hand-written copy is one more list to keep in step — the same reason the
+ * apps themselves are no longer written down. A file that someone has since
+ * edited by hand is left alone.
+ */
+export async function writeTurboConfigs(
+	workspace: NormalizedWorkspace,
+): Promise<void> {
+	const root = turboRoot(workspace.root);
+	if (!root) return;
+
+	const globs = allConstructGlobs(workspace).map(
+		(glob) => `$TURBO_ROOT$/${relative(root, glob)}`,
+	);
+	if (globs.length === 0) return;
+
+	const configPath = join(workspace.root, 'gkm.config.ts');
+	const inputs = [
+		'$TURBO_DEFAULT$',
+		...globs,
+		...(existsSync(configPath)
+			? [`$TURBO_ROOT$/${relative(root, configPath)}`]
+			: []),
+	];
+
+	for (const app of Object.values(workspace.apps)) {
+		const dir = join(workspace.root, app.path);
+		if (!existsSync(join(dir, 'package.json'))) continue;
+
+		const file = join(dir, 'turbo.json');
+		const existing = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
+		if (existing && !existing.includes(GENERATED_BY_GKM)) continue;
+
+		const content = `{
+	"$schema": "https://turborepo.com/schema.json",
+	${GENERATED_BY_GKM}
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"inputs": [
+${inputs.map((glob) => `\t\t\t\t${JSON.stringify(glob)}`).join(',\n')}
+			],
+			"outputs": [${app.type === 'backend' ? '".gkm/**"' : '"dist/**", ".next/**", "!.next/cache/**"'}]
+		}
+	}
+}
+`;
+
+		if (existing === content) continue;
+		await writeFile(file, content);
+	}
+}
+
+/** Marks a turbo config as gkm's to rewrite. Edit the file and it is left alone. */
+const GENERATED_BY_GKM =
+	'// Generated by `gkm build`. Delete this line to take ownership of the file.';
 
 /**
  * Build all apps in a workspace using Turbo for dependency-ordered parallel builds.
@@ -532,8 +680,20 @@ export async function workspaceBuildCommand(
 	logger.log(`\n📦 Using ${pm} with Turbo for parallel builds...\n`);
 
 	try {
+		// Before turbo, so the hash it computes includes the constructs this
+		// build reads.
+		await writeTurboConfigs(workspace);
+
 		// Run turbo build which handles dependency ordering and parallelization
-		const turboCommand = getTurboCommand(pm);
+		const { filters, unpackaged } = turboFilters(workspace);
+		if (unpackaged.length > 0) {
+			throw new Error(
+				`No package.json for workspace app(s): ${unpackaged.join(', ')}. ` +
+					`Each app needs one — turbo builds packages, and gkm reads the ` +
+					`name back to know which app it is building.`,
+			);
+		}
+		const turboCommand = getTurboCommand(pm, filters);
 		logger.log(`Running: ${turboCommand}`);
 
 		await new Promise<void>((resolve, reject) => {

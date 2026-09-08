@@ -1,5 +1,5 @@
-import { basename } from 'node:path';
-import type { GkmConfig } from '../types.js';
+import { basename, isAbsolute, join } from 'node:path';
+import type { GkmConfig, Routes } from '../types.js';
 import { getPublicEnvPrefix } from './publicEnv.js';
 import {
 	formatValidationErrors,
@@ -132,7 +132,7 @@ export function defineWorkspace<const TApps extends AppsRecord>(
 	config: WorkspaceInput<TApps>,
 ): InferredWorkspaceConfig<TApps> {
 	// Validate dependencies at runtime
-	validateDependencies(config.apps as unknown as TApps);
+	if (config.apps) validateDependencies(config.apps as unknown as TApps);
 
 	// Validate with Zod schema
 	const result = safeValidateWorkspaceConfig(config);
@@ -169,13 +169,14 @@ export function normalizeWorkspace(
 
 	const normalizedApps: Record<string, NormalizedAppConfig> = {};
 
-	for (const [appName, app] of Object.entries(config.apps)) {
+	for (const [appName, app] of Object.entries(config.apps ?? {})) {
 		normalizedApps[appName] = normalizeAppConfig(app, defaultTarget);
 	}
 
 	return {
 		name,
 		root: cwd,
+		...(config.constructs ? { constructs: config.constructs } : {}),
 		apps: normalizedApps,
 		services: config.services ?? {},
 		deploy: config.deploy ?? { default: 'dokploy' },
@@ -315,6 +316,81 @@ export function processConfig(
 }
 
 /**
+ * The workspace's own constructs globs, absolute.
+ *
+ * Infrastructure two apps share is a fact about the product, and declaring it
+ * inside one of them makes moving that app a change to the other's database.
+ */
+export function workspaceConstructGlobs(
+	workspace: NormalizedWorkspace,
+): string[] {
+	return constructPatterns(workspace.constructs).map((pattern) =>
+		isAbsolute(pattern) ? pattern : join(workspace.root, pattern),
+	);
+}
+
+/**
+ * Every constructs glob an app can see, absolute.
+ *
+ * The workspace's own first, then the app's. Absolute because the app builds
+ * from its own directory while the workspace's constructs live above it —
+ * a relative glob resolved from the app would look for the product's
+ * infrastructure inside one of its consumers and find nothing.
+ *
+ * Additive, not overriding: an app that declares its own constructs still sees
+ * the ones the workspace declared for everybody.
+ */
+export function appConstructGlobs(
+	workspace: NormalizedWorkspace,
+	appName: string,
+): string[] {
+	const globs: string[] = workspaceConstructGlobs(workspace);
+
+	const app = workspace.apps[appName];
+	if (app) {
+		const root = isAbsolute(app.path)
+			? app.path
+			: join(workspace.root, app.path);
+		for (const pattern of constructPatterns(app.constructs)) {
+			globs.push(isAbsolute(pattern) ? pattern : join(root, pattern));
+		}
+	}
+
+	return globs;
+}
+/**
+ * Every constructs glob in the workspace: its own, plus each app's.
+ *
+ * One list, so what a deploy provisions and what an app's entry point
+ * registers drivers for are read off the same globs.
+ */
+export function allConstructGlobs(workspace: NormalizedWorkspace): string[] {
+	const globs = [
+		...workspaceConstructGlobs(workspace),
+		...Object.keys(workspace.apps).flatMap((appName) =>
+			appConstructGlobs(workspace, appName),
+		),
+	];
+
+	// Every app's list starts with the workspace's, so they repeat.
+	return [...new Set(globs)];
+}
+
+/** A `Routes` in any of its accepted shapes, as a flat list of patterns. */
+export function constructPatterns(routes: Routes | undefined): string[] {
+	if (!routes) return [];
+	if (typeof routes === 'string') return [routes];
+	if (Array.isArray(routes)) return routes;
+
+	// Partitioned form: surfaces are the deploy slices now, but the shape is
+	// still accepted until it retires.
+	const paths = (routes as { paths?: string | string[] }).paths;
+	if (!paths) return [];
+
+	return Array.isArray(paths) ? paths : [paths];
+}
+
+/**
  * Get the GkmConfig for a specific app in a workspace.
  * Useful for running existing single-app commands on a specific app.
  */
@@ -337,7 +413,7 @@ export function getAppGkmConfig(
 		// registered only the Upstash driver, and every request failed with
 		// `UnregisteredCacheScheme`.
 		services: workspace.services,
-		constructs: app.constructs,
+		constructs: appConstructGlobs(workspace, appName),
 		routes: app.routes ?? '',
 		functions: app.functions,
 		crons: app.crons,

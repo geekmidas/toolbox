@@ -1,3 +1,4 @@
+import type { ConstructManifest } from '@geekmidas/manifest';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
 
 export type { AwsRegion };
@@ -771,10 +772,23 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
  * ```
  */
 export type WorkspaceInput<TApps extends AppsRecord> = {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	/** Workspace name (defaults to root package.json name) */
 	name?: string;
-	/** App definitions */
-	apps: ConstrainedApps<TApps>;
+	/**
+	 * Apps that nothing declares.
+	 *
+	 * Normally absent: a `site` is an app and so is a `rest-api` that named
+	 * one, so the list is read off the graph. This is the escape hatch for what
+	 * no construct describes.
+	 */
+	apps?: ConstrainedApps<TApps>;
 	/** Shared packages configuration */
 	shared?: SharedConfig;
 	/** Deployment configuration */
@@ -796,8 +810,15 @@ export type InferAppNames<TApps extends AppsRecord> = keyof TApps & string;
  * Inferred workspace config with proper app name types.
  */
 export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	name?: string;
-	apps: {
+	apps?: {
 		[K in keyof TApps]: Omit<TApps[K], 'dependencies'> & {
 			dependencies?: InferAppNames<TApps>[];
 		};
@@ -902,11 +923,18 @@ export type WorkspaceConfigInput<
  * @deprecated Use WorkspaceInput with defineWorkspace for type inference
  */
 export interface WorkspaceConfig {
+	/**
+	 * Where the workspace's own constructs live, relative to its root.
+	 *
+	 * The product's infrastructure, declared once for every app that consumes
+	 * it. Additive with an app's own glob rather than replacing it.
+	 */
+	constructs?: Routes;
 	/** Workspace name (defaults to root package.json name) */
 	name?: string;
 
-	/** App definitions */
-	apps: Record<string, AppConfig>;
+	/** Apps that nothing declares. Normally absent — see `WorkspaceInput`. */
+	apps?: Record<string, AppConfig>;
 
 	/** Shared packages configuration */
 	shared?: SharedConfig;
@@ -971,6 +999,13 @@ export interface NormalizedWorkspace {
 	name: string;
 	/** Absolute path to workspace root */
 	root: string;
+	/**
+	 * The workspace's own constructs glob, relative to `root`.
+	 *
+	 * Where the product's shared infrastructure is declared. Additive with each
+	 * app's glob, so an app can still declare something only it uses.
+	 */
+	constructs?: Routes;
 	/** Normalized app configurations */
 	apps: Record<string, NormalizedAppConfig>;
 	/** Services configuration (empty object if not specified) */
@@ -995,6 +1030,14 @@ export interface LoadedConfig {
 	raw: GkmConfig | WorkspaceConfig;
 	/** Normalized workspace (always available) */
 	workspace: NormalizedWorkspace;
+	/**
+	 * What the workspace's constructs declared, when it has any.
+	 *
+	 * Read once at load, because the apps above are derived from it and a
+	 * caller that re-discovers would be answering the same question twice with
+	 * two chances to disagree. Absent when the workspace declares no constructs.
+	 */
+	manifest?: ConstructManifest;
 }
 
 /**
@@ -1012,10 +1055,16 @@ export interface LoadedConfig {
 export function isWorkspaceConfig(
 	config: GkmConfig | WorkspaceConfig,
 ): config is WorkspaceConfig {
+	if (typeof config !== 'object' || config === null) return false;
+
+	// `apps` used to be the only tell, and it stopped being one when apps
+	// became derived: a workspace that declares its apps through constructs has
+	// none. `constructs` at the top level is the other tell — a single-app
+	// `defineConfig` has no notion of a workspace-wide glob — and either alone
+	// is enough.
+	if ('apps' in config && typeof config.apps === 'object') return true;
+
 	return (
-		typeof config === 'object' &&
-		config !== null &&
-		'apps' in config &&
-		typeof config.apps === 'object'
+		'constructs' in config && !('routes' in config) && !('envParser' in config)
 	);
 }

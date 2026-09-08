@@ -79,6 +79,11 @@ function generateDerivedType(
 	return `export type ${typeName} = (typeof manifest.${fieldName})[number];`;
 }
 
+/** A manifest field as a flat list, whether or not it is partitioned. */
+function flatten<T>(field: ManifestField<T>): T[] {
+	return Array.isArray(field) ? field : Object.values(field).flat();
+}
+
 export async function generateAwsManifest(
 	outputDir: string,
 	routes: ManifestField<RouteInfo>,
@@ -114,19 +119,17 @@ export async function generateAwsManifest(
 	// The routes the constructs manifest carries are this target's, so they are
 	// filtered the same way — an `ALL` catch-all describes the server build, not
 	// the application.
-	const flat = <T>(field: ManifestField<T>): T[] =>
-		Array.isArray(field) ? field : Object.values(field).flat();
 
 	// Routes first, then the compute they sit beside: a queue's worker and a
 	// topic's subscriber nest inside the resource that triggers them, so the
 	// resource has to be there before they can be folded in.
 	const awsConstructs = withCompute(
-		withRoutes(constructs, flat(awsRoutes), { perRoute: true }),
+		withRoutes(constructs, flatten(awsRoutes), { perRoute: true }),
 		{
-			functions: flat(functions),
-			crons: flat(crons),
-			queues: flat(queues),
-			subscribers: flat(subscribers),
+			functions: flatten(functions),
+			crons: flatten(crons),
+			queues: flatten(queues),
+			subscribers: flatten(subscribers),
 		},
 	);
 
@@ -221,6 +224,11 @@ export async function generateServerManifest(
 	const queuesPartitioned = isPartitioned(serverQueues);
 	const topicsPartitioned = isPartitioned(serverTopics);
 
+	// Unfolded, unlike the AWS manifest's. The server provider generates one
+	// catch-all handler pointing at the Hono app that routes in-process, so
+	// attributing its routes to a surface would write `ALL *` into a manifest for
+	// an app with seven of them — see `withRoutes`. The routes are above; the
+	// declarations are what this export is for.
 	const content = `export const manifest = {
   app: ${JSON.stringify(appInfo, null, 2)},
   routes: ${serializeField(serverRoutes)},
@@ -228,6 +236,24 @@ export async function generateServerManifest(
   queues: ${serializeField(serverQueues)},
   topics: ${serializeField(serverTopics)},
 } as const;
+
+/**
+ * What the application declares, as opposed to what this build generated.
+ *
+ * Discovery imports application code, so it runs once in the build rather than
+ * in every consumer — a deploy config calling it would evaluate the whole
+ * runtime graph inside its own toolchain.
+ */
+export const constructs = ${JSON.stringify(constructs, null, 2)} as const;
+
+/**
+ * Where the backends that are config rather than declaration resolved to.
+ *
+ * Recorded because they were answered twice: once by the build, which registers
+ * exactly one cache driver, and once by a deploy, which told the provisioner
+ * something else — leaving the running code with a URL it had no driver for.
+ */
+export const backends = ${JSON.stringify(backends, null, 2)} as const;
 
 // Derived types
 ${generateDerivedType('routes', 'Route', routesPartitioned)}

@@ -109,7 +109,7 @@ describe('InferOpenApi', () => {
 				.post('/users')
 				.body(z.object({ name: z.string() }))
 				.output(z.object({ id: z.string() }))
-				.handle(async ({ body }) => ({
+				.handle(async ({ body: _body }) => ({
 					id: '123',
 				}));
 
@@ -140,7 +140,7 @@ describe('InferOpenApi', () => {
 					}),
 				)
 				.output(z.object({ users: z.array(z.object({ id: z.string() })) }))
-				.handle(async ({ query }) => ({
+				.handle(async ({ query: _query }) => ({
 					users: [],
 				}));
 

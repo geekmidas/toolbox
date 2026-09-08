@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
+import { discover } from './reconcile/discover.js';
 import type { GkmConfig } from './types.js';
+import { derivedApps } from './workspace/derive.js';
 import {
+	allConstructGlobs,
 	getAppGkmConfig,
 	isWorkspaceConfig,
 	type LoadedConfig,
@@ -218,7 +221,53 @@ export async function loadWorkspaceConfig(
 	cwd: string = process.cwd(),
 ): Promise<LoadedConfig> {
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
-	return processConfig(config, workspaceRoot);
+	return withDerivedApps(processConfig(config, workspaceRoot));
+}
+
+/**
+ * The loaded config, with its apps read off the graph.
+ *
+ * Here rather than at each call site because every command needs the same
+ * answer, and the ones that forgot to ask were exactly the bugs: a site that
+ * never deployed, a surface that could not be its own process. `gkm dev`,
+ * `gkm build`, `gkm docker` and `gkm deploy` now all see the same apps without
+ * any of them knowing a derivation happened.
+ *
+ * Discovery imports the construct modules — declarations only, not endpoints —
+ * which is the same import the reconciler and the build already do. A workspace
+ * with no `constructs` glob discovers nothing and keeps whatever its config
+ * said, so nothing that worked before changes.
+ *
+ * A construct file that throws is reported and skipped rather than taking the
+ * command down: `gkm dev` failing to start because a half-written declaration
+ * cannot be imported is a worse failure than starting with the app it does not
+ * describe yet.
+ */
+async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
+	const globs = allConstructGlobs(loaded.workspace);
+	if (globs.length === 0) return loaded;
+
+	try {
+		const manifest = await discover({
+			patterns: globs,
+			cwd: loaded.workspace.root,
+		});
+
+		return {
+			...loaded,
+			manifest,
+			workspace: {
+				...loaded.workspace,
+				apps: derivedApps(manifest, loaded.workspace),
+			},
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(
+			`⚠️  Could not read constructs, so apps come from config alone: ${message}`,
+		);
+		return loaded;
+	}
 }
 
 export interface AppConfigResult {
@@ -281,7 +330,9 @@ export async function loadAppConfig(
 	}
 
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
-	const loadedConfig = processConfig(config, workspaceRoot);
+	const loadedConfig = await withDerivedApps(
+		processConfig(config, workspaceRoot),
+	);
 
 	const resolved = resolveWorkspaceApp(loadedConfig, appName);
 
@@ -340,7 +391,9 @@ export async function loadWorkspaceAppInfo(
 	}
 
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
-	const loadedConfig = processConfig(config, workspaceRoot);
+	const loadedConfig = await withDerivedApps(
+		processConfig(config, workspaceRoot),
+	);
 
 	const resolved = resolveWorkspaceApp(loadedConfig, appName);
 

@@ -108,9 +108,6 @@ type RemoveNever<T> = Pick<
 	}[keyof T]
 >;
 
-// Check if type is empty
-type IsEmpty<T> = keyof T extends never ? true : false;
-
 // Runtime operation registry (would be generated)
 interface OperationRegistry {
 	[operationId: string]: {

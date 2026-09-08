@@ -1,0 +1,11 @@
+{
+	"name": "@kitchen-sink/api",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "gkm build --providers server,aws-apigatewayv2",
+		"dev": "gkm dev",
+		"migrate": "gkm exec -- tsx migrate.ts"
+	}
+}

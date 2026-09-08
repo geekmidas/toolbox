@@ -22,6 +22,7 @@
  */
 
 import {
+	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -32,17 +33,30 @@ import { type Declarable, edgeTo } from './construct-interface';
 
 export interface RestApiConfig {
 	/**
-	 * Where the process serving this surface is built from, relative to the
-	 * workspace root.
+	 * The app that serves this surface: where its source lives, which globs
+	 * find its code, how it is run.
 	 *
 	 * What makes a surface a deploy unit rather than something a deploy has to
-	 * be told about separately: one `RestApi` is one server. A `StaticSite`
-	 * already says this, and the two are the same kind of statement.
+	 * be told about separately: one `RestApi` is one server. A `StaticSite` says
+	 * the same thing, and the two are the same kind of statement.
 	 *
-	 * Omit it while an app serves its surfaces from one process — the deploy
-	 * then builds it from the app that declared it.
+	 * Omit it and this surface has no process of its own — it is served by the
+	 * surface that named it as its authenticator. An auth server usually wants
+	 * exactly that until it is worth its own container, at which point giving it
+	 * an `app` is the whole change.
 	 */
-	path?: string;
+	app?: AppSpec;
+	/**
+	 * CORS tunables. The *origins* are never here — they are read off the
+	 * constructs that declared an edge to this surface, which is the whole point
+	 * of declaring one. These are the parts a graph cannot answer.
+	 */
+	cors?: {
+		maxAge?: number;
+		credentials?: boolean;
+		allowHeaders?: readonly string[];
+		exposeHeaders?: readonly string[];
+	};
 	/**
 	 * The authorizer names this surface exposes. Names only — what verifies a
 	 * request legitimately differs between local and deployed, so the mechanism
@@ -80,6 +94,8 @@ export class RestApi<TName extends string = string>
 		private readonly config: RestApiConfig,
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
+		/** Internal: how `.auth()` carries the authenticator into its copy. */
+		private readonly authenticator?: string,
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -90,6 +106,29 @@ export class RestApi<TName extends string = string>
 			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
 			cookieDomain: provideKey(canonical, 'cookieDomain'),
 		};
+	}
+
+	/**
+	 * What authenticates this surface.
+	 *
+	 * An edge like `.calls()` — the auth server learns this origin, and the two
+	 * share a cookie domain — but a named one, because *who authenticates me* is
+	 * a different fact from *who I happen to call*, and only one of them decides
+	 * what a request is allowed to be. A surface with two of the first is a
+	 * mistake; two of the second is Tuesday.
+	 *
+	 * It records the id, not a client. Every endpoint consumes the same thing —
+	 * `verify(request) → Session | null` — and that is what every provider
+	 * shares, whether the server is mounted in this process, deployed beside it,
+	 * or an OIDC issuer somebody else runs.
+	 */
+	auth(construct: Declarable): RestApi<TName> {
+		return new RestApi<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, edgeTo(construct)],
+			construct.id,
+		);
 	}
 
 	/**
@@ -107,10 +146,12 @@ export class RestApi<TName extends string = string>
 	 * Immutable, like every other builder here.
 	 */
 	calls(constructs: readonly Declarable[]): RestApi<TName> {
-		return new RestApi<TName>(this.id as ConstructName<TName>, this.config, [
-			...this.dependencies,
-			...constructs.map(edgeTo),
-		]);
+		return new RestApi<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, ...constructs.map(edgeTo)],
+			this.authenticator,
+		);
 	}
 
 	/**
@@ -127,7 +168,9 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
-				...(this.config.path ? { path: this.config.path } : {}),
+				...(this.config.app ? { app: this.config.app } : {}),
+				...(this.config.cors ? { cors: this.config.cors } : {}),
+				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

@@ -23,6 +23,7 @@
 
 export type {
 	AllProvidedKeys,
+	AppSpec,
 	CacheDeclaration,
 	ConstructId,
 	ConstructManifest,
@@ -42,6 +43,7 @@ export type {
 	FileServerDeclaration,
 	Fn,
 	FunctionDeclaration,
+	Glob,
 	IdsOf,
 	IdsOfKind,
 	Node,
