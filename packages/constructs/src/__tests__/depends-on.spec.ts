@@ -5,12 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { NotAConstruct } from '../construct-interface';
 import { c } from '../crons';
-import { e } from '../endpoints/EndpointFactory';
 import { f } from '../functions';
 import { ObjectStorage } from '../object-storage';
 import { q } from '../queue';
+import { RestApi } from '../rest-api';
 import { s } from '../subscribers';
 import { t } from '../topic';
+
+/** Endpoints come from a surface now, so the tests build one. */
+const endpoints = new RestApi('Test', { default: 'none' }).endpoints;
 
 /**
  * A driver for these tests, registered the way an entry point registers one:
@@ -50,7 +53,7 @@ describe('.dependsOn', () => {
 	it('reaches a construct under its own id', async () => {
 		// `services.uploads`, never the name of whatever service it happens to
 		// own — the id is the only name, so a call site cannot drift from it.
-		const endpoint = e
+		const endpoint = endpoints
 			.dependsOn([uploads])
 			.get('/files')
 			.handle(async ({ services }) => services.uploads);
@@ -64,7 +67,7 @@ describe('.dependsOn', () => {
 
 	it('hands a topic its publisher, because publishing is what depending means', async () => {
 		// A subscriber binds with `s.topic(…)` instead, and is never given this.
-		const endpoint = e
+		const endpoint = endpoints
 			.dependsOn([users])
 			.get('/ping')
 			.handle(async ({ services }) => services.users);
@@ -77,7 +80,7 @@ describe('.dependsOn', () => {
 	});
 
 	it('takes several constructs at once', async () => {
-		const endpoint = e
+		const endpoint = endpoints
 			.dependsOn([uploads, emails])
 			.get('/both')
 			.handle(async ({ services }) => [services.uploads, services.emails]);
@@ -92,9 +95,11 @@ describe('.dependsOn', () => {
 		const clock = { serviceName: 'clock' as const, register: async () => ({}) };
 
 		// @ts-expect-error - constructs only; a Service does not match the shape.
-		expect(() => e.dependsOn([clock])).toThrow(NotAConstruct);
+		expect(() => endpoints.dependsOn([clock])).toThrow(NotAConstruct);
 		// @ts-expect-error - same, with the message a JavaScript caller gets.
-		expect(() => e.dependsOn([clock])).toThrow(/services\(\[…\]\) instead/);
+		expect(() => endpoints.dependsOn([clock])).toThrow(
+			/services\(\[…\]\) instead/,
+		);
 	});
 });
 
@@ -109,7 +114,7 @@ describe('.dependsOn', () => {
  */
 describe('.dependsOn — the ids it records', () => {
 	it('keeps the ids beside the services', () => {
-		const endpoint = e
+		const endpoint = endpoints
 			.get('/files')
 			.dependsOn([uploads])
 			.handle(async () => null);
@@ -121,7 +126,7 @@ describe('.dependsOn — the ids it records', () => {
 	it('accumulates across calls and collapses repeats', () => {
 		// `.services()` already unions rather than replaces, so the ids that
 		// mirror it have to as well or the two halves disagree.
-		const endpoint = e
+		const endpoint = endpoints
 			.get('/both')
 			.dependsOn([uploads])
 			.dependsOn([emails, uploads])
@@ -131,9 +136,9 @@ describe('.dependsOn — the ids it records', () => {
 	});
 
 	it('carries a factory-level dependency into every endpoint built from it', () => {
-		// The `e.dependsOn([…]).get(…)` form: the factory is cloned by each
+		// The `endpoints.dependsOn([…]).get(…)` form: the factory is cloned by each
 		// builder method, so the ids have to survive thirteen clones to arrive.
-		const api = e.dependsOn([uploads]);
+		const api = endpoints.dependsOn([uploads]);
 
 		const first = api.get('/a').handle(async () => null);
 		const second = api
@@ -148,7 +153,7 @@ describe('.dependsOn — the ids it records', () => {
 	it('does not leak from one endpoint into the next', () => {
 		// Builders are mutable and reused, which is why every other field is reset
 		// after `.handle()`; an edge leaking here would over-grant silently.
-		const api = e.dependsOn([uploads]);
+		const api = endpoints.dependsOn([uploads]);
 
 		api
 			.get('/a')

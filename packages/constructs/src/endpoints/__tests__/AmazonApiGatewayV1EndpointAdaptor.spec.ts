@@ -62,7 +62,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				authorize: undefined,
 				description: 'Test endpoint',
 			});
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 
 			const event = createMockV1Event({
 				headers: { 'Content-Type': 'application/json' },
@@ -89,7 +89,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				authorize: undefined,
 				description: 'Test endpoint',
 			});
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 
 			const event = createMockV1Event({
 				headers: { 'Content-Type': 'application/json' },
@@ -117,7 +117,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				authorize: undefined,
 				description: 'Test endpoint',
 			});
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 
 			const event = createMockV1Event({
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -144,7 +144,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				authorize: undefined,
 				description: 'Test endpoint',
 			});
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 
 			const event = createMockV1Event({
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -175,7 +175,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -206,7 +206,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Create user endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -248,7 +248,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'List items endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -283,7 +283,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Get user endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -315,7 +315,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Void endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({ httpMethod: 'POST' });
@@ -348,7 +348,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Logger test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -392,7 +392,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Error test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -429,7 +429,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Service test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler.bind(adapter);
 
 			const event = createMockV1Event();
@@ -459,7 +459,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Session test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -492,7 +492,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'HTTP error test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -529,7 +529,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Generic error test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -586,7 +586,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 					description: `${statusCode} error test endpoint`,
 				});
 
-				const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 				const handler = adapter.handler;
 
 				const event = createMockV1Event();
@@ -626,7 +626,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Validation test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -665,7 +665,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Query validation test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -701,7 +701,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Params validation test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -741,7 +741,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Header test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -784,7 +784,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			// Set authorize function that returns true
 			endpoint.authorize = async () => true;
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -815,7 +815,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			// Set authorize function that returns false
 			endpoint.authorize = async () => false;
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -854,7 +854,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				return header('authorization') === 'Bearer valid-token';
 			};
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			// Test with valid token
@@ -914,7 +914,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				status: 200,
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -972,7 +972,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				status: 200,
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -1032,7 +1032,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Complex input endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({
@@ -1079,7 +1079,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -1114,7 +1114,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -1147,7 +1147,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({ httpMethod: 'POST' });
@@ -1181,7 +1181,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event({ httpMethod: 'POST' });
@@ -1219,7 +1219,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -1254,7 +1254,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();
@@ -1286,7 +1286,7 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				description: 'Test endpoint',
 			});
 
-			const adapter = new AmazonApiGatewayV1Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV1Endpoint(endpoint);
 			const handler = adapter.handler;
 
 			const event = createMockV1Event();

@@ -1,4 +1,6 @@
 import { NotFoundError } from '@geekmidas/errors';
+import { auth } from '@kitchen-sink/constructs/auth.js';
+import { sessions } from '@kitchen-sink/constructs/cache.js';
 import { z } from 'zod';
 import { emailsQueue } from '../queues/emails.js';
 import { router } from './router.js';
@@ -21,6 +23,10 @@ const USERS_CACHE_KEY = 'users:all';
  */
 export const listUsers = router
 	.get('/users')
+	// Only the cache: a list of users needs no auth server, and nothing grants
+	// it one. This used to arrive from the shared factory, which handed every
+	// endpoint on the surface both.
+	.dependsOn([sessions])
 	.output(z.object({ users: UserSchema.array() }))
 	.handle(async ({ services, logger, db }) => {
 		const cached =
@@ -56,6 +62,7 @@ export const listUsers = router
  */
 export const createUser = router
 	.post('/users')
+	.dependsOn([sessions])
 	.body(
 		z.object({
 			name: z.string().min(1),
@@ -116,6 +123,8 @@ export const createUser = router
  */
 export const getUser = router
 	.get('/users/:id')
+	// `requireUser` asks the auth server, so this endpoint names it.
+	.dependsOn([auth])
 	.params(z.object({ id: z.string().uuid() }))
 	.authorizer('iam')
 	.output(UserSchema)
@@ -154,6 +163,7 @@ export const getUser = router
  */
 export const updateMe = router
 	.patch('/me')
+	.dependsOn([auth, sessions])
 	.body(z.object({ name: z.string().min(1) }))
 	.output(UserSchema)
 	.event({
@@ -193,6 +203,7 @@ export const updateMe = router
  */
 export const listNotifications = router
 	.get('/notifications')
+	.dependsOn([auth])
 	.output(
 		z.object({
 			notifications: z

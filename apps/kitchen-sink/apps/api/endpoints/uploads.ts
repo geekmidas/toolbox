@@ -1,7 +1,10 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
 import logger from '../config/logger.js';
+
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
 
 /**
  * A presigned upload URL. Uses its own lean factory — only the bucket — to show
@@ -11,7 +14,7 @@ import logger from '../config/logger.js';
  * declares the bucket, the target injects `UPLOADS_URL`, and the scheme in that
  * URL builds the client. Nothing here names MinIO, S3, a region, or a key.
  */
-export const createUploadUrl = e
+export const createUploadUrl = api.endpoints
 	.logger(logger)
 	.dependsOn([uploads])
 	.post('/uploads')

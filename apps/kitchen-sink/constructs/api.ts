@@ -1,4 +1,5 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
+import logger from '../apps/api/config/logger.js';
 import { auth } from './auth.js';
 
 /**
@@ -28,6 +29,15 @@ export const api = new RestApi('Api', {
 	// the edge exists.
 	cors: { maxAge: 3600 },
 
+	// The actual logger, not a path to one. Every endpoint built from this
+	// surface runs with it, and the generated entry reads it from here — so it
+	// is named once, in the place that already had to exist.
+	//
+	// No `envParser`: the default is `process.env` merged with the credentials
+	// `gkm dev` injected, which is what `config/env.ts` was in every project
+	// that had one.
+	logger,
+
 	// The app that serves it. Where its source lives and which globs find its
 	// code is the half of an application no graph can derive — it is a fact
 	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
@@ -44,8 +54,6 @@ export const api = new RestApi('Api', {
 		subscribers: './subscribers/**/*.ts',
 		queues: './queues/**/*.ts',
 
-		envParser: './config/env#envParser',
-		logger: './config/logger',
 		telescope: './config/telescope#telescope',
 		studio: './config/studio#studio',
 		openapi: true,

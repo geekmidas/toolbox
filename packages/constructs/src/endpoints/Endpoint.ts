@@ -102,6 +102,14 @@ export class Endpoint<
 	route: TRoute;
 	/** The HTTP method for this endpoint */
 	method: TMethod;
+	/**
+	 * The surface that serves it, when it was built from one.
+	 *
+	 * Carries the env parser the adaptors need, so a generated handler needs no
+	 * import written for it — and the surface's id, so the build attributes the
+	 * route to the API that serves it rather than inferring it by exclusion.
+	 */
+	surface?: EndpointSurface;
 	/** Optional description for OpenAPI documentation */
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
@@ -609,6 +617,7 @@ export class Endpoint<
 		publisherService,
 		events,
 		authorizer,
+		surface,
 		auditorStorageService,
 		actorExtractor,
 		audits,
@@ -673,6 +682,10 @@ export class Endpoint<
 			this.authorizer = authorizer;
 		}
 
+		if (surface) {
+			this.surface = surface;
+		}
+
 		if (actorExtractor) {
 			this.actorExtractor = actorExtractor;
 		}
@@ -720,6 +733,30 @@ export type EndpointInput<
 	search: TSearch;
 	params: TParams;
 }>;
+
+/**
+ * The surface an endpoint was built from.
+ *
+ * An endpoint created with `api.get('/users')` knows which API serves it, and
+ * through that, the two things every handler needs and no handler should have
+ * to name: the process's logger and its environment parser.
+ *
+ * This is what makes the generated code smaller than the thing it replaced. A
+ * handler used to be wired by an import the build wrote for it —
+ * `import { envParser } from '../../config/env'` — which meant the parser had
+ * to be named in config as a module path, because a generator can print a
+ * specifier and cannot print an object. Built from the surface, the endpoint
+ * already carries it, so there is nothing to name and nothing to print.
+ *
+ * `id` is the surface's construct id, which is how the build attributes a route
+ * to the API that serves it rather than guessing by exclusion.
+ */
+export interface EndpointSurface {
+	/** The surface's construct id — `Api`, `Auth`. */
+	id: string;
+	/** The environment parser every handler on this surface runs with. */
+	envParser?: unknown;
+}
 
 /**
  * Configuration options for creating an Endpoint instance.
@@ -808,6 +845,8 @@ export interface EndpointOptions<
 	events?: MappedEvent<TEventPublisher, OutSchema>[];
 	/** Optional authorizer configuration */
 	authorizer?: Authorizer;
+	/** The surface this endpoint was built from, when it was built from one. */
+	surface?: EndpointSurface;
 	/**
 	 * Auditor storage service for persisting audit records from this endpoint
 	 */

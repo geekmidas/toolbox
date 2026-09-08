@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { sniffService } from '../Construct';
 import { c } from '../crons';
-import { e } from '../endpoints';
 import { f } from '../functions';
+import { RestApi } from '../rest-api';
 import { s } from '../subscribers';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('Construct environment getter', () => {
 	describe('Function', () => {
@@ -161,7 +164,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'auth', any>;
 
-			const endpoint = e
+			const endpoint = api.endpoints
 				.services([authService])
 				.get('/users')
 				.handle(async () => []);
@@ -182,12 +185,12 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'storage', any>;
 
-			const postEndpoint = e
+			const postEndpoint = api.endpoints
 				.services([storageService])
 				.post('/upload')
 				.handle(async () => ({ success: true }));
 
-			const getEndpoint = e
+			const getEndpoint = api.endpoints
 				.services([storageService])
 				.get('/files')
 				.handle(async () => []);
@@ -505,7 +508,7 @@ describe('Construct environment getter', () => {
 			// Log the actual errors for debugging visibility
 			console.log(
 				'Captured better-auth unhandled rejections:',
-				result.unhandledRejections.map((e) => e.message),
+				result.unhandledRejections.map((e) => api.message),
 			);
 
 			// Most importantly: the process should NOT crash from unhandled rejection
@@ -655,7 +658,7 @@ describe('Construct environment getter', () => {
 		});
 
 		it('works on Endpoint constructs', async () => {
-			const endpoint = e
+			const endpoint = api.endpoints
 				.services([dbService])
 				.get('/users')
 				.handle(async () => []);

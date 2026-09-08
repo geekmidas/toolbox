@@ -9,13 +9,14 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
-import { e } from '../endpoints';
 import type { MappedAudit } from '../endpoints/audit';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
+import { RestApi } from '../rest-api';
 
 // Silent logger for benchmarks - no console output
 const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
-const api = e.logger(silentLogger);
+const api = new RestApi('Bench', { default: 'none', logger: silentLogger })
+	.endpoints;
 
 // ============================================================================
 // Mock Services for Benchmarks

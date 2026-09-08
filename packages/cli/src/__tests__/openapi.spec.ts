@@ -450,10 +450,13 @@ describe('openapiCommand', () => {
 
 	it('should handle endpoints with complex schemas', async () => {
 		const complexEndpointContent = `
-import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 
-export const complexEndpoint = e
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
+export const complexEndpoint = api
   .post('/complex')
   .body(z.object({
     user: z.object({

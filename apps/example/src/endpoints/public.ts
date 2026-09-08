@@ -1,5 +1,8 @@
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { z } from 'zod';
+
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
 
 /**
  * Minimal-tier public endpoints
@@ -11,7 +14,7 @@ import { z } from 'zod';
 /**
  * Simple ping endpoint - returns pong
  */
-export const ping = e
+export const ping = api
 	.get('/ping')
 	.output(z.object({ message: z.literal('pong') }))
 	.handle(async () => {
@@ -21,7 +24,7 @@ export const ping = e
 /**
  * Version endpoint - returns API version info
  */
-export const version = e
+export const version = api
 	.get('/version')
 	.output(
 		z.object({
@@ -41,7 +44,7 @@ export const version = e
 /**
  * Time endpoint - returns current server time
  */
-export const time = e
+export const time = api
 	.get('/time')
 	.output(
 		z.object({
@@ -62,7 +65,7 @@ export const time = e
 /**
  * Echo endpoint - echoes back query parameters
  */
-export const echo = e
+export const echo = api
 	.get('/echo')
 	.query(z.record(z.string()))
 	.output(z.object({ echo: z.record(z.string()) }))

@@ -21,6 +21,9 @@
  * ```
  */
 
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	type AppSpec,
 	type ConstructName,
@@ -30,6 +33,8 @@ import {
 	provideKey,
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
+import { EndpointFactory } from './endpoints/EndpointFactory';
+import { envParserFor } from './endpoints/surfaceEnv';
 
 export interface RestApiConfig {
 	/**
@@ -71,7 +76,41 @@ export interface RestApiConfig {
 	 * is the one default worth refusing to have.
 	 */
 	default: string;
+	/**
+	 * The logger every endpoint on this surface runs with.
+	 *
+	 * The actual logger, not a path to one. It used to be named in config as
+	 * `logger: './config/logger'`, because the build wrote an import into each
+	 * generated handler and a generator can print a specifier but not an object.
+	 * Endpoints built from the surface carry it, so there is nothing to print
+	 * and nothing to keep in step with a moved file.
+	 */
+	logger?: Logger;
+	/**
+	 * The environment parser every endpoint on this surface runs with.
+	 *
+	 * Same reason as `logger`, and the same field it replaces —
+	 * `envParser: './config/env#envParser'`, a module path with an export name
+	 * appended, parsed by us, checked by nothing.
+	 */
+	envParser?: unknown;
 }
+
+/**
+ * What is *not* here, and why.
+ *
+ * `dependsOn`, `database`, `auditor` and `publisher` all inject a capability
+ * into a handler. Putting one on the surface hands it to every route the
+ * surface serves — a health check gets the database because a report needed it
+ * — which is the thing least privilege forbids and the reason `.calls()` is not
+ * spelled `dependsOn`. They belong to the endpoint, or to a factory branched
+ * from `api.endpoints` for a group of endpoints that genuinely share them.
+ *
+ * `auth` is not here either: `.auth(construct)` already declares it, and a
+ * second way to say the same thing is the duplication this whole model removes.
+ *
+ * What is left is what the *process* is rather than what a route may reach.
+ */
 
 export class RestApi<TName extends string = string>
 	implements Declarable<TName>
@@ -88,6 +127,25 @@ export class RestApi<TName extends string = string>
 		trustedOrigins: string;
 		cookieDomain: string;
 	};
+
+	/**
+	 * The logger every endpoint on this surface runs with.
+	 *
+	 * Always defined — the surface's own if it was given one, the console
+	 * logger otherwise — so nothing downstream has to decide what to do about a
+	 * missing one. The generated entry reads it from here.
+	 */
+	readonly logger: Logger;
+
+	/**
+	 * The environment parser every endpoint on this surface runs with.
+	 *
+	 * Always defined, and normally the default: `process.env` merged with the
+	 * credentials `gkm dev`/`gkm exec` injected. That is what every
+	 * application's own `config/env.ts` was — boilerplate identical in every
+	 * project, and mandatory, which is a poor combination.
+	 */
+	readonly envParser: EnvironmentParser<{}>;
 
 	constructor(
 		id: ConstructName<TName>,
@@ -106,6 +164,70 @@ export class RestApi<TName extends string = string>
 			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
 			cookieDomain: provideKey(canonical, 'cookieDomain'),
 		};
+
+		this.logger = config.logger ?? DEFAULT_LOGGER;
+		this.envParser = envParserFor(
+			config.envParser
+				? { id: canonical, envParser: config.envParser }
+				: undefined,
+		);
+
+		this.endpoints = new EndpointFactory({
+			defaultLogger: this.logger,
+			...(config.authorizers
+				? {
+						availableAuthorizers: config.authorizers.map((name) => ({ name })),
+					}
+				: {}),
+			...(config.default && config.default !== 'none'
+				? { defaultAuthorizerName: config.default }
+				: {}),
+			surface: { id: this.id, envParser: this.envParser },
+		});
+	}
+
+	/**
+	 * This surface's endpoint factory.
+	 *
+	 * `api.get('/users')` is the short form and covers most routes. Reach for
+	 * this one when a *group* of endpoints shares something a single route would
+	 * otherwise repeat — a database, an auditor, a publisher:
+	 *
+	 * ```ts
+	 * const audited = api.endpoints.database(db).auditor(AuditStore);
+	 * export const createUser = audited.post('/users').handle(...);
+	 * ```
+	 *
+	 * A factory branched from here keeps the surface, so its endpoints still
+	 * know which API serves them. That is deliberately narrower than putting the
+	 * same thing in the surface's own config: a group opts in, where a surface
+	 * would grant it to every route it serves.
+	 */
+	readonly endpoints: EndpointFactory<[], '', Logger>;
+
+	/** `api.get('/users')` — sugar for `api.endpoints.get('/users')`. */
+	get<TPath extends string>(path: TPath) {
+		return this.endpoints.get(path);
+	}
+
+	post<TPath extends string>(path: TPath) {
+		return this.endpoints.post(path);
+	}
+
+	put<TPath extends string>(path: TPath) {
+		return this.endpoints.put(path);
+	}
+
+	patch<TPath extends string>(path: TPath) {
+		return this.endpoints.patch(path);
+	}
+
+	delete<TPath extends string>(path: TPath) {
+		return this.endpoints.delete(path);
+	}
+
+	options<TPath extends string>(path: TPath) {
+		return this.endpoints.options(path);
 	}
 
 	/**

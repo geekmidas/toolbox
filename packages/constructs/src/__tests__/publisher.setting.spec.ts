@@ -4,8 +4,11 @@ import type { Logger } from '@geekmidas/logger';
 import { type Service, ServiceDiscovery } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-import { e } from '../endpoints';
 import { publishConstructEvents } from '../publisher';
+import { RestApi } from '../rest-api';
+
+/** Endpoints are built from a surface now, so the tests build one. */
+const api = new RestApi('Test', { default: 'none' });
 
 // Test event types
 type TestEvent =
@@ -53,7 +56,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('endpoint');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const endpoint = e
+			const endpoint = api.endpoints
 				.logger(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
@@ -86,7 +89,9 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Create factory with publisher
-			const factory = e.logger(mockLogger).publisher(mockPublisherService);
+			const factory = api.endpoints
+				.logger(mockLogger)
+				.publisher(mockPublisherService);
 
 			// Create endpoint using factory
 			const endpoint = factory
@@ -126,7 +131,7 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Create factory with logger, services, and publisher
-			const factory = e
+			const factory = api.endpoints
 				.logger(mockLogger)
 				.services([])
 				.publisher(mockPublisherService);
@@ -177,7 +182,9 @@ describe('publisher service setting combinations', () => {
 				.mockResolvedValue(endpointPublisher);
 
 			// Create factory with publisher
-			const factory = e.logger(mockLogger).publisher(factoryPublisherService);
+			const factory = api.endpoints
+				.logger(mockLogger)
+				.publisher(factoryPublisherService);
 
 			// Create endpoint that overrides factory publisher
 			const endpoint = factory
@@ -215,7 +222,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('chain');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const endpoint = e
+			const endpoint = api.endpoints
 				.logger(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
@@ -248,7 +255,9 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('factory-chain');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const factory = e.logger(mockLogger).publisher(mockPublisherService);
+			const factory = api.endpoints
+				.logger(mockLogger)
+				.publisher(mockPublisherService);
 
 			const endpoint = factory
 				.post('/test')
@@ -284,7 +293,9 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('shared-factory');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const factory = e.logger(mockLogger).publisher(mockPublisherService);
+			const factory = api.endpoints
+				.logger(mockLogger)
+				.publisher(mockPublisherService);
 
 			// Create multiple endpoints from same factory
 			const endpoint1 = factory
@@ -351,7 +362,7 @@ describe('publisher service setting combinations', () => {
 			const publisherService2 = createMockPublisherService('endpoint-2');
 			publisherService2.register = vi.fn().mockResolvedValue(publisher2);
 
-			const endpoint1 = e
+			const endpoint1 = api.endpoints
 				.logger(mockLogger)
 				.post('/api/v1/resource')
 				.publisher(publisherService1)
@@ -362,7 +373,7 @@ describe('publisher service setting combinations', () => {
 				})
 				.handle(async () => ({ id: 'res-1' }));
 
-			const endpoint2 = e
+			const endpoint2 = api.endpoints
 				.logger(mockLogger)
 				.post('/api/v2/resource')
 				.publisher(publisherService2)
@@ -407,7 +418,7 @@ describe('publisher service setting combinations', () => {
 
 	describe('edge cases and error scenarios', () => {
 		it('should handle undefined publisher gracefully', async () => {
-			const endpoint = e
+			const endpoint = api.endpoints
 				.logger(mockLogger)
 				.post('/test')
 				.output(z.object({ id: z.string() }))
@@ -442,7 +453,7 @@ describe('publisher service setting combinations', () => {
 				.fn()
 				.mockRejectedValue(registrationError);
 
-			const endpoint = e
+			const endpoint = api.endpoints
 				.logger(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
@@ -474,7 +485,7 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Test a typical factory setup with logger, services, and publisher
-			const factory = e
+			const factory = api.endpoints
 				.logger(mockLogger)
 				.services([])
 				.publisher(mockPublisherService);

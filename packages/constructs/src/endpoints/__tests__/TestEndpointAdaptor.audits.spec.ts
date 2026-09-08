@@ -7,9 +7,12 @@ import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { RestApi } from '../../rest-api';
 import type { MappedAudit } from '../audit';
-import { e } from '../EndpointFactory';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 // Test audit action types
 type TestAuditAction =
@@ -91,7 +94,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				},
 			];
 
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.auditor(auditStorageService)
@@ -127,7 +130,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 					register: vi.fn().mockResolvedValue(auditStorage),
 				};
 
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.auditor(auditStorageService)
@@ -184,7 +187,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				},
 			];
 
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.auditor(auditStorageService)
@@ -230,7 +233,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 			];
 
 			// Create endpoint without auditor to test the warning
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.output(outputSchema)
@@ -266,7 +269,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				register: vi.fn().mockResolvedValue(mockDb),
 			};
 
-			const endpoint = e
+			const endpoint = api
 				.get('/users')
 				.logger(mockLogger)
 				.database(databaseService)
@@ -307,7 +310,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				register: vi.fn().mockResolvedValue(testDb),
 			};
 
-			const endpoint = e
+			const endpoint = api
 				.get('/users')
 				.logger(mockLogger)
 				.database(databaseService)
@@ -372,7 +375,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				},
 			];
 
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.database(databaseService)
@@ -442,7 +445,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 			};
 
 			// Create a router with default auditor and database
-			const router = e
+			const router = api.endpoints
 				.logger(mockLogger)
 				.database(databaseService)
 				.auditor(auditStorageService);
@@ -504,7 +507,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 					register: vi.fn().mockResolvedValue(auditStorage),
 				};
 
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.logger(mockLogger)
 				.auditor(auditStorageService)
@@ -538,7 +541,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 				register: vi.fn().mockResolvedValue(mockDb),
 			};
 
-			const endpoint = e
+			const endpoint = api
 				.get('/data')
 				.logger(mockLogger)
 				.database(databaseService)
@@ -562,7 +565,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 		});
 
 		it('should not require auditorStorage when endpoint does not use .auditor()', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/simple')
 				.logger(mockLogger)
 				.output(z.object({ message: z.string() }))
@@ -581,7 +584,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 		});
 
 		it('should not require database when endpoint does not use .database()', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/simple')
 				.logger(mockLogger)
 				.output(z.object({ message: z.string() }))

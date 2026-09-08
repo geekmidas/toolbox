@@ -63,6 +63,26 @@ export interface DiscoverOptions {
 	 * has to be picked up on `add`, not only on `change`.
 	 */
 	bustCache?: boolean;
+	/**
+	 * Filled in with where each construct was found, when provided.
+	 *
+	 * Discovery is the only thing that knows: it globbed the files and imported
+	 * them. Everything downstream that needs to *write* an import — the build,
+	 * generating a server entry that reads a surface's logger — would otherwise
+	 * have to be told the path in config, which is the string this removes.
+	 *
+	 * An out-parameter rather than a second return value so that every existing
+	 * caller, which wants the manifest and nothing else, is unchanged.
+	 */
+	sources?: Record<string, ConstructSource>;
+}
+
+/** Where a construct was declared, and under what name. */
+export interface ConstructSource {
+	/** Absolute path to the module that exported it. */
+	file: string;
+	/** The name it was exported as — what an import statement has to say. */
+	exportName: string;
 }
 
 /**
@@ -76,7 +96,12 @@ export interface DiscoverOptions {
 export async function discover(
 	options: DiscoverOptions,
 ): Promise<ConstructManifest> {
-	const { patterns, cwd = process.cwd(), bustCache = false } = options;
+	const {
+		patterns,
+		cwd = process.cwd(),
+		bustCache = false,
+		sources: out,
+	} = options;
 
 	// Re-importing user modules re-executes them, and Zod v4 throws on a
 	// re-registered `.meta({ id })`. Same reason the generators clear it.
@@ -111,7 +136,7 @@ export async function discover(
 		const file = found.toString();
 		const module = await import(bustCache ? `${file}?t=${Date.now()}` : file);
 
-		for (const exported of Object.values(module)) {
+		for (const [exportName, exported] of Object.entries(module)) {
 			if (!isDeclarable(exported)) continue;
 
 			// The same construct, reached again through a re-export. Skipped
@@ -133,6 +158,7 @@ export async function discover(
 
 				manifest[id] = { ...declaration, id };
 				sources[id] = source;
+				if (out) out[id] = { file, exportName };
 			}
 		}
 	}

@@ -5,7 +5,7 @@ import {
 	CronBuilder,
 	type ScheduleExpression,
 } from '@geekmidas/constructs/crons';
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { z } from 'zod';
 
 /**
@@ -55,11 +55,15 @@ export async function createMockEndpointFile(
 	path: string = '/test',
 	method: string = 'GET',
 ): Promise<string> {
+	// A surface, because that is where endpoints come from — the fixture has to
+	// look like the code it stands in for.
 	const content = `
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { z } from 'zod';
 
-export const ${exportName} = e
+const api = new RestApi('Test', { default: 'none' });
+
+export const ${exportName} = api
   .${method.toLowerCase()}('${path}')
   .output(z.object({ message: z.string() }))
   .handle(async () => ({ message: 'Hello from ${exportName}' }));
@@ -116,10 +120,13 @@ export const ${exportName} = new CronBuilder()
 /**
  * Helper functions to create real constructs for testing
  */
+/** The surface these helpers build endpoints from. */
+const api = new RestApi('Test', { default: 'none' });
+
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
 	const m = method.toLowerCase() as Lowercase<HttpMethod>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const builder = (e as any)[m](path);
+	const builder = (api as any)[m](path);
 	builder.output(z.object({ message: z.string() }));
 	return builder.handle(async () => ({ message: `Hello from ${path}` }));
 }

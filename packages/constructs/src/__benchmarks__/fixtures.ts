@@ -4,7 +4,10 @@
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
 import { z } from 'zod';
-import { e } from '../endpoints';
+import { RestApi } from '../rest-api';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 // ============================================================================
 // Mock Services
@@ -98,7 +101,7 @@ export const orderResponseSchema = z.object({
  * Scenario 1: Simple endpoint (no auth, no DB, no audits)
  * This represents the minimal overhead case
  */
-export const simpleEndpoint = e
+export const simpleEndpoint = api
 	.get('/health')
 	.output(z.object({ status: z.string(), timestamp: z.number() }))
 	.handle(async () => ({
@@ -110,7 +113,7 @@ export const simpleEndpoint = e
  * Scenario 2: Auth-only endpoint
  * Has authorization but no database or complex features
  */
-export const authEndpoint = e
+export const authEndpoint = api
 	.get('/profile')
 	.authorizer('jwt')
 	.output(z.object({ userId: z.string(), name: z.string() }))
@@ -123,7 +126,7 @@ export const authEndpoint = e
  * Scenario 3: Database endpoint
  * Has database service but no auth or audits
  */
-export const dbEndpoint = e
+export const dbEndpoint = api
 	.get('/users')
 	.services([databaseService])
 	.output(z.array(userSchema))
@@ -139,7 +142,7 @@ export const dbEndpoint = e
  * Scenario 4: Auth + Database endpoint
  * Common pattern for protected data access
  */
-export const authDbEndpoint = e
+export const authDbEndpoint = api
 	.get('/my-orders')
 	.authorizer('jwt')
 	.services([databaseService])
@@ -156,7 +159,7 @@ export const authDbEndpoint = e
  * Scenario 5: POST with body validation
  * Tests validation overhead
  */
-export const postEndpoint = e
+export const postEndpoint = api
 	.post('/users')
 	.body(createUserSchema)
 	.output(userSchema)
@@ -170,7 +173,7 @@ export const postEndpoint = e
  * Scenario 6: Full-featured endpoint
  * Auth + DB + Rate Limit + multiple services
  */
-export const complexEndpoint = e
+export const complexEndpoint = api
 	.post('/orders')
 	.authorizer('jwt')
 	.services([databaseService, cacheService])
@@ -190,7 +193,7 @@ export const complexEndpoint = e
  * Scenario 7: Endpoint with path params
  * Tests param validation overhead
  */
-export const paramEndpoint = e
+export const paramEndpoint = api
 	.get('/users/:id')
 	.params(z.object({ id: z.string().uuid() }))
 	.output(userSchema)
@@ -204,7 +207,7 @@ export const paramEndpoint = e
  * Scenario 8: Endpoint with query params
  * Tests query parsing overhead
  */
-export const queryEndpoint = e
+export const queryEndpoint = api
 	.get('/search')
 	.query(
 		z.object({

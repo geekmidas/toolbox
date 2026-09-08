@@ -3,9 +3,13 @@ import type { Logger } from '@geekmidas/logger';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
-import { Endpoint, e } from '../';
+import { RestApi } from '../../rest-api';
+import { Endpoint } from '../';
 
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('HonoEndpoint OpenAPI Documentation', () => {
 	const logger = {
@@ -42,7 +46,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 			status: undefined,
 		});
 
-		const createUserEndpoint = e
+		const createUserEndpoint = api
 			.post('/users')
 			.description('Create a new user')
 			.body(
@@ -264,7 +268,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 	});
 
 	it('should include tags in OpenAPI documentation', async () => {
-		const userEndpoint = e
+		const userEndpoint = api
 			.get('/users/:id')
 			.description('Get user by ID')
 			.tags(['users', 'profile'])
@@ -272,7 +276,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 			.output(z.object({ id: z.string(), name: z.string() }))
 			.handle(({ params }) => ({ id: params.id, name: 'John Doe' }));
 
-		const adminEndpoint = e
+		const adminEndpoint = api
 			.post('/admin/settings')
 			.description('Update admin settings')
 			.tags(['admin', 'settings'])

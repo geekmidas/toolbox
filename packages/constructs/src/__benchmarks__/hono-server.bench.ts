@@ -3,9 +3,9 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import { Hono } from 'hono';
 import { bench, describe } from 'vitest';
 import { z } from 'zod';
-import { e } from '../endpoints';
 import type { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
+import { RestApi } from '../rest-api';
 
 /**
  * E2E benchmarks with Hono app.request() - tests the full request/response cycle
@@ -14,7 +14,8 @@ import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 
 // Silent logger for benchmarks - no console output
 const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
-const api = e.logger(silentLogger);
+const api = new RestApi('Bench', { default: 'none', logger: silentLogger })
+	.endpoints;
 
 // Helper to create a Hono app from endpoints
 function createApp(

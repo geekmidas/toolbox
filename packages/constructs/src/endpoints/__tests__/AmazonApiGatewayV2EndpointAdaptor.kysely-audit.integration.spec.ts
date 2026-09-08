@@ -174,10 +174,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits,
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -255,10 +252,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits,
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -339,10 +333,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits: [],
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -427,10 +418,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits: [],
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -525,10 +513,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits: [],
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -627,10 +612,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				audits,
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -715,10 +697,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				},
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event({
@@ -811,10 +790,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				rlsBypass: false,
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event();
@@ -872,10 +848,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				rlsBypass: true, // Bypass RLS
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event();
@@ -932,10 +905,7 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				rlsBypass: false,
 			});
 
-			const adapter = new AmazonApiGatewayV2Endpoint(
-				envParser,
-				endpoint as any,
-			);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint as any);
 			const handler = adapter.handler;
 
 			const event = createMockV2Event();

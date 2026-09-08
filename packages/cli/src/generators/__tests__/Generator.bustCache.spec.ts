@@ -48,10 +48,13 @@ describe('Generator.load — bustCache integration smoke test', () => {
 			await writeFile(
 				endpointFile,
 				`
-import { e } from '@geekmidas/constructs/endpoints';
 import { z } from 'zod/v4';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 
-export const getRentalAgreement = e
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
+export const getRentalAgreement = api
   .get('/rental-agreement')
   .output(z.object({ content: z.string() }).meta({ id: 'RentalAgreementOutput' }))
   .handle(async () => ({ content: 'pdf-content' }));

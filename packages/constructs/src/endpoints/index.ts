@@ -38,5 +38,4 @@ export {
 	type RlsContext,
 	type RlsContextExtractor,
 } from './rls';
-
-export const e = new EndpointFactory();
+export { defaultEnvParser, envParserFor } from './surfaceEnv';

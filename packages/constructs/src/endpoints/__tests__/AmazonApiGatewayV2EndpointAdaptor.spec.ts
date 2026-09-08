@@ -3,9 +3,12 @@ import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import type { Context } from 'aws-lambda';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayEndpoint } from '../AmazonApiGatewayEndpointAdaptor';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
-import { e } from '../EndpointFactory';
+
+/** Endpoints are built from a surface now, so the tests build one. */
+const api = new RestApi('Test', { default: 'none' });
 
 describe('AmazonApiGatewayV2Endpoint', () => {
 	let envParser: EnvironmentParser<{}>;
@@ -18,8 +21,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 	describe('getInput', () => {
 		it('should parse request body, query, and params', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				rawQueryString: 'foo=bar&baz=qux',
@@ -38,8 +41,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should parse JSON body when content-type is application/json', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				headers: { 'content-type': 'application/json' },
@@ -52,8 +55,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should decode base64-encoded JSON body', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				headers: { 'content-type': 'application/json' },
@@ -67,8 +70,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should return base64-decoded string for non-JSON content-type', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -82,8 +85,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should return raw string when content-type is not JSON', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				headers: { 'content-type': 'text/plain' },
@@ -96,8 +99,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should default to JSON parsing when no content-type header', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				headers: {},
@@ -110,8 +113,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should handle missing body, query, and params', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event();
 
@@ -127,8 +130,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 	describe('getLoggerContext', () => {
 		it('should extract logger context from event and context', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				requestContext: {
@@ -162,8 +165,8 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should handle missing user agent', () => {
-			const endpoint = e.get('/test').handle(() => ({ success: true }));
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const endpoint = api.get('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				requestContext: {
@@ -186,7 +189,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 	describe('integration', () => {
 		it('should handle endpoint with body schema validation', async () => {
-			const endpoint = e
+			const endpoint = api
 				.post('/users')
 				.body(z.object({ name: z.string(), age: z.number() }))
 				.output(z.object({ id: z.string(), name: z.string() }))
@@ -195,7 +198,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					name: body.name,
 				}));
 
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				routeKey: 'POST /users',
@@ -213,7 +216,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should handle array query parameters with bracket notation', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/search')
 				.query(
 					z.object({
@@ -232,7 +235,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					limit: query.limit,
 				}));
 
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				routeKey: 'GET /search',
@@ -257,7 +260,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should handle object query parameters with bracket notation', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/search')
 				.query(
 					z.object({
@@ -279,7 +282,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					filter: query.filter,
 				}));
 
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				routeKey: 'GET /search',
@@ -306,7 +309,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 		});
 
 		it('should handle endpoint with query and params', async () => {
-			const endpoint = e
+			const endpoint = api
 				.get('/users/:id')
 				.params(z.object({ id: z.string() }))
 				.query(z.object({ include: z.string().optional() }))
@@ -316,7 +319,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 					include: query.include,
 				}));
 
-			const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
 				routeKey: 'GET /users/{id}',
@@ -336,7 +339,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 		describe('response metadata', () => {
 			it('should set response cookies', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ success: z.boolean() }))
 					.handle((_, response) => {
@@ -347,7 +350,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						return { success: true };
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event();
 
 				const response = await adapter.handler(event, mockContext);
@@ -360,7 +363,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should set custom headers', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ success: z.boolean() }))
 					.handle((_, response) => {
@@ -369,7 +372,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						return { success: true };
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event();
 
 				const response = await adapter.handler(event, mockContext);
@@ -381,7 +384,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should set custom status code', async () => {
-				const endpoint = e
+				const endpoint = api
 					.post('/test')
 					.output(z.object({ id: z.string() }))
 					.handle((_, response) => {
@@ -389,7 +392,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						return { id: '123' };
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event({ routeKey: 'POST /test' });
 
 				const response = await adapter.handler(event, mockContext);
@@ -398,7 +401,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should combine cookies, headers, and status', async () => {
-				const endpoint = e
+				const endpoint = api
 					.post('/test')
 					.output(z.object({ id: z.string() }))
 					.handle((_, response) => {
@@ -410,7 +413,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						return { id: '123' };
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event({ routeKey: 'POST /test' });
 
 				const response = await adapter.handler(event, mockContext);
@@ -424,7 +427,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should delete cookies', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ success: z.boolean() }))
 					.handle((_, response) => {
@@ -435,7 +438,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						return { success: true };
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event();
 
 				const response = await adapter.handler(event, mockContext);
@@ -446,7 +449,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should use send() method with metadata', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ id: z.string() }))
 					.handle((_, response) => {
@@ -457,7 +460,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 							.send({ id: '123' });
 					});
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event();
 
 				const response = await adapter.handler(event, mockContext);
@@ -471,12 +474,12 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should return simple response without metadata when not using response builder', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ success: z.boolean() }))
 					.handle(() => ({ success: true }));
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event();
 
 				const response = await adapter.handler(event, mockContext);
@@ -492,7 +495,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 
 		describe('request cookies', () => {
 			it('should load cookies from V2 cookies array', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ session: z.string(), theme: z.string() }))
 					.handle(async ({ cookie }) => ({
@@ -500,7 +503,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 						theme: cookie('theme') ?? '',
 					}));
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event({
 					cookies: ['session=abc123', 'theme=dark'],
 				});
@@ -514,14 +517,14 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should fall back to headers.cookie when cookies array is absent', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ session: z.string() }))
 					.handle(async ({ cookie }) => ({
 						session: cookie('session') ?? '',
 					}));
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event({
 					cookies: undefined,
 					headers: {
@@ -538,14 +541,14 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 
 			it('should prefer V2 cookies array over headers.cookie', async () => {
-				const endpoint = e
+				const endpoint = api
 					.get('/test')
 					.output(z.object({ session: z.string() }))
 					.handle(async ({ cookie }) => ({
 						session: cookie('session') ?? '',
 					}));
 
-				const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+				const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 				const event = createMockV2Event({
 					cookies: ['session=from-array'],
 					headers: {

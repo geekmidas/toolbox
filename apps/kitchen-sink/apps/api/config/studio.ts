@@ -1,4 +1,5 @@
 import { snifferContext } from '@geekmidas/constructs';
+import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
 import {
 	Direction,
 	InMemoryMonitoringStorage,
@@ -6,7 +7,6 @@ import {
 } from '@geekmidas/studio';
 import type { Database } from '@kitchen-sink/constructs/database.js';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { envParser } from './env.js';
 
 /**
  * Studio — database browsing and query monitoring at `/__studio`.
@@ -18,7 +18,7 @@ import { envParser } from './env.js';
  * finds there before any URL exists.
  */
 const db = await database.service.register({
-	envParser,
+	envParser: defaultEnvParser(),
 	context: snifferContext,
 });
 

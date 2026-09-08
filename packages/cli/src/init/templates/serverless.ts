@@ -65,7 +65,35 @@ export const logger = createLogger();
 			}
 		};
 
+		// Where an endpoint file reaches the surface from — one level deeper when
+		// the routes are nested by domain.
+		const apiImport =
+			routesStructure === 'domain-based'
+				? '../../constructs/api.js'
+				: '../constructs/api.js';
+
 		const files: GeneratedFile[] = [
+			// The application's HTTP surface. Endpoints are built from it, so each
+			// one carries the logger and environment parser its adaptor needs —
+			// nothing has to be named in config and nothing printed into the
+			// generated handler.
+			{
+				path: 'src/constructs/api.ts',
+				content: `import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from '../config/logger.ts';
+
+export const api = new RestApi('Api', {
+  // Typed out rather than omitted: an API that ships open because a field was
+  // left off is the one default worth refusing to have.
+  default: 'none',
+
+  // The actual logger, not a path to one. Every endpoint built from this
+  // surface runs with it, and so does the generated entry.
+  logger,
+});
+`,
+			},
+
 			// src/config/env.ts
 			{
 				path: 'src/config/env.ts',
@@ -94,10 +122,10 @@ export const config = envParser
 			// health endpoint
 			{
 				path: getRoutePath('health.ts'),
-				content: `import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+				content: `import { z } from 'zod';
+import { api } from '${apiImport}';
 
-export const healthEndpoint = e
+export const healthEndpoint = api
   .get('/health')
   .output(z.object({
     status: z.string(),

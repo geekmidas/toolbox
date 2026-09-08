@@ -1,8 +1,11 @@
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { e } from '../EndpointFactory';
+import { RestApi } from '../../rest-api';
 import { createMswHandlers, TEST_CONTEXT_HEADER } from '../MswEndpointAdaptor';
+
+/** Endpoints are built from a surface now, so this builds one. */
+const api = new RestApi('Test', { default: 'none' });
 
 const BASE_URL = 'http://localhost:3000';
 
@@ -19,7 +22,7 @@ const DatabaseService = {
 
 // --- Endpoints ---
 
-const listUsers = e
+const listUsers = api
 	.get('/users')
 	.services([DatabaseService])
 	.output(
@@ -32,7 +35,7 @@ const listUsers = e
 		return { users };
 	});
 
-const createUser = e
+const createUser = api
 	.post('/users')
 	.body(z.object({ name: z.string().min(1), email: z.email() }))
 	.output(z.object({ id: z.string(), name: z.string(), email: z.string() }))
@@ -42,7 +45,7 @@ const createUser = e
 		email: body.email,
 	}));
 
-const getUser = e
+const getUser = api
 	.get('/users/:id')
 	.params(z.object({ id: z.string() }))
 	.output(z.object({ id: z.string(), name: z.string() }))
@@ -51,7 +54,7 @@ const getUser = e
 		name: 'Test User',
 	}));
 
-const authorizedEndpoint = e
+const authorizedEndpoint = api
 	.get('/protected')
 	.output(z.object({ message: z.string() }))
 	.authorize(({ header }) => header('authorization') === 'Bearer valid-token')

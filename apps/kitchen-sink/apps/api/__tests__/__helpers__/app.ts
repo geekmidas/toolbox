@@ -12,8 +12,8 @@
  * `app.request()`, so a port would only add a way for two runs to collide.
  */
 
+import { api } from '@kitchen-sink/constructs/api.js';
 import type { Hono } from 'hono';
-import { envParser } from '../../config/env.js';
 
 /** A booted application, and the handles a spec needs to drive it. */
 export interface Harness {
@@ -24,16 +24,16 @@ export interface Harness {
 	/**
 	 * The application's own environment parser — the one a handler is given.
 	 *
-	 * Here rather than imported by each spec, so exactly one module reaches into
-	 * the app's config. And the app's own rather than one built for tests,
-	 * because a test-local parser would have to restate
-	 * `{ ...process.env, ...Credentials }` — and that merge is the whole point:
-	 * `Credentials` resolves from `globalThis.__gkm_credentials__` or a
-	 * build-time decryption, and under SST a linked value arrives through the
-	 * link. A second copy is a second answer to where values come from, which is
-	 * the duplication that fails somewhere other than here.
+	 * Taken from the surface, which is where a handler gets it: an endpoint
+	 * built with `api.get()` carries its API, and the API carries this. A
+	 * test-local parser would have to restate `{ ...process.env, ...Credentials }`,
+	 * and that merge is the whole point — `Credentials` resolves from
+	 * `globalThis.__gkm_credentials__` or a build-time decryption, and under SST
+	 * a linked value arrives through the link. A second copy is a second answer
+	 * to where values come from, which is the duplication that fails somewhere
+	 * other than here.
 	 */
-	envParser: typeof envParser;
+	envParser: typeof api.envParser;
 }
 
 let booted: Promise<Harness> | undefined;
@@ -91,7 +91,7 @@ async function boot(): Promise<Harness> {
 
 	return {
 		app,
-		envParser,
+		envParser: api.envParser,
 		request: async (path, init) =>
 			app.request(path.startsWith('http') ? path : `http://localhost${path}`, {
 				...init,

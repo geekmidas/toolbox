@@ -6,8 +6,11 @@ import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { createMockLogger } from '@geekmidas/testkit/logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
-import { e } from '../EndpointFactory';
+
+/** Endpoints are built from a surface now, so the tests build one. */
+const api = new RestApi('Test', { default: 'none' });
 
 // Test event types
 type TestEvent =
@@ -36,7 +39,10 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		};
 
 		// Create factory with publisher exactly as user described
-		const r = e.logger(mockLogger).services([]).publisher(EventsService);
+		const r = api.endpoints
+			.logger(mockLogger)
+			.services([])
+			.publisher(EventsService);
 
 		// Create endpoint from factory
 		const endpoint = r
@@ -60,7 +66,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		expect(endpoint.publisherService?.serviceName).toBe('EventsService');
 
 		// Create adapter and test
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -112,7 +118,9 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 			register: vi.fn().mockResolvedValue(mockPublisher),
 		};
 
-		const factory = e.logger(mockLogger).publisher(ConditionalEventsService);
+		const factory = api.endpoints
+			.logger(mockLogger)
+			.publisher(ConditionalEventsService);
 
 		const endpoint = factory
 			.put('/orders/:id')
@@ -147,7 +155,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 				isNew: false, // Existing order
 			}));
 
-		const adapter = new AmazonApiGatewayV2Endpoint(envParser, endpoint);
+		const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 		const handler = adapter.handler;
 
 		const event = createMockV2Event({
@@ -194,7 +202,9 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		};
 
 		// Create shared factory
-		const factory = e.logger(mockLogger).publisher(SharedEventsService);
+		const factory = api.endpoints
+			.logger(mockLogger)
+			.publisher(SharedEventsService);
 
 		// Create multiple endpoints from same factory
 		const createEndpoint = factory
@@ -231,10 +241,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		);
 
 		// Test create endpoint
-		const createAdapter = new AmazonApiGatewayV2Endpoint(
-			envParser,
-			createEndpoint,
-		);
+		const createAdapter = new AmazonApiGatewayV2Endpoint(createEndpoint);
 		const createHandler = createAdapter.handler;
 
 		const createEvent = createMockV2Event({
@@ -264,10 +271,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		(SharedEventsService.register as any).mockResolvedValue(mockPublisher);
 
 		// Test update endpoint
-		const updateAdapter = new AmazonApiGatewayV2Endpoint(
-			envParser,
-			updateEndpoint,
-		);
+		const updateAdapter = new AmazonApiGatewayV2Endpoint(updateEndpoint);
 		const updateHandler = updateAdapter.handler;
 
 		const updateEvent = createMockV2Event({

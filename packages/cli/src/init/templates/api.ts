@@ -105,7 +105,35 @@ export const logger = createLogger();
 			}
 		};
 
+		// Where an endpoint file reaches the surface from — one level deeper when
+		// the routes are nested by domain.
+		const apiImport =
+			routesStructure === 'domain-based'
+				? '../../constructs/api.js'
+				: '../constructs/api.js';
+
 		const files: GeneratedFile[] = [
+			// The application's HTTP surface. Endpoints are built from it, so each
+			// one carries the logger and environment parser its adaptor needs —
+			// nothing has to be named in config and nothing printed into the
+			// generated handler.
+			{
+				path: 'src/constructs/api.ts',
+				content: `import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from '../config/logger.ts';
+
+export const api = new RestApi('Api', {
+  // Typed out rather than omitted: an API that ships open because a field was
+  // left off is the one default worth refusing to have.
+  default: 'none',
+
+  // The actual logger, not a path to one. Every endpoint built from this
+  // surface runs with it, and so does the generated entry.
+  logger,
+});
+`,
+			},
+
 			// src/config/env.ts
 			{
 				path: 'src/config/env.ts',
@@ -304,8 +332,8 @@ export const authService = {
 			// Add router with session
 			files.push({
 				path: 'src/router.ts',
-				content: `import { e } from '@geekmidas/constructs/endpoints';
-import { UnauthorizedError } from '@geekmidas/errors';${
+				content: `import { UnauthorizedError } from '@geekmidas/errors';
+import { api } from './constructs/api.ts';${
 					options.database
 						? `
 import { database } from './constructs/database.ts';`
@@ -325,7 +353,7 @@ import { logger } from './config/logger.ts';
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = e.logger(logger)${options.database ? '.database(database)' : ''};
+export const router = api.endpoints${options.database ? '.database(database)' : ''};
 
 // The auth client available, but the session not enforced.
 export const r = router.services([authService]);
@@ -367,8 +395,7 @@ export const profileEndpoint = sessionRouter
 		if (!monorepo) {
 			files.push({
 				path: 'src/router.ts',
-				content: `import { e } from '@geekmidas/constructs/endpoints';
-import { logger } from './config/logger.ts';${
+				content: `import { api } from './constructs/api.ts';${
 					options.database
 						? `
 import { database } from './constructs/database.ts';`
@@ -386,7 +413,7 @@ import { database } from './constructs/database.ts';`
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = e.logger(logger)${options.database ? '.database(database)' : ''};
+export const router = api.endpoints${options.database ? '.database(database)' : ''};
 `,
 			});
 		}

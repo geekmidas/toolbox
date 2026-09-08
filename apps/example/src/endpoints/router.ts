@@ -1,5 +1,4 @@
-import { e } from '@geekmidas/constructs/endpoints';
-import logger from '../config/logger.js';
+import { api } from '../constructs/api.js';
 import { database } from '../constructs/database';
 import { AuditStorageService } from '../services/AuditStorageService';
 import { AuthService } from '../services/AuthService';
@@ -10,7 +9,7 @@ import { EventsService } from '../services/EventsService';
  *
  * The pattern:
  * ```typescript
- * e.logger(logger)
+ * api.endpoints
  *   .services([AuthService])
  *   .database(database)
  *   .auditor(AuditStorageService)
@@ -18,7 +17,7 @@ import { EventsService } from '../services/EventsService';
  * ```
  *
  * Creates a factory where all endpoints inherit:
- * - The same logger instance
+ * - The surface's logger, which the surface itself declares
  * - Access to registered services (auth, etc.)
  * - The declared database, available as `db` in handler context
  * - Auditor available in handler context for manual audits
@@ -36,8 +35,7 @@ import { EventsService } from '../services/EventsService';
  *   });
  * ```
  */
-export const router = e
-	.logger(logger)
+export const router = api.endpoints
 	.services([AuthService])
 	.database(database)
 	.auditor(AuditStorageService)

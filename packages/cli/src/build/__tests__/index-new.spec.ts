@@ -351,7 +351,7 @@ export default {
 	);
 
 	itWithDir(
-		'should parse envParser configuration correctly',
+		'writes no environment import into a per-endpoint handler',
 		async ({ dir }) => {
 			// Create config with custom named exports
 			await createTestFile(
@@ -394,10 +394,15 @@ export default {
 			try {
 				await buildCommand({ provider: 'aws' });
 
-				// Verify that a handler file was generated with correct imports
+				// The handler imports its endpoint and nothing else. It used to be
+				// handed a parser through an import the build composed as text,
+				// which is the only reason a module path had to be named in
+				// config at all — an endpoint built from its surface carries one.
 				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
 				const handlerContent = await readFile(handlerFile, 'utf-8');
-				expect(handlerContent).toContain('{ customEnvParser as envParser }');
+				expect(handlerContent).toContain('testEndpoint');
+				expect(handlerContent).not.toContain('envParser');
+				expect(handlerContent).not.toContain('customEnvParser');
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -455,7 +460,7 @@ export default {
 	);
 
 	itWithDir(
-		'should handle default import patterns for envParser and logger',
+		'imports a default-exported env parser into the server entry',
 		async ({ dir }) => {
 			// Create config with default import patterns
 			await createTestFile(
@@ -488,13 +493,16 @@ export default {
 			process.chdir(dir);
 
 			try {
-				await buildCommand({ provider: 'aws' });
+				await buildCommand({ provider: 'server' });
 
-				// Verify that a handler file was generated with default imports
-				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-				const handlerContent = await readFile(handlerFile, 'utf-8');
-				expect(handlerContent).toContain('import envParser');
-				expect(handlerContent).not.toContain('{ envParser }');
+				// The server entry, not a per-endpoint handler: an entry needs a
+				// parser for the things that are not endpoint-scoped — CORS,
+				// queues, subscribers — so a project that declares no surface
+				// still names one, and a default export still imports as one.
+				const entry = join(dir, '.gkm/server/app.ts');
+				const entryContent = await readFile(entry, 'utf-8');
+				expect(entryContent).toContain('import envParser');
+				expect(entryContent).not.toContain('{ envParser }');
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -502,7 +510,7 @@ export default {
 	);
 
 	itWithDir(
-		'should handle envParser pattern with same name as expected',
+		'imports a named env parser into the server entry under its own name',
 		async ({ dir }) => {
 			// Create config with named exports that match expected names
 			await createTestFile(
@@ -535,13 +543,12 @@ export default {
 			process.chdir(dir);
 
 			try {
-				await buildCommand({ provider: 'aws' });
+				await buildCommand({ provider: 'server' });
 
-				// Verify that a handler file was generated with named imports
-				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
-				const handlerContent = await readFile(handlerFile, 'utf-8');
+				const entry = join(dir, '.gkm/server/app.ts');
+				const entryContent = await readFile(entry, 'utf-8');
 
-				expect(handlerContent).toContain('{ envParser }');
+				expect(entryContent).toContain('{ envParser }');
 			} finally {
 				process.chdir(originalCwd);
 			}

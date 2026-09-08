@@ -1,4 +1,3 @@
-import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
@@ -76,7 +75,6 @@ export class AmazonApiGatewayV2Endpoint<
 		};
 	}
 	constructor(
-		protected override envParser: EnvironmentParser<{}>,
 		protected override readonly endpoint: Endpoint<
 			TRoute,
 			TMethod,
@@ -89,7 +87,7 @@ export class AmazonApiGatewayV2Endpoint<
 		>,
 		options: AmazonApiGatewayEndpointOptions = {},
 	) {
-		super(envParser, endpoint, options);
+		super(endpoint, options);
 	}
 }
 

@@ -1,13 +1,16 @@
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { e } from '@geekmidas/constructs/endpoints';
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BuildContext } from '../build/types';
 import { EndpointGenerator } from '../generators/EndpointGenerator';
 import type { GeneratedConstruct } from '../generators/Generator';
 
+/** Endpoints are built from a surface now. */
+const api = new RestApi('Test', { default: 'none' });
+
 // Create a minimal mock endpoint for testing
-const mockEndpoint = e.get('/test').handle(async () => ({ ok: true }));
+const mockEndpoint = api.get('/test').handle(async () => ({ ok: true }));
 
 describe('EndpointGenerator hooks generation', () => {
 	const testOutputDir = join(process.cwd(), '.test-output');
