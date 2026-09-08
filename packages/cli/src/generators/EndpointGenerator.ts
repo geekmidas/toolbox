@@ -570,6 +570,11 @@ export async function setupEndpoints(
 		// Generate studio imports and setup if enabled
 		const studioEnabled = context.studio?.enabled;
 		const usesExternalStudio = !!context.studio?.studioPath;
+		// Studio from the declared database rather than from a module someone
+		// wrote to resolve one. Every input it takes is derivable: the client
+		// from the construct, the rest defaults.
+		const studioFromDatabase =
+			!usesExternalStudio && !!context.studio?.database;
 
 		// Generate imports based on whether telescope is external or inline
 		const telescopeFromSurface =
@@ -605,9 +610,17 @@ import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
 				);
 				studioImports = `import ${context.studio?.studioImportPattern} from '${relativeStudioPath}';
 import { createStudioApp } from '@geekmidas/studio/server/hono';`;
+			} else if (studioFromDatabase) {
+				const dbSpecifier = importSpecifier(
+					dirname(appPath),
+					context.studio!.database!.specifier,
+				);
+				studioImports = `import { snifferContext } from '@geekmidas/constructs';
+import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
+import { ${context.studio!.database!.exportName} as __studioDb } from '${dbSpecifier}';
+import { createStudioApp } from '@geekmidas/studio/server/hono';`;
 			} else {
-				studioImports = `// Studio requires a configured instance - use studio config path
-// import { createStudioApp } from '@geekmidas/studio/server/hono';`;
+				studioImports = '';
 			}
 		}
 
@@ -709,7 +722,23 @@ ${telescopeWebSocketSetupCode}
 
 		// Generate studio setup - requires external instance
 		let studioSetup = '';
-		if (studioEnabled && usesExternalStudio) {
+		if (studioEnabled && studioFromDatabase) {
+			studioSetup = `
+  // Studio, built from the declared database. The client comes from the
+  // construct, so what you inspect is by definition what the handlers write to.
+  const studio = new Studio({
+    monitoring: { storage: new InMemoryMonitoringStorage({ maxEntries: 100 }) },
+    data: {
+      db: await __studioDb.service.register({ envParser, context: snifferContext }),
+      cursor: { field: 'id', direction: Direction.Desc },
+    },
+    enabled: true,
+  });
+
+  const studioApp = createStudioApp(studio);
+  honoApp.route('${context.studio?.path}', studioApp);
+`;
+		} else if (studioEnabled && usesExternalStudio) {
 			studioSetup = `
   // Mount Studio data browser UI
   const studioApp = createStudioApp(studio);

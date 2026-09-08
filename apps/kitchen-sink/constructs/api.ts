@@ -1,6 +1,6 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
 import { auth } from './auth.js';
-import logger from './logger.js';
+import { logger } from './logger.js';
 import { telescope } from './telescope.js';
 
 /**
@@ -58,11 +58,5 @@ export const api = new RestApi('Api', {
 		// Still glob-driven, and that is worth knowing: a file outside this
 		// pattern does not exist as far as the build is concerned.
 		code: './{endpoints,functions,crons,subscribers,queues}/**/*.ts',
-
-		// Studio resolves a database client while it imports, which needs URLs
-		// that only exist once a target has provisioned them — so unlike the
-		// logger and the telescope it cannot live in the constructs glob, which
-		// discovery imports before any URL exists.
-		studio: './config/studio#studio',
 	},
 }).auth(auth);

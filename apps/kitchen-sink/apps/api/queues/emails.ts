@@ -1,7 +1,7 @@
 import { q } from '@geekmidas/constructs/queue';
 import { sessions } from '@kitchen-sink/constructs/cache.js';
 import { mail } from '@kitchen-sink/constructs/email.js';
-import logger from '@kitchen-sink/constructs/logger.js';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 import { z } from 'zod';
 
 /** The job payload — point-to-point work for a single consumer. */

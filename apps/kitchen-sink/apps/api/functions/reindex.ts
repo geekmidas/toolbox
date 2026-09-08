@@ -1,6 +1,6 @@
 import { f } from '@geekmidas/constructs/functions';
 import { database } from '@kitchen-sink/constructs/database.js';
-import logger from '@kitchen-sink/constructs/logger.js';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 import { z } from 'zod';
 
 /**

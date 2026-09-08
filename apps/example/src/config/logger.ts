@@ -11,7 +11,7 @@ import { telescope } from './telescope.js';
  *
  * View logs at /telescope in your browser.
  */
-const logger = pino(
+export const logger = pino(
 	{
 		level: 'debug',
 		formatters: {
@@ -28,5 +28,3 @@ const logger = pino(
 		{ stream: createPinoTransport({ telescope }) },
 	]),
 );
-
-export default logger;

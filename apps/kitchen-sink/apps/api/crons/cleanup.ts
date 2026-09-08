@@ -1,6 +1,6 @@
 import { c } from '@geekmidas/constructs/crons';
 import { database } from '@kitchen-sink/constructs/database.js';
-import logger from '@kitchen-sink/constructs/logger.js';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 
 /**
  * A scheduled task (`c`). The `schedule` expression is deploy-time infra (an

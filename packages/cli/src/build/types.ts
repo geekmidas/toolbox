@@ -48,6 +48,17 @@ export interface NormalizedStudioConfig {
 	path: string;
 	/** Database schema to introspect */
 	schema: string;
+	/**
+	 * The database Studio browses, and where it is declared.
+	 *
+	 * Studio needs a client, and a client comes from a construct — so rather
+	 * than a hand-written module that resolves one and a config string naming
+	 * that module, the entry imports the declaration discovery already found and
+	 * resolves it there. One declared database is one browsable database; a
+	 * project with none gets no Studio, which is the correct answer rather than
+	 * a stub.
+	 */
+	database?: { specifier: string; exportName: string };
 }
 
 export interface NormalizedHooksConfig {

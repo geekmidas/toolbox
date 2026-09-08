@@ -1,5 +1,5 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
-import logger from '../config/logger.js';
+import { logger } from '../config/logger.js';
 
 /**
  * The application's HTTP surface.

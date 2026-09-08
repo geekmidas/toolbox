@@ -1,5 +1,5 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
-import logger from '@kitchen-sink/constructs/logger.js';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
 
