@@ -26,6 +26,7 @@
  */
 
 import {
+	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -63,6 +64,23 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 * between stages the way the host can.
 	 */
 	basePath?: string;
+	/**
+	 * The app that serves this auth server — its own container.
+	 *
+	 * An auth server holds the session secret and reaches the identity tables.
+	 * Its own process is the default because sharing one means the surface it
+	 * shares with can read both.
+	 */
+	app?: AppSpec;
+	/**
+	 * Another surface to run inside, instead of having a container.
+	 *
+	 * The opt-in, and it must be typed out. Colocating an auth server with an
+	 * API puts the session secret in the API's environment and its tables one
+	 * connection away — survivable while an app is small, never something to
+	 * arrive at by leaving a field blank.
+	 */
+	colocate?: string;
 	/**
 	 * The rest of better-auth's options: providers, plugins, email settings.
 	 *
@@ -153,6 +171,8 @@ export class BetterAuth<
 			{
 				kind: 'rest-api',
 				id: this.id,
+				...(this.config.app ? { app: this.config.app } : {}),
+				...(this.config.colocate ? { colocate: this.config.colocate } : {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

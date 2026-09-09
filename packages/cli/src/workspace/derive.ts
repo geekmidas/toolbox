@@ -48,10 +48,19 @@ export function appKey(id: string): string {
 /**
  * The surface that actually serves a given surface.
  *
- * A surface with an `app` serves itself. One without is mounted into whichever
- * surface named it with `.auth()` — the auth server case, and the only one
- * where two surfaces legitimately share a process. Resolved transitively, and
- * defensively: a cycle returns the id it started from rather than hanging.
+ * A surface with an `app` serves itself. One that named `colocate` runs inside
+ * whichever surface it named — and only then, because two surfaces in one
+ * process share a filesystem, an environment, and every credential either was
+ * granted.
+ *
+ * This used to fall back to "whichever surface named me with `.auth()`", which
+ * made an auth server share the API's container whenever nobody had said
+ * otherwise. That is the arrangement least privilege exists to prevent, arrived
+ * at by omission. A surface with neither is now an error rather than a quiet
+ * colocation — see {@link UnhostedSurface}.
+ *
+ * Resolved transitively, and defensively: a cycle returns nothing rather than
+ * hanging.
  */
 export function hostOf(
 	manifest: ConstructManifest,
@@ -62,14 +71,27 @@ export function hostOf(
 	if (!declaration || declaration.kind !== 'rest-api') return undefined;
 	if (declaration.app) return id;
 	if (seen.has(id)) return undefined;
+	if (!declaration.colocate) return undefined;
 
-	for (const [candidateId, candidate] of Object.entries(manifest)) {
-		if (candidate.kind !== 'rest-api' || candidate.auth !== id) continue;
-		const host = hostOf(manifest, candidateId, new Set([...seen, id]));
-		if (host) return host;
+	return hostOf(manifest, declaration.colocate, new Set([...seen, id]));
+}
+
+/**
+ * A surface that says neither where it runs nor whom it runs inside.
+ *
+ * Loud on purpose. The alternative — picking a container for it — is how an
+ * auth server ends up in an API's process because a field was left off.
+ */
+export class UnhostedSurface extends Error {
+	constructor(readonly surface: string) {
+		super(
+			`Surface "${surface}" has no app and no colocate, so nothing serves it.\n` +
+				`  Give it its own container:  new RestApi('${surface}', { app: { path: 'apps/${surface.toLowerCase()}' } })\n` +
+				`  Or run it inside another:   new RestApi('${surface}', { colocate: 'Api' })\n` +
+				`Colocating shares a filesystem, an environment, and every credential either surface holds.`,
+		);
+		this.name = 'UnhostedSurface';
 	}
-
-	return undefined;
 }
 
 /**
@@ -139,7 +161,15 @@ export function derivedApps(
 			continue;
 
 		const spec = declaration.app;
-		if (!spec) continue;
+		if (!spec) {
+			// No app and nowhere named to run: refuse rather than choose. A
+			// surface that gets a container by inference gets it from whatever
+			// happened to reference it.
+			if (declaration.kind === 'rest-api' && !declaration.colocate) {
+				throw new UnhostedSurface(id);
+			}
+			continue;
+		}
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override

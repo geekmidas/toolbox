@@ -52,6 +52,16 @@ export interface RestApiConfig {
 	 */
 	app?: AppSpec;
 	/**
+	 * Another surface this one runs inside — the opt-in to sharing a container.
+	 *
+	 * Sharing is a security decision, not a packaging one: two surfaces in a
+	 * process share a filesystem, an environment, and every credential either
+	 * was granted. So it is named here rather than inferred from a surface
+	 * happening to lack an `app`, which made the unsafe arrangement the one you
+	 * got by forgetting.
+	 */
+	colocate?: string;
+	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
 	 * of declaring one. These are the parts a graph cannot answer.
@@ -312,6 +322,7 @@ export class RestApi<TName extends string = string>
 					: {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
+				...(this.config.colocate ? { colocate: this.config.colocate } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

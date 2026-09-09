@@ -41,6 +41,16 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>(
 export const auth = new BetterAuth('Auth', {
 	database: authDb,
 	basePath: '/api/auth',
+
+	// Typed out, because the build now refuses a surface that says neither
+	// where it runs nor whom it runs inside — and this is the wrong answer.
+	//
+	// Colocating puts the session secret in the API's environment and the
+	// identity tables one connection from its handlers, so a bug in any route
+	// reaches both. It is here only until a surface can generate its own entry
+	// point; the moment it can, this becomes `app: { path: 'apps/auth' }` and
+	// Auth gets the container it should always have had.
+	colocate: 'Api',
 	options: async (options) => {
 		const mailer = await mail.service.register(options);
 

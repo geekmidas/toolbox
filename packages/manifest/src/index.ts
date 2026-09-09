@@ -48,6 +48,7 @@ export type {
 	IdsOfKind,
 	Node,
 	ObjectsDeclaration,
+	OidcDeclaration,
 	PostgresVersion,
 	ProvidedKeys,
 	Provides,

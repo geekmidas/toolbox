@@ -1,0 +1,20 @@
+import { defineConfig } from 'tsdown';
+
+export default defineConfig({
+	// One entry per declared export. Without them tsdown builds `src/index.ts`
+	// alone, which is what it had been doing: nine subpaths in `package.json`
+	// pointing at files the build never emitted, and the root one pointing at
+	// `index.mjs` while the output was `index.js`. Nothing imports this package
+	// yet, which is the only reason it went unnoticed.
+	entry: [
+		'src/index.ts',
+		'src/server.ts',
+		'src/client.ts',
+		'src/jwt.ts',
+		'src/oidc.ts',
+		'src/hono/jwt.ts',
+		'src/hono/oidc.ts',
+		'src/lambda/jwt.ts',
+		'src/lambda/oidc.ts',
+	],
+});
