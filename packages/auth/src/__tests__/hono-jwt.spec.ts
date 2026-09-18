@@ -86,6 +86,32 @@ describe('JwtMiddleware', () => {
 			expect(res.status).toBe(200);
 		});
 
+		it('ignores a cookie whose name merely ends with the configured one', async () => {
+			// A browser sends every cookie for the domain in one header. If the
+			// token is found by searching that header for `auth_token=`, an
+			// attacker who can set `evil_auth_token` on the domain has their
+			// value read instead of the real session's.
+			const app = new Hono();
+			const jwt = new JwtMiddleware({
+				config: { secret: TEST_SECRET },
+				extraction: { cookieName: 'auth_token' },
+			});
+
+			app.use('/*', jwt.handler());
+			app.get('/test', (c) => {
+				const claims = c.get('jwtClaims');
+				return c.json({ userId: claims.sub });
+			});
+
+			const real = await createTestToken();
+			const res = await app.request('/test', {
+				headers: { Cookie: `evil_auth_token=not-a-token; auth_token=${real}` },
+			});
+
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ userId: 'user-123' });
+		});
+
 		it('should use custom context key', async () => {
 			const app = new Hono();
 			const jwt = new JwtMiddleware({

@@ -5,6 +5,7 @@ import type {
 	Context as LambdaContext,
 	PolicyDocument,
 } from 'aws-lambda';
+import { readCookie } from '../cookies';
 import {
 	type OidcClaims,
 	type OidcConfig,
@@ -12,12 +13,7 @@ import {
 	type TokenExtractionOptions,
 } from '../oidc';
 
-export {
-	OidcVerifier,
-	type OidcClaims,
-	type OidcConfig,
-	type TokenExtractionOptions,
-};
+export type { OidcVerifier, OidcClaims, OidcConfig, TokenExtractionOptions };
 
 function generatePolicy(
 	principalId: string,
@@ -156,10 +152,9 @@ export class OidcAuthorizer<TClaims extends OidcClaims = OidcClaims> {
 			}
 
 			if (cookieName) {
-				const cookieHeader = headers.cookie ?? headers.Cookie ?? '';
-				const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-				if (match?.[1]) {
-					return match[1];
+				const cookie = readCookie(headers.cookie ?? headers.Cookie, cookieName);
+				if (cookie) {
+					return cookie;
 				}
 			}
 

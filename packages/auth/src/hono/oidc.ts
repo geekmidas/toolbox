@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
+import { readCookie } from '../cookies';
 import {
 	type OidcClaims,
 	type OidcConfig,
@@ -7,12 +8,12 @@ import {
 	type TokenExtractionOptions,
 } from '../oidc';
 
-export {
+export type {
 	OidcVerifier,
-	type OidcClaims,
-	type OidcConfig,
-	type OidcUserInfo,
-	type TokenExtractionOptions,
+	OidcClaims,
+	OidcConfig,
+	OidcUserInfo,
+	TokenExtractionOptions,
 };
 
 function extractToken(
@@ -34,12 +35,9 @@ function extractToken(
 	}
 
 	if (cookieName) {
-		const cookieHeader = c.req.header('cookie');
-		if (cookieHeader) {
-			const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-			if (match?.[1]) {
-				return match[1];
-			}
+		const cookie = readCookie(c.req.header('cookie'), cookieName);
+		if (cookie) {
+			return cookie;
 		}
 	}
 
