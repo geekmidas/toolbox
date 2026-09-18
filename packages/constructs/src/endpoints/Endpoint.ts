@@ -1,4 +1,5 @@
 import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import type {
 	EventPublisher,
 	ExtractPublisherMessage,
@@ -109,7 +110,7 @@ export class Endpoint<
 	 * import written for it — and the surface's id, so the build attributes the
 	 * route to the API that serves it rather than inferring it by exclusion.
 	 */
-	surface?: EndpointSurface;
+	surface: EndpointSurface;
 	/** Optional description for OpenAPI documentation */
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
@@ -682,9 +683,7 @@ export class Endpoint<
 			this.authorizer = authorizer;
 		}
 
-		if (surface) {
-			this.surface = surface;
-		}
+		this.surface = surface;
 
 		if (actorExtractor) {
 			this.actorExtractor = actorExtractor;
@@ -754,8 +753,14 @@ export type EndpointInput<
 export interface EndpointSurface {
 	/** The surface's construct id — `Api`, `Auth`. */
 	id: string;
-	/** The environment parser every handler on this surface runs with. */
-	envParser?: unknown;
+	/**
+	 * The environment parser every handler on this surface runs with.
+	 *
+	 * A value the surface holds, never a place to do work: constructs are
+	 * imported by discovery before any URL exists, so a parser that reads a
+	 * file or throws on a missing variable would do it at build time.
+	 */
+	envParser: EnvironmentParser<{}>;
 }
 
 /**
@@ -845,8 +850,8 @@ export interface EndpointOptions<
 	events?: MappedEvent<TEventPublisher, OutSchema>[];
 	/** Optional authorizer configuration */
 	authorizer?: Authorizer;
-	/** The surface this endpoint was built from, when it was built from one. */
-	surface?: EndpointSurface;
+	/** The surface this endpoint was built from. Every endpoint has one. */
+	surface: EndpointSurface;
 	/**
 	 * Auditor storage service for persisting audit records from this endpoint
 	 */

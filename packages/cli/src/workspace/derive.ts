@@ -46,49 +46,34 @@ export function appKey(id: string): string {
 }
 
 /**
- * The surface that actually serves a given surface.
+ * The app serving a surface: its own, always.
  *
- * A surface with an `app` serves itself. One that named `colocate` runs inside
- * whichever surface it named — and only then, because two surfaces in one
- * process share a filesystem, an environment, and every credential either was
- * granted.
- *
- * This used to fall back to "whichever surface named me with `.auth()`", which
- * made an auth server share the API's container whenever nobody had said
- * otherwise. That is the arrangement least privilege exists to prevent, arrived
- * at by omission. A surface with neither is now an error rather than a quiet
- * colocation — see {@link UnhostedSurface}.
- *
- * Resolved transitively, and defensively: a cycle returns nothing rather than
- * hanging.
+ * Every surface gets a container. There is no arrangement in which one runs
+ * inside another — two surfaces in a process share a filesystem, an
+ * environment, and every credential either was granted, so an auth server
+ * beside an API is one bug in the API away from being read by it.
  */
 export function hostOf(
 	manifest: ConstructManifest,
 	id: string,
-	seen: ReadonlySet<string> = new Set(),
 ): string | undefined {
 	const declaration = manifest[id];
 	if (!declaration || declaration.kind !== 'rest-api') return undefined;
-	if (declaration.app) return id;
-	if (seen.has(id)) return undefined;
-	if (!declaration.colocate) return undefined;
 
-	return hostOf(manifest, declaration.colocate, new Set([...seen, id]));
+	return declaration.app ? id : undefined;
 }
 
 /**
- * A surface that says neither where it runs nor whom it runs inside.
+ * A surface that never said where it runs.
  *
- * Loud on purpose. The alternative — picking a container for it — is how an
- * auth server ends up in an API's process because a field was left off.
+ * Loud, because the alternative is picking a container for it — and a surface
+ * that gets one by inference gets it from whatever happened to reference it.
  */
 export class UnhostedSurface extends Error {
 	constructor(readonly surface: string) {
 		super(
-			`Surface "${surface}" has no app and no colocate, so nothing serves it.\n` +
-				`  Give it its own container:  new RestApi('${surface}', { app: { path: 'apps/${surface.toLowerCase()}' } })\n` +
-				`  Or run it inside another:   new RestApi('${surface}', { colocate: 'Api' })\n` +
-				`Colocating shares a filesystem, an environment, and every credential either surface holds.`,
+			`Surface "${surface}" declares no app, so nothing serves it. Give it one:\n` +
+				`  new RestApi('${surface}', { app: { path: 'apps/${surface.toLowerCase()}' } })`,
 		);
 		this.name = 'UnhostedSurface';
 	}
@@ -165,9 +150,7 @@ export function derivedApps(
 			// No app and nowhere named to run: refuse rather than choose. A
 			// surface that gets a container by inference gets it from whatever
 			// happened to reference it.
-			if (declaration.kind === 'rest-api' && !declaration.colocate) {
-				throw new UnhostedSurface(id);
-			}
+			if (declaration.kind === 'rest-api') throw new UnhostedSurface(id);
 			continue;
 		}
 

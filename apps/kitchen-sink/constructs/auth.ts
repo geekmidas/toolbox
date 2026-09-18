@@ -42,15 +42,13 @@ export const auth = new BetterAuth('Auth', {
 	database: authDb,
 	basePath: '/api/auth',
 
-	// Typed out, because the build now refuses a surface that says neither
-	// where it runs nor whom it runs inside — and this is the wrong answer.
+	// Its own container. An auth server holds the session secret and reaches
+	// the identity tables; a surface that shared a process with the API would
+	// put both one bug away from every route it serves.
 	//
-	// Colocating puts the session secret in the API's environment and the
-	// identity tables one connection from its handlers, so a bug in any route
-	// reaches both. It is here only until a surface can generate its own entry
-	// point; the moment it can, this becomes `app: { path: 'apps/auth' }` and
-	// Auth gets the container it should always have had.
-	colocate: 'Api',
+	// No `code` glob: this surface's routes are declared, not discovered —
+	// `declare()` returns the wildcard, and `auth.server()` mounts it.
+	app: { path: 'apps/auth' },
 	options: async (options) => {
 		const mailer = await mail.service.register(options);
 

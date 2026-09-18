@@ -32,6 +32,7 @@ import {
 	type Dependency,
 	provideKey,
 } from '@geekmidas/manifest';
+import type { Telescope } from '@geekmidas/telescope';
 import { type Declarable, edgeTo } from './construct-interface';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
@@ -51,16 +52,6 @@ export interface RestApiConfig {
 	 * an `app` is the whole change.
 	 */
 	app?: AppSpec;
-	/**
-	 * Another surface this one runs inside — the opt-in to sharing a container.
-	 *
-	 * Sharing is a security decision, not a packaging one: two surfaces in a
-	 * process share a filesystem, an environment, and every credential either
-	 * was granted. So it is named here rather than inferred from a surface
-	 * happening to lack an `app`, which made the unsafe arrangement the one you
-	 * got by forgetting.
-	 */
-	colocate?: string;
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -103,7 +94,7 @@ export interface RestApiConfig {
 	 * `envParser: './config/env#envParser'`, a module path with an export name
 	 * appended, parsed by us, checked by nothing.
 	 */
-	envParser?: unknown;
+	envParser?: EnvironmentParser<{}>;
 	/**
 	 * The Telescope instance this surface's entry mounts.
 	 *
@@ -111,7 +102,7 @@ export interface RestApiConfig {
 	 * `telescope: './config/telescope#telescope'`, a module path the build
 	 * printed an import for. The entry already imports the surface.
 	 */
-	telescope?: unknown;
+	telescope?: Telescope;
 }
 
 /**
@@ -166,7 +157,7 @@ export class RestApi<TName extends string = string>
 	readonly envParser: EnvironmentParser<{}>;
 
 	/** The Telescope instance, when this surface was given one. */
-	readonly telescope?: unknown;
+	readonly telescope?: Telescope;
 
 	constructor(
 		id: ConstructName<TName>,
@@ -322,7 +313,6 @@ export class RestApi<TName extends string = string>
 					: {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
-				...(this.config.colocate ? { colocate: this.config.colocate } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

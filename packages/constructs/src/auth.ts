@@ -36,6 +36,7 @@ import {
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { betterAuth } from 'better-auth';
+import type { Hono } from 'hono';
 import type { Kysely } from 'kysely';
 import { type Construct, type Consumable, edgeTo } from './construct-interface';
 
@@ -72,15 +73,6 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 * shares with can read both.
 	 */
 	app?: AppSpec;
-	/**
-	 * Another surface to run inside, instead of having a container.
-	 *
-	 * The opt-in, and it must be typed out. Colocating an auth server with an
-	 * API puts the session secret in the API's environment and its tables one
-	 * connection away — survivable while an app is small, never something to
-	 * arrive at by leaving a field blank.
-	 */
-	colocate?: string;
 	/**
 	 * The rest of better-auth's options: providers, plugins, email settings.
 	 *
@@ -172,7 +164,6 @@ export class BetterAuth<
 				kind: 'rest-api',
 				id: this.id,
 				...(this.config.app ? { app: this.config.app } : {}),
-				...(this.config.colocate ? { colocate: this.config.colocate } : {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,
@@ -214,6 +205,72 @@ export class BetterAuth<
 		const { runMigrations } = await getMigrations(auth.options);
 
 		return runMigrations;
+	}
+
+	/**
+	 * The server this surface runs as, built from its own declaration.
+	 *
+	 * A surface is a deploy unit, so something has to serve it, and the thing
+	 * that knows how is the construct — not a generator writing a mount into
+	 * somebody else's entry point. That is how the auth server came to be
+	 * mounted by a hook in the application it was supposed to be separate from,
+	 * and then to be served by nothing at all when the hook was deleted.
+	 *
+	 * The routes come from {@link declare}: one wildcard under `basePath`, read
+	 * off the same declaration the manifest carries, so the surface the graph
+	 * describes and the surface that answers requests cannot disagree.
+	 *
+	 * ```ts
+	 * // .gkm/server/app.ts — the whole generated entry
+	 * import { auth } from '@acme/constructs/auth.js';
+	 * export const { app } = await auth.server({ envParser });
+	 * ```
+	 */
+	async server(options: ServiceRegisterOptions): Promise<{ app: Hono }> {
+		const { Hono } = await import('hono');
+		const { cors } = await import('hono/cors');
+		const app = new Hono();
+		const server = await this.connect(options);
+
+		// Who may call this surface, read off the graph. The same list Better
+		// Auth checks for CSRF — it arrives as `<ID>_TRUSTED_ORIGINS`, composed
+		// by the target from whatever declared an edge to this construct, so a
+		// site that depends on the auth server is allowed to reach it and
+		// nothing else is. Nobody writes an origin down.
+		const { origins } = options.envParser
+			.create((get) => ({
+				origins: get(this.keys.trustedOrigins)
+					.string()
+					.default('')
+					.transform((value: string) =>
+						value
+							.split(',')
+							.map((origin) => origin.trim())
+							.filter(Boolean),
+					),
+			}))
+			.parse();
+
+		app.use('*', cors({ origin: origins, credentials: true, maxAge: 3600 }));
+
+		// Read off the declaration rather than restated here. `ANY` is every
+		// method Better Auth routes internally, which is the reason the
+		// declaration wildcards rather than enumerating.
+		const [surface] = this.declare().filter(
+			(d): d is Extract<Declaration, { kind: 'rest-api' }> =>
+				d.kind === 'rest-api',
+		);
+
+		for (const endpoint of surface?.endpoints ?? []) {
+			const methods =
+				endpoint.method === 'ANY'
+					? (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const)
+					: ([endpoint.method] as const);
+
+			app.on([...methods], endpoint.path, (c) => server.handler(c.req.raw));
+		}
+
+		return { app };
 	}
 
 	private async connect(

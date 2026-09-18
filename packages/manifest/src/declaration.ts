@@ -361,21 +361,6 @@ export interface RestApiDeclaration extends Node {
 	 */
 	app?: AppSpec;
 	/**
-	 * Another surface this one runs inside.
-	 *
-	 * A surface gets its own container. Sharing one is an opt-in, because it is
-	 * a security surface: two surfaces in a process share a filesystem, an
-	 * environment, and every credential either of them was granted — so an
-	 * auth server colocated with an API is one bug in the API away from being
-	 * read by it.
-	 *
-	 * Named rather than inferred, and that is the whole point. Inferring it from
-	 * "this surface has no app of its own" made the unsafe arrangement the thing
-	 * that happens when you forget, which is exactly backwards. A surface with
-	 * neither `app` nor `colocate` is an error the build reports by name.
-	 */
-	colocate?: ConstructId;
-	/**
 	 * The construct that authenticates this surface.
 	 *
 	 * An edge like any other — so the auth server learns this surface's origin,

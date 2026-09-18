@@ -282,6 +282,8 @@ importers:
 
   apps/kitchen-sink/apps/api: {}
 
+  apps/kitchen-sink/apps/auth: {}
+
   apps/kitchen-sink/apps/web:
     devDependencies:
       vite:
@@ -666,6 +668,9 @@ importers:
       '@geekmidas/services':
         specifier: workspace:^
         version: link:../services
+      '@geekmidas/telescope':
+        specifier: workspace:*
+        version: link:../telescope
       '@geekmidas/testkit':
         specifier: workspace:^
         version: link:../testkit

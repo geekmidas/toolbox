@@ -43,5 +43,5 @@ export function defaultEnvParser(): EnvironmentParser<{}> {
 export function envParserFor(
 	surface: EndpointSurface | undefined,
 ): EnvironmentParser<{}> {
-	return (surface?.envParser as EnvironmentParser<{}>) ?? defaultEnvParser();
+	return surface?.envParser ?? defaultEnvParser();
 }

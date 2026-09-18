@@ -215,6 +215,9 @@
 			}
 		}
 	},
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
 	},
@@ -249,6 +252,7 @@
 		"@geekmidas/rate-limit": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
 		"@geekmidas/services": "workspace:^",
+		"@geekmidas/telescope": "workspace:*",
 		"@geekmidas/testkit": "workspace:^",
 		"@types/lodash.compact": "~3.0.9",
 		"@types/lodash.get": "~4.4.9",
@@ -278,6 +282,7 @@
 		"@geekmidas/schema": "workspace:^",
 		"@geekmidas/services": "workspace:^",
 		"@geekmidas/storage": "workspace:^",
+		"@geekmidas/telescope": "workspace:*",
 		"@middy/core": ">=6.3.1",
 		"@types/aws-lambda": ">=8.10.92",
 		"better-auth": ">=1.4.18",

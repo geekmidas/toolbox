@@ -98,7 +98,7 @@ describe('derivedApps', () => {
 		expect('functions' in apps.api!).toBe(false);
 	});
 
-	it('refuses a surface that names neither an app nor a colocation', () => {
+	it('refuses a surface that never said where it runs', () => {
 		// `.auth()` used to be enough to make Auth share the API's container.
 		// It is not: sharing a process shares a filesystem, an environment and
 		// every credential either surface holds.
@@ -107,18 +107,7 @@ describe('derivedApps', () => {
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(() => derivedApps(manifest, workspace())).toThrow(
-			/no app and no colocate/,
-		);
-	});
-
-	it('shares a container only when the surface asks to', () => {
-		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
-			Auth: surface('Auth', { colocate: 'Api' }),
-		} as unknown as ConstructManifest;
-
-		expect(Object.keys(derivedApps(manifest, workspace()))).toEqual(['api']);
+		expect(() => derivedApps(manifest, workspace())).toThrow(/declares no app/);
 	});
 
 	it('gives an auth server its own container once it has an app', () => {
@@ -217,13 +206,12 @@ describe('derivedApps', () => {
 		]);
 	});
 
-	it('points an edge at the app that serves a mounted surface', () => {
-		// `Web` calls `Auth`, which colocates into the API — so the edge resolves
-		// to the container that actually serves it, not to an app that does not
-		// exist. Once Auth has its own `app`, the same edge resolves to `auth`.
+	it('points an edge at the container that serves the surface', () => {
+		// `Web` calls `Auth`, which has its own container — so the edge resolves
+		// to `auth`, and the build order says web waits on it.
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
-			Auth: surface('Auth', { colocate: 'Api' }),
+			Auth: surface('Auth', { app: { path: 'apps/auth' } }),
 			Web: site(
 				'Web',
 				{ path: 'apps/web' },
@@ -234,7 +222,7 @@ describe('derivedApps', () => {
 		} as unknown as ConstructManifest;
 
 		expect(derivedApps(manifest, workspace()).web?.dependencies).toEqual([
-			'api',
+			'auth',
 		]);
 	});
 
@@ -305,16 +293,7 @@ describe('hostOf', () => {
 		expect(hostOf(manifest, 'Api')).toBe('Api');
 	});
 
-	it('follows a colocation to its host', () => {
-		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
-			Auth: surface('Auth', { colocate: 'Api' }),
-		} as unknown as ConstructManifest;
-
-		expect(hostOf(manifest, 'Auth')).toBe('Api');
-	});
-
-	it('does not treat `.auth()` as a colocation', () => {
+	it('does not treat `.auth()` as a place to run', () => {
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
 			Auth: surface('Auth'),
@@ -331,12 +310,9 @@ describe('hostOf', () => {
 		expect(hostOf(manifest, 'Auth')).toBeUndefined();
 	});
 
-	it('terminates on a cycle rather than hanging', () => {
-		// Two surfaces naming each other as their authenticator is nonsense, but
-		// it is nonsense a config file can express.
+	it('answers with nothing for a surface with no app', () => {
 		const manifest = {
-			A: surface('A', { colocate: 'B' }),
-			B: surface('B', { colocate: 'A' }),
+			A: surface('A'),
 		} as unknown as ConstructManifest;
 
 		expect(hostOf(manifest, 'A')).toBeUndefined();

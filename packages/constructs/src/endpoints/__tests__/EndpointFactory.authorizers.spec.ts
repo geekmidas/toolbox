@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { BUILT_IN_SECURITY_SCHEMES } from '../Authorizer';
 import { EndpointFactory } from '../EndpointFactory';
+import { TEST_SURFACE } from './__helpers__/surface';
 
 describe('EndpointFactory.authorizers', () => {
 	it('should create factory with available authorizers', () => {
-		const factory = new EndpointFactory().authorizers([
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
 			'iam',
 			'jwt-auth0',
 			'custom',
@@ -23,7 +24,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should allow setting authorizer on individual endpoints', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		const endpoint1 = factory
 			.post('/admin/users')
@@ -47,7 +51,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should throw error when using non-existent authorizer', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		expect(() => {
 			factory
@@ -61,7 +68,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should allow endpoints without authorizers', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		const endpoint = factory
 			.get('/public')
@@ -71,7 +81,7 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should preserve authorizers when chaining factory methods', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt', 'api-key'] as const)
 			.route('/api/v1');
 
@@ -93,7 +103,7 @@ describe('EndpointFactory.authorizers', () => {
 			register: async () => ({ query: async () => [] }),
 		};
 
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.services([dbService])
 			.authorizers(['iam'] as const);
 
@@ -113,7 +123,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should maintain type safety with authorizer names', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		// This should compile with valid authorizer
 		factory
@@ -132,7 +145,9 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should allow creating endpoints without calling authorizer() method', () => {
-		const factory = new EndpointFactory().authorizers(['iam'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+		] as const);
 
 		const endpoint1 = factory
 			.get('/public')
@@ -151,7 +166,7 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should work with nested routes', () => {
-		const apiFactory = new EndpointFactory()
+		const apiFactory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.route('/api');
 
@@ -172,7 +187,9 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should work with all HTTP methods', () => {
-		const factory = new EndpointFactory().authorizers(['jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'jwt',
+		] as const);
 
 		const getEndpoint = factory
 			.get('/users')
@@ -212,7 +229,9 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should work with output schemas', () => {
-		const factory = new EndpointFactory().authorizers(['iam'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+		] as const);
 
 		const outputSchema = z.object({
 			id: z.string(),
@@ -236,7 +255,7 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should not throw error when no authorizers are configured', () => {
-		const factory = new EndpointFactory();
+		const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 		const endpoint = factory
 			.get('/test')
@@ -246,7 +265,7 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should handle multiple authorizers with similar names', () => {
-		const factory = new EndpointFactory().authorizers([
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
 			'jwt-user',
 			'jwt-admin',
 			'jwt',
@@ -276,7 +295,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should support "none" to explicitly mark endpoint as having no authorizer', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		const endpoint = factory
 			.get('/public')
@@ -287,7 +309,10 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should allow "none" to override default authorizer from factory', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		// In the future, if we add default authorizer support at factory level,
 		// 'none' should override it
@@ -301,7 +326,7 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should allow "none" even when no authorizers are configured', () => {
-		const factory = new EndpointFactory();
+		const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 		const endpoint = factory
 			.get('/test')
@@ -312,7 +337,9 @@ describe('EndpointFactory.authorizers', () => {
 	});
 
 	it('should work with "none" in combination with other endpoint methods', () => {
-		const factory = new EndpointFactory().authorizers(['iam'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+		] as const);
 
 		const endpoint = factory
 			.post('/public/contact')
@@ -331,7 +358,7 @@ describe('EndpointFactory.authorizers', () => {
 
 describe('EndpointFactory.authorizer (default)', () => {
 	it('should set default authorizer for all endpoints', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt');
 
@@ -350,7 +377,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should allow endpoint to override factory default authorizer', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt');
 
@@ -366,7 +393,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should allow endpoint to disable authorizer with none', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt');
 
@@ -379,7 +406,10 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should throw error when setting non-existent default authorizer', () => {
-		const factory = new EndpointFactory().authorizers(['iam', 'jwt'] as const);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizers([
+			'iam',
+			'jwt',
+		] as const);
 
 		expect(() => {
 			factory.authorizer('invalid');
@@ -389,7 +419,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should preserve default authorizer when chaining factory methods', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt')
 			.route('/api/v1');
@@ -409,7 +439,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 			register: async () => ({ query: async () => [] }),
 		};
 
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['jwt'] as const)
 			.authorizer('jwt')
 			.services([dbService]);
@@ -426,7 +456,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should allow factory.authorizer("none") to clear default', () => {
-		const factory = new EndpointFactory()
+		const factory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt')
 			.authorizer('none');
@@ -438,7 +468,9 @@ describe('EndpointFactory.authorizer (default)', () => {
 
 	it('should allow setting default authorizer without calling authorizers() first', () => {
 		// When no authorizers are defined, validation is skipped
-		const factory = new EndpointFactory().authorizer('custom');
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorizer(
+			'custom',
+		);
 
 		const endpoint = factory.get('/test').handle(async () => ({ test: true }));
 
@@ -446,7 +478,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should work with nested route factories', () => {
-		const rootFactory = new EndpointFactory()
+		const rootFactory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt', 'api-key'] as const)
 			.authorizer('jwt');
 
@@ -466,7 +498,7 @@ describe('EndpointFactory.authorizer (default)', () => {
 	});
 
 	it('should allow sub-factory to override parent default authorizer', () => {
-		const rootFactory = new EndpointFactory()
+		const rootFactory = new EndpointFactory({ surface: TEST_SURFACE })
 			.authorizers(['iam', 'jwt'] as const)
 			.authorizer('jwt');
 

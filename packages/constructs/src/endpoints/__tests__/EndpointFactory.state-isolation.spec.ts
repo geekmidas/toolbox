@@ -1,6 +1,7 @@
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { EndpointFactory } from '../EndpointFactory';
+import { TEST_SURFACE } from './__helpers__/surface';
 
 const CacheService = {
 	serviceName: 'cache' as const,
@@ -18,7 +19,7 @@ const DatabaseService = {
 
 describe('EndpointFactory - State Isolation', () => {
 	it('should create independent endpoints with sequential factory.services() calls', () => {
-		const factory = new EndpointFactory();
+		const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 		const endpoint1 = factory
 			.services([CacheService, DatabaseService])
@@ -38,7 +39,7 @@ describe('EndpointFactory - State Isolation', () => {
 	});
 
 	it('should create independent builders from reused factory instance', () => {
-		const factory = new EndpointFactory().services([
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).services([
 			CacheService,
 			DatabaseService,
 		]);
@@ -63,7 +64,7 @@ describe('EndpointFactory - State Isolation', () => {
 	});
 
 	it('should not leak services between independent builder chains', () => {
-		const factory = new EndpointFactory();
+		const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 		const builder1 = factory.post('/api1').services([CacheService]);
 		const builder2 = factory.post('/api2').services([DatabaseService]);
@@ -77,7 +78,9 @@ describe('EndpointFactory - State Isolation', () => {
 	});
 
 	it('should allow builder to add services without affecting other builders', () => {
-		const factory = new EndpointFactory().services([CacheService]);
+		const factory = new EndpointFactory({ surface: TEST_SURFACE }).services([
+			CacheService,
+		]);
 
 		const endpoint1 = factory
 			.post('/test')
@@ -95,7 +98,10 @@ describe('EndpointFactory - State Isolation', () => {
 
 	it('should support base router pattern with extended services', () => {
 		// Create a base router with default services
-		const r = new EndpointFactory().services([CacheService, DatabaseService]);
+		const r = new EndpointFactory({ surface: TEST_SURFACE }).services([
+			CacheService,
+			DatabaseService,
+		]);
 
 		// Create endpoint with additional service
 		const getUsers = r
@@ -128,7 +134,10 @@ describe('EndpointFactory - State Isolation', () => {
 		} satisfies Service<'additional', any>;
 
 		// Create a base router with default services
-		const r = new EndpointFactory().services([CacheService, DatabaseService]);
+		const r = new EndpointFactory({ surface: TEST_SURFACE }).services([
+			CacheService,
+			DatabaseService,
+		]);
 
 		// Create endpoint with additional service
 		const getUsers = r
