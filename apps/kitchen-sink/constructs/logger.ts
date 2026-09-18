@@ -6,7 +6,7 @@ import { telescope } from './telescope.js';
  * Pino logger with Telescope integration. Logs stream to stdout AND to the
  * Telescope dashboard (visit `/telescope` while `gkm dev` is running).
  */
-const logger = pino(
+export const logger = pino(
 	{
 		level: 'debug',
 		formatters: {
@@ -21,5 +21,3 @@ const logger = pino(
 		{ stream: createPinoTransport({ telescope }) },
 	]),
 );
-
-export default logger;

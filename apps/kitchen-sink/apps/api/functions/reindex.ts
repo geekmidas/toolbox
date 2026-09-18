@@ -1,7 +1,7 @@
 import { f } from '@geekmidas/constructs/functions';
 import { database } from '@kitchen-sink/constructs/database.js';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 import { z } from 'zod';
-import logger from '../config/logger.js';
 
 /**
  * A standalone function (`f`) — not an HTTP route and not schedule-driven.

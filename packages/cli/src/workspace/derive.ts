@@ -46,30 +46,37 @@ export function appKey(id: string): string {
 }
 
 /**
- * The surface that actually serves a given surface.
+ * The app serving a surface: its own, always.
  *
- * A surface with an `app` serves itself. One without is mounted into whichever
- * surface named it with `.auth()` — the auth server case, and the only one
- * where two surfaces legitimately share a process. Resolved transitively, and
- * defensively: a cycle returns the id it started from rather than hanging.
+ * Every surface gets a container. There is no arrangement in which one runs
+ * inside another — two surfaces in a process share a filesystem, an
+ * environment, and every credential either was granted, so an auth server
+ * beside an API is one bug in the API away from being read by it.
  */
 export function hostOf(
 	manifest: ConstructManifest,
 	id: string,
-	seen: ReadonlySet<string> = new Set(),
 ): string | undefined {
 	const declaration = manifest[id];
 	if (!declaration || declaration.kind !== 'rest-api') return undefined;
-	if (declaration.app) return id;
-	if (seen.has(id)) return undefined;
 
-	for (const [candidateId, candidate] of Object.entries(manifest)) {
-		if (candidate.kind !== 'rest-api' || candidate.auth !== id) continue;
-		const host = hostOf(manifest, candidateId, new Set([...seen, id]));
-		if (host) return host;
+	return declaration.app ? id : undefined;
+}
+
+/**
+ * A surface that never said where it runs.
+ *
+ * Loud, because the alternative is picking a container for it — and a surface
+ * that gets one by inference gets it from whatever happened to reference it.
+ */
+export class UnhostedSurface extends Error {
+	constructor(readonly surface: string) {
+		super(
+			`Surface "${surface}" declares no app, so nothing serves it. Give it one:\n` +
+				`  new RestApi('${surface}', { app: { path: 'apps/${surface.toLowerCase()}' } })`,
+		);
+		this.name = 'UnhostedSurface';
 	}
-
-	return undefined;
 }
 
 /**
@@ -139,7 +146,13 @@ export function derivedApps(
 			continue;
 
 		const spec = declaration.app;
-		if (!spec) continue;
+		if (!spec) {
+			// No app and nowhere named to run: refuse rather than choose. A
+			// surface that gets a container by inference gets it from whatever
+			// happened to reference it.
+			if (declaration.kind === 'rest-api') throw new UnhostedSurface(id);
+			continue;
+		}
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override
@@ -158,6 +171,19 @@ export function derivedApps(
 						framework: configured?.framework ?? FRAMEWORKS[declaration.variant],
 						...(declaration.root ? { root: true } : {}),
 						...(spec.config ? { config: spec.config } : {}),
+					}
+				: {}),
+			// One glob fans out to the six the build reads, because each generator
+			// already inspects every export and keeps what it recognises. A
+			// per-kind field still wins where one was given.
+			...(spec.code !== undefined
+				? {
+						routes: spec.code,
+						functions: spec.code,
+						crons: spec.code,
+						queues: spec.code,
+						topics: spec.code,
+						subscribers: spec.code,
 					}
 				: {}),
 			...(spec.routes !== undefined ? { routes: spec.routes } : {}),

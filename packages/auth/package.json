@@ -95,6 +95,9 @@
 			}
 		}
 	},
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"play": "tsx src/playground.ts"
 	},

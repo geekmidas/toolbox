@@ -2,6 +2,7 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { EndpointFactory } from '../EndpointFactory';
+import { TEST_SURFACE } from './__helpers__/surface';
 
 const ServiceA = {
 	serviceName: 'a' as const,
@@ -20,7 +21,10 @@ const ServiceB = {
 describe('EndpointFactory - Reference Sharing Audit', () => {
 	describe('services array', () => {
 		it('should not share services array references between builders', () => {
-			const factory = new EndpointFactory().services([ServiceA, ServiceB]);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).services([
+				ServiceA,
+				ServiceB,
+			]);
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -36,7 +40,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 		});
 
 		it('should not mutate factory services when builder adds services', () => {
-			const factory = new EndpointFactory().services([ServiceA]);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).services([
+				ServiceA,
+			]);
 
 			const builder = factory.post('/test');
 			const originalServices = (factory as any).defaultServices;
@@ -52,7 +58,7 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 
 	describe('events array', () => {
 		it('should not share events array references between builders', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -66,7 +72,7 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 		});
 
 		it('should not share events between builders even after adding events', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -83,7 +89,7 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 
 	describe('schemas object', () => {
 		it('should not share schemas object references between builders', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -95,7 +101,7 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 		});
 
 		it('should not share schemas between builders after setting schemas', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const bodySchema: any = { '~standard': { validate: () => ({}) } };
 
 			const builder1 = factory.post('/a').body(bodySchema);
@@ -110,7 +116,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 	describe('logger (intentionally shared)', () => {
 		it('should share logger references between builders (by design)', () => {
 			const logger = new ConsoleLogger({ app: 'test' });
-			const factory = new EndpointFactory().logger(logger);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).logger(
+				logger,
+			);
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -126,7 +134,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 	describe('authorize and session functions', () => {
 		it('should share authorize function reference (by design)', () => {
 			const authFn = async () => true;
-			const factory = new EndpointFactory().authorize(authFn);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).authorize(
+				authFn,
+			);
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -140,7 +150,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 
 		it('should share session extractor function reference (by design)', () => {
 			const sessionFn = async () => ({ userId: '123' });
-			const factory = new EndpointFactory().session(sessionFn);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).session(
+				sessionFn,
+			);
 
 			const builder1 = factory.post('/a');
 			const builder2 = factory.post('/b');
@@ -156,7 +168,9 @@ describe('EndpointFactory - Reference Sharing Audit', () => {
 	describe('complex nested factory chains', () => {
 		it('should maintain proper isolation through multiple factory layers', () => {
 			// Create base router
-			const base = new EndpointFactory().services([ServiceA]);
+			const base = new EndpointFactory({ surface: TEST_SURFACE }).services([
+				ServiceA,
+			]);
 
 			// Create auth router from base
 			const authRouter = base.authorize(async () => true);

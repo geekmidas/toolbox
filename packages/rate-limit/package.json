@@ -15,6 +15,9 @@
 			}
 		}
 	},
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
 	},

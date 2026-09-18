@@ -14,7 +14,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 	postgres: 'postgres',
 	redis: 'redis',
 	rabbitmq: 'rabbitmq',
-	minio: 'minio/minio',
+	minio: 'quay.io/minio/minio',
 	mailpit: 'axllent/mailpit',
 	localstack: 'floci/floci',
 };
@@ -24,7 +24,10 @@ export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
 	postgres: `${DEFAULT_POSTGRES_VERSION}-alpine`,
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
-	minio: 'latest',
+	// Pinned, unlike its neighbours, and deliberately: MinIO removed their
+	// Docker Hub images, so `minio/minio:latest` stopped resolving — and
+	// `latest` is what let that land here without anyone choosing it.
+	minio: 'RELEASE.2025-09-07T16-13-09Z',
 	mailpit: 'latest',
 	localstack: 'latest',
 };
@@ -670,7 +673,7 @@ function getInfraServiceImage(
 	const defaults: Record<'postgres' | 'redis' | 'minio', string> = {
 		postgres: 'postgres:18-alpine',
 		redis: 'redis:7-alpine',
-		minio: 'minio/minio:latest',
+		minio: 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
 	};
 
 	// A pin is a whole image reference now — `services.images` holds one string

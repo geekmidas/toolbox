@@ -3,6 +3,7 @@ import type { Logger } from '@geekmidas/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { EndpointFactory } from '../EndpointFactory';
+import { TEST_SURFACE } from './__helpers__/surface';
 
 describe('EndpointFactory', () => {
 	const mockLogger: Logger = {
@@ -28,7 +29,7 @@ describe('EndpointFactory', () => {
 		};
 
 		it('should create a factory with database service', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const factoryWithDb = factory.database(DatabaseService);
 
 			expect(factoryWithDb).toBeInstanceOf(EndpointFactory);
@@ -36,7 +37,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should pass database service to created endpoints', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.database(DatabaseService);
 
@@ -48,7 +49,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should preserve database service through factory chains', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.database(DatabaseService)
 				.logger(mockLogger)
 				.route('/api');
@@ -69,7 +70,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.database(DatabaseService)
 				.services([OtherService]);
 
@@ -89,7 +90,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.database(DatabaseService);
 
@@ -105,7 +106,7 @@ describe('EndpointFactory', () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.database(DatabaseService)
 				.authorize(authFn)
 				.session(sessionFn);
@@ -135,7 +136,7 @@ describe('EndpointFactory', () => {
 		};
 
 		it('should create a factory with auditor storage', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const factoryWithAuditor = factory.auditor(AuditStorageService);
 
 			expect(factoryWithAuditor).toBeInstanceOf(EndpointFactory);
@@ -143,7 +144,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should pass auditor storage to created endpoints', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.auditor(AuditStorageService);
 
@@ -155,7 +156,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should preserve auditor storage through factory chains', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.auditor(AuditStorageService)
 				.logger(mockLogger)
 				.route('/api');
@@ -176,7 +177,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.auditor(AuditStorageService)
 				.services([OtherService]);
 
@@ -200,7 +201,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.auditor(AuditStorageService);
 
@@ -216,7 +217,7 @@ describe('EndpointFactory', () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.auditor(AuditStorageService)
 				.authorize(authFn)
 				.session(sessionFn);
@@ -253,7 +254,7 @@ describe('EndpointFactory', () => {
 		};
 
 		it('should allow both database and auditor to be configured', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.database(DatabaseService)
 				.auditor(AuditStorageService);
@@ -267,7 +268,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should preserve both through route chains', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.database(DatabaseService)
 				.auditor(AuditStorageService)
 				.route('/api')
@@ -294,7 +295,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.services([OtherService])
 				.database(DatabaseService)
@@ -336,7 +337,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.database(DatabaseService)
 				.auditor(AuditStorageService);
 
@@ -354,7 +355,7 @@ describe('EndpointFactory', () => {
 	describe('actor', () => {
 		it('should create a factory with actor extractor', () => {
 			const actorExtractor = () => ({ id: '123', type: 'user' as const });
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const factoryWithActor = factory.actor(actorExtractor);
 
 			expect(factoryWithActor).toBeInstanceOf(EndpointFactory);
@@ -363,7 +364,7 @@ describe('EndpointFactory', () => {
 
 		it('should pass actor extractor to created endpoints', () => {
 			const actorExtractor = () => ({ id: '123', type: 'user' as const });
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.actor(actorExtractor);
 
@@ -376,7 +377,7 @@ describe('EndpointFactory', () => {
 
 		it('should preserve actor extractor through factory chains', () => {
 			const actorExtractor = () => ({ id: '123', type: 'user' as const });
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.actor(actorExtractor)
 				.logger(mockLogger)
 				.route('/api');
@@ -393,7 +394,7 @@ describe('EndpointFactory', () => {
 			const factoryActor = () => ({ id: 'factory', type: 'system' as const });
 			const endpointActor = () => ({ id: 'endpoint', type: 'user' as const });
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.actor(factoryActor);
 
@@ -431,7 +432,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.logger(mockLogger)
 				.database(DatabaseService)
 				.auditor(AuditStorageService)
@@ -470,6 +471,7 @@ describe('EndpointFactory', () => {
 
 		it('should accept database and auditor in constructor options', () => {
 			const factory = new EndpointFactory({
+				surface: TEST_SURFACE,
 				defaultDatabaseService: DatabaseService,
 				defaultAuditorStorage: AuditStorageService,
 			});
@@ -495,6 +497,7 @@ describe('EndpointFactory', () => {
 			};
 
 			const factory = new EndpointFactory({
+				surface: TEST_SURFACE,
 				defaultDatabaseService: DatabaseService,
 			}).auditor(AltAuditStorage);
 

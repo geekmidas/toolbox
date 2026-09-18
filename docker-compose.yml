@@ -48,7 +48,10 @@ services:
       retries: 3
     restart: always # Ensure the container restarts automatically
   minio:
-    image: minio/minio:latest
+    # Quay, and pinned. MinIO removed their Docker Hub images, so
+    # `minio/minio:latest` stopped resolving and took CI with it — and `latest`
+    # is what let an upstream change land here without anyone choosing it.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     entrypoint: sh
     ports:
       - "9000:9000"
@@ -84,7 +87,16 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "localstack-data:/var/lib/localstack"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      # Bash, not curl. The image ships no curl, no wget, no nc and no grep, so
+      # the previous check could never pass — it reported unhealthy 36 times in
+      # a row and took every suite that waits on this service down with it.
+      #
+      # A TCP connect rather than a request to `/_localstack/health`: the
+      # request works, but Compose interpolates `$` and mangles `\r\n` inside
+      # the YAML, and a readiness check is not worth a quoting puzzle. The
+      # gateway binds this port when its HTTP server is up, which is the fact
+      # the waiters actually need.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/4566"]
       interval: 10s
       timeout: 5s
       retries: 5

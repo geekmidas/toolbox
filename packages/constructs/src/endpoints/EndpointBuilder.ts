@@ -83,8 +83,13 @@ export class EndpointBuilder<
 	_authorizerName?: TAuthorizers[number];
 	_actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	_audits: MappedAudit<TAuditAction, OutSchema>[] = [];
-	/** Internal: the surface this builder came from, carried to the endpoint. */
-	_surface?: EndpointSurface;
+	/**
+	 * Internal: the surface this builder came from, carried to the endpoint.
+	 *
+	 * Assigned by the factory before the builder is handed out, which is the
+	 * only way a builder is ever created.
+	 */
+	_surface!: EndpointSurface;
 	_customSecuritySchemes: Record<string, SecurityScheme> = {};
 	_rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	_rlsBypass?: boolean;
@@ -816,7 +821,7 @@ export class EndpointBuilder<
 			publisherService: this._publisher,
 			events: this._events,
 			authorizer,
-			...(this._surface ? { surface: this._surface } : {}),
+			surface: this._surface,
 			auditorStorageService: this._auditorStorage,
 			actorExtractor: this._actorExtractor,
 			audits: this._audits,

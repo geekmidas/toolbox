@@ -202,6 +202,16 @@ export async function buildCommand(
 	);
 	const primary = surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
 
+	// Which database Studio browses: the one the app declared. A reader is not a
+	// candidate — it is the same data through a role that cannot write, so
+	// browsing it would be the same rows under a second name.
+	const browsable = Object.entries(declared).find(
+		([, d]) => d.kind === 'database',
+	);
+	const browsableSource = browsable
+		? constructSources[browsable[0]]
+		: undefined;
+
 	const buildContext: BuildContext = {
 		...(primary
 			? {
@@ -225,7 +235,16 @@ export async function buildCommand(
 		loggerPath,
 		loggerImportPattern,
 		telescope,
-		studio,
+		studio:
+			studio && browsableSource
+				? {
+						...studio,
+						database: {
+							specifier: browsableSource.file,
+							exportName: browsableSource.exportName,
+						},
+					}
+				: studio,
 		hooks,
 		production,
 		dockerServices,

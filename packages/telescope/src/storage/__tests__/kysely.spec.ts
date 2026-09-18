@@ -13,6 +13,7 @@ function createMockQueryBuilder() {
 	const builder: Record<string, any> = {};
 
 	// Chain methods return the builder itself
+	builder.withSchema = vi.fn().mockReturnValue(builder);
 	builder.selectFrom = vi.fn().mockReturnValue(builder);
 	builder.insertInto = vi.fn().mockReturnValue(builder);
 	builder.deleteFrom = vi.fn().mockReturnValue(builder);
@@ -66,7 +67,7 @@ describe('KyselyStorage', () => {
 
 			await storage.saveRequest(entry);
 
-			expect(mockDb.insertInto).toHaveBeenCalledWith('telescope_requests');
+			expect(mockDb.insertInto).toHaveBeenCalledWith('requests');
 			expect(mockDb.values).toHaveBeenCalledWith({
 				id: 'req-123',
 				method: 'GET',
@@ -144,7 +145,7 @@ describe('KyselyStorage', () => {
 
 			await storage.saveRequests(entries);
 
-			expect(mockDb.insertInto).toHaveBeenCalledWith('telescope_requests');
+			expect(mockDb.insertInto).toHaveBeenCalledWith('requests');
 			expect(mockDb.values).toHaveBeenCalledWith(
 				expect.arrayContaining([
 					expect.objectContaining({ id: 'req-1' }),
@@ -186,7 +187,7 @@ describe('KyselyStorage', () => {
 
 			const result = await storage.getRequests();
 
-			expect(mockDb.selectFrom).toHaveBeenCalledWith('telescope_requests');
+			expect(mockDb.selectFrom).toHaveBeenCalledWith('requests');
 			expect(mockDb.selectAll).toHaveBeenCalled();
 			expect(mockDb.orderBy).toHaveBeenCalledWith('timestamp', 'desc');
 			expect(mockDb.limit).toHaveBeenCalledWith(50);
@@ -245,7 +246,7 @@ describe('KyselyStorage', () => {
 
 			const result = await storage.getRequest('req-123');
 
-			expect(mockDb.selectFrom).toHaveBeenCalledWith('telescope_requests');
+			expect(mockDb.selectFrom).toHaveBeenCalledWith('requests');
 			expect(mockDb.where).toHaveBeenCalledWith('id', '=', 'req-123');
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('req-123');
@@ -283,7 +284,7 @@ describe('KyselyStorage', () => {
 
 			await storage.saveException(entry);
 
-			expect(mockDb.insertInto).toHaveBeenCalledWith('telescope_exceptions');
+			expect(mockDb.insertInto).toHaveBeenCalledWith('exceptions');
 			expect(mockDb.values).toHaveBeenCalledWith({
 				id: 'exc-123',
 				name: 'Error',
@@ -356,7 +357,7 @@ describe('KyselyStorage', () => {
 
 			const result = await storage.getExceptions();
 
-			expect(mockDb.selectFrom).toHaveBeenCalledWith('telescope_exceptions');
+			expect(mockDb.selectFrom).toHaveBeenCalledWith('exceptions');
 			expect(result).toHaveLength(1);
 			expect(result[0].name).toBe('Error');
 			expect(result[0].requestId).toBe('req-1');
@@ -411,7 +412,7 @@ describe('KyselyStorage', () => {
 
 			await storage.saveLog(entry);
 
-			expect(mockDb.insertInto).toHaveBeenCalledWith('telescope_logs');
+			expect(mockDb.insertInto).toHaveBeenCalledWith('logs');
 			expect(mockDb.values).toHaveBeenCalledWith({
 				id: 'log-123',
 				level: 'info',
@@ -474,7 +475,7 @@ describe('KyselyStorage', () => {
 
 			const result = await storage.getLogs();
 
-			expect(mockDb.selectFrom).toHaveBeenCalledWith('telescope_logs');
+			expect(mockDb.selectFrom).toHaveBeenCalledWith('logs');
 			expect(result).toHaveLength(1);
 			expect(result[0].level).toBe('info');
 			expect(result[0].context).toEqual({ key: 'value' });
@@ -496,9 +497,9 @@ describe('KyselyStorage', () => {
 
 			const deleted = await storage.prune(olderThan);
 
-			expect(mockDb.deleteFrom).toHaveBeenCalledWith('telescope_requests');
-			expect(mockDb.deleteFrom).toHaveBeenCalledWith('telescope_exceptions');
-			expect(mockDb.deleteFrom).toHaveBeenCalledWith('telescope_logs');
+			expect(mockDb.deleteFrom).toHaveBeenCalledWith('requests');
+			expect(mockDb.deleteFrom).toHaveBeenCalledWith('exceptions');
+			expect(mockDb.deleteFrom).toHaveBeenCalledWith('logs');
 			expect(mockDb.where).toHaveBeenCalledWith('timestamp', '<', olderThan);
 			expect(deleted).toBe(17);
 		});
@@ -571,17 +572,16 @@ describe('KyselyStorage', () => {
 	});
 
 	// ============================================
-	// Table Prefix
+	// Schema
 	// ============================================
 
-	describe('table prefix', () => {
-		it('should use custom table prefix', async () => {
-			const customStorage = new KyselyStorage({
-				db: mockDb as any,
-				tablePrefix: 'custom',
-			});
-
-			await customStorage.saveRequest({
+	describe('schema', () => {
+		it('names its tables unqualified, for the search_path to place', async () => {
+			// The tables were `telescope_requests` and friends — a prefix, which is
+			// what you reach for when they have to share a schema with an
+			// application's own. A telescope derived from a database gets its own,
+			// and a role pinned to it, so the name is just the name.
+			await storage.saveRequest({
 				id: 'req-1',
 				method: 'GET',
 				path: '/test',
@@ -593,7 +593,29 @@ describe('KyselyStorage', () => {
 				timestamp: new Date(),
 			});
 
-			expect(mockDb.insertInto).toHaveBeenCalledWith('custom_requests');
+			expect(mockDb.insertInto).toHaveBeenCalledWith('requests');
+			expect(mockDb.withSchema).not.toHaveBeenCalled();
+		});
+
+		it('qualifies them when the connection is not pinned to one', async () => {
+			const scoped = new KyselyStorage({
+				db: mockDb as any,
+				schema: 'telescope',
+			});
+
+			await scoped.saveRequest({
+				id: 'req-1',
+				method: 'GET',
+				path: '/test',
+				url: 'http://localhost/test',
+				headers: {},
+				status: 200,
+				responseHeaders: {},
+				duration: 10,
+				timestamp: new Date(),
+			});
+
+			expect(mockDb.withSchema).toHaveBeenCalledWith('telescope');
 		});
 	});
 
@@ -661,34 +683,32 @@ describe('KyselyStorage', () => {
 });
 
 describe('getTelescopeMigration', () => {
-	it('should return up and down migration SQL', () => {
+	it('names its tables unqualified, for the search_path to place', () => {
 		const migration = getTelescopeMigration();
 
-		expect(migration.up).toContain(
-			'CREATE TABLE IF NOT EXISTS telescope_requests',
-		);
-		expect(migration.up).toContain(
-			'CREATE TABLE IF NOT EXISTS telescope_exceptions',
-		);
-		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS telescope_logs');
+		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS requests');
+		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS exceptions');
+		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS logs');
 		expect(migration.up).toContain('CREATE INDEX IF NOT EXISTS');
-		expect(migration.down).toContain('DROP TABLE IF EXISTS telescope_logs');
-		expect(migration.down).toContain(
-			'DROP TABLE IF EXISTS telescope_exceptions',
-		);
-		expect(migration.down).toContain('DROP TABLE IF EXISTS telescope_requests');
+		expect(migration.up).not.toContain('CREATE SCHEMA');
+		expect(migration.down).toContain('DROP TABLE IF EXISTS logs');
+		expect(migration.down).toContain('DROP TABLE IF EXISTS exceptions');
+		expect(migration.down).toContain('DROP TABLE IF EXISTS requests');
 	});
 
-	it('should support custom table prefix', () => {
+	it('creates the schema, and drops it whole, when given one', () => {
+		// A tenant drops as a tenant: three `DROP TABLE`s leave the schema behind
+		// and leave anything added to it since orphaned.
 		const migration = getTelescopeMigration('debug');
 
-		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug_requests');
+		expect(migration.up).toContain('CREATE SCHEMA IF NOT EXISTS debug');
+		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug.requests');
 		expect(migration.up).toContain(
-			'CREATE TABLE IF NOT EXISTS debug_exceptions',
+			'CREATE TABLE IF NOT EXISTS debug.exceptions',
 		);
-		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug_logs');
+		expect(migration.up).toContain('CREATE TABLE IF NOT EXISTS debug.logs');
 		expect(migration.up).toContain('idx_debug_requests_timestamp');
-		expect(migration.down).toContain('DROP TABLE IF EXISTS debug_logs');
+		expect(migration.down).toContain('DROP SCHEMA IF EXISTS debug CASCADE');
 	});
 
 	it('should include proper PostgreSQL column types', () => {
@@ -703,13 +723,13 @@ describe('getTelescopeMigration', () => {
 	it('should include indexes for common queries', () => {
 		const migration = getTelescopeMigration();
 
-		expect(migration.up).toContain('idx_telescope_requests_timestamp');
-		expect(migration.up).toContain('idx_telescope_requests_path');
-		expect(migration.up).toContain('idx_telescope_requests_status');
-		expect(migration.up).toContain('idx_telescope_exceptions_timestamp');
-		expect(migration.up).toContain('idx_telescope_exceptions_request_id');
-		expect(migration.up).toContain('idx_telescope_logs_timestamp');
-		expect(migration.up).toContain('idx_telescope_logs_level');
-		expect(migration.up).toContain('idx_telescope_logs_request_id');
+		expect(migration.up).toContain('idx_requests_timestamp');
+		expect(migration.up).toContain('idx_requests_path');
+		expect(migration.up).toContain('idx_requests_status');
+		expect(migration.up).toContain('idx_exceptions_timestamp');
+		expect(migration.up).toContain('idx_exceptions_request_id');
+		expect(migration.up).toContain('idx_logs_timestamp');
+		expect(migration.up).toContain('idx_logs_level');
+		expect(migration.up).toContain('idx_logs_request_id');
 	});
 });

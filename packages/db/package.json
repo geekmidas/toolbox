@@ -85,6 +85,9 @@
 			}
 		}
 	},
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@faker-js/faker": "~9.9.0"
 	},

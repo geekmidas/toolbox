@@ -3,6 +3,7 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { EndpointFactory } from '../EndpointFactory';
+import { TEST_SURFACE } from './__helpers__/surface';
 
 describe('EndpointFactory', () => {
 	describe('joinPaths', () => {
@@ -104,7 +105,7 @@ describe('EndpointFactory', () => {
 		};
 
 		it('should create a factory with authorization function', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const authFn = async () => true;
 
 			const authorizedFactory = factory.authorize(authFn);
@@ -115,7 +116,7 @@ describe('EndpointFactory', () => {
 
 		it('should apply authorization to created endpoints', async () => {
 			const authFn = vi.fn().mockResolvedValue(true);
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([])
 				.logger(mockLogger)
 				.authorize(authFn);
@@ -141,7 +142,7 @@ describe('EndpointFactory', () => {
 				return services.AuthService.validateToken(token);
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([AuthService])
 				.logger(mockLogger)
 				.authorize(authFn);
@@ -158,7 +159,7 @@ describe('EndpointFactory', () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: 'user1' });
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.route('/api')
 				.services([])
 				.logger(mockLogger)
@@ -177,7 +178,7 @@ describe('EndpointFactory', () => {
 			const authFn = async () => true;
 			const newLogger = new ConsoleLogger();
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([])
 				.authorize(authFn)
 				.logger(newLogger); // Chain after authorize
@@ -195,7 +196,7 @@ describe('EndpointFactory', () => {
 				return header('authorization') === 'Bearer valid-token';
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([])
 				.logger(mockLogger)
 				.authorize(authFn);
@@ -213,7 +214,7 @@ describe('EndpointFactory', () => {
 				return header('authorization') === 'Bearer valid-token';
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([])
 				.logger(mockLogger)
 				.authorize(authFn);
@@ -228,7 +229,7 @@ describe('EndpointFactory', () => {
 
 	describe('route', () => {
 		it('should create a sub-factory with path prefix', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const apiFactory = factory.route('/api');
 			const v1Factory = apiFactory.route('/v1');
 
@@ -248,7 +249,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([TestService])
 				.authorize(authFn)
 				.session(sessionFn)
@@ -278,7 +279,10 @@ describe('EndpointFactory', () => {
 		};
 
 		it('should add services to factory', () => {
-			const factory = new EndpointFactory().services([Service1, Service2]);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).services([
+				Service1,
+				Service2,
+			]);
 			const endpoint = factory.get('/test').handle(async ({ services }) => ({
 				result1: (await services[Service1.serviceName]).method1(),
 				result2: (await services[Service2.serviceName]).method2(),
@@ -288,7 +292,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should handle duplicate services', () => {
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([Service1])
 				.services([Service1, Service2]);
 
@@ -302,6 +306,7 @@ describe('EndpointFactory', () => {
 
 		it('should merge services in options', () => {
 			const factory = new EndpointFactory({
+				surface: TEST_SURFACE,
 				defaultServices: [Service1],
 			}).services([Service2]);
 
@@ -323,14 +328,16 @@ describe('EndpointFactory', () => {
 				child: vi.fn(),
 			};
 
-			const factory = new EndpointFactory().logger(customLogger);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).logger(
+				customLogger,
+			);
 			const endpoint = factory.get('/test').handle(async () => ({}));
 
 			expect(endpoint.logger).toBe(customLogger);
 		});
 
 		it('should use default logger when not specified', () => {
-			const factory = new EndpointFactory();
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const endpoint = factory.get('/test').handle(async () => ({}));
 
 			expect(endpoint.logger).toBeDefined();
@@ -341,7 +348,9 @@ describe('EndpointFactory', () => {
 	describe('session', () => {
 		it('should set session extractor', () => {
 			const sessionFn = async () => ({ userId: '123', role: 'admin' });
-			const factory = new EndpointFactory().session(sessionFn);
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).session(
+				sessionFn,
+			);
 
 			const endpoint = factory.get('/test').handle(async ({ session }) => ({
 				session,
@@ -365,7 +374,7 @@ describe('EndpointFactory', () => {
 				return services.SessionService.getSession(token);
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([SessionService])
 				.session(sessionFn);
 
@@ -387,7 +396,7 @@ describe('EndpointFactory', () => {
 
 		testMethods.forEach(({ method, httpMethod }) => {
 			it(`should create ${httpMethod} endpoint`, () => {
-				const factory = new EndpointFactory();
+				const factory = new EndpointFactory({ surface: TEST_SURFACE });
 				const builder = (factory as any)[method]('/test');
 				const endpoint = builder.handle(async () => ({}));
 
@@ -397,7 +406,9 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should apply basePath to all HTTP methods', () => {
-			const factory = new EndpointFactory().route('/api/v1');
+			const factory = new EndpointFactory({ surface: TEST_SURFACE }).route(
+				'/api/v1',
+			);
 
 			testMethods.forEach(({ method, httpMethod }) => {
 				const builder = (factory as any)[method]('/test');
@@ -423,6 +434,7 @@ describe('EndpointFactory', () => {
 			};
 
 			const factory = new EndpointFactory({
+				surface: TEST_SURFACE,
 				basePath: '/api',
 				defaultServices: [TestService],
 				defaultAuthorizeFn: authFn,
@@ -440,7 +452,7 @@ describe('EndpointFactory', () => {
 		});
 
 		it('should handle empty options', () => {
-			const factory = new EndpointFactory({});
+			const factory = new EndpointFactory({ surface: TEST_SURFACE });
 			const endpoint = factory.get('/test').handle(async () => ({}));
 
 			expect(endpoint.route).toBe('/test');
@@ -457,7 +469,7 @@ describe('EndpointFactory', () => {
 				},
 			};
 
-			const factory = new EndpointFactory()
+			const factory = new EndpointFactory({ surface: TEST_SURFACE })
 				.services([TypedService])
 				.session(async () => ({ userId: '123' }));
 

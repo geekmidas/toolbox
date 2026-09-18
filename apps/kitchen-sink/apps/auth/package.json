@@ -1,0 +1,11 @@
+{
+	"name": "@kitchen-sink/auth",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "gkm build --providers server,aws-apigatewayv2",
+		"dev": "gkm dev",
+		"start": "node .gkm/server/app.js"
+	}
+}

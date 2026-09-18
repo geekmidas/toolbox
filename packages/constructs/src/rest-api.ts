@@ -32,6 +32,7 @@ import {
 	type Dependency,
 	provideKey,
 } from '@geekmidas/manifest';
+import type { Telescope } from '@geekmidas/telescope';
 import { type Declarable, edgeTo } from './construct-interface';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
@@ -93,7 +94,15 @@ export interface RestApiConfig {
 	 * `envParser: './config/env#envParser'`, a module path with an export name
 	 * appended, parsed by us, checked by nothing.
 	 */
-	envParser?: unknown;
+	envParser?: EnvironmentParser<{}>;
+	/**
+	 * The Telescope instance this surface's entry mounts.
+	 *
+	 * The actual instance, for the reason `logger` is: it used to be named as
+	 * `telescope: './config/telescope#telescope'`, a module path the build
+	 * printed an import for. The entry already imports the surface.
+	 */
+	telescope?: Telescope;
 }
 
 /**
@@ -147,6 +156,9 @@ export class RestApi<TName extends string = string>
 	 */
 	readonly envParser: EnvironmentParser<{}>;
 
+	/** The Telescope instance, when this surface was given one. */
+	readonly telescope?: Telescope;
+
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: RestApiConfig,
@@ -166,6 +178,7 @@ export class RestApi<TName extends string = string>
 		};
 
 		this.logger = config.logger ?? DEFAULT_LOGGER;
+		this.telescope = config.telescope;
 		this.envParser = envParserFor(
 			config.envParser
 				? { id: canonical, envParser: config.envParser }
@@ -290,7 +303,14 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
-				...(this.config.app ? { app: this.config.app } : {}),
+				...(this.config.app
+					? {
+							app: {
+								...this.config.app,
+								...(this.config.telescope ? { telescope: true } : {}),
+							},
+						}
+					: {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per

@@ -90,7 +90,7 @@ export class EndpointFactory<
 	 * with no surface produces endpoints that carry none, which is what a
 	 * standalone endpoint has always been.
 	 */
-	private surface?: EndpointSurface;
+	private surface: EndpointSurface;
 	private availableAuthorizers: Authorizer[];
 	private defaultAuthorizerName?: TAuthorizers[number];
 	private defaultAuditorStorage:
@@ -134,7 +134,7 @@ export class EndpointFactory<
 		TDatabaseServiceName,
 		TSecuritySchemes,
 		TRlsConfig
-	> = {}) {
+	>) {
 		// Initialize default services
 		this.defaultConstructs = [...new Set(defaultConstructs)];
 		this.defaultServices = uniqBy(
@@ -1125,9 +1125,7 @@ export class EndpointFactory<
 			builder._logger = this.defaultLogger as TLogger;
 		}
 
-		if (this.surface) {
-			builder._surface = this.surface;
-		}
+		builder._surface = this.surface;
 
 		if (this.defaultSessionExtractor) {
 			builder._getSession = this.defaultSessionExtractor as SessionFn<
@@ -1270,9 +1268,12 @@ export interface EndpointFactoryOptions<
 	/**
 	 * The surface this factory belongs to.
 	 *
-	 * Set by `RestApi` and carried through every derived factory, so a
-	 * `api.endpoints.database(db)` still produces endpoints that know which API
-	 * serves them — and therefore which env parser they run with.
+	 * Required. A factory exists to build endpoints for a surface, and an
+	 * endpoint without one has no logger, no env parser and nothing to
+	 * attribute its traffic to — which was survivable only while `e` existed.
+	 *
+	 * Carried through every derived factory, so `api.endpoints.database(db)`
+	 * still produces endpoints that know which API serves them.
 	 */
-	surface?: EndpointSurface;
+	surface: EndpointSurface;
 }

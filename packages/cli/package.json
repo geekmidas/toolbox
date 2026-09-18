@@ -66,6 +66,10 @@
 			}
 		}
 	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"bin": {
 		"gkm": "./bin/gkm.mjs"
 	},

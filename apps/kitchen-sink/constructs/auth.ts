@@ -41,6 +41,14 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>(
 export const auth = new BetterAuth('Auth', {
 	database: authDb,
 	basePath: '/api/auth',
+
+	// Its own container. An auth server holds the session secret and reaches
+	// the identity tables; a surface that shared a process with the API would
+	// put both one bug away from every route it serves.
+	//
+	// No `code` glob: this surface's routes are declared, not discovered —
+	// `declare()` returns the wildcard, and `auth.server()` mounts it.
+	app: { path: 'apps/auth' },
 	options: async (options) => {
 		const mailer = await mail.service.register(options);
 

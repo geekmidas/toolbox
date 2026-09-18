@@ -1,0 +1,13 @@
+{
+	"//": "Specs, typechecked. They were excluded from every build, which is how 87 calls to a constructor that had gained a required argument stayed invisible until they threw at runtime. Extends the package's own config so it keeps the right lib and types; `noUncheckedIndexedAccess` is off because `expect(rows[0].id)` is a fixture the test just built, and a non-null assertion on it asserts nothing. `declaration` is off because nothing is emitted from a spec, and leaving it on makes a cross-package import of a shared fixture a rootDir error rather than a type error.",
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"declaration": false,
+		"declarationMap": false,
+		"composite": false,
+		"noUncheckedIndexedAccess": false
+	},
+	"include": ["src/**/*", "test/**/*"],
+	"exclude": ["node_modules", "dist"]
+}

@@ -273,6 +273,31 @@ export interface CredentialDeclaration extends Node {
 }
 
 /**
+ * An identity provider somebody else runs.
+ *
+ * Provisions nothing — the issuer already exists — so a target's whole job is
+ * to hand the process an issuer and an audience, and the verifier discovers the
+ * rest at runtime.
+ *
+ * It is a node rather than a field on whatever authenticates through it because
+ * two surfaces can name the same provider, and because *which* population a
+ * surface admits is a fact worth reading off the graph: an admin console
+ * authenticated by the customer auth server is a finding, and it is only
+ * visible if both are declarations.
+ */
+export interface OidcDeclaration extends Node {
+	kind: 'oidc';
+	/**
+	 * The issuer, when it does not vary by deployment.
+	 *
+	 * Absent means it arrives in the environment instead — a staging tenant, a
+	 * per-customer directory. The audience is never here: it identifies one
+	 * deployment to the provider.
+	 */
+	issuer?: string;
+}
+
+/**
  * A key/value cache.
  *
  * Provides one URL. What is *in* that URL is the backend's business — Upstash's
@@ -438,7 +463,20 @@ export interface AppSpec {
 	 * something outside the workspace has to know it in advance.
 	 */
 	port?: number;
-	/** Globs that find this app's code, relative to `path`. */
+	/**
+	 * One glob that finds everything this app defines, relative to `path`.
+	 *
+	 * Every export of every matching module is inspected, and each kind is
+	 * picked out by whatever recognises it — the same rule the `constructs`
+	 * glob already follows. A glob per kind was the specialness this model
+	 * removes: five patterns that had to be kept in step, where a handler in the
+	 * wrong directory simply never loaded and nothing said so.
+	 *
+	 * The per-kind fields below still work, and still win where both are given,
+	 * because a single-app `defineConfig` has always been written that way.
+	 */
+	code?: Glob;
+	/** Globs that find one kind of thing. Prefer `code`. */
 	routes?: Glob;
 	functions?: Glob;
 	crons?: Glob;
@@ -597,6 +635,7 @@ export type Declaration =
 	| CredentialDeclaration
 	| RestApiDeclaration
 	| SiteDeclaration
+	| OidcDeclaration
 	| QueueDeclaration
 	| TopicDeclaration
 	| FunctionDeclaration
@@ -776,6 +815,14 @@ export interface ProvidesByKind {
 	cron: Record<never, never>;
 	/** Where the site is served. Public for the same reason an API's is. */
 	site: { url: string };
+	/**
+	 * Where tokens come from and which audience they must carry.
+	 *
+	 * Two keys because the halves have different lifetimes: the issuer may be a
+	 * fact about the product, the audience is always a fact about one
+	 * deployment.
+	 */
+	oidc: { issuer: string; audience: string };
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
@@ -818,6 +865,10 @@ export const PUBLIC: {
 	// forge any job the worker trusts.
 	queue: [],
 	topic: [],
+	// A browser doing the sign-in flow needs both, and neither is secret: an
+	// issuer is a public URL and an audience is a client id, which is the half
+	// of an OAuth client that is meant to be seen.
+	oidc: ['issuer', 'audience'],
 	// An invocation address is not a public one: reaching it is IAM's business,
 	// not a browser's.
 	function: [],

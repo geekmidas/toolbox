@@ -69,16 +69,30 @@ describe('deployUnits', () => {
 		]);
 	});
 
-	it('does not deploy one app twice for two surfaces it serves', () => {
-		// An auth server with no app of its own is mounted into the surface that
-		// named it. A unit each would deploy that whole process twice under two
-		// names — worse than the shared container it was meant to replace.
+	it('refuses a surface that never said where it runs', () => {
+		// The important one. This used to collapse onto whichever surface named
+		// it with `.auth()`, so an auth server shared the API's container
+		// whenever nobody had said otherwise — the arrangement least privilege
+		// exists to prevent, arrived at by omission. There is no sharing now,
+		// opt-in or otherwise; a surface without an app is an error.
 		const manifest = {
 			Api: { ...surface('Api', 'apps/api'), auth: 'Auth' },
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(Object.keys(deployUnits(manifest, workspace))).toEqual(['api']);
+		expect(() => deployUnits(manifest, workspace)).toThrow(/declares no app/);
+	});
+
+	it('gives an auth server its own container once it has an app', () => {
+		const manifest = {
+			Api: surface('Api', 'apps/api'),
+			Auth: surface('Auth', 'apps/auth'),
+		} as unknown as ConstructManifest;
+
+		expect(Object.keys(deployUnits(manifest, workspace)).sort()).toEqual([
+			'api',
+			'auth',
+		]);
 	});
 
 	it('keeps what the config said about how to run a unit', () => {

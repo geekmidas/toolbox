@@ -43,6 +43,9 @@
 			}
 		}
 	},
+	"files": [
+		"dist"
+	],
 	"scripts": {},
 	"dependencies": {},
 	"peerDependencies": {

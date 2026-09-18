@@ -1,7 +1,7 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from '@kitchen-sink/constructs/logger.js';
 import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
-import logger from '../config/logger.js';
 
 /** Endpoints are built from a surface now. */
 const api = new RestApi('Test', { default: 'none' });
