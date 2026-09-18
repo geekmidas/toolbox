@@ -52,15 +52,31 @@ toolbox/
 
 ### Endpoint Builder
 
-```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+An endpoint is built from the surface that will serve it, so the logger, the
+env parser and the authorizers come from the `RestApi` rather than being passed
+per endpoint. (`e` was retired in v10.)
 
-const endpoint = e
+```typescript
+// constructs/api.ts
+import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Api', {
+  authorizers: ['iam'],
+  default: 'none',
+  logger,
+});
+
+// endpoints/users.ts
+export const createUser = api.endpoints
   .post('/users')
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string() }))
-  .handle(async ({ body }) => ({ id: '123' }));
+  .handle(async ({ body, logger }) => ({ id: '123' }));
 ```
+
+`api.endpoints` can be branched first to share what a group of endpoints needs
+— `.database(db)`, `.auditor(...)`, `.publisher(...)` — while each endpoint
+still names its own `.dependsOn([...])`.
 
 ### Service Pattern
 
