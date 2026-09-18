@@ -25,7 +25,7 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
-	type AppSpec,
+	type AppHosting,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -48,10 +48,15 @@ export interface RestApiConfig {
 	 *
 	 * Omit it and this surface has no process of its own — it is served by the
 	 * surface that named it as its authenticator. An auth server usually wants
-	 * exactly that until it is worth its own container, at which point giving it
-	 * an `app` is the whole change.
+	 * exactly that until it is worth its own container, at which point
+	 * `app: true` is the whole change.
+	 *
+	 * `true` is the ordinary answer. Both fields of the object form follow from
+	 * this construct's id — `apps/<kebab-id>` where that directory exists, the
+	 * conventional code directories under it — so the object is for the case
+	 * where the layout genuinely differs.
 	 */
-	app?: AppSpec;
+	app?: AppHosting;
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -306,7 +311,7 @@ export class RestApi<TName extends string = string>
 				...(this.config.app
 					? {
 							app: {
-								...this.config.app,
+								...(this.config.app === true ? {} : this.config.app),
 								...(this.config.telescope ? { telescope: true } : {}),
 							},
 						}

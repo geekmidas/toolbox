@@ -18,7 +18,15 @@
  * and a mailer resolve to, the deploy endpoint, the stage's domain.
  */
 
-import { type ConstructManifest, kebabCase } from '@geekmidas/manifest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+	type AppHosting,
+	type AppSpec,
+	type ConstructManifest,
+	DEFAULT_APP_CODE,
+	kebabCase,
+} from '@geekmidas/manifest';
 import type {
 	AppDomainConfig,
 	DeployTarget,
@@ -134,6 +142,51 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
 	if (chosen) chosen[1].root = true;
 }
 
+/**
+ * What `app: true` means, and what the object form leaves out.
+ *
+ * Both fields follow from the construct's own id, so neither was worth making
+ * someone write down:
+ *
+ * - `path` is `apps/<kebab-id>` where that directory exists, and the workspace
+ *   root otherwise. `Api` means `apps/api` in a monorepo and `.` in a
+ *   single-app project, and which of the two you are in is answerable by
+ *   looking.
+ * - `code` is the conventional directories under `path`. A glob is worth
+ *   writing only when the code is somewhere else, which is the case the field
+ *   still exists for.
+ *
+ * A site takes no `code`: its build is its framework's, not ours.
+ */
+export function resolveAppSpec(
+	id: string,
+	hosting: AppHosting,
+	workspaceRoot: string,
+	kind: 'site' | 'rest-api',
+): AppSpec {
+	const spec: AppSpec = hosting === true ? {} : hosting;
+
+	const conventional = join('apps', appKey(id));
+	const path =
+		spec.path ??
+		(existsSync(join(workspaceRoot, conventional)) ? conventional : '.');
+
+	const givenAGlob =
+		spec.code !== undefined ||
+		spec.routes !== undefined ||
+		spec.functions !== undefined ||
+		spec.crons !== undefined ||
+		spec.queues !== undefined ||
+		spec.topics !== undefined ||
+		spec.subscribers !== undefined;
+
+	return {
+		...spec,
+		path,
+		...(kind === 'rest-api' && !givenAGlob ? { code: DEFAULT_APP_CODE } : {}),
+	};
+}
+
 export function derivedApps(
 	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
@@ -145,14 +198,16 @@ export function derivedApps(
 		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
-		const spec = declaration.app;
-		if (!spec) {
+		const hosting = declaration.app;
+		if (!hosting) {
 			// No app and nowhere named to run: refuse rather than choose. A
 			// surface that gets a container by inference gets it from whatever
 			// happened to reference it.
 			if (declaration.kind === 'rest-api') throw new UnhostedSurface(id);
 			continue;
 		}
+
+		const spec = resolveAppSpec(id, hosting, workspace.root, declaration.kind);
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override

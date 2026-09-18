@@ -359,7 +359,7 @@ export interface RestApiDeclaration extends Node {
 	 * API that called `.auth()` on it, rather than a second container nobody
 	 * asked for.
 	 */
-	app?: AppSpec;
+	app?: AppHosting;
 	/**
 	 * The construct that authenticates this surface.
 	 *
@@ -452,9 +452,39 @@ export type Glob = string | readonly string[];
  * process means one of them has the spec and the other collapses onto it —
  * which is the same rule that decides deploy units, now stated once.
  */
+/**
+ * Where an app's code lives when nobody says otherwise.
+ *
+ * One glob, every kind — the same rule the `constructs` glob follows. A handler
+ * in one of these directories is found; anywhere else needs a `code` glob, and
+ * saying so is the whole reason the field still exists.
+ */
+export const DEFAULT_APP_CODE =
+	'./{endpoints,functions,crons,queues,topics,subscribers}/**/*.ts';
+
+/**
+ * That a surface has a process of its own.
+ *
+ * `true` is the ordinary answer: the path and the code glob both follow from
+ * the construct's own id, so there was nothing for the object form to say. It
+ * is there for the case where the layout differs.
+ */
+export type AppHosting = true | AppSpec;
+
 export interface AppSpec {
-	/** Where its source lives, relative to the workspace root. */
-	path: string;
+	/**
+	 * Where its source lives, relative to the workspace root.
+	 *
+	 * Optional, and normally omitted: `apps/<kebab-id>` when that directory
+	 * exists, and the workspace root otherwise. An `Api` construct in a
+	 * monorepo means `apps/api`, and in a single-app project it means `.` —
+	 * both of which are answerable by looking, which is why neither was worth
+	 * making someone write down.
+	 *
+	 * Set one only when the layout is genuinely different, e.g.
+	 * `path: 'services/api'`.
+	 */
+	path?: string;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -474,6 +504,10 @@ export interface AppSpec {
 	 *
 	 * The per-kind fields below still work, and still win where both are given,
 	 * because a single-app `defineConfig` has always been written that way.
+	 *
+	 * Optional, and normally omitted: the conventional directories under
+	 * `path`, which is `DEFAULT_APP_CODE`. A glob is worth writing only when
+	 * the code is somewhere else.
 	 */
 	code?: Glob;
 	/** Globs that find one kind of thing. Prefer `code`. */
@@ -522,7 +556,7 @@ export interface SiteDeclaration extends Node {
 	 * Required, where a surface's is optional: a site is always its own app.
 	 * There is no arrangement in which two sites are one process.
 	 */
-	app: AppSpec;
+	app: AppHosting;
 	/**
 	 * Whether this is the site the base domain points at.
 	 *

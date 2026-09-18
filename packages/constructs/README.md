@@ -25,31 +25,63 @@ pnpm add @geekmidas/constructs
 ## Package Exports
 
 ```typescript
-// Endpoints
-import { e, EndpointBuilder } from '@geekmidas/constructs/endpoints';
+// The HTTP surface. Endpoints are built from it — `api.get(…)`, or
+// `api.endpoints` for a branch that a group of endpoints shares.
+import { RestApi } from '@geekmidas/constructs/rest-api';
+
+// Endpoint internals: the factory a surface hands you, and the builder it
+// returns. There is no free-standing `e` — an endpoint belongs to a surface.
+import { EndpointBuilder, EndpointFactory } from '@geekmidas/constructs/endpoints';
 
 // Functions
 import { f, FunctionBuilder } from '@geekmidas/constructs/functions';
 
 // Crons
-import { cron, CronBuilder } from '@geekmidas/constructs/crons';
+import { c, CronBuilder } from '@geekmidas/constructs/crons';
 
 // Subscribers
-import { SubscriberBuilder } from '@geekmidas/constructs/subscribers';
+import { s, SubscriberBuilder } from '@geekmidas/constructs/subscribers';
 ```
 
 ## Quick Start
 
 ### HTTP Endpoints
 
-Create type-safe HTTP endpoints with the fluent builder pattern:
+An endpoint is built from the surface that will serve it. Declare the surface
+once — one `RestApi` is one server — and everything built from it carries its
+logger, its environment parser and its authorizers:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+// constructs/api.ts
+import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from './logger';
+
+export const api = new RestApi('Api', {
+  // Required, and `'none'` is a valid answer that has to be typed out. An API
+  // that ships open because a field was left off is the one default worth
+  // refusing to have.
+  default: 'none',
+  // The actual logger, not a path to one.
+  logger,
+  // A process of its own: one RestApi, one container.
+  //
+  // `true`, not a path: `Api` means `apps/api` where that directory exists and
+  // the project root otherwise, and the code is in the conventional
+  // directories under it. The object form — `{ path, code }` — is there for a
+  // layout that genuinely differs.
+  app: true,
+});
+```
+
+Then build endpoints from it with the fluent builder pattern:
+
+```typescript
+// endpoints/users.ts
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
 // Simple GET endpoint
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .output(z.array(z.object({
     id: z.string(),
@@ -63,7 +95,7 @@ export const getUsers = e
   });
 
 // POST endpoint with body validation
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({
     name: z.string().min(1),
@@ -84,7 +116,7 @@ export const createUser = e
   });
 
 // Endpoint with query parameters
-export const searchUsers = e
+export const searchUsers = api
   .get('/users/search')
   .query(z.object({
     q: z.string(),
@@ -244,10 +276,10 @@ The following authorizer names automatically map to OpenAPI security schemes:
 | `iam` | `{ type: 'apiKey', in: 'header', name: 'Authorization' }` (AWS SigV4) |
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
 // Using built-in 'jwt' scheme
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .authorizer('jwt')  // Automatically uses JWT security scheme
   .handle(async ({ session }) => {
@@ -258,12 +290,12 @@ export const getUsers = e
 
 #### Custom Security Schemes
 
-For custom authentication methods, use `.securitySchemes()` on the EndpointFactory:
+For custom authentication methods, use `.securitySchemes()` on the surface's factory:
 
 ```typescript
-import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .securitySchemes({
     // Custom OAuth2 with specific flows
     oauth2: {
@@ -288,7 +320,7 @@ const api = new EndpointFactory()
   });
 
 // Use custom security scheme
-export const getUsers = api
+export const getUsers = router
   .get('/users')
   .authorizer('oauth2')
   .handle(async () => []);
@@ -296,21 +328,23 @@ export const getUsers = api
 
 #### Default Authorizer
 
-Set a default authorizer for all endpoints from a factory:
+Set a default authorizer for every endpoint built from one branch:
 
 ```typescript
-const api = new EndpointFactory()
-  .authorizer('jwt');  // All endpoints inherit this authorizer
+// A branch of the surface's factory, with a default every endpoint on it
+// inherits. (The surface's own `default` does the same thing for every
+// endpoint it serves — this narrows it for one group.)
+const router = api.endpoints.authorizer('jwt');
 
 // Protected by default
-export const getProfile = api
+export const getProfile = router
   .get('/profile')
   .handle(async ({ session }) => {
     return { userId: session.claims.sub };
   });
 
 // Override to make public
-export const getHealth = api
+export const getHealth = router
   .get('/health')
   .authorizer('none')  // Explicitly public
   .handle(async () => ({ status: 'ok' }));
@@ -321,7 +355,7 @@ export const getHealth = api
 Inject services into your constructs:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import type { Service } from '@geekmidas/services';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { Kysely } from 'kysely';
@@ -341,7 +375,7 @@ const databaseService = {
 } satisfies Service<'database', Kysely<Database>>;
 
 // Use service in endpoint
-export const getUserFromDb = e
+export const getUserFromDb = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .services([databaseService])
@@ -362,7 +396,7 @@ export const getUserFromDb = e
 Publish events from any construct:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import type { Service } from '@geekmidas/services';
 import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { z } from 'zod';
@@ -386,7 +420,7 @@ const userEventPublisher = {
 } satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
 
 // Use in endpoint with event publishing
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({
     name: z.string(),
@@ -414,7 +448,7 @@ export const createUser = e
 Inject a database instance directly into the handler context using `.database()`:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import type { Service } from '@geekmidas/services';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { Kysely, PostgresDialect } from 'kysely';
@@ -437,7 +471,7 @@ const databaseService = {
 } satisfies Service<'database', Kysely<Database>>;
 
 // Use .database() to inject db into context
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .output(z.array(userSchema))
   .database(databaseService)
@@ -463,7 +497,7 @@ export const getUsers = e
 When using both `.database()` and `.auditor()` with the same database, `db` is automatically the transaction - ensuring ACID compliance without any extra code:
 
 ```typescript
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({ name: z.string(), email: z.email() }))
   .output(userSchema)
@@ -549,7 +583,7 @@ type AppAuditAction =
 Define audits declaratively on the endpoint - they're automatically recorded after successful handler execution:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
 const userSchema = z.object({
@@ -558,7 +592,7 @@ const userSchema = z.object({
   email: z.email()
 });
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({ name: z.string(), email: z.email() }))
   .output(userSchema)
@@ -604,7 +638,7 @@ export const createUser = e
 For complex scenarios, use `ctx.auditor` to record audits manually within your handler:
 
 ```typescript
-export const processOrder = e
+export const processOrder = api
   .post('/orders')
   .database(databaseService)
   .services([paymentService])
@@ -644,7 +678,7 @@ export const processOrder = e
 You can use both approaches together:
 
 ```typescript
-export const updateUser = e
+export const updateUser = api
   .put('/users/:id')
   .params(z.object({ id: z.string() }))
   .body(z.object({ name: z.string().optional(), email: z.email().optional() }))
@@ -860,11 +894,11 @@ const audits = await auditStorage.query({
 Add rate limiting to endpoints:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { InMemoryCache } from '@geekmidas/cache/memory';
 import { z } from 'zod';
 
-export const sendMessage = e
+export const sendMessage = api
   .post('/api/messages')
   .rateLimit({
     limit: 10,
@@ -1005,11 +1039,11 @@ All constructs support automatic environment variable detection for build-time i
 Every construct has an async `getEnvironment()` method that returns the environment variables required by its services:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { databaseService } from './services/database';
 import { cacheService } from './services/cache';
 
-const endpoint = e
+const endpoint = api
   .get('/users')
   .services([databaseService, cacheService])
   .handle(async ({ services }) => {
@@ -1111,12 +1145,12 @@ This manifest can then be used by infrastructure-as-code tools (Terraform, CDK, 
 ### Example with Multiple Services
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { databaseService } from './services/database';
 import { cacheService } from './services/cache';
 import { emailService } from './services/email';
 
-const endpoint = e
+const endpoint = api
   .post('/users')
   .services([databaseService, cacheService, emailService])
   .handle(async ({ services }) => {

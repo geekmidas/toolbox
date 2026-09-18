@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { DEFAULT_APP_CODE } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { appKey, derivedApps, hostOf } from '../derive';
+import { appKey, derivedApps, hostOf, resolveAppSpec } from '../derive';
 import type { NormalizedWorkspace } from '../types';
 
 /**
@@ -332,5 +336,81 @@ describe('appKey', () => {
 	it('is the kebab form every physical name is built from', () => {
 		expect(appKey('Api')).toBe('api');
 		expect(appKey('AdminConsole')).toBe('admin-console');
+	});
+});
+
+describe('resolveAppSpec', () => {
+	/** A workspace root with `apps/<name>` actually present. */
+	const rootWith = (...names: string[]): string => {
+		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
+		for (const name of names)
+			mkdirSync(join(root, 'apps', name), { recursive: true });
+		return root;
+	};
+
+	it('reads the path off the id when the directory is there', () => {
+		const root = rootWith('api');
+
+		expect(resolveAppSpec('Api', true, root, 'rest-api').path).toBe('apps/api');
+	});
+
+	it('falls back to the workspace root for a single-app project', () => {
+		// No `apps/` at all: one app, and it is the project.
+		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
+
+		expect(resolveAppSpec('Api', true, root, 'rest-api').path).toBe('.');
+	});
+
+	it('kebab-cases a multi-word id the way every other physical name is', () => {
+		const root = rootWith('admin-api');
+
+		expect(resolveAppSpec('AdminApi', true, root, 'rest-api').path).toBe(
+			'apps/admin-api',
+		);
+	});
+
+	it('keeps a path that was written down', () => {
+		const root = rootWith('api');
+
+		expect(
+			resolveAppSpec('Api', { path: 'services/api' }, root, 'rest-api').path,
+		).toBe('services/api');
+	});
+
+	it('gives a surface the conventional code glob', () => {
+		const root = rootWith('api');
+
+		expect(resolveAppSpec('Api', true, root, 'rest-api').code).toBe(
+			DEFAULT_APP_CODE,
+		);
+	});
+
+	it('does not default the glob over one that was given', () => {
+		const root = rootWith('api');
+
+		expect(
+			resolveAppSpec('Api', { code: './src/**/*.ts' }, root, 'rest-api').code,
+		).toBe('./src/**/*.ts');
+	});
+
+	it('leaves the glob alone when a per-kind field named one', () => {
+		// The per-kind fields still win, so defaulting `code` here would add a
+		// second pattern the first one has to be reconciled with.
+		const root = rootWith('api');
+		const spec = resolveAppSpec(
+			'Api',
+			{ routes: './src/endpoints/**/*.ts' },
+			root,
+			'rest-api',
+		);
+
+		expect(spec.code).toBeUndefined();
+		expect(spec.routes).toBe('./src/endpoints/**/*.ts');
+	});
+
+	it("gives a site no code glob — its build is its framework's", () => {
+		const root = rootWith('web');
+
+		expect(resolveAppSpec('Web', true, root, 'site').code).toBeUndefined();
 	});
 });

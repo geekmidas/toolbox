@@ -48,15 +48,12 @@ export const api = new RestApi('Api', {
 	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
 	// beside a `path` and a `port` that the declaration already implied, which
 	// meant the same app was described twice and only one copy was checked.
-	app: {
-		path: 'apps/api',
-
-		// One glob, every kind — the same rule the constructs glob follows. Five
-		// patterns, one per kind, was five things to keep in step; a handler in
-		// the wrong directory simply never loaded and nothing said so.
-		//
-		// Still glob-driven, and that is worth knowing: a file outside this
-		// pattern does not exist as far as the build is concerned.
-		code: './{endpoints,functions,crons,subscribers,queues}/**/*.ts',
-	},
+	// This surface has a process of its own — one RestApi, one container.
+	//
+	// It used to spell out `{ path: 'apps/api', code: './{endpoints,…}/**/*.ts' }`
+	// and both halves said what the id already said: `Api` means `apps/api`
+	// where that directory exists, and the code is in the conventional
+	// directories under it. The object form is still there for a layout that
+	// genuinely differs, which this is not.
+	app: true,
 }).auth(auth);

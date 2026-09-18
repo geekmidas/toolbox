@@ -121,17 +121,17 @@ Create endpoint files in `src/routes/`:
 
 ```typescript
 // src/routes/users.ts
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .output(z.array(z.object({ id: z.string(), name: z.string() })))
   .handle(async () => {
     return [{ id: '1', name: 'John Doe' }];
   });
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string(), name: z.string() }))
@@ -1216,41 +1216,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-project',
-  apps: {
-    api: {
-      type: 'backend',
-      path: 'apps/api',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-      telescope: {
-        enabled: true,
-        path: '/__telescope',
-      },
-      openapi: {
-        enabled: true,
-      },
-    },
-    auth: {
-      type: 'backend',
-      path: 'apps/auth',
-      port: 3002,
-      entry: './src/index.ts',  // Entry-based app (no routes)
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-    },
-    web: {
-      type: 'frontend',
-      framework: 'nextjs',
-      path: 'apps/web',
-      port: 3001,
-      dependencies: ['api', 'auth'],
-      client: {
-        output: './src/api',
-      },
-    },
-  },
+  constructs: './constructs/**/*.ts',
   shared: {
     packages: ['packages/*'],
     models: {
@@ -1258,10 +1224,12 @@ export default defineWorkspace({
       schema: 'zod',
     },
   },
+  // Backend selection, and nothing else. Whether a Postgres exists comes from
+  // declaring a database, not from a flag here — so `db` and `storage` are
+  // ignored rather than obeyed, and the two cannot disagree.
   services: {
-    db: true,
-    cache: true,
-    mail: true,
+    cache: 'db',
+    mail: 'ses',
   },
   deploy: {
     default: 'dokploy',
@@ -1839,7 +1807,7 @@ export const envParser = new EnvironmentParser(process.env)
 
 ```typescript
 // src/routes/protected.ts
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { JwtMiddleware } from '@geekmidas/auth/hono/jwt';
 import { envParser } from '../env.js';
 

@@ -86,6 +86,7 @@ import {
 	type Routes,
 } from '../types';
 import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
+import { resolveAppSpec } from '../workspace/derive.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -355,8 +356,13 @@ export async function buildCommand(
 				constructSources[id] !== undefined &&
 				// Resolved against the workspace root, not matched on the end of
 				// the path — `apps/api` is a suffix of `other-apps/api` too.
-				resolve(loadedConfig.workspace.root, d.app.path) ===
-					resolve(process.cwd()),
+				// Through `resolveAppSpec`, because `app: true` names no path and
+				// the default is the one this would otherwise have to repeat.
+				resolve(
+					loadedConfig.workspace.root,
+					resolveAppSpec(id, d.app, loadedConfig.workspace.root, 'rest-api')
+						.path!,
+				) === resolve(process.cwd()),
 		);
 
 		if (selfServing) {
