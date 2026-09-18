@@ -1,14 +1,11 @@
 import { defineProject } from 'vitest/config';
 
 /**
- * This package had no config, so every suite in it was silently undiscovered —
- * five of them, including the driver registry and the Postgres cache whose
- * table handling is the difference between two caches in one database and one
- * cache read twice.
+ * Names the project `cache`, and starts what its suites talk to.
  *
- * The root config lists `projects: ['packages/*']`, which finds a package only
- * once it declares itself; a package without this file contributes no tests and
- * reports no failure for having none.
+ * A package with no config of its own is still discovered — the root config's
+ * `projects: ['packages/*']` falls back to the package name — so what this file
+ * adds is the short name and the setup, not the tests.
  */
 export default defineProject({
 	test: {

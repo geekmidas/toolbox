@@ -132,7 +132,10 @@ pnpm test              # Watch mode
 pnpm test:once         # Run once with coverage
 ```
 
-Vitest root config uses `projects: ['packages/*']`. Each package needs its own vitest config to be discovered.
+Vitest root config uses `projects: ['packages/*']`. A package without its own
+config is still discovered, as a project named after the package
+(`@geekmidas/auth`). A `vitest.config.ts` gives it a short name to filter on
+(`--project auth`) and somewhere to put a `globalSetup`.
 
 ### Example
 
