@@ -725,7 +725,7 @@ function minioCompose(options: {
 	return [
 		'services:',
 		`  ${service}:`,
-		'    image: minio/minio:latest',
+		'    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
 		`    command: server /data --console-address ":9001"`,
 		'    environment:',
 		`      MINIO_ROOT_USER: ${user}`,

@@ -34,7 +34,7 @@ export function postgresImage(version: PostgresVersion): string {
  */
 export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	postgres: postgresImage(DEFAULT_POSTGRES_VERSION),
-	minio: 'minio/minio:latest',
+	minio: 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
 	mailpit: 'axllent/mailpit:latest',
 	redis: 'redis:8-alpine',
 	'redis-http': 'hiett/serverless-redis-http:latest',

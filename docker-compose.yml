@@ -48,7 +48,10 @@ services:
       retries: 3
     restart: always # Ensure the container restarts automatically
   minio:
-    image: minio/minio:latest
+    # Quay, and pinned. MinIO removed their Docker Hub images, so
+    # `minio/minio:latest` stopped resolving and took CI with it — and `latest`
+    # is what let an upstream change land here without anyone choosing it.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     entrypoint: sh
     ports:
       - "9000:9000"

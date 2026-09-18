@@ -163,7 +163,7 @@ export function generateDockerFiles(
 	// MinIO for S3-compatible object storage
 	if (options.services?.storage) {
 		services.push(`  minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ${options.name}-minio
     restart: unless-stopped
     entrypoint: sh
