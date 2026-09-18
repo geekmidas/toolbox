@@ -50,6 +50,7 @@ export type {
 	InferredWorkspaceConfig,
 	LoadedConfig,
 	MailServiceConfig,
+	MobileFramework,
 	ModelsConfig,
 	NormalizedAppConfig,
 	NormalizedWorkspace,

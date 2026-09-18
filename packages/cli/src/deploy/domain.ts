@@ -134,7 +134,7 @@ export function generatePublicUrlBuildArgs(
 	app: NormalizedAppConfig,
 	deployedUrls: Record<string, string>,
 ): string[] {
-	const prefix = getPublicEnvPrefix(app);
+	const prefix = getPublicEnvPrefix(app.framework);
 	if (!prefix) return [];
 
 	const buildArgs: string[] = [];
@@ -156,7 +156,7 @@ export function generatePublicUrlBuildArgs(
  *   without a public prefix (e.g. Remix).
  */
 export function getPublicUrlArgNames(app: NormalizedAppConfig): string[] {
-	const prefix = getPublicEnvPrefix(app);
+	const prefix = getPublicEnvPrefix(app.framework);
 	if (!prefix) return [];
 	return app.dependencies.map((dep) => `${prefix}${dep.toUpperCase()}_URL`);
 }
