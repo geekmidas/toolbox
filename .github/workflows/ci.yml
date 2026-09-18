@@ -48,6 +48,9 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Check declared exports resolve
+        run: pnpm run check:exports
+
       - name: Lint
         run: pnpm run lint
 

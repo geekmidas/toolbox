@@ -186,7 +186,7 @@ function generateReactQueryCode(
 	operations: OperationInfo[],
 	apiName: string,
 ): string {
-	const imports = `import { createTypedQueryClient } from '@geekmidas/client';
+	const imports = `import { createTypedQueryClient } from '@geekmidas/client/react-query';
 import type { paths } from './openapi-types';
 
 // Create typed query client

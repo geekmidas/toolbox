@@ -3,6 +3,7 @@
 	"private": true,
 	"scripts": {
 		"build": "tsdown",
+		"check:exports": "node scripts/check-exports.mjs",
 		"dev": "turbo run dev",
 		"docs:dev": "pnpm --filter @geekmidas/docs dev",
 		"docs:build": "pnpm --filter @geekmidas/docs build",
