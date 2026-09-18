@@ -350,9 +350,9 @@ const allOrders = await db.selectFrom('orders').selectAll().execute();
 When using `@geekmidas/constructs`, RLS integrates seamlessly with endpoints. The key is to use the `db` parameter from the handler context, which is a transaction with RLS variables set—**not** `services.database` which is the raw connection.
 
 ```typescript
-import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)  // the declared KyselyDatabase — `db` in every handler
   .authorizer('jwt')
   .rls({
@@ -364,7 +364,7 @@ const api = new EndpointFactory()
   });
 
 // All endpoints inherit RLS configuration
-const listOrders = api
+const listOrders = router
   .get('/orders')
   .handle(async ({ db }) => {
     // db is a transaction with RLS context applied
@@ -376,7 +376,7 @@ const listOrders = api
   });
 
 // Bypass RLS for specific endpoints
-const adminListOrders = api
+const adminListOrders = router
   .get('/admin/orders')
   .rls(false)  // Disable RLS for this endpoint
   .handle(async ({ db }) => {
@@ -407,9 +407,9 @@ Always use `db` from the handler context when RLS is configured. Using `services
 ### Per-Endpoint RLS
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const endpoint = e
+const endpoint = api
   .get('/orders')
   .database(database)
   .rls({

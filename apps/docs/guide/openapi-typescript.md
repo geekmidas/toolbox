@@ -151,30 +151,38 @@ Your endpoint authorizers map to OpenAPI security schemes:
 ### Example Endpoint Definitions
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
-import { createAuthorizer } from '@geekmidas/constructs/endpoints';
+// constructs/api.ts — the names this surface exposes.
+// Names only: what verifies a request differs between local and deployed, so
+// the mechanism belongs to the target and never to portable code.
+export const api = new RestApi('Api', {
+  authorizers: ['bearer', 'iam'],
+  default: 'bearer',
+  logger,
+  app: true,
+});
+```
 
-const jwtAuth = createAuthorizer('bearer', { type: 'jwt' });
-const iamAuth = createAuthorizer('iam', { type: 'aws-sigv4' });
+```typescript
+// endpoints/tenants.ts
+import { api } from '../constructs/api';
 
-// This endpoint requires JWT bearer auth
-const getTenant = e
+// Inherits the surface's default — JWT bearer auth
+const getTenant = api
   .get('/tenants/{id}')
-  .authorizer(jwtAuth)
   .params(z.object({ id: z.string() }))
   .output(TenantSchema)
   .handle(async ({ params }) => { ... });
 
 // This endpoint requires IAM SigV4 auth
-const createTenant = e
+const createTenant = api
   .post('/tenants')
-  .authorizer(iamAuth)
+  .authorizer('iam')
   .body(CreateTenantSchema)
   .output(TenantSchema)
   .handle(async ({ body }) => { ... });
 
 // This endpoint is public (no auth)
-const healthCheck = e
+const healthCheck = api
   .get('/health')
   .authorizer('none')
   .output(z.object({ status: z.string() }))

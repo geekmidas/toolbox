@@ -284,14 +284,11 @@ The `exec` command injects environment variables based on the workspace config:
 This is particularly useful for frontend apps that need to know the URLs of backend services:
 
 ```typescript
-// gkm.config.ts
-export default defineConfig({
-  apps: {
-    api: { type: 'backend', port: 3000, ... },
-    auth: { type: 'auth', port: 3002, ... },
-    web: { type: 'frontend', port: 3001, dependencies: ['api', 'auth'], ... },
-  },
-});
+// constructs/api.ts
+export const api = new RestApi('Api', { default: 'none', logger, app: true });
+
+// constructs/site.ts — the edge is what carries the URL into the build
+export const web = new StaticSite('Web').dependsOn([api, auth]);
 ```
 
 ```json

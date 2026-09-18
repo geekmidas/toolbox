@@ -48,32 +48,10 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   name: 'my-saas',
 
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      constructs: './src/constructs/**/*.ts',
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-    },
-    auth: {
-      type: 'auth',
-      path: 'apps/auth',
-      port: 3001,
-      provider: 'better-auth',
-      entry: './src/index.ts',
-      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
-    },
-    web: {
-      type: 'frontend',
-      path: 'apps/web',
-      port: 3002,
-      framework: 'nextjs',
-      dependencies: ['api', 'auth'],
-    },
-  },
+  // Where the constructs live. The apps come from them: a `StaticSite` is an
+  // app, and so is a `RestApi` that said `app: true`. Each one is its own
+  // deploy unit — one container, one domain.
+  constructs: './constructs/**/*.ts',
 
   // Backend selection. The Postgres itself comes from the declared database.
   services: {
@@ -149,24 +127,17 @@ gkm build --provider server
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-      providers: {
-        server: {
-          enableOpenApi: true,
-          production: {
-            bundle: true,
-            minify: true,
-            healthCheck: '/health',
-            external: ['@prisma/client'],
-          },
-        },
+  name: 'my-saas',
+  constructs: './constructs/**/*.ts',
+
+  providers: {
+    server: {
+      enableOpenApi: true,
+      production: {
+        bundle: true,
+        minify: true,
+        healthCheck: '/health',
+        external: ['@prisma/client'],
       },
     },
   },
@@ -324,16 +295,19 @@ Override automatic detection:
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  name: 'my-saas',
+  constructs: './constructs/**/*.ts',
+
+  // A config entry of the same name as a derived app overrides one field
+  // without restating the app. It is the exception, not the shape.
   apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      requiredEnv: ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'SENDGRID_API_KEY'],
-    },
+    api: { requiredEnv: ['STRIPE_SECRET_KEY', 'SENDGRID_API_KEY'] },
   },
 });
 ```
+
+`DATABASE_URL` is not in that list, and does not need to be: it comes from the
+declared database, which is the construct that causes the Postgres to exist.
 
 ---
 
@@ -362,7 +336,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',  // Required for SSM provider
-  apps: { /* ... */ },
+  constructs: './constructs/**/*.ts',
   state: {
     provider: 'ssm',
     region: 'us-east-1',

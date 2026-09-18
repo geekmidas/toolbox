@@ -220,16 +220,26 @@ const storage = new InMemoryStorage({
 });
 ```
 
-### KyselyStorage (Coming Soon)
+### KyselyStorage
 
 For production use with database persistence.
 
 ```typescript
 import { KyselyStorage } from '@geekmidas/telescope/storage/kysely';
 
-const storage = new KyselyStorage(db, {
-  tablePrefix: 'telescope_', // Table name prefix
-});
+const storage = new KyselyStorage({ db });
+```
+
+The tables are `requests`, `logs` and `exceptions` — unqualified. A telescope
+derived from a database is a schema tenant with a role whose `search_path` is
+pinned to it, so an unqualified name already resolves there, and
+`DROP SCHEMA telescope CASCADE` is the whole cleanup.
+
+Pass `schema` only when the connection is *not* pinned — a shared pool, or a
+migration run as an owner whose `search_path` finds `public` first:
+
+```typescript
+const storage = new KyselyStorage({ db, schema: 'telescope' });
 ```
 
 ### Custom Storage

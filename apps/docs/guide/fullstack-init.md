@@ -75,7 +75,7 @@ my-app/
 │   │   │   ├── services/
 │   │   │   │   ├── database.ts  # Kysely database service
 │   │   │   │   └── auth.ts      # Auth client service
-│   │   │   ├── router.ts        # EndpointFactory with session/auth
+│   │   │   ├── router.ts        # a branch of api.endpoints, with session/auth
 │   │   │   ├── endpoints/
 │   │   │   │   ├── health.ts    # GET /health
 │   │   │   │   ├── users/
@@ -200,47 +200,15 @@ Both users share the same database (`{project_name}_dev`) but are isolated by sc
 | `.vscode/extensions.json` | Recommended VSCode extensions |
 | `gkm.config.ts` | Workspace config with `defineWorkspace()` |
 
-The workspace config wires all three apps together:
+The workspace config says where the constructs live. The three apps come from
+them — each `RestApi` that said `app: true` and each `StaticSite` is one:
 
 ```typescript
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-      telescope: true,
-    },
-    auth: {
-      type: 'auth',
-      path: 'apps/auth',
-      port: 3002,
-      provider: 'better-auth',
-      entry: './src/index.ts',
-      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
-    },
-    web: {
-      type: 'frontend',
-      path: 'apps/web',
-      port: 3001,
-      framework: 'nextjs', // or 'tanstack-start'
-      dependencies: ['api', 'auth'],
-    },
-    // ...or, when frontendFramework=expo:
-    // app: {
-    //   type: 'frontend',
-    //   path: 'apps/app',
-    //   port: 8081,
-    //   framework: 'expo',
-    //   dependencies: ['api', 'auth'],
-    // },
-  },
+  constructs: './constructs/**/*.ts',
   services: { cache: 'db' },  // where the cache lives; the database is declared, not flagged
 });
 ```
@@ -288,7 +256,7 @@ The API app is built on `@geekmidas/constructs` with the Hono framework.
 - `config/studio.ts` — Studio database browser (if database enabled)
 - `services/database.ts` — Kysely database service with PostgreSQL dialect
 - `services/auth.ts` — Auth client for calling the auth service
-- `router.ts` — `EndpointFactory` with default JWT authorizer and session support
+- `router.ts` — a branch of `api.endpoints` with a default JWT authorizer and session support
 - `endpoints/health.ts` — basic health check
 - `endpoints/users/list.ts` and `get.ts` — example CRUD endpoints
 - `endpoints/profile.ts` — protected endpoint requiring authentication
@@ -301,7 +269,7 @@ The API app is built on `@geekmidas/constructs` with the Hono framework.
 
 | Package | Purpose |
 |---------|---------|
-| `@geekmidas/constructs` | Endpoint builder (`e` export) |
+| `@geekmidas/constructs` | `RestApi` and the endpoint builder it carries |
 | `@geekmidas/services` | Service discovery |
 | `@geekmidas/envkit` | Environment parsing |
 | `@geekmidas/auth` | JWT verification |

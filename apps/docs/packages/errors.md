@@ -85,10 +85,10 @@ All HTTP errors serialize to:
 ## Usage with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { createError } from '@geekmidas/errors';
 
-const endpoint = e
+const endpoint = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .handle(async ({ params, services }) => {

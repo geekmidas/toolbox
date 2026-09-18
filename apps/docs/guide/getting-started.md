@@ -177,15 +177,35 @@ perfectly good layout.
 ## 2. Use It From an Endpoint
 
 ```typescript
-// src/endpoints/router.ts
-import { e } from '@geekmidas/constructs/endpoints';
+// src/constructs/api.ts
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import logger from '../config/logger';
+
+// The surface every endpoint is built from. The logger it runs with, the
+// authorizers it can name and the one it falls back to are stated here once,
+// and never again per endpoint.
+//
+// `default` is required, and `'none'` is a valid answer that has to be typed
+// out — an API that ships open because a field was left off is the one default
+// worth refusing to have.
+export const api = new RestApi('Api', {
+  authorizers: ['iam'],
+  default: 'iam',
+  logger,
+  // A process of its own. `Api` means `apps/api` where that directory exists,
+  // and the project root otherwise — so there is no path to write down.
+  app: true,
+});
+```
+
+```typescript
+// src/endpoints/router.ts
+import { api } from '../constructs/api';
 import { database } from '../constructs/database';
 
-export const router = e
-  .logger(logger)
-  .database(database)
-  .authorizer('iam');
+// Branch the surface's factory for what a group of endpoints shares. The
+// logger and the environment parser come along with it.
+export const router = api.endpoints.database(database);
 ```
 
 ```typescript

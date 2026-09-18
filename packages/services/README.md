@@ -49,11 +49,11 @@ export { databaseService };
 ### Use Services in Constructs
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { databaseService } from './services/database';
 import { z } from 'zod';
 
-export const getUser = e
+export const getUser = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .services([databaseService])
@@ -210,13 +210,13 @@ const userEventPublisher = {
 Inject multiple services into a construct:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { databaseService } from './services/database';
 import { cacheService } from './services/cache';
 import { emailService } from './services/email';
 import { z } from 'zod';
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({
     name: z.string(),

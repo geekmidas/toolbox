@@ -133,9 +133,9 @@ logger.info({ user: { password: 'secret123' } }, 'User data');
 ## Usage with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const endpoint = e
+const endpoint = api
   .get('/users/:id')
   .handle(async ({ params, logger }) => {
     logger.info({ userId: params.id }, 'Fetching user');

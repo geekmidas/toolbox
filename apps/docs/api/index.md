@@ -62,10 +62,10 @@ Detailed API documentation is available in the individual package documentation 
 ### Endpoint Builder
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-export const getUser = e
+export const getUser = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .output(z.object({ id: z.string(), name: z.string() }))
@@ -106,15 +106,9 @@ throw createError.forbidden('Access denied');
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-    },
-  },
-  services: { db: true, cache: true },
+  constructs: './constructs/**/*.ts',
+  // Backend selection only — a declared database is what brings up Postgres.
+  services: { cache: 'db' },
   deploy: {
     default: 'dokploy',
     dns: { provider: 'route53', domain: 'myapp.com' },

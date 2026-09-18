@@ -435,9 +435,9 @@ CREATE INDEX idx_audit_logs_entity_id ON audit_logs("entityId");
 The audit package integrates seamlessly with `@geekmidas/constructs` endpoints:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const endpoint = e
+const endpoint = api
   .post('/users')
   .body(UserSchema)
   .output(UserResponseSchema)

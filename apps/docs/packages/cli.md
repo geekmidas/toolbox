@@ -782,8 +782,10 @@ Production builds automatically generate optimized endpoint handlers based on fe
 **Endpoint Classification:**
 
 ```typescript
+import { api } from '../constructs/api';
+
 // Minimal tier - no auth, no services
-const ping = e
+const ping = api
   .get('/ping')
   .output(z.object({ message: z.string() }))
   .handle(async () => ({ message: 'pong' }));
@@ -1079,32 +1081,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   name: 'my-saas',
 
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-      telescope: true,
-    },
-    auth: {
-      path: 'apps/auth',
-      type: 'backend',
-      port: 3001,
-      entry: './src/index.ts',
-      framework: 'better-auth',
-      requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
-    },
-    web: {
-      type: 'frontend',
-      path: 'apps/web',
-      port: 3002,
-      framework: 'nextjs',
-      dependencies: ['api', 'auth'],
-    },
-  },
+  constructs: './constructs/**/*.ts',
 
   services: {
     cache: 'db',      // 'upstash' | 'elasticache' | 'db'
@@ -1145,25 +1122,42 @@ export default defineWorkspace({
 
 | Type | Description | Key Config |
 |------|-------------|------------|
-| `backend` | API server with gkm routes | `routes`, `envParser`, `logger` |
-| `backend` (entry) | Custom backend (Hono, Express) | `entry`, `framework`, `requiredEnv` |
-| `auth` | Better Auth server | `provider`, `entry`, `requiredEnv` |
-| `frontend` | Web application | `framework`, `dependencies` |
+| `backend` | A `RestApi` that said `app: true` | `default`, `logger` |
+| `web` | A `StaticSite` | `variant`, `.dependsOn([…])` |
+| `mobile` | A `StaticSite` with an Expo variant | `variant: 'expo'` |
 
-### Auth App Configuration
+There is no `auth` type. An auth server is a `BetterAuth` construct, and it is
+a backend like any other.
 
-The `auth` type is specialized for [Better Auth](https://better-auth.com) servers:
+### Auth Server
+
+[Better Auth](https://better-auth.com) is declared, not configured:
 
 ```typescript
-auth: {
-  type: 'auth',
-  path: 'apps/auth',
-  port: 3001,
-  provider: 'better-auth',
-  entry: './src/index.ts',
-  requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET'],
-}
+// constructs/auth.ts
+import { BetterAuth } from '@geekmidas/constructs/auth';
+import { database } from './database';
+
+// Its own schema and role in the declared Postgres, rather than a second
+// DATABASE_URL nobody can trace to a container.
+export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
+
+export const auth = new BetterAuth('Auth', {
+  database: authDb,
+  basePath: '/api/auth',
+  // A container of its own. Drop this line and it is served by the surface
+  // that named it with `.auth(auth)` instead.
+  app: true,
+});
 ```
+
+There is no `entry`: the build generates one from the declaration. The routes
+are a wildcard, so no glob finds them — which is why the entry has to come from
+the construct rather than from discovery.
+
+`requiredEnv: ['DATABASE_URL', 'BETTER_AUTH_SECRET']` is gone too. The first
+comes from the declared database and the second is generated and persisted in
+state, both of which are below.
 
 **Auto-injected variables during deployment:**
 
