@@ -133,12 +133,21 @@ export async function openapiCommand(
 			// a non-existent nested path (e.g. `apps/api/apps/api`).
 			const workspaceRoot = workspace.root;
 
-			// Find backend apps with openapi enabled
+			// Backend apps with openapi enabled — which is all of them that have
+			// routes, unless one says otherwise.
+			//
+			// This used to require `openapi: true` written out, while the app's
+			// own build generated a spec regardless. Two paths disagreeing about
+			// the same flag: the app emitted `.gkm/openapi.ts` and this pass,
+			// finding nothing "enabled", skipped copying it to the frontends that
+			// consume it. A surface whose routes are declared rather than
+			// discovered has no spec to generate, so it is not a candidate.
 			const backendApps = Object.entries(workspace.apps).filter(
 				([_, app]) =>
 					app.type === 'backend' &&
-					(app.openapi === true ||
-						(typeof app.openapi === 'object' && app.openapi.enabled !== false)),
+					app.routes !== undefined &&
+					app.openapi !== false &&
+					(typeof app.openapi !== 'object' || app.openapi.enabled !== false),
 			);
 
 			if (backendApps.length === 0) {
