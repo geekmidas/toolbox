@@ -23,7 +23,6 @@
 
 export type {
 	AllProvidedKeys,
-	AppHosting,
 	AppSpec,
 	CacheDeclaration,
 	ConstructId,

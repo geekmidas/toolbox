@@ -1246,12 +1246,12 @@ them out of the manifest; none of them is listed in config.
 
 ```typescript
 // constructs/api.ts
-export const api = new RestApi('Api', { default: 'none', logger, app: true });
+export const api = new RestApi('Api', { default: 'none', logger });
 ```
 
 `gkm build --provider server` generates a Hono server from the endpoints built
 on that surface. Where they are is the conventional directories under
-`apps/api`, which is what `app: true` resolves to.
+`apps/api`, which is what the id resolves to.
 
 #### A Surface That Declares Its Own Routes
 
@@ -1262,7 +1262,6 @@ An auth server mounts a wildcard, so there is nothing for a glob to find:
 export const auth = new BetterAuth('Auth', {
   database: authDb,
   basePath: '/api/auth',
-  app: true,
 });
 ```
 
@@ -1270,9 +1269,10 @@ The build generates the entry from the declaration — a file that imports the
 construct and starts it. There is no hand-written `src/index.ts`, and no
 `entry` field pointing at one.
 
-Drop `app: true` and the surface has no process of its own: it is served by
-whichever surface named it with `.auth(auth)`. That one line is the whole
-difference between a shared container and its own.
+It gets a container like every other surface, and nothing opts it in. Two
+surfaces in one process share a filesystem, an environment and every credential
+either was granted, so an auth server beside an API is one bug in the API away
+from being read by it.
 
 #### Frontends
 
@@ -1365,9 +1365,7 @@ interface WorkspaceConfig {
 What an app is comes from the declaration, not from here:
 
 ```typescript
-/** `app: true` on a RestApi, or any field of it that differs. */
-type AppHosting = true | AppSpec;
-
+/** Overrides, all optional. A surface normally has none. */
 interface AppSpec {
   /** Default: `apps/<kebab-id>` if present, else the project root. */
   path?: string;

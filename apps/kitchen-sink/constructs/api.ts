@@ -40,20 +40,12 @@ export const api = new RestApi('Api', {
 	logger,
 
 	// The Telescope the logger already streams into, declared once beside it
-	// rather than named again as a module path in the app block.
+	// rather than named again as a module path.
 	telescope,
 
-	// The app that serves it. Where its source lives and which globs find its
-	// code is the half of an application no graph can derive — it is a fact
-	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
-	// beside a `path` and a `port` that the declaration already implied, which
-	// meant the same app was described twice and only one copy was checked.
-	// This surface has a process of its own — one RestApi, one container.
-	//
-	// It used to spell out `{ path: 'apps/api', code: './{endpoints,…}/**/*.ts' }`
-	// and both halves said what the id already said: `Api` means `apps/api`
-	// where that directory exists, and the code is in the conventional
-	// directories under it. The object form is still there for a layout that
-	// genuinely differs, which this is not.
-	app: true,
+	// No `app`. One RestApi is one server, so this has a container either way,
+	// and everything the block used to hold follows from the id: `Api` means
+	// `apps/api`, the code is in the conventional directories under it, and the
+	// port is assigned in a stable order. An `app` is worth writing only for a
+	// layout that differs from that, which this one does not.
 }).auth(auth);

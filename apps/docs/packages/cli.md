@@ -1122,7 +1122,7 @@ export default defineWorkspace({
 
 | Type | Description | Key Config |
 |------|-------------|------------|
-| `backend` | A `RestApi` that said `app: true` | `default`, `logger` |
+| `backend` | Every `RestApi` | `default`, `logger` |
 | `web` | A `StaticSite` | `variant`, `.dependsOn([…])` |
 | `mobile` | A `StaticSite` with an Expo variant | `variant: 'expo'` |
 
@@ -1145,9 +1145,6 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb')
 export const auth = new BetterAuth('Auth', {
   database: authDb,
   basePath: '/api/auth',
-  // A container of its own. Drop this line and it is served by the surface
-  // that named it with `.auth(auth)` instead.
-  app: true,
 });
 ```
 

@@ -21,7 +21,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-	type AppHosting,
 	type AppSpec,
 	type ConstructManifest,
 	DEFAULT_APP_CODE,
@@ -68,23 +67,7 @@ export function hostOf(
 	const declaration = manifest[id];
 	if (!declaration || declaration.kind !== 'rest-api') return undefined;
 
-	return declaration.app ? id : undefined;
-}
-
-/**
- * A surface that never said where it runs.
- *
- * Loud, because the alternative is picking a container for it — and a surface
- * that gets one by inference gets it from whatever happened to reference it.
- */
-export class UnhostedSurface extends Error {
-	constructor(readonly surface: string) {
-		super(
-			`Surface "${surface}" declares no app, so nothing serves it. Give it one:\n` +
-				`  new RestApi('${surface}', { app: { path: 'apps/${surface.toLowerCase()}' } })`,
-		);
-		this.name = 'UnhostedSurface';
-	}
+	return id;
 }
 
 /**
@@ -160,12 +143,10 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
  */
 export function resolveAppSpec(
 	id: string,
-	hosting: AppHosting,
+	spec: AppSpec,
 	workspaceRoot: string,
 	kind: 'site' | 'rest-api',
 ): AppSpec {
-	const spec: AppSpec = hosting === true ? {} : hosting;
-
 	const conventional = join('apps', appKey(id));
 	const path =
 		spec.path ??
@@ -198,16 +179,15 @@ export function derivedApps(
 		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
-		const hosting = declaration.app;
-		if (!hosting) {
-			// No app and nowhere named to run: refuse rather than choose. A
-			// surface that gets a container by inference gets it from whatever
-			// happened to reference it.
-			if (declaration.kind === 'rest-api') throw new UnhostedSurface(id);
-			continue;
-		}
-
-		const spec = resolveAppSpec(id, hosting, workspace.root, declaration.kind);
+		// No opt-in to be had. A site is an app and so is a surface; `app` is an
+		// override for a layout that differs, and having none is the ordinary
+		// case rather than a surface with nowhere to run.
+		const spec = resolveAppSpec(
+			id,
+			declaration.app ?? {},
+			workspace.root,
+			declaration.kind,
+		);
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override

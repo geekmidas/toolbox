@@ -85,7 +85,6 @@ gone, and the apps are read off the graph:
 export const api = new RestApi('Api', {
   default: 'none',
   logger,
-  app: true,
 });
 
 // constructs/site.ts — two frontend apps, and the edges that order them
@@ -102,9 +101,10 @@ the ids already said. Write one only when the layout differs.
 it is the one the build already needed — it derives the environment, the client
 and the deploy order from it.
 
-A `RestApi` without an `app` has no process of its own: it is served by the
-surface that named it as its authenticator. `app: true` is the whole change
-needed to move it into its own container.
+Every surface gets a container, and nobody asks for one. There is no
+arrangement in which one runs inside another — two surfaces in a process share
+a filesystem, an environment and every credential either was granted, so an
+auth server beside an API is one bug in the API away from being read by it.
 :::
 
 ::: info Apps that share a database
@@ -135,7 +135,6 @@ export const api = new RestApi('Api', {
   // file.
   logger,
   telescope,
-  app: true,
 });
 ```
 

@@ -192,9 +192,6 @@ export const api = new RestApi('Api', {
   authorizers: ['iam'],
   default: 'iam',
   logger,
-  // A process of its own. `Api` means `apps/api` where that directory exists,
-  // and the project root otherwise — so there is no path to write down.
-  app: true,
 });
 ```
 

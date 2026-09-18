@@ -49,8 +49,8 @@ export default defineWorkspace({
   name: 'my-saas',
 
   // Where the constructs live. The apps come from them: a `StaticSite` is an
-  // app, and so is a `RestApi` that said `app: true`. Each one is its own
-  // deploy unit — one container, one domain.
+  // app, and so is every `RestApi`. Each one is its own deploy unit — one
+  // container, one domain, and nothing to opt into.
   constructs: './constructs/**/*.ts',
 
   // Backend selection. The Postgres itself comes from the declared database.

@@ -359,7 +359,7 @@ export interface RestApiDeclaration extends Node {
 	 * API that called `.auth()` on it, rather than a second container nobody
 	 * asked for.
 	 */
-	app?: AppHosting;
+	app?: AppSpec;
 	/**
 	 * The construct that authenticates this surface.
 	 *
@@ -462,15 +462,6 @@ export type Glob = string | readonly string[];
 export const DEFAULT_APP_CODE =
 	'./{endpoints,functions,crons,queues,topics,subscribers}/**/*.ts';
 
-/**
- * That a surface has a process of its own.
- *
- * `true` is the ordinary answer: the path and the code glob both follow from
- * the construct's own id, so there was nothing for the object form to say. It
- * is there for the case where the layout differs.
- */
-export type AppHosting = true | AppSpec;
-
 export interface AppSpec {
 	/**
 	 * Where its source lives, relative to the workspace root.
@@ -556,7 +547,7 @@ export interface SiteDeclaration extends Node {
 	 * Required, where a surface's is optional: a site is always its own app.
 	 * There is no arrangement in which two sites are one process.
 	 */
-	app: AppHosting;
+	app?: AppSpec;
 	/**
 	 * Whether this is the site the base domain points at.
 	 *

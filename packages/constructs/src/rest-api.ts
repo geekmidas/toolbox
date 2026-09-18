@@ -25,7 +25,7 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
-	type AppHosting,
+	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -46,17 +46,18 @@ export interface RestApiConfig {
 	 * be told about separately: one `RestApi` is one server. A `StaticSite` says
 	 * the same thing, and the two are the same kind of statement.
 	 *
-	 * Omit it and this surface has no process of its own — it is served by the
-	 * surface that named it as its authenticator. An auth server usually wants
-	 * exactly that until it is worth its own container, at which point
-	 * `app: true` is the whole change.
+	 * Normally omitted. One RestApi is one server, always — there is no mode in
+	 * which a surface shares somebody else's container, because a surface that
+	 * gets its process by inference gets it from whatever happened to reference
+	 * it, and that was the thing worth removing.
 	 *
-	 * `true` is the ordinary answer. Both fields of the object form follow from
+	 * So this is an override and nothing else. Everything in it follows from
 	 * this construct's id — `apps/<kebab-id>` where that directory exists, the
-	 * conventional code directories under it — so the object is for the case
-	 * where the layout genuinely differs.
+	 * conventional code directories under it, a port assigned in a stable
+	 * order. Write one when the layout genuinely differs:
+	 * `app: { path: 'services/api' }`.
 	 */
-	app?: AppHosting;
+	app?: AppSpec;
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -308,14 +309,10 @@ export class RestApi<TName extends string = string>
 			{
 				kind: 'rest-api',
 				id: this.id,
-				...(this.config.app
-					? {
-							app: {
-								...(this.config.app === true ? {} : this.config.app),
-								...(this.config.telescope ? { telescope: true } : {}),
-							},
-						}
-					: {}),
+				app: {
+					...this.config.app,
+					...(this.config.telescope ? { telescope: true } : {}),
+				},
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per

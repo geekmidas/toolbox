@@ -63,13 +63,6 @@ export const api = new RestApi('Api', {
   default: 'none',
   // The actual logger, not a path to one.
   logger,
-  // A process of its own: one RestApi, one container.
-  //
-  // `true`, not a path: `Api` means `apps/api` where that directory exists and
-  // the project root otherwise, and the code is in the conventional
-  // directories under it. The object form — `{ path, code }` — is there for a
-  // layout that genuinely differs.
-  app: true,
 });
 ```
 

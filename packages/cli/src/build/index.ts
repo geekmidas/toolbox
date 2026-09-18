@@ -351,17 +351,20 @@ export async function buildCommand(
 		const selfServing = Object.entries(declared).find(
 			([id, d]) =>
 				d.kind === 'rest-api' &&
-				d.app !== undefined &&
 				d.endpoints.length > 0 &&
 				constructSources[id] !== undefined &&
 				// Resolved against the workspace root, not matched on the end of
 				// the path — `apps/api` is a suffix of `other-apps/api` too.
-				// Through `resolveAppSpec`, because `app: true` names no path and
-				// the default is the one this would otherwise have to repeat.
+				// Through `resolveAppSpec`, because a surface normally names no
+				// path and the default is the one this would otherwise repeat.
 				resolve(
 					loadedConfig.workspace.root,
-					resolveAppSpec(id, d.app, loadedConfig.workspace.root, 'rest-api')
-						.path!,
+					resolveAppSpec(
+						id,
+						d.app ?? {},
+						loadedConfig.workspace.root,
+						'rest-api',
+					).path!,
 				) === resolve(process.cwd()),
 		);
 

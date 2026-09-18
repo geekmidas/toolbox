@@ -158,7 +158,6 @@ export const api = new RestApi('Api', {
   authorizers: ['bearer', 'iam'],
   default: 'bearer',
   logger,
-  app: true,
 });
 ```
 

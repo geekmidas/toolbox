@@ -102,16 +102,20 @@ describe('derivedApps', () => {
 		expect('functions' in apps.api!).toBe(false);
 	});
 
-	it('refuses a surface that never said where it runs', () => {
-		// `.auth()` used to be enough to make Auth share the API's container.
-		// It is not: sharing a process shares a filesystem, an environment and
-		// every credential either surface holds.
+	it('gives an authenticator its own app without being asked', () => {
+		// `.auth()` used to be enough to make Auth share the API's container,
+		// and then — briefly — enough to make it an error. Neither: sharing a
+		// process shares a filesystem, an environment and every credential
+		// either surface holds, so Auth simply gets its own.
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(() => derivedApps(manifest, workspace())).toThrow(/declares no app/);
+		const apps = derivedApps(manifest, workspace());
+
+		expect(Object.keys(apps).sort()).toEqual(['api', 'auth']);
+		expect(apps.auth?.type).toBe('backend');
 	});
 
 	it('gives an auth server its own container once it has an app', () => {
@@ -298,28 +302,23 @@ describe('hostOf', () => {
 	});
 
 	it('does not treat `.auth()` as a place to run', () => {
+		// Auth hosts itself, not the API that authenticates against it.
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(hostOf(manifest, 'Auth')).toBeUndefined();
+		expect(hostOf(manifest, 'Auth')).toBe('Auth');
 	});
 
-	it('answers with nothing when no surface hosts it', () => {
-		const manifest = {
-			Auth: surface('Auth'),
-		} as unknown as ConstructManifest;
-
-		expect(hostOf(manifest, 'Auth')).toBeUndefined();
-	});
-
-	it('answers with nothing for a surface with no app', () => {
+	it('answers with the surface itself even when it named no app', () => {
+		// `app` is an override, so having none is the ordinary case rather
+		// than a surface with nowhere to run.
 		const manifest = {
 			A: surface('A'),
 		} as unknown as ConstructManifest;
 
-		expect(hostOf(manifest, 'A')).toBeUndefined();
+		expect(hostOf(manifest, 'A')).toBe('A');
 	});
 
 	it('answers with nothing for a kind that is not a surface', () => {

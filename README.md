@@ -71,9 +71,6 @@ export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
 export const api = new RestApi('Api', {
   default: 'none',
   logger,
-  // A process of its own: one RestApi, one container. `true`, not a path —
-  // `Api` means `apps/api`, which is what the id already said.
-  app: true,
 });
 ```
 

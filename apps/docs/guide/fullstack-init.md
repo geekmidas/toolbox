@@ -201,7 +201,7 @@ Both users share the same database (`{project_name}_dev`) but are isolated by sc
 | `gkm.config.ts` | Workspace config with `defineWorkspace()` |
 
 The workspace config says where the constructs live. The three apps come from
-them — each `RestApi` that said `app: true` and each `StaticSite` is one:
+them — every `RestApi` is one, and so is every `StaticSite`:
 
 ```typescript
 import { defineWorkspace } from '@geekmidas/cli/config';
