@@ -64,127 +64,6 @@ export function generateAuthAppFiles(
 		exclude: ['node_modules', 'dist'],
 	};
 
-	// src/config/env.ts
-	const envTs = `import { Credentials } from '@geekmidas/envkit/credentials';
-import { EnvironmentParser } from '@geekmidas/envkit';
-
-export const envParser = new EnvironmentParser({ ...process.env, ...Credentials });
-
-// Global config - only minimal shared values
-// Service-specific config should be parsed where needed
-export const config = envParser
-  .create((get) => ({
-    nodeEnv: get('NODE_ENV').enum(['development', 'test', 'production']).default('development'),
-    stage: get('STAGE').enum(['development', 'staging', 'production']).default('development'),
-  }))
-  .parse();
-`;
-
-	// src/config/logger.ts
-	const loggerTs = `import { createLogger } from '@geekmidas/logger/${options.loggerType}';
-
-export const logger = createLogger();
-`;
-
-	// src/auth.ts - better-auth instance with magic link
-	const authTs = `import { betterAuth } from 'better-auth';
-import { magicLink } from 'better-auth/plugins';
-import pg from 'pg';
-import { envParser } from './config/env.ts';
-import { logger } from './config/logger.ts';
-
-// Parse auth-specific config (no defaults - values from secrets)
-const authConfig = envParser
-  .create((get) => ({
-    databaseUrl: get('DATABASE_URL').string(),
-    baseUrl: get('BETTER_AUTH_URL').string(),
-    trustedOrigins: get('BETTER_AUTH_TRUSTED_ORIGINS').string(),
-    secret: get('BETTER_AUTH_SECRET').string(),
-  }))
-  .parse();
-
-export const auth = betterAuth({
-  database: new pg.Pool({
-    connectionString: authConfig.databaseUrl,
-  }),
-  baseURL: authConfig.baseUrl,
-  trustedOrigins: authConfig.trustedOrigins.split(','),
-  secret: authConfig.secret,
-  plugins: [
-    magicLink({
-      sendMagicLink: async ({ email, url }) => {
-        // TODO: Implement email sending using @geekmidas/emailkit
-        // For development, log the magic link
-        logger.info({ email, url }, 'Magic link generated');
-        console.log('\\n================================');
-        console.log('MAGIC LINK FOR:', email);
-        console.log(url);
-        console.log('================================\\n');
-      },
-      expiresIn: 300, // 5 minutes
-    }),
-  ],
-  emailAndPassword: {
-    enabled: false, // Only magic link for now
-  },
-});
-
-export type Auth = typeof auth;
-`;
-
-	// src/index.ts - Hono app entry point
-	const indexTs = `import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { serve } from '@hono/node-server';
-import { auth } from './auth.ts';
-import { envParser } from './config/env.ts';
-import { logger } from './config/logger.ts';
-
-// Parse server config (no defaults - values from secrets)
-const serverConfig = envParser
-  .create((get) => ({
-    port: get('PORT').string().transform(Number),
-    trustedOrigins: get('BETTER_AUTH_TRUSTED_ORIGINS').string(),
-  }))
-  .parse();
-
-const app = new Hono();
-
-// CORS must be registered before routes
-app.use(
-  '/api/auth/*',
-  cors({
-    origin: serverConfig.trustedOrigins.split(','),
-    allowHeaders: ['Content-Type', 'Authorization'],
-    allowMethods: ['POST', 'GET', 'OPTIONS'],
-    credentials: true,
-  }),
-);
-
-// Health check endpoint
-app.get('/health', (c) => {
-  return c.json({
-    status: 'ok',
-    service: 'auth',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Mount better-auth handler
-app.on(['POST', 'GET'], '/api/auth/*', (c) => {
-  return auth.handler(c.req.raw);
-});
-
-logger.info({ port: serverConfig.port }, 'Starting auth server');
-
-serve({
-  fetch: app.fetch,
-  port: serverConfig.port,
-}, (info) => {
-  logger.info({ port: info.port }, 'Auth server running');
-});
-`;
-
 	// .gitignore for auth app
 	const gitignore = `node_modules/
 dist/
@@ -201,22 +80,15 @@ dist/
 			path: 'apps/auth/tsconfig.json',
 			content: `${JSON.stringify(tsConfig, null, 2)}\n`,
 		},
-		{
-			path: 'apps/auth/src/config/env.ts',
-			content: envTs,
-		},
-		{
-			path: 'apps/auth/src/config/logger.ts',
-			content: loggerTs,
-		},
-		{
-			path: 'apps/auth/src/auth.ts',
-			content: authTs,
-		},
-		{
-			path: 'apps/auth/src/index.ts',
-			content: indexTs,
-		},
+		// No `src/`. The auth server used to be a hand-written Hono app here — a
+		// `src/index.ts` that read PORT, split `BETTER_AUTH_TRUSTED_ORIGINS` into
+		// a CORS list, and mounted `/api/auth/*` itself, beside a `src/auth.ts`
+		// that built the Better Auth instance and a `src/config/env.ts` to feed
+		// it. Every line of that is the `BetterAuth` construct's now: the origins
+		// come from whatever declared an edge to it, and the build generates the
+		// entry, because the routes are a wildcard that no glob can find.
+		//
+		// What is left is the package the container is built from.
 		{
 			path: 'apps/auth/.gitignore',
 			content: gitignore,

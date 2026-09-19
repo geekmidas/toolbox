@@ -392,12 +392,57 @@ describe('initCommand', () => {
 
 			expect(content).toContain('import { defineWorkspace }');
 			expect(content).toContain("name: 'my-fullstack'");
-			expect(content).toContain("type: 'backend'");
-			expect(content).toContain("path: 'apps/api'");
-			expect(content).toContain("type: 'web'");
-			expect(content).toContain("framework: 'nextjs'");
-			expect(content).toContain("path: 'apps/web'");
-			expect(content).toContain("packages: ['packages/*']");
+			expect(content).toContain("constructs: './constructs/**/*.ts'");
+
+			// The apps are the constructs that said they have a process, so none
+			// of this is here to drift from them.
+			expect(content).not.toContain('apps: {');
+			expect(content).not.toContain("type: 'backend'");
+			expect(content).not.toContain("framework: 'nextjs'");
+			expect(content).not.toContain('envParser:');
+			expect(content).not.toContain('logger:');
+		});
+
+		it('declares the three apps as constructs', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const dir = join(tempDir, 'my-fullstack', 'constructs');
+
+			const api = await readFile(join(dir, 'api.ts'), 'utf-8');
+			expect(api).toContain("new RestApi('Api'");
+			expect(api).toContain('.auth(auth)');
+
+			const auth = await readFile(join(dir, 'auth.ts'), 'utf-8');
+			expect(auth).toContain("new BetterAuth('Auth'");
+
+			const site = await readFile(join(dir, 'site.ts'), 'utf-8');
+			expect(site).toContain("new StaticSite('Web'");
+			expect(site).toContain('.dependsOn([api, auth])');
+		});
+
+		it('leaves the auth app with no hand-written server', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			// The routes are a wildcard, so the build generates the entry from
+			// the declaration. There is nothing here to keep in step with it.
+			const dir = join(tempDir, 'my-fullstack', 'apps/auth');
+			await expect(
+				readFile(join(dir, 'src/index.ts'), 'utf-8'),
+			).rejects.toThrow();
+			await expect(
+				readFile(join(dir, 'src/auth.ts'), 'utf-8'),
+			).rejects.toThrow();
+			await expect(
+				readFile(join(dir, 'package.json'), 'utf-8'),
+			).resolves.toContain('@my-fullstack/auth');
 		});
 
 		it('should create root package.json with gkm commands', async () => {
@@ -434,7 +479,7 @@ describe('initCommand', () => {
 			expect(pkg.scripts.dev).toContain('next dev');
 		});
 
-		it('should include services config in workspace', async () => {
+		it('configures no services — a declared construct is what brings each up', async () => {
 			await initCommand('my-fullstack', {
 				template: 'fullstack',
 				yes: true,
@@ -444,13 +489,20 @@ describe('initCommand', () => {
 			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
 			const content = await readFile(configPath, 'utf-8');
 
-			expect(content).toContain('services:');
-			expect(content).toContain('db: true');
-			expect(content).toContain('cache: true');
-			expect(content).toContain('mail: true');
+			// Postgres because a database was declared, MinIO because a bucket
+			// was — and which backend serves each follows the deploy target.
+			expect(content).not.toContain('services:');
+
+			const dir = join(tempDir, 'my-fullstack', 'constructs');
+			await expect(
+				readFile(join(dir, 'database.ts'), 'utf-8'),
+			).resolves.toContain('KyselyDatabase');
+			await expect(
+				readFile(join(dir, 'storage.ts'), 'utf-8'),
+			).resolves.toContain('ObjectStorage');
 		});
 
-		it('should include deploy config for dokploy', async () => {
+		it('configures no deploy target — that is picked at deploy time', async () => {
 			await initCommand('my-fullstack', {
 				template: 'fullstack',
 				yes: true,
@@ -460,8 +512,7 @@ describe('initCommand', () => {
 			const configPath = join(tempDir, 'my-fullstack', 'gkm.config.ts');
 			const content = await readFile(configPath, 'utf-8');
 
-			expect(content).toContain('deploy:');
-			expect(content).toContain("default: 'dokploy'");
+			expect(content).not.toContain('deploy:');
 
 			const pkgPath = join(tempDir, 'my-fullstack', 'package.json');
 			const pkgContent = await readFile(pkgPath, 'utf-8');

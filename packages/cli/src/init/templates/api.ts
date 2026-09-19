@@ -78,6 +78,10 @@ export const apiTemplate: TemplateConfig = {
 		// per-app secret, neither of which reconcile knows about, so declaring
 		// only the API's half would leave auth pointing at a container that is
 		// no longer the one running.
+		// In a workspace the constructs live at its root — `generateRootConstructs`
+		// writes them — so the app declares none of its own and imports them
+		// through the `@<name>/constructs/*` alias instead. A single-app project
+		// has no root above it, so they stay in `src/constructs/`.
 		const declares = !monorepo;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
@@ -107,8 +111,18 @@ export const logger = createLogger();
 
 		// Where an endpoint file reaches the surface from — one level deeper when
 		// the routes are nested by domain.
-		const apiImport =
-			routesStructure === 'domain-based'
+		/**
+		 * Where a file at the app's `src/` root reaches a construct.
+		 *
+		 * A workspace keeps them at its own root, so the app goes through the
+		 * `@<name>/constructs/*` alias rather than climbing out with `../../`.
+		 */
+		const constructsImport = (file: string) =>
+			monorepo ? `@${name}/constructs/${file}.ts` : `./constructs/${file}.ts`;
+
+		const apiImport = monorepo
+			? `@${name}/constructs/api.ts`
+			: routesStructure === 'domain-based'
 				? '../../constructs/api.js'
 				: '../constructs/api.js';
 
@@ -117,9 +131,14 @@ export const logger = createLogger();
 			// one carries the logger and environment parser its adaptor needs —
 			// nothing has to be named in config and nothing printed into the
 			// generated handler.
-			{
-				path: 'src/constructs/api.ts',
-				content: `import { RestApi } from '@geekmidas/constructs/rest-api';
+			//
+			// A workspace declares it at its root instead, beside the site and the
+			// auth server that depend on it.
+			...(declares
+				? [
+						{
+							path: 'src/constructs/api.ts',
+							content: `import { RestApi } from '@geekmidas/constructs/rest-api';
 import { logger } from '../config/logger.ts';
 
 export const api = new RestApi('Api', {
@@ -132,7 +151,9 @@ export const api = new RestApi('Api', {
   logger,
 });
 `,
-			},
+						},
+					]
+				: []),
 
 			// src/config/env.ts
 			{
@@ -333,10 +354,10 @@ export const authService = {
 			files.push({
 				path: 'src/router.ts',
 				content: `import { UnauthorizedError } from '@geekmidas/errors';
-import { api } from './constructs/api.ts';${
+import { api } from '${constructsImport('api')}';${
 					options.database
 						? `
-import { database } from './constructs/database.ts';`
+import { database } from '${constructsImport('database')}';`
 						: ''
 				}
 import { authService, type Session } from './services/auth.ts';
@@ -395,10 +416,10 @@ export const profileEndpoint = sessionRouter
 		if (!monorepo) {
 			files.push({
 				path: 'src/router.ts',
-				content: `import { api } from './constructs/api.ts';${
+				content: `import { api } from '${constructsImport('api')}';${
 					options.database
 						? `
-import { database } from './constructs/database.ts';`
+import { database } from '${constructsImport('database')}';`
 						: ''
 				}
 
