@@ -141,16 +141,53 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
  *
  * A site takes no `code`: its build is its framework's, not ours.
  */
+/**
+ * Where an app lives when it did not say.
+ *
+ * `apps/<kebab-id>`, which is what the id already said — or the project root
+ * when there is no `apps/` at all, because then there is one app and it is the
+ * project.
+ *
+ * In between, it refuses. A workspace *with* an `apps/` directory and no
+ * `apps/<key>` in it is a construct naming a directory nobody wrote, and
+ * quietly answering `.` there makes the app the whole repository: the build
+ * filters turbo on the root `package.json` and builds the wrong thing, or
+ * itself. A missing directory is a typo or an unconventional layout, and both
+ * want saying out loud.
+ */
+function conventionalPath(id: string, workspaceRoot: string): string {
+	const conventional = join('apps', appKey(id));
+	if (existsSync(join(workspaceRoot, conventional))) return conventional;
+
+	// No `apps/` at all: one app, and it is the project.
+	if (!existsSync(join(workspaceRoot, 'apps'))) return '.';
+
+	throw new MisplacedApp(id, conventional);
+}
+
+/** A construct whose directory is not where its id says it is. */
+export class MisplacedApp extends Error {
+	constructor(
+		readonly construct: string,
+		readonly expected: string,
+	) {
+		super(
+			`"${construct}" has no directory at ${expected}.\n` +
+				`Create it, or say where it lives:\n` +
+				`  new StaticSite('${construct}', { path: 'sites/${appKey(construct)}' })\n` +
+				`  new RestApi('${construct}', { …, app: { path: 'services/${appKey(construct)}' } })`,
+		);
+		this.name = 'MisplacedApp';
+	}
+}
+
 export function resolveAppSpec(
 	id: string,
 	spec: AppSpec,
 	workspaceRoot: string,
 	kind: 'site' | 'rest-api',
 ): AppSpec {
-	const conventional = join('apps', appKey(id));
-	const path =
-		spec.path ??
-		(existsSync(join(workspaceRoot, conventional)) ? conventional : '.');
+	const path = spec.path ?? conventionalPath(id, workspaceRoot);
 
 	const givenAGlob =
 		spec.code !== undefined ||

@@ -350,20 +350,39 @@ describe('resolveAppSpec', () => {
 	it('reads the path off the id when the directory is there', () => {
 		const root = rootWith('api');
 
-		expect(resolveAppSpec('Api', true, root, 'rest-api').path).toBe('apps/api');
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('apps/api');
 	});
 
 	it('falls back to the workspace root for a single-app project', () => {
 		// No `apps/` at all: one app, and it is the project.
 		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
 
-		expect(resolveAppSpec('Api', true, root, 'rest-api').path).toBe('.');
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('.');
+	});
+
+	it('refuses a directory the workspace does not have', () => {
+		// The one that would be silent: answering `.` here makes the app the
+		// whole repository, and the build then filters turbo on the root
+		// package.json and builds the wrong thing.
+		const root = rootWith('web');
+
+		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
+			/no directory at apps\/marketing/,
+		);
+	});
+
+	it('says how to point at an unconventional layout', () => {
+		const root = rootWith('web');
+
+		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
+			/path: 'sites\/marketing'/,
+		);
 	});
 
 	it('kebab-cases a multi-word id the way every other physical name is', () => {
 		const root = rootWith('admin-api');
 
-		expect(resolveAppSpec('AdminApi', true, root, 'rest-api').path).toBe(
+		expect(resolveAppSpec('AdminApi', {}, root, 'rest-api').path).toBe(
 			'apps/admin-api',
 		);
 	});
@@ -379,7 +398,7 @@ describe('resolveAppSpec', () => {
 	it('gives a surface the conventional code glob', () => {
 		const root = rootWith('api');
 
-		expect(resolveAppSpec('Api', true, root, 'rest-api').code).toBe(
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').code).toBe(
 			DEFAULT_APP_CODE,
 		);
 	});
@@ -410,6 +429,6 @@ describe('resolveAppSpec', () => {
 	it("gives a site no code glob — its build is its framework's", () => {
 		const root = rootWith('web');
 
-		expect(resolveAppSpec('Web', true, root, 'site').code).toBeUndefined();
+		expect(resolveAppSpec('Web', {}, root, 'site').code).toBeUndefined();
 	});
 });
