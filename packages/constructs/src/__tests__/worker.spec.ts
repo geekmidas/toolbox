@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CronBuilder } from '../crons/CronBuilder';
 import { KyselyDatabase } from '../database/kysely';
 import { Worker } from '../worker';
 
@@ -100,6 +101,38 @@ describe('Worker', () => {
 				.handle(async () => {});
 
 			expect(cron.logger).toBeDefined();
+		});
+	});
+
+	describe('ownership', () => {
+		it('stamps its id onto everything built from its factories', () => {
+			const worker = new Worker('Jobs');
+
+			const cron = worker.cron('rate(1 day)').handle(async () => {});
+			const fn = worker.functions.handle(async () => {});
+
+			// One field says which process runs a construct, whatever its kind.
+			// Before this, only the directory said it.
+			expect(cron.owner).toBe('Jobs');
+			expect(fn.owner).toBe('Jobs');
+		});
+
+		it('stamps the canonical id, not what was typed', () => {
+			const cron = new Worker('background-jobs')
+				.cron('rate(1 day)')
+				.handle(async () => {});
+
+			expect(cron.owner).toBe('BackgroundJobs');
+		});
+
+		it('leaves a free-standing builder unowned', () => {
+			// `c`, `s` and `f` still work and still belong to nothing — which is
+			// the state the directory used to paper over.
+			const cron = new CronBuilder()
+				.schedule('rate(1 day)')
+				.handle(async () => {});
+
+			expect(cron.owner).toBeUndefined();
 		});
 	});
 

@@ -114,7 +114,7 @@ export class Worker<TName extends string = string>
 	 * with an import of a logger it has to know the path to.
 	 */
 	get crons() {
-		return new CronBuilder().logger(this.logger);
+		return this.own(new CronBuilder().logger(this.logger));
 	}
 
 	/**
@@ -124,12 +124,12 @@ export class Worker<TName extends string = string>
 	 * from the publisher's message union, so there is nothing to spell twice.
 	 */
 	get subscribers() {
-		return new SubscriberBuilder().logger(this.logger);
+		return this.own(new SubscriberBuilder().logger(this.logger));
 	}
 
 	/** This worker's function factory, carrying its logger. */
 	get functions() {
-		return new FunctionBuilder().logger(this.logger);
+		return this.own(new FunctionBuilder().logger(this.logger));
 	}
 
 	/**
@@ -152,6 +152,16 @@ export class Worker<TName extends string = string>
 			...this.dependencies,
 			...constructs.map(edgeTo),
 		]);
+	}
+
+	/**
+	 * Stamps this worker's id onto a builder, so everything built from it says
+	 * which process runs it.
+	 */
+	private own<T extends { _owner?: string }>(builder: T): T {
+		builder._owner = this.id;
+
+		return builder;
 	}
 
 	declare(): Declaration[] {

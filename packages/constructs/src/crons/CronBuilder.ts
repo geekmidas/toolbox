@@ -310,6 +310,10 @@ export class CronBuilder<
 			this._constructs,
 		);
 
+		// Which process runs it. Carried from the factory rather than inferred
+		// from the directory the file happens to sit in.
+		cron.owner = this._owner;
+
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
 		// configured base — `const fn = f.logger(log).timeout(60_000)` — keeps
 		// its configuration for every construct built from it. The reset that

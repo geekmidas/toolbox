@@ -60,6 +60,20 @@ export abstract class Construct<
 	/** Database service for this construct (used by Endpoint for RLS/audit context) */
 	public databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
+	/**
+	 * The deploy unit that runs this, by construct id.
+	 *
+	 * What an endpoint's `surface` is to it, and for the same reason: something
+	 * has to say which process a runnable belongs to, and until this existed the
+	 * only thing that said so was the directory its file sat in. Set by the
+	 * factory it was built from — `worker.crons`, `api.endpoints` — so it is
+	 * carried rather than configured.
+	 *
+	 * Undefined for a construct built from a free-standing builder, which is
+	 * still how `c`, `s` and `f` work.
+	 */
+	public owner?: string;
+
 	constructor(
 		public readonly type: ConstructType,
 		public readonly logger: TLogger,
