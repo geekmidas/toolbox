@@ -34,5 +34,7 @@
     "@geekmidas/testkit": "9.0.2",
     "@geekmidas/ui": "9.0.2"
   },
-  "changesets": []
+  "changesets": [
+    "v10-the-manifest-is-the-source"
+  ]
 }
