@@ -190,7 +190,7 @@ import logger from '../config/logger';
 // worth refusing to have.
 export const api = new RestApi('Api', {
   authorizers: ['iam'],
-  default: 'iam',
+  defaultAuthorizer: 'iam',
   logger,
 });
 ```

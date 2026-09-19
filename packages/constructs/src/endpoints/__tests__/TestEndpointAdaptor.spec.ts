@@ -7,7 +7,7 @@ import { SuccessStatus } from '../Endpoint';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 describe('TestEndpointAdaptor', () => {
 	const mockServices = {};

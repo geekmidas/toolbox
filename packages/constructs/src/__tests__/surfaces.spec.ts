@@ -11,7 +11,10 @@ import { KyselyDatabase } from '../database/kysely';
 import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
-const api = new RestApi('Api', { authorizers: ['iam'], default: 'none' });
+const api = new RestApi('Api', {
+	authorizers: ['iam'],
+	defaultAuthorizer: 'none',
+});
 
 describe('RestApi', () => {
 	it('declares one surface providing its address and both caller-derived keys', () => {
@@ -27,7 +30,9 @@ describe('RestApi', () => {
 	});
 
 	it('canonicalises its id, so one surface cannot be spelled four ways', () => {
-		expect(new RestApi('user-api', { default: 'none' }).id).toBe('UserApi');
+		expect(new RestApi('user-api', { defaultAuthorizer: 'none' }).id).toBe(
+			'UserApi',
+		);
 	});
 
 	it('leaves its routes to the build', () => {

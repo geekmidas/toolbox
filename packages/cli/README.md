@@ -1246,7 +1246,7 @@ them out of the manifest; none of them is listed in config.
 
 ```typescript
 // constructs/api.ts
-export const api = new RestApi('Api', { default: 'none', logger });
+export const api = new RestApi('Api', { defaultAuthorizer: 'none', logger });
 ```
 
 `gkm build --provider server` generates a Hono server from the endpoints built

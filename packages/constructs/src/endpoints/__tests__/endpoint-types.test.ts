@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { RestApi } from '../../rest-api';
 
 /** Endpoints are built from a surface now, so the tests build one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 describe('Endpoint type inference', () => {
 	it('should not include body/params/query when not defined', () => {

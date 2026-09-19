@@ -285,7 +285,7 @@ This is particularly useful for frontend apps that need to know the URLs of back
 
 ```typescript
 // constructs/api.ts
-export const api = new RestApi('Api', { default: 'none', logger });
+export const api = new RestApi('Api', { defaultAuthorizer: 'none', logger });
 
 // constructs/site.ts — the edge is what carries the URL into the build
 export const web = new StaticSite('Web').dependsOn([api, auth]);

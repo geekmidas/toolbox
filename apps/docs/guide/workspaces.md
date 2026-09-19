@@ -83,7 +83,7 @@ gone, and the apps are read off the graph:
 ```typescript
 // constructs/api.ts — a backend app
 export const api = new RestApi('Api', {
-  default: 'none',
+  defaultAuthorizer: 'none',
   logger,
 });
 
@@ -127,7 +127,7 @@ it runs with:
 ```typescript
 // constructs/api.ts
 export const api = new RestApi('Api', {
-  default: 'none',
+  defaultAuthorizer: 'none',
   // The actual logger, not a path to one. It used to be
   // `logger: './src/config/logger'` in config, because the build wrote an
   // import into each generated handler. Endpoints built from the surface carry

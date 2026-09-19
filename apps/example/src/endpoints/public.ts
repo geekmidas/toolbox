@@ -2,7 +2,7 @@ import { RestApi } from '@geekmidas/constructs/rest-api';
 import { z } from 'zod';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 /**
  * Minimal-tier public endpoints

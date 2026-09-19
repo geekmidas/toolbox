@@ -61,7 +61,7 @@ export async function createMockEndpointFile(
 import { RestApi } from '@geekmidas/constructs/rest-api';
 import { z } from 'zod';
 
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 export const ${exportName} = api
   .${method.toLowerCase()}('${path}')
@@ -121,7 +121,7 @@ export const ${exportName} = new CronBuilder()
  * Helper functions to create real constructs for testing
  */
 /** The surface these helpers build endpoints from. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
 	const m = method.toLowerCase() as Lowercase<HttpMethod>;

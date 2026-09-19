@@ -60,7 +60,7 @@ export const api = new RestApi('Api', {
   // Required, and `'none'` is a valid answer that has to be typed out. An API
   // that ships open because a field was left off is the one default worth
   // refusing to have.
-  default: 'none',
+  defaultAuthorizer: 'none',
   // The actual logger, not a path to one.
   logger,
 });

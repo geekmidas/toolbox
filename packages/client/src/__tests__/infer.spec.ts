@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { InferOpenApi, InferOpenApiFromEndpoint } from '../infer';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 describe('InferOpenApi', () => {
 	describe('single endpoint', () => {

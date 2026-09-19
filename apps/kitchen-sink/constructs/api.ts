@@ -12,7 +12,7 @@ import { telescope } from './telescope.js';
  * anywhere any more — they are read off whatever declares an edge to a surface,
  * which is the only place that information was ever true.
  *
- * `default: 'none'` is typed out rather than omitted. An API that ships open
+ * `defaultAuthorizer: 'none'` is typed out rather than omitted. An API that ships open
  * because a field was left off is the one default worth refusing to have, so
  * public-by-default has to be a sentence someone wrote.
  *
@@ -24,7 +24,7 @@ import { telescope } from './telescope.js';
  */
 export const api = new RestApi('Api', {
 	authorizers: ['iam'],
-	default: 'none',
+	defaultAuthorizer: 'none',
 	// Only what a graph cannot answer. The *origins* are not here — they are read
 	// off whatever declared an edge to this surface, which is the whole reason
 	// the edge exists.

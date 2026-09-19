@@ -17,6 +17,6 @@ import { logger } from '../config/logger.js';
  * `endpoints/router.ts`.
  */
 export const api = new RestApi('Api', {
-	default: 'none',
+	defaultAuthorizer: 'none',
 	logger,
 });

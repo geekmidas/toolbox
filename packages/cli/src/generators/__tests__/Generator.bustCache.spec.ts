@@ -52,7 +52,7 @@ import { z } from 'zod/v4';
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 export const getRentalAgreement = api
   .get('/rental-agreement')

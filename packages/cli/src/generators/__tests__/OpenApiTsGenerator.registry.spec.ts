@@ -4,7 +4,7 @@ import { z } from 'zod/v4';
 import { OpenApiTsGenerator } from '../OpenApiTsGenerator';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 describe('OpenApiTsGenerator — zod global registry', () => {
 	beforeEach(() => {

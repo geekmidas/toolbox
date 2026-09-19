@@ -16,7 +16,7 @@
  * ```ts
  * export const api = new RestApi('Api', {
  *   authorizers: ['session'],
- *   default: 'session',
+ *   defaultAuthorizer: 'session',
  * });
  * ```
  */
@@ -81,8 +81,14 @@ export interface RestApiConfig {
 	 * Required, and `'none'` is a valid answer that has to be typed out. The
 	 * alternative is an API that ships open because a field was left off, which
 	 * is the one default worth refusing to have.
+	 *
+	 * It was called `default`, which said what it was to the type and nothing
+	 * to the reader: next to `authorizers: ['iam']`, a bare `default: 'none'`
+	 * could be defaulting the runtime or the target. The manifest has always
+	 * called it `defaultAuthorizer` and the factory `defaultAuthorizerName`;
+	 * this is the same fact under the same name.
 	 */
-	default: string;
+	defaultAuthorizer: string;
 	/**
 	 * The logger every endpoint on this surface runs with.
 	 *
@@ -198,8 +204,10 @@ export class RestApi<TName extends string = string>
 						availableAuthorizers: config.authorizers.map((name) => ({ name })),
 					}
 				: {}),
-			...(config.default && config.default !== 'none'
-				? { defaultAuthorizerName: config.default }
+			// `'none'` reaches the factory as no default at all, which is what
+			// public means to an endpoint that names no authorizer.
+			...(config.defaultAuthorizer && config.defaultAuthorizer !== 'none'
+				? { defaultAuthorizerName: config.defaultAuthorizer }
 				: {}),
 			surface: { id: this.id, envParser: this.envParser },
 		});
@@ -324,7 +332,7 @@ export class RestApi<TName extends string = string>
 				...(this.config.authorizers?.length
 					? { authorizers: this.config.authorizers }
 					: {}),
-				defaultAuthorizer: this.config.default,
+				defaultAuthorizer: this.config.defaultAuthorizer,
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

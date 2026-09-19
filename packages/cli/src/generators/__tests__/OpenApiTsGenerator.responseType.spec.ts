@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { OpenApiTsGenerator } from '../OpenApiTsGenerator';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 describe('OpenApiTsGenerator — responseType', () => {
 	it("emits 'application/json' in paths when responseType is default", async () => {

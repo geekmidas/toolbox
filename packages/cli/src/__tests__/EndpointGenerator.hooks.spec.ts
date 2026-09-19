@@ -7,7 +7,7 @@ import { EndpointGenerator } from '../generators/EndpointGenerator';
 import type { GeneratedConstruct } from '../generators/Generator';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 // Create a minimal mock endpoint for testing
 const mockEndpoint = api.get('/test').handle(async () => ({ ok: true }));

@@ -454,7 +454,7 @@ import { z } from 'zod';
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 export const complexEndpoint = api
   .post('/complex')

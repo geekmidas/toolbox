@@ -15,7 +15,7 @@ import { RestApi } from '../../rest-api';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 type OrderEvent =
 	| PublishableMessage<'order.created', { orderId: string; total: number }>
