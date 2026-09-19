@@ -185,7 +185,7 @@ export function resolveAppSpec(
 	id: string,
 	spec: AppSpec,
 	workspaceRoot: string,
-	kind: 'site' | 'rest-api',
+	kind: 'site' | 'rest-api' | 'worker',
 ): AppSpec {
 	const path = spec.path ?? conventionalPath(id, workspaceRoot);
 
@@ -201,7 +201,9 @@ export function resolveAppSpec(
 	return {
 		...spec,
 		path,
-		...(kind === 'rest-api' && !givenAGlob ? { code: DEFAULT_APP_CODE } : {}),
+		// A site takes none — its build is its framework's. The two that run our
+		// code take the conventional directories.
+		...(kind !== 'site' && !givenAGlob ? { code: DEFAULT_APP_CODE } : {}),
 	};
 }
 
@@ -213,7 +215,13 @@ export function derivedApps(
 	const defaultTarget: DeployTarget = workspace.deploy?.default ?? 'dokploy';
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
+		// Three kinds are apps: a site, an HTTP surface, and a worker — the
+		// process with no port. Everything else is a resource one of them uses.
+		if (
+			declaration.kind !== 'site' &&
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'worker'
+		)
 			continue;
 
 		// No opt-in to be had. A site is an app and so is a surface; `app` is an
@@ -284,16 +292,25 @@ export function derivedApps(
 	// depends on a surface depends on the app that serves it — which for a
 	// mounted auth server is its host, not a container that does not exist.
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
+		// Three kinds are apps: a site, an HTTP surface, and a worker — the
+		// process with no port. Everything else is a resource one of them uses.
+		if (
+			declaration.kind !== 'site' &&
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'worker'
+		)
 			continue;
 
 		const app = apps[appKey(id)];
 		if (!app) continue;
 
+		// A site names its edges `dependencies`, a surface names them `calls`, and
+		// a worker — which depends on things without being an HTTP client of
+		// them — names them `dependencies` too.
 		const edges =
-			declaration.kind === 'site'
-				? declaration.dependencies
-				: (declaration.calls ?? []);
+			declaration.kind === 'rest-api'
+				? (declaration.calls ?? [])
+				: (declaration.dependencies ?? []);
 
 		const names = new Set<string>();
 		for (const edge of edges) {

@@ -204,6 +204,16 @@
 				"default": "./dist/site.cjs"
 			}
 		},
+		"./worker": {
+			"import": {
+				"types": "./dist/worker.d.mts",
+				"default": "./dist/worker.mjs"
+			},
+			"require": {
+				"types": "./dist/worker.d.cts",
+				"default": "./dist/worker.cjs"
+			}
+		},
 		"./database/kysely": {
 			"import": {
 				"types": "./dist/database/kysely.d.mts",
