@@ -52,25 +52,34 @@ export default defineWorkspace({
   // one.
   constructs: './constructs/**/*.ts',
 
-  // What no construct implies.
-  //
-  // `db` and `storage` are derived from the declared KyselyDatabase and
-  // ObjectStorage and are ignored here, so the two cannot disagree. What is
-  // left is a backend selection.
-  // Every key is a backend name and every one is optional — the default
-  // follows the deploy target.
-  services: {
-    cache: 'db',      // 'upstash' | 'elasticache' | 'db'
-    storage: 's3',    // 'minio' | 's3' | 'r2'
-    mail: 'ses',      // 'ses' | 'resend' | 'smtp'
-    events: 'pgboss', // 'pgboss' | 'sns' | 'rabbitmq'
-  },
-
   deploy: {
     default: 'dokploy',
   },
 });
 ```
+
+That is a whole workspace config. There is no `services` block, because every
+key in it has a default that follows the deploy target:
+
+| | on `dokploy` / `docker` | on `aws` |
+|---|---|---|
+| `cache` | `db` — the connection pool is already open | `upstash` — reachable from a Lambda with no VPC |
+| `storage` | `minio` | `s3` |
+| `mail` | `ses` | `ses` |
+| `events` | `pgboss` | `pgboss` |
+
+Write one only to override:
+
+```typescript
+services: {
+  cache: 'upstash',  // a real Redis even on Dokploy
+  mail: 'resend',
+}
+```
+
+`db` and `storage` are not selections at all — they are derived from the
+declared `KyselyDatabase` and `ObjectStorage`, and ignored here, so the two
+cannot disagree.
 
 ::: info There is no `apps` block
 There used to be one, naming each app with its type, path, port, framework and

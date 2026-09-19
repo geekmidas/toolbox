@@ -1224,13 +1224,6 @@ export default defineWorkspace({
       schema: 'zod',
     },
   },
-  // Backend selection, and nothing else. Whether a Postgres exists comes from
-  // declaring a database, not from a flag here — so `db` and `storage` are
-  // ignored rather than obeyed, and the two cannot disagree.
-  services: {
-    cache: 'db',
-    mail: 'ses',
-  },
   deploy: {
     default: 'dokploy',
   },
