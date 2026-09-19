@@ -209,6 +209,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   name: 'my-app',
   constructs: './constructs/**/*.ts',
+  services: { cache: 'db' },  // where the cache lives; the database is declared, not flagged
 });
 ```
 

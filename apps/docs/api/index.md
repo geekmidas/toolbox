@@ -107,6 +107,8 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   constructs: './constructs/**/*.ts',
+  // Backend selection only — a declared database is what brings up Postgres.
+  services: { cache: 'db' },
   deploy: {
     default: 'dokploy',
     dns: { provider: 'route53', domain: 'myapp.com' },

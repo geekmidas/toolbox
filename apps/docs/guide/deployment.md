@@ -53,6 +53,11 @@ export default defineWorkspace({
   // container, one domain, and nothing to opt into.
   constructs: './constructs/**/*.ts',
 
+  // Backend selection. The Postgres itself comes from the declared database.
+  services: {
+    cache: 'db',
+  },
+
   deploy: {
     default: 'dokploy',
     dokploy: {

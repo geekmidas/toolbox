@@ -4,10 +4,7 @@ import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
 import { generateExpoAppFiles } from '../generators/mobile-expo.js';
 import { generateModelsPackage } from '../generators/models.js';
-import {
-	generateMonorepoFiles,
-	generateRootConstructs,
-} from '../generators/monorepo.js';
+import { generateMonorepoFiles } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
 import { generateTestFiles } from '../generators/test.js';
 import { generateUiPackageFiles } from '../generators/ui.js';
@@ -549,7 +546,7 @@ describe('generateExpoAppFiles', () => {
 	});
 });
 
-describe('generateRootConstructs - the apps, as constructs', () => {
+describe('generateMonorepoFiles - frontendFramework wiring', () => {
 	const fullstackBase: TemplateOptions = {
 		...baseOptions,
 		template: 'fullstack',
@@ -557,106 +554,35 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		apiPath: 'apps/api',
 	};
 
-	const at = (files: GeneratedFile[], path: string) =>
-		files.find((f) => f.path === path);
-
-	it('declares the site with the id that gives it its path', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'nextjs',
-		});
-		const site = at(files, 'constructs/site.ts');
-
-		// No `path: 'apps/web'` — `Web` already says that.
-		expect(site!.content).toContain(
-			"new StaticSite('Web', { variant: 'next' })",
-		);
-		expect(site!.content).not.toContain('path:');
-	});
-
-	it('carries the framework as the site variant', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'tanstack-start',
-		});
-
-		expect(at(files, 'constructs/site.ts')!.content).toContain(
-			"variant: 'tanstack'",
-		);
-	});
-
-	it('declares no site for a mobile app, which no static site serves', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'expo',
-		});
-
-		expect(at(files, 'constructs/site.ts')).toBeUndefined();
-	});
-
-	it('gives the auth server a construct and no hand-written entry', () => {
-		const files = generateRootConstructs(fullstackBase);
-		const auth = at(files, 'constructs/auth.ts');
-
-		expect(auth!.content).toContain("new BetterAuth('Auth'");
-		expect(auth!.content).toContain("basePath: '/api/auth'");
-		// Its schema in the declared Postgres, not a second database.
-		expect(auth!.content).toContain('authDb');
-	});
-
-	it('wires the edges the deploy order and the CORS origins come from', () => {
-		const files = generateRootConstructs(fullstackBase);
-
-		expect(at(files, 'constructs/api.ts')!.content).toContain('.auth(auth)');
-		expect(at(files, 'constructs/site.ts')!.content).toContain(
-			'.dependsOn([api, auth])',
-		);
-	});
-
-	it('declares nothing for a single-app project, which has no root', () => {
-		expect(
-			generateRootConstructs({ ...fullstackBase, monorepo: false }),
-		).toEqual([]);
-	});
-});
-
-describe('generateWorkspaceConfig, through generateMonorepoFiles', () => {
-	const fullstackBase: TemplateOptions = {
-		...baseOptions,
-		template: 'fullstack',
-		monorepo: true,
-		apiPath: 'apps/api',
-	};
-
-	const config = (options: Partial<TemplateOptions> = {}) =>
-		generateMonorepoFiles(
-			{ ...fullstackBase, ...options } as TemplateOptions,
+	it('emits framework: nextjs by default', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'nextjs' },
 			minimalTemplate,
-		).find((f) => f.path === 'gkm.config.ts')!.content;
-
-	it('names no apps — they are the constructs that said they have a process', () => {
-		const cfg = config();
-
-		expect(cfg).toContain("constructs: './constructs/**/*.ts'");
-		expect(cfg).not.toContain('apps: {');
-		expect(cfg).not.toContain('envParser:');
-		expect(cfg).not.toContain('logger:');
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'nextjs'");
+		expect(cfg!.content).toContain("path: 'apps/web'");
 	});
 
-	it('names no services — every one of them is derived or defaulted', () => {
-		const cfg = config({
-			services: { db: true, cache: true, mail: true, storage: true },
-		});
-
-		expect(cfg).not.toContain('services:');
+	it('emits framework: tanstack-start when selected', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'tanstack-start' },
+			minimalTemplate,
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'tanstack-start'");
+		expect(cfg!.content).toContain("path: 'apps/web'");
 	});
 
-	it('names no deploy target — that is picked at deploy time', () => {
-		expect(config({ deployTarget: 'dokploy' })).not.toContain('deploy:');
-	});
-
-	it('names no shared block, which nothing reads', () => {
-		expect(config()).not.toContain('shared:');
+	it('emits framework: expo and apps/app path when selected', () => {
+		const files = generateMonorepoFiles(
+			{ ...fullstackBase, frontendFramework: 'expo' },
+			minimalTemplate,
+		);
+		const cfg = files.find((f) => f.path === 'gkm.config.ts');
+		expect(cfg!.content).toContain("framework: 'expo'");
+		expect(cfg!.content).toContain("path: 'apps/app'");
+		expect(cfg!.content).toContain('port: 8081');
 	});
 });
 

@@ -19,10 +19,7 @@ import {
 import { generateEnvFiles } from './generators/env.js';
 import { generateExpoAppFiles } from './generators/mobile-expo.js';
 import { generateModelsPackage } from './generators/models.js';
-import {
-	generateMonorepoFiles,
-	generateRootConstructs,
-} from './generators/monorepo.js';
+import { generateMonorepoFiles } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
 import { generateTestFiles } from './generators/test.js';
@@ -314,7 +311,6 @@ export async function initCommand(
 	const rootFiles = baseTemplate
 		? [
 				...generateMonorepoFiles(templateOptions, baseTemplate),
-				...generateRootConstructs(templateOptions),
 				...generateModelsPackage(templateOptions),
 			]
 		: [];

@@ -62,7 +62,7 @@ import { RestApi } from '@geekmidas/constructs/rest-api';
 
 export const api = new RestApi('Api', {
   authorizers: ['iam'],
-  defaultAuthorizer: 'none',
+  default: 'none',
   logger,
 });
 
