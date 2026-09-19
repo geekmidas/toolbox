@@ -34,10 +34,16 @@ import {
 } from '@geekmidas/manifest';
 import type { Telescope } from '@geekmidas/telescope';
 import { type Declarable, edgeTo } from './construct-interface';
+import type { BuiltInSecuritySchemeId } from './endpoints/Authorizer';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 
-export interface RestApiConfig {
+export interface RestApiConfig<
+	// `readonly []` rather than `readonly string[]`: a surface that declares no
+	// authorizers of its own should narrow `defaultAuthorizer` to the built-ins
+	// and `'none'`, not widen it back to any string.
+	TAuthorizers extends readonly string[] = readonly [],
+> {
 	/**
 	 * The app that serves this surface: where its source lives, which globs
 	 * find its code, how it is run.
@@ -74,7 +80,7 @@ export interface RestApiConfig {
 	 * request legitimately differs between local and deployed, so the mechanism
 	 * belongs to the target and never to portable code.
 	 */
-	authorizers?: readonly string[];
+	authorizers?: TAuthorizers;
 	/**
 	 * The authorizer applied to an endpoint that names none.
 	 *
@@ -87,8 +93,13 @@ export interface RestApiConfig {
 	 * could be defaulting the runtime or the target. The manifest has always
 	 * called it `defaultAuthorizer` and the factory `defaultAuthorizerName`;
 	 * this is the same fact under the same name.
+	 *
+	 * Typed from `authorizers`, so it can only name one this surface exposes —
+	 * plus a built-in scheme, and `'none'`. It was a bare `string`, which let
+	 * `defaultAuthorizer: 'jwtt'` compile and every endpoint on the surface
+	 * default to an authorizer that does not exist.
 	 */
-	defaultAuthorizer: string;
+	defaultAuthorizer: TAuthorizers[number] | BuiltInSecuritySchemeId | 'none';
 	/**
 	 * The logger every endpoint on this surface runs with.
 	 *
@@ -133,8 +144,10 @@ export interface RestApiConfig {
  * What is left is what the *process* is rather than what a route may reach.
  */
 
-export class RestApi<TName extends string = string>
-	implements Declarable<TName>
+export class RestApi<
+	TName extends string = string,
+	const TAuthorizers extends readonly string[] = readonly [],
+> implements Declarable<TName>
 {
 	readonly id: TName;
 
@@ -173,7 +186,7 @@ export class RestApi<TName extends string = string>
 
 	constructor(
 		id: ConstructName<TName>,
-		private readonly config: RestApiConfig,
+		private readonly config: RestApiConfig<TAuthorizers>,
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
@@ -271,8 +284,8 @@ export class RestApi<TName extends string = string>
 	 * shares, whether the server is mounted in this process, deployed beside it,
 	 * or an OIDC issuer somebody else runs.
 	 */
-	auth(construct: Declarable): RestApi<TName> {
-		return new RestApi<TName>(
+	auth(construct: Declarable): RestApi<TName, TAuthorizers> {
+		return new RestApi<TName, TAuthorizers>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, edgeTo(construct)],
@@ -294,8 +307,8 @@ export class RestApi<TName extends string = string>
 	 *
 	 * Immutable, like every other builder here.
 	 */
-	calls(constructs: readonly Declarable[]): RestApi<TName> {
-		return new RestApi<TName>(
+	calls(constructs: readonly Declarable[]): RestApi<TName, TAuthorizers> {
+		return new RestApi<TName, TAuthorizers>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, ...constructs.map(edgeTo)],
