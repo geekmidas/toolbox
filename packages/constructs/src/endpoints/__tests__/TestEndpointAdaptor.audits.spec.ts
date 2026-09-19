@@ -12,7 +12,7 @@ import type { MappedAudit } from '../audit';
 import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 // Test audit action types
 type TestAuditAction =

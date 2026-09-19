@@ -8,7 +8,7 @@ import { publishConstructEvents } from '../publisher';
 import { RestApi } from '../rest-api';
 
 /** Endpoints are built from a surface now, so the tests build one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 // Test event types
 type TestEvent =

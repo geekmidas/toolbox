@@ -113,9 +113,9 @@ const emailService = {
 ## Usage with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-export const endpoint = e
+export const endpoint = api
   .get('/users/:id')
   .dependsOn([database, cache])          // constructs
   .services([featureFlagService])        // hand-written services

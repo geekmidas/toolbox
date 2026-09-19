@@ -15,8 +15,10 @@ import { RestApi } from '../rest-api';
 
 // Silent logger for benchmarks - no console output
 const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
-const api = new RestApi('Bench', { default: 'none', logger: silentLogger })
-	.endpoints;
+const api = new RestApi('Bench', {
+	defaultAuthorizer: 'none',
+	logger: silentLogger,
+}).endpoints;
 
 // ============================================================================
 // Mock Services for Benchmarks

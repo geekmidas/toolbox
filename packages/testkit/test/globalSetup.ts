@@ -5,7 +5,10 @@ const TEST_DATABASE_NAME = 'geekmidas_test';
 
 export const TEST_DATABASE_CONFIG = {
 	host: 'localhost',
-	port: 5432,
+	// Matches the override `docker-compose.yml` publishes the container on, so
+	// the suite reaches the database it just started rather than whichever
+	// other project happens to hold 5432.
+	port: Number(process.env.GKM_TEST_PG_PORT ?? 5432),
 	user: 'geekmidas',
 	password: 'geekmidas',
 	database: TEST_DATABASE_NAME,

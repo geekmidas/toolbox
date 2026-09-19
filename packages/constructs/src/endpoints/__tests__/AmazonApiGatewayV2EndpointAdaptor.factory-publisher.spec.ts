@@ -10,7 +10,7 @@ import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 
 /** Endpoints are built from a surface now, so the tests build one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 // Test event types
 type TestEvent =

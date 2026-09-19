@@ -229,7 +229,7 @@ To use a different backend, set `events` explicitly:
 import { defineWorkspace } from '@geekmidas/cli';
 
 export default defineWorkspace({
-  apps: { /* ... */ },
+  constructs: './constructs/**/*.ts',
   services: {
     // pgboss is the default. It reuses the Postgres your declared database
     // already brings up — `db: true` is not needed and is ignored.
@@ -310,10 +310,10 @@ const eventPublisherService = {
 Use `.publisher()` and `.event()` on endpoint or factory builders:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
 // Declarative — events published automatically after handler returns
-const createUser = e
+const createUser = api
   .post('/users')
   .publisher(eventPublisherService)
   .body(userSchema)
@@ -328,7 +328,7 @@ const createUser = e
   });
 
 // Manual — publish inside the handler
-const transferFunds = e
+const transferFunds = api
   .post('/transfers')
   .publisher(eventPublisherService)
   .handle(async ({ body, publish }) => {
@@ -437,10 +437,10 @@ export const eventPublisherService = {
 } satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
 
 // src/endpoints/users.ts — endpoint that publishes
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { eventPublisherService } from '../services/eventPublisher';
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .publisher(eventPublisherService)
   .body(createUserSchema)

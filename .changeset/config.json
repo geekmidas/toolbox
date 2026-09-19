@@ -10,7 +10,7 @@
 	"ignore": [
 		"@geekmidas/docs",
 		"@geekmidas/example",
-		"@geekmidas/kitchen-sink",
+		"@kitchen-sink/*",
 		"@geekmidas/studio-ui",
 		"@geekmidas/telescope-ui"
 	],

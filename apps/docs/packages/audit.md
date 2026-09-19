@@ -205,10 +205,10 @@ The audit system integrates deeply with [`@geekmidas/constructs`](/packages/cons
 Attach an audit storage service to an endpoint or factory with `.auditor()`, identify the actor with `.actor()`, and define audits with `.audit()`:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-const endpoint = e
+const endpoint = api
   .post('/users')
   .auditor(auditStorageService)
   .actor(({ session }) => ({
@@ -235,19 +235,19 @@ const endpoint = e
 
 ### Factory-Level Defaults
 
-Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit the configuration:
+Set `.auditor()` and `.actor()` on a branch of the surface's factory so every endpoint built from it inherits the configuration:
 
 ```typescript
-import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
 // All endpoints created from this factory inherit auditor and actor
-const createUser = api
+const createUser = router
   .post('/users')
   .audit([{
     type: 'user.created',
@@ -261,7 +261,7 @@ const createUser = api
 When `.auditor()` is configured, the handler context includes an `auditor` instance for manual audit calls:
 
 ```typescript
-const endpoint = e
+const endpoint = api
   .post('/transfers')
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }))
@@ -299,14 +299,14 @@ const auditStorageService = {
   },
 } satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
 // Handler, declarative audits, and manual audits all share one transaction
-const endpoint = api
+const endpoint = router
   .post('/users')
   .audit([{
     type: 'user.created',

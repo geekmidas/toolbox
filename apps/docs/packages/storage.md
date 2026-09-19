@@ -180,7 +180,7 @@ interface GetUploadParams {
 ## Usage with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import type { Service } from '@geekmidas/services';
 import { AmazonStorageClient } from '@geekmidas/storage/aws';
 
@@ -196,7 +196,7 @@ const storageService = {
   }
 } satisfies Service<'storage', AmazonStorageClient>;
 
-const uploadEndpoint = e
+const uploadEndpoint = api
   .post('/files/upload-url')
   .body(z.object({ filename: z.string(), contentType: z.string() }))
   .services([storageService])

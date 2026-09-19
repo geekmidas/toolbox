@@ -323,7 +323,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',  // Required — used in SSM parameter path
-  apps: { /* ... */ },
+  constructs: './constructs/**/*.ts',
   services: { /* ... */ },
 
   state: {

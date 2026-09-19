@@ -84,7 +84,7 @@ import { logger } from '../config/logger.ts';
 export const api = new RestApi('Api', {
   // Typed out rather than omitted: an API that ships open because a field was
   // left off is the one default worth refusing to have.
-  default: 'none',
+  defaultAuthorizer: 'none',
 
   // The actual logger, not a path to one. Every endpoint built from this
   // surface runs with it, and so does the generated entry.

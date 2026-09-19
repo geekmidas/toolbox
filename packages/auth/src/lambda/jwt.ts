@@ -5,6 +5,7 @@ import type {
 	Context as LambdaContext,
 	PolicyDocument,
 } from 'aws-lambda';
+import { readCookie } from '../cookies';
 import {
 	type JwtClaims,
 	type JwtConfig,
@@ -12,12 +13,7 @@ import {
 	type TokenExtractionOptions,
 } from '../jwt';
 
-export {
-	JwtVerifier,
-	type JwtClaims,
-	type JwtConfig,
-	type TokenExtractionOptions,
-};
+export type { JwtVerifier, JwtClaims, JwtConfig, TokenExtractionOptions };
 
 function generatePolicy(
 	principalId: string,
@@ -163,10 +159,9 @@ export class JwtAuthorizer<TClaims extends JwtClaims = JwtClaims> {
 			}
 
 			if (cookieName) {
-				const cookieHeader = headers.cookie ?? headers.Cookie ?? '';
-				const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-				if (match?.[1]) {
-					return match[1];
+				const cookie = readCookie(headers.cookie ?? headers.Cookie, cookieName);
+				if (cookie) {
+					return cookie;
 				}
 			}
 

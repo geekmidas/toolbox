@@ -69,18 +69,20 @@ describe('deployUnits', () => {
 		]);
 	});
 
-	it('refuses a surface that never said where it runs', () => {
+	it('gives an authenticator a unit of its own without being asked', () => {
 		// The important one. This used to collapse onto whichever surface named
 		// it with `.auth()`, so an auth server shared the API's container
 		// whenever nobody had said otherwise — the arrangement least privilege
 		// exists to prevent, arrived at by omission. There is no sharing now,
-		// opt-in or otherwise; a surface without an app is an error.
+		// opt-in or otherwise: one surface is one unit, and nobody asks for it.
 		const manifest = {
 			Api: { ...surface('Api', 'apps/api'), auth: 'Auth' },
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(() => deployUnits(manifest, workspace)).toThrow(/declares no app/);
+		const units = deployUnits(manifest, workspace);
+
+		expect(Object.keys(units).sort()).toEqual(['api', 'auth']);
 	});
 
 	it('gives an auth server its own container once it has an app', () => {

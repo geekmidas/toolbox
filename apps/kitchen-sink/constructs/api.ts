@@ -12,7 +12,7 @@ import { telescope } from './telescope.js';
  * anywhere any more — they are read off whatever declares an edge to a surface,
  * which is the only place that information was ever true.
  *
- * `default: 'none'` is typed out rather than omitted. An API that ships open
+ * `defaultAuthorizer: 'none'` is typed out rather than omitted. An API that ships open
  * because a field was left off is the one default worth refusing to have, so
  * public-by-default has to be a sentence someone wrote.
  *
@@ -24,7 +24,7 @@ import { telescope } from './telescope.js';
  */
 export const api = new RestApi('Api', {
 	authorizers: ['iam'],
-	default: 'none',
+	defaultAuthorizer: 'none',
 	// Only what a graph cannot answer. The *origins* are not here — they are read
 	// off whatever declared an edge to this surface, which is the whole reason
 	// the edge exists.
@@ -40,23 +40,12 @@ export const api = new RestApi('Api', {
 	logger,
 
 	// The Telescope the logger already streams into, declared once beside it
-	// rather than named again as a module path in the app block.
+	// rather than named again as a module path.
 	telescope,
 
-	// The app that serves it. Where its source lives and which globs find its
-	// code is the half of an application no graph can derive — it is a fact
-	// about a directory. It used to live in `gkm.config.ts` under `apps.api`,
-	// beside a `path` and a `port` that the declaration already implied, which
-	// meant the same app was described twice and only one copy was checked.
-	app: {
-		path: 'apps/api',
-
-		// One glob, every kind — the same rule the constructs glob follows. Five
-		// patterns, one per kind, was five things to keep in step; a handler in
-		// the wrong directory simply never loaded and nothing said so.
-		//
-		// Still glob-driven, and that is worth knowing: a file outside this
-		// pattern does not exist as far as the build is concerned.
-		code: './{endpoints,functions,crons,subscribers,queues}/**/*.ts',
-	},
+	// No `app`. One RestApi is one server, so this has a container either way,
+	// and everything the block used to hold follows from the id: `Api` means
+	// `apps/api`, the code is in the conventional directories under it, and the
+	// port is assigned in a stable order. An `app` is worth writing only for a
+	// layout that differs from that, which this one does not.
 }).auth(auth);

@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
+import { readCookie } from '../cookies';
 import {
 	type JwtClaims,
 	type JwtConfig,
@@ -6,12 +7,7 @@ import {
 	type TokenExtractionOptions,
 } from '../jwt';
 
-export {
-	JwtVerifier,
-	type JwtClaims,
-	type JwtConfig,
-	type TokenExtractionOptions,
-};
+export type { JwtVerifier, JwtClaims, JwtConfig, TokenExtractionOptions };
 
 function extractToken(
 	c: Context,
@@ -32,12 +28,9 @@ function extractToken(
 	}
 
 	if (cookieName) {
-		const cookieHeader = c.req.header('cookie');
-		if (cookieHeader) {
-			const match = cookieHeader.match(new RegExp(`${cookieName}=([^;]+)`));
-			if (match?.[1]) {
-				return match[1];
-			}
+		const cookie = readCookie(c.req.header('cookie'), cookieName);
+		if (cookie) {
+			return cookie;
 		}
 	}
 

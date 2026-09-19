@@ -48,8 +48,15 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Check declared exports resolve
+        run: pnpm run check:exports
+
       - name: Lint
         run: pnpm run lint
+
+      # The repo typechecked with eight errors for as long as nothing ran this.
+      - name: Typecheck
+        run: pnpm run ts:check
 
       - name: Set Test Environment
         uses: hoverkraft-tech/compose-action@v2.2.0

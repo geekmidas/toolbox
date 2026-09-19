@@ -105,8 +105,16 @@ export function buildResourceEnv(
 	return env;
 }
 
+/**
+ * SST links a resource under one of two spellings — `sst.aws.Bucket` when it
+ * comes from the state file, `sst:aws:Bucket` when it comes from the runtime —
+ * and `processors` has always handled both. Only the dotted half was admitted
+ * here, so the colon half could not be passed to `buildResourceEnv` without a
+ * cast, and `SnsTopic` was missing from `Resource` altogether despite being the
+ * only thing that produces `*_ARN`.
+ */
 export type ApiGatewayV2 = {
-	type: ResourceType.ApiGatewayV2;
+	type: ResourceType.ApiGatewayV2 | ResourceType.SSTApiGatewayV2;
 	url: string;
 };
 
@@ -115,18 +123,18 @@ export type Postgres = {
 	host: string;
 	password: string;
 	port: number;
-	type: ResourceType.Postgres;
+	type: ResourceType.Postgres | ResourceType.SSTPostgres;
 	username: string;
 };
 
 export type Function = {
 	name: string;
-	type: ResourceType.Function;
+	type: ResourceType.Function | ResourceType.SSTFunction;
 };
 
 export type Bucket = {
 	name: string;
-	type: ResourceType.ObjectStorage;
+	type: ResourceType.ObjectStorage | ResourceType.SSTObjectStorage;
 };
 
 export type SnsTopic = {
@@ -140,7 +148,7 @@ export type Vpc = {
 };
 
 export type Secret = {
-	type: ResourceType.Secret;
+	type: ResourceType.Secret | ResourceType.SSTSecret;
 	value: string;
 };
 
@@ -149,6 +157,7 @@ export type Resource =
 	| Postgres
 	| Function
 	| Bucket
+	| SnsTopic
 	| Vpc
 	| Secret;
 

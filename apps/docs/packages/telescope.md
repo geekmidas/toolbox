@@ -108,18 +108,29 @@ const storage = new InMemoryStorage({
 import { KyselyStorage } from '@geekmidas/telescope/storage/kysely';
 import { db } from './database';
 
-const storage = new KyselyStorage({
-  db,
-  tablePrefix: 'telescope', // Creates telescope_requests, telescope_logs, telescope_exceptions
-});
+const storage = new KyselyStorage({ db });
 
 const telescope = new Telescope({ storage });
 ```
 
-Required database tables:
+The tables are `requests`, `logs` and `exceptions` — unqualified, and
+deliberately. They used to carry a `telescope_` prefix, which is what you reach
+for when the tables have to share a schema with an application's own. They do
+not: a telescope derived from a database is a schema tenant with a role whose
+`search_path` is pinned to it, so an unqualified name already resolves there,
+and `DROP SCHEMA telescope CASCADE` is the whole cleanup.
+
+Pass `schema` only when the connection is *not* pinned — a shared pool, or a
+migration run as an owner whose `search_path` finds `public` first:
+
+```typescript
+const storage = new KyselyStorage({ db, schema: 'telescope' });
+```
+
+Required tables:
 
 ```sql
-CREATE TABLE telescope_requests (
+CREATE TABLE requests (
   id VARCHAR(21) PRIMARY KEY,
   method VARCHAR(10) NOT NULL,
   path VARCHAR(2048) NOT NULL,
@@ -137,7 +148,7 @@ CREATE TABLE telescope_requests (
   tags JSONB
 );
 
-CREATE TABLE telescope_logs (
+CREATE TABLE logs (
   id VARCHAR(21) PRIMARY KEY,
   level VARCHAR(10) NOT NULL,
   message TEXT NOT NULL,
@@ -146,7 +157,7 @@ CREATE TABLE telescope_logs (
   timestamp TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE telescope_exceptions (
+CREATE TABLE exceptions (
   id VARCHAR(21) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   message TEXT NOT NULL,
@@ -159,10 +170,10 @@ CREATE TABLE telescope_exceptions (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_telescope_requests_timestamp ON telescope_requests(timestamp DESC);
-CREATE INDEX idx_telescope_logs_timestamp ON telescope_logs(timestamp DESC);
-CREATE INDEX idx_telescope_logs_request_id ON telescope_logs(request_id);
-CREATE INDEX idx_telescope_exceptions_timestamp ON telescope_exceptions(timestamp DESC);
+CREATE INDEX idx_requests_timestamp ON requests(timestamp DESC);
+CREATE INDEX idx_logs_timestamp ON logs(timestamp DESC);
+CREATE INDEX idx_logs_request_id ON logs(request_id);
+CREATE INDEX idx_exceptions_timestamp ON exceptions(timestamp DESC);
 ```
 
 ## Logger Integrations
@@ -476,8 +487,9 @@ const telescope = new Telescope({
   storage: new InMemoryStorage(),
 });
 
-// Define endpoint
-const getUsers = e
+// Define endpoint — built from the surface, which is what carries the
+// telescope instance into every handler on it
+const getUsers = api
   .get('/users')
   .output(UsersSchema)
   .handle(async ({ logger }) => {

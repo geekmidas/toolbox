@@ -32,11 +32,11 @@ const limiter = rateLimit({
 ## Usage with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { rateLimit } from '@geekmidas/rate-limit';
 import { InMemoryCache } from '@geekmidas/cache/memory';
 
-const rateLimited = e
+const rateLimited = api
   .post('/api/messages')
   .rateLimit(rateLimit({
     limit: 10,

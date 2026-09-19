@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { DEFAULT_APP_CODE } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { appKey, derivedApps, hostOf } from '../derive';
+import { appKey, derivedApps, hostOf, resolveAppSpec } from '../derive';
 import type { NormalizedWorkspace } from '../types';
 
 /**
@@ -98,16 +102,20 @@ describe('derivedApps', () => {
 		expect('functions' in apps.api!).toBe(false);
 	});
 
-	it('refuses a surface that never said where it runs', () => {
-		// `.auth()` used to be enough to make Auth share the API's container.
-		// It is not: sharing a process shares a filesystem, an environment and
-		// every credential either surface holds.
+	it('gives an authenticator its own app without being asked', () => {
+		// `.auth()` used to be enough to make Auth share the API's container,
+		// and then — briefly — enough to make it an error. Neither: sharing a
+		// process shares a filesystem, an environment and every credential
+		// either surface holds, so Auth simply gets its own.
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(() => derivedApps(manifest, workspace())).toThrow(/declares no app/);
+		const apps = derivedApps(manifest, workspace());
+
+		expect(Object.keys(apps).sort()).toEqual(['api', 'auth']);
+		expect(apps.auth?.type).toBe('backend');
 	});
 
 	it('gives an auth server its own container once it has an app', () => {
@@ -294,28 +302,23 @@ describe('hostOf', () => {
 	});
 
 	it('does not treat `.auth()` as a place to run', () => {
+		// Auth hosts itself, not the API that authenticates against it.
 		const manifest = {
 			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
-		expect(hostOf(manifest, 'Auth')).toBeUndefined();
+		expect(hostOf(manifest, 'Auth')).toBe('Auth');
 	});
 
-	it('answers with nothing when no surface hosts it', () => {
-		const manifest = {
-			Auth: surface('Auth'),
-		} as unknown as ConstructManifest;
-
-		expect(hostOf(manifest, 'Auth')).toBeUndefined();
-	});
-
-	it('answers with nothing for a surface with no app', () => {
+	it('answers with the surface itself even when it named no app', () => {
+		// `app` is an override, so having none is the ordinary case rather
+		// than a surface with nowhere to run.
 		const manifest = {
 			A: surface('A'),
 		} as unknown as ConstructManifest;
 
-		expect(hostOf(manifest, 'A')).toBeUndefined();
+		expect(hostOf(manifest, 'A')).toBe('A');
 	});
 
 	it('answers with nothing for a kind that is not a surface', () => {
@@ -332,5 +335,100 @@ describe('appKey', () => {
 	it('is the kebab form every physical name is built from', () => {
 		expect(appKey('Api')).toBe('api');
 		expect(appKey('AdminConsole')).toBe('admin-console');
+	});
+});
+
+describe('resolveAppSpec', () => {
+	/** A workspace root with `apps/<name>` actually present. */
+	const rootWith = (...names: string[]): string => {
+		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
+		for (const name of names)
+			mkdirSync(join(root, 'apps', name), { recursive: true });
+		return root;
+	};
+
+	it('reads the path off the id when the directory is there', () => {
+		const root = rootWith('api');
+
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('apps/api');
+	});
+
+	it('falls back to the workspace root for a single-app project', () => {
+		// No `apps/` at all: one app, and it is the project.
+		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
+
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('.');
+	});
+
+	it('refuses a directory the workspace does not have', () => {
+		// The one that would be silent: answering `.` here makes the app the
+		// whole repository, and the build then filters turbo on the root
+		// package.json and builds the wrong thing.
+		const root = rootWith('web');
+
+		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
+			/no directory at apps\/marketing/,
+		);
+	});
+
+	it('says how to point at an unconventional layout', () => {
+		const root = rootWith('web');
+
+		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
+			/path: 'sites\/marketing'/,
+		);
+	});
+
+	it('kebab-cases a multi-word id the way every other physical name is', () => {
+		const root = rootWith('admin-api');
+
+		expect(resolveAppSpec('AdminApi', {}, root, 'rest-api').path).toBe(
+			'apps/admin-api',
+		);
+	});
+
+	it('keeps a path that was written down', () => {
+		const root = rootWith('api');
+
+		expect(
+			resolveAppSpec('Api', { path: 'services/api' }, root, 'rest-api').path,
+		).toBe('services/api');
+	});
+
+	it('gives a surface the conventional code glob', () => {
+		const root = rootWith('api');
+
+		expect(resolveAppSpec('Api', {}, root, 'rest-api').code).toBe(
+			DEFAULT_APP_CODE,
+		);
+	});
+
+	it('does not default the glob over one that was given', () => {
+		const root = rootWith('api');
+
+		expect(
+			resolveAppSpec('Api', { code: './src/**/*.ts' }, root, 'rest-api').code,
+		).toBe('./src/**/*.ts');
+	});
+
+	it('leaves the glob alone when a per-kind field named one', () => {
+		// The per-kind fields still win, so defaulting `code` here would add a
+		// second pattern the first one has to be reconciled with.
+		const root = rootWith('api');
+		const spec = resolveAppSpec(
+			'Api',
+			{ routes: './src/endpoints/**/*.ts' },
+			root,
+			'rest-api',
+		);
+
+		expect(spec.code).toBeUndefined();
+		expect(spec.routes).toBe('./src/endpoints/**/*.ts');
+	});
+
+	it("gives a site no code glob — its build is its framework's", () => {
+		const root = rootWith('web');
+
+		expect(resolveAppSpec('Web', {}, root, 'site').code).toBeUndefined();
 	});
 });

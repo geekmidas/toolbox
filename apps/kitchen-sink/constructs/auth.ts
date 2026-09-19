@@ -48,7 +48,6 @@ export const auth = new BetterAuth('Auth', {
 	//
 	// No `code` glob: this surface's routes are declared, not discovered —
 	// `declare()` returns the wildcard, and `auth.server()` mounts it.
-	app: { path: 'apps/auth' },
 	options: async (options) => {
 		const mailer = await mail.service.register(options);
 

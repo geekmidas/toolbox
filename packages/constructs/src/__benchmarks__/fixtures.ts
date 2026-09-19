@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { RestApi } from '../rest-api';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 // ============================================================================
 // Mock Services

@@ -181,12 +181,12 @@ const newTokens = await tokenManager.refreshTokens(tokens.refreshToken);
 ## Integration with Endpoints
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { TokenManager } from '@geekmidas/auth/server';
 
 const tokenManager = new TokenManager({...});
 
-const protectedEndpoint = e
+const protectedEndpoint = api
   .get('/protected')
   .getSession(async ({ header }) => {
     const token = header('authorization')?.replace('Bearer ', '');

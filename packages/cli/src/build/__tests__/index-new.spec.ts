@@ -410,6 +410,73 @@ export default {
 	);
 
 	itWithDir(
+		'generates an entry for a surface whose routes are declared',
+		async ({ dir }) => {
+			// An auth server's wildcard: there is nothing for a glob to find, and
+			// that is not an empty app. The construct serves itself, so the entry
+			// only has to start it — and a build that reported "nothing found" is
+			// how the auth routes came to be served by nothing at all.
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
+export default {
+  routes: './endpoints/**/*.ts',
+  constructs: './constructs/**/*.ts',
+  envParser: './config/env',
+  logger: './config/logger',
+};
+`,
+			);
+
+			await createTestFile(
+				dir,
+				'constructs/auth.ts',
+				`
+export const auth = {
+  id: 'Auth',
+  declare: () => [
+    {
+      kind: 'rest-api',
+      id: 'Auth',
+      app: { path: '.' },
+      provides: [],
+      endpoints: [
+        {
+          id: 'AuthHandler',
+          handler: 'Auth.handler',
+          method: 'ANY',
+          path: '/api/auth/*',
+          dependencies: [],
+        },
+      ],
+    },
+  ],
+  server: async () => ({ app: {} }),
+};
+`,
+			);
+
+			const originalCwd = process.cwd();
+			process.chdir(dir);
+
+			try {
+				await buildCommand({ provider: 'server' });
+
+				const entry = await readFile(join(dir, '.gkm/server/app.ts'), 'utf-8');
+
+				// It imports the construct discovery found, and starts it. It does
+				// not restate the route — the declaration already carries it.
+				expect(entry).toContain('import { auth as surface }');
+				expect(entry).toContain('surface.server(');
+				expect(entry).not.toContain('/api/auth/*');
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
+
+	itWithDir(
 		'should create output directories for each provider',
 		async ({ dir }) => {
 			// Create config with multiple providers

@@ -121,17 +121,17 @@ Create endpoint files in `src/routes/`:
 
 ```typescript
 // src/routes/users.ts
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .output(z.array(z.object({ id: z.string(), name: z.string() })))
   .handle(async () => {
     return [{ id: '1', name: 'John Doe' }];
   });
 
-export const createUser = e
+export const createUser = api
   .post('/users')
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string(), name: z.string() }))
@@ -1216,41 +1216,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-project',
-  apps: {
-    api: {
-      type: 'backend',
-      path: 'apps/api',
-      port: 3000,
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-      telescope: {
-        enabled: true,
-        path: '/__telescope',
-      },
-      openapi: {
-        enabled: true,
-      },
-    },
-    auth: {
-      type: 'backend',
-      path: 'apps/auth',
-      port: 3002,
-      entry: './src/index.ts',  // Entry-based app (no routes)
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-    },
-    web: {
-      type: 'frontend',
-      framework: 'nextjs',
-      path: 'apps/web',
-      port: 3001,
-      dependencies: ['api', 'auth'],
-      client: {
-        output: './src/api',
-      },
-    },
-  },
+  constructs: './constructs/**/*.ts',
   shared: {
     packages: ['packages/*'],
     models: {
@@ -1258,10 +1224,12 @@ export default defineWorkspace({
       schema: 'zod',
     },
   },
+  // Backend selection, and nothing else. Whether a Postgres exists comes from
+  // declaring a database, not from a flag here — so `db` and `storage` are
+  // ignored rather than obeyed, and the two cannot disagree.
   services: {
-    db: true,
-    cache: true,
-    mail: true,
+    cache: 'db',
+    mail: 'ses',
   },
   deploy: {
     default: 'dokploy',
@@ -1269,74 +1237,54 @@ export default defineWorkspace({
 });
 ```
 
-### App Types
+### Where Apps Come From
 
-#### Routes-Based Backend Apps
+Each one is a construct that said it has a process of its own. The CLI reads
+them out of the manifest; none of them is listed in config.
 
-Standard API apps using endpoint discovery:
-
-```typescript
-api: {
-  type: 'backend',
-  path: 'apps/api',
-  port: 3000,
-  routes: './src/endpoints/**/*.ts',  // Glob pattern for endpoints
-  envParser: './src/config/env#envParser',
-  logger: './src/config/logger#logger',
-}
-```
-
-These apps use `gkm build --provider server` internally to generate a Hono server from discovered endpoints.
-
-#### Entry-Based Backend Apps
-
-Apps with a custom entry point (like authentication services using better-auth):
+#### A Surface With Discovered Routes
 
 ```typescript
-auth: {
-  type: 'backend',
-  path: 'apps/auth',
-  port: 3002,
-  entry: './src/index.ts',  // Direct entry point
-  envParser: './src/config/env#envParser',
-  logger: './src/config/logger#logger',
-}
+// constructs/api.ts
+export const api = new RestApi('Api', { defaultAuthorizer: 'none', logger });
 ```
 
-Entry-based apps are bundled directly with esbuild into a standalone file. All dependencies are bundled, producing a single `index.mjs` file that runs without `node_modules`.
+`gkm build --provider server` generates a Hono server from the endpoints built
+on that surface. Where they are is the conventional directories under
+`apps/api`, which is what the id resolves to.
 
-Example entry point for an auth service:
+#### A Surface That Declares Its Own Routes
+
+An auth server mounts a wildcard, so there is nothing for a glob to find:
 
 ```typescript
-// apps/auth/src/index.ts
-import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
-import { auth } from './auth.js';
-
-const app = new Hono();
-
-app.get('/health', (c) => c.json({ status: 'ok' }));
-app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
-
-serve({ fetch: app.fetch, port: 3002 });
+// constructs/auth.ts
+export const auth = new BetterAuth('Auth', {
+  database: authDb,
+  basePath: '/api/auth',
+});
 ```
 
-#### Frontend Apps
+The build generates the entry from the declaration — a file that imports the
+construct and starts it. There is no hand-written `src/index.ts`, and no
+`entry` field pointing at one.
 
-Next.js or other frontend frameworks:
+It gets a container like every other surface, and nothing opts it in. Two
+surfaces in one process share a filesystem, an environment and every credential
+either was granted, so an auth server beside an API is one bug in the API away
+from being read by it.
+
+#### Frontends
 
 ```typescript
-web: {
-  type: 'frontend',
-  framework: 'nextjs',
-  path: 'apps/web',
-  port: 3001,
-  dependencies: ['api', 'auth'],  // Apps this depends on
-  client: {
-    output: './src/api',  // Where to generate API client
-  },
-}
+// constructs/site.ts
+export const web = new StaticSite('Web').dependsOn([api, auth]);
+export const admin = new StaticSite('Admin', { variant: 'next' }).dependsOn([api]);
 ```
+
+`.dependsOn()` is the single fact behind four things that are hand-maintained
+otherwise: the site's build-time `VITE_API_URL`, the API's CORS origins, the
+auth server's trusted origins, and which generated client lands in which app.
 
 ### Workspace Docker Generation
 
@@ -1382,8 +1330,10 @@ The `--packages=bundle` flag bundles all dependencies (unlike tsdown's default b
 
 ```typescript
 interface WorkspaceConfig {
+  /** The scope every physical name is built from. */
   name: string;
-  apps: Record<string, AppConfig>;
+  /** One glob, every kind. The apps come from what it finds. */
+  constructs: string;
   shared?: {
     packages?: string[];
     models?: {
@@ -1391,40 +1341,41 @@ interface WorkspaceConfig {
       schema: 'zod' | 'valibot';
     };
   };
+  /**
+   * Backend selection, and nothing else. Whether a Postgres exists comes from
+   * declaring a database, so `db` and `storage` are ignored rather than obeyed.
+   */
   services?: {
-    db?: boolean;
-    cache?: boolean;
-    mail?: boolean;
+    cache?: 'db' | 'upstash' | 'elasticache';
+    storage?: 'minio' | 's3' | 'r2';
+    mail?: 'ses' | 'resend' | 'smtp';
+    events?: 'pgboss' | 'sns' | 'rabbitmq';
   };
   deploy?: {
-    default?: 'dokploy' | 'docker';
+    default?: 'dokploy' | 'docker' | 'aws';
   };
+  /**
+   * Overrides for an app the manifest already derived, keyed by its name.
+   * The exception, not the shape — a workspace normally has none.
+   */
+  apps?: Record<string, Partial<AppConfig>>;
 }
+```
 
-interface BackendAppConfig {
-  type: 'backend';
-  path: string;
-  port: number;
-  routes?: string;           // Glob pattern for routes-based apps
-  entry?: string;            // Entry file for entry-based apps
-  envParser: string;
-  logger: string;
-  telescope?: TelescopeConfig;
-  openapi?: { enabled: boolean };
+What an app is comes from the declaration, not from here:
+
+```typescript
+/** Overrides, all optional. A surface normally has none. */
+interface AppSpec {
+  /** Default: `apps/<kebab-id>` if present, else the project root. */
+  path?: string;
+  /** Default: the conventional directories under `path`. */
+  code?: string;
+  /** Default: assigned in a stable order, so adding an app renumbers nothing. */
+  port?: number;
+  entry?: string;
+  runtime?: 'node' | 'bun';
 }
-
-interface FrontendAppConfig {
-  type: 'frontend';
-  framework: 'nextjs';
-  path: string;
-  port: number;
-  dependencies?: string[];   // Other apps this depends on
-  client?: {
-    output: string;          // Where to generate typed API client
-  };
-}
-
-type AppConfig = BackendAppConfig | FrontendAppConfig;
 ```
 
 ## Providers
@@ -1839,7 +1790,7 @@ export const envParser = new EnvironmentParser(process.env)
 
 ```typescript
 // src/routes/protected.ts
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { JwtMiddleware } from '@geekmidas/auth/hono/jwt';
 import { envParser } from '../env.js';
 

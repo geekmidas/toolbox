@@ -15,6 +15,7 @@
 			"!**/node_modules/**/*",
 			"!**/.turbo/**/*",
 			"!**/.benchmarks/**/*",
+			"!**/.changeset/pre.json",
 			"!**/tsconfig*.json",
 			"!**/ui-assets.ts",
 			"!**/coverage/**/*",

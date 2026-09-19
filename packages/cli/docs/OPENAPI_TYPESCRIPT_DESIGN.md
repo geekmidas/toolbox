@@ -244,7 +244,7 @@ Schemas are extracted from StandardSchema (Zod/Valibot) definitions:
 
 ```typescript
 // From endpoint definition
-const endpoint = e
+const endpoint = api
   .post('/tenants')
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string(), name: z.string() }))

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { authService, databaseService } from '../services';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { default: 'none' });
+const api = new RestApi('Test', { defaultAuthorizer: 'none' });
 
 export const login = api.endpoints
 	.services([databaseService, authService])

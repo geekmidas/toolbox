@@ -1,3 +1,45 @@
+/**
+ * The entry for a surface that serves itself.
+ *
+ * Two lines, because the construct owns the serving. A generator writing the
+ * mounts would be a second description of routes the declaration already
+ * carries — which is how Better Auth came to be mounted by a hand-written hook,
+ * and then served by nothing at all when that hook was deleted for duplicating
+ * CORS the graph had started deriving.
+ *
+ * The import specifier comes from discovery, which globbed the file and
+ * imported it. Nothing about the surface is named here.
+ */
+async function writeSurfaceEntry(
+	outputDir: string,
+	source: ConstructSource,
+): Promise<void> {
+	await mkdir(outputDir, { recursive: true });
+
+	const rel = relative(outputDir, source.file).replace(/\.ts$/, '.js');
+	const specifier = rel.startsWith('.') ? rel : `./${rel}`;
+
+	await writeFile(
+		join(outputDir, 'app.ts'),
+		`/**
+ * Generated entry for a surface that serves itself.
+ *
+ * Its routes, its CORS origins and its clients all come from the construct's
+ * own declaration. This file exists only to start it.
+ */
+import { snifferContext } from '@geekmidas/constructs';
+import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
+import { ${source.exportName} as surface } from '${specifier}';
+
+const envParser = defaultEnvParser();
+
+export const { app } = await surface.server({ envParser, context: snifferContext });
+
+export default app;
+`,
+	);
+}
+
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -44,6 +86,7 @@ import {
 	type Routes,
 } from '../types';
 import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
+import { resolveAppSpec } from '../workspace/derive.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -302,6 +345,41 @@ export async function buildCommand(
 		allQueues.length === 0 &&
 		allTopics.length === 0
 	) {
+		// A surface whose routes are *declared* rather than discovered — an auth
+		// server's wildcard. There is nothing for a glob to find, and that is not
+		// an empty app: the construct serves itself and the entry only starts it.
+		const selfServing = Object.entries(declared).find(
+			([id, d]) =>
+				d.kind === 'rest-api' &&
+				d.endpoints.length > 0 &&
+				constructSources[id] !== undefined &&
+				// Resolved against the workspace root, not matched on the end of
+				// the path — `apps/api` is a suffix of `other-apps/api` too.
+				// Through `resolveAppSpec`, because a surface normally names no
+				// path and the default is the one this would otherwise repeat.
+				resolve(
+					loadedConfig.workspace.root,
+					resolveAppSpec(
+						id,
+						d.app ?? {},
+						loadedConfig.workspace.root,
+						'rest-api',
+					).path!,
+				) === resolve(process.cwd()),
+		);
+
+		if (selfServing) {
+			const [id] = selfServing;
+
+			await writeSurfaceEntry(
+				join(process.cwd(), '.gkm', 'server'),
+				constructSources[id]!,
+			);
+			logger.log(`Generated a server for ${id} from its own declaration`);
+
+			return {};
+		}
+
 		logger.log(
 			'No endpoints, functions, crons, subscribers, queues, or topics found to process',
 		);

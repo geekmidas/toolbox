@@ -10,6 +10,24 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import { withTransaction } from '../kysely';
 
+/**
+ * A promise with its resolver, so two transactions can hand off explicitly.
+ *
+ * These tests used to interleave with `setTimeout(…, 25)` against a `sleep(50)`
+ * and an update whose promise nobody awaited — so on a loaded runner the write
+ * had not committed by the time the second read ran, and READ COMMITTED failed
+ * with 'Original Name'. The REPEATABLE READ case was worse: losing the race
+ * made it pass, because the value it expects to be unchanged was simply never
+ * changed.
+ */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+	let resolve!: () => void;
+	const promise = new Promise<void>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
+}
+
 interface TestDatabase {
 	kyselyTrxUsers: {
 		id: Generated<number>;
@@ -438,6 +456,9 @@ describe('Kysely Transaction Integration Tests', () => {
 				.returningAll()
 				.executeTakeFirstOrThrow();
 
+			const firstReadDone = deferred();
+			const updateCommitted = deferred();
+
 			// Start a READ COMMITTED transaction
 			const readTransaction = withTransaction(
 				db,
@@ -449,8 +470,8 @@ describe('Kysely Transaction Integration Tests', () => {
 						.where('id', '=', user.id)
 						.executeTakeFirstOrThrow();
 
-					// Wait for concurrent update
-					await new Promise((resolve) => setTimeout(resolve, 50));
+					firstReadDone.resolve();
+					await updateCommitted.promise;
 
 					// Second read (should see the update in READ COMMITTED)
 					const secondUser = await trx
@@ -464,15 +485,18 @@ describe('Kysely Transaction Integration Tests', () => {
 				{ isolationLevel: 'read committed' },
 			);
 
-			// After first read, update the user in a separate transaction
-			setTimeout(() => {
-				db.updateTable('kyselyTrxUsers')
+			// Between the two reads, and committed before the second one runs.
+			const update = (async () => {
+				await firstReadDone.promise;
+				await db
+					.updateTable('kyselyTrxUsers')
 					.set({ name: 'Updated Name' })
 					.where('id', '=', user.id)
 					.execute();
-			}, 25);
+				updateCommitted.resolve();
+			})();
 
-			const result = await readTransaction;
+			const [result] = await Promise.all([readTransaction, update]);
 
 			// In READ COMMITTED, the second read sees the committed update
 			expect(result.firstRead).toBe('Original Name');
@@ -490,6 +514,9 @@ describe('Kysely Transaction Integration Tests', () => {
 				.returningAll()
 				.executeTakeFirstOrThrow();
 
+			const firstReadDone = deferred();
+			const updateCommitted = deferred();
+
 			// Start a REPEATABLE READ transaction
 			const readTransaction = withTransaction(
 				db,
@@ -501,8 +528,8 @@ describe('Kysely Transaction Integration Tests', () => {
 						.where('id', '=', user.id)
 						.executeTakeFirstOrThrow();
 
-					// Wait for concurrent update
-					await new Promise((resolve) => setTimeout(resolve, 50));
+					firstReadDone.resolve();
+					await updateCommitted.promise;
 
 					// Second read (should still see the same value in REPEATABLE READ)
 					const secondUser = await trx
@@ -516,15 +543,20 @@ describe('Kysely Transaction Integration Tests', () => {
 				{ isolationLevel: 'repeatable read' },
 			);
 
-			// After first read, update the user in a separate transaction
-			setTimeout(() => {
-				db.updateTable('kyselyTrxUsers')
+			// Waiting on the commit is what makes the assertion mean something:
+			// the second read not seeing the update is the isolation level, not
+			// a write that had not landed yet.
+			const update = (async () => {
+				await firstReadDone.promise;
+				await db
+					.updateTable('kyselyTrxUsers')
 					.set({ name: 'Repeatable Updated' })
 					.where('id', '=', user.id)
 					.execute();
-			}, 25);
+				updateCommitted.resolve();
+			})();
 
-			const result = await readTransaction;
+			const [result] = await Promise.all([readTransaction, update]);
 
 			// In REPEATABLE READ, both reads see the same value
 			expect(result.firstRead).toBe('Repeatable Original');
@@ -541,6 +573,9 @@ describe('Kysely Transaction Integration Tests', () => {
 				])
 				.execute();
 
+			const firstCountDone = deferred();
+			const insertCommitted = deferred();
+
 			// Start a SERIALIZABLE transaction
 			const readTransaction = withTransaction(
 				db,
@@ -551,8 +586,8 @@ describe('Kysely Transaction Integration Tests', () => {
 						.select(sql<number>`count(*)`.as('count'))
 						.executeTakeFirstOrThrow();
 
-					// Wait for concurrent insert
-					await new Promise((resolve) => setTimeout(resolve, 50));
+					firstCountDone.resolve();
+					await insertCommitted.promise;
 
 					// Second count (should be the same in SERIALIZABLE)
 					const secondCount = await trx
@@ -568,14 +603,18 @@ describe('Kysely Transaction Integration Tests', () => {
 				{ isolationLevel: 'serializable' },
 			);
 
-			// After first count, insert a new user in a separate transaction
-			setTimeout(() => {
-				db.insertInto('kyselyTrxUsers')
+			// Committed before the second count, so the row it does not see is
+			// the snapshot rather than a race.
+			const insert = (async () => {
+				await firstCountDone.promise;
+				await db
+					.insertInto('kyselyTrxUsers')
 					.values({ name: 'User 3', email: 'user3@example.com' })
 					.execute();
-			}, 25);
+				insertCommitted.resolve();
+			})();
 
-			const result = await readTransaction;
+			const [result] = await Promise.all([readTransaction, insert]);
 
 			// In SERIALIZABLE, both counts see the same number of rows
 			expect(result.firstCount).toBe(2);

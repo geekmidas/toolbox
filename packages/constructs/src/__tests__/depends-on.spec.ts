@@ -13,7 +13,7 @@ import { s } from '../subscribers';
 import { t } from '../topic';
 
 /** Endpoints come from a surface now, so the tests build one. */
-const endpoints = new RestApi('Test', { default: 'none' }).endpoints;
+const endpoints = new RestApi('Test', { defaultAuthorizer: 'none' }).endpoints;
 
 /**
  * A driver for these tests, registered the way an entry point registers one:

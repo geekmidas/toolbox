@@ -42,35 +42,15 @@ my-monorepo/
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  // The scope every physical name is built from: `Database` becomes
+  // `production-my-monorepo-database` on Dokploy and on AWS alike.
   name: 'my-monorepo',
 
-  apps: {
-    api: {
-      path: 'apps/api',
-      type: 'backend',
-      port: 3000,
-      // One glob, every kind — what reconcile reads to derive this app's
-      // containers. Resolved against the app's own path.
-      constructs: './src/constructs/**/*.ts',
-      routes: './src/endpoints/**/*.ts',
-      envParser: './src/config/env',
-      logger: './src/config/logger',
-    },
-    web: {
-      type: 'frontend',
-      path: 'apps/web',
-      port: 3001,
-      framework: 'nextjs',
-      dependencies: ['api'],
-    },
-    admin: {
-      type: 'frontend',
-      path: 'apps/admin',
-      port: 3002,
-      framework: 'nextjs',
-      dependencies: ['api'],
-    },
-  },
+  // One glob, every kind. A database implies Postgres, a bucket implies MinIO,
+  // mail implies Mailpit — none of it listed anywhere. It is also where the
+  // apps come from: a `StaticSite` is an app, and so is a `RestApi` that named
+  // one.
+  constructs: './constructs/**/*.ts',
 
   // What no construct implies.
   //
@@ -92,40 +72,96 @@ export default defineWorkspace({
 });
 ```
 
-::: info Every app declares its own half
-Each app's `constructs` glob is resolved against that app's path, and reconcile
-reads all of them into one manifest. An app that shares a database with another
-declares a derived form of it — `database.schema()` for its own schema and role,
-or `database.reader()` for read-only access — rather than reaching for the same
-URL by string.
+::: info There is no `apps` block
+There used to be one, naming each app with its type, path, port, framework and
+dependencies — every one of which was already declared. `StaticSite('Web', {
+path: 'apps/web' })` and `apps.web = { type: 'web', path: 'apps/web', framework:
+'vite', dependencies: ['api'] }` are the same sentence written twice, and only
+one of the two was checked against anything. So the copy that could drift is
+gone, and the apps are read off the graph:
+
+```typescript
+// constructs/api.ts — a backend app
+export const api = new RestApi('Api', {
+  defaultAuthorizer: 'none',
+  logger,
+});
+
+// constructs/site.ts — two frontend apps, and the edges that order them
+export const web = new StaticSite('Web').dependsOn([api, auth]);
+
+export const admin = new StaticSite('Admin', { variant: 'next' })
+  .dependsOn([api]);
+```
+
+No paths: `Web` means `apps/web` and `Admin` means `apps/admin`, which is what
+the ids already said. Write one only when the layout differs.
+
+`.dependsOn()` is where `dependencies: ['api']` went. It is the same fact, but
+it is the one the build already needed — it derives the environment, the client
+and the deploy order from it.
+
+Every surface gets a container, and nobody asks for one. There is no
+arrangement in which one runs inside another — two surfaces in a process share
+a filesystem, an environment and every credential either was granted, so an
+auth server beside an API is one bug in the API away from being read by it.
+:::
+
+::: info Apps that share a database
+An app that shares a database with another declares a derived form of it —
+`database.schema()` for its own schema and role, or `database.reader()` for
+read-only access — rather than reaching for the same URL by string.
 :::
 
 ::: tip
-Use `defineWorkspace()` (not `defineConfig()`) for multi-app workspaces. The `defineWorkspace()` helper provides type-safe dependency validation — `dependencies` values are checked against the app names in your config.
+Use `defineWorkspace()` (not `defineConfig()`) for multi-app workspaces.
 :::
 
-### App-Specific Configuration
+### There Is One Config, at the Root
 
-Each app can have its own `gkm.config.ts`:
+Apps in a workspace do not carry a `gkm.config.ts` of their own. Everything an
+app used to state there it states in the declaration that makes it an app —
+where its code lives, what it depends on, which logger and environment parser
+it runs with:
 
 ```typescript
-// apps/api/gkm.config.ts
+// constructs/api.ts
+export const api = new RestApi('Api', {
+  defaultAuthorizer: 'none',
+  // The actual logger, not a path to one. It used to be
+  // `logger: './src/config/logger'` in config, because the build wrote an
+  // import into each generated handler. Endpoints built from the surface carry
+  // it, so there is nothing to print and nothing to keep in step with a moved
+  // file.
+  logger,
+  telescope,
+});
+```
+
+A **standalone** single-app project — one app, no workspace — still uses
+`defineConfig()`, which is the last place the older shape survives:
+
+```typescript
+// gkm.config.ts
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
   constructs: './src/constructs/**/*.ts',
   routes: './src/endpoints/**/*.ts',
-  envParser: './src/config/env',
+  envParser: './src/config/env#envParser',
   logger: './src/config/logger',
-
-  telescope: { enabled: true },
-  studio: { enabled: true },
-
-  providers: {
-    server: { enableOpenApi: true },
-  },
 });
 ```
+
+::: warning These three are module paths, and the surface replaced them
+`logger: './src/config/logger'` is a path the build prints into every generated
+handler — checked by nothing, and wrong the moment the file moves. `logger` on
+a `RestApi` is the logger itself.
+
+`defineConfig` still requires all three. Prefer a workspace: `defineWorkspace`
+takes the `constructs` glob alone, and everything else is read off what the
+constructs declare.
+:::
 
 ## Development Workflow
 
@@ -202,9 +238,9 @@ export * from './constants';
 ```typescript
 // apps/api/src/endpoints/users.ts
 import { formatDate } from '@myorg/shared';
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-export const getUser = e
+export const getUser = api
   .get('/users/:id')
   .handle(async ({ params }) => {
     const user = await db.users.find(params.id);
@@ -404,11 +440,9 @@ Only share code that's truly reused:
 Always declare dependencies between apps:
 
 ```typescript
-apps: {
-  web: {
-    dependencies: ['api'], // Explicit
-  },
-}
+// constructs/site.ts
+export const web = new StaticSite('Web', { path: 'apps/web' })
+  .dependsOn([api]); // Explicit
 ```
 
 ### 3. Isolate Environment Variables

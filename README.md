@@ -58,14 +58,28 @@ A powerful framework for building type-safe HTTP endpoints, cloud functions, cro
 - Cloud functions, cron jobs, and event subscriber support
 
 ```typescript
+// constructs/api.ts — the surface, declared once
+import { RestApi } from '@geekmidas/constructs/rest-api';
 import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
-import { e } from '@geekmidas/constructs/endpoints';
-import { z } from 'zod';
+import { logger } from './logger';
 
 // One declaration: the Postgres container, its roles and schema, and ORDERS_URL.
 export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
 
-const router = e.database(database);
+// One RestApi is one server. Every endpoint built from it runs with this
+// logger and this environment parser — neither is named again.
+export const api = new RestApi('Api', {
+  default: 'none',
+  logger,
+});
+```
+
+```typescript
+// endpoints/users.ts
+import { api, database } from '../constructs/api';
+import { z } from 'zod';
+
+const router = api.endpoints.database(database);
 
 const endpoint = router
   .get('/users/:id')
@@ -364,7 +378,7 @@ const limiter = rateLimit({
 });
 
 // Use with endpoints
-const endpoint = e
+const endpoint = api
   .post('/api/messages')
   .rateLimit(limiter)
   .handle(async () => ({ success: true }));

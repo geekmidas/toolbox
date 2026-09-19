@@ -252,7 +252,7 @@ interface AuditStorage {
 For explicit control or non-database operations:
 
 ```typescript
-const processOrder = e
+const processOrder = api
   .post('/orders')
   .services([databaseService, paymentService])
   .auditor(auditStorageService)
@@ -295,7 +295,7 @@ type AppAuditAction =
   | AuditableAction<'user.created', { userId: string; email: string }>
   | AuditableAction<'user.updated', { userId: string; changes: string[] }>;
 
-const createUser = e
+const createUser = api
   .post('/users')
   .services([databaseService])
   .auditor(auditStorageService)  // Just the service
@@ -337,7 +337,7 @@ User explicitly wraps their database with a provider-specific wrapper:
 ```typescript
 import { AuditableKysely } from '@geekmidas/audit/kysely';
 
-const updateUser = e
+const updateUser = api
   .put('/users/:id')
   .services([databaseService])
   .auditor(auditStorageService)  // Just the service
@@ -395,7 +395,7 @@ const databaseService = {
 Usage in endpoints:
 
 ```typescript
-const updateUser = e
+const updateUser = api
   .put('/users/:id')
   .services([databaseService])
   .auditor(auditStorageService)
@@ -704,7 +704,7 @@ await auditor.flush(transaction);
 When you manage transactions explicitly:
 
 ```typescript
-const transferFunds = e
+const transferFunds = api
   .post('/transfers')
   .services([databaseService])
   .auditor(auditStorageService)

@@ -20,7 +20,9 @@ services:
       - "dbdata18:/var/lib/postgresql"
       - "./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql"
     ports:
-      - "5432:5432"
+      # Overridable, because a developer with another project's Postgres on
+      # 5432 otherwise cannot run this stack at all.
+      - "${GKM_TEST_PG_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=geekmidas
       - POSTGRES_PASSWORD=geekmidas

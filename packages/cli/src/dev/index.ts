@@ -65,6 +65,7 @@ import {
 	type FrontendFramework,
 	getAppBuildOrder,
 	getDependencyEnvVars,
+	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
 
@@ -674,7 +675,17 @@ export function checkPortConflicts(
 }
 
 /**
- * Per-framework validation spec for supported frontend frameworks.
+ * A framework the dev server starts an app with.
+ *
+ * Expo is a mobile framework, not a frontend one, but it is detected and
+ * validated here the same way — so the union is what this table is keyed by.
+ * It used to be keyed by `FrontendFramework` alone, with the Expo entry typed
+ * as an excess property and the one call site casting around it.
+ */
+type ClientFramework = FrontendFramework | MobileFramework;
+
+/**
+ * Per-framework validation spec for the frameworks the dev server supports.
  */
 interface FrontendFrameworkSpec {
 	displayName: string;
@@ -683,7 +694,7 @@ interface FrontendFrameworkSpec {
 	installCommand: string;
 }
 
-const FRONTEND_FRAMEWORKS: Record<FrontendFramework, FrontendFrameworkSpec> = {
+const FRONTEND_FRAMEWORKS: Record<ClientFramework, FrontendFrameworkSpec> = {
 	nextjs: {
 		displayName: 'Next.js',
 		configFiles: [
@@ -739,6 +750,13 @@ const FRONTEND_FRAMEWORKS: Record<FrontendFramework, FrontendFrameworkSpec> = {
 	},
 };
 
+/** Whether a configured framework is one this table knows how to start. */
+function isClientFramework(
+	framework: string | undefined,
+): framework is ClientFramework {
+	return framework !== undefined && framework in FRONTEND_FRAMEWORKS;
+}
+
 /**
  * Auto-detect the frontend framework by scanning package.json deps and config
  * files. Dependency match wins over config file match because deps are more
@@ -747,13 +765,13 @@ const FRONTEND_FRAMEWORKS: Record<FrontendFramework, FrontendFrameworkSpec> = {
 function detectFrontendFramework(
 	fullPath: string,
 	deps: Record<string, string>,
-): FrontendFramework | undefined {
+): ClientFramework | undefined {
 	// tanstack-start before vite/remix so its more specific dep wins; vite last
 	// because plain vite is the fallback when neither nextjs/remix/tanstack match.
 	// Order matters: more specific deps win over general ones.
 	// expo first (own dep), then tanstack-start (uses vite), remix (uses vite),
 	// nextjs (own dep), and plain vite last as the fallback.
-	const order: FrontendFramework[] = [
+	const order: ClientFramework[] = [
 		'expo',
 		'tanstack-start',
 		'nextjs',
@@ -800,7 +818,7 @@ export async function validateFrontendApp(
 	appName: string,
 	appPath: string,
 	workspaceRoot: string,
-	framework?: FrontendFramework,
+	framework?: ClientFramework,
 ): Promise<FrontendValidationResult> {
 	const errors: string[] = [];
 	const warnings: string[] = [];
@@ -893,7 +911,7 @@ export async function validateFrontendApps(
 				appName,
 				app.path,
 				workspace.root,
-				app.framework as FrontendFramework | undefined,
+				isClientFramework(app.framework) ? app.framework : undefined,
 			);
 			results.push(result);
 		}

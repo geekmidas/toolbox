@@ -58,11 +58,11 @@ try {
 Rate limiting is built into the constructs package:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { InMemoryCache } from '@geekmidas/cache/memory';
 import { z } from 'zod';
 
-export const sendMessage = e
+export const sendMessage = api
   .post('/api/messages')
   .rateLimit({
     limit: 10,                    // 10 requests
@@ -347,7 +347,7 @@ try {
 
 ```typescript
 // Strict limit for auth endpoints
-export const login = e
+export const login = api
   .post('/auth/login')
   .rateLimit({
     limit: 5,
@@ -360,7 +360,7 @@ export const login = e
   });
 
 // Generous limit for read endpoints
-export const getUsers = e
+export const getUsers = api
   .get('/users')
   .rateLimit({
     limit: 1000,

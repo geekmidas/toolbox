@@ -34,7 +34,7 @@ pnpm add @geekmidas/constructs
 | Export | Description |
 |--------|-------------|
 | `/` | Core types and utilities |
-| `/endpoints` | HTTP endpoint builder (`e`, `EndpointFactory`) and types |
+| `/endpoints` | `EndpointFactory` (reached as `api.endpoints`) and types |
 | `/functions` | Cloud function builder (`f`) |
 | `/crons` | Scheduled task builder (`c`) and AWS adaptor (`AWSScheduledFunction`) |
 | `/subscribers` | Event subscriber builder (`s`) — topic fan-out |
@@ -121,7 +121,7 @@ Every builder takes it: endpoints, functions, crons, queue workers, and
 subscribers.
 
 ```typescript
-export const createAvatar = e
+export const createAvatar = api
   .post('/avatars')
   .dependsOn([uploads, stripe])
   .handle(async ({ services }) => {
@@ -210,10 +210,10 @@ it `declare()`?
 ### Creating an Endpoint
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-export const getUserEndpoint = e
+export const getUserEndpoint = api
   .get('/users/:id')
   .params(z.object({
     id: z.string().uuid(),
@@ -237,7 +237,7 @@ export const getUserEndpoint = e
 Endpoints support three types of input validation:
 
 ```typescript
-const createUserEndpoint = e
+const createUserEndpoint = api
   .post('/users')
   .body(z.object({
     name: z.string(),
@@ -297,7 +297,7 @@ const databaseService = {
 } satisfies Service<'database', Database>;
 
 // Use in endpoint
-const endpoint = e
+const endpoint = api
   .get('/data')
   .services([databaseService])
   .handle(async ({ services }) => {
@@ -327,7 +327,7 @@ The endpoint handler receives a context object that includes all request data, s
 Access incoming request cookies using the `cookie` function:
 
 ```typescript
-const endpoint = e
+const endpoint = api
   .get('/dashboard')
   .handle(async ({ cookie }) => {
     const sessionId = cookie('session');
@@ -349,7 +349,7 @@ const endpoint = e
 Combine cookie reading with session management by calling `.session()` on the factory:
 
 ```typescript
-const sessionRouter = e
+const sessionRouter = api
   .services([AuthService])
   .session(async ({ cookie, services }) => {
     const sessionToken = cookie('session');
@@ -378,10 +378,10 @@ The endpoint handler receives two parameters: the context object and a response 
 #### Setting Cookies
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
-const loginEndpoint = e
+const loginEndpoint = api
   .post('/auth/login')
   .body(z.object({
     email: z.email(),
@@ -420,7 +420,7 @@ const loginEndpoint = e
 #### Deleting Cookies
 
 ```typescript
-const logoutEndpoint = e
+const logoutEndpoint = api
   .post('/auth/logout')
   .output(z.object({ success: z.boolean() }))
   .handle(async (ctx, response) => {
@@ -436,7 +436,7 @@ const logoutEndpoint = e
 Set custom response headers for cache control, content disposition, or custom metadata:
 
 ```typescript
-const downloadEndpoint = e
+const downloadEndpoint = api
   .get('/files/:id/download')
   .params(z.object({ id: z.string() }))
   .handle(async ({ params }, response) => {
@@ -457,7 +457,7 @@ Override the default status code (200) or the status set in the builder:
 ```typescript
 import { SuccessStatus } from '@geekmidas/constructs/endpoints';
 
-const createEndpoint = e
+const createEndpoint = api
   .post('/users')
   .body(z.object({
     name: z.string(),
@@ -493,7 +493,7 @@ const createEndpoint = e
 Set headers that apply to all responses from an endpoint:
 
 ```typescript
-const apiEndpoint = e
+const apiEndpoint = api
   .get('/api/data')
   .header('X-API-Version', '1.0')
   .headers({
@@ -511,7 +511,7 @@ const apiEndpoint = e
 If you don't need to modify the response, simply return the data directly:
 
 ```typescript
-const getEndpoint = e
+const getEndpoint = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
   .output(userSchema)
@@ -526,7 +526,7 @@ const getEndpoint = e
 Combining multiple request and response features:
 
 ```typescript
-const uploadEndpoint = e
+const uploadEndpoint = api
   .post('/files/upload')
   .body(z.object({
     file: z.string(),
@@ -568,11 +568,11 @@ const uploadEndpoint = e
 `.session()` is called on the **factory** to create a session-enabled router. The session callback receives `header`, `cookie`, `services`, and `db` (when a database is configured). Throw an error to reject unauthorized requests.
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { ForbiddenError } from '@geekmidas/errors';
 
 // Create a factory with services and database
-const r = e
+const r = api
   .services([AuthService])
   .database(DatabaseService);
 
@@ -646,7 +646,7 @@ const resourceEndpoint = sessionRouter
 ```typescript
 import { InMemoryCache } from '@geekmidas/cache/memory';
 
-const rateLimitedEndpoint = e
+const rateLimitedEndpoint = api
   .post('/api/messages')
   .rateLimit({
     limit: 10,
@@ -668,7 +668,7 @@ Endpoints support declarative and manual audit logging via integration with [`@g
 Define an audit storage service and attach it to an endpoint with `.auditor()`:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { KyselyAuditStorage } from '@geekmidas/audit/kysely';
 import type { Service } from '@geekmidas/services';
 import type { AuditableAction } from '@geekmidas/audit';
@@ -690,7 +690,7 @@ const auditStorageService = {
   },
 } satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
 
-const endpoint = e
+const endpoint = api
   .post('/users')
   .auditor(auditStorageService)
   .handle(async ({ auditor }) => {
@@ -704,7 +704,7 @@ const endpoint = e
 Use `.actor()` to identify who performed the action. The extractor receives the request context and returns an `AuditActor`:
 
 ```typescript
-const endpoint = e
+const endpoint = api
   .post('/users')
   .auditor(auditStorageService)
   .actor(({ session }) => ({
@@ -727,7 +727,7 @@ Use `.audit()` to define audits that fire automatically after the handler return
 ```typescript
 import { z } from 'zod';
 
-const createUserEndpoint = e
+const createUserEndpoint = api
   .post('/users')
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }))
@@ -765,7 +765,7 @@ const createUserEndpoint = e
 Use the `when` clause to only record audits under certain conditions:
 
 ```typescript
-const updateUserEndpoint = e
+const updateUserEndpoint = api
   .patch('/users/:id')
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }))
@@ -790,7 +790,7 @@ const updateUserEndpoint = e
 When you need more control, call `ctx.auditor` directly inside the handler. This is useful for auditing intermediate steps or conditional logic:
 
 ```typescript
-const transferEndpoint = e
+const transferEndpoint = api
   .post('/transfers')
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }))
@@ -817,12 +817,12 @@ Manual audits are buffered in memory and flushed together with any declarative a
 
 #### Factory-Level Defaults
 
-Set `.auditor()` and `.actor()` on an `EndpointFactory` so all endpoints inherit the configuration:
+Set `.auditor()` and `.actor()` on a branch of the surface's factory so every endpoint built from it inherits the configuration:
 
 ```typescript
-import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .services([auditStorageService])
   .session(extractSession)
@@ -834,7 +834,7 @@ const api = new EndpointFactory()
   }));
 
 // All endpoints inherit auditor and actor
-const createUser = api
+const createUser = router
   .post('/users')
   .audit([{
     type: 'user.created',
@@ -847,7 +847,7 @@ const createUser = api
     return await createUser(body);
   });
 
-const deleteUser = api
+const deleteUser = router
   .delete('/users/:id')
   .handle(async ({ params, auditor }) => {
     await removeUser(params.id);
@@ -861,13 +861,13 @@ const deleteUser = api
 When the audit storage uses the same database as the endpoint (e.g., both use the same Kysely instance), audits are flushed inside the same database transaction. This guarantees atomicity — if the handler fails, both the data changes and the audit records are rolled back.
 
 ```typescript
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
-const endpoint = api
+const endpoint = router
   .post('/users')
   .output(userSchema)
   .audit([{
@@ -903,9 +903,9 @@ Endpoints support PostgreSQL [Row Level Security](https://www.postgresql.org/doc
 Configure RLS once on the factory so all endpoints inherit it:
 
 ```typescript
-import { EndpointFactory } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .session(extractSession)
   .authorizer('jwt')
@@ -986,9 +986,9 @@ const adminUsers = api
 You can also configure RLS on individual endpoints instead of (or in addition to) the factory:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const endpoint = e
+const endpoint = api
   .get('/orders')
   .database(database)
   .rls({
@@ -1045,9 +1045,9 @@ const endpoint = api
 Endpoints can declare events that are published automatically after the handler returns:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 
-const createOrder = e
+const createOrder = api
   .post('/orders')
   .dependsOn([database])
   .publisher(orders.publisher)
@@ -1074,7 +1074,7 @@ const createOrder = e
 You can also publish events manually inside the handler using the `publish` function:
 
 ```typescript
-const endpoint = e
+const endpoint = api
   .post('/transfers')
   .publisher(eventPublisherService)
   .handle(async ({ body, publish }) => {
@@ -1119,7 +1119,7 @@ const eventPublisherService = {
 } satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
 
 // 3. Use with endpoints
-const createUser = e
+const createUser = api
   .post('/users')
   .publisher(eventPublisherService)
   .output(userSchema)
@@ -1146,7 +1146,7 @@ export const users = new Topic('users', {
   'user.created': z.object({ userId: z.string(), email: z.email() }),
 });
 
-const createUser = e
+const createUser = api
   .post('/users')
   .publisher(users.publisher)   // derived, not hand-written
   .event({ type: 'user.created', payload: (r) => ({ userId: r.id, email: r.email }) })
@@ -1162,12 +1162,12 @@ and is granted nothing on it, because at runtime it only reads its own queue.
 Set a default publisher on the factory so all endpoints inherit it:
 
 ```typescript
-const api = new EndpointFactory()
+const router = api.endpoints
   .database(database)
   .publisher(users.publisher);
 
 // All endpoints can use .event() without specifying .publisher()
-const createOrder = api
+const createOrder = router
   .post('/orders')
   .event({
     type: 'order.placed',
@@ -1390,10 +1390,10 @@ export const ordersQueue = q
 Every queue exposes a `publisher` — a ready-to-inject `Service` typed to the queue's `message`. Any endpoint, function, or other worker connects to the queue by dropping it into `.services([...])`:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { ordersQueue } from './queues/orders';
 
-export const createOrder = e
+export const createOrder = api
   .post('/orders')
   .body(z.object({ sku: z.string() }))
   .services([ordersQueue.publisher]) // producer side

@@ -54,7 +54,7 @@ export const notify = s
 
 ```ts
 // app/endpoints/createOrder.ts — the caller; connects to BOTH resources
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { databaseService } from '../services';
 import { orders } from '../events/orders';
 import { events } from '../events/topic';

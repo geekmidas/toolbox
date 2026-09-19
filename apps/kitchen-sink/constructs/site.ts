@@ -21,17 +21,11 @@ import { uploads } from './storage.js';
  * inlined. `PUBLIC` is what makes that distinction, and `.server` is how you ask
  * for the half that is safe to ship.
  */
-export const web = new StaticSite('Web', {
-	// Relative to the workspace root, which is now a real place rather than
-	// whichever app happened to hold the constructs. It used to be
-	// `../kitchen-sink-web` — a construct escaping its own app to point at a
-	// sibling, which is the shape this layout removes.
-	//
-	// No `variant`: static is the default, and Vite builds it. No `port`: ports
-	// are assigned in a stable order, and this one holds the base domain so it
-	// gets the first of them.
-	path: 'apps/web',
-}).dependsOn([api, auth, uploads.server]);
+// No `path`: `Web` means `apps/web` where that directory exists, which is the
+// thing the id already said. No `variant`: static is the default, and Vite
+// builds it. No `port`: ports are assigned in a stable order, and this one
+// holds the base domain so it gets the first of them.
+export const web = new StaticSite('Web').dependsOn([api, auth, uploads.server]);
 
 /**
  * The admin console — the second site, and the second *variant*.
@@ -47,6 +41,5 @@ export const web = new StaticSite('Web', {
  * one of them would have to say `root: true` rather than the deploy guessing.
  */
 export const admin = new StaticSite('Admin', {
-	path: 'apps/admin',
 	variant: 'next',
 }).dependsOn([api, auth]);

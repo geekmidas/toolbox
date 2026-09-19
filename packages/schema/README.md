@@ -296,11 +296,11 @@ if (isUser(data)) {
 This package is used internally by `@geekmidas/constructs` for type-safe endpoint validation:
 
 ```typescript
-import { e } from '@geekmidas/constructs/endpoints';
+import { api } from '../constructs/api';
 import { z } from 'zod';
 
 // The constructs package uses InferStandardSchema internally
-const endpoint = e
+const endpoint = api
   .post('/users')
   .body(z.object({ name: z.string() }))
   .output(z.object({ id: z.string() }))
