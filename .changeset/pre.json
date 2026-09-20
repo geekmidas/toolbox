@@ -35,6 +35,7 @@
     "@geekmidas/ui": "9.0.2"
   },
   "changesets": [
+    "init-scaffolds-constructs",
     "v10-the-manifest-is-the-source"
   ]
 }

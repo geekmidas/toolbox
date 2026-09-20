@@ -1,5 +1,45 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.1
+
+### Major Changes
+
+- [#24](https://github.com/geekmidas/toolbox/pull/24) [`979731e`](https://github.com/geekmidas/toolbox/commit/979731eec71ecd8519a339fd2a36d68c24140d22) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init --monorepo` scaffolds constructs, not an `apps` block
+
+  It was the last thing producing the shape v10 removed. A scaffolded workspace
+  got a `gkm.config.ts` naming three apps — type, path, port, framework,
+  dependencies — with `envParser` and `logger` as module paths beside them, which
+  is precisely what the surface replaced.
+
+  The generated config is three keys: the name, the constructs glob, and secrets.
+  Everything else it used to write, it wrote twice. `services` is gone, because a
+  declared database is why a Postgres exists. `deploy` is gone, because that is
+  picked at deploy time and it was writing the default anyway. `shared` is gone
+  because nothing reads it.
+
+  In its place is a `constructs/` directory at the workspace root — the database
+  and the auth server's schema in it, the surface, the auth server, the site —
+  reached from the apps through the `@<name>/constructs/*` path the tsconfig maps.
+
+  `apps/auth` loses its hand-written Hono server: the PORT read, the CORS list
+  split out of `BETTER_AUTH_TRUSTED_ORIGINS`, the `/api/auth/*` mount and the
+  Better Auth instance behind them. The `BetterAuth` construct declares all of it
+  and the build generates the entry, because the routes are a wildcard no glob
+  can find.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.1
+  - @geekmidas/constructs@10.0.0-alpha.1
+  - @geekmidas/db@10.0.0-alpha.1
+  - @geekmidas/envkit@10.0.0-alpha.1
+  - @geekmidas/errors@10.0.0-alpha.1
+  - @geekmidas/logger@10.0.0-alpha.1
+  - @geekmidas/manifest@10.0.0-alpha.1
+  - @geekmidas/schema@10.0.0-alpha.1
+  - @geekmidas/telescope@10.0.0-alpha.1
+
 ## 10.0.0-alpha.0
 
 ### Major Changes
