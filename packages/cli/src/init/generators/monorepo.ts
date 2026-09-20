@@ -1,3 +1,4 @@
+import { cacheFor, databaseFor, emailFor, storageFor } from '../constructs.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -183,6 +184,16 @@ coverage/
 	// Using turbo typecheck to run tsc --noEmit in each app/package
 	const tsConfig = {
 		compilerOptions: {
+			// How an app reaches the workspace's constructs without climbing out
+			// of its own directory with `../../`.
+			...(isFullstack
+				? {
+						baseUrl: '.',
+						paths: {
+							[`@${options.name}/constructs/*`]: ['./constructs/*'],
+						},
+					}
+				: {}),
 			target: 'ES2022',
 			module: 'NodeNext',
 			moduleResolution: 'NodeNext',
@@ -315,161 +326,244 @@ export default defineConfig({
 }
 
 /**
- * Generate the frontend app entry for the workspace config based on the
- * selected `frontendFramework`. Defaults to Next.js for backwards compat.
- */
-function generateFrontendAppEntry(options: TemplateOptions): string {
-	switch (options.frontendFramework) {
-		case 'tanstack-start':
-			return `web: {
-      type: 'web',
-      framework: 'tanstack-start',
-      path: 'apps/web',
-      port: 3001,
-      dependencies: ['api', 'auth'],
-      config: {
-        client: './src/config/client.ts',
-        server: './src/config/server.ts',
-      },
-    },`;
-		case 'expo':
-			return `app: {
-      type: 'mobile',
-      framework: 'expo',
-      path: 'apps/app',
-      port: 8081,
-      dependencies: ['api', 'auth'],
-    },`;
-		default:
-			return `web: {
-      type: 'web',
-      framework: 'nextjs',
-      path: 'apps/web',
-      port: 3001,
-      dependencies: ['api', 'auth'],
-      config: {
-        client: './src/config/client.ts',
-        server: './src/config/server.ts',
-      },
-    },`;
-	}
-}
-
-/**
- * Generate gkm.config.ts with defineWorkspace for fullstack template
+ * `gkm.config.ts` for the fullstack workspace.
+ *
+ * What is *not* here is the point. There is no `apps` block: the apps are the
+ * constructs that said they have a process — a `RestApi`, a `BetterAuth`, a
+ * `StaticSite` — and naming them again here would be the same sentence written
+ * twice with only one copy checked.
+ *
+ * There is no `services` block either unless something non-default was picked.
+ * Every key defaults from the deploy target: on a server target a cache is a
+ * table in the database that is already there, storage is MinIO, mail is SES.
  */
 function generateWorkspaceConfig(options: TemplateOptions): string {
-	const { telescope, services, deployTarget, routesStructure } = options;
-
-	// Get routes glob pattern
-	const getRoutesGlob = (): string => {
-		switch (routesStructure) {
-			case 'centralized-endpoints':
-				return './src/endpoints/**/*.ts';
-			case 'centralized-routes':
-				return './src/routes/**/*.ts';
-			case 'domain-based':
-				return './src/**/routes/*.ts';
-		}
-	};
-
 	let config = `import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  // The scope every physical name is built from: \`Database\` becomes
+  // \`production-${options.name}-database\` on Dokploy and on AWS alike.
   name: '${options.name}',
-  apps: {
-    api: {
-      type: 'backend',
-      path: 'apps/api',
-      port: 3000,
-      routes: '${getRoutesGlob()}',
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-      dependencies: ['auth'],`;
 
-	if (telescope) {
-		config += `
-      telescope: {
-        enabled: true,
-        path: '/__telescope',
-      },`;
-	}
+  // One glob, every kind. A declared database is why a Postgres exists, a
+  // declared bucket is why MinIO does, a declared topic is why a broker does —
+  // none of it listed here. It is also where the apps come from: a
+  // \`StaticSite\` is an app, and so is every \`RestApi\`.
+  constructs: './constructs/**/*.ts',
 
-	config += `
-      openapi: {
-        enabled: true,
-      },
-    },
-    auth: {
-      type: 'backend',
-      path: 'apps/auth',
-      port: 3002,
-      entry: './src/index.ts',
-      framework: 'better-auth',
-      envParser: './src/config/env#envParser',
-      logger: './src/config/logger#logger',
-    },
-    ${generateFrontendAppEntry(options)}
-  },
-  shared: {
-    packages: ['packages/*'],
-    models: {
-      path: 'packages/models',
-      schema: 'zod',
-    },
-  },`;
-
-	// Add services if any are selected
-	if (
-		services.db ||
-		services.cache ||
-		services.mail ||
-		services.storage ||
-		services.events
-	) {
-		config += `
-  services: {`;
-		if (services.db) {
-			config += `
-    db: true,`;
-		}
-		if (services.cache) {
-			config += `
-    cache: true,`;
-		}
-		if (services.mail) {
-			config += `
-    mail: true,`;
-		}
-		if (services.storage) {
-			config += `
-    storage: true,`;
-		}
-		if (services.events) {
-			config += `
-    events: '${services.events}',`;
-		}
-		config += `
-  },`;
-	}
-
-	// Add deploy config if dokploy is selected
-	if (deployTarget === 'dokploy') {
-		config += `
-  deploy: {
-    default: 'dokploy',
-  },`;
-	}
-
-	// Always enable secrets for workspace dev environment
-	config += `
   secrets: {
     enabled: true,
-  },`;
-
-	config += `
+  },
 });
 `;
 
+	// The one thing a construct cannot answer and a default cannot either.
+	//
+	// `services.events` is doing two jobs — *are there events* and *which
+	// broker carries them* — so an unset value means "none" rather than "the
+	// obvious one", and defaulting it would assert events exist for a project
+	// that declared no topic. Written only when the choice is not the one
+	// `pgboss` already gives for free.
+	if (options.services.events && options.services.events !== 'pgboss') {
+		config = config.replace(
+			'  secrets: {',
+			`  services: {
+    events: '${options.services.events}',
+  },
+
+  secrets: {`,
+		);
+	}
+
 	return config;
+}
+
+/**
+ * The workspace's constructs, at its root rather than inside an app.
+ *
+ * They outlive the app that used them first: a site depending on the API is a
+ * fact about the workspace, and a construct reaching across into a sibling
+ * app's `src/` to state it is the shape this layout removes. Apps import them
+ * through the `@<name>/constructs/*` path the root tsconfig maps.
+ *
+ * Every one of these is also an answer config used to give: the database is
+ * why a Postgres exists, the surface and the site are the apps, and the edges
+ * between them are the CORS origins and the build order.
+ */
+export function generateRootConstructs(
+	options: TemplateOptions,
+): GeneratedFile[] {
+	if (!options.monorepo || options.template !== 'fullstack') return [];
+
+	const { name, services, frontendFramework } = options;
+	const db = databaseFor(name);
+	const files: GeneratedFile[] = [];
+
+	files.push({
+		path: 'constructs/logger.ts',
+		content: `import { createLogger } from '@geekmidas/logger/${options.loggerType}';
+
+/**
+ * The logger every endpoint runs with.
+ *
+ * Named once, here, because the surface carries it. It used to be
+ * \`logger: './src/config/logger#logger'\` in config — a module path the build
+ * printed into each generated handler, checked by nothing and wrong the moment
+ * the file moved.
+ */
+export const logger = createLogger();
+`,
+	});
+
+	files.push({
+		path: 'constructs/database.ts',
+		content: `import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+import type { Generated } from 'kysely';
+
+/** Your database schema. Add tables here. */
+export interface Database {
+  users: {
+    id: Generated<string>;
+    name: string;
+    email: string;
+    created_at: Generated<Date>;
+  };
+}
+
+/**
+ * The database, declared once.
+ *
+ * The container, the database inside it, its roles and schema, and
+ * \`${db.urlKey}\` all derive from this line — which is why nothing lists
+ * \`postgres\` anywhere.
+ */
+export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}');
+
+/**
+ * The auth server's own schema in that same Postgres, with its own role.
+ *
+ * A schema tenant rather than a second database: one container, and a role
+ * whose \`search_path\` is pinned, so Better Auth's tables cannot collide with
+ * the application's.
+ */
+export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
+`,
+	});
+
+	files.push({
+		path: 'constructs/auth.ts',
+		content: `import { BetterAuth } from '@geekmidas/constructs/auth';
+import { authDb } from './database.ts';
+
+/**
+ * The auth server.
+ *
+ * There is no \`src/index.ts\` to go with this, and that is the point: the
+ * routes are a wildcard, so no glob finds them and the build generates the
+ * entry from this declaration instead. CORS, the trusted origins and the
+ * cookie domain come from whatever declared an edge to it — nobody writes an
+ * origin down.
+ */
+export const auth = new BetterAuth('Auth', {
+  database: authDb,
+  basePath: '/api/auth',
+});
+`,
+	});
+
+	files.push({
+		path: 'constructs/api.ts',
+		content: `import { RestApi } from '@geekmidas/constructs/rest-api';
+import { auth } from './auth.ts';
+import { logger } from './logger.ts';
+
+/**
+ * The application's HTTP surface — one RestApi, one container.
+ *
+ * No \`app\`: \`Api\` means \`apps/api\`, which the id already said. The
+ * \`code\` glob is here only because this scaffold puts its endpoints under
+ * \`src/\`, where the conventional layout has them at the app root.
+ */
+export const api = new RestApi('Api', {
+  // Typed out rather than omitted: an API that ships open because a field was
+  // left off is the one default worth refusing to have.
+  defaultAuthorizer: 'none',
+
+  // The actual logger, not a path to one.
+  logger,
+
+  app: {
+    code: './src/{endpoints,functions,crons,queues,topics,subscribers}/**/*.ts',
+  },
+}).auth(auth);
+`,
+	});
+
+	const variant =
+		frontendFramework === 'tanstack-start'
+			? "{ variant: 'tanstack' }"
+			: frontendFramework === 'expo'
+				? undefined
+				: "{ variant: 'next' }";
+
+	if (variant !== undefined) {
+		files.push({
+			path: 'constructs/site.ts',
+			content: `import { StaticSite } from '@geekmidas/constructs/site';
+import { api } from './api.ts';
+import { auth } from './auth.ts';
+
+/**
+ * The frontend — a construct like any other, which is what makes it an app.
+ *
+ * No \`path\`: \`Web\` means \`apps/web\`. \`.dependsOn()\` is the single fact
+ * behind four things that are hand-maintained otherwise: this site's
+ * build-time API URL, the API's CORS origins, the auth server's trusted
+ * origins, and which generated client lands here.
+ */
+export const web = new StaticSite('Web', ${variant}).dependsOn([api, auth]);
+`,
+		});
+	}
+
+	if (services.storage) {
+		const bucket = storageFor(name);
+		files.push({
+			path: 'constructs/storage.ts',
+			content: `import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+/** A bucket — MinIO locally, S3 deployed, one declaration for both. */
+export const uploads = new ObjectStorage('${bucket.id}');
+`,
+		});
+	}
+
+	if (services.mail) {
+		const mail = emailFor(name);
+		files.push({
+			path: 'constructs/email.ts',
+			content: `import { Email } from '@geekmidas/constructs/email';
+
+/** Outbound mail — Mailpit locally, SES deployed. */
+export const email = new Email('${mail.id}', { templates: {} });
+`,
+		});
+	}
+
+	if (services.cache) {
+		const kv = cacheFor(name);
+		files.push({
+			path: 'constructs/cache.ts',
+			content: `import { Cache } from '@geekmidas/constructs/cache';
+
+/**
+ * A cache. Which backend serves it follows the deploy target — a table in the
+ * database on a server, Upstash on AWS — so nothing here says where it lives.
+ */
+export const cache = new Cache('${kv.id}');
+`,
+		});
+	}
+
+	return files;
 }

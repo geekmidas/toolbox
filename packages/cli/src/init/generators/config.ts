@@ -147,6 +147,11 @@ export default defineConfig({${
 					baseUrl: '.',
 					paths: {
 						'~/*': ['./src/*'],
+						// Before the wildcard below it: TypeScript takes the longest
+						// matching prefix, so the constructs at the workspace root win
+						// over `packages/constructs/src`, which is a different thing
+						// with a colliding name.
+						[`@${options.name}/constructs/*`]: ['../../constructs/*'],
 						[`@${options.name}/*`]: ['../../packages/*/src'],
 					},
 				},

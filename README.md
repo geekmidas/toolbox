@@ -69,7 +69,7 @@ export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
 // One RestApi is one server. Every endpoint built from it runs with this
 // logger and this environment parser — neither is named again.
 export const api = new RestApi('Api', {
-  default: 'none',
+  defaultAuthorizer: 'none',
   logger,
 });
 ```
@@ -79,10 +79,9 @@ export const api = new RestApi('Api', {
 import { api, database } from '../constructs/api';
 import { z } from 'zod';
 
-const router = api.endpoints.database(database);
-
-const endpoint = router
+const endpoint = api
   .get('/users/:id')
+  .database(database)
   .params(z.object({ id: z.string().uuid() }))
   .query(z.object({
     include: z.array(z.string()).optional(),
