@@ -59,6 +59,7 @@ export type {
 	SecretDeclaration,
 	SiteDeclaration,
 	TopicDeclaration,
+	WorkerDeclaration,
 } from './declaration';
 export {
 	DEFAULT_APP_CODE,

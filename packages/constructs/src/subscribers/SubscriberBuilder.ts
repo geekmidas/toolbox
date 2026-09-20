@@ -31,6 +31,11 @@ export class SubscriberBuilder<
 	/** The construct ids `.dependsOn()` named — what the manifest records. */
 	public _constructs: string[] = [];
 	private _logger: TLogger = DEFAULT_LOGGER;
+	/**
+	 * The deploy unit that runs this, by construct id. Seeded by the factory a
+	 * `Worker` hands out, so a subscriber is not owned by its directory.
+	 */
+	public _owner?: string;
 	private _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	private _topicName?: string;
 
@@ -225,6 +230,10 @@ export class SubscriberBuilder<
 			this._topicName,
 			this._constructs,
 		);
+
+		// Which process runs it. Carried from the factory rather than inferred
+		// from the directory the file happens to sit in.
+		subscriber.owner = this._owner;
 
 		// No reset: `.handle()` reads this builder and leaves it alone, so a
 		// configured base stays usable for the next subscriber.

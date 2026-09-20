@@ -801,7 +801,7 @@ export class EndpointBuilder<
 			}
 		}
 
-		return new Endpoint({
+		const endpoint = new Endpoint({
 			fn,
 			method: this.method,
 			route: this.route,
@@ -830,5 +830,12 @@ export class EndpointBuilder<
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
 		});
+
+		// One field says which process runs a construct, whatever its kind. An
+		// endpoint's is its surface; a cron's is the worker that handed out the
+		// factory. The build partitions on this rather than on directories.
+		endpoint.owner = this._surface?.id;
+
+		return endpoint;
 	}
 }

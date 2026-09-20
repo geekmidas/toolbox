@@ -566,6 +566,32 @@ export interface SiteDeclaration extends Node {
 	dependencies: readonly Dependency[];
 }
 
+/**
+ * A process with no port.
+ *
+ * The sibling of `RestApiDeclaration`, and the answer to a question the model
+ * could not previously state: *what runs this cron?* A cron, a subscriber and a
+ * queue consumer all have to run somewhere, and until now the only thing that
+ * said where was the directory the file happened to sit in — so a background
+ * job was owned by a glob, and a project that was nothing but background jobs
+ * had to declare an HTTP surface with no routes on it to be deployable at all.
+ *
+ * It takes no authorizer. A `RestApi` needs one because an HTTP surface can
+ * ship open by omission; nothing calls a worker from outside, so there is no
+ * default to get wrong. That difference is the reason these are two constructs
+ * rather than one with a flag.
+ */
+export interface WorkerDeclaration extends Node {
+	kind: 'worker';
+	/**
+	 * Where its source lives and how it is run. Optional, like every other
+	 * app's: `Worker` means `apps/worker`, which the id already said.
+	 */
+	app?: AppSpec;
+	/** Surfaces and resources it calls, which is what grants it access. */
+	dependencies?: readonly Dependency[];
+}
+
 /** One route on a surface. */
 export interface RestApiEndpoint extends Fn {
 	method: string;
@@ -660,6 +686,7 @@ export type Declaration =
 	| CredentialDeclaration
 	| RestApiDeclaration
 	| SiteDeclaration
+	| WorkerDeclaration
 	| OidcDeclaration
 	| QueueDeclaration
 	| TopicDeclaration
@@ -901,4 +928,7 @@ export const PUBLIC: {
 	// Its own address, which it needs in order to build absolute links to
 	// itself — and which an email templating a link to it needs too.
 	site: ['url'],
+	// Nothing calls a worker, so there is no address to hand anyone. It reaches
+	// out — to a queue, a schedule, a topic — and is reached by none of them.
+	worker: [],
 };

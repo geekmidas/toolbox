@@ -41,6 +41,14 @@ export abstract class BaseFunctionBuilder<
 	public _constructs: string[] = [];
 	public _logger: TLogger = DEFAULT_LOGGER;
 
+	/**
+	 * The deploy unit everything built from this builder belongs to.
+	 *
+	 * Seeded by the factory a `Worker` or `RestApi` hands out, so a cron knows
+	 * which process runs it without a directory having to imply it.
+	 */
+	public _owner?: string;
+
 	protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;

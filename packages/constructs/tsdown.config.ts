@@ -12,6 +12,7 @@ export default defineConfig({
 		'src/auth.ts',
 		'src/rest-api.ts',
 		'src/site.ts',
+		'src/worker.ts',
 		'src/email.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',

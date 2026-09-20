@@ -1,0 +1,181 @@
+/**
+ * A process with no port.
+ *
+ * `RestApi` is the process that answers HTTP. This is the one that does not —
+ * the thing that runs a schedule, drains a queue, consumes a topic. Until it
+ * existed, those had nowhere to say they belonged: a cron declared a schedule
+ * and nothing else, and which container ran it was decided by the directory the
+ * file sat in. A glob owned it.
+ *
+ * The cost of that shows up in the scaffolds. `gkm init --template worker` —
+ * a project that is background jobs and nothing else — declared
+ * `new RestApi('Api', { defaultAuthorizer: 'none', logger })`: an HTTP surface
+ * with no HTTP on it, written because it was the only construct that made an
+ * app exist and the only way to get a logger into the generated runtime.
+ *
+ * It takes no authorizer, and that is the tell that these are two constructs
+ * rather than one with a flag: a `RestApi` needs one because an HTTP surface
+ * can ship open by omission, and nothing reaches a worker from outside.
+ *
+ * @example
+ * ```ts
+ * // constructs/worker.ts
+ * import { Worker } from '@geekmidas/constructs/worker';
+ * import { logger } from './logger.js';
+ *
+ * export const worker = new Worker('Worker', { logger }).calls([database]);
+ *
+ * // crons/cleanup.ts
+ * import { worker } from '@acme/constructs/worker.js';
+ *
+ * export const cleanup = worker
+ *   .cron('rate(1 day)')
+ *   .handle(async ({ logger }) => { … });
+ * ```
+ */
+
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
+import {
+	type AppSpec,
+	type ConstructName,
+	canonicalId,
+	type Declaration,
+	type Dependency,
+} from '@geekmidas/manifest';
+import { type Declarable, edgeTo } from './construct-interface';
+import type { ScheduleExpression } from './crons/Cron';
+import { CronBuilder } from './crons/CronBuilder';
+import { envParserFor } from './endpoints/surfaceEnv';
+import { FunctionBuilder } from './functions/FunctionBuilder';
+import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
+
+export interface WorkerConfig {
+	/**
+	 * Where its source lives and how it is run.
+	 *
+	 * Normally omitted, like every other app's: `Worker` means `apps/worker`
+	 * where that directory exists and the project root otherwise. Write one only
+	 * for a layout that genuinely differs.
+	 */
+	app?: AppSpec;
+	/**
+	 * The logger everything built from this worker runs with.
+	 *
+	 * The actual logger, not a path to one — the same reason `RestApi` takes
+	 * one. Every cron and subscriber in a scaffolded project used to open with
+	 * `import { logger } from '…/constructs/logger.js'`, which is the line this
+	 * removes.
+	 */
+	logger?: Logger;
+	/**
+	 * The environment parser everything built from this worker runs with.
+	 *
+	 * Defaults to `process.env` merged with the credentials `gkm dev` injected,
+	 * which is what an application's own `config/env.ts` always was.
+	 */
+	envParser?: EnvironmentParser<{}>;
+}
+
+export class Worker<TName extends string = string>
+	implements Declarable<TName>
+{
+	readonly id: TName;
+
+	/** Always defined — the worker's own, or the console logger. */
+	readonly logger: Logger;
+
+	/** Always defined, and normally the default. */
+	readonly envParser: EnvironmentParser<{}>;
+
+	constructor(
+		id: ConstructName<TName>,
+		private readonly config: WorkerConfig = {},
+		/** Internal: how `.calls()` carries edges into the copy it returns. */
+		private readonly dependencies: readonly Dependency[] = [],
+	) {
+		const canonical = canonicalId(id as string);
+
+		this.id = canonical as TName;
+		this.logger = config.logger ?? DEFAULT_LOGGER;
+		this.envParser = envParserFor(
+			config.envParser
+				? { id: canonical, envParser: config.envParser }
+				: undefined,
+		);
+	}
+
+	/**
+	 * This worker's cron factory, carrying its logger.
+	 *
+	 * `export const c = crons.logger(logger)` written once and hung off the
+	 * thing that runs it, so a cron file opens with the schedule rather than
+	 * with an import of a logger it has to know the path to.
+	 */
+	get crons() {
+		return this.own(new CronBuilder().logger(this.logger));
+	}
+
+	/**
+	 * This worker's subscriber factory, carrying its logger.
+	 *
+	 * Chain `.publisher(…)` before `.subscribe([…])`: the event names are typed
+	 * from the publisher's message union, so there is nothing to spell twice.
+	 */
+	get subscribers() {
+		return this.own(new SubscriberBuilder().logger(this.logger));
+	}
+
+	/** This worker's function factory, carrying its logger. */
+	get functions() {
+		return this.own(new FunctionBuilder().logger(this.logger));
+	}
+
+	/**
+	 * Sugar for the common case, the way `api.get()` is for `api.endpoints`.
+	 *
+	 * @example `worker.cron('rate(1 day)').handle(async ({ logger }) => { … })`
+	 */
+	cron(schedule: ScheduleExpression) {
+		return this.crons.schedule(schedule);
+	}
+
+	/**
+	 * Resources and surfaces this worker calls.
+	 *
+	 * Not `.dependsOn()`: this records the edge that derives the worker's
+	 * environment and its access, the same distinction `RestApi.calls()` draws.
+	 */
+	calls(constructs: readonly Declarable[]): Worker<TName> {
+		return new Worker<TName>(this.id as ConstructName<TName>, this.config, [
+			...this.dependencies,
+			...constructs.map(edgeTo),
+		]);
+	}
+
+	/**
+	 * Stamps this worker's id onto a builder, so everything built from it says
+	 * which process runs it.
+	 */
+	private own<T extends { _owner?: string }>(builder: T): T {
+		builder._owner = this.id;
+
+		return builder;
+	}
+
+	declare(): Declaration[] {
+		return [
+			{
+				kind: 'worker',
+				id: this.id,
+				...(this.config.app ? { app: this.config.app } : {}),
+				...(this.dependencies.length
+					? { dependencies: this.dependencies }
+					: {}),
+				// Nothing calls a worker, so it publishes no address.
+				provides: [],
+			},
+		];
+	}
+}
