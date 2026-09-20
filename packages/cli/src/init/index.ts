@@ -10,6 +10,7 @@ import {
 	generateDbUrl,
 } from '../setup/fullstack-secrets.js';
 import type { ComposeServiceName, EventsBackend } from '../types.js';
+import { generateAgentFiles } from './generators/agents.js';
 import { generateAuthAppFiles } from './generators/auth.js';
 import { generateConfigFiles } from './generators/config.js';
 import {
@@ -313,6 +314,9 @@ export async function initCommand(
 	// Collect root monorepo files (includes packages/models)
 	const rootFiles = baseTemplate
 		? [
+				// At the project root in both layouts: an agent opening the repo
+				// reads the root, not the app directory it has not found yet.
+				...generateAgentFiles(templateOptions, baseTemplate),
 				...generateMonorepoFiles(templateOptions, baseTemplate),
 				...generateRootConstructs(templateOptions),
 				...generateModelsPackage(templateOptions),
