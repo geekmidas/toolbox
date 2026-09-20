@@ -5,6 +5,10 @@ on:
     branches: [main, v9]
   pull_request:
     branches: [main, v9]
+    # A base change fires `edited`, which is not one of the default types — so a
+    # PR retargeted onto main, the last step of unstacking a PR stack, never
+    # built. It read as reviewed and green having never run once.
+    types: [opened, synchronize, reopened, edited]
   workflow_call:
 
 concurrency:
@@ -19,6 +23,13 @@ permissions:
 jobs:
   validate:
     name: Validate
+    # `edited` has no narrower event to subscribe to: it also fires on every
+    # title and body edit. `changes.base` is present only when the base
+    # actually moved, so a typo fix in a description does not rebuild.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.action != 'edited' ||
+      github.event.changes.base != null
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
