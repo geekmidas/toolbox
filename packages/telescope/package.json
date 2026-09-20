@@ -160,11 +160,11 @@
 		"access": "public"
 	},
 	"dependencies": {
+		"@geekmidas/logger": "workspace:^",
 		"@pinojs/redact": "^0.4.0",
 		"nanoid": "~5.1.5"
 	},
 	"peerDependencies": {
-		"@geekmidas/logger": "workspace:^",
 		"@middy/core": "^5.0.0 || ^6.0.0",
 		"@opentelemetry/api": "^1.9.0",
 		"@opentelemetry/auto-instrumentations-node": "^0.56.0",
@@ -180,13 +180,10 @@
 		"@types/aws-lambda": "^8.10.0",
 		"hono": "^4.0.0",
 		"kysely": ">=0.28.2 <0.30.0",
-		"pino": "^9.0.0",
+		"pino": "^9.0.0 || ^10.0.0",
 		"pino-abstract-transport": "^2.0.0 || ^3.0.0"
 	},
 	"peerDependenciesMeta": {
-		"@geekmidas/logger": {
-			"optional": true
-		},
 		"@middy/core": {
 			"optional": true
 		},

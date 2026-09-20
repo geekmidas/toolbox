@@ -119,7 +119,10 @@
 		"dist"
 	],
 	"dependencies": {
-		"@faker-js/faker": "~9.9.0"
+		"@faker-js/faker": "~9.9.0",
+		"@geekmidas/envkit": "workspace:^",
+		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/services": "workspace:^"
 	},
 	"devDependencies": {
 		"@geekmidas/envkit": "workspace:^",
@@ -136,9 +139,6 @@
 		"access": "public"
 	},
 	"peerDependencies": {
-		"@geekmidas/envkit": "workspace:^",
-		"@geekmidas/logger": "workspace:^",
-		"@geekmidas/services": "workspace:^",
 		"kysely": "~0.29.4",
 		"pg": "~8.16.3",
 		"knex": "~3.1.0",
@@ -149,15 +149,6 @@
 		"better-auth": ">=1.3.34"
 	},
 	"peerDependenciesMeta": {
-		"@geekmidas/envkit": {
-			"optional": true
-		},
-		"@geekmidas/logger": {
-			"optional": true
-		},
-		"@geekmidas/services": {
-			"optional": true
-		},
 		"kysely": {
 			"optional": true
 		},

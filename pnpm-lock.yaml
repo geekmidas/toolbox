@@ -996,6 +996,9 @@ importers:
 
   packages/telescope:
     dependencies:
+      '@geekmidas/logger':
+        specifier: workspace:^
+        version: link:../logger
       '@pinojs/redact':
         specifier: ^0.4.0
         version: 0.4.0
@@ -1003,9 +1006,6 @@ importers:
         specifier: ~5.1.5
         version: 5.1.6
     devDependencies:
-      '@geekmidas/logger':
-        specifier: workspace:^
-        version: link:../logger
       '@middy/core':
         specifier: ^6.0.0
         version: 6.3.2
@@ -1094,6 +1094,15 @@ importers:
       '@faker-js/faker':
         specifier: ~9.9.0
         version: 9.9.0
+      '@geekmidas/envkit':
+        specifier: workspace:^
+        version: link:../envkit
+      '@geekmidas/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@geekmidas/services':
+        specifier: workspace:^
+        version: link:../services
       '@types/aws-lambda':
         specifier: '>=8.10.92'
         version: 8.10.150
@@ -1119,15 +1128,6 @@ importers:
         specifier: ~3.2.4
         version: 3.2.4(@types/node@24.9.1)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.11.5(@types/node@24.9.1)(typescript@5.8.2))(terser@5.43.1)(tsx@4.20.6)(yaml@2.8.2)
     devDependencies:
-      '@geekmidas/envkit':
-        specifier: workspace:^
-        version: link:../envkit
-      '@geekmidas/logger':
-        specifier: workspace:^
-        version: link:../logger
-      '@geekmidas/services':
-        specifier: workspace:^
-        version: link:../services
       '@types/pg':
         specifier: ~8.15.4
         version: 8.15.4
@@ -17350,7 +17350,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
