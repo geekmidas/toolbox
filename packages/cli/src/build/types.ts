@@ -113,10 +113,7 @@ export interface BuildContext {
 			exposeHeaders?: readonly string[];
 		};
 	};
-	envParserPath: string;
-	envParserImportPattern: string;
-	loggerPath: string;
-	loggerImportPattern: string;
+
 	telescope?: NormalizedTelescopeConfig;
 	studio?: NormalizedStudioConfig;
 	hooks?: NormalizedHooksConfig;
@@ -153,6 +150,14 @@ export interface BuildContext {
 	 */
 	cacheBackend?: import('../types.js').CacheBackend;
 	emailBackend?: import('../types.js').EmailBackend;
+	/**
+	 * Every construct that can own a runnable, by id — the surfaces and the
+	 * workers — mapped to the module that exports it.
+	 *
+	 * What lets a generated cron import the worker that runs it rather than a
+	 * logger path from config.
+	 */
+	owners?: Record<string, { specifier: string; exportName: string }>;
 }
 
 export interface ProviderBuildResult {

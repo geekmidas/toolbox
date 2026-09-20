@@ -160,23 +160,7 @@ export async function buildCommand(
 	}
 
 	logger.log(`Building with providers: ${resolved.providers.join(', ')}`);
-	logger.log(`Loading routes from: ${formatRoutes(config.routes)}`);
-	if (config.functions) {
-		logger.log(`Loading functions from: ${formatRoutes(config.functions)}`);
-	}
-	if (config.crons) {
-		logger.log(`Loading crons from: ${formatRoutes(config.crons)}`);
-	}
-	if (config.subscribers) {
-		logger.log(`Loading subscribers from: ${formatRoutes(config.subscribers)}`);
-	}
-	logger.log(`Using envParser: ${config.envParser}`);
-
-	// Parse envParser and logger configuration
-	const { path: envParserPath, importPattern: envParserImportPattern } =
-		parseModuleConfig(config.envParser, 'envParser');
-	const { path: loggerPath, importPattern: loggerImportPattern } =
-		parseModuleConfig(config.logger, 'logger');
+	logger.log(`Loading constructs from: ${formatRoutes(config.constructs)}`);
 
 	// Normalize telescope configuration (disabled in production)
 	const telescope = production
@@ -255,7 +239,19 @@ export async function buildCommand(
 		? constructSources[browsable[0]]
 		: undefined;
 
+	// Every construct something can be built from, by id. A generated cron
+	// imports the worker that owns it; a generated handler imports its surface.
+	const owners: Record<string, { specifier: string; exportName: string }> = {};
+	for (const [id, declaration] of Object.entries(declared)) {
+		if (declaration.kind !== 'rest-api' && declaration.kind !== 'worker')
+			continue;
+		const source = constructSources[id];
+		if (!source) continue;
+		owners[id] = { specifier: source.file, exportName: source.exportName };
+	}
+
 	const buildContext: BuildContext = {
+		owners,
 		...(primary
 			? {
 					surface: {
@@ -273,10 +269,6 @@ export async function buildCommand(
 					},
 				}
 			: {}),
-		envParserPath,
-		envParserImportPattern,
-		loggerPath,
-		loggerImportPattern,
 		telescope,
 		studio:
 			studio && browsableSource
@@ -313,7 +305,15 @@ export async function buildCommand(
 	const queueGenerator = new QueueGenerator();
 	const topicGenerator = new TopicGenerator();
 
-	// Load all constructs in parallel
+	// One glob, every kind.
+	//
+	// Six globs was six things to keep in step, and a handler in the wrong
+	// directory simply never loaded. It was never necessary: each generator
+	// already filters what it loads by a type predicate — `Endpoint.isEndpoint`,
+	// `Cron.isCron` — so which *kind* a module exports comes from the value, and
+	// the glob only ever had to say where to look. It says it once.
+	const code = constructGlobs;
+
 	const [
 		allEndpoints,
 		allFunctions,
@@ -322,12 +322,12 @@ export async function buildCommand(
 		allQueues,
 		allTopics,
 	] = await Promise.all([
-		endpointGenerator.load(config.routes),
-		config.functions ? functionGenerator.load(config.functions) : [],
-		config.crons ? cronGenerator.load(config.crons) : [],
-		config.subscribers ? subscriberGenerator.load(config.subscribers) : [],
-		config.queues ? queueGenerator.load(config.queues) : [],
-		config.topics ? topicGenerator.load(config.topics) : [],
+		endpointGenerator.load(code),
+		functionGenerator.load(code),
+		cronGenerator.load(code),
+		subscriberGenerator.load(code),
+		queueGenerator.load(code),
+		topicGenerator.load(code),
 	]);
 
 	logger.log(`Found ${allEndpoints.length} endpoints`);
@@ -359,12 +359,7 @@ export async function buildCommand(
 				// path and the default is the one this would otherwise repeat.
 				resolve(
 					loadedConfig.workspace.root,
-					resolveAppSpec(
-						id,
-						d.app ?? {},
-						loadedConfig.workspace.root,
-						'rest-api',
-					).path!,
+					resolveAppSpec(id, d.app ?? {}, loadedConfig.workspace.root).path!,
 				) === resolve(process.cwd()),
 		);
 
@@ -419,8 +414,12 @@ export async function buildCommand(
 		}
 	}
 
-	// Generate OpenAPI spec as part of the build
-	await generateOpenApi(config, { bustCache: true });
+	// One spec per surface, from the endpoints the build already loaded rather
+	// than from a second discovery pass over the same files.
+	await generateOpenApi(
+		allEndpoints.map(({ construct }) => construct),
+		{ openapi: config.openapi },
+	);
 
 	return result;
 }

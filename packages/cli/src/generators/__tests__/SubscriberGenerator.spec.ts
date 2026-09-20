@@ -116,7 +116,7 @@ describe('SubscriberGenerator', () => {
 			const userContent = await readFile(userHandlerPath, 'utf-8');
 			expect(userContent).toContain('AWSLambdaSubscriber');
 			expect(userContent).toContain('import { userEventSubscriber }');
-			expect(userContent).toContain('import envParser');
+			expect(userContent).toContain('const envParser = __surface.envParser;');
 
 			const orderHandlerPath = join(
 				outputDir,
@@ -157,7 +157,7 @@ describe('SubscriberGenerator', () => {
 			expect(handlerContent).toMatch(
 				/from ['"].*src\/subscribers\/deep\/processor\.js['"]/,
 			);
-			expect(handlerContent).toMatch(/from ['"].*\/env['"]/);
+			expect(handlerContent).toMatch(/import \{ \w+ as __surface \}/);
 		});
 
 		it('should handle subscribers with different timeout values', async () => {
@@ -304,10 +304,11 @@ describe('SubscriberGenerator', () => {
 		});
 
 		it('should handle subscribers with custom environment parser patterns', async () => {
-			const customContext = {
-				...context,
-				envParserImportPattern: '{ customParser as envParser }',
-			};
+			const customContext = createMockBuildContext({
+				owner: 'Jobs',
+				specifier: './constructs/worker.ts',
+				exportName: 'backgroundJobs',
+			});
 
 			const constructs = [
 				createSubscriberConstruct('customSubscriber', ['custom.event']),
@@ -318,7 +319,9 @@ describe('SubscriberGenerator', () => {
 			const handlerPath = join(outputDir, 'subscribers', 'customSubscriber.ts');
 			const handlerContent = await readFile(handlerPath, 'utf-8');
 
-			expect(handlerContent).toContain('import { customParser as envParser }');
+			expect(handlerContent).toContain(
+				'import { backgroundJobs as __surface }',
+			);
 		});
 
 		it('should create subscribers directory if it does not exist', async () => {

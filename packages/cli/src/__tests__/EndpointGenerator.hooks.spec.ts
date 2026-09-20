@@ -35,11 +35,24 @@ describe('EndpointGenerator hooks generation', () => {
 		await rm(testOutputDir, { recursive: true, force: true });
 	});
 
+	// The entry imports the surface and reads the parser and logger off it, so
+	// what a context supplies is where that construct is exported from — not
+	// four module paths and import patterns.
 	const baseContext: BuildContext = {
-		envParserPath: '/project/src/config/env.ts',
-		envParserImportPattern: '{ envParser }',
-		loggerPath: '/project/src/config/logger.ts',
-		loggerImportPattern: 'logger',
+		surface: {
+			id: 'Api',
+			trustedOriginsKey: 'API_TRUSTED_ORIGINS',
+			module: {
+				specifier: '/project/src/constructs/api.ts',
+				exportName: 'api',
+			},
+		},
+		owners: {
+			Api: {
+				specifier: '/project/src/constructs/api.ts',
+				exportName: 'api',
+			},
+		},
 	};
 
 	describe('generateAppFile', () => {

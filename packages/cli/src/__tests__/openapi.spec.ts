@@ -31,17 +31,15 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 const {
-	generateOpenApi,
-	OPENAPI_OUTPUT_PATH,
+	generateOpenApiFrom,
+	openApiPathFor,
 	openapiCommand,
 	resolveOpenApiConfig,
 } = await import('../openapi');
 
 describe('resolveOpenApiConfig', () => {
 	const baseConfig: GkmConfig = {
-		routes: './src/endpoints/**/*.ts',
-		envParser: './src/config/env#envParser',
-		logger: './src/config/logger#logger',
+		constructs: './src/endpoints/**/*.ts',
 	};
 
 	it('should return disabled when openapi is false', () => {
@@ -121,74 +119,128 @@ describe('generateOpenApi', () => {
 	});
 
 	it('should return null when openapi is disabled', async () => {
-		const config: GkmConfig = {
-			routes: './src/endpoints/**/*.ts',
-			envParser: './src/config/env#envParser',
-			logger: './src/config/logger#logger',
-			openapi: false,
-		};
+		const routes = './src/endpoints/**/*.ts';
+		const openapi = false;
 
-		const result = await generateOpenApi(config);
+		const result = await generateOpenApiFrom(routes, { openapi });
 		expect(result).toBeNull();
 	});
 
 	it('should return null when no endpoints are found', async () => {
-		const config: GkmConfig = {
-			routes: './src/endpoints/**/*.ts', // Path doesn't exist
-			envParser: './src/config/env#envParser',
-			logger: './src/config/logger#logger',
-		};
-
-		const result = await generateOpenApi(config);
+		// Path doesn't exist.
+		const result = await generateOpenApiFrom('./src/endpoints/**/*.ts', {
+			openapi: { enabled: true },
+		});
 		expect(result).toBeNull();
 	});
 
-	it('should generate to fixed .gkm/openapi.ts path', async () => {
+	it('names the spec after the surface that serves it', async () => {
 		await createMockEndpointFile(tempDir, 'test.ts', 'test', '/test', 'GET');
 
-		const config: GkmConfig = {
-			routes: `${tempDir}/**/*.ts`,
-			envParser: './src/config/env#envParser',
-			logger: './src/config/logger#logger',
-			openapi: { enabled: true },
-		};
+		const routes = `${tempDir}/**/*.ts`;
+		const openapi = { enabled: true };
 
-		const result = await generateOpenApi(config, { silent: true });
+		const result = await generateOpenApiFrom(routes, { openapi, silent: true });
 
 		expect(result).not.toBeNull();
 		expect(result?.endpointCount).toBe(1);
-		expect(result?.outputPath).toBe(join(tempDir, OPENAPI_OUTPUT_PATH));
-		expect(existsSync(join(tempDir, OPENAPI_OUTPUT_PATH))).toBe(true);
+		expect(result?.outputPath).toBe(join(tempDir, openApiPathFor('Test')));
+		expect(existsSync(join(tempDir, openApiPathFor('Test')))).toBe(true);
+	});
+
+	it('cuts one spec per surface, not one per directory', async () => {
+		// The case this replaces: two surfaces whose endpoints sit side by side
+		// produced a single spec describing both, under a filename that named
+		// neither. The directory is not the surface.
+		const twoSurfaces = `
+import { z } from 'zod';
+import { RestApi } from '@geekmidas/constructs/rest-api';
+
+const api = new RestApi('Api', { defaultAuthorizer: 'none' });
+const webhooks = new RestApi('Webhooks', { defaultAuthorizer: 'none' });
+
+export const listUsers = api
+  .get('/users')
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async () => ({ ok: true }));
+
+export const receive = webhooks
+  .post('/hooks/stripe')
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async () => ({ ok: true }));
+`;
+		await createTestFile(tempDir, 'both.ts', twoSurfaces);
+
+		const routes = `${tempDir}/**/*.ts`;
+		const openapi = { enabled: true };
+
+		const result = await generateOpenApiFrom(routes, { openapi, silent: true });
+
+		expect(result?.endpointCount).toBe(2);
+		expect(result?.outputPaths).toHaveLength(2);
+		expect(existsSync(join(tempDir, openApiPathFor('Api')))).toBe(true);
+		expect(existsSync(join(tempDir, openApiPathFor('Webhooks')))).toBe(true);
+
+		// And each one describes only its own routes.
+		const api = await readFile(join(tempDir, openApiPathFor('Api')), 'utf-8');
+		const hooks = await readFile(
+			join(tempDir, openApiPathFor('Webhooks')),
+			'utf-8',
+		);
+
+		expect(api).toContain('/users');
+		expect(api).not.toContain('/hooks/stripe');
+		expect(hooks).toContain('/hooks/stripe');
+		expect(hooks).not.toContain('/users');
+	});
+
+	it('kebab-cases a multi-word surface, as every physical name is', async () => {
+		const content = `
+import { z } from 'zod';
+import { RestApi } from '@geekmidas/constructs/rest-api';
+
+const adminApi = new RestApi('AdminApi', { defaultAuthorizer: 'none' });
+
+export const listAll = adminApi
+  .get('/admin/users')
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async () => ({ ok: true }));
+`;
+		await createTestFile(tempDir, 'admin.ts', content);
+
+		const result = await generateOpenApiFrom(`${tempDir}/**/*.ts`, {
+			openapi: { enabled: true },
+			silent: true,
+		});
+
+		expect(result?.outputPaths).toEqual([
+			join(tempDir, './.gkm/openapi/admin-api.ts'),
+		]);
 	});
 
 	it('should generate TypeScript content', async () => {
 		await createMockEndpointFile(tempDir, 'test.ts', 'test', '/test', 'GET');
 
-		const config: GkmConfig = {
-			routes: `${tempDir}/**/*.ts`,
-			envParser: './src/config/env#envParser',
-			logger: './src/config/logger#logger',
-			openapi: { enabled: true },
-		};
+		const routes = `${tempDir}/**/*.ts`;
+		const openapi = { enabled: true };
 
-		await generateOpenApi(config, { silent: true });
+		await generateOpenApiFrom(routes, { openapi, silent: true });
 
-		const content = await readFile(join(tempDir, OPENAPI_OUTPUT_PATH), 'utf-8');
+		const content = await readFile(
+			join(tempDir, openApiPathFor('Test')),
+			'utf-8',
+		);
 		expect(content).toContain('// Auto-generated by @geekmidas/cli');
 		expect(content).toContain('export const securitySchemes');
 		expect(content).toContain('export interface paths');
 	});
 
 	it('should log no endpoints message when none found', async () => {
-		const config: GkmConfig = {
-			routes: `${tempDir}/nonexistent/**/*.ts`,
-			envParser: './src/config/env#envParser',
-			logger: './src/config/logger#logger',
-			openapi: { enabled: true },
-		};
+		const routes = `${tempDir}/nonexistent/**/*.ts`;
+		const openapi = { enabled: true };
 
 		const consoleSpy = vi.spyOn(console, 'log');
-		const result = await generateOpenApi(config);
+		const result = await generateOpenApiFrom(routes, { openapi });
 
 		expect(result).toBeNull();
 		expect(consoleSpy).toHaveBeenCalledWith(
@@ -213,7 +265,7 @@ describe('openapiCommand', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('should generate OpenAPI client to .gkm/openapi.ts', async () => {
+	it('should generate an OpenAPI client per surface', async () => {
 		await createMockEndpointFile(
 			tempDir,
 			'test.ts',
@@ -226,7 +278,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -236,7 +288,7 @@ describe('openapiCommand', () => {
 
 		await openapiCommand({ cwd: tempDir });
 
-		const outputPath = join(tempDir, OPENAPI_OUTPUT_PATH);
+		const outputPath = join(tempDir, openApiPathFor('Test'));
 		expect(existsSync(outputPath)).toBe(true);
 
 		const content = await readFile(outputPath, 'utf-8');
@@ -256,7 +308,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 			}),
 		);
 
@@ -268,7 +320,7 @@ describe('openapiCommand', () => {
 		expect(consoleSpy).toHaveBeenCalledWith(
 			expect.stringContaining('Found 1 endpoints'),
 		);
-		expect(existsSync(join(tempDir, OPENAPI_OUTPUT_PATH))).toBe(true);
+		expect(existsSync(join(tempDir, openApiPathFor('Test')))).toBe(true);
 	});
 
 	it('should include endpoint auth map', async () => {
@@ -284,7 +336,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -293,7 +345,10 @@ describe('openapiCommand', () => {
 
 		await openapiCommand({ cwd: tempDir });
 
-		const content = await readFile(join(tempDir, OPENAPI_OUTPUT_PATH), 'utf-8');
+		const content = await readFile(
+			join(tempDir, openApiPathFor('Test')),
+			'utf-8',
+		);
 		expect(content).toContain('endpointAuth');
 		expect(content).toContain("'GET /users/{id}'");
 	});
@@ -303,7 +358,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/nonexistent/**/*.ts`],
+				constructs: [`${tempDir}/nonexistent/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -345,7 +400,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -373,7 +428,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -383,7 +438,7 @@ describe('openapiCommand', () => {
 		await openapiCommand({ cwd: tempDir });
 
 		expect(existsSync(join(tempDir, '.gkm'))).toBe(true);
-		expect(existsSync(join(tempDir, OPENAPI_OUTPUT_PATH))).toBe(true);
+		expect(existsSync(join(tempDir, openApiPathFor('Test')))).toBe(true);
 	});
 
 	it('should throw error when config loading fails', async () => {
@@ -405,7 +460,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -430,7 +485,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -479,7 +534,7 @@ export const complexEndpoint = api
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
-				routes: [`${tempDir}/**/*.ts`],
+				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
 		);
@@ -488,7 +543,10 @@ export const complexEndpoint = api
 
 		await openapiCommand({ cwd: tempDir });
 
-		const content = await readFile(join(tempDir, OPENAPI_OUTPUT_PATH), 'utf-8');
+		const content = await readFile(
+			join(tempDir, openApiPathFor('Test')),
+			'utf-8',
+		);
 		expect(content).toContain('export interface paths');
 	});
 });
@@ -532,7 +590,7 @@ describe('openapiCommand - workspace mode', () => {
 						type: 'backend',
 						path: 'apps/api',
 						port: 3000,
-						routes: './src/endpoints/**/*.ts',
+						constructs: './src/endpoints/**/*.ts',
 						openapi: { enabled: true },
 					},
 				},
@@ -546,7 +604,7 @@ describe('openapiCommand - workspace mode', () => {
 		await openapiCommand({ cwd: tempDir, app: 'api' });
 
 		// Should generate OpenAPI in the backend app's .gkm folder
-		const outputPath = join(apiDir, OPENAPI_OUTPUT_PATH);
+		const outputPath = join(apiDir, openApiPathFor('Test'));
 		expect(existsSync(outputPath)).toBe(true);
 
 		const content = await readFile(outputPath, 'utf-8');
@@ -569,7 +627,7 @@ describe('openapiCommand - workspace mode', () => {
 						type: 'backend',
 						path: 'apps/api',
 						port: 3000,
-						routes: './src/endpoints/**/*.ts',
+						constructs: './src/endpoints/**/*.ts',
 						openapi: { enabled: true },
 					},
 				},
@@ -598,14 +656,14 @@ describe('openapiCommand - workspace mode', () => {
 						type: 'backend',
 						path: 'apps/api',
 						port: 3000,
-						routes: './src/endpoints/**/*.ts',
+						constructs: './src/endpoints/**/*.ts',
 						openapi: { enabled: true },
 					},
 					admin: {
 						type: 'backend',
 						path: 'apps/admin',
 						port: 3001,
-						routes: './src/endpoints/**/*.ts',
+						constructs: './src/endpoints/**/*.ts',
 						openapi: { enabled: true },
 					},
 				},

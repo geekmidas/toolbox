@@ -40,7 +40,7 @@ import {
 	TopicGenerator,
 } from '../generators';
 import {
-	generateOpenApi,
+	generateOpenApiFrom,
 	OPENAPI_OUTPUT_PATH,
 	resolveOpenApiConfig,
 } from '../openapi';
@@ -365,23 +365,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	const resolved = resolveProviders(config, { provider: 'server' });
 
 	logger.log('🚀 Starting development server...');
-	logger.log(`Loading routes from: ${config.routes}`);
-	if (config.functions) {
-		logger.log(`Loading functions from: ${config.functions}`);
-	}
-	if (config.crons) {
-		logger.log(`Loading crons from: ${config.crons}`);
-	}
-	if (config.subscribers) {
-		logger.log(`Loading subscribers from: ${config.subscribers}`);
-	}
-	logger.log(`Using envParser: ${config.envParser}`);
-
-	// Parse envParser and logger configuration
-	const { path: envParserPath, importPattern: envParserImportPattern } =
-		parseModuleConfig(config.envParser, 'envParser');
-	const { path: loggerPath, importPattern: loggerImportPattern } =
-		parseModuleConfig(config.logger, 'logger');
+	logger.log(`Loading constructs from: ${config.constructs}`);
 
 	// Normalize telescope configuration
 	const telescope = normalizeTelescopeConfig(config.telescope);
@@ -410,10 +394,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	}
 
 	const buildContext: BuildContext = {
-		envParserPath,
-		envParserImportPattern,
-		loggerPath,
-		loggerImportPattern,
 		telescope,
 		studio,
 		hooks,
@@ -430,7 +410,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	// Generate OpenAPI spec on startup
 	if (enableOpenApi) {
-		await generateOpenApi(config);
+		await generateOpenApiFrom(config.constructs, {
+			openapi: config.openapi,
+		});
 	}
 
 	// Determine runtime (default to node)
@@ -505,21 +487,15 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	await devServer.start();
 
 	// Watch for file changes
-	const envParserFile = config.envParser.split('#')[0] ?? config.envParser;
-	const loggerFile = config.logger.split('#')[0] ?? config.logger;
-
 	// Get hooks file path for watching
 	const hooksFileParts = config.hooks?.server?.split('#');
 	const hooksFile = hooksFileParts?.[0];
 
+	// One glob to watch, the same one the build loads from. The logger and the
+	// environment parser are inside it — they are constructs now, not module
+	// paths beside the code.
 	const watchPatterns = [
-		config.routes,
-		...(config.functions ? [config.functions] : []),
-		...(config.crons ? [config.crons] : []),
-		...(config.subscribers ? [config.subscribers] : []),
-		// Add .ts extension if not present for config files
-		envParserFile.endsWith('.ts') ? envParserFile : `${envParserFile}.ts`,
-		loggerFile.endsWith('.ts') ? loggerFile : `${loggerFile}.ts`,
+		config.constructs,
 		// Add hooks file to watch list
 		...(hooksFile
 			? [hooksFile.endsWith('.ts') ? hooksFile : `${hooksFile}.ts`]
@@ -595,7 +571,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 				// Regenerate OpenAPI if enabled
 				if (enableOpenApi) {
-					await generateOpenApi(config, { silent: true, bustCache: true });
+					await generateOpenApiFrom(config.constructs, {
+						openapi: config.openapi,
+						silent: true,
+						bustCache: true,
+					});
 				}
 
 				logger.log('✅ Rebuild complete, restarting server...');
@@ -1287,7 +1267,7 @@ async function buildServer(
 		allQueues,
 		allTopics,
 	] = await Promise.all([
-		endpointGenerator.load(config.routes, appRoot, bustCache),
+		endpointGenerator.load(config.constructs, appRoot, bustCache),
 		config.functions
 			? functionGenerator.load(config.functions, appRoot, bustCache)
 			: [],

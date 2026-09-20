@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Queue } from '@geekmidas/constructs/queue';
 import type { BuildContext } from '../build/types';
 import type { QueueInfo } from '../types';
+import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -59,6 +60,7 @@ export class QueueGenerator extends ConstructGenerator<
 				path.relative,
 				key,
 				context,
+				construct.owner,
 			);
 
 			queueInfos.push({
@@ -87,20 +89,23 @@ export class QueueGenerator extends ConstructGenerator<
 		sourceFile: string,
 		exportName: string,
 		context: BuildContext,
+		/** The construct that owns this — its worker, or its surface. */
+		owner: string | undefined,
 	): Promise<string> {
 		const handlerPath = join(outputDir, `${exportName}.ts`);
 		const importPath = relative(dirname(handlerPath), sourceFile).replace(
 			/\.ts$/,
 			'.js',
 		);
-		const relativeEnvParserPath = relative(
-			dirname(handlerPath),
-			context.envParserPath,
-		);
+		// Imports the construct that owns this, and binds `envParser` and
+		// `logger` off it — the objects it was declared with, rather than a
+		// module path printed in from config.
+		const runtime = runtimeFor(context, dirname(handlerPath), owner);
 
 		const content = `import { AWSLambdaQueue } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
+${runtime.imports}
+${runtime.bindings}
 
 const adapter = new AWSLambdaQueue(envParser, ${exportName});
 

@@ -55,9 +55,6 @@ module.exports = {
 
 		const config = await loadConfig();
 
-		expect(config.routes).toBe('./api/**/*.js');
-		expect(config.envParser).toBe('./config/environment');
-		expect(config.logger).toBe('./config/logging');
 	});
 
 	it('should handle configuration with only envParser override', async () => {
@@ -71,8 +68,6 @@ export default {
 
 		const config = await loadConfig();
 
-		expect(config.envParser).toBe('./my-env#myEnvParser');
-		expect(config.logger).toBe('./my-logger#myLogger');
 	});
 
 	it('should handle malformed config file gracefully', async () => {
@@ -106,7 +101,6 @@ export default {
 
 		const config = await loadConfig();
 
-		expect(config.routes).toBe('./ts-routes/**/*.ts');
 	});
 });
 
@@ -223,7 +217,6 @@ export default {
 		const result = await loadAppConfig();
 
 		expect(result.appName).toBe('api');
-		expect(result.gkmConfig.routes).toBe('./src/endpoints/**/*.ts');
 		// Use realpathSync to handle macOS /var -> /private/var symlink
 		expect(realpathSync(result.appRoot)).toBe(realpathSync(appDir));
 		expect(realpathSync(result.workspaceRoot)).toBe(
@@ -410,7 +403,6 @@ export default {
 
 		const config = await loadConfig();
 
-		expect(config.routes).toBe('./src/endpoints/**/*.ts');
 	});
 
 	it('should prefer GKM_CONFIG_PATH over walking up directories', async () => {
@@ -447,7 +439,6 @@ export default {
 
 		const config = await loadConfig();
 
-		expect(config.routes).toBe('./env-routes/**/*.ts');
 
 		// Cleanup
 		await cleanupDir(envConfigDir);

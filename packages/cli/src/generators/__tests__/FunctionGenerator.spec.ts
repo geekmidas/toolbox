@@ -107,8 +107,12 @@ describe('FunctionGenerator', () => {
 				);
 				expect(processDataContent).toContain('AWSLambdaFunction');
 				expect(processDataContent).toContain('import { processData }');
-				expect(processDataContent).toContain('import envParser');
-				expect(processDataContent).toContain('import logger');
+				expect(processDataContent).toContain(
+					'const envParser = __surface.envParser;',
+				);
+				expect(processDataContent).toContain(
+					'const logger = __surface.logger;',
+				);
 
 				const sendEmailHandlerPath = join(
 					outputDir,
@@ -142,8 +146,8 @@ describe('FunctionGenerator', () => {
 				expect(handlerContent).toMatch(
 					/from ['"].*src\/functions\/deep\/processor\.js['"]/,
 				);
-				expect(handlerContent).toMatch(/from ['"].*\/env['"]/);
-				expect(handlerContent).toMatch(/from ['"].*\/logger['"]/);
+				expect(handlerContent).toMatch(/import \{ \w+ as __surface \}/);
+				expect(handlerContent).toContain('const logger = __surface.logger;');
 			});
 
 			it('should log generation progress', async () => {
@@ -234,11 +238,11 @@ describe('FunctionGenerator', () => {
 		});
 
 		it('should handle functions with custom environment parser patterns', async () => {
-			const customContext = {
-				...context,
-				envParserImportPattern: '{ customParser as envParser }',
-				loggerImportPattern: '{ customLogger as logger }',
-			};
+			const customContext = createMockBuildContext({
+				owner: 'Jobs',
+				specifier: './constructs/worker.ts',
+				exportName: 'backgroundJobs',
+			});
 
 			const constructs = [createTestFunctionConstruct('customFunction', 30)];
 
@@ -249,8 +253,10 @@ describe('FunctionGenerator', () => {
 			const handlerPath = join(outputDir, 'functions', 'customFunction.ts');
 			const handlerContent = await readFile(handlerPath, 'utf-8');
 
-			expect(handlerContent).toContain('import { customParser as envParser }');
-			expect(handlerContent).toContain('import { customLogger as logger }');
+			expect(handlerContent).toContain(
+				'import { backgroundJobs as __surface }',
+			);
+			expect(handlerContent).toContain('const logger = __surface.logger;');
 		});
 	});
 });

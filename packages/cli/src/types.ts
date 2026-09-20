@@ -378,15 +378,7 @@ export interface GkmConfig {
 	 *
 	 * @example './src/**\/*.ts'
 	 */
-	constructs?: Routes;
-	routes: Routes;
-	functions?: Routes;
-	crons?: Routes;
-	subscribers?: Routes;
-	queues?: Routes;
-	topics?: Routes;
-	envParser: string;
-	logger: string;
+	constructs: Routes;
 	providers?: ProvidersConfig;
 	/**
 	 * Server lifecycle hooks for customizing the Hono app.

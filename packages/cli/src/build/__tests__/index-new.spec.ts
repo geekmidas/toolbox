@@ -48,11 +48,7 @@ describe('buildCommand', () => {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 			);
@@ -151,11 +147,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 			);
@@ -258,11 +250,7 @@ export default {
 			'gkm.config.ts',
 			`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 		);
@@ -303,7 +291,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env',
@@ -359,7 +347,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env#customEnvParser',
@@ -421,7 +409,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   constructs: './constructs/**/*.ts',
   envParser: './config/env',
   logger: './config/logger',
@@ -485,7 +473,7 @@ export const auth = {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env',
@@ -535,7 +523,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env',
@@ -585,7 +573,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env#envParser',

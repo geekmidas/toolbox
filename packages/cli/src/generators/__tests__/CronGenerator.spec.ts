@@ -129,8 +129,14 @@ describe('CronGenerator', () => {
 				);
 				expect(dailyReportContent).toContain('AWSScheduledFunction');
 				expect(dailyReportContent).toContain('import { dailyReport }');
-				expect(dailyReportContent).toContain('import envParser');
-				expect(dailyReportContent).toContain('import logger');
+				// The construct it belongs to, not a module path from config.
+				expect(dailyReportContent).toContain('as __surface');
+				expect(dailyReportContent).toContain(
+					'const envParser = __surface.envParser;',
+				);
+				expect(dailyReportContent).toContain(
+					'const logger = __surface.logger;',
+				);
 
 				const hourlyCleanupHandlerPath = join(
 					outputDir,
@@ -200,8 +206,11 @@ describe('CronGenerator', () => {
 					expect(handlerContent).toMatch(
 						/from ['"]+.*src\/crons\/deep\/deepCron\.js['"]+/,
 					);
-					expect(handlerContent).toMatch(/from ['"]+.*\/env['"]+/);
-					expect(handlerContent).toMatch(/from ['"]+.*\/logger['"]+/);
+					// Relative to the handler, pointing at the construct module.
+					expect(handlerContent).toMatch(
+						/import \{ \w+ as __surface \} from ['"]\.\..*['"]/,
+					);
+					expect(handlerContent).toContain('const logger = __surface.logger;');
 				},
 			);
 
@@ -496,11 +505,13 @@ describe('CronGenerator', () => {
 				const cronsDir = join(dir, 'crons');
 				await mkdir(outputDir, { recursive: true });
 
-				const customContext = {
-					...context,
-					envParserImportPattern: '{ customParser as envParser }',
-					loggerImportPattern: '{ customLogger as logger }',
-				};
+				// A cron owned by a worker imports that worker, whatever it is
+				// called — there is no import pattern to configure any more.
+				const customContext = createMockBuildContext({
+					owner: 'Jobs',
+					specifier: './constructs/worker.ts',
+					exportName: 'backgroundJobs',
+				});
 
 				await createMockCronFile(
 					cronsDir,
@@ -519,9 +530,9 @@ describe('CronGenerator', () => {
 				const handlerContent = await readFile(handlerPath, 'utf-8');
 
 				expect(handlerContent).toContain(
-					'import { customParser as envParser }',
+					'import { backgroundJobs as __surface }',
 				);
-				expect(handlerContent).toContain('import { customLogger as logger }');
+				expect(handlerContent).toContain('const logger = __surface.logger;');
 			},
 		);
 	});

@@ -155,14 +155,29 @@ export function createTestCron(
 }
 
 /**
- * Creates a mock build context
+ * Creates a mock build context.
+ *
+ * It used to carry four module paths — an `envParserPath` and a `loggerPath`
+ * with their import patterns — because that is what the generators printed into
+ * every handler. They import the construct that owns the handler now, so what a
+ * context has to supply is where that construct is exported from.
  */
-export function createMockBuildContext() {
+export function createMockBuildContext(
+	options: { owner?: string; specifier?: string; exportName?: string } = {},
+) {
+	const owner = options.owner ?? 'Api';
+	const module = {
+		specifier: options.specifier ?? './constructs/api.ts',
+		exportName: options.exportName ?? 'api',
+	};
+
 	return {
-		envParserPath: './env',
-		envParserImportPattern: 'envParser',
-		loggerPath: './logger',
-		loggerImportPattern: 'logger',
+		surface: {
+			id: owner,
+			trustedOriginsKey: `${owner.toUpperCase()}_TRUSTED_ORIGINS`,
+			module,
+		},
+		owners: { [owner]: module },
 	};
 }
 
