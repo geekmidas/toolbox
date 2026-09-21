@@ -66,7 +66,12 @@ const OPTIONAL = new Set([
 	'expo-secure-store',
 	'ioredis',
 	'pg-boss',
+	// `Logger` is an interface; pino is one implementation of it. Reaching for
+	// `@geekmidas/logger/pino` is the act of choosing that implementation, and
+	// `ConsoleLogger` users never install either.
+	'pino',
 	'pino-abstract-transport',
+	'pino-pretty',
 	'@upstash/redis',
 	// Frameworks and UI libraries a consumer brings.
 	'@middy/core',
