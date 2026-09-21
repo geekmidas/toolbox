@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SRH_URL } from '../../../testkit/test/ports';
 import { UpstashCache } from '../upstash';
 
 describe('UpstashCache', () => {
@@ -7,7 +8,7 @@ describe('UpstashCache', () => {
 	let testKeys: string[] = [];
 
 	beforeEach(() => {
-		cache = new UpstashCache('http://localhost:8079', 'example_token');
+		cache = new UpstashCache(SRH_URL, 'example_token');
 		testKeys = [];
 	});
 

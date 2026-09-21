@@ -111,18 +111,18 @@
 	},
 	"dependencies": {
 		"@openauthjs/openauth": "~0.4.3",
-		"jose": "~5.10.0",
-		"jsonwebtoken": "^9.0.2",
+		"jose": "~6.2.12",
+		"jsonwebtoken": "~9.0.3",
 		"@types/ms": "~2.1.0"
 	},
 	"devDependencies": {
 		"@geekmidas/cache": "workspace:^",
-		"@types/jsonwebtoken": "^9.0.5"
+		"@types/jsonwebtoken": "~9.0.10"
 	},
 	"peerDependencies": {
 		"@geekmidas/cache": "workspace:^",
-		"@types/aws-lambda": ">=8.10.92",
-		"hono": ">=4.0.0"
+		"@types/aws-lambda": ">=8.10.163",
+		"hono": ">=4.13.8"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/cache": {

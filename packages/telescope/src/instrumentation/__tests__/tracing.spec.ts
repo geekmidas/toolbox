@@ -19,6 +19,11 @@ describe('Tracing Utilities', () => {
 	beforeAll(() => {
 		// Register a real tracer provider for tests
 		provider = new NodeTracerProvider();
+		// `NodeTracerProvider.register()` survives 2.x and is the point of the node
+		// SDK: it installs the async-hooks context manager and the W3C propagator
+		// as well as the provider. Registering the provider alone leaves the noop
+		// context manager, and `context.with()` then does nothing — which is why
+		// `getActiveSpan()` came back undefined.
 		provider.register();
 	});
 
