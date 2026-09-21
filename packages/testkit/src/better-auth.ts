@@ -185,7 +185,11 @@ export const memoryAdapter = (
 				debugLog('FIND_ONE', { model, where });
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'findOne',
+				});
 
 				for (const record of modelData.values()) {
 					if (matchesWhere(record, transformedWhere)) {
@@ -200,7 +204,11 @@ export const memoryAdapter = (
 
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'findMany',
+				});
 
 				let results = Array.from(modelData.values()).filter((record) =>
 					matchesWhere(record, transformedWhere),
@@ -225,7 +233,11 @@ export const memoryAdapter = (
 
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'update',
+				});
 
 				for (const [id, record] of modelData.entries()) {
 					if (matchesWhere(record, transformedWhere)) {
@@ -242,7 +254,11 @@ export const memoryAdapter = (
 				debugLog('UPDATE_MANY', { model, where });
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'updateMany',
+				});
 
 				let count = 0;
 
@@ -260,7 +276,11 @@ export const memoryAdapter = (
 				debugLog('DELETE', { model, where });
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'delete',
+				});
 
 				for (const [id, record] of modelData.entries()) {
 					if (matchesWhere(record, transformedWhere)) {
@@ -274,7 +294,11 @@ export const memoryAdapter = (
 				debugLog('DELETE_MANY', { model, where });
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'deleteMany',
+				});
 
 				const toDelete: string[] = [];
 				for (const [id, record] of modelData.entries()) {
@@ -292,7 +316,11 @@ export const memoryAdapter = (
 			count: async ({ where, model }) => {
 				const modelName = getModelName(model);
 				const modelData = storeInstance.getModel(modelName);
-				const transformedWhere = transformWhereClause({ model, where });
+				const transformedWhere = transformWhereClause({
+					model,
+					where,
+					action: 'count',
+				});
 
 				return Array.from(modelData.values()).filter((record) =>
 					matchesWhere(record, transformedWhere),

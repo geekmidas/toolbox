@@ -19,10 +19,15 @@ function port(variable: string, fallback: number): number {
 	return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export const POSTGRES_PORT = port(
-	process.env.POSTGRES_HOST_PORT ? 'POSTGRES_HOST_PORT' : 'GKM_TEST_PG_PORT',
-	5432,
-);
+/**
+ * Read from `POSTGRES_HOST_PORT`, not the older `GKM_TEST_PG_PORT`.
+ *
+ * Compose interpolation has no nested defaults — `${A:-${B:-5432}}` does not
+ * fall back, it publishes *no port at all*, which looks like a database that is
+ * running and unreachable. Supporting both names meant writing exactly that, so
+ * there is one name, and it matches the five beside it.
+ */
+export const POSTGRES_PORT = port('POSTGRES_HOST_PORT', 5432);
 export const REDIS_PORT = port('REDIS_HOST_PORT', 6379);
 /** The HTTP proxy the Upstash client speaks to, not Redis itself. */
 export const SRH_PORT = port('SRH_HOST_PORT', 8079);

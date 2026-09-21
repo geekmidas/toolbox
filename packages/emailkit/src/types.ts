@@ -1,5 +1,10 @@
-import type { Address } from 'nodemailer/lib/mailer';
+import type Mail from 'nodemailer/lib/mailer';
 import type { ReactElement } from 'react';
+
+// `@types/nodemailer` 8 declares `Address` inside the `Mail` namespace, and the
+// module is `export = Mail`, so it is reached through the default import rather
+// than named alongside it.
+type Address = Mail.Address;
 
 export interface EmailOptions {
 	from: string | Address;
@@ -52,7 +57,15 @@ export interface SendResult {
 	messageId: string;
 	accepted: string[];
 	rejected: string[];
-	response: string;
+	/**
+	 * The transport's reply, where it made one.
+	 *
+	 * Optional because nodemailer types it that way: not every transport answers
+	 * with a response line, and the previous `string` was a promise this could
+	 * not keep. Defaulting it to `''` would have kept the shape by inventing a
+	 * reply that never arrived.
+	 */
+	response?: string;
 }
 
 export type EmailTemplate<T = any> = (props: T) => ReactElement;

@@ -201,7 +201,10 @@ export class BetterAuth<
 		// migrator that connected the way a handler does would fail on the first
 		// `CREATE TABLE` rather than working by accident.
 		const auth = await this.connect(options, { owner: true });
-		const { getMigrations } = await import('better-auth/db');
+		// better-auth 1.7 split the migration builder out of `better-auth/db`
+		// into its own entry, so importing it no longer drags the whole db layer
+		// in behind it.
+		const { getMigrations } = await import('better-auth/db/migration');
 		const { runMigrations } = await getMigrations(auth.options);
 
 		return runMigrations;
@@ -328,6 +331,11 @@ export class BetterAuth<
 				? await configure(options)
 				: (configure ?? {});
 
+		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
+		// built from a concrete literal is not assignable to the `AuthServer`
+		// alias, which names the constraint. The runtime object is the same one
+		// either way; the assertion keeps the variance where it happens instead
+		// of spreading a generic through the construct's public type.
 		return betterAuth({
 			...configured,
 			secret,
@@ -359,6 +367,6 @@ export class BetterAuth<
 						}
 					: {}),
 			},
-		});
+		}) as AuthServer;
 	}
 }
