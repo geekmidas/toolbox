@@ -15,6 +15,12 @@ import type { GeneratedFile } from './templates/index.js';
 /** The glob every generated config points at. One glob, every kind. */
 export const CONSTRUCTS_GLOB = './src/constructs/**/*.ts';
 
+/**
+ * Where a workspace keeps its constructs: at the root, beside the apps that
+ * share them, rather than inside any one of them.
+ */
+export const WORKSPACE_CONSTRUCTS_GLOB = './constructs/**/*.ts';
+
 export interface ScaffoldedConstruct {
 	/** The canonical id — what the construct is declared under. */
 	id: string;

@@ -1,4 +1,4 @@
-import { CONSTRUCTS_GLOB } from '../constructs.js';
+import { CONSTRUCTS_GLOB, WORKSPACE_CONSTRUCTS_GLOB } from '../constructs.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -57,8 +57,20 @@ function agentsContent(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): string {
-	const { name, database, telescope, studio, packageManager, services } =
-		options;
+	const {
+		name,
+		monorepo,
+		database,
+		telescope,
+		studio,
+		packageManager,
+		services,
+	} = options;
+	// A workspace keeps its constructs at the root, beside the apps that share
+	// them; a single app keeps them under its own `src/`. Writing the wrong one
+	// here would be the first thing a reader checked and the first thing that
+	// taught them not to trust the rest.
+	const constructsGlob = monorepo ? WORKSPACE_CONSTRUCTS_GLOB : CONSTRUCTS_GLOB;
 	const isWorker = template.name === 'worker';
 	const isServerless = template.name === 'serverless';
 	const run = packageManager === 'npm' ? 'npx' : `${packageManager} exec`;
@@ -88,7 +100,7 @@ what the OpenAPI spec says, which env vars a process needs.
 \`\`\`typescript
 export default defineWorkspace({
   name: '${name}',
-  constructs: '${CONSTRUCTS_GLOB}',
+  constructs: '${constructsGlob}',
   secrets: { enabled: true },
 });
 \`\`\`
