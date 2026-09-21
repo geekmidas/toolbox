@@ -1,7 +1,7 @@
 'use client';
 
 import { cva, type VariantProps } from 'class-variance-authority';
-import { Loader2, type LucideProps } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 import { cn } from '../../lib/utils';
 
@@ -21,7 +21,7 @@ const spinnerVariants = cva('animate-spin text-muted-foreground', {
 });
 
 export interface SpinnerProps
-	extends Omit<LucideProps, 'ref' | 'children' | 'size'>,
+	extends Omit<React.SVGAttributes<SVGSVGElement>, 'children'>,
 		VariantProps<typeof spinnerVariants> {}
 
 const Spinner = React.forwardRef<SVGSVGElement, SpinnerProps>(
