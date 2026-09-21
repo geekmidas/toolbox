@@ -21,7 +21,7 @@ const spinnerVariants = cva('animate-spin text-muted-foreground', {
 });
 
 export interface SpinnerProps
-	extends Omit<LucideProps, 'ref' | 'children'>,
+	extends Omit<LucideProps, 'ref' | 'children' | 'size'>,
 		VariantProps<typeof spinnerVariants> {}
 
 const Spinner = React.forwardRef<SVGSVGElement, SpinnerProps>(
