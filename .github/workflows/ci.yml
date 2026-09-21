@@ -12,7 +12,19 @@ on:
   workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # An `edited` event that did not move the base builds nothing — the job's `if`
+  # sees to that. But concurrency is evaluated before the job, so such a run
+  # still entered this group and cancelled the build already in it: editing a
+  # pull request's description killed its CI and left a skipped run looking like
+  # the answer. No-op runs get their own group, where the only thing they can
+  # cancel is each other.
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}-${{
+      github.event_name == 'pull_request'
+        && github.event.action == 'edited'
+        && github.event.changes.base == null
+        && 'noop' || 'build'
+    }}
   cancel-in-progress: true
 
 permissions:
