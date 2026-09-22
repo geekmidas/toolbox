@@ -1,5 +1,54 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.4
+
+### Patch Changes
+
+- [`dce9588`](https://github.com/geekmidas/toolbox/commit/dce958803067a24ec3c9ecbba2c76fd00d971904) Thanks [@geekmidas](https://github.com/geekmidas)! - Every package now agrees on every dependency version
+
+  One hundred dependencies were realigned so that each has a single range per
+  field across the repo. Thirty had disagreed with themselves — `hono` carried
+  four different peer ranges, `@types/pg` four dev ranges, `@middy/core` four of
+  each — which meant two packages could install two copies of the same library
+  and behave differently for reasons nobody had chosen.
+
+  Twenty-three were major bumps, and three of them broke something real:
+
+  **OpenTelemetry 1.x → 2.x** removed `addSpanProcessor` and
+  `BasicTracerProvider.register()`. Processors are constructor-only now, because a
+  provider whose pipeline could be re-plumbed after it had begun producing spans
+  was never safe. `NodeTracerProvider.register()` survives and is still the right
+  call where the async-hooks context manager is wanted.
+
+  **Zod 4.1 → 4.6** exposed a generator bug rather than causing one. A schema that
+  _is_ a registered schema now converts to a bare `$ref` where it used to be
+  inlined, and `OpenApiTsGenerator` turned that into `export type User = User` — a
+  circular alias that is not a type. The def it points at was already being
+  emitted; the generator now leaves the declaration to it. 4.6 also collapses a
+  union of primitives to a `type` array instead of `anyOf`, which is the 2020-12
+  spelling this project already emits.
+
+  **better-auth 1.7** removed `runAdapterTest`, the conformance harness
+  `memoryAdapter` was tested with. There is nothing to repair — the API is gone —
+  so that suite is skipped with the gap recorded rather than deleted, because a
+  deleted file would not say that `memoryAdapter` now has no test.
+
+  Not included: the build and test toolchain — TypeScript, Vitest, Vite,
+  Storybook — and `expo-secure-store`, whose version tracks an Expo SDK release
+  train. Those replace how every package compiles and runs, and belong where a
+  failure has one candidate cause instead of twenty-eight.
+
+- Updated dependencies [[`dce9588`](https://github.com/geekmidas/toolbox/commit/dce958803067a24ec3c9ecbba2c76fd00d971904)]:
+  - @geekmidas/telescope@10.0.0-alpha.4
+  - @geekmidas/schema@10.0.0-alpha.4
+  - @geekmidas/constructs@10.0.0-alpha.4
+  - @geekmidas/cache@10.0.0-alpha.4
+  - @geekmidas/db@10.0.0-alpha.4
+  - @geekmidas/envkit@10.0.0-alpha.4
+  - @geekmidas/errors@10.0.0-alpha.4
+  - @geekmidas/logger@10.0.0-alpha.4
+  - @geekmidas/manifest@10.0.0-alpha.4
+
 ## 10.0.0-alpha.3
 
 ### Patch Changes

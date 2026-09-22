@@ -1,5 +1,26 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.4
+
+### Patch Changes
+
+- Updated dependencies [[`dce9588`](https://github.com/geekmidas/toolbox/commit/dce958803067a24ec3c9ecbba2c76fd00d971904)]:
+  - @geekmidas/telescope@10.0.0-alpha.4
+  - @geekmidas/schema@10.0.0-alpha.4
+  - @geekmidas/audit@10.0.0-alpha.4
+  - @geekmidas/auth@10.0.0-alpha.4
+  - @geekmidas/cache@10.0.0-alpha.4
+  - @geekmidas/db@10.0.0-alpha.4
+  - @geekmidas/emailkit@10.0.0-alpha.4
+  - @geekmidas/envkit@10.0.0-alpha.4
+  - @geekmidas/errors@10.0.0-alpha.4
+  - @geekmidas/events@10.0.0-alpha.4
+  - @geekmidas/logger@10.0.0-alpha.4
+  - @geekmidas/manifest@10.0.0-alpha.4
+  - @geekmidas/rate-limit@10.0.0-alpha.4
+  - @geekmidas/services@10.0.0-alpha.4
+  - @geekmidas/storage@10.0.0-alpha.4
+
 ## 10.0.0-alpha.3
 
 ### Patch Changes

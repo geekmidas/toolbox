@@ -35,11 +35,13 @@
     "@geekmidas/ui": "9.0.2"
   },
   "changesets": [
+    "align-deps-tranche-1",
     "alpha-packaging",
     "client-coercion-types",
     "init-scaffolds-constructs",
     "install-check",
     "logger-is-an-interface",
+    "test-ports",
     "v10-the-manifest-is-the-source"
   ]
 }
