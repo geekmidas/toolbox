@@ -227,7 +227,7 @@ export const handlers = [
 
 		const messages = allMessages.slice(startIndex, startIndex + limit);
 		const nextCursor =
-			messages.length === limit ? messages[messages.length - 1].id : null;
+			messages.length === limit ? (messages.at(-1)?.id ?? null) : null;
 
 		return HttpResponse.json({
 			messages,

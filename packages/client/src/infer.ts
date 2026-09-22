@@ -3,7 +3,10 @@ import type {
 	EndpointSchemas,
 } from '@geekmidas/constructs/endpoints';
 import type { HttpMethod } from '@geekmidas/constructs/types';
-import type { InferStandardSchema } from '@geekmidas/schema';
+import type {
+	InferStandardSchema,
+	InferStandardSchemaInput,
+} from '@geekmidas/schema';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 /**
@@ -40,7 +43,12 @@ type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
 }
 	? {
 			parameters: {
-				query: InferStandardSchema<Q>;
+				// The caller's side of the schema, not the handler's. A query
+				// string is text on the wire, so a schema that coerces one to a
+				// number describes an endpoint the client sends `'25'` to and the
+				// handler reads `25` from. Typing this from the output demanded a
+				// number nothing could actually put in a URL.
+				query: InferStandardSchemaInput<Q>;
 			};
 		}
 	: {};
@@ -55,7 +63,11 @@ type InferOperation<
 	requestBody?: TInput extends { body: infer B }
 		? {
 				content: {
-					'application/json': InferStandardSchema<B>;
+					// What the client sends, before parsing — the same reasoning as
+					// the query above. For a schema that coerces nothing these two
+					// are the same type, so this costs nothing and is right when it
+					// matters.
+					'application/json': InferStandardSchemaInput<B>;
 				};
 			}
 		: never;
