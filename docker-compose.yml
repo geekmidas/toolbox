@@ -2,12 +2,12 @@ services:
   redis:
     image: redis
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - "cache:/data"
   cache:
     ports:
-      - "8079:80"
+      - "${SRH_HOST_PORT:-8079}:80"
     image: hiett/serverless-redis-http:latest
     environment:
       SRH_MODE: env
@@ -22,7 +22,7 @@ services:
     ports:
       # Overridable, because a developer with another project's Postgres on
       # 5432 otherwise cannot run this stack at all.
-      - "${GKM_TEST_PG_PORT:-5432}:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=geekmidas
       - POSTGRES_PASSWORD=geekmidas
@@ -36,8 +36,8 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.1-management
     ports:
-      - "5672:5672" # Map the default AMQP port
-      - "15672:15672" # Map the management UI port
+      - "${RABBITMQ_HOST_PORT:-5672}:5672" # Map the default AMQP port
+      - "${RABBITMQ_MGMT_HOST_PORT:-15672}:15672" # Map the management UI port
     environment:
       RABBITMQ_DEFAULT_USER: geekmidas # Set the default username
       RABBITMQ_DEFAULT_PASS: geekmidas # Set the default password
@@ -56,8 +56,8 @@ services:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     entrypoint: sh
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - "minio-data:/data"
     environment:
@@ -79,7 +79,7 @@ services:
     # list, so there is no SERVICES to keep in step with what the tests use.
     image: floci/floci:latest
     ports:
-      - "4566:4566" # AWS emulator gateway
+      - "${LOCALSTACK_HOST_PORT:-4566}:4566" # AWS emulator gateway
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_ACCESS_KEY_ID=test

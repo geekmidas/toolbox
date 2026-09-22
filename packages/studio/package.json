@@ -50,13 +50,13 @@
 		"access": "public"
 	},
 	"dependencies": {
-		"nanoid": "~5.1.5"
+		"nanoid": "~6.0.1"
 	},
 	"peerDependencies": {
 		"@geekmidas/db": "workspace:^",
 		"@geekmidas/telescope": "workspace:^",
-		"hono": "^4.0.0",
-		"kysely": ">=0.28.2 <0.30.0"
+		"hono": ">=4.13.8",
+		"kysely": "~0.29.6"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/db": {
@@ -72,9 +72,9 @@
 	"devDependencies": {
 		"@geekmidas/db": "workspace:^",
 		"@geekmidas/telescope": "workspace:^",
-		"@types/pg": "~8.16.0",
-		"hono": "^4.7.0",
-		"kysely": "~0.29.4",
-		"pg": "~8.16.3"
+		"@types/pg": "~8.23.1",
+		"hono": "~4.13.8",
+		"kysely": "~0.29.6",
+		"pg": "~8.23.0"
 	}
 }

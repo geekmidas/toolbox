@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SRH_URL } from '../../../testkit/test/ports';
 import type { Cache } from '../';
 import { getExpirationInSeconds } from '../';
 import { InMemoryCache } from '../memory';
@@ -15,10 +16,7 @@ describe('Cache Interface', () => {
 		});
 
 		it('UpstashCache should implement Cache interface', () => {
-			const cache: Cache = new UpstashCache(
-				'http://localhost:8079',
-				'example_token',
-			);
+			const cache: Cache = new UpstashCache(SRH_URL, 'example_token');
 
 			expect(typeof cache.get).toBe('function');
 			expect(typeof cache.set).toBe('function');

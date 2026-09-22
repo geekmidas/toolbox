@@ -607,7 +607,8 @@ export class HonoEndpoint<
 							// other type, emit the body as-is and set the header explicitly —
 							// metadata.headers (from r.header()) applied above still wins.
 							if (endpoint.responseType === 'application/json') {
-								// @ts-expect-error
+								// Hono 4.13 types `c.json`'s status well enough that the
+								// suppression here is now itself an error.
 								return c.json(output, status);
 							}
 							if (
@@ -646,8 +647,24 @@ export class HonoEndpoint<
 			);
 		};
 
-		// Register route with conditional validators
-		app[method](route, ...validators, handler);
+		// Register route with conditional validators.
+		//
+		// `route` is a generic `TRoute`, and Hono 4.13 overloads `app.get` on
+		// whether the first argument is a path or a handler. A generic that is
+		// only *constrained* to string does not pick the path overload, so it
+		// gets matched against the handler one and reported there. Saying it is a
+		// string chooses the overload that was always intended.
+		//
+		// The spread is why a cast is needed rather than a better type: with
+		// `...validators` of unknown length, the arity is not decidable, so the
+		// first overload is chosen whatever the path argument says. Naming the
+		// shape we are calling states the intent the overloads cannot infer.
+		(
+			app[method] as unknown as (
+				path: string,
+				...handlers: unknown[]
+			) => unknown
+		)(route, ...validators, handler);
 	}
 
 	static addDocsRoute<

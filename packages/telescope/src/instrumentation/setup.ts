@@ -3,7 +3,7 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
 	BatchLogRecordProcessor,
 	LoggerProvider,
@@ -135,7 +135,10 @@ export function setupTelemetry(options: TelemetryOptions): void {
 	}
 
 	// Create resource
-	const resource = new Resource({
+	// `new Resource(...)` went in resources 2.x — a resource is now made from
+	// attributes by a function, so a detector and a literal produce the same
+	// thing rather than two shapes that had to be merged.
+	const resource = resourceFromAttributes({
 		[ATTR_SERVICE_NAME]: serviceName,
 		[ATTR_SERVICE_VERSION]: serviceVersion,
 		...resourceAttributes,
@@ -214,9 +217,17 @@ export function setupTelemetry(options: TelemetryOptions): void {
 			headers,
 		});
 
-		const loggerProvider = new LoggerProvider({ resource });
-		const logProcessor = new BatchLogRecordProcessor(logExporter);
-		loggerProvider.addLogRecordProcessor(logProcessor);
+		// Both changed in sdk-logs 2.x, and for the same reason the trace SDK
+		// changed: a provider whose processors could be swapped after it had begun
+		// emitting was never safe, so processors are constructor-only and the
+		// exporter is named rather than positional.
+		const logProcessor = new BatchLogRecordProcessor({
+			exporter: logExporter,
+		});
+		const loggerProvider = new LoggerProvider({
+			resource,
+			processors: [logProcessor],
+		});
 
 		// Register for flush operations
 		setGlobalLogProcessor(logProcessor);

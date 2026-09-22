@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { RestApi } from '../../rest-api';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
@@ -21,7 +22,10 @@ type OrderEvent =
 	| PublishableMessage<'order.created', { orderId: string; total: number }>
 	| PublishableMessage<'notification.sent', { orderId: string; type: string }>;
 
-const POSTGRES_URL = 'postgres://geekmidas:geekmidas@localhost:5432/geekmidas';
+// The port the stack was actually published on, not the one it defaults to.
+// This suite hardcoded 5432 and so connected to whichever project happened to
+// own it — passing or failing for reasons that had nothing to do with pgboss.
+const POSTGRES_URL = `postgres://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas`;
 const TEST_SCHEMA = 'pgboss_hono_publisher_test';
 
 const uniqueQueue = () =>

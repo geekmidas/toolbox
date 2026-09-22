@@ -100,10 +100,10 @@
 	},
 	"peerDependencies": {
 		"@geekmidas/schema": "workspace:^",
-		"amqplib": "^0.10.3",
-		"@aws-sdk/client-sqs": "~3.908.0",
-		"@aws-sdk/client-sns": "~3.908.0",
-		"pg-boss": ">=12.0.0"
+		"amqplib": ">=2.0.1",
+		"@aws-sdk/client-sqs": ">=3.1136.0",
+		"@aws-sdk/client-sns": ">=3.1136.0",
+		"pg-boss": ">=12.33.3"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/schema": {
@@ -124,10 +124,10 @@
 	},
 	"devDependencies": {
 		"@geekmidas/schema": "workspace:^",
-		"@types/amqplib": "~0.10.7",
-		"@types/lodash.chunk": "~4.2.0",
-		"@types/pg": "~8.15.6",
-		"pg": "~8.20.0",
-		"pg-boss": "~12.18.1"
+		"@types/amqplib": "~0.10.8",
+		"@types/lodash.chunk": "~4.2.9",
+		"@types/pg": "~8.23.1",
+		"pg": "~8.23.0",
+		"pg-boss": "~12.33.3"
 	}
 }

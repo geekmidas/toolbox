@@ -29,9 +29,13 @@ describe('OTelTelemetry', () => {
 
 	beforeEach(() => {
 		exporter = new InMemorySpanExporter();
-		provider = new BasicTracerProvider();
-		provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-		provider.register();
+		// Processors are constructor-only from `@opentelemetry/sdk-trace-*` 2.x:
+		// `addSpanProcessor` is gone, because a provider that could be
+		// re-plumbed after it had started producing spans was never safe.
+		provider = new BasicTracerProvider({
+			spanProcessors: [new SimpleSpanProcessor(exporter)],
+		});
+		trace.setGlobalTracerProvider(provider);
 	});
 
 	afterEach(async () => {

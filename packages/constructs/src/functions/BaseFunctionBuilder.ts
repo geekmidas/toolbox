@@ -74,8 +74,13 @@ export abstract class BaseFunctionBuilder<
 		}
 
 		const result: any = {};
-		for (const key in schema) {
-			const item = schema[key];
+		// The record form, once the single-schema case above has returned. A
+		// `for..in` key types as a key of `NonNullable<T>`, which does not index
+		// the constraint itself — and every value is re-checked by
+		// `isStandardSchemaV1` on the next line regardless.
+		const fields = schema as Record<string, unknown>;
+		for (const key in fields) {
+			const item = fields[key];
 			if (BaseFunctionBuilder.isStandardSchemaV1(item)) {
 				const value = get(data, key);
 				const validated = await item['~standard'].validate(value);
