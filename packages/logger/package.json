@@ -62,5 +62,13 @@
 	"peerDependencies": {
 		"pino-pretty": "~13.1.2",
 		"pino": "~10.0.0"
+	},
+	"peerDependenciesMeta": {
+		"pino": {
+			"optional": true
+		},
+		"pino-pretty": {
+			"optional": true
+		}
 	}
 }

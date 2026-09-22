@@ -62,6 +62,14 @@ jobs:
       - name: Check declared exports resolve
         run: pnpm run check:exports
 
+      # Packs the tarballs and installs each into an empty project. The
+      # workspace cannot catch a missing dependency — pnpm links everything
+      # regardless of what a package.json claims — so this is the only step
+      # that sees what a consumer sees. `alpha.1` shipped unloadable because
+      # nothing did this.
+      - name: Check a consumer install resolves
+        run: pnpm run check:install
+
       - name: Lint
         run: pnpm run lint
 

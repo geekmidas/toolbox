@@ -240,6 +240,13 @@
 		"access": "public"
 	},
 	"dependencies": {
+		"@geekmidas/envkit": "workspace:^",
+		"@geekmidas/errors": "workspace:^",
+		"@geekmidas/events": "workspace:^",
+		"@geekmidas/logger": "workspace:^",
+		"@geekmidas/manifest": "workspace:^",
+		"@geekmidas/schema": "workspace:^",
+		"@geekmidas/services": "workspace:^",
 		"fast-glob": "~3.3.3",
 		"lodash.compact": "~3.0.1",
 		"lodash.get": "~4.4.2",
@@ -283,14 +290,7 @@
 		"@geekmidas/cache": "workspace:^",
 		"@geekmidas/db": "workspace:^",
 		"@geekmidas/emailkit": "workspace:^",
-		"@geekmidas/envkit": "workspace:^",
-		"@geekmidas/errors": "workspace:^",
-		"@geekmidas/events": "workspace:^",
-		"@geekmidas/logger": "workspace:^",
-		"@geekmidas/manifest": "workspace:^",
 		"@geekmidas/rate-limit": "workspace:^",
-		"@geekmidas/schema": "workspace:^",
-		"@geekmidas/services": "workspace:^",
 		"@geekmidas/storage": "workspace:^",
 		"@geekmidas/telescope": "workspace:*",
 		"@middy/core": ">=6.3.1",
@@ -311,25 +311,7 @@
 		"@geekmidas/db": {
 			"optional": true
 		},
-		"@geekmidas/envkit": {
-			"optional": true
-		},
-		"@geekmidas/errors": {
-			"optional": true
-		},
-		"@geekmidas/events": {
-			"optional": true
-		},
-		"@geekmidas/logger": {
-			"optional": true
-		},
 		"@geekmidas/rate-limit": {
-			"optional": true
-		},
-		"@geekmidas/schema": {
-			"optional": true
-		},
-		"@geekmidas/services": {
 			"optional": true
 		},
 		"@middy/core": {
@@ -342,9 +324,6 @@
 			"optional": true
 		},
 		"msw": {
-			"optional": true
-		},
-		"@geekmidas/manifest": {
 			"optional": true
 		},
 		"@geekmidas/storage": {
@@ -360,6 +339,9 @@
 			"optional": true
 		},
 		"better-auth": {
+			"optional": true
+		},
+		"@geekmidas/telescope": {
 			"optional": true
 		}
 	}

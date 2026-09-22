@@ -4,6 +4,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"check:exports": "node scripts/check-exports.mjs",
+		"check:install": "node scripts/check-install.mjs",
 		"dev": "turbo run dev",
 		"docs:dev": "pnpm --filter @geekmidas/docs dev",
 		"docs:build": "pnpm --filter @geekmidas/docs build",
