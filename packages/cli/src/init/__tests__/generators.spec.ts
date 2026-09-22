@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { generateAgentFiles } from '../generators/agents.js';
 import { generateConfigFiles } from '../generators/config.js';
 import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
@@ -1155,5 +1156,80 @@ describe('generatePackageJson - testkit dependencies', () => {
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.devDependencies['@geekmidas/testkit']).toBeUndefined();
 		expect(pkg.devDependencies['@faker-js/faker']).toBeUndefined();
+	});
+});
+
+describe('generateAgentFiles', () => {
+	it('writes AGENTS.md and a CLAUDE.md that points at it', () => {
+		const files = generateAgentFiles(baseOptions, minimalTemplate);
+
+		expect(files.map((f) => f.path)).toEqual(['AGENTS.md', 'CLAUDE.md']);
+
+		// The instructions live in one file. `CLAUDE.md` refers to it rather than
+		// repeating it, because the copy that drifts is the one nobody opened.
+		const claude = files.find((f) => f.path === 'CLAUDE.md')!.content;
+		expect(claude).toContain('[AGENTS.md](./AGENTS.md)');
+		expect(claude).not.toContain('## Commands');
+	});
+
+	it('names the glob the workspace actually uses', () => {
+		// A monorepo keeps constructs at its root; a single app keeps them under
+		// `src/`. The guide quotes the config, so quoting the wrong one is the
+		// first thing a reader would check and the first reason to distrust it.
+		const single = generateAgentFiles(baseOptions, minimalTemplate)[0].content;
+		expect(single).toContain("constructs: './src/constructs/**/*.ts'");
+
+		const workspace = generateAgentFiles(
+			{ ...baseOptions, monorepo: true, apiPath: 'apps/api' },
+			minimalTemplate,
+		)[0].content;
+		expect(workspace).toContain("constructs: './constructs/**/*.ts'");
+		expect(workspace).not.toContain('./src/constructs/**/*.ts');
+	});
+
+	it('documents only what was generated', () => {
+		// A worker has no HTTP surface, so an endpoint guide beside it would be
+		// teaching an API this project does not have.
+		const worker = generateAgentFiles(
+			{ ...baseOptions, template: 'worker' },
+			workerTemplate,
+		)[0].content;
+		expect(worker).not.toContain('## Adding an endpoint');
+
+		const api = generateAgentFiles(baseOptions, apiTemplate)[0].content;
+		expect(api).toContain('## Adding an endpoint');
+	});
+
+	it('omits the database section when there is no database', () => {
+		const without = generateAgentFiles(
+			{
+				...baseOptions,
+				database: false,
+				services: { ...baseOptions.services, db: false },
+			},
+			minimalTemplate,
+		)[0].content;
+		expect(without).not.toContain('## Database');
+
+		expect(
+			generateAgentFiles(baseOptions, minimalTemplate)[0].content,
+		).toContain('## Database');
+	});
+
+	it('states the Zod convention, which is the easiest thing here to get wrong', () => {
+		const agents = generateAgentFiles(baseOptions, minimalTemplate)[0].content;
+		expect(agents).toContain('z.email()');
+		expect(agents).toContain('z.string().email()');
+	});
+
+	it('uses the package manager the project was scaffolded with', () => {
+		const npm = generateAgentFiles(
+			{ ...baseOptions, packageManager: 'npm' },
+			minimalTemplate,
+		)[0].content;
+		expect(npm).toContain('npx gkm dev');
+
+		const pnpm = generateAgentFiles(baseOptions, minimalTemplate)[0].content;
+		expect(pnpm).toContain('pnpm exec gkm dev');
 	});
 });

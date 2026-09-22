@@ -1,4 +1,10 @@
-import { cacheFor, databaseFor, emailFor, storageFor } from '../constructs.js';
+import {
+	cacheFor,
+	databaseFor,
+	emailFor,
+	storageFor,
+	WORKSPACE_CONSTRUCTS_GLOB,
+} from '../constructs.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -349,7 +355,7 @@ export default defineWorkspace({
   // declared bucket is why MinIO does, a declared topic is why a broker does —
   // none of it listed here. It is also where the apps come from: a
   // \`StaticSite\` is an app, and so is every \`RestApi\`.
-  constructs: './constructs/**/*.ts',
+  constructs: '${WORKSPACE_CONSTRUCTS_GLOB}',
 
   secrets: {
     enabled: true,

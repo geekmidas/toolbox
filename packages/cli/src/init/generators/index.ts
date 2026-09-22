@@ -1,3 +1,4 @@
+export { generateAgentFiles } from './agents.js';
 export { generateAuthAppFiles } from './auth.js';
 export { generateConfigFiles } from './config.js';
 export { generateEnvFiles } from './env.js';
