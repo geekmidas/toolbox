@@ -36,6 +36,7 @@
   },
   "changesets": [
     "alpha-packaging",
+    "client-coercion-types",
     "init-scaffolds-constructs",
     "install-check",
     "logger-is-an-interface",

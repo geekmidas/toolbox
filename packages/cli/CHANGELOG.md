@@ -1,5 +1,20 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.3
+  - @geekmidas/constructs@10.0.0-alpha.3
+  - @geekmidas/db@10.0.0-alpha.3
+  - @geekmidas/envkit@10.0.0-alpha.3
+  - @geekmidas/errors@10.0.0-alpha.3
+  - @geekmidas/logger@10.0.0-alpha.3
+  - @geekmidas/manifest@10.0.0-alpha.3
+  - @geekmidas/schema@10.0.0-alpha.3
+  - @geekmidas/telescope@10.0.0-alpha.3
+
 ## 10.0.0-alpha.2
 
 ### Patch Changes
