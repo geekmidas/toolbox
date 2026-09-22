@@ -1,5 +1,13 @@
 # @geekmidas/studio
 
+## 10.0.0-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [[`96ec6a7`](https://github.com/geekmidas/toolbox/commit/96ec6a73efbfaaf5f17f378ac3647d3c970297a9), [`05ce914`](https://github.com/geekmidas/toolbox/commit/05ce91446ba29d5158a2a5c010f7bf9c00f761eb)]:
+  - @geekmidas/telescope@10.0.0-alpha.2
+  - @geekmidas/db@10.0.0-alpha.2
+
 ## 10.0.0-alpha.1
 
 ### Patch Changes

@@ -1,5 +1,52 @@
 # @geekmidas/telescope
 
+## 10.0.0-alpha.2
+
+### Patch Changes
+
+- [#29](https://github.com/geekmidas/toolbox/pull/29) [`96ec6a7`](https://github.com/geekmidas/toolbox/commit/96ec6a73efbfaaf5f17f378ac3647d3c970297a9) Thanks [@geekmidas](https://github.com/geekmidas)! - Two more packages could not be installed
+
+  Found by the check added alongside them, which packs the tarballs and installs
+  each into an empty project.
+
+  **`@geekmidas/testkit` declared no dependencies at all** while importing
+  `EnvironmentParser`, `ConsoleLogger` and `serviceContext` as values from
+  `@geekmidas/envkit`, `@geekmidas/logger` and `@geekmidas/services`. All three
+  were optional peers. They are dependencies.
+
+  **`@geekmidas/telescope` could not be installed beside `@geekmidas/logger`.**
+  It required `pino@^9.0.0`; logger requires `pino@~10.0.0`. The two are
+  mutually exclusive, so any consumer with both got `ERESOLVE` and no install at
+  all. Widened to `^9.0.0 || ^10.0.0`, matching how the same package already
+  treats `pino-abstract-transport`. Its `@geekmidas/logger` peer also became a
+  dependency — `redact.ts` imports `DEFAULT_REDACT_PATHS` from it as a value,
+  from the root entry.
+
+- [#29](https://github.com/geekmidas/toolbox/pull/29) [`05ce914`](https://github.com/geekmidas/toolbox/commit/05ce91446ba29d5158a2a5c010f7bf9c00f761eb) Thanks [@geekmidas](https://github.com/geekmidas)! - Using the logger interface no longer requires pino
+
+  `Logger` is a structural interface — six log methods and `child()` — and
+  `ConsoleLogger` implements it with no pino anywhere. Pino is one
+  implementation, reached through `@geekmidas/logger/pino`.
+
+  The manifest said otherwise. `pino` and `pino-pretty` were peer dependencies
+  with no `peerDependenciesMeta` block, which makes them **required**, and npm
+  installs required peers silently. Since `@geekmidas/logger` is a dependency of
+  `constructs`, `telescope` and `testkit`, every consumer of the interface was
+  made to install the one implementation they might never use. Installing
+  `@geekmidas/logger` now pulls in nothing at all; reaching for
+  `@geekmidas/logger/pino` is what opts into pino.
+
+  **`@geekmidas/telescope` required pino it never imported.** Outside JSDoc and
+  its own tests it imports `pino-abstract-transport` and nothing else, yet
+  declared `pino@^9.0.0` — which could not be satisfied beside logger's
+  `~10.0.0`, so a consumer holding both got `ERESOLVE` and no install. The peer
+  is gone rather than widened: the honest fix for a dependency that was never
+  used is to stop declaring it. Its tests now run against the same pino 10 that
+  logger ships against, where all 447 pass.
+
+- Updated dependencies [[`05ce914`](https://github.com/geekmidas/toolbox/commit/05ce91446ba29d5158a2a5c010f7bf9c00f761eb)]:
+  - @geekmidas/logger@10.0.0-alpha.2
+
 ## 10.0.0-alpha.1
 
 ### Patch Changes

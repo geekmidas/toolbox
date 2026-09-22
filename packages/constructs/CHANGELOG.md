@@ -1,5 +1,56 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.2
+
+### Patch Changes
+
+- [#29](https://github.com/geekmidas/toolbox/pull/29) [`3426eae`](https://github.com/geekmidas/toolbox/commit/3426eaec72e0837a33dae873d7fe36282445158b) Thanks [@geekmidas](https://github.com/geekmidas)! - The published package could not be installed
+
+  `10.0.0-alpha.1` crashed on `gkm init`. Three packaging faults, each of which
+  made `@geekmidas/constructs` unloadable for anyone who was not inside this
+  repository — where pnpm's workspace links hid all of them.
+
+  **Statically imported packages were declared optional peers.** `queue/Queue.ts`
+  imports `Publisher` from `@geekmidas/events` as a value, and `envkit`,
+  `errors`, `logger`, `manifest`, `schema` and `services` are imported by entries
+  that always load. All were `peerDependenciesMeta.optional`, so a consumer's
+  install fetched none of them. Installing the tarball on its own produced a
+  package where _no entry point loaded at all_ — `gkm init` only reached
+  `@geekmidas/events` because the CLI happened to depend on the rest directly.
+  They are dependencies now, which is what a static import means.
+
+  **`@geekmidas/telescope` was a required peer of a type-only import.**
+  `rest-api.ts` does `import type { Telescope }`, which has no runtime, yet the
+  peer was non-optional and exactly pinned — so every install warned it was
+  missing and pnpm reported `Conflicting peer dependencies` against the CLI's own
+  range. Marked optional.
+
+  **Declaring a cron required AWS Lambda middleware.** `crons/index.ts`
+  re-exported `AWSScheduledFunction`, so importing the barrel to declare a cron
+  pulled in `@middy/core`. The adaptor was already exported from
+  `@geekmidas/constructs/aws`, the entry that admits it needs Lambda; the
+  redundant re-export is gone and `CronGenerator` emits the `/aws` specifier.
+
+  Verified by packing the tarballs, installing them into an empty project the way
+  a consumer does, and running `gkm init --monorepo` to completion.
+
+- Updated dependencies [[`96ec6a7`](https://github.com/geekmidas/toolbox/commit/96ec6a73efbfaaf5f17f378ac3647d3c970297a9), [`05ce914`](https://github.com/geekmidas/toolbox/commit/05ce91446ba29d5158a2a5c010f7bf9c00f761eb)]:
+  - @geekmidas/telescope@10.0.0-alpha.2
+  - @geekmidas/logger@10.0.0-alpha.2
+  - @geekmidas/audit@10.0.0-alpha.2
+  - @geekmidas/auth@10.0.0-alpha.2
+  - @geekmidas/cache@10.0.0-alpha.2
+  - @geekmidas/db@10.0.0-alpha.2
+  - @geekmidas/emailkit@10.0.0-alpha.2
+  - @geekmidas/envkit@10.0.0-alpha.2
+  - @geekmidas/errors@10.0.0-alpha.2
+  - @geekmidas/events@10.0.0-alpha.2
+  - @geekmidas/manifest@10.0.0-alpha.2
+  - @geekmidas/rate-limit@10.0.0-alpha.2
+  - @geekmidas/schema@10.0.0-alpha.2
+  - @geekmidas/services@10.0.0-alpha.2
+  - @geekmidas/storage@10.0.0-alpha.2
+
 ## 10.0.0-alpha.1
 
 ### Patch Changes

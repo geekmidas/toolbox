@@ -1,5 +1,32 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.2
+
+### Patch Changes
+
+- [#29](https://github.com/geekmidas/toolbox/pull/29) [`96ec6a7`](https://github.com/geekmidas/toolbox/commit/96ec6a73efbfaaf5f17f378ac3647d3c970297a9) Thanks [@geekmidas](https://github.com/geekmidas)! - Two more packages could not be installed
+
+  Found by the check added alongside them, which packs the tarballs and installs
+  each into an empty project.
+
+  **`@geekmidas/testkit` declared no dependencies at all** while importing
+  `EnvironmentParser`, `ConsoleLogger` and `serviceContext` as values from
+  `@geekmidas/envkit`, `@geekmidas/logger` and `@geekmidas/services`. All three
+  were optional peers. They are dependencies.
+
+  **`@geekmidas/telescope` could not be installed beside `@geekmidas/logger`.**
+  It required `pino@^9.0.0`; logger requires `pino@~10.0.0`. The two are
+  mutually exclusive, so any consumer with both got `ERESOLVE` and no install at
+  all. Widened to `^9.0.0 || ^10.0.0`, matching how the same package already
+  treats `pino-abstract-transport`. Its `@geekmidas/logger` peer also became a
+  dependency — `redact.ts` imports `DEFAULT_REDACT_PATHS` from it as a value,
+  from the root entry.
+
+- Updated dependencies [[`05ce914`](https://github.com/geekmidas/toolbox/commit/05ce91446ba29d5158a2a5c010f7bf9c00f761eb)]:
+  - @geekmidas/logger@10.0.0-alpha.2
+  - @geekmidas/envkit@10.0.0-alpha.2
+  - @geekmidas/services@10.0.0-alpha.2
+
 ## 10.0.0-alpha.1
 
 ### Patch Changes

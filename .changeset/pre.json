@@ -35,7 +35,10 @@
     "@geekmidas/ui": "9.0.2"
   },
   "changesets": [
+    "alpha-packaging",
     "init-scaffolds-constructs",
+    "install-check",
+    "logger-is-an-interface",
     "v10-the-manifest-is-the-source"
   ]
 }
