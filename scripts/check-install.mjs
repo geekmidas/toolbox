@@ -147,30 +147,20 @@ const packed = packAll(tarballs);
 console.log(`  ${packed.size} packages packed.\n`);
 
 /**
- * The workspace packages one package actually pulls in.
+ * Every workspace package resolves to the tarball just built.
  *
- * Overriding every package in every project is what a consumer never does, and
- * it manufactures conflicts: forcing `@geekmidas/telescope` into a project that
- * does not want it drags its own optional peers in behind it, and npm refuses
- * the resolution. Only a package's own closure gets overridden.
+ * An earlier version overrode only a package's own dependency closure, on the
+ * reasoning that a consumer installs one package rather than all of them. But
+ * npm still resolves an *optional* peer when it can, and those sat outside the
+ * closure — so a package built here was checked against a **published** copy of
+ * its sibling, and the version skew between the two was reported as this
+ * package's fault. An override constrains only a package that actually gets
+ * installed, so naming them all costs nothing and removes the one thing that
+ * made this check lie.
  */
-function closureOf(name, seen = new Set()) {
-	if (seen.has(name) || !packed.has(name)) return seen;
-	seen.add(name);
-
-	const { manifest } = packed.get(name);
-	const meta = manifest.peerDependenciesMeta ?? {};
-	const direct = [
-		...Object.keys(manifest.dependencies ?? {}),
-		...Object.keys(manifest.peerDependencies ?? {}).filter(
-			(p) => !meta[p]?.optional,
-		),
-	];
-
-	for (const next of direct) closureOf(next, seen);
-
-	return seen;
-}
+const overrides = Object.fromEntries(
+	[...packed].map(([name, { tarball }]) => [name, `file:${tarball}`]),
+);
 
 const failures = [];
 const ignored = [];
@@ -191,11 +181,15 @@ for (const [name, { tarball, manifest }] of packed) {
 				type: 'module',
 				private: true,
 				dependencies: { [name]: `file:${tarball}` },
-				// Transitive workspace packages resolve to the tarballs just built,
-				// so a fault in one is never masked by a working copy on the registry.
-				overrides: Object.fromEntries(
-					[...closureOf(name)].map((n) => [n, `file:${packed.get(n).tarball}`]),
-				),
+				// *Every* workspace package resolves to the tarball just built, not
+				// only the ones in this package's closure. An optional peer is still
+				// resolved by npm when it can be, and leaving it out meant one was
+				// fetched from the registry — so a package built here was checked
+				// against a published copy of its sibling, and the version skew
+				// between them was reported as this package's fault. An override only
+				// constrains a package that actually gets installed, so naming them
+				// all costs nothing and removes the one thing that made this lie.
+				overrides,
 			},
 			null,
 			2,
