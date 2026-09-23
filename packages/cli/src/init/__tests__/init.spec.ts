@@ -144,7 +144,7 @@ describe('initCommand', () => {
 			expect(content).toContain('functions');
 		});
 
-		it('should create worker template with crons and subscribers', async () => {
+		it('should build the worker template from a Worker, not an HTTP surface', async () => {
 			await initCommand('my-api', {
 				template: 'worker',
 				yes: true,
@@ -152,16 +152,58 @@ describe('initCommand', () => {
 			});
 
 			const projectDir = join(tempDir, 'my-api');
-			expect(existsSync(join(projectDir, 'src/crons/cleanup.ts'))).toBe(true);
+
+			const worker = await readFile(
+				join(projectDir, 'src/constructs/worker.ts'),
+				'utf-8',
+			);
+			expect(worker).toContain("new Worker('Jobs'");
+
+			// A project whose premise is that nothing calls it over HTTP has no
+			// business declaring an HTTP surface. It used to declare one with no
+			// endpoints on it, because a surface was the only way to make an app
+			// exist at all.
+			expect(existsSync(join(projectDir, 'src/constructs/api.ts'))).toBe(false);
+
 			expect(
 				existsSync(join(projectDir, 'src/subscribers/user-events.ts')),
 			).toBe(true);
 			expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
+		});
 
-			const configPath = join(projectDir, 'gkm.config.ts');
-			const content = await readFile(configPath, 'utf-8');
-			expect(content).toContain('crons');
-			expect(content).toContain('subscribers');
+		it('scaffolds no cron, because a cron would not run', async () => {
+			await initCommand('my-api', {
+				template: 'worker',
+				yes: true,
+				skipInstall: true,
+			});
+
+			// `CronGenerator` emits handlers for `aws-lambda` only and `.gkm/server/`
+			// has no crons file, so a scheduled job on a server target deploys
+			// nothing. Scaffolding one would teach a feature that silently does not
+			// happen — worse than leaving it out until there is a scheduler.
+			expect(existsSync(join(tempDir, 'my-api', 'src/crons/cleanup.ts'))).toBe(
+				false,
+			);
+		});
+
+		it('gives a worker its subscriber from the worker itself', async () => {
+			await initCommand('my-api', {
+				template: 'worker',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const subscriber = await readFile(
+				join(tempDir, 'my-api', 'src/subscribers/user-events.ts'),
+				'utf-8',
+			);
+
+			// Built from the worker, so it carries the worker's logger and says
+			// which process runs it — and handed a batch, which is what both
+			// transports deliver.
+			expect(subscriber).toContain('worker.subscribers');
+			expect(subscriber).toContain('async ({ events, logger })');
 		});
 	});
 
