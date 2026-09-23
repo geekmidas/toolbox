@@ -221,16 +221,20 @@ export async function setupCrons(
   // What this app declares now. Anything else under the prefix belonged to a
   // cron since renamed or deleted, and would keep firing at a handler that has
   // gone.
-  const declared = new Set(prepared.map(({ name }) => \`cron:\${name}\`));
+  //
+  // The prefix is \`cron.\` rather than \`cron:\`: pg-boss accepts
+  // alphanumerics, underscores, hyphens, periods and slashes in a queue name,
+  // and rejects a colon outright.
+  const declared = new Set(prepared.map(({ name }) => \`cron.\${name}\`));
   for (const existing of await boss.getSchedules()) {
-    if (existing.name.startsWith('cron:') && !declared.has(existing.name)) {
+    if (existing.name.startsWith('cron.') && !declared.has(existing.name)) {
       await boss.unschedule(existing.name);
       logger.info({ cron: existing.name }, 'Removed a schedule nothing declares');
     }
   }
 
   for (const entry of prepared) {
-    const queue = \`cron:\${entry.name}\`;
+    const queue = \`cron.\${entry.name}\`;
     await boss.createQueue(queue);
     // UTC, so this agrees with the schedule a deploy target would have made.
     await boss.schedule(queue, entry.schedule, undefined, { tz: 'UTC' });
