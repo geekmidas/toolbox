@@ -758,6 +758,7 @@ import type { Hono as HonoType } from 'hono';
 import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
 import { setupQueues } from './queues.js';
+import { setupCrons } from './crons.js';
 ${runtime.imports}
 ${telescopeImports}
 ${studioImports}
@@ -847,6 +848,12 @@ ${afterSetupCall}
       // Start queue workers in background (non-blocking, local development only)
       await setupQueues(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start queue workers');
+      });
+
+      // Schedule this app's crons. Caught like the others: a scheduler that
+      // cannot start is not a reason for the HTTP server not to.
+      await setupCrons(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to schedule crons');
       });
 
       logger.info({ port }, 'Starting server');
@@ -989,12 +996,19 @@ export const handler = ${exportName};
       await setupQueues(envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start queue workers');
       });
+
+      // Schedule this app's crons. Caught like the others: a scheduler that
+      // cannot start is not a reason for the HTTP server not to.
+      await setupCrons(envParser, logger).catch((error) => {
+        logger.error({ error }, 'Failed to schedule crons');
+      });
 `
 			: '';
 
 		const subscriberImport = includeSubscribers
 			? `import { setupSubscribers } from './subscribers.js';
-import { setupQueues } from './queues.js';`
+import { setupQueues } from './queues.js';
+import { setupCrons } from './crons.js';`
 			: '';
 
 		// Graceful shutdown code
