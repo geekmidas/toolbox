@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/telescope",
-	"version": "10.0.0-alpha.4",
+	"version": "10.0.0-alpha.5",
 	"description": "Laravel Telescope-style debugging and monitoring for web applications",
 	"type": "module",
 	"scripts": {
