@@ -17,6 +17,19 @@
  * rather than one with a flag: a `RestApi` needs one because an HTTP surface
  * can ship open by omission, and nothing reaches a worker from outside.
  *
+ * ## Crons on a server target need a database
+ *
+ * A cron becomes an EventBridge rule on AWS and nothing here is consulted. A
+ * server has nothing firing its crons but itself, and a process that schedules
+ * in memory fires every job once per replica while reporting success — so the
+ * schedule is kept in Postgres, and the worker says which one with
+ * `.database(db)`.
+ *
+ * A worker with crons and no `.database(…)` schedules nothing on a server
+ * target and says so at startup. That is a limitation of workers today rather
+ * than a design: the store could be a cache, or something the target
+ * provisions, and Postgres is what exists.
+ *
  * It is not an app. A worker names the process that runs its crons and
  * subscribers, and that process is the app's server — the same one the
  * endpoints run in, minus the HTTP surface. Giving a worker a container of its
@@ -50,7 +63,11 @@ import {
 	type Declaration,
 	type Dependency,
 } from '@geekmidas/manifest';
-import { type Declarable, edgeTo } from './construct-interface';
+import {
+	type Consumable,
+	type Declarable,
+	edgeTo,
+} from './construct-interface';
 import type { ScheduleExpression } from './crons/Cron';
 import { CronBuilder } from './crons/CronBuilder';
 import { envParserFor } from './endpoints/surfaceEnv';
@@ -87,11 +104,18 @@ export class Worker<TName extends string = string>
 	/** Always defined, and normally the default. */
 	readonly envParser: EnvironmentParser<{}>;
 
+	/**
+	 * Where this worker's schedules live, when it has crons and a server runs
+	 * them. `undefined` until `.database(…)` says.
+	 */
+	readonly scheduleStore?: Consumable<string, unknown>;
+
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: WorkerConfig = {},
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
+		scheduleStore?: Consumable<string, unknown>,
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -101,6 +125,38 @@ export class Worker<TName extends string = string>
 			config.envParser
 				? { id: canonical, envParser: config.envParser }
 				: undefined,
+		);
+		this.scheduleStore = scheduleStore;
+	}
+
+	/**
+	 * The database this worker keeps its schedules in.
+	 *
+	 * Only a server target uses it. On AWS a cron is an EventBridge rule
+	 * invoking a Lambda and nothing here is consulted — but a server has nothing
+	 * firing its crons except itself, and a process that schedules in memory
+	 * fires every job once per replica while reporting that all is well.
+	 *
+	 * So the store is declared rather than discovered. It could have been
+	 * inferred — from a database the app happens to declare, or from the events
+	 * backend when that backend is pg-boss — and both would work until an app
+	 * had two databases, or moved its events to SNS, at which point the
+	 * schedules would quietly move or stop. Naming it is one line and cannot
+	 * drift.
+	 *
+	 * @example
+	 * ```ts
+	 * export const jobs = new Worker('Jobs', { logger }).database(database);
+	 * ```
+	 */
+	database<T, TDbName extends string>(
+		source: Consumable<TDbName, T>,
+	): Worker<TName> {
+		return new Worker<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, edgeTo(source)],
+			source as unknown as Consumable<string, unknown>,
 		);
 	}
 
@@ -146,18 +202,23 @@ export class Worker<TName extends string = string>
 	 * environment and its access, the same distinction `RestApi.calls()` draws.
 	 */
 	calls(constructs: readonly Declarable[]): Worker<TName> {
-		return new Worker<TName>(this.id as ConstructName<TName>, this.config, [
-			...this.dependencies,
-			...constructs.map(edgeTo),
-		]);
+		return new Worker<TName>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.dependencies, ...constructs.map(edgeTo)],
+			this.scheduleStore,
+		);
 	}
 
 	/**
 	 * Stamps this worker's id onto a builder, so everything built from it says
 	 * which process runs it.
 	 */
-	private own<T extends { _owner?: string }>(builder: T): T {
+	private own<T extends { _owner?: string; _scheduleStore?: unknown }>(
+		builder: T,
+	): T {
 		builder._owner = this.id;
+		builder._scheduleStore = this.scheduleStore;
 
 		return builder;
 	}

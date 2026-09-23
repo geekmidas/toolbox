@@ -127,11 +127,14 @@ export class CronGenerator extends ConstructGenerator<
  *
  * Schedules every cron this app declares, in the process that serves it.
  *
- * With a \`DATABASE_URL\` the schedule lives in Postgres through pg-boss, so
- * running several replicas fires each job once. Without one it falls back to
- * timers in this process, which is correct for a single replica and wrong for
- * more than one — so it says so rather than letting you find out from a job
- * that ran four times.
+ * The schedule lives in Postgres, through pg-boss, in the database the worker
+ * named with \`.database(db)\`. That is what makes running several replicas
+ * safe: each job fires once, where a timer in every process fires it once per
+ * replica and reports nothing.
+ *
+ * No connection string appears here. The construct that owns the database is
+ * the only thing that knows its key, and it is resolved through service
+ * discovery like any other dependency.
  */
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
@@ -154,16 +157,10 @@ export async function setupCrons(
     return;
   }
 
-  const { databaseUrl } = envParser
-    .create((get) => ({
-      databaseUrl: get('DATABASE_URL').string().optional(),
-    }))
-    .parse();
-
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
-  // Resolved once per cron, not per firing: registering services on every tick
-  // would reconnect a database every minute.
+  // Resolved once per cron rather than per firing: registering services on
+  // every tick would reconnect a database every minute.
   const prepared = [];
   for (const { name, cron } of crons) {
     try {
@@ -174,46 +171,56 @@ export async function setupCrons(
 
       prepared.push({ name, cron, schedule, services });
     } catch (error) {
-      // A schedule that cannot be represented is a build-time mistake, and
-      // failing the whole process for it would take the HTTP server down too.
+      // An unrepresentable schedule is a build-time mistake, and failing the
+      // process for it would take the HTTP server down with it.
       logger.error({ error, cron: name }, 'Cron has no runnable schedule, skipping');
     }
   }
 
-  const run = async ({ name, cron, services }: (typeof prepared)[number]) => {
+  const run = async (entry: (typeof prepared)[number]) => {
     try {
-      await cron.handler({
+      await entry.cron.handler({
         input: undefined,
-        services,
-        logger: cron.logger,
+        services: entry.services,
+        logger: entry.cron.logger,
       });
     } catch (error) {
-      logger.error({ error, cron: name }, 'Cron failed');
+      logger.error({ error, cron: entry.name }, 'Cron failed');
     }
   };
 
-  if (!databaseUrl) {
-    // The alternative was a timer in every process, which fires each job once
-    // per replica and never says so — a wrong schedule that looks like a
-    // working one. Refusing is the same call the schedule translator makes
-    // about a rate it cannot represent exactly.
+  // Declared once on the worker, carried onto every cron it built — so this
+  // reads it from any of them rather than from config or the environment.
+  const scheduleStore = prepared.find(({ cron }) => cron.scheduleStore)?.cron
+    .scheduleStore;
+
+  if (!scheduleStore) {
+    // Declared, not discovered. A worker says where its schedules live with
+    // \`.database(db)\`; inferring one from whatever database happened to be
+    // around would move the schedules the day an app declared a second.
     logger.error(
       { crons: prepared.map(({ name }) => name) },
-      'Crons need a DATABASE_URL on a server target: the schedule lives in ' +
-        'Postgres so that running more than one replica still fires each job ' +
-        'once. Declare a database, or deploy these crons to a target that ' +
-        'schedules them itself.',
+      'These crons have nowhere to keep their schedule. A server fires its own ' +
+        'crons, and a process scheduling in memory fires each job once per ' +
+        'replica — so the schedule lives in Postgres. Say where with ' +
+        '\`new Worker(…).database(db)\`.',
     );
     return;
   }
 
+  const [store] = await serviceDiscovery
+    .register([scheduleStore])
+    .then((s) => Object.values(s));
+
   const { PgBoss } = await import('pg-boss');
-  const boss = new PgBoss({ connectionString: databaseUrl });
+  // The pool the construct already opened — no connection string is read here,
+  // and none is named anywhere outside the construct that owns it.
+  const boss = new PgBoss({ db: store as never });
   await boss.start();
 
-  // What this app declares now. Anything else under this prefix belonged to a
-  // cron since renamed or deleted, and would otherwise keep firing against a
-  // handler that is no longer there.
+  // What this app declares now. Anything else under the prefix belonged to a
+  // cron since renamed or deleted, and would keep firing at a handler that has
+  // gone.
   const declared = new Set(prepared.map(({ name }) => \`cron:\${name}\`));
   for (const existing of await boss.getSchedules()) {
     if (existing.name.startsWith('cron:') && !declared.has(existing.name)) {
@@ -225,7 +232,7 @@ export async function setupCrons(
   for (const entry of prepared) {
     const queue = \`cron:\${entry.name}\`;
     await boss.createQueue(queue);
-    // UTC, so this agrees with the schedule a deploy target would have created.
+    // UTC, so this agrees with the schedule a deploy target would have made.
     await boss.schedule(queue, entry.schedule, undefined, { tz: 'UTC' });
     await boss.work(queue, () => run(entry));
 

@@ -297,11 +297,18 @@ describe('CronGenerator', () => {
 					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
 
 					// A timer in every process fires each job once per replica and
-					// never says so. The schedule lives in Postgres instead, and its
+					// never says so, so the schedule lives in Postgres — and its
 					// absence is reported rather than worked around.
-					expect(file).toContain('DATABASE_URL');
-					expect(file).toContain('fires each job');
+					expect(file).toContain('.database(db)');
+					expect(file).toContain('once per');
 					expect(file).not.toContain('setInterval');
+
+					// And it names no credential. The construct that owns the
+					// database is the only thing that knows its key; anything here
+					// reading an environment variable would be a second copy of it.
+					expect(file).not.toContain('DATABASE_URL');
+					expect(file).not.toContain('process.env');
+					expect(file).not.toContain('connectionString');
 				},
 			);
 		});

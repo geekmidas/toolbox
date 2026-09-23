@@ -31,6 +31,15 @@ export class Cron<
 	AuditableAction<string, unknown>,
 	FunctionHandler<TInput, TServices, TLogger, OutSchema, TDatabase>
 > {
+	/**
+	 * Where this cron's schedule lives when a server runs it.
+	 *
+	 * Carried from the worker that built it, which declared it once with
+	 * `.database(db)`. Unread on AWS, where the schedule is an EventBridge rule
+	 * and nothing in this process fires anything.
+	 */
+	scheduleStore?: unknown;
+
 	static isCron(obj: any): obj is Cron<any, any, any, any> {
 		return Boolean(
 			obj &&
