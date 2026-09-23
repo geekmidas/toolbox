@@ -17,6 +17,13 @@
  * rather than one with a flag: a `RestApi` needs one because an HTTP surface
  * can ship open by omission, and nothing reaches a worker from outside.
  *
+ * It is not an app. A worker names the process that runs its crons and
+ * subscribers, and that process is the app's server — the same one the
+ * endpoints run in, minus the HTTP surface. Giving a worker a container of its
+ * own made a second thing to build, deploy and keep alive for work that was
+ * always going to run somewhere already. Declare as many as the shape of the
+ * work wants: they are groupings, not deployments.
+ *
  * @example
  * ```ts
  * // constructs/worker.ts
@@ -38,7 +45,6 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
-	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -52,14 +58,6 @@ import { FunctionBuilder } from './functions/FunctionBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
 
 export interface WorkerConfig {
-	/**
-	 * Where its source lives and how it is run.
-	 *
-	 * Normally omitted, like every other app's: `Worker` means `apps/worker`
-	 * where that directory exists and the project root otherwise. Write one only
-	 * for a layout that genuinely differs.
-	 */
-	app?: AppSpec;
 	/**
 	 * The logger everything built from this worker runs with.
 	 *
@@ -169,7 +167,6 @@ export class Worker<TName extends string = string>
 			{
 				kind: 'worker',
 				id: this.id,
-				...(this.config.app ? { app: this.config.app } : {}),
 				...(this.dependencies.length
 					? { dependencies: this.dependencies }
 					: {}),
