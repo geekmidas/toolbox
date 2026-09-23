@@ -1,6 +1,11 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
-	"changelog": ["./changelog-gitmoji.cjs", { "repo": "geekmidas/toolbox" }],
+	"changelog": [
+		"./changelog-gitmoji.cjs",
+		{
+			"repo": "geekmidas/toolbox"
+		}
+	],
 	"commit": false,
 	"fixed": [["@geekmidas/*"]],
 	"linked": [],
@@ -9,7 +14,6 @@
 	"updateInternalDependencies": "patch",
 	"ignore": [
 		"@geekmidas/docs",
-		"@geekmidas/example",
 		"@kitchen-sink/*",
 		"@geekmidas/studio-ui",
 		"@geekmidas/telescope-ui"

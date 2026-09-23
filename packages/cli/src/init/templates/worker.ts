@@ -6,6 +6,23 @@ import type {
 	TemplateOptions,
 } from './index.js';
 
+/**
+ * A project that is background work and nothing else.
+ *
+ * It used to scaffold a `RestApi` with no endpoints on it — an HTTP surface
+ * declared by a project whose premise is that nothing calls it over HTTP —
+ * because a surface was the only construct that made an app exist and the only
+ * way to get a logger into the generated runtime. `Worker` is the construct
+ * that was missing: it takes no authorizer, publishes no address, and hands out
+ * factories already carrying its logger.
+ *
+ * It scaffolds no cron. A cron is the obvious thing to put in a worker and it
+ * would not run: `CronGenerator` emits handlers for `aws-lambda` only, and
+ * `.gkm/server/` has no crons file, so a scheduled job on a server target
+ * deploys nothing at all. Subscribers and queues do have a server runtime,
+ * which is why those are what this template teaches. The cron example returns
+ * when there is a scheduler to run it.
+ */
 export const workerTemplate: TemplateConfig = {
 	name: 'worker',
 	description: 'Background job processing',
@@ -16,11 +33,8 @@ export const workerTemplate: TemplateConfig = {
 		'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
-		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
-		'@hono/node-server': '~1.14.1',
-		hono: '~4.8.2',
-		pino: '~9.6.0',
+		pino: '~10.3.1',
 	},
 
 	devDependencies: {
@@ -45,51 +59,25 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure, name } = options;
+		const { loggerType, name } = options;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
 export const logger = createLogger();
 `;
 
-		// Get route path based on structure
-		const getRoutePath = (file: string) => {
-			switch (routesStructure) {
-				case 'centralized-endpoints':
-					return `src/endpoints/${file}`;
-				case 'centralized-routes':
-					return `src/routes/${file}`;
-				case 'domain-based':
-					return `src/${file.replace('.ts', '')}/routes/index.ts`;
-			}
-		};
-
-		// Where an endpoint file reaches the surface from — one level deeper when
-		// the routes are nested by domain.
-		const apiImport =
-			routesStructure === 'domain-based'
-				? '../../constructs/api.js'
-				: '../constructs/api.js';
-
 		const files: GeneratedFile[] = [
-			// The application's HTTP surface. Endpoints are built from it, so each
-			// one carries the logger and environment parser its adaptor needs —
-			// nothing has to be named in config and nothing printed into the
-			// generated handler.
+			// The process this project *is*: one with no port.
+			//
+			// Everything built from it carries this logger, so a subscriber file
+			// opens with what it subscribes to rather than with an import of a
+			// logger it has to know the path to.
 			{
-				path: 'src/constructs/api.ts',
-				content: `import { RestApi } from '@geekmidas/constructs/rest-api';
+				path: 'src/constructs/worker.ts',
+				content: `import { Worker } from '@geekmidas/constructs/worker';
 import { logger } from '../config/logger.ts';
 
-export const api = new RestApi('Api', {
-  // Typed out rather than omitted: an API that ships open because a field was
-  // left off is the one default worth refusing to have.
-  defaultAuthorizer: 'none',
-
-  // The actual logger, not a path to one. Every endpoint built from this
-  // surface runs with it, and so does the generated entry.
-  logger,
-});
+export const worker = new Worker('Jobs', { logger });
 `,
 			},
 
@@ -116,25 +104,6 @@ export const config = envParser
 			{
 				path: 'src/config/logger.ts',
 				content: loggerContent,
-			},
-
-			// health endpoint
-			{
-				path: getRoutePath('health.ts'),
-				content: `import { z } from 'zod';
-import { api } from '${apiImport}';
-
-export const healthEndpoint = api
-  .get('/health')
-  .output(z.object({
-    status: z.string(),
-    timestamp: z.string(),
-  }))
-  .handle(async () => ({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-  }));
-`,
 			},
 
 			// src/events/types.ts
@@ -183,43 +152,27 @@ export const eventsPublisherService = {
 			// src/subscribers/user-events.ts
 			{
 				path: 'src/subscribers/user-events.ts',
-				content: `import { s } from '@geekmidas/constructs/subscribers';
+				content: `import { worker } from '~/constructs/worker.ts';
 import { eventsPublisherService } from '~/events/publisher.ts';
 
-export const userEventsSubscriber = s
+export const userEventsSubscriber = worker.subscribers
   .publisher(eventsPublisherService)
   .subscribe(['user.created', 'user.updated'])
-  .handle(async ({ event, logger }) => {
-    logger.info({ type: event.type, payload: event.payload }, 'Processing user event');
+  .handle(async ({ events, logger }) => {
+    // A batch, not a single event. Both transports deliver in batches, so
+    // handling them one at a time is a round trip per event for no reason.
+    logger.info({ count: events.length }, 'Processing user events');
 
-    switch (event.type) {
-      case 'user.created':
-        // Handle user creation
-        logger.info({ userId: event.payload.userId }, 'New user created');
-        break;
-      case 'user.updated':
-        // Handle user update
-        logger.info({ userId: event.payload.userId }, 'User updated');
-        break;
+    for (const event of events) {
+      switch (event.type) {
+        case 'user.created':
+          logger.info({ userId: event.payload.userId }, 'New user created');
+          break;
+        case 'user.updated':
+          logger.info({ userId: event.payload.userId }, 'User updated');
+          break;
+      }
     }
-  });
-`,
-			},
-
-			// src/crons/cleanup.ts
-			{
-				path: 'src/crons/cleanup.ts',
-				content: `import { cron } from '@geekmidas/constructs/crons';
-
-// Run every day at midnight
-export const cleanupCron = cron('0 0 * * *')
-  .handle(async ({ logger }) => {
-    logger.info('Running cleanup job');
-
-    // Add your cleanup logic here
-    // e.g., delete old sessions, clean up temp files, etc.
-
-    logger.info('Cleanup job completed');
   });
 `,
 			},
