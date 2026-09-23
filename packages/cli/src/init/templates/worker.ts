@@ -16,12 +16,11 @@ import type {
  * that was missing: it takes no authorizer, publishes no address, and hands out
  * factories already carrying its logger.
  *
- * It scaffolds no cron. A cron is the obvious thing to put in a worker and it
- * would not run: `CronGenerator` emits handlers for `aws-lambda` only, and
- * `.gkm/server/` has no crons file, so a scheduled job on a server target
- * deploys nothing at all. Subscribers and queues do have a server runtime,
- * which is why those are what this template teaches. The cron example returns
- * when there is a scheduler to run it.
+ * It scaffolds a cron when the project has a database, and not otherwise. A
+ * server fires its own crons, and the schedule lives in Postgres so that
+ * running more than one replica still fires each job once — so a worker names
+ * the database it keeps schedules in. Without one there is nowhere to keep
+ * them, and an example that could not run is worse than none.
  */
 export const workerTemplate: TemplateConfig = {
 	name: 'worker',
@@ -59,7 +58,7 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, name } = options;
+		const { loggerType, name, database } = options;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -75,9 +74,9 @@ export const logger = createLogger();
 			{
 				path: 'src/constructs/worker.ts',
 				content: `import { Worker } from '@geekmidas/constructs/worker';
-import { logger } from '../config/logger.ts';
+import { logger } from '../config/logger.ts';${database ? "\nimport { database } from './database.ts';" : ''}
 
-export const worker = new Worker('Jobs', { logger });
+export const worker = new Worker('Jobs', { logger })${database ? '.database(database)' : ''};
 `,
 			},
 
@@ -177,6 +176,27 @@ export const userEventsSubscriber = worker.subscribers
 `,
 			},
 		];
+
+		// A cron, now that a server target runs one. The schedule lives in the
+		// database the worker named; on AWS it becomes an EventBridge rule and
+		// none of that is consulted.
+		if (database) {
+			files.push({
+				path: 'src/crons/cleanup.ts',
+				content: `import { worker } from '~/constructs/worker.ts';
+
+export const cleanup = worker
+  .cron('rate(1 day)')
+  .handle(async ({ logger }) => {
+    logger.info('Running cleanup');
+
+    // Delete old sessions, clear temp files, whatever falls out of date.
+
+    logger.info('Cleanup complete');
+  });
+`,
+			});
+		}
 
 		// The database, when this project has one. A `pgboss` events backend
 		// implies one, which is why a worker gets here without asking for it.
