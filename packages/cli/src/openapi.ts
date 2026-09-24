@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { kebabCase } from '@geekmidas/manifest';
@@ -270,8 +270,35 @@ export async function openapiCommand(
 			// tsx's tsconfig discovery picks up the app's `paths` aliases
 			// (e.g., `~/*`) instead of the workspace root's tsconfig.
 			for (const [appName, app] of backendApps) {
-				if (app.type !== 'backend' || !app.routes) continue;
+				// No `app.routes` check any more: the per-kind globs are gone, and
+				// an app's code is found by one glob rather than by a field naming
+				// endpoints. Guarding on `routes` here meant every app was skipped
+				// the moment that field stopped existing — silently, because a loop
+				// that runs zero times looks exactly like one with nothing to do.
 				const appPath = join(workspaceRoot, app.path);
+
+				// A subprocess exists to put CWD inside the app, so tsx picks up
+				// that app's tsconfig aliases instead of the workspace root's. When
+				// the app *is* the root there is nothing to change: spawning would
+				// re-enter the same directory, having paid for a process and a
+				// module graph, and needing `tsx` resolvable from it.
+				if (resolve(appPath) === resolve(workspaceRoot)) {
+					// Not silent: silence is for a subprocess whose output the
+					// parent relays, and there is no parent here to relay it. The
+					// per-surface lines come from the generator; the count is this
+					// command's own summary, as in the single-app path.
+					const result = await generateOpenApiForApp(
+						workspaceRoot,
+						appName,
+						app,
+						false,
+					);
+					if (result) {
+						logger.log(`Found ${result.endpointCount} endpoints`);
+					}
+					continue;
+				}
+
 				await runOpenApiInSubprocess(appPath, appName);
 			}
 		}
@@ -289,6 +316,12 @@ async function generateOpenApiForApp(
 	workspaceRoot: string,
 	_appName: string,
 	app: NormalizedAppConfig,
+	/**
+	 * Quiet by default, because the usual caller is a subprocess whose output
+	 * the parent relays. Generating in-process there is no parent to relay to,
+	 * and silence would swallow the only report of what happened.
+	 */
+	silent = true,
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
 	// A backend app, and everything under it.
 	//
@@ -304,8 +337,14 @@ async function generateOpenApiForApp(
 	const globs = [join(appPath, '**/*.ts')];
 
 	return generateOpenApiFrom(globs, {
-		openapi: app.openapi,
-		silent: true,
+		// Absent means enabled, which is what the caller's filter already decided
+		// when it kept this app: it skips one that says `openapi: false` and keeps
+		// every other. Passing `undefined` through let `resolveOpenApiConfig`
+		// default it to *disabled*, so an app selected for generation generated
+		// nothing and said nothing — two places disagreeing about one flag, which
+		// is the failure the filter above was written to describe.
+		openapi: app.openapi ?? { enabled: true },
+		silent,
 	});
 }
 

@@ -119,7 +119,18 @@ export async function buildCommand(
 		const workspaceRoot = resolve(loadedConfig.workspace.root);
 		const isAtWorkspaceRoot = cwd === workspaceRoot;
 
-		if (isAtWorkspaceRoot) {
+		// A workspace whose apps all live at its root has nothing for turbo to
+		// order or parallelise, and routing through it re-enters this same
+		// directory: turbo runs the root package's `build`, which is `gkm build`,
+		// which arrives here again. The existing guard catches turbo descending
+		// into a *subdirectory* and has no answer when there is no subdirectory.
+		const appPaths = Object.values(loadedConfig.workspace.apps).map((app) =>
+			resolve(workspaceRoot, app.path),
+		);
+		const everyAppIsTheRoot =
+			appPaths.length > 0 && appPaths.every((path) => path === workspaceRoot);
+
+		if (isAtWorkspaceRoot && !everyAppIsTheRoot) {
 			logger.log('📦 Detected workspace configuration');
 			return workspaceBuildCommand(loadedConfig.workspace, options);
 		}

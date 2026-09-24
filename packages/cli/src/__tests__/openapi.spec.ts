@@ -6,6 +6,7 @@ import type { GkmConfig } from '../types';
 import {
 	cleanupDir,
 	createMockEndpointFile,
+	createSurfaceFile,
 	createTempDir,
 	createTestFile,
 } from './test-helpers';
@@ -368,8 +369,11 @@ describe('openapiCommand', () => {
 
 		await openapiCommand({ cwd: tempDir });
 
+		// A glob matching nothing declares no surface, and a surface is what an
+		// app is derived from — so there is no app to generate for, which is a
+		// different thing from an app with no endpoints and says so.
 		expect(consoleSpy).toHaveBeenCalledWith(
-			'No valid endpoints found for OpenAPI generation',
+			'No backend apps with OpenAPI enabled found',
 		);
 	});
 
@@ -444,6 +448,7 @@ describe('openapiCommand', () => {
 	it('should throw error when config loading fails', async () => {
 		process.chdir(tempDir);
 
+		// No config file at all, which is not something to carry on from.
 		await expect(openapiCommand({ cwd: tempDir })).rejects.toThrow(
 			/OpenAPI generation failed/,
 		);
@@ -466,9 +471,17 @@ describe('openapiCommand', () => {
 		);
 
 		process.chdir(tempDir);
+		const warnSpy = vi.spyOn(console, 'warn');
 
-		await expect(openapiCommand({ cwd: tempDir })).rejects.toThrow(
-			/OpenAPI generation failed/,
+		await openapiCommand({ cwd: tempDir });
+
+		// A file that does not parse takes discovery down with it, and the
+		// workspace falls back to what config alone declares — which is nothing
+		// here. It warns rather than throwing, deliberately: one unreadable
+		// construct should not stop a command that can still do part of its job.
+		// It must not pass in silence, which is what this pins.
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('Could not read constructs'),
 		);
 	});
 
@@ -504,12 +517,13 @@ describe('openapiCommand', () => {
 	});
 
 	it('should handle endpoints with complex schemas', async () => {
+		// The surface is shared and exported, because discovery has to *find* one
+		// to derive an app — a `const api` local to this file is invisible to it.
+		await createSurfaceFile(tempDir);
+
 		const complexEndpointContent = `
 import { z } from 'zod';
-import { RestApi } from '@geekmidas/constructs/rest-api';
-
-/** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+import { api } from './src/constructs/api.js';
 
 export const complexEndpoint = api
   .post('/complex')

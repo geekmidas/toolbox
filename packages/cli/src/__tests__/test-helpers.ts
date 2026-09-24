@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import {
 	CronBuilder,
 	type ScheduleExpression,
@@ -48,6 +48,52 @@ export async function createTestFile(
 /**
  * Creates a mock endpoint file with real endpoint construct
  */
+/** A relative specifier ESM accepts: always prefixed, never bare. */
+function relativeSpecifier(from: string, target: string): string {
+	const rel = relative(from, target).replace(/\.ts$/, '.js');
+
+	return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/**
+ * The worker a fixture's crons and functions are built from.
+ *
+ * Everything runnable comes from the process that runs it, so a fixture that
+ * built one free-standing had no owner — and no owner is where the build stops,
+ * because there is nothing to take a logger and an environment parser from.
+ */
+export async function createWorkerFile(dir: string): Promise<string> {
+	return createTestFile(
+		dir,
+		'src/constructs/worker.ts',
+		`import { Worker } from '@geekmidas/constructs/worker';
+
+export const worker = new Worker('Jobs');
+`,
+	);
+}
+
+/**
+ * The one surface a fixture's endpoints are built from.
+ *
+ * Shared rather than declared per file, and exported rather than local. Both
+ * matter: discovery needs to *find* a surface, so it has to be exported; and
+ * two files each declaring `RestApi('Test')` are two constructs with one id,
+ * which fails discovery for the whole fixture rather than for the second file.
+ *
+ * Idempotent — every endpoint helper call writes it, and writes the same thing.
+ */
+export async function createSurfaceFile(dir: string): Promise<string> {
+	return createTestFile(
+		dir,
+		'src/constructs/api.ts',
+		`import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+`,
+	);
+}
+
 export async function createMockEndpointFile(
 	dir: string,
 	filename: string,
@@ -55,13 +101,17 @@ export async function createMockEndpointFile(
 	path: string = '/test',
 	method: string = 'GET',
 ): Promise<string> {
-	// A surface, because that is where endpoints come from — the fixture has to
-	// look like the code it stands in for.
-	const content = `
-import { RestApi } from '@geekmidas/constructs/rest-api';
-import { z } from 'zod';
+	const surface = await createSurfaceFile(dir);
 
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+	// Relative, because the fixture's files sit wherever the caller put them and
+	// the import has to resolve from there rather than from the temp root.
+	const from = dirname(join(dir, filename));
+	const importPath = relative(from, surface).replace(/\.ts$/, '.js');
+	const specifier = importPath.startsWith('.') ? importPath : `./${importPath}`;
+
+	const content = `
+import { z } from 'zod';
+import { api } from '${specifier}';
 
 export const ${exportName} = api
   .${method.toLowerCase()}('${path}')
@@ -80,11 +130,15 @@ export async function createMockFunctionFile(
 	exportName: string,
 	timeout = 30,
 ): Promise<string> {
-	const content = `
-import { f } from '@geekmidas/constructs/functions';
-import { z } from 'zod';
+	const worker = await createWorkerFile(dir);
+	const from = dirname(join(dir, filename));
+	const specifier = relativeSpecifier(from, worker);
 
-export const ${exportName} = f
+	const content = `
+import { z } from 'zod';
+import { worker } from '${specifier}';
+
+export const ${exportName} = worker.functions
   .input(z.object({ name: z.string() }))
   .output(z.object({ greeting: z.string() }))
   .timeout(${timeout})
@@ -102,11 +156,15 @@ export async function createMockCronFile(
 	exportName: string,
 	schedule = 'rate(1 hour)',
 ): Promise<string> {
-	const content = `
-import { CronBuilder } from '@geekmidas/constructs/crons';
-import { z } from 'zod';
+	const worker = await createWorkerFile(dir);
+	const from = dirname(join(dir, filename));
+	const specifier = relativeSpecifier(from, worker);
 
-export const ${exportName} = new CronBuilder()
+	const content = `
+import { z } from 'zod';
+import { worker } from '${specifier}';
+
+export const ${exportName} = worker.crons
   .schedule('${schedule}')
   .output(z.object({ processed: z.number() }))
   .handle(async () => {
@@ -198,6 +256,5 @@ export async function waitFor(
 	}
 }
 
-import { dirname } from 'node:path';
 import { FunctionBuilder } from '@geekmidas/constructs/functions';
 import type { HttpMethod } from '@geekmidas/constructs/types';
