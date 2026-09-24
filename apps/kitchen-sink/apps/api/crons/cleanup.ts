@@ -1,13 +1,15 @@
-import { c } from '@geekmidas/constructs/crons';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { logger } from '@kitchen-sink/constructs/logger.js';
+import { worker } from '@kitchen-sink/constructs/worker.js';
 
 /**
- * A scheduled task (`c`). The `schedule` expression is deploy-time infra (an
- * EventBridge rule); the handler is the same function-style handler with services.
+ * A scheduled task, built from the worker that runs it.
+ *
+ * The schedule is infrastructure on AWS (an EventBridge rule) and a row in
+ * Postgres on a server, where the process schedules itself. Either way the
+ * handler is the same function-style handler with services — and the logger
+ * comes from the worker, so this file opens with the schedule.
  */
-export const cleanupStaleUsers = c
-	.logger(logger)
+export const cleanupStaleUsers = worker.crons
 	.dependsOn([database])
 	.schedule('rate(1 day)')
 	.handle(async ({ services, logger }) => {

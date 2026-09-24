@@ -143,15 +143,25 @@ export const healthEndpoint = api
 			// src/functions/hello.ts
 			{
 				path: 'src/functions/hello.ts',
-				content: `import { f } from '@geekmidas/constructs/functions';
-import { z } from 'zod';
+				content: `import { z } from 'zod';
+import { worker } from '~/constructs/worker.ts';
 
-export const helloFunction = f
+export const helloFunction = worker.functions
   .input(z.object({ name: z.string() }))
   .output(z.object({ message: z.string() }))
   .handle(async ({ input }) => ({
     message: \`Hello, \${input.name}!\`,
   }));
+`,
+			},
+			// The process the functions run in. A function says which one runs it
+			// the same way an endpoint says which surface serves it.
+			{
+				path: 'src/constructs/worker.ts',
+				content: `import { Worker } from '@geekmidas/constructs/worker';
+import { logger } from '../config/logger.ts';
+
+export const worker = new Worker('Jobs', { logger });
 `,
 			},
 		];

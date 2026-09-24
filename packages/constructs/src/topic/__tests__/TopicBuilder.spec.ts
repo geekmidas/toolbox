@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { s } from '../../subscribers';
+import { Worker } from '../../worker';
 import { Topic } from '../Topic';
 import { TopicBuilder } from '../TopicBuilder';
 
@@ -11,6 +11,9 @@ const events = {
 		changes: z.array(z.string()),
 	}),
 };
+
+/** Everything runnable is built from the process that runs it. */
+const testWorker = new Worker('Jobs');
 
 describe('TopicBuilder', () => {
 	it('builds a Topic from .topic().events()', () => {
@@ -79,7 +82,7 @@ describe('Topic.publisher', () => {
 		const topic = new TopicBuilder().topic('userEvents').events(events);
 
 		// A construct that injects the publisher (a producer) requires its env var.
-		const producer = s
+		const producer = testWorker.subscribers
 			.services([topic.publisher])
 			.subscribe('noop')
 			.handle(async () => {});
@@ -93,7 +96,7 @@ describe('subscriber .topic() binding', () => {
 	it('binds the topic name and does NOT require the publisher env (least privilege)', async () => {
 		const topic = new TopicBuilder().topic('users').events(events);
 
-		const subscriber = s
+		const subscriber = testWorker.subscribers
 			.topic(topic)
 			.subscribe(['user.created', 'user.updated'])
 			.handle(async ({ events }) => {

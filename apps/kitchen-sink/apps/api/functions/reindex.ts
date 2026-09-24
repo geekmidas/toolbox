@@ -1,15 +1,13 @@
-import { f } from '@geekmidas/constructs/functions';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { logger } from '@kitchen-sink/constructs/logger.js';
+import { worker } from '@kitchen-sink/constructs/worker.js';
 import { z } from 'zod';
 
 /**
- * A standalone function (`f`) — not an HTTP route and not schedule-driven.
- * Invoked directly (or as a Lambda). Demonstrates typed `input`, services, and
- * a typed `output`.
+ * A function — not an HTTP route and not schedule-driven. Invoked directly, or
+ * as a Lambda. Built from the worker so it says which process runs it and
+ * carries that worker's logger.
  */
-export const reindexUsers = f
-	.logger(logger)
+export const reindexUsers = worker.functions
 	.dependsOn([database])
 	.input(z.object({ since: z.iso.datetime().optional() }))
 	.output(z.object({ reindexed: z.number() }))
