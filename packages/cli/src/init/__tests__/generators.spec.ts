@@ -267,11 +267,11 @@ describe('generateDockerFiles', () => {
 		};
 		const files = generateDockerFiles(options, minimalTemplate);
 		expect(files[0].content).toContain('minio');
-		// Quay, and pinned: MinIO removed their Docker Hub images, so an
-		// unpinned `minio/minio:latest` scaffolded a project that could not
-		// start.
+		// pgsty's build, and pinned: MinIO's own images left Docker Hub and
+		// then Quay went behind a login, and each time a scaffolded project
+		// could not start.
 		expect(files[0].content).toContain(
-			'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
+			'pgsty/minio:RELEASE.2026-08-04T00-00-00Z',
 		);
 		expect(files[0].content).toContain("'${MINIO_API_HOST_PORT:-9000}:9000'");
 		expect(files[0].content).toContain(
