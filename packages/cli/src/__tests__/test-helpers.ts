@@ -45,32 +45,6 @@ export async function createTestFile(
 	return filePath;
 }
 
-/**
- * Creates a mock endpoint file with real endpoint construct
- */
-export async function createMockEndpointFile(
-	dir: string,
-	filename: string,
-	exportName: string,
-	path: string = '/test',
-	method: string = 'GET',
-): Promise<string> {
-	// A surface, because that is where endpoints come from — the fixture has to
-	// look like the code it stands in for.
-	const content = `
-import { RestApi } from '@geekmidas/constructs/rest-api';
-import { z } from 'zod';
-
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
-
-export const ${exportName} = api
-  .${method.toLowerCase()}('${path}')
-  .output(z.object({ message: z.string() }))
-  .handle(async () => ({ message: 'Hello from ${exportName}' }));
-`;
-	return createTestFile(dir, filename, content);
-}
-
 /** A relative specifier ESM accepts: always prefixed, never bare. */
 function relativeSpecifier(from: string, target: string): string {
 	const rel = relative(from, target).replace(/\.ts$/, '.js');
@@ -81,8 +55,9 @@ function relativeSpecifier(from: string, target: string): string {
 /**
  * The worker a fixture's crons and functions are built from.
  *
- * Everything runnable comes from the process that runs it. A fixture that built
- * one free-standing had no owner, and no owner is where the build stops.
+ * Everything runnable comes from the process that runs it, so a fixture that
+ * built one free-standing had no owner — and no owner is where the build stops,
+ * because there is nothing to take a logger and an environment parser from.
  */
 export async function createWorkerFile(dir: string): Promise<string> {
 	return createTestFile(
@@ -93,6 +68,57 @@ export async function createWorkerFile(dir: string): Promise<string> {
 export const worker = new Worker('Jobs');
 `,
 	);
+}
+
+/**
+ * The one surface a fixture's endpoints are built from.
+ *
+ * Shared rather than declared per file, and exported rather than local. Both
+ * matter: discovery needs to *find* a surface, so it has to be exported; and
+ * two files each declaring `RestApi('Test')` are two constructs with one id,
+ * which fails discovery for the whole fixture rather than for the second file.
+ *
+ * Idempotent — every endpoint helper call writes it, and writes the same thing.
+ */
+export async function createSurfaceFile(dir: string): Promise<string> {
+	return createTestFile(
+		dir,
+		'src/constructs/api.ts',
+		`import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+`,
+	);
+}
+
+/**
+ * Creates a mock endpoint file with real endpoint construct
+ */
+export async function createMockEndpointFile(
+	dir: string,
+	filename: string,
+	exportName: string,
+	path: string = '/test',
+	method: string = 'GET',
+): Promise<string> {
+	const surface = await createSurfaceFile(dir);
+
+	// Relative, because the fixture's files sit wherever the caller put them and
+	// the import has to resolve from there rather than from the temp root.
+	const from = dirname(join(dir, filename));
+	const importPath = relative(from, surface).replace(/\.ts$/, '.js');
+	const specifier = importPath.startsWith('.') ? importPath : `./${importPath}`;
+
+	const content = `
+import { z } from 'zod';
+import { api } from '${specifier}';
+
+export const ${exportName} = api
+  .${method.toLowerCase()}('${path}')
+  .output(z.object({ message: z.string() }))
+  .handle(async () => ({ message: 'Hello from ${exportName}' }));
+`;
+	return createTestFile(dir, filename, content);
 }
 
 /**
@@ -184,14 +210,29 @@ export function createTestCron(
 }
 
 /**
- * Creates a mock build context
+ * Creates a mock build context.
+ *
+ * It used to carry four module paths — an `envParserPath` and a `loggerPath`
+ * with their import patterns — because that is what the generators printed into
+ * every handler. They import the construct that owns the handler now, so what a
+ * context has to supply is where that construct is exported from.
  */
-export function createMockBuildContext() {
+export function createMockBuildContext(
+	options: { owner?: string; specifier?: string; exportName?: string } = {},
+) {
+	const owner = options.owner ?? 'Api';
+	const module = {
+		specifier: options.specifier ?? './constructs/api.ts',
+		exportName: options.exportName ?? 'api',
+	};
+
 	return {
-		envParserPath: './env',
-		envParserImportPattern: 'envParser',
-		loggerPath: './logger',
-		loggerImportPattern: 'logger',
+		surface: {
+			id: owner,
+			trustedOriginsKey: `${owner.toUpperCase()}_TRUSTED_ORIGINS`,
+			module,
+		},
+		owners: { [owner]: module },
 	};
 }
 
