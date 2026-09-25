@@ -71,13 +71,14 @@ describe('derivedApps', () => {
 	});
 
 	it('carries an app spec onto the app it describes', () => {
+		// What is left on an `AppSpec` after the globs went: overrides for a
+		// layout or a runtime that differs, and nothing describing what the app
+		// contains — that comes from the constructs.
 		const manifest = {
 			Api: surface('Api', {
 				app: {
 					path: 'apps/api',
-					routes: './endpoints/**/*.ts',
-					crons: './crons/**/*.ts',
-					envParser: './config/env#envParser',
+					port: 4000,
 					runtime: 'bun',
 					openapi: true,
 					env: ['.env'],
@@ -90,16 +91,34 @@ describe('derivedApps', () => {
 		expect(apps.api).toMatchObject({
 			type: 'backend',
 			path: 'apps/api',
-			routes: './endpoints/**/*.ts',
-			crons: './crons/**/*.ts',
-			envParser: './config/env#envParser',
+			port: 4000,
 			runtime: 'bun',
 			openapi: true,
 			env: ['.env'],
 		});
-		// Absent from the spec, so absent from the app — rather than present and
-		// undefined, which reads as "configured to nothing".
-		expect('functions' in apps.api!).toBe(false);
+	});
+
+	it('no longer fans a code glob into a field per kind', () => {
+		// Six globs was six things to keep in step. One glob loads everything and
+		// each generator picks out what it recognises, so an app carries none.
+		const manifest = {
+			Api: surface('Api', { app: { path: 'apps/api' } }),
+		} as unknown as ConstructManifest;
+
+		const app = derivedApps(manifest, workspace()).api!;
+
+		for (const kind of [
+			'routes',
+			'functions',
+			'crons',
+			'queues',
+			'topics',
+			'subscribers',
+			'envParser',
+			'logger',
+		]) {
+			expect(kind in app).toBe(false);
+		}
 	});
 
 	it('gives an authenticator its own app without being asked', () => {
@@ -353,30 +372,13 @@ describe('resolveAppSpec', () => {
 		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('apps/api');
 	});
 
-	it('falls back to the workspace root for a single-app project', () => {
-		// No `apps/` at all: one app, and it is the project.
+	it('falls back to the workspace root when there is no such directory', () => {
+		// One app, and it is the project. The hazard this used to refuse — the
+		// build filtering turbo onto the root package — is guarded in the build,
+		// where throwing does not take the whole manifest with it.
 		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
 
 		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('.');
-	});
-
-	it('refuses a directory the workspace does not have', () => {
-		// The one that would be silent: answering `.` here makes the app the
-		// whole repository, and the build then filters turbo on the root
-		// package.json and builds the wrong thing.
-		const root = rootWith('web');
-
-		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
-			/no directory at apps\/marketing/,
-		);
-	});
-
-	it('says how to point at an unconventional layout', () => {
-		const root = rootWith('web');
-
-		expect(() => resolveAppSpec('Marketing', {}, root, 'site')).toThrow(
-			/path: 'sites\/marketing'/,
-		);
 	});
 
 	it('kebab-cases a multi-word id the way every other physical name is', () => {

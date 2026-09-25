@@ -247,14 +247,6 @@ export function wrapSingleAppAsWorkspace(
 		dependencies: [],
 		resolvedDeployTarget: config.deploy?.default ?? 'dokploy',
 		constructs: config.constructs,
-		routes: config.routes,
-		functions: config.functions,
-		crons: config.crons,
-		queues: config.queues,
-		topics: config.topics,
-		subscribers: config.subscribers,
-		envParser: config.envParser,
-		logger: config.logger,
 		providers: config.providers,
 		hooks: config.hooks,
 		telescope: config.telescope,
@@ -414,15 +406,10 @@ export function getAppGkmConfig(
 		// registered only the Upstash driver, and every request failed with
 		// `UnregisteredCacheScheme`.
 		services: workspace.services,
+		// One glob. Which kind a module exports is decided by the value, not by
+		// which pattern matched it, so there is nothing else to say about where
+		// this app's code is.
 		constructs: appConstructGlobs(workspace, appName),
-		routes: app.routes ?? '',
-		functions: app.functions,
-		crons: app.crons,
-		queues: app.queues,
-		topics: app.topics,
-		subscribers: app.subscribers,
-		envParser: app.envParser ?? '',
-		logger: app.logger ?? '',
 		providers: app.providers,
 		hooks: app.hooks,
 		telescope: app.telescope,

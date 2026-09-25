@@ -48,11 +48,7 @@ describe('buildCommand', () => {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 			);
@@ -151,11 +147,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 			);
@@ -258,11 +250,7 @@ export default {
 			'gkm.config.ts',
 			`
 export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: './src/functions/**/*.ts',
-  crons: './src/crons/**/*.ts',
-  envParser: './config/env',
-  logger: './config/logger',
+  constructs: './src/**/*.ts',
 };
 `,
 		);
@@ -303,7 +291,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env',
@@ -359,7 +347,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env#customEnvParser',
@@ -421,7 +409,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   constructs: './constructs/**/*.ts',
   envParser: './config/env',
   logger: './config/logger',
@@ -485,7 +473,7 @@ export const auth = {
 				'gkm.config.ts',
 				`
 export default {
-  routes: './src/endpoints/**/*.ts',
+  constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
   envParser: './config/env',
@@ -526,99 +514,9 @@ export default {
 		},
 	);
 
-	itWithDir(
-		'imports a default-exported env parser into the server entry',
-		async ({ dir }) => {
-			// Create config with default import patterns
-			await createTestFile(
-				dir,
-				'gkm.config.ts',
-				`
-export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: undefined,
-  crons: undefined,
-  envParser: './config/env',
-  logger: './config/logger',
-};
-`,
-			);
-
-			await createMockEndpointFile(
-				dir,
-				'src/endpoints/test.ts',
-				'testEndpoint',
-				'/test',
-				'GET',
-			);
-
-			// Create env and logger files with default exports
-			await createTestFile(dir, 'config/env.ts', 'export default {}');
-			await createTestFile(dir, 'config/logger.ts', 'export default {}');
-
-			const originalCwd = process.cwd();
-			process.chdir(dir);
-
-			try {
-				await buildCommand({ provider: 'server' });
-
-				// The server entry, not a per-endpoint handler: an entry needs a
-				// parser for the things that are not endpoint-scoped — CORS,
-				// queues, subscribers — so a project that declares no surface
-				// still names one, and a default export still imports as one.
-				const entry = join(dir, '.gkm/server/app.ts');
-				const entryContent = await readFile(entry, 'utf-8');
-				expect(entryContent).toContain('import envParser');
-				expect(entryContent).not.toContain('{ envParser }');
-			} finally {
-				process.chdir(originalCwd);
-			}
-		},
-	);
-
-	itWithDir(
-		'imports a named env parser into the server entry under its own name',
-		async ({ dir }) => {
-			// Create config with named exports that match expected names
-			await createTestFile(
-				dir,
-				'gkm.config.ts',
-				`
-export default {
-  routes: './src/endpoints/**/*.ts',
-  functions: undefined,
-  crons: undefined,
-  envParser: './config/env#envParser',
-  logger: './config/logger#logger',
-};
-`,
-			);
-
-			await createMockEndpointFile(
-				dir,
-				'src/endpoints/test.ts',
-				'testEndpoint',
-				'/test',
-				'GET',
-			);
-
-			// Create env and logger files with named exports
-			await createTestFile(dir, 'config/env.ts', 'export const envParser = {}');
-			await createTestFile(dir, 'config/logger.ts', 'export const logger = {}');
-
-			const originalCwd = process.cwd();
-			process.chdir(dir);
-
-			try {
-				await buildCommand({ provider: 'server' });
-
-				const entry = join(dir, '.gkm/server/app.ts');
-				const entryContent = await readFile(entry, 'utf-8');
-
-				expect(entryContent).toContain('{ envParser }');
-			} finally {
-				process.chdir(originalCwd);
-			}
-		},
-	);
+	// The two tests that stood here asserted the env parser's *module path* being
+	// printed into the generated entry. That fallback is gone: every runnable
+	// comes from a surface or a worker, and the entry imports that construct and
+	// takes the parser off it. There is no path to print, and nothing left to
+	// assert about printing one.
 });

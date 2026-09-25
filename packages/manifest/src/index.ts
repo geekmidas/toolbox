@@ -62,7 +62,6 @@ export type {
 	WorkerDeclaration,
 } from './declaration';
 export {
-	DEFAULT_APP_CODE,
 	DEFAULT_POSTGRES_VERSION,
 	DERIVES_FROM,
 	PUBLIC,

@@ -160,8 +160,6 @@ describe('normalizeWorkspace', () => {
 
 		const result = normalizeWorkspace(config, '/project');
 
-		expect(result.apps.api.envParser).toBe('./src/env');
-		expect(result.apps.api.logger).toBe('./src/logger');
 		expect(result.apps.api.telescope).toEqual({ enabled: true });
 		expect(result.apps.api.openapi).toEqual({ enabled: true });
 	});
@@ -304,9 +302,6 @@ describe('wrapSingleAppAsWorkspace', () => {
 		expect(result.apps.api.type).toBe('backend');
 		expect(result.apps.api.path).toBe('.');
 		expect(result.apps.api.port).toBe(3000);
-		expect(result.apps.api.routes).toBe('./src/endpoints/**/*.ts');
-		expect(result.apps.api.envParser).toBe('./src/config/env');
-		expect(result.apps.api.logger).toBe('./src/logger');
 		expect(result.apps.api.telescope).toBe(true);
 	});
 
@@ -409,14 +404,12 @@ describe('processConfig', () => {
 describe('getAppGkmConfig', () => {
 	it('should return GkmConfig for backend app', () => {
 		const config: WorkspaceConfig = {
+			constructs: './constructs/**/*.ts',
 			apps: {
 				api: {
 					type: 'backend',
 					path: 'apps/api',
 					port: 3000,
-					routes: './src/**/*.ts',
-					envParser: './src/env',
-					logger: './src/logger',
 					telescope: true,
 				},
 			},
@@ -426,10 +419,14 @@ describe('getAppGkmConfig', () => {
 		const gkmConfig = getAppGkmConfig(workspace, 'api');
 
 		expect(gkmConfig).toBeDefined();
-		expect(gkmConfig?.routes).toBe('./src/**/*.ts');
-		expect(gkmConfig?.envParser).toBe('./src/env');
-		expect(gkmConfig?.logger).toBe('./src/logger');
+		// One glob, and what it finds is decided by the values it exports.
+		expect(gkmConfig?.constructs).toEqual(['/project/constructs/**/*.ts']);
 		expect(gkmConfig?.telescope).toBe(true);
+		// The surface holds these now; a projection has nothing to say about
+		// them.
+		expect('routes' in gkmConfig!).toBe(false);
+		expect('envParser' in gkmConfig!).toBe(false);
+		expect('logger' in gkmConfig!).toBe(false);
 	});
 
 	it('carries a single-app config’s deploy settings through the wrap', () => {

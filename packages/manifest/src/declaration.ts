@@ -452,25 +452,14 @@ export type Glob = string | readonly string[];
  * process means one of them has the spec and the other collapses onto it —
  * which is the same rule that decides deploy units, now stated once.
  */
-/**
- * Where an app's code lives when nobody says otherwise.
- *
- * One glob, every kind — the same rule the `constructs` glob follows. A handler
- * in one of these directories is found; anywhere else needs a `code` glob, and
- * saying so is the whole reason the field still exists.
- */
-export const DEFAULT_APP_CODE =
-	'./{endpoints,functions,crons,queues,topics,subscribers}/**/*.ts';
-
 export interface AppSpec {
 	/**
 	 * Where its source lives, relative to the workspace root.
 	 *
 	 * Optional, and normally omitted: `apps/<kebab-id>` when that directory
-	 * exists, and the workspace root otherwise. An `Api` construct in a
-	 * monorepo means `apps/api`, and in a single-app project it means `.` —
-	 * both of which are answerable by looking, which is why neither was worth
-	 * making someone write down.
+	 * exists, and the workspace root otherwise. An `Api` construct in a monorepo
+	 * means `apps/api`, and in a single-app project it means `.` — both of which
+	 * are answerable by looking.
 	 *
 	 * Set one only when the layout is genuinely different, e.g.
 	 * `path: 'services/api'`.
@@ -480,37 +469,9 @@ export interface AppSpec {
 	 * The port it answers on locally.
 	 *
 	 * Optional, and normally omitted: ports are assigned in a stable order so
-	 * that adding a site does not renumber the others. Set one only when
-	 * something outside the workspace has to know it in advance.
+	 * that adding a site does not renumber the others.
 	 */
 	port?: number;
-	/**
-	 * One glob that finds everything this app defines, relative to `path`.
-	 *
-	 * Every export of every matching module is inspected, and each kind is
-	 * picked out by whatever recognises it — the same rule the `constructs`
-	 * glob already follows. A glob per kind was the specialness this model
-	 * removes: five patterns that had to be kept in step, where a handler in the
-	 * wrong directory simply never loaded and nothing said so.
-	 *
-	 * The per-kind fields below still work, and still win where both are given,
-	 * because a single-app `defineConfig` has always been written that way.
-	 *
-	 * Optional, and normally omitted: the conventional directories under
-	 * `path`, which is `DEFAULT_APP_CODE`. A glob is worth writing only when
-	 * the code is somewhere else.
-	 */
-	code?: Glob;
-	/** Globs that find one kind of thing. Prefer `code`. */
-	routes?: Glob;
-	functions?: Glob;
-	crons?: Glob;
-	queues?: Glob;
-	topics?: Glob;
-	subscribers?: Glob;
-	/** `./config/env#envParser` — module, optionally with an export. */
-	envParser?: string;
-	logger?: string;
 	telescope?: string | boolean | Record<string, unknown>;
 	studio?: string | boolean | Record<string, unknown>;
 	openapi?: boolean | Record<string, unknown>;
@@ -879,6 +840,11 @@ export interface ProvidesByKind {
 	 * deployment.
 	 */
 	oidc: { issuer: string; audience: string };
+	/**
+	 * A worker is reached by nothing — it reaches out, to a queue, a schedule,
+	 * a topic. So it publishes no address, the way a cron does not.
+	 */
+	worker: Record<never, never>;
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
