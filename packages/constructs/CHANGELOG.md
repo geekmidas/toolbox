@@ -1,5 +1,102 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.6
+
+### Major Changes
+
+- [#37](https://github.com/geekmidas/toolbox/pull/37) [`0e99180`](https://github.com/geekmidas/toolbox/commit/0e991805d82c0affae5f12d6d7d31eddd82533fc) Thanks [@geekmidas](https://github.com/geekmidas)! - `c`, `s` and `f` are gone
+
+  The free-standing builders produced a construct with no owner, and an unowned
+  construct no longer builds: it has nothing to take a logger or an environment
+  parser from, and nothing says which process runs it. Keeping them exported
+  meant shipping an API whose only outcome was a build error.
+
+  Everything runnable now comes from the process that runs it, and comes from it
+  _directly_ — there is no `crons`, `subscribers` or `functions` namespace to
+  reach through:
+
+  ```ts
+  export const worker = new Worker('Jobs', { logger }).database(database);
+
+  export const cleanup = worker.cron('rate(1 day)').handle(…);
+  export const onUserCreated = worker.topic(users).subscribe(['user.created']).handle(…);
+  export const reindex = worker.input(schema).handle(…);
+  ```
+
+  The namespaces named a collection in order to reach one member of it, and only
+  crons had sugar past them — `worker.cron(schedule)` existed while
+  `worker.functions.input(…)` did not. Which kind is being built is decided by
+  what is called first: a schedule makes a cron, a topic makes a subscriber, and
+  anything else makes a function.
+
+  A worker is not a container — it names which process runs a runnable and what
+  logger it runs with — so declaring one costs nothing, and declaring several is
+  several groupings rather than several deployments.
+
+  Migration is mechanical: declare a `Worker`, then replace `c` with
+  `worker.crons`, `s` with `worker.subscribers` and `f` with `worker.functions`.
+  The `.logger(…)` call each of them used to need goes away, because the worker
+  carries it.
+
+### Minor Changes
+
+- [#35](https://github.com/geekmidas/toolbox/pull/35) [`26fc832`](https://github.com/geekmidas/toolbox/commit/26fc832910fef9ed6adabfeb76cfb3712219f6e2) Thanks [@geekmidas](https://github.com/geekmidas)! - Crons run on a server target
+
+  A cron used to run on AWS Lambda and nowhere else. `CronGenerator` returned an
+  empty array for every other provider, and `.gkm/server/` held `endpoints.ts`,
+  `queues.ts` and `subscribers.ts` but no crons — so a scheduled job on a server
+  deploy built, deployed, and never fired.
+
+  It now generates `crons.ts` exporting `setupCrons`, which the generated entry
+  calls beside `setupSubscribers` and `setupQueues`. Same shape, same place: the
+  process that serves the endpoints schedules the crons.
+
+  **The schedule lives in Postgres**, in the database the worker names:
+
+  ```ts
+  export const jobs = new Worker("Jobs", { logger }).database(database);
+  ```
+
+  pg-boss holds it there, so a deployment running four replicas fires each job
+  once — which is what a timer in every process gets wrong and never reports.
+
+  Declared rather than discovered, and no connection string appears anywhere. The
+  construct that owns the database is the only thing that knows its key; it is
+  resolved through service discovery like any other dependency. Inferring the
+  store from whatever database an app happened to declare would work until it
+  declared a second, and then move the schedules without saying so.
+
+  **A known limitation of workers.** A worker with crons and no `.database(…)`
+  schedules nothing on a server target and reports why at startup. On AWS the
+  question does not arise — a cron is an EventBridge rule. The store could as
+  well be a cache or something the deploy target provisions; Postgres is what
+  exists today.
+
+  `toCronExpression` converts a `ScheduleExpression` to standard cron.
+  `cron(…)` unwraps; `rate(n unit)` converts when it divides its unit evenly.
+  When it does not — `rate(7 hours)`, whose `*/7` fires at 0, 7, 14, 21 and then
+  restarts three hours later — it throws rather than rounding. A job at the wrong
+  hour is harder to notice than one that refused to build.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.6
+  - @geekmidas/auth@10.0.0-alpha.6
+  - @geekmidas/cache@10.0.0-alpha.6
+  - @geekmidas/db@10.0.0-alpha.6
+  - @geekmidas/emailkit@10.0.0-alpha.6
+  - @geekmidas/envkit@10.0.0-alpha.6
+  - @geekmidas/errors@10.0.0-alpha.6
+  - @geekmidas/events@10.0.0-alpha.6
+  - @geekmidas/logger@10.0.0-alpha.6
+  - @geekmidas/manifest@10.0.0-alpha.6
+  - @geekmidas/rate-limit@10.0.0-alpha.6
+  - @geekmidas/schema@10.0.0-alpha.6
+  - @geekmidas/services@10.0.0-alpha.6
+  - @geekmidas/storage@10.0.0-alpha.6
+  - @geekmidas/telescope@10.0.0-alpha.6
+
 ## 10.0.0-alpha.5
 
 ### Patch Changes

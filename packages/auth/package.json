@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/auth",
-	"version": "10.0.0-alpha.5",
+	"version": "10.0.0-alpha.6",
 	"description": "JWT and OIDC authentication with token verification, Hono middleware, and Lambda authorizers",
 	"type": "module",
 	"exports": {

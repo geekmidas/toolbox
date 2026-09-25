@@ -37,9 +37,13 @@
     "align-deps-tranche-1",
     "alpha-packaging",
     "client-coercion-types",
+    "drop-free-standing-builders",
     "init-scaffolds-constructs",
     "install-check",
     "logger-is-an-interface",
+    "minio-image",
+    "server-crons",
+    "single-app-paths",
     "test-ports",
     "v10-the-manifest-is-the-source",
     "worker-template"
