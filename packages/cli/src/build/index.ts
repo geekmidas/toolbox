@@ -77,6 +77,7 @@ import {
 } from '../generators';
 import { generateOpenApi, openapiCommand } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
+import type { GkmConfig } from '../types';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -90,6 +91,7 @@ import { resolveAppSpec } from '../workspace/derive.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
+	getAppGkmConfig,
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
@@ -105,6 +107,28 @@ import type { BuildContext } from './types';
 
 const logger = console;
 
+/**
+ * What a build run at the workspace root reads.
+ *
+ * One backend app there, and it is that app's config, so its own `openapi`
+ * and `telescope` settings still apply. Otherwise it is the workspace's: every
+ * construct glob, and the backends they resolve to.
+ */
+function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
+	const backends = Object.entries(workspace.apps).filter(
+		([, app]) => app.type === 'backend',
+	);
+	const only = backends.length === 1 ? backends[0] : undefined;
+	const own = only ? getAppGkmConfig(workspace, only[0]) : undefined;
+
+	return (
+		own ?? {
+			services: workspace.services,
+			constructs: allConstructGlobs(workspace),
+		}
+	);
+}
+
 export async function buildCommand(
 	options: BuildOptions,
 ): Promise<BuildResult> {
@@ -119,29 +143,29 @@ export async function buildCommand(
 		const workspaceRoot = resolve(loadedConfig.workspace.root);
 		const isAtWorkspaceRoot = cwd === workspaceRoot;
 
-		// A workspace whose apps all live at its root has nothing for turbo to
-		// order or parallelise, and routing through it re-enters this same
-		// directory: turbo runs the root package's `build`, which is `gkm build`,
-		// which arrives here again. The existing guard catches turbo descending
-		// into a *subdirectory* and has no answer when there is no subdirectory.
-		const appPaths = Object.values(loadedConfig.workspace.apps).map((app) =>
-			resolve(workspaceRoot, app.path),
+		// Turbo only when there is a subdirectory for it to descend into. With
+		// every app at the root — or no apps at all — routing through it
+		// re-enters this same directory: turbo runs the root package's `build`,
+		// which is `gkm build`, which arrives here again.
+		const someAppIsElsewhere = Object.values(loadedConfig.workspace.apps).some(
+			(app) => resolve(workspaceRoot, app.path) !== workspaceRoot,
 		);
-		const everyAppIsTheRoot =
-			appPaths.length > 0 && appPaths.every((path) => path === workspaceRoot);
 
-		if (isAtWorkspaceRoot && !everyAppIsTheRoot) {
+		if (isAtWorkspaceRoot && someAppIsElsewhere) {
 			logger.log('📦 Detected workspace configuration');
 			return workspaceBuildCommand(loadedConfig.workspace, options);
 		}
-		// When running from inside an app directory, use app-specific config
 	}
 
-	// Single-app build - use app config if in workspace, otherwise legacy config
+	// At the root there is no app to pick: the build reads every construct the
+	// globs find and writes one manifest and a spec per surface. Asking
+	// package.json which app this is was a question only a subdirectory has.
 	const config =
-		loadedConfig.type === 'workspace'
-			? (await loadAppConfig()).gkmConfig
-			: await loadConfig();
+		loadedConfig.type !== 'workspace'
+			? await loadConfig()
+			: resolve(process.cwd()) === resolve(loadedConfig.workspace.root)
+				? rootGkmConfig(loadedConfig.workspace)
+				: (await loadAppConfig()).gkmConfig;
 
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
