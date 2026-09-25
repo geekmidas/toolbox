@@ -36,8 +36,17 @@ import {
 export function runtimeFor(
 	context: BuildContext,
 	fromDir: string,
+	/**
+	 * The construct that owns the thing being generated.
+	 *
+	 * An endpoint's surface, or the worker that handed out the cron factory.
+	 * Omitted for the app entry itself, which belongs to the primary surface.
+	 */
+	owner?: string,
 ): { imports: string; bindings: string } {
-	const module = context.surface?.module;
+	const module = owner
+		? (context.owners?.[owner] ?? context.surface?.module)
+		: context.surface?.module;
 
 	if (module) {
 		const specifier = importSpecifier(fromDir, module.specifier);
@@ -47,21 +56,23 @@ export function runtimeFor(
 		return {
 			imports: `import { ${module.exportName} as __surface } from '${specifier}';`,
 			bindings: [
-				'// What this surface was declared with. Objects, not module paths:',
-				'// the entry imports the surface, so there is nothing to print.',
+				'// What this construct was declared with. Objects, not module paths:',
+				'// the entry imports the owner, so there is nothing to print.',
 				'const envParser = __surface.envParser;',
 				'const logger = __surface.logger;',
 			].join('\n'),
 		};
 	}
 
-	return {
-		imports: [
-			`import ${context.envParserImportPattern} from '${importSpecifier(fromDir, context.envParserPath)}';`,
-			`import ${context.loggerImportPattern} from '${importSpecifier(fromDir, context.loggerPath)}';`,
-		].join('\n'),
-		bindings: '',
-	};
+	// No fallback. Every runnable comes from a factory a `RestApi` or a `Worker`
+	// handed out, and that construct holds the objects — so there is no longer a
+	// case where the only thing we know about a logger is a module path somebody
+	// typed into config.
+	throw new Error(
+		`No owner to take a logger and an environment parser from${
+			owner ? ` for "${owner}"` : ''
+		}. Build it from a \`RestApi\` or a \`Worker\`.`,
+	);
 }
 
 /** A relative specifier ESM will accept: always prefixed, never bare. */
@@ -947,11 +958,8 @@ export const handler = ${exportName};
 		const appFileName = 'app.ts';
 		const appPath = join(outputDir, appFileName);
 
-		const relativeLoggerPath = relative(dirname(appPath), context.loggerPath);
-		const relativeEnvParserPath = relative(
-			dirname(appPath),
-			context.envParserPath,
-		);
+		// The app entry belongs to the primary surface, so no owner is named.
+		const runtime = runtimeFor(context, dirname(appPath));
 
 		const production = context.production!;
 		const healthCheckPath = production.healthCheck;
@@ -1048,8 +1056,8 @@ import { Hono } from 'hono';
 import type { Hono as HonoType } from 'hono';
 import { setupEndpoints } from '${endpointsImportPath}';
 ${subscriberImport}
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
-import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+${runtime.imports}
+${runtime.bindings}
 ${hooksImports}
 ${cors.imports}
 ${context.storageDrivers?.imports ?? ''}

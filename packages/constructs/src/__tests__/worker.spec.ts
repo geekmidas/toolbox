@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CronBuilder } from '../crons/CronBuilder';
 import { KyselyDatabase } from '../database/kysely';
+import { TopicBuilder } from '../topic/TopicBuilder';
 import { Worker } from '../worker';
 
 /** A logger distinguishable from the console default. */
@@ -86,9 +87,13 @@ describe('Worker', () => {
 		it('gives a subscriber its logger', () => {
 			const logger = testLogger();
 			const worker = new Worker('Worker', { logger });
+			const topic = new TopicBuilder().topic('users').events({});
 
+			// Built from the worker directly — there is no `subscribers` namespace
+			// to reach through, which was a hop that named a collection to get at
+			// one member of it.
 			expect(
-				(worker.subscribers as unknown as { _logger: unknown })._logger,
+				(worker.topic(topic) as unknown as { _logger: unknown })._logger,
 			).toBe(logger);
 		});
 

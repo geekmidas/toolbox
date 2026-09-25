@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Cron } from '@geekmidas/constructs/crons';
 import type { BuildContext } from '../build/types';
 import type { CronInfo } from '../types';
+import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -53,6 +54,7 @@ export class CronGenerator extends ConstructGenerator<
 				path.relative,
 				key,
 				context,
+				construct.owner,
 			);
 
 			cronInfos.push({
@@ -263,6 +265,8 @@ export async function stopCrons(): Promise<void> {
 		sourceFile: string,
 		exportName: string,
 		context: BuildContext,
+		/** The construct that owns this — its worker, or its surface. */
+		owner: string | undefined,
 	): Promise<string> {
 		const handlerFileName = `${exportName}.ts`;
 		const handlerPath = join(outputDir, handlerFileName);
@@ -270,19 +274,15 @@ export async function stopCrons(): Promise<void> {
 		const relativePath = relative(dirname(handlerPath), sourceFile);
 		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-		const relativeEnvParserPath = relative(
-			dirname(handlerPath),
-			context.envParserPath,
-		);
-		const relativeLoggerPath = relative(
-			dirname(handlerPath),
-			context.loggerPath,
-		);
+		// Imports the construct that owns this, and binds `envParser` and
+		// `logger` off it — the objects it was declared with, rather than a
+		// module path printed in from config.
+		const runtime = runtimeFor(context, dirname(handlerPath), owner);
 
 		const content = `import { AWSScheduledFunction } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
-import ${context.loggerImportPattern} from '${relativeLoggerPath}';
+${runtime.imports}
+${runtime.bindings}
 
 const adapter = new AWSScheduledFunction(envParser, ${exportName});
 

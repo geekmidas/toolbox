@@ -1,10 +1,10 @@
-import { c } from '@geekmidas/constructs/crons';
+import { worker } from './constructs/worker.ts';
 
 /**
  * Example cron that generates a daily report at 9 AM UTC
  */
-export const dailyReport = c
-	.schedule('cron(0 9 * * ? *)')
+export const dailyReport = worker
+	.cron('cron(0 9 * * ? *)')
 	.timeout(600000) // 10 minutes
 	.handle(async ({ logger }) => {
 		logger.info('Generating daily report');
@@ -30,8 +30,8 @@ export const dailyReport = c
 /**
  * Example cron that runs every hour
  */
-export const hourlyCleanup = c
-	.schedule('rate(1 hour)')
+export const hourlyCleanup = worker
+	.cron('rate(1 hour)')
 	.timeout(300000) // 5 minutes
 	.handle(async ({ logger }) => {
 		logger.info('Running hourly cleanup');

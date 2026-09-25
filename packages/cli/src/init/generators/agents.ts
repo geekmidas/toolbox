@@ -291,11 +291,11 @@ Crons, subscribers and functions are declared the same way endpoints are: as
 exported values the build discovers.
 
 \`\`\`typescript
-// a scheduled job
-import { c } from '@geekmidas/constructs/crons';
+// a scheduled job, built from the worker that runs it
+import { worker } from '../constructs/worker.ts';
 
-export const cleanup = c
-  .schedule('rate(1 day)')
+export const cleanup = worker
+  .cron('rate(1 day)')
   .handle(async ({ logger }) => {
     logger.info('cleaning up');
   });
@@ -303,10 +303,10 @@ export const cleanup = c
 
 \`\`\`typescript
 // a topic subscriber
-import { s } from '@geekmidas/constructs/subscribers';
 import { userEvents } from '../constructs/topics.ts';
+import { worker } from '../constructs/worker.ts';
 
-export const onUserCreated = s
+export const onUserCreated = worker
   .topic(userEvents)
   .subscribe(['user.created'])
   .handle(async ({ events, logger }) => {

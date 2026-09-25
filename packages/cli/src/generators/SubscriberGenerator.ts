@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { BuildContext } from '../build/types';
 import type { SubscriberInfo } from '../types';
+import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -59,6 +60,7 @@ export class SubscriberGenerator extends ConstructGenerator<
 				key,
 				construct,
 				context,
+				construct.owner,
 			);
 
 			subscriberInfos.push({
@@ -93,6 +95,8 @@ export class SubscriberGenerator extends ConstructGenerator<
 		exportName: string,
 		_subscriber: Subscriber<any, any, any, any, any, any>,
 		context: BuildContext,
+		/** The construct that owns this — its worker, or its surface. */
+		owner: string | undefined,
 	): Promise<string> {
 		const handlerFileName = `${exportName}.ts`;
 		const handlerPath = join(outputDir, handlerFileName);
@@ -100,14 +104,15 @@ export class SubscriberGenerator extends ConstructGenerator<
 		const relativePath = relative(dirname(handlerPath), sourceFile);
 		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-		const relativeEnvParserPath = relative(
-			dirname(handlerPath),
-			context.envParserPath,
-		);
+		// Imports the construct that owns this, and binds `envParser` and
+		// `logger` off it — the objects it was declared with, rather than a
+		// module path printed in from config.
+		const runtime = runtimeFor(context, dirname(handlerPath), owner);
 
 		const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
-import ${context.envParserImportPattern} from '${relativeEnvParserPath}';
+${runtime.imports}
+${runtime.bindings}
 
 const adapter = new AWSLambdaSubscriber(envParser, ${exportName});
 

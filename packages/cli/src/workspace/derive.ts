@@ -23,7 +23,6 @@ import { join } from 'node:path';
 import {
 	type AppSpec,
 	type ConstructManifest,
-	DEFAULT_APP_CODE,
 	kebabCase,
 } from '@geekmidas/manifest';
 import type {
@@ -145,66 +144,29 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
  * Where an app lives when it did not say.
  *
  * `apps/<kebab-id>`, which is what the id already said — or the project root
- * when there is no `apps/` at all, because then there is one app and it is the
+ * when there is no such directory, because then there is one app and it is the
  * project.
  *
- * In between, it refuses. A workspace *with* an `apps/` directory and no
- * `apps/<key>` in it is a construct naming a directory nobody wrote, and
- * quietly answering `.` there makes the app the whole repository: the build
- * filters turbo on the root `package.json` and builds the wrong thing, or
- * itself. A missing directory is a typo or an unconventional layout, and both
- * want saying out loud.
+ * This refused, briefly, when a workspace had an `apps/` directory with nothing
+ * under this name — on the grounds that answering `.` makes the app the whole
+ * repository. That was the wrong place for the guard twice over. It throws
+ * inside discovery, which is caught, so one misplaced app lost the whole
+ * manifest and every other app with it. And the hazard it guards — the build
+ * filtering turbo onto the root package, whose `build` is `gkm build` — is the
+ * build's question, asked where the answer is actionable.
  */
 function conventionalPath(id: string, workspaceRoot: string): string {
 	const conventional = join('apps', appKey(id));
-	if (existsSync(join(workspaceRoot, conventional))) return conventional;
 
-	// No `apps/` at all: one app, and it is the project.
-	if (!existsSync(join(workspaceRoot, 'apps'))) return '.';
-
-	throw new MisplacedApp(id, conventional);
-}
-
-/** A construct whose directory is not where its id says it is. */
-export class MisplacedApp extends Error {
-	constructor(
-		readonly construct: string,
-		readonly expected: string,
-	) {
-		super(
-			`"${construct}" has no directory at ${expected}.\n` +
-				`Create it, or say where it lives:\n` +
-				`  new StaticSite('${construct}', { path: 'sites/${appKey(construct)}' })\n` +
-				`  new RestApi('${construct}', { …, app: { path: 'services/${appKey(construct)}' } })`,
-		);
-		this.name = 'MisplacedApp';
-	}
+	return existsSync(join(workspaceRoot, conventional)) ? conventional : '.';
 }
 
 export function resolveAppSpec(
 	id: string,
 	spec: AppSpec,
 	workspaceRoot: string,
-	kind: 'site' | 'rest-api',
 ): AppSpec {
-	const path = spec.path ?? conventionalPath(id, workspaceRoot);
-
-	const givenAGlob =
-		spec.code !== undefined ||
-		spec.routes !== undefined ||
-		spec.functions !== undefined ||
-		spec.crons !== undefined ||
-		spec.queues !== undefined ||
-		spec.topics !== undefined ||
-		spec.subscribers !== undefined;
-
-	return {
-		...spec,
-		path,
-		// A site takes none — its build is its framework's. The two that run our
-		// code take the conventional directories.
-		...(kind !== 'site' && !givenAGlob ? { code: DEFAULT_APP_CODE } : {}),
-	};
+	return { ...spec, path: spec.path ?? conventionalPath(id, workspaceRoot) };
 }
 
 export function derivedApps(
@@ -225,12 +187,7 @@ export function derivedApps(
 		// No opt-in to be had. A site is an app and so is a surface; `app` is an
 		// override for a layout that differs, and having none is the ordinary
 		// case rather than a surface with nowhere to run.
-		const spec = resolveAppSpec(
-			id,
-			declaration.app ?? {},
-			workspace.root,
-			declaration.kind,
-		);
+		const spec = resolveAppSpec(id, declaration.app ?? {}, workspace.root);
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override
@@ -254,26 +211,6 @@ export function derivedApps(
 			// One glob fans out to the six the build reads, because each generator
 			// already inspects every export and keeps what it recognises. A
 			// per-kind field still wins where one was given.
-			...(spec.code !== undefined
-				? {
-						routes: spec.code,
-						functions: spec.code,
-						crons: spec.code,
-						queues: spec.code,
-						topics: spec.code,
-						subscribers: spec.code,
-					}
-				: {}),
-			...(spec.routes !== undefined ? { routes: spec.routes } : {}),
-			...(spec.functions !== undefined ? { functions: spec.functions } : {}),
-			...(spec.crons !== undefined ? { crons: spec.crons } : {}),
-			...(spec.queues !== undefined ? { queues: spec.queues } : {}),
-			...(spec.topics !== undefined ? { topics: spec.topics } : {}),
-			...(spec.subscribers !== undefined
-				? { subscribers: spec.subscribers }
-				: {}),
-			...(spec.envParser !== undefined ? { envParser: spec.envParser } : {}),
-			...(spec.logger !== undefined ? { logger: spec.logger } : {}),
 			...(spec.telescope !== undefined ? { telescope: spec.telescope } : {}),
 			...(spec.studio !== undefined ? { studio: spec.studio } : {}),
 			...(spec.openapi !== undefined ? { openapi: spec.openapi } : {}),

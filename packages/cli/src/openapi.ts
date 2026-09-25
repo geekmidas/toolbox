@@ -2,12 +2,14 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import { kebabCase } from '@geekmidas/manifest';
 import { loadWorkspaceConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
-import type { GkmConfig, OpenApiConfig } from './types.js';
+import type { GkmConfig, OpenApiConfig, Routes } from './types.js';
 import { normalizeRoutes } from './workspace/client-generator.js';
 import type { NormalizedAppConfig } from './workspace/types.js';
 
@@ -28,11 +30,22 @@ interface OpenAPIOptions {
 export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
 
 /**
+ * Where a surface's generated client lands.
+ *
+ * Named from the surface, so `new RestApi('Webhooks')` writes
+ * `.gkm/openapi/webhooks.ts` — the same kebab form that gives it its container
+ * name and its `WEBHOOKS_URL`.
+ */
+export function openApiPathFor(surfaceId: string): string {
+	return `./.gkm/openapi/${kebabCase(surfaceId)}.ts`;
+}
+
+/**
  * Resolve OpenAPI config from GkmConfig
  */
-export function resolveOpenApiConfig(
-	config: GkmConfig,
-): OpenApiConfig & { enabled: boolean } {
+export function resolveOpenApiConfig(config: {
+	openapi?: boolean | OpenApiConfig;
+}): OpenApiConfig & { enabled: boolean } {
 	if (config.openapi === false) {
 		return { enabled: false };
 	}
@@ -57,49 +70,125 @@ export function resolveOpenApiConfig(
 	};
 }
 
+/** What a generation run wrote. */
+export interface OpenApiResult {
+	/** The first spec written — kept so existing callers still compile. */
+	outputPath: string;
+	/** Every spec written, one per surface. */
+	outputPaths: string[];
+	/** Endpoints across all of them. */
+	endpointCount: number;
+}
+
 /**
- * Generate OpenAPI spec from endpoints
- * @returns Object with output path and endpoint count, or null if disabled
+ * Load endpoints from a glob, then generate.
+ *
+ * For the callers that have no endpoints in hand — `gkm openapi`, and `gkm dev`
+ * regenerating on reload. The glob is the app's derived one, off `AppSpec.code`,
+ * not a `routes` field anybody wrote.
+ */
+export async function generateOpenApiFrom(
+	routes: Routes,
+	options: {
+		openapi?: boolean | OpenApiConfig;
+		silent?: boolean;
+		bustCache?: boolean;
+	} = {},
+): Promise<OpenApiResult | null> {
+	const loaded = await new EndpointGenerator().load(
+		routes,
+		undefined,
+		options.bustCache,
+	);
+
+	return generateOpenApi(
+		loaded.map(({ construct }) => construct),
+		options,
+	);
+}
+
+/**
+ * Generate an OpenAPI spec for each surface these endpoints name.
+ *
+ * Takes the endpoints, not a glob to find them with. The build has already
+ * loaded every one of them to generate handlers, so globbing again was a second
+ * discovery pass over the same files — and the reason this function needed a
+ * `routes` to be told where to look, which is how a retired config field stayed
+ * load-bearing.
+ *
+ * @returns What was written, or null if disabled or there were none
  */
 export async function generateOpenApi(
-	config: GkmConfig,
-	options: { silent?: boolean; bustCache?: boolean } = {},
-): Promise<{ outputPath: string; endpointCount: number } | null> {
+	endpoints: readonly Endpoint<any, any, any, any, any>[],
+	options: {
+		openapi?: boolean | OpenApiConfig;
+		silent?: boolean;
+	} = {},
+): Promise<OpenApiResult | null> {
 	const logger = options.silent ? { log: () => {} } : console;
-	const openApiConfig = resolveOpenApiConfig(config);
+	const openApiConfig = resolveOpenApiConfig({ openapi: options.openapi });
 
 	if (!openApiConfig.enabled) {
 		return null;
 	}
 
-	const endpointGenerator = new EndpointGenerator();
-	const loadedEndpoints = await endpointGenerator.load(
-		config.routes,
-		undefined,
-		options.bustCache,
-	);
-
-	if (loadedEndpoints.length === 0) {
+	if (endpoints.length === 0) {
 		logger.log('No valid endpoints found for OpenAPI generation');
 		return null;
 	}
 
-	const endpoints = loadedEndpoints.map(({ construct }) => construct);
-	const outputPath = join(process.cwd(), OPENAPI_OUTPUT_PATH);
+	// One spec per surface, not one per glob.
+	//
+	// The glob is a directory, and a directory is not a surface: two `RestApi`s
+	// whose endpoints live side by side produced a single spec describing both,
+	// under a filename that named neither. Every endpoint carries the surface
+	// that serves it, so that is what the spec is cut along — `Api` becomes
+	// `api.ts`, `Webhooks` becomes `webhooks.ts`, by the same kebab rule that
+	// gives the surface its container name and its environment keys.
+	const bySurface = new Map<string, Endpoint<any, any, any, any, any>[]>();
+	for (const endpoint of endpoints) {
+		const owner = endpoint.owner ?? endpoint.surface?.id;
+		if (!owner) continue;
+		const existing = bySurface.get(owner);
+		if (existing) existing.push(endpoint);
+		else bySurface.set(owner, [endpoint]);
+	}
 
-	await mkdir(dirname(outputPath), { recursive: true });
+	if (bySurface.size === 0) {
+		logger.log('No endpoints named a surface, so no OpenAPI was generated');
+		return null;
+	}
 
 	const tsGenerator = new OpenApiTsGenerator();
-	const tsContent = await tsGenerator.generate(endpoints, {
-		title: openApiConfig.title!,
-		version: openApiConfig.version!,
-		description: openApiConfig.description!,
-	});
+	const written: string[] = [];
 
-	await writeFile(outputPath, tsContent);
-	logger.log(`📄 OpenAPI client generated: ${OPENAPI_OUTPUT_PATH}`);
+	for (const [surfaceId, surfaceEndpoints] of bySurface) {
+		const relative = openApiPathFor(surfaceId);
+		const outputPath = join(process.cwd(), relative);
 
-	return { outputPath, endpointCount: loadedEndpoints.length };
+		await mkdir(dirname(outputPath), { recursive: true });
+
+		const tsContent = await tsGenerator.generate(surfaceEndpoints, {
+			// The surface's own name, so a spec says which API it describes
+			// rather than repeating one title across all of them.
+			title: openApiConfig.title ?? surfaceId,
+			version: openApiConfig.version!,
+			description: openApiConfig.description!,
+		});
+
+		await writeFile(outputPath, tsContent);
+		written.push(relative);
+		logger.log(
+			`📄 OpenAPI client generated: ${relative} (${surfaceEndpoints.length} endpoints)`,
+		);
+	}
+
+	return {
+		// The first, for a caller that wants one path. `outputPaths` has them all.
+		outputPath: join(process.cwd(), written[0]!),
+		outputPaths: written.map((r) => join(process.cwd(), r)),
+		endpointCount: endpoints.length,
+	};
 }
 
 export async function openapiCommand(
@@ -119,7 +208,9 @@ export async function openapiCommand(
 				config.openapi = { enabled: true };
 			}
 
-			const result = await generateOpenApi(config);
+			const result = await generateOpenApiFrom(config.constructs, {
+				openapi: config.openapi,
+			});
 
 			if (result) {
 				logger.log(`Found ${result.endpointCount} endpoints`);
@@ -145,7 +236,6 @@ export async function openapiCommand(
 			const backendApps = Object.entries(workspace.apps).filter(
 				([_, app]) =>
 					app.type === 'backend' &&
-					app.routes !== undefined &&
 					app.openapi !== false &&
 					(typeof app.openapi !== 'object' || app.openapi.enabled !== false),
 			);
@@ -180,8 +270,35 @@ export async function openapiCommand(
 			// tsx's tsconfig discovery picks up the app's `paths` aliases
 			// (e.g., `~/*`) instead of the workspace root's tsconfig.
 			for (const [appName, app] of backendApps) {
-				if (app.type !== 'backend' || !app.routes) continue;
+				// No `app.routes` check any more: the per-kind globs are gone, and
+				// an app's code is found by one glob rather than by a field naming
+				// endpoints. Guarding on `routes` here meant every app was skipped
+				// the moment that field stopped existing — silently, because a loop
+				// that runs zero times looks exactly like one with nothing to do.
 				const appPath = join(workspaceRoot, app.path);
+
+				// A subprocess exists to put CWD inside the app, so tsx picks up
+				// that app's tsconfig aliases instead of the workspace root's. When
+				// the app *is* the root there is nothing to change: spawning would
+				// re-enter the same directory, having paid for a process and a
+				// module graph, and needing `tsx` resolvable from it.
+				if (resolve(appPath) === resolve(workspaceRoot)) {
+					// Not silent: silence is for a subprocess whose output the
+					// parent relays, and there is no parent here to relay it. The
+					// per-surface lines come from the generator; the count is this
+					// command's own summary, as in the single-app path.
+					const result = await generateOpenApiForApp(
+						workspaceRoot,
+						appName,
+						app,
+						false,
+					);
+					if (result) {
+						logger.log(`Found ${result.endpointCount} endpoints`);
+					}
+					continue;
+				}
+
 				await runOpenApiInSubprocess(appPath, appName);
 			}
 		}
@@ -199,23 +316,36 @@ async function generateOpenApiForApp(
 	workspaceRoot: string,
 	_appName: string,
 	app: NormalizedAppConfig,
+	/**
+	 * Quiet by default, because the usual caller is a subprocess whose output
+	 * the parent relays. Generating in-process there is no parent to relay to,
+	 * and silence would swallow the only report of what happened.
+	 */
+	silent = true,
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
-	if (app.type !== 'backend' || !app.routes) {
+	// A backend app, and everything under it.
+	//
+	// It used to gate on `app.routes` and glob that; derive no longer sets it,
+	// because an app has one glob and which kind a module exports is decided by
+	// the value. A surface is an app, so an app's own directory contains exactly
+	// its own surface's endpoints — and the split inside is by surface anyway.
+	if (app.type !== 'backend') {
 		return null;
 	}
 
 	const appPath = join(workspaceRoot, app.path);
-	const routes = normalizeRoutes(app.routes);
-	const routesGlob = routes.map((r) => join(appPath, r));
+	const globs = [join(appPath, '**/*.ts')];
 
-	const gkmConfig: GkmConfig = {
-		routes: routesGlob,
-		envParser: app.envParser || '',
-		logger: app.logger || '',
-		openapi: app.openapi,
-	};
-
-	return generateOpenApi(gkmConfig, { silent: true });
+	return generateOpenApiFrom(globs, {
+		// Absent means enabled, which is what the caller's filter already decided
+		// when it kept this app: it skips one that says `openapi: false` and keeps
+		// every other. Passing `undefined` through let `resolveOpenApiConfig`
+		// default it to *disabled*, so an app selected for generation generated
+		// nothing and said nothing — two places disagreeing about one flag, which
+		// is the failure the filter above was written to describe.
+		openapi: app.openapi ?? { enabled: true },
+		silent,
+	});
 }
 
 /**
