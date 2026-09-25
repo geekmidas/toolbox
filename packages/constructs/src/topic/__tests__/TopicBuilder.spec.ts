@@ -82,7 +82,8 @@ describe('Topic.publisher', () => {
 		const topic = new TopicBuilder().topic('userEvents').events(events);
 
 		// A construct that injects the publisher (a producer) requires its env var.
-		const producer = testWorker.subscribers
+		const producer = testWorker
+			.topic(topic)
 			.services([topic.publisher])
 			.subscribe('noop')
 			.handle(async () => {});
@@ -96,7 +97,7 @@ describe('subscriber .topic() binding', () => {
 	it('binds the topic name and does NOT require the publisher env (least privilege)', async () => {
 		const topic = new TopicBuilder().topic('users').events(events);
 
-		const subscriber = testWorker.subscribers
+		const subscriber = testWorker
 			.topic(topic)
 			.subscribe(['user.created', 'user.updated'])
 			.handle(async ({ events }) => {

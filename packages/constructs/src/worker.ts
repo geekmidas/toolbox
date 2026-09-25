@@ -55,6 +55,7 @@
  */
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
@@ -63,6 +64,9 @@ import {
 	type Declaration,
 	type Dependency,
 } from '@geekmidas/manifest';
+import type { ComposableStandardSchema } from '@geekmidas/schema';
+import type { Service } from '@geekmidas/services';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import {
 	type Consumable,
 	type Declarable,
@@ -73,6 +77,7 @@ import { CronBuilder } from './crons/CronBuilder';
 import { envParserFor } from './endpoints/surfaceEnv';
 import { FunctionBuilder } from './functions/FunctionBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
+import type { Topic, TopicEvents } from './topic/Topic';
 
 export interface WorkerConfig {
 	/**
@@ -161,38 +166,102 @@ export class Worker<TName extends string = string>
 	}
 
 	/**
-	 * This worker's cron factory, carrying its logger.
-	 *
-	 * `export const c = crons.logger(logger)` written once and hung off the
-	 * thing that runs it, so a cron file opens with the schedule rather than
-	 * with an import of a logger it has to know the path to.
-	 */
-	get crons() {
-		return this.own(new CronBuilder().logger(this.logger));
-	}
-
-	/**
-	 * This worker's subscriber factory, carrying its logger.
-	 *
-	 * Chain `.publisher(…)` before `.subscribe([…])`: the event names are typed
-	 * from the publisher's message union, so there is nothing to spell twice.
-	 */
-	get subscribers() {
-		return this.own(new SubscriberBuilder().logger(this.logger));
-	}
-
-	/** This worker's function factory, carrying its logger. */
-	get functions() {
-		return this.own(new FunctionBuilder().logger(this.logger));
-	}
-
-	/**
-	 * Sugar for the common case, the way `api.get()` is for `api.endpoints`.
+	 * A scheduled runnable.
 	 *
 	 * @example `worker.cron('rate(1 day)').handle(async ({ logger }) => { … })`
 	 */
 	cron(schedule: ScheduleExpression) {
-		return this.crons.schedule(schedule);
+		return this.own(new CronBuilder().logger(this.logger)).schedule(schedule);
+	}
+
+	/**
+	 * A runnable that consumes a topic.
+	 *
+	 * Binding is not publishing: a consumer is handed the topic's event types
+	 * and no connection string it could publish with. Chain `.publishes(…)` when
+	 * the handler emits follow-up events, which is the only reason it would need
+	 * one.
+	 *
+	 * @example `worker.topic(users).subscribe(['user.created']).handle(…)`
+	 */
+	topic<TTopicName extends string, TEvents extends TopicEvents>(
+		topic: Topic<TTopicName, TEvents>,
+	) {
+		return this.own(new SubscriberBuilder().logger(this.logger)).topic(topic);
+	}
+
+	/**
+	 * A runnable that consumes events typed from a publisher service.
+	 *
+	 * The older of the two ways to bind a subscriber, kept for a project whose
+	 * events come from a hand-written publisher rather than a `Topic`
+	 * construct. `topic()` is the one to reach for: it types the events the same
+	 * way and hands the consumer no connection string it could publish with.
+	 */
+	publisher<T extends EventPublisher<any>, TPubName extends string>(
+		service: Service<TPubName, T> | Consumable<TPubName, T>,
+	) {
+		return this.own(new SubscriberBuilder().logger(this.logger)).publisher(
+			service as never,
+		);
+	}
+
+	/**
+	 * Everything below builds a function — the runnable with no schedule and no
+	 * topic, invoked by something else.
+	 *
+	 * These sit on the worker rather than behind a `functions` namespace because
+	 * the namespace was a hop that said nothing: `worker.functions.input(…)`
+	 * names a collection to reach one member of it. What kind of runnable is
+	 * being built is decided by which of these is called first — a schedule
+	 * makes a cron, a topic makes a subscriber, and anything else makes a
+	 * function.
+	 */
+	input<T extends ComposableStandardSchema>(schema: T) {
+		return this.functions.input(schema);
+	}
+
+	output<T extends StandardSchemaV1>(schema: T) {
+		return this.functions.output(schema);
+	}
+
+	timeout(ms: number) {
+		return this.functions.timeout(ms);
+	}
+
+	memorySize(mb: number) {
+		return this.functions.memorySize(mb);
+	}
+
+	dependsOn<const T extends readonly Consumable[]>(constructs: T) {
+		return this.functions.dependsOn(constructs);
+	}
+
+	services<T extends Service[]>(services: T) {
+		return this.functions.services(services);
+	}
+
+	/**
+	 * A function with no input schema — the shortest runnable there is.
+	 *
+	 * @example `worker.handle(async ({ logger }) => { … })`
+	 */
+	handle(
+		...args: Parameters<
+			ReturnType<Worker<TName>['schemalessFunction']>['handle']
+		>
+	) {
+		return this.schemalessFunction().handle(...args);
+	}
+
+	/** The builder `handle` delegates to, named so its type can be referred to. */
+	private schemalessFunction() {
+		return this.functions;
+	}
+
+	/** The function builder the delegating methods above are built on. */
+	private get functions() {
+		return this.own(new FunctionBuilder().logger(this.logger));
 	}
 
 	/**

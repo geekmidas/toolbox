@@ -15,7 +15,7 @@ const testWorker = new Worker('Jobs');
 describe('Construct environment getter', () => {
 	describe('Function', () => {
 		it('should return empty array when no services are provided', async () => {
-			const fn = testWorker.functions.handle(async () => ({ success: true }));
+			const fn = testWorker.handle(async () => ({ success: true }));
 
 			expect(await fn.getEnvironment()).toEqual([]);
 		});
@@ -31,7 +31,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'database', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([databaseService])
 				.handle(async () => ({ success: true }));
 
@@ -60,7 +60,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'redis', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([databaseService, redisService])
 				.handle(async () => ({ success: true }));
 
@@ -88,7 +88,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'service2', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([service1, service2])
 				.handle(async () => ({ success: true }));
 
@@ -115,7 +115,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'config', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([configService])
 				.handle(async () => ({ success: true }));
 
@@ -142,7 +142,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'database', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([simpleService, databaseService])
 				.handle(async () => ({ success: true }));
 
@@ -221,9 +221,9 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'email', any>;
 
-			const cronJob = testWorker.crons
+			const cronJob = testWorker
+				.cron('rate(1 hour)')
 				.services([emailService])
-				.schedule('rate(1 hour)')
 				.handle(async () => {
 					// Send daily report email
 				});
@@ -271,7 +271,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'notification', any>;
 
-			const subscriber = testWorker.subscribers
+			const subscriber = testWorker
 				.publisher(eventPublisherService)
 				.services([notificationService])
 				.subscribe('user.created')
@@ -290,7 +290,7 @@ describe('Construct environment getter', () => {
 
 	describe('Edge cases', () => {
 		it('should return empty array when services array is empty', async () => {
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([])
 				.handle(async () => ({ success: true }));
 
@@ -309,7 +309,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'optionalConfig', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([optionalConfigService])
 				.handle(async () => ({ success: true }));
 
@@ -334,7 +334,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'testService', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([service])
 				.handle(async () => ({ success: true }));
 
@@ -357,9 +357,7 @@ describe('Construct environment getter', () => {
 							.transform((v) => v.split(',')),
 						flags: get('FEATURE_FLAGS')
 							.string()
-							.transform((v) =>
-								v.split(',').map((f) => f.trim()),
-							),
+							.transform((v) => v.split(',').map((f) => f.trim())),
 						config: get('JSON_CONFIG')
 							.string()
 							.transform((v) => JSON.parse(v))
@@ -368,7 +366,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'complex', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([complexService])
 				.handle(async () => ({ success: true }));
 
@@ -419,7 +417,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'working', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([throwingService, workingService])
 				.handle(async () => ({ success: true }));
 
@@ -455,7 +453,7 @@ describe('Construct environment getter', () => {
 			expect(result.error?.message).toBe('Frontend URL is required');
 
 			// Also verify via construct
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([asyncThrowingService])
 				.handle(async () => ({ success: true }));
 
@@ -519,7 +517,7 @@ describe('Construct environment getter', () => {
 			);
 
 			// Most importantly: the process should NOT crash from unhandled rejection
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([betterAuthService])
 				.handle(async () => ({ success: true }));
 
@@ -580,7 +578,7 @@ describe('Construct environment getter', () => {
 			expect(result3.error).toBeUndefined();
 
 			// Verify all work together in construct
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([service1, service2, service3])
 				.handle(async () => ({ success: true }));
 
@@ -615,7 +613,7 @@ describe('Construct environment getter', () => {
 		} satisfies Service<'auth', any>;
 
 		it('returns plain var names when markOptional is false (default)', async () => {
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([dbService])
 				.handle(async () => ({ success: true }));
 
@@ -630,7 +628,7 @@ describe('Construct environment getter', () => {
 		});
 
 		it('suffixes optional vars with ? when markOptional is true', async () => {
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([dbService])
 				.handle(async () => ({ success: true }));
 
@@ -641,7 +639,7 @@ describe('Construct environment getter', () => {
 		});
 
 		it('marks vars with .optional() as optional', async () => {
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([authService])
 				.handle(async () => ({ success: true }));
 
@@ -652,7 +650,7 @@ describe('Construct environment getter', () => {
 		});
 
 		it('marks optional vars across multiple services', async () => {
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([dbService, authService])
 				.handle(async () => ({ success: true }));
 
@@ -677,8 +675,8 @@ describe('Construct environment getter', () => {
 		});
 
 		it('works on Cron constructs', async () => {
-			const cron = testWorker.crons
-				.schedule('rate(1 hour)')
+			const cron = testWorker
+				.cron('rate(1 hour)')
 				.services([authService])
 				.handle(async () => {});
 
@@ -701,7 +699,7 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'required', any>;
 
-			const fn = testWorker.functions
+			const fn = testWorker
 				.services([requiredOnly])
 				.handle(async () => ({ success: true }));
 

@@ -146,7 +146,7 @@ export const healthEndpoint = api
 				content: `import { z } from 'zod';
 import { worker } from '~/constructs/worker.ts';
 
-export const helloFunction = worker.functions
+export const helloFunction = worker
   .input(z.object({ name: z.string() }))
   .output(z.object({ message: z.string() }))
   .handle(async ({ input }) => ({

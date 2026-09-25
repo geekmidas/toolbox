@@ -212,7 +212,7 @@ describe('initCommand', () => {
 			// Built from the worker, so it carries the worker's logger and says
 			// which process runs it — and handed a batch, which is what both
 			// transports deliver.
-			expect(subscriber).toContain('worker.subscribers');
+			expect(subscriber).toContain('worker\n  .publisher(');
 			expect(subscriber).toContain('async ({ events, logger })');
 		});
 	});

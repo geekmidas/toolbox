@@ -9,9 +9,9 @@ import { worker } from '@kitchen-sink/constructs/worker.js';
  * handler is the same function-style handler with services — and the logger
  * comes from the worker, so this file opens with the schedule.
  */
-export const cleanupStaleUsers = worker.crons
+export const cleanupStaleUsers = worker
+	.cron('rate(1 day)')
 	.dependsOn([database])
-	.schedule('rate(1 day)')
 	.handle(async ({ services, logger }) => {
 		const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
 		const result = await services.database

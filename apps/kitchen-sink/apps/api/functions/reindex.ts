@@ -7,7 +7,7 @@ import { z } from 'zod';
  * as a Lambda. Built from the worker so it says which process runs it and
  * carries that worker's logger.
  */
-export const reindexUsers = worker.functions
+export const reindexUsers = worker
 	.dependsOn([database])
 	.input(z.object({ since: z.iso.datetime().optional() }))
 	.output(z.object({ reindexed: z.number() }))

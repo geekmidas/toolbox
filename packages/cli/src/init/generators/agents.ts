@@ -306,7 +306,7 @@ export const cleanup = worker
 import { userEvents } from '../constructs/topics.ts';
 import { worker } from '../constructs/worker.ts';
 
-export const onUserCreated = worker.subscribers
+export const onUserCreated = worker
   .topic(userEvents)
   .subscribe(['user.created'])
   .handle(async ({ events, logger }) => {

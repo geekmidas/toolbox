@@ -21,7 +21,7 @@ import { worker } from '@kitchen-sink/constructs/worker.js';
  * The handler takes a batch and inserts once. Both transports deliver in
  * batches, and a per-event insert would be a round trip per event for no reason.
  */
-export const userEventsSubscriber = worker.subscribers
+export const userEventsSubscriber = worker
 	.dependsOn([database])
 	.topic(users)
 	.subscribe(['user.created', 'user.updated'])

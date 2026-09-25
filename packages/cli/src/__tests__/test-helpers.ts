@@ -111,7 +111,7 @@ export async function createMockFunctionFile(
 import { z } from 'zod';
 import { worker } from '${specifier}';
 
-export const ${exportName} = worker.functions
+export const ${exportName} = worker
   .input(z.object({ name: z.string() }))
   .output(z.object({ greeting: z.string() }))
   .timeout(${timeout})
@@ -136,8 +136,7 @@ export async function createMockCronFile(
 import { z } from 'zod';
 import { worker } from '${specifier}';
 
-export const ${exportName} = worker.crons
-  .schedule('${schedule}')
+export const ${exportName} = worker.cron('${schedule}')
   .output(z.object({ processed: z.number() }))
   .handle(async () => {
     console.log('Running cron job: ${exportName}');
