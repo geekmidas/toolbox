@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Function } from '@geekmidas/constructs/functions';
-import { f } from '@geekmidas/constructs/functions';
+import { Worker } from '@geekmidas/constructs/worker';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -31,7 +31,7 @@ describe('FunctionGenerator', () => {
 
 	describe('isConstruct', () => {
 		it('should identify valid functions', () => {
-			const testFunction = f
+			const testFunction = new Worker('Jobs').functions
 				.input(z.object({ name: z.string() }))
 				.output(z.object({ greeting: z.string() }))
 				.timeout(30)
@@ -54,7 +54,7 @@ describe('FunctionGenerator', () => {
 			key: string,
 			timeout: number = 30,
 		): GeneratedConstruct<Function<any, any, any, any>> => {
-			const func = f
+			const func = new Worker('Jobs').functions
 				.timeout(timeout)
 				.handle(async () => ({ greeting: 'Hello!' }));
 

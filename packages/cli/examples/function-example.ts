@@ -1,10 +1,10 @@
-import { f } from '@geekmidas/constructs/functions';
 import { z } from 'zod';
+import { worker } from './constructs/worker.ts';
 
 /**
  * Example function that processes an order
  */
-export const processOrder = f
+export const processOrder = worker
 	.input(
 		z.object({
 			orderId: z.string(),

@@ -4,13 +4,11 @@ import { registerStorageDriver, type StorageClient } from '@geekmidas/storage';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { NotAConstruct } from '../construct-interface';
-import { c } from '../crons';
-import { f } from '../functions';
 import { ObjectStorage } from '../object-storage';
 import { q } from '../queue';
 import { RestApi } from '../rest-api';
-import { s } from '../subscribers';
 import { t } from '../topic';
+import { Worker } from '../worker';
 
 /** Endpoints come from a surface now, so the tests build one. */
 const endpoints = new RestApi('Test', { defaultAuthorizer: 'none' }).endpoints;
@@ -49,6 +47,9 @@ const envParser = new EnvironmentParser({
 const resolve = (services: readonly unknown[]) =>
 	ServiceDiscovery.getInstance(envParser as never).register(services as never);
 
+/** Everything runnable is built from the process that runs it. */
+const testWorker = new Worker('Jobs');
+
 describe('.dependsOn', () => {
 	it('reaches a construct under its own id', async () => {
 		// `services.uploads`, never the name of whatever service it happens to
@@ -66,7 +67,7 @@ describe('.dependsOn', () => {
 	});
 
 	it('hands a topic its publisher, because publishing is what depending means', async () => {
-		// A subscriber binds with `s.topic(…)` instead, and is never given this.
+		// A subscriber binds with `testWorker.topic(…)` instead, and is never given this.
 		const endpoint = endpoints
 			.dependsOn([users])
 			.get('/ping')
@@ -171,8 +172,8 @@ describe('.dependsOn — the ids it records', () => {
 		// stale value survived as a *grant* — a function reaching a bucket it
 		// never declared. Endpoints never had it: a factory mints a fresh builder
 		// per route, so there is no reused state and no reset to forget.
-		const first = f.dependsOn([uploads]).handle(async () => null);
-		const second = f.dependsOn([emails]).handle(async () => null);
+		const first = testWorker.dependsOn([uploads]).handle(async () => null);
+		const second = testWorker.dependsOn([emails]).handle(async () => null);
 
 		expect(first.constructs).toEqual(['Uploads']);
 		expect(second.constructs).toEqual(['Emails']);
@@ -184,12 +185,12 @@ describe('.dependsOn — the ids it records', () => {
 	});
 
 	it('does not carry one cron’s constructs into the next', () => {
-		const first = c
-			.schedule('rate(1 day)')
+		const first = testWorker
+			.cron('rate(1 day)')
 			.dependsOn([uploads])
 			.handle(async () => null);
-		const second = c
-			.schedule('rate(1 hour)')
+		const second = testWorker
+			.cron('rate(1 hour)')
 			.dependsOn([emails])
 			.handle(async () => null);
 
@@ -204,16 +205,16 @@ describe('.dependsOn — the ids it records', () => {
 		const clock = { serviceName: 'clock' as const, register: async () => ({}) };
 
 		// @ts-expect-error - constructs only.
-		expect(() => f.dependsOn([clock])).toThrow(NotAConstruct);
+		expect(() => testWorker.dependsOn([clock])).toThrow(NotAConstruct);
 
-		const fn = f.dependsOn([uploads]).handle(async () => null);
+		const fn = testWorker.dependsOn([uploads]).handle(async () => null);
 		expect(fn.constructs).toEqual(['Uploads']);
 	});
 
 	it('records them on a function, a cron, a queue worker and a subscriber', async () => {
-		const fn = f.dependsOn([uploads]).handle(async () => null);
-		const cron = c
-			.schedule('rate(1 day)')
+		const fn = testWorker.dependsOn([uploads]).handle(async () => null);
+		const cron = testWorker
+			.cron('rate(1 day)')
 			.dependsOn([uploads])
 			.handle(async () => null);
 		const worker = q
@@ -221,7 +222,7 @@ describe('.dependsOn — the ids it records', () => {
 			.message(z.object({ id: z.string() }))
 			.dependsOn([uploads])
 			.handle(async () => {});
-		const subscriber = s
+		const subscriber = testWorker
 			.topic(users)
 			.dependsOn([uploads])
 			.handle(async () => null);

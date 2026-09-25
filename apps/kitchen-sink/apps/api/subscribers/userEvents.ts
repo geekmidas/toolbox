@@ -1,7 +1,6 @@
-import { s } from '@geekmidas/constructs/subscribers';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { logger } from '@kitchen-sink/constructs/logger.js';
 import { users } from '@kitchen-sink/constructs/topics.js';
+import { worker } from '@kitchen-sink/constructs/worker.js';
 
 /**
  * A topic subscriber — fan-out. `.topic(users)` types the events and their
@@ -22,8 +21,7 @@ import { users } from '@kitchen-sink/constructs/topics.js';
  * The handler takes a batch and inserts once. Both transports deliver in
  * batches, and a per-event insert would be a round trip per event for no reason.
  */
-export const userEventsSubscriber = s
-	.logger(logger)
+export const userEventsSubscriber = worker
 	.dependsOn([database])
 	.topic(users)
 	.subscribe(['user.created', 'user.updated'])

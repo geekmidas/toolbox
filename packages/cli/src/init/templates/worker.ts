@@ -154,7 +154,7 @@ export const eventsPublisherService = {
 				content: `import { worker } from '~/constructs/worker.ts';
 import { eventsPublisherService } from '~/events/publisher.ts';
 
-export const userEventsSubscriber = worker.subscribers
+export const userEventsSubscriber = worker
   .publisher(eventsPublisherService)
   .subscribe(['user.created', 'user.updated'])
   .handle(async ({ events, logger }) => {
