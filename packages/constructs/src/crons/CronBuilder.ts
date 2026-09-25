@@ -314,6 +314,10 @@ export class CronBuilder<
 		// from the directory the file happens to sit in.
 		cron.owner = this._owner;
 
+		// And where that process keeps the schedule, when a server is what runs
+		// it. Declared once on the worker rather than repeated per cron.
+		cron.scheduleStore = this._scheduleStore;
+
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
 		// configured base — `const fn = f.logger(log).timeout(60_000)` — keeps
 		// its configuration for every construct built from it. The reset that

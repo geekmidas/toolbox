@@ -171,6 +171,14 @@ export default defineConfig({${
 					resolveJsonModule: true,
 					noEmit: true,
 					allowImportingTsExtensions: true,
+					baseUrl: '.',
+					// The monorepo and fullstack layouts already mapped this; a
+					// single app did not, so every `~/…` import the templates write
+					// — the api's `~/router.ts`, the worker's `~/constructs/worker.ts`
+					// — resolved to nothing and the project failed on first build.
+					paths: {
+						'~/*': ['./src/*'],
+					},
 				},
 				include: ['src/**/*.ts'],
 				exclude: ['node_modules', 'dist'],

@@ -230,6 +230,89 @@ describe('CronGenerator', () => {
 			});
 		});
 
+		describe('server provider', () => {
+			itWithDir(
+				'writes a crons file the server entry can import',
+				async ({ dir }) => {
+					const outputDir = join(dir, 'output');
+					const cronsDir = join(dir, 'crons');
+					await mkdir(outputDir, { recursive: true });
+
+					await createMockCronFile(
+						cronsDir,
+						'cleanup.ts',
+						'cleanup',
+						'rate(1 hour)',
+					);
+
+					const constructs = await generator.load('**/crons/*.ts', dir);
+					await generator.build(context, constructs, outputDir, {
+						provider: 'server',
+					});
+
+					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
+
+					// The same shape subscribers already have: one module, every
+					// cron, a `setupCrons` the entry calls.
+					expect(file).toContain('export async function setupCrons');
+					expect(file).toContain('cleanup');
+					expect(file).toContain('toCronExpression');
+				},
+			);
+
+			itWithDir(
+				'writes the file even with no crons, so the entry can import it unconditionally',
+				async ({ dir }) => {
+					const outputDir = join(dir, 'output');
+					await mkdir(outputDir, { recursive: true });
+
+					await generator.build(context, [], outputDir, {
+						provider: 'server',
+					});
+
+					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
+					expect(file).toContain('export async function setupCrons');
+				},
+			);
+
+			itWithDir(
+				'refuses to schedule without a database rather than firing per replica',
+				async ({ dir }) => {
+					const outputDir = join(dir, 'output');
+					const cronsDir = join(dir, 'crons');
+					await mkdir(outputDir, { recursive: true });
+
+					await createMockCronFile(
+						cronsDir,
+						'cleanup.ts',
+						'cleanup',
+						'rate(1 hour)',
+					);
+
+					const constructs = await generator.load('**/crons/*.ts', dir);
+					await generator.build(context, constructs, outputDir, {
+						provider: 'server',
+					});
+
+					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
+
+					// A timer in every process fires each job once per replica and
+					// never says so, so the schedule lives in Postgres — and its
+					// absence is reported rather than worked around.
+					expect(file).toContain('.database(db)');
+					expect(file).toContain('once per');
+					expect(file).not.toContain('setInterval');
+
+					// And it names no credential. The construct that owns the
+					// database is the only thing that knows its key; anything here
+					// reading an environment variable would be a second copy of it.
+					expect(file).not.toContain('DATABASE_URL');
+					expect(file).not.toContain('process.env');
+					expect(file).not.toContain('connectionString');
+				},
+			);
+		});
+
 		describe('non aws-lambda provider', () => {
 			itWithDir(
 				'should return empty array for server provider',

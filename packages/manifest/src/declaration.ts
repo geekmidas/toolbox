@@ -584,10 +584,14 @@ export interface SiteDeclaration extends Node {
 export interface WorkerDeclaration extends Node {
 	kind: 'worker';
 	/**
-	 * Where its source lives and how it is run. Optional, like every other
-	 * app's: `Worker` means `apps/worker`, which the id already said.
+	 * A worker declares no app, because it is not one.
+	 *
+	 * It names the process that runs a cron, a subscriber or a queue consumer —
+	 * and that process is the app's server, the same one the endpoints run in,
+	 * without an HTTP surface of its own. Giving it a path made it a second
+	 * container to build, deploy and keep alive for work that was already going
+	 * to run somewhere.
 	 */
-	app?: AppSpec;
 	/** Surfaces and resources it calls, which is what grants it access. */
 	dependencies?: readonly Dependency[];
 }

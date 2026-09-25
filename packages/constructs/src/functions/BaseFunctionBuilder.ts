@@ -49,6 +49,15 @@ export abstract class BaseFunctionBuilder<
 	 */
 	public _owner?: string;
 
+	/**
+	 * Where a cron built from this factory keeps its schedule.
+	 *
+	 * Set by the worker that handed the factory out, the same way the logger
+	 * and the owner are — so a cron file names a schedule and nothing else.
+	 * Only a server target reads it; on AWS the schedule is an EventBridge rule.
+	 */
+	public _scheduleStore?: unknown;
+
 	protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
 	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;

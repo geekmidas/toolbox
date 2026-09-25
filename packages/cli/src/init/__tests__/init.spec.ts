@@ -171,20 +171,30 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
 		});
 
-		it('scaffolds no cron, because a cron would not run', async () => {
+		it('scaffolds a cron, and points it at where the schedule lives', async () => {
 			await initCommand('my-api', {
 				template: 'worker',
 				yes: true,
 				skipInstall: true,
 			});
 
-			// `CronGenerator` emits handlers for `aws-lambda` only and `.gkm/server/`
-			// has no crons file, so a scheduled job on a server target deploys
-			// nothing. Scaffolding one would teach a feature that silently does not
-			// happen — worse than leaving it out until there is a scheduler.
-			expect(existsSync(join(tempDir, 'my-api', 'src/crons/cleanup.ts'))).toBe(
-				false,
+			const projectDir = join(tempDir, 'my-api');
+			expect(existsSync(join(projectDir, 'src/crons/cleanup.ts'))).toBe(true);
+
+			// A server fires its own crons, and the schedule is kept in Postgres so
+			// that more than one replica still fires each job once. The worker names
+			// which database that is; nothing here reads a connection string.
+			const worker = await readFile(
+				join(projectDir, 'src/constructs/worker.ts'),
+				'utf-8',
 			);
+			expect(worker).toContain('.database(database)');
+
+			const cron = await readFile(
+				join(projectDir, 'src/crons/cleanup.ts'),
+				'utf-8',
+			);
+			expect(cron).toContain("cron('rate(1 day)')");
 		});
 
 		it('gives a worker its subscriber from the worker itself', async () => {

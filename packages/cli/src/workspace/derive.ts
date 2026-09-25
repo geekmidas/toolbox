@@ -185,7 +185,7 @@ export function resolveAppSpec(
 	id: string,
 	spec: AppSpec,
 	workspaceRoot: string,
-	kind: 'site' | 'rest-api' | 'worker',
+	kind: 'site' | 'rest-api',
 ): AppSpec {
 	const path = spec.path ?? conventionalPath(id, workspaceRoot);
 
@@ -215,13 +215,11 @@ export function derivedApps(
 	const defaultTarget: DeployTarget = workspace.deploy?.default ?? 'dokploy';
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		// Three kinds are apps: a site, an HTTP surface, and a worker — the
-		// process with no port. Everything else is a resource one of them uses.
-		if (
-			declaration.kind !== 'site' &&
-			declaration.kind !== 'rest-api' &&
-			declaration.kind !== 'worker'
-		)
+		// Two kinds are apps: a site and an HTTP surface. A worker is not one —
+		// it names the process that runs a cron or a subscriber, and that process
+		// is the app's server, which already exists. Everything else is a
+		// resource one of them uses.
+		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
 		// No opt-in to be had. A site is an app and so is a surface; `app` is an
@@ -292,21 +290,17 @@ export function derivedApps(
 	// depends on a surface depends on the app that serves it — which for a
 	// mounted auth server is its host, not a container that does not exist.
 	for (const [id, declaration] of Object.entries(manifest)) {
-		// Three kinds are apps: a site, an HTTP surface, and a worker — the
-		// process with no port. Everything else is a resource one of them uses.
-		if (
-			declaration.kind !== 'site' &&
-			declaration.kind !== 'rest-api' &&
-			declaration.kind !== 'worker'
-		)
+		// Two kinds are apps: a site and an HTTP surface. A worker is not one —
+		// it names the process that runs a cron or a subscriber, and that process
+		// is the app's server, which already exists. Everything else is a
+		// resource one of them uses.
+		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
 		const app = apps[appKey(id)];
 		if (!app) continue;
 
-		// A site names its edges `dependencies`, a surface names them `calls`, and
-		// a worker — which depends on things without being an HTTP client of
-		// them — names them `dependencies` too.
+		// A site names its edges `dependencies`; a surface names them `calls`.
 		const edges =
 			declaration.kind === 'rest-api'
 				? (declaration.calls ?? [])

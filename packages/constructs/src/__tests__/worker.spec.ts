@@ -45,18 +45,32 @@ describe('Worker', () => {
 		expect(declaration?.id).toBe('BackgroundJobs');
 	});
 
-	it('names no app, because the id already says where it lives', () => {
+	it('declares no app, because a worker is not one', () => {
 		const [declaration] = new Worker('Worker').declare();
 
+		// A worker names the process that runs a cron or a subscriber, and that
+		// process is the app's server — the one the endpoints already run in,
+		// minus the HTTP surface. It used to take a path and become a container
+		// of its own, which was a second thing to build, deploy and keep alive
+		// for work that was always going to run somewhere already.
 		expect(declaration).not.toHaveProperty('app');
 	});
 
-	it('carries an app spec when the layout differs', () => {
-		const [declaration] = new Worker('Worker', {
-			app: { path: 'services/jobs' },
-		}).declare();
+	it('publishes no address, because nothing calls it', () => {
+		const [declaration] = new Worker('Worker').declare();
 
-		expect(declaration).toMatchObject({ app: { path: 'services/jobs' } });
+		expect(declaration).toMatchObject({ kind: 'worker', provides: [] });
+	});
+
+	it('lets a project declare as many as the work has shapes', () => {
+		// Groupings, not deployments: two workers are two owners and two
+		// loggers, not two containers.
+		const [jobs] = new Worker('Jobs').declare();
+		const [imaging] = new Worker('Imaging').declare();
+
+		expect(jobs.id).not.toBe(imaging.id);
+		expect(jobs).not.toHaveProperty('app');
+		expect(imaging).not.toHaveProperty('app');
 	});
 
 	describe('the factories it hands out', () => {
