@@ -54,7 +54,6 @@ module.exports = {
 		await writeFile(join(tempDir, 'gkm.config.js'), configContent);
 
 		const config = await loadConfig();
-
 	});
 
 	it('should handle configuration with only envParser override', async () => {
@@ -67,7 +66,6 @@ export default {
 		await writeFile(join(tempDir, 'gkm.config.ts'), configContent);
 
 		const config = await loadConfig();
-
 	});
 
 	it('should handle malformed config file gracefully', async () => {
@@ -100,7 +98,6 @@ export default {
 		await writeFile(join(tempDir, 'gkm.config.ts'), tsConfigContent);
 
 		const config = await loadConfig();
-
 	});
 });
 
@@ -402,7 +399,6 @@ export default {
 		process.chdir(nestedDir);
 
 		const config = await loadConfig();
-
 	});
 
 	it('should prefer GKM_CONFIG_PATH over walking up directories', async () => {
@@ -438,7 +434,6 @@ export default {
 		process.chdir(nestedDir);
 
 		const config = await loadConfig();
-
 
 		// Cleanup
 		await cleanupDir(envConfigDir);
