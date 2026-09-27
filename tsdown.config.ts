@@ -9,7 +9,7 @@ export default defineConfig({
 	external: ['vitest'],
 	sourcemap: true,
 	dts: true,
-	outExtensions: (ctx) => ({
-		js: ctx.format === 'es' ? '.mjs' : '.cjs',
-	}),
+	// `.mjs`/`.cjs` whatever a package's `"type"`, which is what every
+	// `exports` map names.
+	fixedExtension: true,
 });

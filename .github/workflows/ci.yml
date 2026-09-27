@@ -68,6 +68,12 @@ jobs:
       - name: Sync CLI versions
         run: pnpm --filter @geekmidas/cli sync-versions
 
+      # One range per dependency per field, from scripts/dependency-versions.json.
+      # Tranche 1 found thirty dependencies disagreeing with themselves — `hono`
+      # with four peer ranges — because nothing checked.
+      - name: Check dependency ranges agree
+        run: pnpm run check:deps
+
       - name: Build
         run: pnpm run build
 

@@ -46,10 +46,11 @@ Keeping the scaffold's versions current in general is #43.
 One tool per step, each landing green before the next, so a failure has one
 candidate cause:
 
-1. **The alignment script** (#44), so each bump is derived from one list and not
-   edited by hand across 20 `package.json` files.
-2. **`tsx` and `tsdown`.** They build and run everything else, and `tsx` first
-   gets a single range.
+1. ~~**The alignment script** (#44)~~ **Done.** Each step below is
+   `node scripts/align-deps.mjs --latest <names…>`, then `--write`, then
+   `pnpm install`. It also gave `tsx`, `tsdown`, `typescript`, `vite` and
+   `vitest` one range each within their current majors.
+2. **`tsx` and `tsdown`.** They build and run everything else.
 3. **Vite, with `@vitejs/plugin-react`.** Vitest and Storybook both build on
    Vite, so it goes before either.
 4. **Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers, and
