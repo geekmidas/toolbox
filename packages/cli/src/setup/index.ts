@@ -44,9 +44,7 @@ export interface SetupOptions {
  * 4. Start Docker services
  */
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
-	const stage = options.stage ?? 'development';
-
-	logger.log('\n🔧 Setting up development environment...\n');
+	logger.log('\n🔧 Setting up the local environment...\n');
 
 	// 1. Load workspace config
 	let loadedConfig: LoadedConfig;
@@ -58,6 +56,8 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
+
+	const stage = options.stage ?? loadedConfig.workspace.stages.local;
 
 	const { workspace } = loadedConfig;
 	const isMultiApp = Object.keys(workspace.apps).length > 1;

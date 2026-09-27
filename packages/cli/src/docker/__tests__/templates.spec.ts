@@ -248,7 +248,9 @@ describe('docker templates', () => {
 
 	describe('resolveDockerConfig', () => {
 		it('should use defaults when no config provided', () => {
-			const config: GkmConfig = {};
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
+			} as GkmConfig;
 			const result = resolveDockerConfig(config);
 
 			// imageName comes from package.json or defaults to 'api'
@@ -258,13 +260,14 @@ describe('docker templates', () => {
 		});
 
 		it('should use config values when provided', () => {
-			const config: GkmConfig = {
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				docker: {
 					imageName: 'my-custom-app',
 					baseImage: 'node:20-alpine',
 					port: 8080,
 				},
-			};
+			} as GkmConfig;
 			const result = resolveDockerConfig(config);
 
 			expect(result.imageName).toBe('my-custom-app');
@@ -273,11 +276,12 @@ describe('docker templates', () => {
 		});
 
 		it('should merge partial config with defaults', () => {
-			const config: GkmConfig = {
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				docker: {
 					imageName: 'partial-app',
 				},
-			};
+			} as GkmConfig;
 			const result = resolveDockerConfig(config);
 
 			expect(result.imageName).toBe('partial-app');

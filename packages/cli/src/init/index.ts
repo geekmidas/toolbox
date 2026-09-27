@@ -10,6 +10,8 @@ import {
 	generateDbUrl,
 } from '../setup/fullstack-secrets.js';
 import type { ComposeServiceName, EventsBackend } from '../types.js';
+import { deployedProblems, stageProblems } from '../workspace/stages.js';
+import type { StagesConfig } from '../workspace/types.js';
 import { generateAgentFiles } from './generators/agents.js';
 import { generateAuthAppFiles } from './generators/auth.js';
 import { generateConfigFiles } from './generators/config.js';
@@ -51,6 +53,7 @@ import {
 import {
 	checkDirectoryExists,
 	detectPackageManager,
+	getExecCommand,
 	getInstallCommand,
 	getRunCommand,
 	validateProjectName,
@@ -75,7 +78,20 @@ export interface InitOptions {
 	deploy?: DeployTarget;
 	/** The AWS region an SST deploy goes to, e.g. `eu-west-1` */
 	region?: string;
+	/** Deployed stage names, comma-separated, e.g. `staging,prod` */
+	stages?: string;
+	/** Which deployed stage is production: retained and protected */
+	protectedStage?: string;
+	/** What `gkm dev`, `exec` and `test` run as, e.g. `dev` */
+	localStage?: string;
 }
+
+/** `' staging, prod '` → `['staging', 'prod']`. */
+const stageList = (value: string): string[] =>
+	value
+		.split(',')
+		.map((name) => name.trim())
+		.filter(Boolean);
 
 /** `eu-west-1`, `us-gov-west-1`, `ap-southeast-2`. */
 const AWS_REGION = /^[a-z]{2}(-gov)?-[a-z]+-\d$/;
@@ -104,6 +120,24 @@ export async function initCommand(
 			`"${options.region}" is not an AWS region. Use one like eu-west-1.`,
 		);
 	}
+
+	// Flags are checked before anything is asked or written, the same rules
+	// gkm.config.ts is held to.
+	if (options.stages || options.localStage || options.protectedStage) {
+		const deployed = stageList(options.stages ?? '');
+		const problems = [
+			...deployedProblems(deployed),
+			...(options.localStage
+				? stageProblems({ local: options.localStage, deployed })
+				: []),
+			...(options.protectedStage && !deployed.includes(options.protectedStage)
+				? [`--protected-stage "${options.protectedStage}" is not in --stages`]
+				: []),
+		];
+		if (problems.length) throw new Error([...new Set(problems)].join('\n'));
+	}
+
+	let deployedSoFar: string[] = [];
 
 	// Handle Ctrl+C gracefully
 	prompts.override({});
@@ -175,6 +209,49 @@ export async function initCommand(
 				message: 'AWS region (e.g. eu-west-1):',
 				validate: (value: string) =>
 					AWS_REGION.test(value.trim()) || 'An AWS region, like eu-west-1',
+			},
+			{
+				// Named by the project, not picked from a list: whatever the team
+				// already calls its environments.
+				type: options.yes || options.stages ? null : 'text',
+				name: 'deployedStages',
+				message: 'Deployed stages, comma-separated (e.g. staging, prod):',
+				validate: (value: string) => {
+					const deployed = stageList(value);
+					if (deployed.length === 0) return 'At least one stage';
+					return deployedProblems(deployed)[0] ?? true;
+				},
+			},
+			{
+				type: (_prev, values) =>
+					options.yes || options.protectedStage
+						? null
+						: stageList(options.stages ?? values.deployedStages ?? '').length >
+								1
+							? 'select'
+							: null,
+				name: 'protectedStage',
+				message: 'Which one is production (retained and protected)?',
+				choices: (_prev, values) =>
+					stageList(options.stages ?? values.deployedStages ?? '').map(
+						(name) => ({ title: name, value: name }),
+					),
+			},
+			{
+				// \`validate\` is not handed the earlier answers, and the local stage
+				// is only valid relative to the deployed ones — so they are read
+				// here, where \`type\` is.
+				type: (_prev, values) => {
+					deployedSoFar = stageList(
+						options.stages ?? values.deployedStages ?? '',
+					);
+					return options.yes || options.localStage ? null : 'text';
+				},
+				name: 'localStage',
+				message: 'Local stage, what gkm dev runs as (e.g. dev):',
+				validate: (value: string) =>
+					stageProblems({ local: value.trim(), deployed: deployedSoFar })[0] ??
+					true,
 			},
 			{
 				type: options.yes ? null : 'confirm',
@@ -295,6 +372,7 @@ export async function initCommand(
 		apiPath: monorepo ? (options.apiPath ?? 'apps/api') : '',
 		packageManager: pkgManager,
 		deployTarget,
+		stages: resolveStages(options, answers),
 		...(deployTarget === 'sst'
 			? {
 					// Asked when there is someone to ask; \`--yes\` takes eu-west-1.
@@ -425,7 +503,7 @@ export async function initCommand(
 		await writeFile(fullPath, content);
 	}
 
-	// Initialize encrypted secrets for development stage
+	// Initialize encrypted secrets for the local stage
 	console.log('🔐 Initializing encrypted secrets...\n');
 	const secretServices: ComposeServiceName[] = [];
 	if (services.db) secretServices.push('postgres');
@@ -435,7 +513,8 @@ export async function initCommand(
 	if (services.events === 'sns') secretServices.push('localstack');
 	if (services.events === 'rabbitmq') secretServices.push('rabbitmq');
 
-	const devSecrets = createStageSecrets('development', secretServices, {
+	const local = templateOptions.stages.local;
+	const devSecrets = createStageSecrets(local, secretServices, {
 		projectName: name,
 		eventsBackend: services.events,
 	});
@@ -474,8 +553,8 @@ export async function initCommand(
 	devSecrets.custom = customSecrets;
 
 	await writeStageSecrets(devSecrets, targetDir);
-	const keyPath = getKeyPath('development', name);
-	console.log(`  Secrets: .gkm/secrets/development.json (encrypted)`);
+	const keyPath = getKeyPath(local, name);
+	console.log(`  Secrets: .gkm/secrets/${local}.json (encrypted)`);
 	console.log(`  Key: ${keyPath}\n`);
 
 	// Install dependencies
@@ -490,14 +569,20 @@ export async function initCommand(
 			console.error('Failed to install dependencies');
 		}
 
-		// Format generated files with biome
+		// The generators write JSON-style double quotes; the project's own
+		// biome.json says single. \`check --write\` formats, sorts imports and
+		// applies safe fixes. It was \`format --write --unsafe\`, which Biome 2
+		// rejects outright — and the error was swallowed, so nothing was ever
+		// formatted.
 		try {
-			execSync('npx @biomejs/biome format --write --unsafe .', {
+			execSync(getExecCommand(pkgManager, 'biome check --write .'), {
 				cwd: targetDir,
 				stdio: 'inherit',
 			});
 		} catch {
-			// Silently ignore format errors
+			console.warn(
+				`\n⚠️  Formatting did not finish cleanly. Run ${getRunCommand(pkgManager, 'fmt')} to see why.`,
+			);
 		}
 	}
 
@@ -584,25 +669,32 @@ function printNextSteps(
 		console.log('');
 	}
 
+	const { local, deployed } = options.stages;
 	console.log('🔐 Secrets management:');
-	console.log(`  gkm secrets:show --stage development  # View secrets`);
-	console.log(`  gkm secrets:set KEY VALUE --stage development  # Add secret`);
-	console.log(
-		`  gkm secrets:init --stage production  # Create production secrets`,
-	);
+	console.log(`  gkm secrets:show --stage ${local}  # View secrets`);
+	console.log(`  gkm secrets:set KEY VALUE --stage ${local}  # Add secret`);
+	for (const stage of deployed) {
+		console.log(
+			`  gkm secrets:init --stage ${stage}  # Create ${stage} secrets`,
+		);
+	}
 	console.log('');
 
 	if (options.deployTarget === 'dokploy') {
 		console.log('🚀 Deployment:');
-		console.log(`  ${getRunCommand(pkgManager, 'deploy')}`);
+		for (const stage of deployed) {
+			console.log(`  ${getRunCommand(pkgManager, `deploy:${stage}`)}`);
+		}
 		console.log('');
 	}
 
 	if (options.deployTarget === 'sst') {
 		console.log('🚀 Deployment (AWS, through SST):');
-		console.log(
-			`  ${getRunCommand(pkgManager, 'deploy')}  # gkm build --provider aws, then sst deploy`,
-		);
+		for (const stage of deployed) {
+			console.log(
+				`  ${getRunCommand(pkgManager, `deploy:${stage}`)}  # gkm build --provider aws, then sst deploy`,
+			);
+		}
 		console.log(`  Uses your AWS credentials, in ${options.region}.`);
 		if (options.services.mail) {
 			console.log('  Set MAIL_FROM to a sender verified in SES first.');
@@ -612,4 +704,43 @@ function printNextSteps(
 
 	console.log('📚 Documentation: https://geekmidas.github.io/toolbox/');
 	console.log('');
+}
+
+/**
+ * The stages the project declares, from the answers or the flags.
+ *
+ * `--yes` with no stage flags has nobody to ask and needs an answer, so it
+ * takes `local`, and one deployed stage, `production`, that is protected.
+ */
+function resolveStages(
+	options: InitOptions,
+	answers: {
+		deployedStages?: string;
+		protectedStage?: string;
+		localStage?: string;
+	},
+): StagesConfig {
+	const deployed = stageList(
+		options.stages ??
+			answers.deployedStages ??
+			(options.yes ? 'production' : ''),
+	);
+	const kept =
+		options.protectedStage ??
+		answers.protectedStage ??
+		(deployed.length === 1 || options.yes ? deployed[0] : undefined);
+	const local = (
+		options.localStage ??
+		answers.localStage ??
+		(options.yes ? 'local' : '')
+	).trim();
+
+	const stages: StagesConfig = {
+		local,
+		deployed,
+		...(kept ? { protected: [kept] } : {}),
+	};
+	const problems = stageProblems(stages);
+	if (problems.length) throw new Error(problems.join('\n'));
+	return stages;
 }

@@ -352,6 +352,7 @@ describe('deploy init', () => {
 			const originalConfig = `import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	envParser: './src/env.ts',
 });`;
@@ -396,6 +397,7 @@ export default defineConfig({
 			const originalConfig = `import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		server: true,
@@ -435,6 +437,7 @@ export default defineConfig({
 			const originalConfig = `import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		dokploy: {
@@ -570,6 +573,7 @@ describe('updateConfig', () => {
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	envParser: './src/env.ts',
 });`,
@@ -599,6 +603,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		server: true,
@@ -627,6 +632,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		dokploy: {
@@ -675,6 +681,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	envParser: './src/env.ts',
 });`,
@@ -704,6 +711,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 });`,
 		);
@@ -728,6 +736,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		dokploy: {
@@ -762,6 +771,7 @@ export default defineConfig({
 			`import { defineConfig } from '@geekmidas/cli';
 
 export default defineConfig({
+	stages: { local: 'development', deployed: ['production'] },
 	routes: 'src/endpoints/**/*.ts',
 	providers: {
 		dokploy: {

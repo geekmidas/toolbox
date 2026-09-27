@@ -47,9 +47,9 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
 			expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(true);
 			// Secrets are now encrypted instead of .env files
-			expect(
-				existsSync(join(projectDir, '.gkm/secrets/development.json')),
-			).toBe(true);
+			expect(existsSync(join(projectDir, '.gkm/secrets/local.json'))).toBe(
+				true,
+			);
 			expect(existsSync(join(projectDir, '.gitignore'))).toBe(true);
 			expect(existsSync(join(projectDir, 'src/config/env.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'src/config/logger.ts'))).toBe(true);
@@ -600,7 +600,7 @@ describe('initCommand', () => {
 				await readFile(join(root, 'package.json'), 'utf-8'),
 			);
 
-			expect(pkg.scripts.deploy).toBe(
+			expect(pkg.scripts['deploy:production']).toBe(
 				'gkm deploy --provider dokploy --stage production',
 			);
 			expect(existsSync(join(root, 'sst.config.ts'))).toBe(false);
@@ -621,7 +621,7 @@ describe('initCommand', () => {
 			);
 
 			// The build writes the manifest SST reads; SST never imports the app.
-			expect(pkg.scripts.deploy).toBe(
+			expect(pkg.scripts['deploy:production']).toBe(
 				'gkm build --provider aws && sst deploy --stage production',
 			);
 			expect(pkg.devDependencies.sst).toMatch(/^~4\./);

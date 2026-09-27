@@ -65,6 +65,7 @@ describe('State Provider E2E', () => {
 		it('should write state to filesystem when config has state.provider = local', async () => {
 			// 1. Create workspace config with local state provider
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'e2e-local-test',
 				apps: {
 					api: {
@@ -116,6 +117,7 @@ describe('State Provider E2E', () => {
 		it('should write state to filesystem when state config is undefined (default)', async () => {
 			// 1. Create workspace config WITHOUT state (should default to local)
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'e2e-default-test',
 				apps: {
 					api: {
@@ -156,6 +158,7 @@ describe('State Provider E2E', () => {
 
 		it('should read state back correctly through provider', async () => {
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'e2e-read-test',
 				apps: {
 					api: {
@@ -239,6 +242,7 @@ describe('State Provider E2E', () => {
 		it('should write state to SSM when config has state.provider = ssm', async () => {
 			// 1. Create workspace config with SSM state provider
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: workspaceName,
 				apps: {
 					api: {
@@ -314,6 +318,7 @@ describe('State Provider E2E', () => {
 
 			// 2. Create workspace config with SSM state provider
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: workspaceName,
 				apps: {
 					api: {
@@ -343,6 +348,7 @@ describe('State Provider E2E', () => {
 
 		it('should use CachedStateProvider that syncs local and remote', async () => {
 			const config: WorkspaceConfig = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: workspaceName,
 				apps: {
 					api: {

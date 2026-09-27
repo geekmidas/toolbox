@@ -1,4 +1,4 @@
-import type { ServicesConfig } from './workspace/types.js';
+import type { ServicesConfig, StagesConfig } from './workspace/types.js';
 
 export type MainProvider = 'aws' | 'server';
 export type LegacyProvider =
@@ -357,6 +357,8 @@ export interface GkmConfig {
 	 * directory name.
 	 */
 	name?: string;
+	/** The project's stages: which one is local, which deploy */
+	stages: StagesConfig;
 	/**
 	 * Where the things no construct implies live.
 	 *

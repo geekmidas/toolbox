@@ -41,6 +41,7 @@ export function createFullstackWorkspace(): ReturnType<
 > {
 	return normalizeWorkspace(
 		{
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',

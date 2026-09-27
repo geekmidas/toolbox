@@ -41,12 +41,24 @@ const manifest = {
 } as const satisfies ConstructManifest;
 
 const plan = (stage: string, options?: PlanOptions) =>
-	planFor(manifest, stage, provisionOrder(manifest), options);
+	planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: 'development',
+		...options,
+	});
 
 describe('resourceName', () => {
-	it('leaves the default stage unsuffixed', () => {
-		// So a developer's psql history and saved connections survive this change.
-		expect(resourceName('Orders', 'database', 'development')).toBe('orders');
+	it('leaves the local stage unsuffixed, whatever the project calls it', () => {
+		// So a developer's psql history and saved connections survive a rename.
+		expect(resourceName('Orders', 'database', 'dev', 'dev')).toBe('orders');
+		expect(resourceName('Orders', 'database', 'local', 'local')).toBe('orders');
+	});
+
+	it('suffixes every stage when no local stage is given', () => {
+		// A deploy names no local stage: a deployed stage is never the local one,
+		// whatever it is called — `development` included.
+		expect(resourceName('Orders', 'database', 'development')).toBe(
+			'orders_development',
+		);
 	});
 
 	it('suffixes a database with an underscore', () => {
@@ -310,7 +322,9 @@ describe('cache backends', () => {
 	} as const satisfies ConstructManifest;
 
 	it('runs the HTTP proxy for upstash, so dev speaks what prod speaks', () => {
-		const plan = planFor(withCache, 'development', provisionOrder(withCache));
+		const plan = planFor(withCache, 'development', provisionOrder(withCache), {
+			localStage: 'development',
+		});
 
 		// The proxy and the Redis behind it: the client speaks HTTP with a token
 		// wherever it runs.
@@ -319,6 +333,7 @@ describe('cache backends', () => {
 
 	it('runs plain Redis for elasticache, which speaks the wire protocol', () => {
 		const plan = planFor(withCache, 'development', provisionOrder(withCache), {
+			localStage: 'development',
 			cache: 'elasticache',
 		});
 
@@ -330,7 +345,7 @@ describe('cache backends', () => {
 			withDatabase,
 			'development',
 			provisionOrder(withDatabase),
-			{ cache: 'db' },
+			{ localStage: 'development', cache: 'db' },
 		);
 
 		// The same relationship pg-boss has: a table in a database that already
@@ -343,6 +358,7 @@ describe('cache backends', () => {
 		// design refuses to invent.
 		expect(() =>
 			planFor(withCache, 'development', provisionOrder(withCache), {
+				localStage: 'development',
 				cache: 'db',
 			}),
 		).toThrow(CacheNeedsDatabase);
@@ -356,7 +372,7 @@ describe('cache backends', () => {
 			withDatabase,
 			'development',
 			provisionOrder(withDatabase),
-			{ cache: 'db' },
+			{ localStage: 'development', cache: 'db' },
 		);
 
 		expect(plan.resources.find((r) => r.id === 'Sessions')?.of).toBe('Orders');
@@ -372,6 +388,7 @@ describe('cache backends', () => {
 		} as const satisfies ConstructManifest;
 
 		const plan = planFor(named, 'development', provisionOrder(named), {
+			localStage: 'development',
 			cache: 'db',
 		});
 
@@ -388,7 +405,10 @@ describe('cache backends', () => {
 		} as const satisfies ConstructManifest;
 
 		expect(() =>
-			planFor(two, 'development', provisionOrder(two), { cache: 'db' }),
+			planFor(two, 'development', provisionOrder(two), {
+				localStage: 'development',
+				cache: 'db',
+			}),
 		).toThrow(CacheIsAmbiguous);
 	});
 });

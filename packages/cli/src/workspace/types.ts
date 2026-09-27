@@ -392,6 +392,37 @@ export interface SharedConfig {
 }
 
 /**
+ * The project's stages, named by the project.
+ *
+ * Stage names were literals scattered through the CLI — `gkm dev` ran as
+ * `development` and looked for `dev` secrets first, a deploy script said
+ * `production` — so a team that called its stages anything else was
+ * working against the tool. They are declared once, here, and read.
+ *
+ * @example
+ * ```ts
+ * stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] }
+ * ```
+ */
+export interface StagesConfig {
+	/**
+	 * What `gkm dev`, `exec`, `setup` and `test` run as: the stage whose
+	 * secrets are read locally, and whose containers carry no suffix.
+	 *
+	 * Never also a deployed stage. Secrets are stored per stage name, so a
+	 * deployed stage sharing it would share its secrets with every laptop.
+	 */
+	local: string;
+	/** The stages `gkm deploy --stage` accepts. */
+	deployed: string[];
+	/**
+	 * Deployed stages whose resources outlive the stack that made them —
+	 * retained on removal and protected, e.g. the stage users are on.
+	 */
+	protected?: string[];
+}
+
+/**
  * Secrets encryption configuration.
  *
  * Configures how secrets are encrypted for deployment.
@@ -795,6 +826,8 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	deploy?: DeployConfig;
 	/** Development services (db, cache, mail, storage, events) */
 	services?: ServicesConfig;
+	/** The project's stages: which one is local, which deploy */
+	stages: StagesConfig;
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
 	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
@@ -826,6 +859,7 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	shared?: SharedConfig;
 	deploy?: DeployConfig;
 	services?: ServicesConfig;
+	stages: StagesConfig;
 	secrets?: SecretsConfig;
 	state?: StateConfig;
 };
@@ -945,6 +979,9 @@ export interface WorkspaceConfig {
 	/** Development services (db, cache, mail, storage, events) */
 	services?: ServicesConfig;
 
+	/** The project's stages: which one is local, which deploy */
+	stages: StagesConfig;
+
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
 
@@ -1014,6 +1051,8 @@ export interface NormalizedWorkspace {
 	deploy: DeployConfig;
 	/** Shared packages configuration (empty object if not specified) */
 	shared: SharedConfig;
+	/** The project's stages, as declared */
+	stages: StagesConfig;
 	/** Secrets configuration (empty object if not specified) */
 	secrets: SecretsConfig;
 	/** State provider configuration (undefined = local filesystem) */

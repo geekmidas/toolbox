@@ -498,7 +498,7 @@ export async function workspaceDockerCommand(
 		registry: options.registry,
 		// Which infrastructure this file describes is the manifest's answer, the
 		// same one reconcile derives — not a boolean per service in config.
-		containers: await derivedContainers(workspace, 'development'),
+		containers: await derivedContainers(workspace, workspace.stages.local),
 	});
 	const composePath = join(dockerDir, 'docker-compose.yml');
 	await writeFile(composePath, dockerCompose);

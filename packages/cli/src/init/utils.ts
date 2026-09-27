@@ -116,6 +116,26 @@ export function getRunCommand(
 	}
 }
 
+/**
+ * Run a binary the project installed, through its package manager — so it is
+ * the project's own version, not whatever \`npx\` would fetch.
+ */
+export function getExecCommand(
+	pkgManager: PackageManager,
+	command: string,
+): string {
+	switch (pkgManager) {
+		case 'pnpm':
+			return `pnpm exec ${command}`;
+		case 'yarn':
+			return `yarn ${command}`;
+		case 'bun':
+			return `bunx ${command}`;
+		default:
+			return `npx --no-install ${command}`;
+	}
+}
+
 const lockfileByPm: Record<PackageManager, string> = {
 	pnpm: 'pnpm-lock.yaml',
 	yarn: 'yarn.lock',

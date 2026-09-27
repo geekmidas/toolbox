@@ -65,7 +65,9 @@ const manifest = {
 } as const satisfies ConstructManifest;
 
 const portsFor = (stage: string) => {
-	const plan = planFor(manifest, stage, provisionOrder(manifest));
+	const plan = planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: 'development',
+	});
 
 	return Object.fromEntries(
 		portKeys(plan.containers).map((key, index) => [key, 20000 + index]),
@@ -73,7 +75,9 @@ const portsFor = (stage: string) => {
 };
 
 const env = (stage = 'development', mailFrom?: string) => {
-	const plan = planFor(manifest, stage, provisionOrder(manifest));
+	const plan = planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: 'development',
+	});
 
 	return envFor(plan, {
 		ports: portsFor(stage),
@@ -270,6 +274,7 @@ describe('envFor', () => {
 		// the one whatever started the process assigned — and not one line of
 		// application code differs between the two.
 		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			localStage: 'development',
 			edge: false,
 		});
 
@@ -353,7 +358,9 @@ describe('envFor', () => {
 		// they will deployed. On `http://localhost:<port>` they are one host with
 		// two ports, which derives nothing — a *different* cookie model rather
 		// than a less secure one.
-		const plan = planFor(manifest, 'development', provisionOrder(manifest));
+		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			localStage: 'development',
+		});
 
 		const resolved = envFor(plan, {
 			ports: portsFor('development'),
@@ -369,6 +376,7 @@ describe('envFor', () => {
 
 	it('derives it from real addresses when there is no edge', () => {
 		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			localStage: 'development',
 			edge: false,
 		});
 
@@ -387,6 +395,7 @@ describe('envFor', () => {
 describe('cache backends', () => {
 	const cacheEnv = (backend?: 'upstash' | 'elasticache' | 'db') => {
 		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			localStage: 'development',
 			...(backend ? { cache: backend } : {}),
 		});
 

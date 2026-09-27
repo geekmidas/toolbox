@@ -1,3 +1,4 @@
+import type { StagesConfig } from '../../workspace/types.js';
 import { apiTemplate } from './api.js';
 import { minimalTemplate } from './minimal.js';
 import { serverlessTemplate } from './serverless.js';
@@ -75,6 +76,8 @@ export interface TemplateOptions {
 	deployTarget: DeployTarget;
 	/** The AWS region, when `deployTarget` is `sst` */
 	region?: string;
+	/** The project's stages, written to gkm.config.ts and read from it */
+	stages: StagesConfig;
 	/** Services selection */
 	services: ServicesSelection;
 	/** Frontend framework (fullstack template only) */

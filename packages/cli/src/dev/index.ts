@@ -420,7 +420,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	// Load secrets for dev mode, resolve Docker ports, and write to JSON file
 	let secretsJsonPath: string | undefined;
-	const appSecrets = await loadSecretsForApp(secretsRoot, workspaceAppName);
+	const appSecrets = await loadSecretsForApp(
+		secretsRoot,
+		config.stages.local,
+		workspaceAppName,
+	);
 
 	if (workspace && usesConstructs(workspace)) {
 		// The same reconcile `gkm setup` and the workspace dev path run: derive
@@ -428,7 +432,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// URLs name, and inject those URLs. It replaces the branch below, which
 		// has no hand-written compose file left to read ports out of.
 		const reconciled = await reconcileWorkspace(workspace, {
-			stage: 'development',
+			stage: workspace.stages.local,
 		});
 
 		if (reconciled.changed && reconciled.plan.containers.length > 0) {
@@ -913,21 +917,17 @@ export async function loadDevSecrets(
 		return {};
 	}
 
-	// Try 'dev' stage first, then 'development'
-	const stages = ['dev', 'development'];
-
-	for (const stage of stages) {
-		if (secretsExist(stage, workspace.root)) {
-			const secrets = await readStageSecrets(stage, workspace.root);
-			if (secrets) {
-				logger.log(`🔐 Loading secrets from stage: ${stage}`);
-				return toEmbeddableSecrets(secrets);
-			}
+	const stage = workspace.stages.local;
+	if (secretsExist(stage, workspace.root)) {
+		const secrets = await readStageSecrets(stage, workspace.root);
+		if (secrets) {
+			logger.log(`🔐 Loading secrets from stage: ${stage}`);
+			return toEmbeddableSecrets(secrets);
 		}
 	}
 
 	logger.warn(
-		'⚠️  Secrets enabled but no dev/development secrets found. Run "gkm setup" to initialize your development environment',
+		`⚠️  Secrets enabled but no "${stage}" secrets found. Run "gkm setup" to initialize the local stage`,
 	);
 	return {};
 }
@@ -1022,7 +1022,7 @@ async function workspaceDevCommand(
 		// because the blast radius is this project's containers and `.gkm/`, and
 		// because the converged case costs one hash and one health check.
 		const reconciled = await reconcileWorkspace(workspace, {
-			stage: 'development',
+			stage: workspace.stages.local,
 		});
 
 		if (reconciled.changed && reconciled.plan.containers.length > 0) {

@@ -16,6 +16,7 @@ import type { WorkspaceConfig } from '../types.ts';
 describe('defineWorkspace', () => {
 	it('should return valid workspace config unchanged', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			name: 'my-saas',
 			apps: {
 				api: {
@@ -34,6 +35,7 @@ describe('defineWorkspace', () => {
 
 	it('should throw on invalid config', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: { api: { type: 'backend' } },
 		} as unknown as WorkspaceConfig;
 
@@ -46,6 +48,7 @@ describe('defineWorkspace', () => {
 		// No `apps` block at all: a `site` is an app and so is a `rest-api` that
 		// named one, so the list is read off the graph rather than written here.
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			name: 'shop',
 			constructs: './constructs/**/*.ts',
 		} as WorkspaceConfig;
@@ -55,6 +58,7 @@ describe('defineWorkspace', () => {
 
 	it('should allow backend apps without routes (e.g., auth servers)', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				auth: {
 					type: 'backend',
@@ -72,6 +76,7 @@ describe('defineWorkspace', () => {
 describe('isWorkspaceConfig', () => {
 	it('should return true for workspace config', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -87,6 +92,7 @@ describe('isWorkspaceConfig', () => {
 
 	it('should return false for single-app GkmConfig', () => {
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/endpoints/**/*.ts',
 			envParser: './src/config/env',
 			logger: './src/logger',
@@ -103,6 +109,7 @@ describe('isWorkspaceConfig', () => {
 describe('normalizeWorkspace', () => {
 	it('should normalize workspace with defaults', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -126,6 +133,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should use provided name', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			name: 'custom-name',
 			apps: {
 				api: {
@@ -144,6 +152,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should preserve all app properties', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -166,6 +175,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should resolve deploy target to dokploy by default', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -183,6 +193,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should use deploy.default as fallback for resolvedDeployTarget', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -203,6 +214,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should use per-app deploy target when specified', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -224,6 +236,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should pass through state config when specified', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -248,6 +261,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should leave state undefined when not specified', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -265,6 +279,7 @@ describe('normalizeWorkspace', () => {
 
 	it('should pass through local state config', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -287,6 +302,7 @@ describe('normalizeWorkspace', () => {
 describe('wrapSingleAppAsWorkspace', () => {
 	it('should wrap single-app config as workspace', () => {
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/endpoints/**/*.ts',
 			envParser: './src/config/env',
 			logger: './src/logger',
@@ -311,6 +327,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 		// containers exist is the manifest's answer — a declared database implies
 		// Postgres — so this block is left to be what its name says.
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/**/*.ts',
 			envParser: './src/env',
 			logger: './src/logger',
@@ -331,6 +348,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 		// here is the difference between a single-app project deriving its
 		// Postgres and silently getting none.
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			constructs: './src/constructs/**/*.ts',
 			routes: './src/endpoints/**/*.ts',
 			envParser: './src/env',
@@ -344,6 +362,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 
 	it('should set resolvedDeployTarget to dokploy', () => {
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/**/*.ts',
 			envParser: './src/env',
 			logger: './src/logger',
@@ -358,6 +377,7 @@ describe('wrapSingleAppAsWorkspace', () => {
 describe('processConfig', () => {
 	it('should process workspace config', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			name: 'test-workspace',
 			apps: {
 				api: {
@@ -378,6 +398,7 @@ describe('processConfig', () => {
 
 	it('should process single-app config', () => {
 		const config: GkmConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/**/*.ts',
 			envParser: './src/env',
 			logger: './src/logger',
@@ -392,6 +413,7 @@ describe('processConfig', () => {
 
 	it('should throw on invalid workspace config', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: { api: { type: 'backend' } },
 		} as unknown as WorkspaceConfig;
 
@@ -404,6 +426,7 @@ describe('processConfig', () => {
 describe('getAppGkmConfig', () => {
 	it('should return GkmConfig for backend app', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			constructs: './constructs/**/*.ts',
 			apps: {
 				api: {
@@ -436,6 +459,7 @@ describe('getAppGkmConfig', () => {
 		// could not describe.
 		const wrapped = wrapSingleAppAsWorkspace(
 			{
+				stages: { local: 'development', deployed: ['production'] },
 				routes: './src/**/*.ts',
 				deploy: {
 					default: 'dokploy',
@@ -458,6 +482,7 @@ describe('getAppGkmConfig', () => {
 		// receive. Dropping them here is how an app on `cache: 'db'` was handed a
 		// `postgres://` URL by an entry that had registered only Upstash.
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			services: { cache: 'db', mail: 'ses' },
 			apps: {
 				api: {
@@ -479,6 +504,7 @@ describe('getAppGkmConfig', () => {
 
 	it('should return undefined for frontend app', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'web',
@@ -497,6 +523,7 @@ describe('getAppGkmConfig', () => {
 
 	it('should return undefined for non-existent app', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -517,6 +544,7 @@ describe('getAppGkmConfig', () => {
 describe('getAppBuildOrder', () => {
 	it('should return apps in dependency order', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'web',
@@ -554,6 +582,7 @@ describe('getAppBuildOrder', () => {
 
 	it('should handle apps without dependencies', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -582,6 +611,7 @@ describe('getAppBuildOrder', () => {
 describe('getDependencyEnvVars', () => {
 	it('should generate env vars for dependencies', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'web',
@@ -618,6 +648,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should use custom URL prefix', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'web',
@@ -646,6 +677,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should return empty object for app without dependencies', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -664,6 +696,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should return empty object for non-existent app', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',
@@ -682,6 +715,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should emit VITE_ prefix for vite apps', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'frontend',
@@ -711,6 +745,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should emit VITE_ prefix for tanstack-start apps', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'frontend',
@@ -747,6 +782,7 @@ describe('getDependencyEnvVars', () => {
 
 	it('should emit only un-prefixed URLs for remix apps', () => {
 		const config: WorkspaceConfig = {
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				web: {
 					type: 'frontend',
@@ -776,6 +812,7 @@ describe('getDependencyEnvVars', () => {
 describe('getEndpointForStage', () => {
 	it('should return per-stage endpoint when available', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			endpoints: {
 				development: 'https://dev.dokploy.example.com:3000',
 				production: 'https://prod.dokploy.example.com:3000',
@@ -792,6 +829,7 @@ describe('getEndpointForStage', () => {
 
 	it('should fall back to global endpoint when per-stage not found', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			endpoint: 'https://dokploy.example.com:3000',
 			endpoints: {
 				development: 'https://dev.dokploy.example.com:3000',
@@ -805,6 +843,7 @@ describe('getEndpointForStage', () => {
 
 	it('should return global endpoint when only endpoint is configured', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			endpoint: 'https://dokploy.example.com:3000',
 		};
 
@@ -828,6 +867,7 @@ describe('getEndpointForStage', () => {
 
 	it('should prefer per-stage endpoint over global endpoint', () => {
 		const config = {
+			stages: { local: 'development', deployed: ['production'] },
 			endpoint: 'https://global.example.com:3000',
 			endpoints: {
 				production: 'https://prod.example.com:3000',
@@ -851,6 +891,7 @@ describe('getEndpointForStage', () => {
  */
 describe('a single-app config as a workspace', () => {
 	const base = {
+		stages: { local: 'development', deployed: ['production'] },
 		routes: './src/**/*.ts',
 		envParser: './src/env',
 		logger: './src/logger',

@@ -40,6 +40,7 @@ const {
 
 describe('resolveOpenApiConfig', () => {
 	const baseConfig: GkmConfig = {
+		stages: { local: 'development', deployed: ['production'] },
 		constructs: './src/endpoints/**/*.ts',
 	};
 
@@ -279,6 +280,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -309,6 +311,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 			}),
 		);
@@ -337,6 +340,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -359,6 +363,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/nonexistent/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -404,6 +409,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -432,6 +438,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -465,6 +472,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -498,6 +506,7 @@ describe('openapiCommand', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -548,6 +557,7 @@ export const complexEndpoint = api
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				constructs: [`${tempDir}/**/*.ts`],
 				openapi: { enabled: true },
 			}),
@@ -598,6 +608,7 @@ describe('openapiCommand - workspace mode', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test-workspace',
 				apps: {
 					api: {
@@ -635,6 +646,7 @@ describe('openapiCommand - workspace mode', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test-workspace',
 				apps: {
 					api: {
@@ -664,6 +676,7 @@ describe('openapiCommand - workspace mode', () => {
 			tempDir,
 			'gkm.config.json',
 			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test-workspace',
 				apps: {
 					api: {

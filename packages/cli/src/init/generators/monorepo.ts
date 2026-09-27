@@ -15,6 +15,7 @@ import type {
 } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import { deployPackage, generateDeployFiles } from './deploy.js';
+import { stagesBlock } from './stages.js';
 
 /**
  * What the root `constructs/` folder imports, and the peers each construct
@@ -415,6 +416,7 @@ export default defineWorkspace({
   // The scope every physical name is built from: \`Database\` becomes
   // \`production-${options.name}-database\` on Dokploy and on AWS alike.
   name: '${options.name}',
+${stagesBlock(options.stages)}
 
   // Every kind, in every app. A declared database is why a Postgres exists, a
   // declared bucket is why MinIO does, a declared topic is why a broker does —

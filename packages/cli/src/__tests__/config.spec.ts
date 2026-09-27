@@ -23,6 +23,7 @@ describe('loadConfig', () => {
 	it('should load configuration from gkm.config.ts', async () => {
 		const configContent = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './src/endpoints/**/*.ts',
   functions: './src/functions/**/*.ts',
   crons: './src/crons/**/*.ts',
@@ -35,6 +36,7 @@ export default {
 		const config = await loadConfig();
 
 		expect(config).toEqual({
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/endpoints/**/*.ts',
 			functions: './src/functions/**/*.ts',
 			crons: './src/crons/**/*.ts',
@@ -59,6 +61,7 @@ module.exports = {
 	it('should handle configuration with only envParser override', async () => {
 		const configContent = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   envParser: './my-env#myEnvParser',
   logger: './my-logger#myLogger',
 };
@@ -71,6 +74,7 @@ export default {
 	it('should handle malformed config file gracefully', async () => {
 		const invalidConfigContent = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './endpoints/**/*.ts'
   // Missing comma - syntax error
   functions: './functions/**/*.ts'
@@ -90,6 +94,7 @@ module.exports = {
 `;
 		const tsConfigContent = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './ts-routes/**/*.ts',
 };
 `;
@@ -188,6 +193,7 @@ describe('loadAppConfig', () => {
 		// Create workspace config (plain JS object with __isWorkspace marker)
 		const workspaceConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   __isWorkspace: true,
   name: 'test-workspace',
   apps: {
@@ -229,6 +235,7 @@ export default {
 		const appDir = tempDir;
 		const config = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/constructs/**/*.ts',
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env',
@@ -263,6 +270,7 @@ export default {
 		// Create workspace config without 'unknown' app
 		const workspaceConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   __isWorkspace: true,
   name: 'test-workspace',
   apps: {
@@ -299,6 +307,7 @@ export default {
 
 		const workspaceConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',
@@ -322,6 +331,7 @@ export default {
 		// Create workspace config
 		const workspaceConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   __isWorkspace: true,
   name: 'env-test',
   apps: {
@@ -388,6 +398,7 @@ describe('config discovery', () => {
 		// Create config at root
 		const configContent = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',
@@ -409,6 +420,7 @@ export default {
 		// Config at root
 		const rootConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './root-routes/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',
@@ -420,6 +432,7 @@ export default {
 		const envConfigDir = await createTempDir('env-config-');
 		const envConfig = `
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   routes: './env-routes/**/*.ts',
   envParser: './src/config/env',
   logger: './src/config/logger',

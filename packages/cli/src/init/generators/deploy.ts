@@ -19,24 +19,35 @@ export interface DeployPackage {
 	devDependencies: Record<string, string>;
 }
 
+/** One `deploy:<stage>` script per deployed stage. */
+const perStage = (
+	options: TemplateOptions,
+	command: (stage: string) => string,
+): Record<string, string> =>
+	Object.fromEntries(
+		options.stages.deployed.map((stage) => [`deploy:${stage}`, command(stage)]),
+	);
+
 export function deployPackage(options: TemplateOptions): DeployPackage {
 	switch (options.deployTarget) {
 		case 'dokploy':
 			return {
-				scripts: {
-					deploy: 'gkm deploy --provider dokploy --stage production',
-				},
+				scripts: perStage(
+					options,
+					(stage) => `gkm deploy --provider dokploy --stage ${stage}`,
+				),
 				dependencies: {},
 				devDependencies: {},
 			};
 		case 'sst': {
 			const v = GEEKMIDAS_VERSIONS;
 			return {
-				scripts: {
-					// The build writes `.gkm/manifest/aws.ts`, which is all
-					// `sst.config.ts` reads — it never imports the application.
-					deploy: 'gkm build --provider aws && sst deploy --stage production',
-				},
+				// The build writes `.gkm/manifest/aws.ts`, which is all
+				// `sst.config.ts` reads — it never imports the application.
+				scripts: perStage(
+					options,
+					(stage) => `gkm build --provider aws && sst deploy --stage ${stage}`,
+				),
 				// What `@geekmidas/cloud/sst` imports. They are optional peers of
 				// the cloud package, so nothing installs them unless asked.
 				dependencies: {
@@ -97,18 +108,21 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
  * constructs the application declares, through \`fromManifest\`. What is here
  * is what varies by stage, and the inputs a declaration cannot carry.
  *
- * Deploy with \`pnpm run deploy\`, which builds the manifest first.
+ * Deploy with \`pnpm run deploy:<stage>\`, which builds the manifest first.
  */
 const region = '${options.region}';
+
+/** From \`stages.protected\` in gkm.config.ts. */
+const PROTECTED: string[] = ${JSON.stringify(options.stages.protected ?? []).replace(/"/g, "'")};
 
 export default $config({
   app(input) {
     return {
       name: '${options.name}',
-      // A QA stage is disposable; a production database should not vanish
-      // because somebody removed a stack.
-      removal: input?.stage === 'production' ? 'retain' : 'remove',
-      protect: input?.stage === 'production',
+      // Any other stage is disposable; a protected one's database should not
+      // vanish because somebody removed a stack.
+      removal: PROTECTED.includes(input?.stage) ? 'retain' : 'remove',
+      protect: PROTECTED.includes(input?.stage),
       home: 'aws',
       providers: { aws: { region } },
     };

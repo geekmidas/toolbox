@@ -23,6 +23,7 @@ import { serverlessTemplate } from '../templates/serverless.js';
 import { workerTemplate } from '../templates/worker.js';
 
 const baseOptions: TemplateOptions = {
+	stages: { local: 'development', deployed: ['production'] },
 	name: 'test-project',
 	template: 'minimal',
 	telescope: true,

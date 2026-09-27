@@ -4,6 +4,7 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
+import { stagesBlock } from './stages.js';
 
 /**
  * Vitest config content with globalSetup for database-enabled apps
@@ -51,7 +52,7 @@ export function generateConfigFiles(
 	// Build gkm.config.ts for single-app
 	let gkmConfig = `import { defineConfig } from '@geekmidas/cli/config';
 
-export default defineConfig({${
+export default defineConfig({${stagesBlock(options.stages)}${
 		options.monorepo
 			? ''
 			: `
