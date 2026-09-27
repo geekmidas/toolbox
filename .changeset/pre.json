@@ -39,6 +39,7 @@
     "client-coercion-types",
     "drop-free-standing-builders",
     "init-deploy-target",
+    "init-github-actions",
     "init-plain-construct-ids",
     "init-scaffolds-constructs",
     "install-check",
@@ -48,6 +49,7 @@
     "single-app-paths",
     "surface-has-no-app",
     "test-ports",
+    "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "worker-template"
   ]
