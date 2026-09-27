@@ -115,9 +115,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Consumes any pending changesets. `released` records whether that actually
-      # changed anything — without it, publish runs on every push to main and
-      # npm rejects the unchanged versions, so docs-only commits fail CI.
+      # Consumes any pending changesets, then asks npm whether this version is
+      # out. Whether *this run* bumped anything is the wrong question: a run
+      # that bumps and then fails to publish leaves a version in git that no
+      # later run would publish, which is how alpha.7 and alpha.8 were stranded.
+      # Every package shares one version, so the CLI's stands for all of them.
       - name: Version packages
         id: version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -130,21 +132,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --staged --quiet; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            echo "No pending changesets — nothing to publish."
-          else
+          if ! git diff --staged --quiet; then
             git commit -m "chore: version packages"
             git push
-            echo "released=true" >> "$GITHUB_OUTPUT"
+          fi
+          version=$(node -p "require('./packages/cli/package.json').version")
+          if [ -n "$(npm view "@geekmidas/cli@$version" version 2>/dev/null)" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$version is already on npm — nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish packages
-        if: steps.version.outputs.released == 'true'
-        # Rebuilt first: the CLI's dist was built before the bump, and
-        # `versions.ts` is compiled into it rather than read at runtime.
+        if: steps.version.outputs.publish == 'true'
+        # Rebuilt first: the dist was built before the bump, and the CLI's
+        # `versions.ts` is compiled into it rather than read at runtime. The
+        # root build is what builds every package; the CLI has no build script
+        # of its own, which is what failed alpha.7 and alpha.8.
         run: |
-          pnpm --filter @geekmidas/cli build
+          pnpm run build
           pnpm changeset publish
