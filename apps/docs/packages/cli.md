@@ -105,7 +105,6 @@ my-api/
 │       └── development.json (encrypted)
 ├── .gitignore
 ├── biome.json
-├── docker-compose.yml
 ├── gkm.config.ts
 ├── package.json
 ├── tsconfig.json
@@ -135,7 +134,6 @@ my-project/
 │   └── secrets/
 │       └── development.json (encrypted)
 ├── biome.json
-├── docker-compose.yml
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── tsconfig.json
@@ -223,7 +221,6 @@ gkm docker --slim
 ```
 .gkm/docker/
 ├── Dockerfile           # Multi-stage (default), slim, or turbo build
-├── docker-compose.yml   # With optional services
 ├── .dockerignore
 └── docker-entrypoint.sh
 ```
@@ -500,7 +497,7 @@ When services are configured, the following are auto-generated:
 
 **Event Backend Credentials:**
 
-When `services.events` is configured, additional credentials are generated:
+When the project declares a topic or queue, additional credentials are generated for the target's broker:
 - **pgboss**: `PGBOSS_DB_HOST`, `PGBOSS_DB_PORT`, `PGBOSS_DB_USER`, `PGBOSS_DB_PASSWORD`, `PGBOSS_DB_NAME`
 - **sns**: `AWS_ACCESS_KEY_ID` (LSIA-prefixed), `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ENDPOINT_URL`
 - **rabbitmq**: Uses the RabbitMQ service credentials
@@ -514,7 +511,7 @@ All event backends generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSC
 It reads the `constructs` glob, inspects every export of every matching module,
 and builds a manifest. From the manifest it computes the containers a stage
 needs, compares that against what is running, and applies the difference:
-allocating ports, writing `.gkm/docker-compose.yml`, starting containers,
+allocating ports, writing `docker-compose.constructs.yml`, starting containers,
 creating databases, roles, schemas, and buckets.
 
 ```bash
@@ -557,18 +554,6 @@ export default defineConfig({
 
   // Route files (glob pattern or partitioned config)
   routes: './src/endpoints/**/*.ts',
-
-  // What no construct implies.
-  //
-  // `db` and `storage` are deliberately absent: they are derived from the
-  // declarations above and are ignored here, so the two cannot disagree. What
-  // is left is a backend *selection* — where the cache lives, who delivers the
-  // mail, which broker carries events.
-  services: {
-    cache: 'db',          // 'upstash' | 'elasticache' | 'db'
-    mail: 'ses',          // 'ses' | 'resend' | 'smtp'
-    events: 'pgboss',     // 'pgboss' | 'sns' | 'rabbitmq'
-  },
 
   // Environment parser module (named export)
   envParser: './src/config/env#envParser',
@@ -816,51 +801,10 @@ The `docker` configuration controls Docker file generation:
 | `imageName` | `string` | package name | Docker image name |
 | `baseImage` | `string` | `node:22-alpine` | Base Docker image |
 | `port` | `number` | `3000` | Container port |
-| `compose.services` | `string[]` | `[]` | Services for the generated deploy compose |
 
-::: warning Deploy-side only
-`docker.compose.services` describes the compose file `gkm docker` generates for
-a deployment. It does **not** decide what runs locally: `gkm dev` and `gkm test`
-reconcile the containers from the declared constructs and write their own
-`.gkm/docker-compose.yml`. Listing `postgres` here does not start one locally,
-and declaring a `KyselyDatabase` does — which is the point.
-:::
-
-**Available Compose Services:**
-
-| Service | Description | Environment Variables |
-|---------|-------------|-----------------------|
-| `postgres` | PostgreSQL 17 | `DATABASE_URL` |
-| `redis` | Redis 7 | `REDIS_URL` |
-| `rabbitmq` | RabbitMQ 3 | `RABBITMQ_URL` |
-| `minio` | MinIO S3-compatible storage | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY` |
-| `mailpit` | Mailpit SMTP | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` |
-| `localstack` | AWS LocalStack (SNS+SQS) | `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID` |
-
-**Example docker-compose.yml with services:**
-
-```yaml
-services:
-  postgres:
-    image: postgres:17
-    ports:
-      - '${POSTGRES_HOST_PORT:-5432}:5432'
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
-
-  redis:
-    image: redis:7
-    ports:
-      - '${REDIS_HOST_PORT:-6379}:6379'
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-
-  mailpit:
-    image: axllent/mailpit
-    ports:
-      - '${MAILPIT_SMTP_PORT:-1025}:1025'
-      - '${MAILPIT_UI_PORT:-8025}:8025'
-```
+There is no `compose` option. `gkm docker` writes `docker-compose.constructs.yml`
+from the declared constructs — the same file `gkm dev` uses — and an image pin
+or an extra service goes in your own `docker-compose.yml`, merged over it.
 
 #### Dynamic Port Resolution
 
@@ -1088,15 +1032,6 @@ export default defineWorkspace({
 
   constructs: './constructs/**/*.ts',
 
-  services: {
-    cache: 'db',      // 'upstash' | 'elasticache' | 'db'
-    storage: 's3',    // 'minio' | 's3' | 'r2'
-    mail: 'ses',      // 'ses' | 'resend' | 'smtp'
-    events: 'pgboss', // 'pgboss' | 'sns' | 'rabbitmq'
-
-    // Image pins live here now, one whole reference per container.
-    images: { postgres: 'postgres:16-alpine' },
-  },
 
   deploy: {
     default: 'dokploy',

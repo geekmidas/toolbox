@@ -21,9 +21,10 @@ import {
 } from '../reconcile/provision.js';
 import { constructGlobs, usesConstructs } from '../reconcile/workspace.js';
 import {
-	cacheBackendOf,
+	cacheBackendFor,
+	eventsBackendFor,
 	providerOf,
-	storageBackendOf,
+	storageBackendFor,
 } from '../workspace/backends.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { DokployApi } from './dokploy-api';
@@ -107,12 +108,11 @@ export async function provisionDeclared(
 		environmentId: options.environmentId,
 		stage: options.stage,
 		project: workspace.name,
-		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
-		...(workspace.services.events ? { events: workspace.services.events } : {}),
-		storage: storageBackendOf(
-			workspace.services.storage,
-			providerOf(workspace),
-		),
+		// Every backend from the target this deploy goes to, and from nothing
+		// else — the same answer reconcile gave locally.
+		cache: cacheBackendFor(providerOf(workspace)),
+		events: eventsBackendFor(providerOf(workspace)),
+		storage: storageBackendFor(providerOf(workspace)),
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
 		...(options.secrets ? { secrets: options.secrets } : {}),
 		deferred: [],

@@ -1,4 +1,4 @@
-import type { ServicesConfig, StagesConfig } from './workspace/types.js';
+import type { StagesConfig } from './workspace/types.js';
 
 export type MainProvider = 'aws' | 'server';
 export type LegacyProvider =
@@ -63,20 +63,6 @@ export interface ProductionConfig {
 	 * - full: Uses HonoEndpoint.addRoutes for complex endpoints
 	 */
 	optimizedHandlers?: boolean;
-}
-
-/** Service-specific configuration for docker-compose */
-export interface ServiceConfig {
-	/**
-	 * Full Docker image reference (e.g., 'postgis/postgis:16-3.4-alpine').
-	 * When specified, overrides the default image entirely.
-	 */
-	image?: string;
-	/**
-	 * Docker image version/tag (e.g., '15-alpine' for postgres).
-	 * Only used when `image` is not specified.
-	 */
-	version?: string;
 }
 
 /**
@@ -154,6 +140,20 @@ export const DEFAULT_CACHE: Record<MainProvider, CacheBackend> = {
 	server: 'db',
 };
 
+/**
+ * Which broker carries a declared queue or topic, by target.
+ *
+ * Whether there are events at all is the manifest's answer — a declared
+ * `Topic` or `Queue` — so this only ever answers the second question. AWS
+ * deploys them to SNS and SQS, and locally the AWS emulator stands in, so the
+ * broker a developer runs is the one production has. A server has a Postgres
+ * already, and pg-boss keeps its queues there.
+ */
+export const DEFAULT_EVENTS: Record<MainProvider, EventsBackend> = {
+	aws: 'sns',
+	server: 'pgboss',
+};
+
 /** Where a bucket lives when nobody said — see {@link DEFAULT_CACHE}. */
 export const DEFAULT_STORAGE: Record<MainProvider, StorageBackend> = {
 	aws: 's3',
@@ -201,11 +201,6 @@ export type ComposeServiceName =
 	| 'mailpit'
 	| 'localstack';
 
-/** Services configuration - can be boolean (use defaults) or object with version */
-export type ComposeServicesConfig = {
-	[K in ComposeServiceName]?: boolean | ServiceConfig;
-};
-
 export interface DockerConfig {
 	/** Container registry URL (e.g., 'ghcr.io/myorg') */
 	registry?: string;
@@ -215,23 +210,6 @@ export interface DockerConfig {
 	baseImage?: string;
 	/** Container port (default: 3000) */
 	port?: number;
-	/** docker-compose services to include */
-	compose?: {
-		/**
-		 * Services to include in docker-compose.
-		 * Can be an object with service configs or an array of service names (legacy).
-		 *
-		 * @example Object format (recommended)
-		 * services: {
-		 *   postgres: { version: '15-alpine' },
-		 *   redis: true,  // use default version
-		 * }
-		 *
-		 * @example Array format (legacy, uses default versions)
-		 * services: ['postgres', 'redis']
-		 */
-		services?: ComposeServicesConfig | ComposeServiceName[];
-	};
 }
 
 export interface ServerConfig extends ProviderConfig {
@@ -359,17 +337,6 @@ export interface GkmConfig {
 	name?: string;
 	/** The project's stages: which one is local, which deploy */
 	stages: StagesConfig;
-	/**
-	 * Where the things no construct implies live.
-	 *
-	 * The same block a workspace config carries, and the same split: `db` and
-	 * `storage` are derived from the declared `KyselyDatabase` and
-	 * `ObjectStorage` and are ignored here, while `cache`, `mail`, and `events`
-	 * name a *backend* — where the cache lives, who delivers the mail, which
-	 * broker carries events. A single-app project had no way to say any of that
-	 * before, so its event backend could only be guessed.
-	 */
-	services?: ServicesConfig;
 	/**
 	 * Constructs glob pattern — one glob, every kind.
 	 *

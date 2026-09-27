@@ -51,7 +51,6 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
   },
-  services: {},
 });
 `;
 			await writeFile(join(workspaceDir, 'gkm.config.ts'), gkmConfig);
@@ -209,7 +208,6 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
   },
-  services: {},
 });
 `;
 			await writeFile(join(workspaceDir, 'gkm.config.ts'), gkmConfig);
@@ -285,7 +283,6 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
   },
-  services: {},
 });
 `;
 			await writeFile(join(workspaceDir, 'gkm.config.ts'), gkmConfig);

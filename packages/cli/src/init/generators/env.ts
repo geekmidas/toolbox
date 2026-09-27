@@ -25,6 +25,9 @@ node_modules/
 dist/
 .gkm/
 
+# Written by gkm from the constructs; your own docker-compose.yml is not
+docker-compose.constructs.yml
+
 # Environment (legacy - use gkm secrets instead)
 .env
 .env.local

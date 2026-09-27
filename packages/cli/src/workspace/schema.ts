@@ -227,61 +227,6 @@ export function getDeployTargetError(target: string, appName?: string): string {
 }
 
 /**
- * Service image configuration schema.
- */
-const ServiceImageConfigSchema = z.object({
-	version: z.string().optional(),
-	image: z.string().optional(),
-});
-
-/**
- * Mail service configuration schema.
- */
-const MailServiceConfigSchema = ServiceImageConfigSchema.extend({
-	smtp: z
-		.object({
-			host: z.string(),
-			port: z.number(),
-			user: z.string().optional(),
-			pass: z.string().optional(),
-		})
-		.optional(),
-});
-
-/**
- * Services configuration schema.
- */
-const ServicesConfigSchema = z.object({
-	db: z.union([z.boolean(), ServiceImageConfigSchema]).optional(),
-	// A string is a backend name, not an image pin — see `ServicesConfig`. The
-	// union accepts both because one key answers both questions: what runs
-	// locally, and what backs it when deployed.
-	cache: z
-		.union([
-			z.boolean(),
-			ServiceImageConfigSchema,
-			z.enum(['upstash', 'elasticache', 'db']),
-		])
-		.optional(),
-	mail: z
-		.union([
-			z.boolean(),
-			MailServiceConfigSchema,
-			z.enum(['resend', 'ses', 'smtp']),
-		])
-		.optional(),
-	storage: z
-		.union([
-			z.boolean(),
-			ServiceImageConfigSchema,
-			z.enum(['minio', 's3', 'r2']),
-		])
-		.optional(),
-	events: z.enum(['pgboss', 'sns', 'rabbitmq']).optional(),
-	trustLocalCa: z.boolean().optional(),
-});
-
-/**
  * Dokploy workspace configuration schema.
  * Supports either a single endpoint or per-stage endpoints.
  */
@@ -779,11 +724,14 @@ export const WorkspaceConfigSchema = z
 		apps: z.record(z.string(), AppConfigSchema).optional(),
 		shared: SharedConfigSchema.optional(),
 		deploy: DeployConfigSchema.optional(),
-		services: ServicesConfigSchema.optional(),
 		stages: StagesConfigSchema,
 		secrets: SecretsConfigSchema.optional(),
 		state: StateConfigSchema.optional(),
 	})
+	// Strict, so a key this schema no longer has fails instead of being
+	// dropped: a leftover `services:` block is a question the config used to
+	// answer, and silently ignoring it would hide that the answer moved.
+	.strict()
 	.refine(
 		(data) => {
 			// Validate dependencies reference existing apps

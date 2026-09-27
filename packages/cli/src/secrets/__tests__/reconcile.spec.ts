@@ -27,7 +27,6 @@ function createMultiAppWorkspace(
 				framework: 'nextjs',
 			},
 		},
-		services: {},
 		deploy: {},
 		shared: {},
 		secrets: {},

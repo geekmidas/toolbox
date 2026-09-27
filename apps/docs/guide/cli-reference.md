@@ -39,19 +39,9 @@ export default defineConfig({
   crons: 'src/crons/**/*.ts',
   subscribers: 'src/subscribers/**/*.ts',
 
-  // Where each thing lives when deployed — a backend name, never a flag.
-  // Whether a cache *exists* comes from declaring one; this only says where.
-  // Every key is optional: the default follows the deploy target.
-  services: {
-    cache: 'db',        // 'upstash' | 'elasticache' | 'db'
-    storage: 's3',      // 'minio' | 's3' | 'r2'
-    mail: 'ses',        // 'ses' | 'resend' | 'smtp'
-    events: 'pgboss',   // 'pgboss' | 'sns' | 'rabbitmq'
-
-    // Image pins are a separate question: which container runs locally,
-    // not where the thing lives when deployed.
-    images: { redis: 'redis:7-alpine' },
-  },
+  // No `services` block: whether a cache exists is declaring one, where it
+  // lives follows the deploy target, and an image pin is your own
+  // docker-compose.yml, merged over the generated one.
 
   // Development tools
   telescope: {
@@ -361,9 +351,19 @@ Generate Docker files.
 gkm docker [options]
 
 Options:
-  --compose              Generate docker-compose.yml
-  --services <list>      Include services: postgres, redis, rabbitmq, minio, mailpit, localstack
+  --build                Build the image after generating files
+  --push                 Push the image to the registry after building
+  --tag <tag>            Image tag (default: latest)
+  --registry <registry>  Container registry URL
+  --slim                 Slim Dockerfile (needs a pre-built bundle)
+  --turbo                Use turbo prune for monorepo optimization
 ```
+
+Writes the Dockerfiles under `.gkm/docker/`, and `docker-compose.constructs.yml`
+at the project root: the containers the constructs imply, with each app behind
+the `apps` profile. Your own `docker-compose.yml` is merged over it. Run
+everything with `gkm setup`, then
+`docker compose -f docker-compose.constructs.yml --profile apps up --build`.
 
 ### `gkm upgrade`
 

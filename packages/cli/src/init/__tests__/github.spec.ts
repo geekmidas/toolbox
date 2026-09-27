@@ -9,7 +9,6 @@ const workspace: TemplateOptions = {
 	monorepo: true,
 	apiPath: 'apps/api',
 	telescope: true,
-	database: true,
 	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
@@ -17,7 +16,7 @@ const workspace: TemplateOptions = {
 	deployTarget: 'sst',
 	region: 'af-south-1',
 	stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
-	services: { db: true, cache: false, mail: false, storage: false },
+	constructs: { database: true, cache: false, mail: false, uploads: false },
 };
 
 const files = (options: Partial<TemplateOptions> = {}) =>

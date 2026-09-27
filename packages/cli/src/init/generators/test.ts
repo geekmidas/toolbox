@@ -14,7 +14,7 @@ export function generateTestFiles(
 	options: TemplateOptions,
 	_template: TemplateConfig,
 ): GeneratedFile[] {
-	if (!options.database) {
+	if (!options.constructs.database) {
 		return [];
 	}
 

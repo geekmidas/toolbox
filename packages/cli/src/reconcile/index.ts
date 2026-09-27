@@ -18,13 +18,19 @@
  * without a daemon. The default implementation is the real one.
  */
 
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import type { CacheBackend, EventsBackend } from '../types';
 import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
 import { bucketClient, pgClient } from './clients';
-import { type ComposeFile, composeFor, toYaml } from './compose';
+import {
+	type ComposeFile,
+	type ComposeService,
+	composeFor,
+	toYaml,
+} from './compose';
 import { portKeys, portsOf, primaryPortKey } from './containers';
 import { dockerCli } from './docker';
 import { envFor } from './env';
@@ -52,8 +58,18 @@ export type { ComposeFile } from './compose';
 export type { Plan, PlannedResource } from './plan';
 export type { PortAssignments } from './ports';
 
-/** Where the generated compose file is written, relative to the project root. */
-export const COMPOSE_PATH = '.gkm/docker-compose.yml';
+/**
+ * Where the generated compose file is written, relative to the project root.
+ *
+ * At the root, beside the project's own `docker-compose.yml`, because the two
+ * are one stack: this file is everything the constructs imply and is never
+ * edited, that one is anything they cannot express — an image pin, an extra
+ * service — and is merged over it, so it wins.
+ */
+export const COMPOSE_PATH = 'docker-compose.constructs.yml';
+
+/** The project's own compose file, merged over the generated one if present. */
+export const PROJECT_COMPOSE_PATH = 'docker-compose.yml';
 
 /**
  * The local edge's config, beside the compose file that mounts it.
@@ -155,8 +171,11 @@ export interface ReconcileOptions {
 	extraContainers?: readonly string[];
 	/** Whether the local edge fronts surfaces, sites and file servers. */
 	edge?: boolean;
-	/** Per-container image pins. */
-	images?: Readonly<Record<string, string>>;
+	/**
+	 * The apps, as services beside the containers — see `reconcile/apps.ts`.
+	 * Handed the derived containers so an app can depend on them.
+	 */
+	apps?: (containers: readonly string[]) => Record<string, ComposeService>;
 	/** Ports assigned by previous runs, from `.gkm/ports.json`. */
 	saved?: PortAssignments;
 	/** Start containers and wait for health. Off answers "what would change". */
@@ -251,7 +270,7 @@ export async function reconcile(
 	const compose = composeFor(plan, {
 		project,
 		ports,
-		...(options.images ? { images: options.images } : {}),
+		...(options.apps ? { apps: options.apps(plan.containers) } : {}),
 	});
 
 	// The edge's config is part of what "converged" means: a file server added or
@@ -287,6 +306,9 @@ export async function reconcile(
 	const recorded = await loadState(root, stage);
 	const converged =
 		recorded?.hash === hash &&
+		// The file is gitignored and derived; a fresh checkout with the state
+		// still around must write it rather than trust a hash of nothing.
+		existsSync(composePath) &&
 		(!start || (await docker.healthy(composePath, plan.containers)));
 
 	// The fast path, and the reason reconciling on every start is acceptable.

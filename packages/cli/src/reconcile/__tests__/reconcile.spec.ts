@@ -140,19 +140,34 @@ describe('reconcile', () => {
 		expect(calls.up).toHaveLength(1);
 	});
 
-	it('acts again when an image pin moves', async () => {
-		// The plan is unchanged, but a changed image is exactly a container that
-		// must be recreated — which is why the hash covers the compose document.
+	it('acts again when the compose document changes without the plan', async () => {
+		// The plan is unchanged, but an app service appearing is a different
+		// file — which is why the hash covers the compose document, not just
+		// the plan.
 		await run();
 
 		const { docker, calls } = fakeDocker({ healthy: true });
 		const second = await run({
 			docker,
-			images: { postgres: 'postgis/postgis:18-3.5' },
+			apps: () => ({ api: { image: 'api:latest', profiles: ['apps'] } }),
 		});
 
 		expect(second.changed).toBe(true);
 		expect(calls.up).toHaveLength(1);
+	});
+
+	it('writes the compose file again when it is gone, however the state reads', async () => {
+		// Gitignored and derived: a checkout without it must get one, even
+		// with the recorded hash still matching.
+		await run();
+		const { rm } = await import('node:fs/promises');
+		const { join } = await import('node:path');
+		await rm(join(root, 'docker-compose.constructs.yml'));
+
+		const { docker } = fakeDocker({ healthy: true });
+		const again = await run({ docker });
+
+		expect(again.changed).toBe(true);
 	});
 
 	it('keeps stages apart', async () => {

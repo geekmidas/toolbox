@@ -222,22 +222,10 @@ The dev server discovers your subscribers, connects to pg-boss, and begins polli
 
 When a database is declared, the CLI automatically sets up **pg-boss** as the default event backend — no explicit configuration needed. A dedicated `pgboss` user and schema are created in your PostgreSQL database, and `EVENT_PUBLISHER_CONNECTION_STRING` / `EVENT_SUBSCRIBER_CONNECTION_STRING` are set automatically.
 
-To use a different backend, set `events` explicitly:
-
-```typescript
-// gkm.config.ts
-import { defineWorkspace } from '@geekmidas/cli';
-
-export default defineWorkspace({
-  stages: { local: 'dev', deployed: ['prod'] },
-  constructs: './constructs/**/*.ts',
-  services: {
-    // pgboss is the default. It reuses the Postgres your declared database
-    // already brings up — `db: true` is not needed and is ignored.
-    // events: 'sns',      // or 'rabbitmq'
-  },
-});
-```
+The backend follows the deploy target — there is nothing to configure. A
+project deploying to a server uses pg-boss, in the Postgres its declared
+database already brings up; one deploying to AWS uses SNS and SQS, against the
+local AWS emulator in development.
 
 | Backend | Infrastructure | Connection String Protocol |
 |---------|---------------|---------------------------|
@@ -387,12 +375,12 @@ Here's how events flow through the system:
 When PostgreSQL is enabled, the CLI automatically creates pgboss credentials and sets the event connection strings. No explicit `events` configuration is needed:
 
 ```typescript
-// gkm.config.ts
+// gkm.config.ts — nothing to configure: on a server target, pg-boss lives in
+// the Postgres your declared database already implies.
 export default defineWorkspace({
   stages: { local: 'dev', deployed: ['prod'] },
-  // Nothing to configure: pgboss is the default, and it lives in the Postgres
-  // your declared database already implies.
-  services: {},
+  constructs: './constructs/**/*.ts',
+  deploy: { default: 'dokploy' },
 });
 ```
 
@@ -401,14 +389,9 @@ The CLI automatically:
 2. Generates `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`
 3. Injects them into your environment during `gkm dev` and `gkm exec`
 
-For SNS or RabbitMQ, set `events` explicitly — the CLI then adds the appropriate containers and switches the connection string protocol:
-
-```typescript
-services: {
-  events: 'sns',      // adds LocalStack, uses sns:// and sqs:// protocols
-  // events: 'rabbitmq', // adds RabbitMQ, uses rabbitmq:// protocol
-},
-```
+On an AWS target the CLI uses SNS and SQS instead — it adds the AWS emulator
+container locally and switches the connection string protocol to `sns://` and
+`sqs://`.
 
 Your publisher and subscriber services read these env vars via `envParser`, so the same code works across all backends — only the connection string changes.
 

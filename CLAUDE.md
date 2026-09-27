@@ -129,13 +129,23 @@ This uses `globalThis` instead of mutating the export to survive CJS/ESM module 
 
 ### Events Backend
 
-Configured via `services.events` in workspace config: `'pgboss'` | `'sns'` | `'rabbitmq'`
+There is no `services` block. Whether there are events is a declared `Topic` or
+`Queue`; which broker carries them follows the deploy target (`DEFAULT_EVENTS`
+in `packages/cli/src/types.ts`):
 
-- **pgboss**: Reuses PostgreSQL (dedicated user/schema). NOT a `ComposeServiceName` — uses separate `PGBOSS_DEFAULTS`.
-- **sns**: Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required.
-- **rabbitmq**: Adds RabbitMQ container.
+- **pgboss** (server / Dokploy): Reuses PostgreSQL (dedicated user/schema). NOT a `ComposeServiceName` — uses separate `PGBOSS_DEFAULTS`.
+- **sns** (AWS): Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required.
+- **rabbitmq**: Adds RabbitMQ container; no target selects it by default.
 
 All generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`.
+
+### Compose
+
+`docker-compose.constructs.yml` at the project root is generated from the
+construct plan (reconcile) by `gkm dev`/`test`/`setup`/`docker` — gitignored,
+never edited, apps behind the `apps` profile. The project's own
+`docker-compose.yml` is merged over it (`-f constructs -f docker-compose.yml`),
+so image pins and extra services live there.
 
 ## Testing
 

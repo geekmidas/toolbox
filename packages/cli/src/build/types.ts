@@ -119,12 +119,6 @@ export interface BuildContext {
 	hooks?: NormalizedHooksConfig;
 	/** Production build configuration */
 	production?: NormalizedProductionConfig;
-	/** Docker compose services for auto-populating env vars */
-	dockerServices?: {
-		postgres?: boolean;
-		redis?: boolean;
-		rabbitmq?: boolean;
-	};
 	/**
 	 * When true, optional env vars get a `?` suffix in each construct's
 	 * environment array (e.g. `PORT?` instead of `PORT`).

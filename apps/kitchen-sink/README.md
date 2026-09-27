@@ -146,21 +146,13 @@ is done.
 
 ### The other event backend
 
-```bash
-pnpm test:sns   # currently fails, deliberately — see below
-```
-
-The same suite is meant to run over SNS and SQS against the local AWS emulator,
-which is why `services.events` reads `KITCHEN_SINK_EVENTS`: the handlers do not
-change, only the connection string's protocol does, and that claim is worth
-testing rather than asserting.
-
-It does not run yet. The local target refuses with `UnprovisionedEventsBackend`
-— SNS and SQS are addressed by ARN, and nothing creates the topic, the queue or
-the subscription in the emulator, so there is no URL to compose. The event
-clients already accept a custom endpoint; what is missing is the provisioning
-step beside the one that creates buckets in MinIO. Failing loudly there is
-better than composing a string that fails at the first publish.
+The broker follows the deploy target: this project deploys to Dokploy, so its
+queues and topics live in Postgres through pg-boss. A project deploying to AWS
+gets SNS and SQS, against the local AWS emulator in development — and the local
+target refuses that today with `UnprovisionedEventsBackend`: SNS and SQS are
+addressed by ARN, and nothing creates the topic, the queue or the subscription
+in the emulator yet. Failing loudly there is better than composing a string
+that fails at the first publish.
 
 ## Building
 

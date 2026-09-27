@@ -138,11 +138,12 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 }
 
 /**
- * Trust the authority if this project wants that and this machine lacks it.
+ * Trust the authority if this machine lacks it and its owner agrees.
  *
- * The decision, in order: what the project configured, then what a person
- * previously answered, then a prompt. Never a silent `sudo` — that is the one
- * thing a setup command should not do on somebody's behalf.
+ * A machine's answer, not the project's: whether a laptop installs a root
+ * certificate is its owner's call, so the decision is `--yes`, then what this
+ * machine previously answered, then a prompt. Never a silent `sudo` — that is
+ * the one thing a setup command should not do on somebody's behalf.
  *
  * Silent and free when the machine already trusts it, which is what makes it
  * acceptable to call on every `gkm setup`.
@@ -150,12 +151,11 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 export async function ensureTrusted(
 	root: string,
 	url: string,
-	options: { configured?: boolean; assumeYes?: boolean } = {},
+	options: { assumeYes?: boolean } = {},
 ): Promise<void> {
-	if (options.configured === false) return;
 	if (await isTrusted(url)) return;
 
-	if (options.configured !== true && !options.assumeYes) {
+	if (!options.assumeYes) {
 		// Nothing to answer a prompt in CI, a hook, or a piped shell — and a
 		// setup that stops there waiting is worse than one that leaves the
 		// authority untrusted. Not recorded as declined, because nobody
@@ -163,7 +163,7 @@ export async function ensureTrusted(
 		if (!process.stdin.isTTY) {
 			logger.log(
 				'   Local https addresses are not trusted here. Run "gkm trust", ' +
-					'or set services.trustLocalCa.',
+					'or "gkm setup --yes".',
 			);
 			return;
 		}
@@ -184,9 +184,7 @@ export async function ensureTrusted(
 
 		if (!install) {
 			await recordDeclined(root);
-			logger.log(
-				'   Skipped. Run "gkm trust" later, or set services.trustLocalCa.',
-			);
+			logger.log('   Skipped. Run "gkm trust" later.');
 			return;
 		}
 	}

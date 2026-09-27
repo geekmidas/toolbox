@@ -86,7 +86,8 @@ import {
 	type RouteInfo,
 	type Routes,
 } from '../types';
-import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
+import { DEFAULT_EMAIL } from '../types.js';
+import { cacheBackendFor, providerOf } from '../workspace/backends.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -122,8 +123,8 @@ function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
 
 	return (
 		own ?? {
-			services: workspace.services,
 			stages: workspace.stages,
+			...(workspace.deploy ? { deploy: workspace.deploy } : {}),
 			constructs: allConstructGlobs(workspace),
 		}
 	);
@@ -170,18 +171,12 @@ export async function buildCommand(
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
 
-	// One answer for which backends this app uses, read once. The build
+	// One answer for which backends this app uses, read once — from the
+	// deploy target, which is the same place reconcile reads it. The build
 	// registers drivers for it and records it in the manifest, so a deploy
 	// cannot pick differently and hand the running code a URL it has no driver
 	// for.
-	const backendConfig =
-		(config as { services?: { cache?: unknown; mail?: unknown } }).services ??
-		(
-			loadedConfig as {
-				workspace?: { services?: { cache?: unknown; mail?: unknown } };
-			}
-		).workspace?.services;
-	const cacheBackend = cacheBackendOf(backendConfig?.cache);
+	const cacheBackend = cacheBackendFor(providerOf(loadedConfig.workspace));
 
 	// Normalize production configuration
 	const productionConfigFromGkm = getProductionConfigFromGkm(config);
@@ -216,22 +211,6 @@ export async function buildCommand(
 	if (hooks) {
 		logger.log(`🪝 Server hooks enabled`);
 	}
-
-	// Extract docker compose services for env var auto-population
-	const services = config.docker?.compose?.services;
-	const dockerServices = services
-		? Array.isArray(services)
-			? {
-					postgres: services.includes('postgres'),
-					redis: services.includes('redis'),
-					rabbitmq: services.includes('rabbitmq'),
-				}
-			: {
-					postgres: Boolean(services.postgres),
-					redis: Boolean(services.redis),
-					rabbitmq: Boolean(services.rabbitmq),
-				}
-		: undefined;
 
 	// `constructs` accepts the partitioned shape every other glob does; only the
 	// flat forms name a construct file.
@@ -325,14 +304,15 @@ export async function buildCommand(
 				: studio,
 		hooks,
 		production,
-		dockerServices,
 		constructGlobs,
 		cacheBackend,
-		emailBackend: emailBackendOf(backendConfig?.mail),
+		// Mail is SMTP everywhere; the provider is whatever the stage's URL
+		// names, so there is no choice to read here.
+		emailBackend: DEFAULT_EMAIL,
 		// Both halves of "where does the cache live": the declaration for one
-		// that named its database, and `services.cache` for one that named
-		// nowhere. Reading only the config registers a driver for a protocol the
-		// target never composes.
+		// that named its database, and the deploy target's default for one that
+		// named nowhere. Reading only the default registers a driver for a
+		// protocol the target never composes.
 		storageDrivers: driversFor({
 			appRoot: process.cwd(),
 			cache: cacheBackendsIn(declared, cacheBackend),
@@ -584,9 +564,6 @@ async function buildForProvider(
 				...queues.map((q) => q.construct),
 			];
 
-			// Get docker compose services for auto-populating env vars
-			const dockerServices = context.dockerServices;
-
 			const bundleResult = await bundleServer({
 				entryPoint: join(outputDir, 'server.ts'),
 				outputDir: join(outputDir, 'dist'),
@@ -595,7 +572,6 @@ async function buildForProvider(
 				external: context.production.external,
 				stage,
 				constructs: allConstructs,
-				dockerServices,
 			});
 			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);

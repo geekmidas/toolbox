@@ -59,7 +59,8 @@ export const apiTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure, monorepo, name, services } = options;
+		const { loggerType, routesStructure, monorepo, name } = options;
+		const { cache, uploads, mail: sendsMail } = options.constructs;
 
 		// The ids and env keys the scaffolded constructs own. Derived, so the
 		// files below and the runtime that discovers them cannot disagree.
@@ -231,7 +232,7 @@ export const listUsersEndpoint = router
   .get('/users')
   .output(ListUsersResponseSchema)
 ${
-	options.database
+	options.constructs.database
 		? `  // \`db\` is here because the router named the database construct.
   .handle(async ({ db }) => ({
     users: await db.selectFrom('users').select(['id', 'name']).execute(),
@@ -259,7 +260,7 @@ export const listUsersEndpoint = router
     users: z.array(UserSchema),
   }))
 ${
-	options.database
+	options.constructs.database
 		? `  // \`db\` is here because the router named the database construct.
   .handle(async ({ db }) => ({
     users: await db.selectFrom('users').select(['id', 'name']).execute(),
@@ -361,7 +362,7 @@ export const authService = {
 				path: 'src/router.ts',
 				content: `import { UnauthorizedError } from '@geekmidas/errors';
 import { api } from '${constructsImport('api')}';${
-					options.database
+					options.constructs.database
 						? `
 import { database } from '${constructsImport('database')}';`
 						: ''
@@ -371,7 +372,7 @@ import { authService, type Session } from './services/auth.ts';
 /**
  * The shared endpoint factory — no session required.
  *${
-		options.database
+		options.constructs.database
 			? `
  * Naming the database construct is what puts \`db\` in every handler built from
  * this router. Depend on other constructs per endpoint with \`.dependsOn([…])\`.`
@@ -379,7 +380,7 @@ import { authService, type Session } from './services/auth.ts';
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = api.endpoints${options.database ? '.database(database)' : ''};
+export const router = api.endpoints${options.constructs.database ? '.database(database)' : ''};
 
 // The auth client available, but the session not enforced.
 export const r = router.services([authService]);
@@ -422,7 +423,7 @@ export const profileEndpoint = sessionRouter
 			files.push({
 				path: 'src/router.ts',
 				content: `import { api } from '${constructsImport('api')}';${
-					options.database
+					options.constructs.database
 						? `
 import { database } from '${constructsImport('database')}';`
 						: ''
@@ -431,7 +432,7 @@ import { database } from '${constructsImport('database')}';`
 /**
  * The shared endpoint factory.
  *${
-		options.database
+		options.constructs.database
 			? `
  * Naming the database construct is what puts \`db\` in every handler built from
  * this router. Depend on other constructs per endpoint with \`.dependsOn([…])\`.`
@@ -439,7 +440,7 @@ import { database } from '${constructsImport('database')}';`
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = api.endpoints${options.database ? '.database(database)' : ''};
+export const router = api.endpoints${options.constructs.database ? '.database(database)' : ''};
 `,
 			});
 		}
@@ -447,14 +448,14 @@ export const router = api.endpoints${options.database ? '.database(database)' : 
 		// The database — a construct, not a hand-written service. A workspace
 		// declares it at its root, but the API still owns the schema: the
 		// test setup and `kysely migrate` read migrations from here.
-		if (options.database && declares) {
+		if (options.constructs.database && declares) {
 			files.push(...databaseFiles());
-		} else if (options.database) {
+		} else if (options.constructs.database) {
 			files.push(usersMigration());
 		}
 
 		// Object storage — MinIO locally, S3 deployed, one declaration for both.
-		if (services.storage && declares) {
+		if (uploads && declares) {
 			files.push({
 				path: 'src/constructs/storage.ts',
 				content: `import { ObjectStorage } from '@geekmidas/constructs/object-storage';
@@ -473,7 +474,7 @@ export const uploads = new ObjectStorage('${bucket.id}');
 
 		// Mail. Mailpit locally, SES/Resend/SMTP deployed — one client either
 		// way, because every backend speaks SMTP.
-		if (services.mail && declares) {
+		if (sendsMail && declares) {
 			files.push({
 				path: 'src/constructs/email.ts',
 				content: `import { Email } from '@geekmidas/constructs/email';
@@ -483,17 +484,17 @@ export const uploads = new ObjectStorage('${bucket.id}');
  *
  * Add React templates to \`templates\` and \`sendTemplate\` becomes typed
  * against them. Reach it with \`.dependsOn([email])\` for
- * \`services.${mail.service}\`; who delivers it is \`services.mail\` in
- * \`gkm.config.ts\`.
+ * \`services.${mail.service}\`. Who delivers it is whichever provider the
+ * stage's \`${mail.urlKey}\` points at — every one of them speaks SMTP.
  */
 export const email = new Email('${mail.id}', { templates: {} });
 `,
 			});
 		}
 
-		// A cache. Where it lives when deployed is `services.cache` in the
-		// config; the application code is the same either way.
-		if (services.cache && declares) {
+		// A cache. Where it lives when deployed follows from the deploy target;
+		// the application code is the same either way.
+		if (cache && declares) {
 			files.push({
 				path: 'src/constructs/cache.ts',
 				content: `import { Cache } from '@geekmidas/constructs/cache';
@@ -502,13 +503,13 @@ export const email = new Email('${mail.id}', { templates: {} });
  * A cache, declared once.
  *
  * Reach it with \`.dependsOn([cache])\` for \`services.${kv.service}\`. This
- * form says the app caches and leaves *where* to the deployment: which backend
- * serves it — Upstash, ElastiCache, or a database — is \`services.cache\` in
- * \`gkm.config.ts\`, because the same code caches into any of them.
+ * form says the app caches and leaves *where* to the deployment: Upstash on
+ * AWS, a table in the database on a server — the same code caches into
+ * either.
  *
  * To say it caches in a particular database instead, declare it from that
  * database — \`database.cache()\` — and entries become a table in it, in its
- * schema and reached by its role, which config can no longer move.
+ * schema and reached by its role, whatever the target.
  */
 export const cache = new Cache('${kv.id}');
 `,
@@ -516,7 +517,7 @@ export const cache = new Cache('${kv.id}');
 		}
 
 		// The workspace path, until its auth app declares its own half.
-		if (options.database && !declares) {
+		if (options.constructs.database && !declares) {
 			files.push({
 				path: 'src/services/database.ts',
 				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -575,7 +576,7 @@ export const telescope = new Telescope({
 		}
 
 		// Add Studio config if enabled (requires database)
-		if (options.studio && options.database) {
+		if (options.studio && options.constructs.database) {
 			files.push({
 				path: 'src/config/studio.ts',
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';

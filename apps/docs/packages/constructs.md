@@ -169,7 +169,8 @@ database.cache('Sessions', { table: 'kv' }); // a different table
 It is the stronger of the two forms. `new Cache('Sessions')` says the app caches
 and leaves *where* to the deployment; this says it caches **here**, which is a
 fact about the application rather than about a stage — so the declaration wins
-over the config, and `services.cache: 'upstash'` does not move it.
+over the deploy target, and a target that puts caches in Upstash does not move
+it.
 
 What that buys beyond being explicit: the table's schema and the role that
 reaches it come from this database rather than from a second convention, and the

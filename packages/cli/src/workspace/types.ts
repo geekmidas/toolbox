@@ -51,156 +51,6 @@ export type {
 export type DeployTarget = 'dokploy' | 'vercel' | 'cloudflare';
 
 /**
- * Service image configuration for custom Docker images.
- *
- * @example
- * ```ts
- * // Use specific version
- * db: { version: '18-alpine' }
- *
- * // Use custom image
- * db: { image: 'timescale/timescaledb:latest-pg16' }
- * ```
- */
-export interface ServiceImageConfig {
-	/** Docker image version/tag (e.g., '18-alpine') */
-	version?: string;
-	/** Full Docker image reference (overrides version) */
-	image?: string;
-}
-
-/**
- * Mail service configuration.
- *
- * In development, uses Mailpit for email testing.
- * In production, uses SMTP configuration.
- *
- * @example
- * ```ts
- * services: {
- *   mail: {
- *     smtp: {
- *       host: 'smtp.sendgrid.net',
- *       port: 587,
- *       user: 'apikey',
- *       pass: process.env.SENDGRID_API_KEY,
- *     }
- *   }
- * }
- * ```
- */
-export interface MailServiceConfig extends ServiceImageConfig {
-	/** SMTP configuration for production */
-	smtp?: {
-		host: string;
-		port: number;
-		user?: string;
-		pass?: string;
-	};
-}
-
-/**
- * Development services configuration.
- *
- * Configures shared infrastructure services like databases and caches.
- * These are automatically provisioned in Dokploy during deployment.
- *
- * @example
- * ```ts
- * // Enable with defaults
- * services: {
- *   db: true,      // postgres:18-alpine
- *   cache: true,   // redis:8-alpine
- * }
- *
- * // Custom versions
- * services: {
- *   db: { version: '18-alpine' },
- *   cache: { version: '7-alpine' },
- * }
- *
- * // Custom images
- * services: {
- *   db: { image: 'timescale/timescaledb:latest-pg16' },
- * }
- *
- * // With mail service
- * services: {
- *   db: true,
- *   cache: true,
- *   mail: true,  // Mailpit in dev
- * }
- *
- * // With event backend
- * services: {
- *   db: true,
- *   cache: true,
- *   events: 'pgboss',    // reuses postgres (auto-enables db)
- *   // events: 'sns',    // adds LocalStack container
- *   // events: 'rabbitmq', // adds RabbitMQ container
- * }
- * ```
- */
-export interface ServicesConfig {
-	/**
-	 * Whether to install the local edge's certificate authority automatically.
-	 *
-	 * A declared `file-server` answers on `https://` locally, which needs a
-	 * certificate, which needs an authority this machine trusts. Everything gkm
-	 * starts trusts it already — reconcile injects `NODE_EXTRA_CA_CERTS` — but a
-	 * *browser* asks the operating system, and until the root is in its store a
-	 * local address reads as "not secure".
-	 *
-	 * Installing it needs `sudo`, so it is never silent by default:
-	 *
-	 * - unset — `gkm setup` asks once, on a machine that does not trust it yet,
-	 *   and remembers a "no" so it stops asking.
-	 * - `true` — install without asking. For a team that has decided, and for
-	 *   any machine where a prompt has nobody to answer it.
-	 * - `false` — never. Correct for CI, and for anyone who only ever reaches
-	 *   these addresses from code, which trusts the root without any of this.
-	 */
-	trustLocalCa?: boolean;
-	/**
-	 * Where a declared cache lives — `'upstash'`, `'elasticache'` or `'db'`.
-	 *
-	 * A backend name and nothing else. Whether there *is* a cache comes from the
-	 * manifest: declaring one implies its container the way declaring a database
-	 * implies Postgres, so this only ever answers the second question.
-	 *
-	 * Defaults by target — see `DEFAULT_CACHE`.
-	 */
-	cache?: import('../types.js').CacheBackend;
-	/**
-	 * Who delivers a declared app's mail — `'ses'`, `'resend'` or `'smtp'`.
-	 *
-	 * Locally every one of them is Mailpit, because every one speaks SMTP.
-	 */
-	mail?: import('../types.js').EmailBackend;
-	/** Where a declared bucket lives — `'minio'`, `'s3'` or `'r2'`. */
-	storage?: import('../types.js').StorageBackend;
-	/** What carries a declared queue or topic — pgboss, sns or rabbitmq. */
-	events?: import('../types.js').EventsBackend;
-	/**
-	 * Image pins for the containers the manifest derives.
-	 *
-	 * Separate from the backend names above, because they answer unrelated
-	 * questions: a backend says where a thing lives, a pin says which image runs
-	 * locally. They shared one key until `cache: true` meant "start a Redis" —
-	 * which was the last way a container could exist because config asked for
-	 * it rather than because something declared it.
-	 *
-	 * ```ts
-	 * services: { cache: 'elasticache', images: { redis: 'redis:6-alpine' } }
-	 * ```
-	 *
-	 * Pinning an image for a container nothing declares is a no-op, not an
-	 * error: it says which image *would* run, and nothing runs.
-	 */
-	images?: Partial<Record<import('../types.js').ComposeServiceName, string>>;
-}
-
-/**
  * Stage-based domain configuration.
  *
  * Maps deployment stages to base domains. The main frontend app
@@ -792,10 +642,6 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
  *       dependencies: ['api'],
  *     },
  *   },
- *   services: {
- *     db: true,
- *     cache: true,
- *   },
  *   deploy: {
  *     default: 'dokploy',
  *   },
@@ -824,8 +670,6 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	shared?: SharedConfig;
 	/** Deployment configuration */
 	deploy?: DeployConfig;
-	/** Development services (db, cache, mail, storage, events) */
-	services?: ServicesConfig;
 	/** The project's stages: which one is local, which deploy */
 	stages: StagesConfig;
 	/** Encrypted secrets configuration */
@@ -858,7 +702,6 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	};
 	shared?: SharedConfig;
 	deploy?: DeployConfig;
-	services?: ServicesConfig;
 	stages: StagesConfig;
 	secrets?: SecretsConfig;
 	state?: StateConfig;
@@ -871,7 +714,6 @@ export type RawWorkspaceInput = {
 	apps: AppsRecord;
 	shared?: SharedConfig;
 	deploy?: DeployConfig;
-	services?: ServicesConfig;
 	secrets?: SecretsConfig;
 	state?: StateConfig;
 };
@@ -926,12 +768,6 @@ export type WorkspaceConfigInput<
  *     },
  *   },
  *
- *   // Infrastructure services
- *   services: {
- *     db: true,      // PostgreSQL
- *     cache: true,   // Redis
- *   },
- *
  *   // Deployment configuration
  *   deploy: {
  *     default: 'dokploy',
@@ -975,9 +811,6 @@ export interface WorkspaceConfig {
 
 	/** Default deployment configuration */
 	deploy?: DeployConfig;
-
-	/** Development services (db, cache, mail, storage, events) */
-	services?: ServicesConfig;
 
 	/** The project's stages: which one is local, which deploy */
 	stages: StagesConfig;
@@ -1045,8 +878,6 @@ export interface NormalizedWorkspace {
 	constructs?: Routes;
 	/** Normalized app configurations */
 	apps: Record<string, NormalizedAppConfig>;
-	/** Services configuration (empty object if not specified) */
-	services: ServicesConfig;
 	/** Deploy configuration (empty object if not specified) */
 	deploy: DeployConfig;
 	/** Shared packages configuration (empty object if not specified) */
@@ -1103,7 +934,25 @@ export function isWorkspaceConfig(
 	// is enough.
 	if ('apps' in config && typeof config.apps === 'object') return true;
 
+	// Only when nothing else says it is one app. `openapi`, `telescope`,
+	// `providers` and the rest configure a single process, so a config that
+	// sets any of them is that process's — the workspace schema is strict,
+	// and reading one of these as a workspace would reject what it was never
+	// meant to accept.
 	return (
-		'constructs' in config && !('routes' in config) && !('envParser' in config)
+		'constructs' in config &&
+		Object.keys(config).every((key) => WORKSPACE_KEYS.has(key))
 	);
 }
+
+/** Every top-level key a workspace config has — see `WorkspaceConfigSchema`. */
+const WORKSPACE_KEYS: ReadonlySet<string> = new Set([
+	'name',
+	'constructs',
+	'apps',
+	'shared',
+	'deploy',
+	'stages',
+	'secrets',
+	'state',
+]);

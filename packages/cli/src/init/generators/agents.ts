@@ -57,15 +57,8 @@ function agentsContent(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): string {
-	const {
-		name,
-		monorepo,
-		database,
-		telescope,
-		studio,
-		packageManager,
-		services,
-	} = options;
+	const { name, monorepo, telescope, studio, packageManager } = options;
+	const { database } = options.constructs;
 	// A workspace keeps its constructs at the root, beside the apps that share
 	// them; a single app keeps them under its own `src/`. Writing the wrong one
 	// here would be the first thing a reader checked and the first thing that
@@ -141,8 +134,7 @@ environment and fail in a way that looks like a config bug. Go through
 \`gkm exec --\`, which is what injects them.`);
 
 	if (!isWorker) sections.push(endpointSection(options));
-	if (isWorker || isServerless || services.events)
-		sections.push(backgroundSection(template));
+	if (isWorker || isServerless) sections.push(backgroundSection(template));
 	if (database) sections.push(databaseSection());
 
 	sections.push(`## Environment
@@ -203,7 +195,8 @@ function layoutBlock(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): string {
-	const { monorepo, apiPath, database } = options;
+	const { monorepo, apiPath } = options;
+	const { database } = options.constructs;
 	const isWorker = template.name === 'worker';
 
 	if (monorepo) {
@@ -230,7 +223,7 @@ gkm.config.ts        # name, constructs glob, secrets`;
 }
 
 function endpointSection(options: TemplateOptions): string {
-	const { database } = options;
+	const { database } = options.constructs;
 
 	return `## Adding an endpoint
 

@@ -22,7 +22,6 @@ const workspace = (
 		root: wsRoot,
 		apps,
 		...(constructs ? { constructs } : {}),
-		services: {},
 		deploy: { default: 'dokploy' },
 		shared: { packages: [] },
 		secrets: {},

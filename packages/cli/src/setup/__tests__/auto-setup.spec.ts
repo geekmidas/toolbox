@@ -23,7 +23,6 @@ function createWorkspace(
 				dependencies: [],
 			},
 		},
-		services: {},
 		deploy: {},
 		shared: {},
 		secrets: {},
@@ -120,7 +119,6 @@ export default defineWorkspace({
       logger: './src/config/logger#logger',
     },
   },
-  services: {},
 });
 `,
 		);

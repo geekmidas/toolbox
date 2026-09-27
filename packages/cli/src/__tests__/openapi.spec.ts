@@ -374,11 +374,12 @@ describe('openapiCommand', () => {
 
 		await openapiCommand({ cwd: tempDir });
 
-		// A glob matching nothing declares no surface, and a surface is what an
-		// app is derived from — so there is no app to generate for, which is a
-		// different thing from an app with no endpoints and says so.
+		// `openapi` configures one process, so this is a single app — one whose
+		// glob matched nothing, which is what it says. (It was read as a
+		// workspace, with `openapi` silently dropped, until the workspace schema
+		// became strict.)
 		expect(consoleSpy).toHaveBeenCalledWith(
-			'No backend apps with OpenAPI enabled found',
+			'No valid endpoints found for OpenAPI generation',
 		);
 	});
 
@@ -479,17 +480,11 @@ describe('openapiCommand', () => {
 		);
 
 		process.chdir(tempDir);
-		const warnSpy = vi.spyOn(console, 'warn');
 
-		await openapiCommand({ cwd: tempDir });
-
-		// A file that does not parse takes discovery down with it, and the
-		// workspace falls back to what config alone declares — which is nothing
-		// here. It warns rather than throwing, deliberately: one unreadable
-		// construct should not stop a command that can still do part of its job.
-		// It must not pass in silence, which is what this pins.
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining('Could not read constructs'),
+		// A single app's endpoints are what it generates from, so a file among
+		// them that does not parse is the failure, not something to skip.
+		await expect(openapiCommand({ cwd: tempDir })).rejects.toThrow(
+			'OpenAPI generation failed',
 		);
 	});
 

@@ -191,7 +191,6 @@ describe('workspaceDeployCommand', () => {
 					resolvedDeployTarget: 'dokploy',
 				},
 			},
-			services: {},
 			deploy: { default: 'dokploy' },
 			shared: { packages: [] },
 			secrets: {},

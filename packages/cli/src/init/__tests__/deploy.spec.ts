@@ -11,7 +11,12 @@ describe('generateDeployFiles', () => {
 				monorepo: true,
 				deployTarget: 'sst',
 				stages: { local: 'dev', deployed: ['prod'] },
-				services: { db: true, cache: false, mail: false, storage: false },
+				constructs: {
+					database: true,
+					cache: false,
+					mail: false,
+					uploads: false,
+				},
 			} as TemplateOptions),
 		).toThrow(SstNeedsRegion);
 	});

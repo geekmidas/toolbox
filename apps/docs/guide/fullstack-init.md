@@ -155,11 +155,7 @@ my-app/
 │       ├── tailwind.config.ts
 │       ├── postcss.config.mjs
 │       └── package.json
-├── docker/
-│   ├── postgres/
-│   │   └── init.sh              # Per-app user/schema creation
-│   └── .env                     # Generated DB passwords
-├── docker-compose.yml           # PostgreSQL 16, Redis 7, Mailpit
+├── docker-compose.constructs.yml # written by gkm from the constructs (gitignored)
 ├── .gkm/
 │   └── secrets/
 │       └── development.json     # Encrypted development secrets
@@ -265,22 +261,13 @@ Creates `packages/models/` with reusable Zod schemas:
 
 All schemas export corresponding TypeScript types. Published as `@{projectName}/models` within the workspace.
 
-### 5. Generate Docker Files
+### 5. No Docker files to write
 
-**`docker-compose.yml`** — provisions three services:
-
-| Service | Image | Purpose |
-|---------|-------|---------|
-| PostgreSQL | `postgres:16` | Single database with per-app users |
-| Redis | `redis:7` | Caching backend |
-| Mailpit | `axllent/mailpit` | Email testing (dev only) |
-
-**`docker/postgres/init.sh`** — runs on first container start to create:
-
-- `api` user with access to `public` schema
-- `auth` user with access to `auth` schema (with `search_path=auth`)
-
-**`docker/.env`** — stores generated database passwords for the init script.
+`init` writes no compose file. The containers come from the constructs it
+declared — `Database` and the auth tenant are why a Postgres runs — and `gkm
+dev` writes `docker-compose.constructs.yml` from them, creating the roles and
+schemas each needs. Put an image pin or an extra service in your own
+`docker-compose.yml`; it is merged over the generated one.
 
 ### 6. Generate API App (`apps/api`)
 

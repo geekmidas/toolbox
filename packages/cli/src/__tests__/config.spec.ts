@@ -190,11 +190,10 @@ describe('loadAppConfig', () => {
 		const appDir = join(workspaceRoot, 'apps', 'api');
 		await mkdir(appDir, { recursive: true });
 
-		// Create workspace config (plain JS object with __isWorkspace marker)
+		// Create workspace config (a plain object)
 		const workspaceConfig = `
 export default {
   stages: { local: 'development', deployed: ['production'] },
-  __isWorkspace: true,
   name: 'test-workspace',
   apps: {
     api: {
@@ -271,7 +270,6 @@ export default {
 		const workspaceConfig = `
 export default {
   stages: { local: 'development', deployed: ['production'] },
-  __isWorkspace: true,
   name: 'test-workspace',
   apps: {
     api: {
@@ -332,7 +330,6 @@ export default {
 		const workspaceConfig = `
 export default {
   stages: { local: 'development', deployed: ['production'] },
-  __isWorkspace: true,
   name: 'env-test',
   apps: {
     api: {
