@@ -345,13 +345,14 @@ export interface CacheDeclaration extends Node {
 export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
 	/**
-	 * Whether this surface streams into a Telescope.
+	 * The app that serves this surface, relative to the workspace root.
 	 *
-	 * Everything else about the process serving it follows from the id:
-	 * `apps/<kebab-id>` is where it lives, the conventional directories under
-	 * that are where its code is, and ports are assigned in a stable order. So
-	 * a surface has no `app` to write — one would only restate its id.
+	 * Required, and the only thing about its process a surface says: its code
+	 * is found through the workspace's `constructs` glob, and ports are
+	 * assigned in a stable order. Nothing infers it from the id.
 	 */
+	path: string;
+	/** Whether this surface streams into a Telescope. */
 	telescope?: true;
 	/**
 	 * The construct that authenticates this surface.
@@ -446,18 +447,8 @@ export type Glob = string | readonly string[];
  * which is the same rule that decides deploy units, now stated once.
  */
 export interface AppSpec {
-	/**
-	 * Where its source lives, relative to the workspace root.
-	 *
-	 * Optional, and normally omitted: `apps/<kebab-id>` when that directory
-	 * exists, and the workspace root otherwise. An `Api` construct in a monorepo
-	 * means `apps/api`, and in a single-app project it means `.` — both of which
-	 * are answerable by looking.
-	 *
-	 * Set one only when the layout is genuinely different, e.g.
-	 * `path: 'services/api'`.
-	 */
-	path?: string;
+	/** Where its source lives, relative to the workspace root. */
+	path: string;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -498,10 +489,9 @@ export interface SiteDeclaration extends Node {
 	/**
 	 * How it is built and run, `path` included.
 	 *
-	 * Required, where a surface's is optional: a site is always its own app.
-	 * There is no arrangement in which two sites are one process.
+	 * Required: a site is always its own app, and says where it lives.
 	 */
-	app?: AppSpec;
+	app: AppSpec;
 	/**
 	 * Whether this is the site the base domain points at.
 	 *

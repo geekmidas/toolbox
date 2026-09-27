@@ -92,14 +92,15 @@ gone, and the apps are read off the graph:
 ```typescript
 // constructs/api.ts — a backend app
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   defaultAuthorizer: 'none',
   logger,
 });
 
 // constructs/site.ts — two frontend apps, and the edges that order them
-export const web = new StaticSite('Web').dependsOn([api, auth]);
+export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, auth]);
 
-export const admin = new StaticSite('Admin', { variant: 'next' })
+export const admin = new StaticSite('Admin', { path: 'apps/admin', variant: 'next' })
   .dependsOn([api]);
 ```
 
@@ -136,6 +137,7 @@ it runs with:
 ```typescript
 // constructs/api.ts
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   defaultAuthorizer: 'none',
   // The actual logger, not a path to one. It used to be
   // `logger: './src/config/logger'` in config, because the build wrote an

@@ -3,7 +3,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import type { InferOpenApiFromEndpoint } from '../infer';
 
-const api = new RestApi('Coercion', { defaultAuthorizer: 'none' });
+const api = new RestApi('Coercion', { path: '.', defaultAuthorizer: 'none' });
 
 /**
  * A coercing schema has two types, and the client sits on the opposite side of

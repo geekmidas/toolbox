@@ -4,7 +4,10 @@ import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', {
+	path: 'apps/test',
+	defaultAuthorizer: 'none',
+});
 
 /**
  * A presigned upload URL. Uses its own lean factory — only the bucket — to show

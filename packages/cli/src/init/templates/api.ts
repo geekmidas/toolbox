@@ -144,6 +144,9 @@ export const logger = createLogger();
 import { logger } from '../config/logger.ts';
 
 export const api = new RestApi('Api', {
+  // The project is the app.
+  path: '.',
+
   // Typed out rather than omitted: an API that ships open because a field was
   // left off is the one default worth refusing to have.
   defaultAuthorizer: 'none',

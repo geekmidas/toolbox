@@ -21,7 +21,12 @@ export const CONSTRUCTS_GLOB = './src/constructs/**/*.ts';
  */
 export const WORKSPACE_CONSTRUCTS_GLOB = './constructs/**/*.ts';
 
-/** Where each routes structure puts an app's handlers, relative to the app. */
+/**
+ * Where each routes structure puts an app's handlers, relative to the app.
+ *
+ * `.ts` only, never `.tsx`: a TanStack site keeps its own `src/routes/`, and
+ * this glob must not import a frontend's route components.
+ */
 export function routesGlob(structure: RoutesStructure): string {
 	switch (structure) {
 		case 'centralized-endpoints':
@@ -167,4 +172,22 @@ export async function down(db: Kysely<unknown>): Promise<void> {
 }
 `,
 	};
+}
+
+/**
+ * What a workspace's `constructs` glob reaches: the root constructs, and the
+ * handlers of every app laid out the way `init` was told.
+ *
+ * Every app in `appsDir` (`apps/*`) rather than the API's own directory.
+ * Endpoints are split by the surface they were built from, so naming one app
+ * here would only decide which apps' endpoints are silently never loaded.
+ */
+export function workspaceConstructsGlobs(
+	structure: RoutesStructure,
+	appsDir: string,
+): string[] {
+	return [
+		WORKSPACE_CONSTRUCTS_GLOB,
+		`./${appsDir}/*/${routesGlob(structure).replace(/^\.\//, '')}`,
+	];
 }

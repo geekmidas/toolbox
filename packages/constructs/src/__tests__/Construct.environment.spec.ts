@@ -7,7 +7,7 @@ import { RestApi } from '../rest-api';
 import { Worker } from '../worker';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
 /** Everything runnable is built from the process that runs it. */
 const testWorker = new Worker('Jobs');

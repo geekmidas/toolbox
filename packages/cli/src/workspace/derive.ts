@@ -10,14 +10,12 @@
  * and a surface config had no entry for simply never deployed.
  *
  * So the list comes from the graph. A `site` is an app, and so is every
- * `rest-api` — one surface, one container, at `apps/<kebab-id>`.
+ * `rest-api` — one surface, one container, at the `path` it declared.
  *
  * What config still supplies is what no graph can answer: the backends a cache
  * and a mailer resolve to, the deploy endpoint, the stage's domain.
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import {
 	type AppSpec,
 	type ConstructManifest,
@@ -122,35 +120,6 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
 	if (chosen) chosen[1].root = true;
 }
 
-/**
- * Where an app lives when it did not say.
- *
- * `apps/<kebab-id>`, which is what the id already said — or the project root
- * when there is no such directory, because then there is one app and it is the
- * project.
- *
- * This refused, briefly, when a workspace had an `apps/` directory with nothing
- * under this name — on the grounds that answering `.` makes the app the whole
- * repository. That was the wrong place for the guard twice over. It throws
- * inside discovery, which is caught, so one misplaced app lost the whole
- * manifest and every other app with it. And the hazard it guards — the build
- * filtering turbo onto the root package, whose `build` is `gkm build` — is the
- * build's question, asked where the answer is actionable.
- */
-export function conventionalPath(id: string, workspaceRoot: string): string {
-	const conventional = join('apps', appKey(id));
-
-	return existsSync(join(workspaceRoot, conventional)) ? conventional : '.';
-}
-
-export function resolveAppSpec(
-	id: string,
-	spec: AppSpec,
-	workspaceRoot: string,
-): AppSpec {
-	return { ...spec, path: spec.path ?? conventionalPath(id, workspaceRoot) };
-}
-
 export function derivedApps(
 	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
@@ -166,14 +135,13 @@ export function derivedApps(
 		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
-		// No opt-in to be had. A site is an app and so is a surface. A site may
-		// name its path, because its framework decides its layout; a surface's
-		// follows from its id and nothing else.
+		// No opt-in to be had. A site is an app and so is a surface, and each
+		// says where it lives.
 		const spec: AppSpec =
 			declaration.kind === 'site'
-				? resolveAppSpec(id, declaration.app ?? {}, workspace.root)
+				? declaration.app
 				: {
-						path: conventionalPath(id, workspace.root),
+						path: declaration.path,
 						...(declaration.telescope ? { telescope: true } : {}),
 					};
 

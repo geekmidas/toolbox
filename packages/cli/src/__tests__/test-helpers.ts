@@ -86,7 +86,7 @@ export async function createSurfaceFile(dir: string): Promise<string> {
 		'src/constructs/api.ts',
 		`import { RestApi } from '@geekmidas/constructs/rest-api';
 
-export const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+export const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 `,
 	);
 }
@@ -176,7 +176,7 @@ export const ${exportName} = worker.cron('${schedule}')
  * Helper functions to create real constructs for testing
  */
 /** The surface these helpers build endpoints from. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
 	const m = method.toLowerCase() as Lowercase<HttpMethod>;

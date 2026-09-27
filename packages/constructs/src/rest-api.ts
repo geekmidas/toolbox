@@ -44,6 +44,18 @@ export interface RestApiConfig<
 	TAuthorizers extends readonly string[] = readonly [],
 > {
 	/**
+	 * The app that serves this surface, relative to the workspace root —
+	 * `'apps/api'`, or `'.'` in a single-app project.
+	 *
+	 * Required. It was inferred from the id (`apps/<kebab-id>`, or the root
+	 * when no such directory existed), which meant a surface's home was
+	 * whatever happened to be on disk. It is where the app's `package.json`
+	 * and base `tsconfig.json` are, and which build serves this surface. It
+	 * does not change discovery: constructs still load from the workspace's
+	 * `constructs` glob.
+	 */
+	path: string;
+	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
 	 * of declaring one. These are the parts a graph cannot answer.
@@ -309,6 +321,7 @@ export class RestApi<
 			{
 				kind: 'rest-api',
 				id: this.id,
+				path: this.config.path,
 				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),

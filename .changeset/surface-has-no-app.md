@@ -11,9 +11,18 @@ A surface has no `app`, and `gkm init --template fullstack` builds
 does not — whether the surface streams into a Telescope — is `telescope: true`
 on the declaration itself.
 
+`RestApi`, `BetterAuth` and `StaticSite` take a required `path`: the app that
+serves them, relative to the workspace root (`'apps/api'`, or `'.'` in a
+single-app project). It was inferred from the id — `apps/<kebab-id>` if that
+directory existed, the root otherwise — so an app's home was whatever happened
+to be on disk. `BetterAuth`'s `basePath` is unchanged and still means the URL
+its routes are mounted at. `path` does not change discovery.
+
 Constructs, and the endpoints built from them, are loaded from the workspace's
-`constructs` glob. An endpoint belongs to the surface it was built from, not to
-the directory its file is in: each app's build now keeps only the endpoints
+`constructs` glob. `gkm init` writes one that reaches every app laid out the
+way it was told — `'./apps/*/src/endpoints/**/*.ts'` for the default layout —
+rather than naming the API's directory. An endpoint belongs to the surface it
+was built from, not to the directory its file is in: each app's build now keeps only the endpoints
 built from the surface that app serves. Before this, every build in a workspace
 guessed the same surface and kept every endpoint the glob found — so an auth
 server's build would have served the API's routes.

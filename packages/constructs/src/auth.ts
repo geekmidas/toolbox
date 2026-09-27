@@ -58,6 +58,14 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 */
 	database: TDatabase;
 	/**
+	 * The app that serves this auth server, relative to the workspace root —
+	 * `'apps/auth'`.
+	 *
+	 * Required, for the reason `RestApi.path` is. Not to be confused with
+	 * `basePath`, which is where its routes are mounted in a URL.
+	 */
+	path: string;
+	/**
 	 * Where the auth routes are mounted, e.g. `/api/auth`.
 	 *
 	 * Structural — it is part of the URL every client calls, so it cannot differ
@@ -154,6 +162,7 @@ export class BetterAuth<
 			{
 				kind: 'rest-api',
 				id: this.id,
+				path: this.config.path,
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

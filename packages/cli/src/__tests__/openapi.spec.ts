@@ -157,8 +157,8 @@ describe('generateOpenApi', () => {
 import { z } from 'zod';
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
-const api = new RestApi('Api', { defaultAuthorizer: 'none' });
-const webhooks = new RestApi('Webhooks', { defaultAuthorizer: 'none' });
+const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+const webhooks = new RestApi('Webhooks', { path: '.', defaultAuthorizer: 'none' });
 
 export const listUsers = api
   .get('/users')
@@ -200,7 +200,7 @@ export const receive = webhooks
 import { z } from 'zod';
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
-const adminApi = new RestApi('AdminApi', { defaultAuthorizer: 'none' });
+const adminApi = new RestApi('AdminApi', { path: '.', defaultAuthorizer: 'none' });
 
 export const listAll = adminApi
   .get('/admin/users')

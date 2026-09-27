@@ -563,18 +563,17 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 	const at = (files: GeneratedFile[], path: string) =>
 		files.find((f) => f.path === path);
 
-	it('declares the site with the id that gives it its path', () => {
+	it('declares the site with the path it lives at', () => {
 		const files = generateRootConstructs({
 			...fullstackBase,
 			frontendFramework: 'nextjs',
 		});
 		const site = at(files, 'constructs/site.ts');
 
-		// No `path: 'apps/web'` — `Web` already says that.
+		// Written down: nothing infers `apps/web` from the id.
 		expect(site!.content).toContain(
-			"new StaticSite('Web', { variant: 'next' })",
+			"new StaticSite('Web', { path: 'apps/web', variant: 'next' })",
 		);
-		expect(site!.content).not.toContain('path:');
 	});
 
 	it('carries the framework as the site variant', () => {
@@ -771,13 +770,13 @@ describe('the API, in a workspace', () => {
 	});
 
 	it.each([
-		['centralized-endpoints', './apps/api/src/endpoints/**/*.ts'],
-		['centralized-routes', './apps/api/src/routes/**/*.ts'],
-		['domain-based', './apps/api/src/**/routes/*.ts'],
+		['centralized-endpoints', './apps/*/src/endpoints/**/*.ts'],
+		['centralized-routes', './apps/*/src/routes/**/*.ts'],
+		['domain-based', './apps/*/src/**/routes/*.ts'],
 	] as const)('covers the %s handlers from the root constructs glob', (structure, glob) => {
-		// One glob in the workspace config finds the constructs and every
-		// app's code; the build sorts endpoints by the surface they were
-		// built from.
+		// Every app's handlers, not only the API's: the build sorts endpoints
+		// by the surface they were built from, so naming one app here would
+		// only decide whose endpoints never load.
 		const config = generateMonorepoFiles(
 			options(structure),
 			minimalTemplate,
@@ -785,6 +784,7 @@ describe('the API, in a workspace', () => {
 
 		expect(config).toContain("'./constructs/**/*.ts'");
 		expect(config).toContain(`'${glob}'`);
+		expect(config).not.toContain('./apps/api/');
 	});
 });
 
@@ -844,10 +844,16 @@ describe('generateWorkspaceConfig, through generateMonorepoFiles', () => {
 	it('names no apps — they are the constructs that said they have a process', () => {
 		const cfg = config();
 
-		expect(cfg).toContain("constructs: './constructs/**/*.ts'");
+		expect(cfg).toContain("'./constructs/**/*.ts',");
 		expect(cfg).not.toContain('apps: {');
 		expect(cfg).not.toContain('envParser:');
 		expect(cfg).not.toContain('logger:');
+	});
+
+	it('globs the directory the API was put in, when it is not apps/', () => {
+		expect(config({ apiPath: 'services/api' })).toContain(
+			"'./services/*/src/endpoints/**/*.ts',",
+		);
 	});
 
 	it('names no services — every one of them is derived or defaulted', () => {

@@ -1,15 +1,6 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import {
-	appKey,
-	conventionalPath,
-	derivedApps,
-	hostOf,
-	resolveAppSpec,
-} from '../derive';
+import { appKey, derivedApps, hostOf } from '../derive';
 import type { NormalizedWorkspace } from '../types';
 
 /**
@@ -32,14 +23,6 @@ const workspace = (
 		secrets: {},
 	}) as unknown as NormalizedWorkspace;
 
-/** A workspace root with `apps/<name>` actually present. */
-const rootWith = (...names: string[]): string => {
-	const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
-	for (const name of names)
-		mkdirSync(join(root, 'apps', name), { recursive: true });
-	return root;
-};
-
 const site = (
 	id: string,
 	app: Record<string, unknown>,
@@ -55,7 +38,13 @@ const site = (
 	}) as const;
 
 const surface = (id: string, extra: Record<string, unknown> = {}) =>
-	({ kind: 'rest-api', id, endpoints: [], ...extra }) as const;
+	({
+		kind: 'rest-api',
+		id,
+		path: `apps/${id.toLowerCase()}`,
+		endpoints: [],
+		...extra,
+	}) as const;
 
 describe('derivedApps', () => {
 	it('turns a site into an app the config never mentioned', () => {
@@ -86,16 +75,15 @@ describe('derivedApps', () => {
 		expect(apps.shop?.framework).toBe('tanstack-start');
 	});
 
-	it('places a surface where its id says', () => {
-		// A surface has no `app` to override it with: `Api` is `apps/api`.
-		const root = rootWith('api');
+	it('places a surface at the path it declared, not where its id says', () => {
+		// Nothing is inferred from the id or from what is on disk.
 		const manifest = {
-			Api: surface('Api'),
+			Api: surface('Api', { path: 'services/public-api' }),
 		} as unknown as ConstructManifest;
 
-		expect(derivedApps(manifest, workspace({}, root)).api).toMatchObject({
+		expect(derivedApps(manifest, workspace()).api).toMatchObject({
 			type: 'backend',
-			path: 'apps/api',
+			path: 'services/public-api',
 		});
 	});
 
@@ -352,38 +340,5 @@ describe('appKey', () => {
 	it('is the kebab form every physical name is built from', () => {
 		expect(appKey('Api')).toBe('api');
 		expect(appKey('AdminConsole')).toBe('admin-console');
-	});
-});
-
-describe('conventionalPath', () => {
-	it('reads the path off the id when the directory is there', () => {
-		expect(conventionalPath('Api', rootWith('api'))).toBe('apps/api');
-	});
-
-	it('falls back to the workspace root when there is no such directory', () => {
-		// One app, and it is the project. The hazard this used to refuse — the
-		// build filtering turbo onto the root package — is guarded in the build,
-		// where throwing does not take the whole manifest with it.
-		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
-
-		expect(conventionalPath('Api', root)).toBe('.');
-	});
-
-	it('kebab-cases a multi-word id the way every other physical name is', () => {
-		expect(conventionalPath('AdminApi', rootWith('admin-api'))).toBe(
-			'apps/admin-api',
-		);
-	});
-});
-
-describe('resolveAppSpec', () => {
-	it('defaults a site to its conventional path', () => {
-		expect(resolveAppSpec('Web', {}, rootWith('web')).path).toBe('apps/web');
-	});
-
-	it('keeps a path a site wrote down', () => {
-		expect(
-			resolveAppSpec('Web', { path: 'sites/web' }, rootWith('web')).path,
-		).toBe('sites/web');
 	});
 });

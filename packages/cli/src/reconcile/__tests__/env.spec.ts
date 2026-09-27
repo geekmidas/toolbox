@@ -33,6 +33,7 @@ const manifest = {
 	AuthApi: {
 		kind: 'rest-api',
 		id: 'AuthApi',
+		path: '.',
 		provides: [
 			'AUTH_API_URL',
 			'AUTH_API_TRUSTED_ORIGINS',
@@ -44,7 +45,7 @@ const manifest = {
 		kind: 'site',
 		id: 'Console',
 		variant: 'static',
-		path: 'apps/console',
+		app: { path: 'apps/console' },
 		dependencies: [
 			{ target: 'AuthApi', kind: 'rest-api' },
 			{ target: 'Orders', kind: 'database' },

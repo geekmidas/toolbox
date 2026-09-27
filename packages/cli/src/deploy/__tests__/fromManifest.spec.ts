@@ -48,6 +48,7 @@ const manifest = {
 	Api: {
 		kind: 'rest-api',
 		id: 'Api',
+		path: '.',
 		endpoints: [],
 		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
 	},

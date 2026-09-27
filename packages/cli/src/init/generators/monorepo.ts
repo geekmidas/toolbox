@@ -1,11 +1,11 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
 	cacheFor,
 	databaseFor,
 	emailFor,
-	routesGlob,
 	storageFor,
 	WORKSPACE_CONSTRUCTS_GLOB,
+	workspaceConstructsGlobs,
 } from '../constructs.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type {
@@ -412,8 +412,9 @@ export default defineWorkspace({
   // app's endpoints, crons and subscribers: an endpoint belongs to the surface
   // it was built from, not to the directory it sits in.
   constructs: [
-    '${WORKSPACE_CONSTRUCTS_GLOB}',
-    './${join(options.apiPath, routesGlob(options.routesStructure))}',
+${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
+	.map((glob) => `    '${glob}',`)
+	.join('\n')}
   ],
 
   secrets: {
@@ -530,6 +531,7 @@ import { authDb } from './database.ts';
  * origin down.
  */
 export const auth = new BetterAuth('Auth', {
+  path: 'apps/auth',
   database: authDb,
   basePath: '/api/auth',
 });
@@ -545,10 +547,12 @@ import { logger } from './logger.ts';
 /**
  * The application's HTTP surface — one RestApi, one container.
  *
- * Nothing says where it lives: \`Api\` is \`apps/api\`, and its handlers are
- * the ones in \`apps/api/endpoints/\`.
+ * \`path\` is where its app lives. Its handlers are found by the workspace's
+ * \`constructs\` glob, and belong to it because they were built from it.
  */
 export const api = new RestApi('Api', {
+  path: '${options.apiPath}',
+
   // Typed out rather than omitted: an API that ships open because a field was
   // left off is the one default worth refusing to have.
   defaultAuthorizer: 'none',
@@ -561,10 +565,10 @@ export const api = new RestApi('Api', {
 
 	const variant =
 		frontendFramework === 'tanstack-start'
-			? "{ variant: 'tanstack' }"
+			? "{ path: 'apps/web', variant: 'tanstack' }"
 			: frontendFramework === 'expo'
 				? undefined
-				: "{ variant: 'next' }";
+				: "{ path: 'apps/web', variant: 'next' }";
 
 	if (variant !== undefined) {
 		files.push({
@@ -576,7 +580,7 @@ import { auth } from './auth.ts';
 /**
  * The frontend — a construct like any other, which is what makes it an app.
  *
- * No \`path\`: \`Web\` means \`apps/web\`. \`.dependsOn()\` is the single fact
+ * \`path\` is where it lives. \`.dependsOn()\` is the single fact
  * behind four things that are hand-maintained otherwise: this site's
  * build-time API URL, the API's CORS origins, the auth server's trusted
  * origins, and which generated client lands here.

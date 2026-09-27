@@ -87,7 +87,6 @@ import {
 	type Routes,
 } from '../types';
 import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
-import { conventionalPath } from '../workspace/derive.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -262,15 +261,12 @@ export async function buildCommand(
 	const surfaces = Object.values(declared).filter(
 		(d): d is Extract<typeof d, { kind: 'rest-api' }> => d.kind === 'rest-api',
 	);
-	// The surface this build serves is the one whose app is the directory being
-	// built — asked of every surface, because a workspace has several and each
-	// app's build serves exactly one. The guess below is only for a project
-	// with no such directory, where there is one app and it is the project.
+	// The surface this build serves is the one whose declared `path` is the
+	// directory being built — asked of every surface, because a workspace has
+	// several and each app's build serves exactly one.
 	const workspaceRoot = loadedConfig.workspace.root;
 	const served = surfaces.find(
-		(d) =>
-			resolve(workspaceRoot, conventionalPath(d.id, workspaceRoot)) ===
-			resolve(process.cwd()),
+		(d) => resolve(workspaceRoot, d.path) === resolve(process.cwd()),
 	);
 	const primary =
 		served ?? surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
