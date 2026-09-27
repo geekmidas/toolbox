@@ -328,6 +328,36 @@ Options:
   --services <list>      Include services: postgres, redis, rabbitmq, minio, mailpit, localstack
 ```
 
+### `gkm upgrade`
+
+Moves a project to the current `@geekmidas` release on the line it is already
+on.
+
+```bash
+gkm upgrade             # @geekmidas/cli only
+gkm upgrade --all       # every @geekmidas package, and their third-party peers
+gkm upgrade --dry-run   # show the changes, write nothing
+gkm upgrade --tag alpha # follow a different npm dist-tag
+```
+
+- **The line you are on.** A project on `10.0.0-alpha.6` follows npm's `alpha`
+  tag, not `latest` (which is 9.x while 10 is in prerelease). It never moves a
+  project backwards: asking for a line behind what is installed is refused.
+- **One version.** Every `@geekmidas` package shares a version, so `--all`
+  moves them all to it, keeping each range's `^`, `~` or `>=`.
+- **CLI first.** Without `--all` only `@geekmidas/cli` moves; then run the new
+  CLI's `gkm upgrade --all`, since it knows what the new versions need.
+- **Third-party peers.** With `--all`, packages the project already lists —
+  `kysely`, `hono`, `better-auth` — are raised to the floor of the peer range
+  the new version declares. Nothing is added, and nothing is lowered.
+- **Where versions live.** `package.json` files across the workspace, and
+  pnpm `catalog:` / `catalogs:` entries in `pnpm-workspace.yaml`.
+  `workspace:` references are left alone, and a hand-written range like
+  `>=8 <10` is reported rather than rewritten.
+
+It then runs one install. Code changes a release needs — a renamed config key,
+a retired API — are in the changelog, not applied by the command.
+
 ### Secrets Management
 
 ```bash
