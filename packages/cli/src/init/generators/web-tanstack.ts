@@ -1,5 +1,5 @@
-import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**

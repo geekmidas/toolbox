@@ -1,10 +1,10 @@
 import {
 	cacheFor,
 	databaseFiles,
-	usersMigration,
 	databaseFor,
 	emailFor,
 	storageFor,
+	usersMigration,
 } from '../constructs.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';

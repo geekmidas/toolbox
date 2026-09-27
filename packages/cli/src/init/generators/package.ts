@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import {
 	ENDPOINTS_OUTPUT_PATH,
 	type GeneratedFile,
@@ -5,7 +6,6 @@ import {
 	type TemplateConfig,
 	type TemplateOptions,
 } from '../templates/index.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**

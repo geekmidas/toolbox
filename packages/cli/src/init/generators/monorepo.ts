@@ -3,16 +3,16 @@ import {
 	cacheFor,
 	databaseFor,
 	emailFor,
-	storageFor,
 	routesGlob,
+	storageFor,
 	WORKSPACE_CONSTRUCTS_GLOB,
 } from '../constructs.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**
