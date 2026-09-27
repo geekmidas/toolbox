@@ -115,36 +115,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Consumes any pending changesets. `released` records whether that actually
-      # changed anything — without it, publish runs on every push to main and
-      # npm rejects the unchanged versions, so docs-only commits fail CI.
+      # Every pull request runs the release that main will, short of pushing
+      # and uploading. The publish step once called a build script that did not
+      # exist, and nothing ran it before main — so alpha.7 and alpha.8 were
+      # versioned in git and never published.
+      - name: Release (dry run)
+        if: github.event_name == 'pull_request'
+        run: scripts/release.sh dry-run
+
+      # Consumes any pending changesets, then compares the version with what
+      # npm has on this branch's line (`scripts/release-state.mjs`). It fails,
+      # rather than skipping, when git is behind npm or a bump lands on a
+      # published version — the two ways a pipeline goes green while nothing is
+      # ever released again.
       - name: Version packages
         id: version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          pnpm run version
-          # The bump just changed every package's version, and the CLI pins
-          # them into what `gkm init` scaffolds. Synced before it, as the step
-          # above does, the published CLI installs the release before this one.
-          pnpm --filter @geekmidas/cli sync-versions
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            echo "No pending changesets — nothing to publish."
-          else
-            git commit -m "chore: version packages"
-            git push
-            echo "released=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: scripts/release.sh version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish packages
-        if: steps.version.outputs.released == 'true'
-        # Rebuilt first: the CLI's dist was built before the bump, and
-        # `versions.ts` is compiled into it rather than read at runtime.
-        run: |
-          pnpm --filter @geekmidas/cli build
-          pnpm changeset publish
+        if: steps.version.outputs.publish == 'true'
+        run: scripts/release.sh publish
+
+  # Its own job, so a pull request shows "Validate ✓" beside a red "Release
+  # published" — this change is fine, the branch it targets is stuck. Without it
+  # a failed publish was visible only in the history of the run that failed.
+  release-state:
+    name: Release published
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Is the target branch's version on npm?
+        run: node scripts/release-state.mjs --released
