@@ -10,7 +10,7 @@
  */
 
 import { canonicalId, provideKey, serviceKey } from '@geekmidas/manifest';
-import type { GeneratedFile } from './templates/index.js';
+import type { GeneratedFile, RoutesStructure } from './templates/index.js';
 
 /** The glob every generated config points at. One glob, every kind. */
 export const CONSTRUCTS_GLOB = './src/constructs/**/*.ts';
@@ -20,6 +20,23 @@ export const CONSTRUCTS_GLOB = './src/constructs/**/*.ts';
  * share them, rather than inside any one of them.
  */
 export const WORKSPACE_CONSTRUCTS_GLOB = './constructs/**/*.ts';
+
+/**
+ * Where each routes structure puts an app's handlers, relative to the app.
+ *
+ * `.ts` only, never `.tsx`: a TanStack site keeps its own `src/routes/`, and
+ * this glob must not import a frontend's route components.
+ */
+export function routesGlob(structure: RoutesStructure): string {
+	switch (structure) {
+		case 'centralized-endpoints':
+			return './src/endpoints/**/*.ts';
+		case 'centralized-routes':
+			return './src/routes/**/*.ts';
+		case 'domain-based':
+			return './src/**/routes/*.ts';
+	}
+}
 
 export interface ScaffoldedConstruct {
 	/** The canonical id — what the construct is declared under. */
@@ -113,11 +130,22 @@ export interface Database {
 export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}');
 `,
 		},
-		{
-			// The table the scaffolded endpoints and factories expect. Applied by
-			// `gkm exec -- pnpm kysely migrate:latest`, or by the test setup.
-			path: 'src/db/migrations/001_create_users.ts',
-			content: `import type { Kysely } from 'kysely';
+		usersMigration(),
+	];
+}
+
+/**
+ * The table the scaffolded endpoints and factories expect.
+ *
+ * Its own function because a workspace's API needs it without the database
+ * construct beside it — that one lives at the workspace root.
+ */
+export function usersMigration(): GeneratedFile {
+	return {
+		// The table the scaffolded endpoints and factories expect. Applied by
+		// `gkm exec -- pnpm kysely migrate:latest`, or by the test setup.
+		path: 'src/db/migrations/001_create_users.ts',
+		content: `import type { Kysely } from 'kysely';
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -143,6 +171,23 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await db.schema.dropTable('users').execute();
 }
 `,
-		},
+	};
+}
+
+/**
+ * What a workspace's `constructs` glob reaches: the root constructs, and the
+ * handlers of every app laid out the way `init` was told.
+ *
+ * Every app in `appsDir` (`apps/*`) rather than the API's own directory.
+ * Endpoints are split by the surface they were built from, so naming one app
+ * here would only decide which apps' endpoints are silently never loaded.
+ */
+export function workspaceConstructsGlobs(
+	structure: RoutesStructure,
+	appsDir: string,
+): string[] {
+	return [
+		WORKSPACE_CONSTRUCTS_GLOB,
+		`./${appsDir}/*/${routesGlob(structure).replace(/^\.\//, '')}`,
 	];
 }

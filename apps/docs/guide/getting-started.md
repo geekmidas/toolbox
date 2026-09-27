@@ -189,6 +189,7 @@ import logger from '../config/logger';
 // out — an API that ships open because a field was left off is the one default
 // worth refusing to have.
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   authorizers: ['iam'],
   defaultAuthorizer: 'iam',
   logger,

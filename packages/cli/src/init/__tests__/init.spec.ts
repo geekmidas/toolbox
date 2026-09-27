@@ -444,7 +444,8 @@ describe('initCommand', () => {
 
 			expect(content).toContain('import { defineWorkspace }');
 			expect(content).toContain("name: 'my-fullstack'");
-			expect(content).toContain("constructs: './constructs/**/*.ts'");
+			expect(content).toContain("'./constructs/**/*.ts',");
+			expect(content).toContain("'./apps/*/src/endpoints/**/*.ts',");
 
 			// The apps are the constructs that said they have a process, so none
 			// of this is here to drift from them.
@@ -467,12 +468,16 @@ describe('initCommand', () => {
 			const api = await readFile(join(dir, 'api.ts'), 'utf-8');
 			expect(api).toContain("new RestApi('Api'");
 			expect(api).toContain('.auth(auth)');
+			// Each says where its app lives; nothing infers it from the id.
+			expect(api).toContain("path: 'apps/api'");
 
 			const auth = await readFile(join(dir, 'auth.ts'), 'utf-8');
 			expect(auth).toContain("new BetterAuth('Auth'");
+			expect(auth).toContain("path: 'apps/auth'");
 
 			const site = await readFile(join(dir, 'site.ts'), 'utf-8');
 			expect(site).toContain("new StaticSite('Web'");
+			expect(site).toContain("path: 'apps/web'");
 			expect(site).toContain('.dependsOn([api, auth])');
 		});
 

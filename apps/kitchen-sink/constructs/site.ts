@@ -25,7 +25,11 @@ import { uploads } from './storage.js';
 // thing the id already said. No `variant`: static is the default, and Vite
 // builds it. No `port`: ports are assigned in a stable order, and this one
 // holds the base domain so it gets the first of them.
-export const web = new StaticSite('Web').dependsOn([api, auth, uploads.server]);
+export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([
+	api,
+	auth,
+	uploads.server,
+]);
 
 /**
  * The admin console — the second site, and the second *variant*.
@@ -41,5 +45,6 @@ export const web = new StaticSite('Web').dependsOn([api, auth, uploads.server]);
  * one of them would have to say `root: true` rather than the deploy guessing.
  */
 export const admin = new StaticSite('Admin', {
+	path: 'apps/admin',
 	variant: 'next',
 }).dependsOn([api, auth]);

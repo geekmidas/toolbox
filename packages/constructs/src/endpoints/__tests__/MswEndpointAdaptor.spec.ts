@@ -5,7 +5,7 @@ import { RestApi } from '../../rest-api';
 import { createMswHandlers, TEST_CONTEXT_HEADER } from '../MswEndpointAdaptor';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
 const BASE_URL = 'http://localhost:3000';
 

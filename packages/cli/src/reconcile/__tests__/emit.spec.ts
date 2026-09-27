@@ -6,12 +6,14 @@ const base = {
 	Api: {
 		kind: 'rest-api',
 		id: 'Api',
+		path: '.',
 		endpoints: [],
 		defaultAuthorizer: 'none',
 	},
 	Auth: {
 		kind: 'rest-api',
 		id: 'Auth',
+		path: '.',
 		endpoints: [
 			{
 				id: 'AuthHandler',

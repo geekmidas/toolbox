@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -36,10 +37,10 @@ export function generateTanStackWebFiles(
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
-			'@tanstack/react-query': '~5.80.0',
+			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
 			'@tanstack/react-router': '^1.87.0',
 			'@tanstack/react-start': '^1.87.0',
-			'better-auth': '~1.2.0',
+			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
 			react: '~19.2.0',
 			'react-dom': '~19.2.0',
 		},
@@ -105,7 +106,7 @@ export default defineConfig({
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[uiPackage]: ['../../packages/ui/src'],
 				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi.ts'],
+				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
 			},
 		},
 		include: ['**/*.ts', '**/*.tsx', 'src/routeTree.gen.ts'],

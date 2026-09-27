@@ -406,9 +406,9 @@ export function getAppGkmConfig(
 		// registered only the Upstash driver, and every request failed with
 		// `UnregisteredCacheScheme`.
 		services: workspace.services,
-		// One glob. Which kind a module exports is decided by the value, not by
-		// which pattern matched it, so there is nothing else to say about where
-		// this app's code is.
+		// One glob, every kind, and the root's covers every app's code as well
+		// as the constructs. Which surface an endpoint belongs to is the
+		// endpoint's to say, not its file's, so the build sorts them there.
 		constructs: appConstructGlobs(workspace, appName),
 		providers: app.providers,
 		hooks: app.hooks,

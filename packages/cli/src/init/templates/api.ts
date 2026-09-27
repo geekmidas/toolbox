@@ -4,7 +4,9 @@ import {
 	databaseFor,
 	emailFor,
 	storageFor,
+	usersMigration,
 } from '../constructs.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -28,9 +30,9 @@ export const apiTemplate: TemplateConfig = {
 		'@geekmidas/errors': GEEKMIDAS_VERSIONS['@geekmidas/errors'],
 		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
 		'@hono/node-server': '~1.14.1',
-		hono: '~4.8.2',
-		pino: '~9.6.0',
-		zod: '~4.1.0',
+		hono: DEPENDENCY_VERSIONS.hono,
+		pino: DEPENDENCY_VERSIONS.pino,
+		zod: DEPENDENCY_VERSIONS.zod,
 	},
 
 	devDependencies: {
@@ -142,6 +144,9 @@ export const logger = createLogger();
 import { logger } from '../config/logger.ts';
 
 export const api = new RestApi('Api', {
+  // The project is the app.
+  path: '.',
+
   // Typed out rather than omitted: an API that ships open because a field was
   // left off is the one default worth refusing to have.
   defaultAuthorizer: 'none',
@@ -342,7 +347,7 @@ export const authService = {
           headers: { cookie },
         });
         if (!res.ok) return null;
-        return res.json();
+        return (await res.json()) as Session | null;
       },
     };
   },
@@ -361,7 +366,6 @@ import { database } from '${constructsImport('database')}';`
 						: ''
 				}
 import { authService, type Session } from './services/auth.ts';
-import { logger } from './config/logger.ts';
 
 /**
  * The shared endpoint factory — no session required.
@@ -439,9 +443,13 @@ export const router = api.endpoints${options.database ? '.database(database)' : 
 			});
 		}
 
-		// The database — a construct, not a hand-written service.
+		// The database — a construct, not a hand-written service. A workspace
+		// declares it at its root, but the API still owns the schema: the
+		// test setup and `kysely migrate` read migrations from here.
 		if (options.database && declares) {
 			files.push(...databaseFiles(name));
+		} else if (options.database) {
+			files.push(usersMigration());
 		}
 
 		// Object storage — MinIO locally, S3 deployed, one declaration for both.

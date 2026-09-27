@@ -33,26 +33,19 @@ import {
 import { type Declarable, edgeTo } from './construct-interface';
 
 /**
- * A site's config is flat, where a surface's nests its `app`.
+ * Where a site's source lives, and the little else a layout can differ by.
  *
- * Not an inconsistency: a `RestApi` may or may not have a process of its own,
- * so "what the surface is" and "how its process is built" are separable there
- * and worth separating. A site *is* its app — there is nothing to separate it
- * from, and `{ app: { path } }` would be a wrapper around the only thing in it.
- *
- * Every field is optional, so `new StaticSite('Web')` is a complete site.
+ * Only `path` is required: `new StaticSite('Web', { path: 'apps/web' })` is a
+ * complete site.
  */
 export interface StaticSiteConfig {
 	/**
-	 * Where its source lives, relative to the workspace root.
+	 * Where its source lives, relative to the workspace root — `'apps/web'`.
 	 *
-	 * Optional, and normally omitted: `apps/<kebab-id>` where that directory
-	 * exists, and the workspace root otherwise. `StaticSite('Web')` means
-	 * `apps/web`, which is the thing the id already said.
-	 *
-	 * Worth writing only when the layout differs — `path: 'sites/marketing'`.
+	 * Required, the same field `RestApi` and `BetterAuth` take. It was
+	 * inferred from the id, which made a site's home whatever was on disk.
 	 */
-	path?: string;
+	path: string;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -95,7 +88,7 @@ export class StaticSite<TName extends string = string>
 
 	constructor(
 		id: ConstructName<TName>,
-		private readonly config: StaticSiteConfig = {},
+		private readonly config: StaticSiteConfig,
 		/**
 		 * Internal: how `.dependsOn()` carries edges into the copy it returns.
 		 * Written as a parameter rather than a mutable field so the builder can
@@ -133,7 +126,7 @@ export class StaticSite<TName extends string = string>
 				id: this.id,
 				variant: this.config.variant ?? 'static',
 				app: {
-					...(this.config.path ? { path: this.config.path } : {}),
+					path: this.config.path,
 					...(this.config.port ? { port: this.config.port } : {}),
 					...(this.config.config ? { config: this.config.config } : {}),
 				},

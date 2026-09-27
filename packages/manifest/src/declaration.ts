@@ -345,21 +345,15 @@ export interface CacheDeclaration extends Node {
 export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
 	/**
-	 * Where the process serving it is built from, relative to the workspace
-	 * root — the same thing a `site` says, for the same reason.
+	 * The app that serves this surface, relative to the workspace root.
 	 *
-	 * A surface is a deploy unit: one of these is one server. Without it the
-	 * deploy had to ask the *config* which apps to build, and a surface could
-	 * never be its own process because it was not in that list. Two surfaces in
-	 * one app then had to share one container, which is how an auth server ended
-	 * up mounted into an API by a hook.
-	 *
-	 * Optional, and its absence is meaningful: a surface with no app of its own
-	 * is served by the surface that named it — an auth server mounted into the
-	 * API that called `.auth()` on it, rather than a second container nobody
-	 * asked for.
+	 * Required, and the only thing about its process a surface says: its code
+	 * is found through the workspace's `constructs` glob, and ports are
+	 * assigned in a stable order. Nothing infers it from the id.
 	 */
-	app?: AppSpec;
+	path: string;
+	/** Whether this surface streams into a Telescope. */
+	telescope?: true;
 	/**
 	 * The construct that authenticates this surface.
 	 *
@@ -453,18 +447,8 @@ export type Glob = string | readonly string[];
  * which is the same rule that decides deploy units, now stated once.
  */
 export interface AppSpec {
-	/**
-	 * Where its source lives, relative to the workspace root.
-	 *
-	 * Optional, and normally omitted: `apps/<kebab-id>` when that directory
-	 * exists, and the workspace root otherwise. An `Api` construct in a monorepo
-	 * means `apps/api`, and in a single-app project it means `.` — both of which
-	 * are answerable by looking.
-	 *
-	 * Set one only when the layout is genuinely different, e.g.
-	 * `path: 'services/api'`.
-	 */
-	path?: string;
+	/** Where its source lives, relative to the workspace root. */
+	path: string;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -505,10 +489,9 @@ export interface SiteDeclaration extends Node {
 	/**
 	 * How it is built and run, `path` included.
 	 *
-	 * Required, where a surface's is optional: a site is always its own app.
-	 * There is no arrangement in which two sites are one process.
+	 * Required: a site is always its own app, and says where it lives.
 	 */
-	app?: AppSpec;
+	app: AppSpec;
 	/**
 	 * Whether this is the site the base domain points at.
 	 *

@@ -9,17 +9,13 @@
  * them was checked against anything — so the copy in config was free to drift,
  * and a surface config had no entry for simply never deployed.
  *
- * So the list comes from the graph. A `site` is an app. A `rest-api` that named
- * an `app` is an app. A `rest-api` that did not is served by the surface that
- * named it as its authenticator, which is the same collapsing rule the deploy
- * already used, now stated once and read by everybody.
+ * So the list comes from the graph. A `site` is an app, and so is every
+ * `rest-api` — one surface, one container, at the `path` it declared.
  *
  * What config still supplies is what no graph can answer: the backends a cache
  * and a mailer resolve to, the deploy endpoint, the stage's domain.
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import {
 	type AppSpec,
 	type ConstructManifest,
@@ -124,51 +120,6 @@ function markRoot(apps: Record<string, NormalizedAppConfig>): void {
 	if (chosen) chosen[1].root = true;
 }
 
-/**
- * What `app: true` means, and what the object form leaves out.
- *
- * Both fields follow from the construct's own id, so neither was worth making
- * someone write down:
- *
- * - `path` is `apps/<kebab-id>` where that directory exists, and the workspace
- *   root otherwise. `Api` means `apps/api` in a monorepo and `.` in a
- *   single-app project, and which of the two you are in is answerable by
- *   looking.
- * - `code` is the conventional directories under `path`. A glob is worth
- *   writing only when the code is somewhere else, which is the case the field
- *   still exists for.
- *
- * A site takes no `code`: its build is its framework's, not ours.
- */
-/**
- * Where an app lives when it did not say.
- *
- * `apps/<kebab-id>`, which is what the id already said — or the project root
- * when there is no such directory, because then there is one app and it is the
- * project.
- *
- * This refused, briefly, when a workspace had an `apps/` directory with nothing
- * under this name — on the grounds that answering `.` makes the app the whole
- * repository. That was the wrong place for the guard twice over. It throws
- * inside discovery, which is caught, so one misplaced app lost the whole
- * manifest and every other app with it. And the hazard it guards — the build
- * filtering turbo onto the root package, whose `build` is `gkm build` — is the
- * build's question, asked where the answer is actionable.
- */
-function conventionalPath(id: string, workspaceRoot: string): string {
-	const conventional = join('apps', appKey(id));
-
-	return existsSync(join(workspaceRoot, conventional)) ? conventional : '.';
-}
-
-export function resolveAppSpec(
-	id: string,
-	spec: AppSpec,
-	workspaceRoot: string,
-): AppSpec {
-	return { ...spec, path: spec.path ?? conventionalPath(id, workspaceRoot) };
-}
-
 export function derivedApps(
 	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
@@ -184,10 +135,15 @@ export function derivedApps(
 		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
 			continue;
 
-		// No opt-in to be had. A site is an app and so is a surface; `app` is an
-		// override for a layout that differs, and having none is the ordinary
-		// case rather than a surface with nowhere to run.
-		const spec = resolveAppSpec(id, declaration.app ?? {}, workspace.root);
+		// No opt-in to be had. A site is an app and so is a surface, and each
+		// says where it lives.
+		const spec: AppSpec =
+			declaration.kind === 'site'
+				? declaration.app
+				: {
+						path: declaration.path,
+						...(declaration.telescope ? { telescope: true } : {}),
+					};
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override

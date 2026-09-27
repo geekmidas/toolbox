@@ -285,10 +285,10 @@ This is particularly useful for frontend apps that need to know the URLs of back
 
 ```typescript
 // constructs/api.ts
-export const api = new RestApi('Api', { defaultAuthorizer: 'none', logger });
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', logger });
 
 // constructs/site.ts — the edge is what carries the URL into the build
-export const web = new StaticSite('Web').dependsOn([api, auth]);
+export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, auth]);
 ```
 
 ```json

@@ -56,12 +56,12 @@ describe('sitesFor', () => {
 		// leave Docker's network to reach them. Their addresses arrive as options
 		// because whatever started them assigned the ports.
 		const withSurface = {
-			Api: { kind: 'rest-api', id: 'Api', endpoints: [] },
+			Api: { kind: 'rest-api', id: 'Api', path: '.', endpoints: [] },
 			Web: {
 				kind: 'site',
 				id: 'Web',
 				variant: 'static',
-				path: 'apps/web',
+				app: { path: 'apps/web' },
 				dependencies: [{ target: 'Api', kind: 'rest-api' }],
 			},
 		} as const satisfies ConstructManifest;
@@ -87,7 +87,7 @@ describe('sitesFor', () => {
 	it('routes nothing to a surface nothing has started', () => {
 		// The ordinary state before `gkm dev` has decided where things listen.
 		const withSurface = {
-			Api: { kind: 'rest-api', id: 'Api', endpoints: [] },
+			Api: { kind: 'rest-api', id: 'Api', path: '.', endpoints: [] },
 		} as const satisfies ConstructManifest;
 
 		expect(

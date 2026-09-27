@@ -26,6 +26,17 @@ describe('validateProjectName', () => {
 		expect(result).toContain('can only contain');
 	});
 
+	it('rejects a name that swallowed a flag for want of a space', () => {
+		expect(validateProjectName('beetlefit--monorepo')).toBe(
+			'"beetlefit--monorepo" ends in the --monorepo flag. Did you mean `beetlefit --monorepo`?',
+		);
+		expect(validateProjectName('shop--yes')).toContain('--yes flag');
+	});
+
+	it('accepts a double hyphen that is not a flag', () => {
+		expect(validateProjectName('shop--web')).toBe(true);
+	});
+
 	it('should accept scoped package names', () => {
 		// @ / . are valid for scoped npm packages
 		expect(validateProjectName('@my/project')).toBe(true);

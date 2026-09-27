@@ -12,6 +12,7 @@ import { RestApi } from '../rest-api';
 describe('RestApiConfig.defaultAuthorizer', () => {
 	it('accepts a name the surface exposes', () => {
 		const api = new RestApi('Api', {
+			path: '.',
 			authorizers: ['iam', 'session'],
 			defaultAuthorizer: 'session',
 		});
@@ -20,15 +21,20 @@ describe('RestApiConfig.defaultAuthorizer', () => {
 	});
 
 	it("accepts 'none', which is how an endpoint says public", () => {
-		new RestApi('Api', { authorizers: ['iam'], defaultAuthorizer: 'none' });
+		new RestApi('Api', {
+			path: '.',
+			authorizers: ['iam'],
+			defaultAuthorizer: 'none',
+		});
 	});
 
 	it('accepts a built-in scheme without listing it', () => {
-		new RestApi('Api', { defaultAuthorizer: 'jwt' });
+		new RestApi('Api', { path: '.', defaultAuthorizer: 'jwt' });
 	});
 
 	it('rejects a name the surface does not expose', () => {
 		new RestApi('Api', {
+			path: '.',
 			authorizers: ['iam'],
 			// A bare `string` let this through, and every endpoint on the surface
 			// then defaulted to an authorizer that does not exist.
@@ -39,6 +45,6 @@ describe('RestApiConfig.defaultAuthorizer', () => {
 
 	it('rejects a name when the surface exposes none of its own', () => {
 		// @ts-expect-error — nothing declared, so only built-ins and 'none'
-		new RestApi('Api', { defaultAuthorizer: 'session' });
+		new RestApi('Api', { path: '.', defaultAuthorizer: 'session' });
 	});
 });

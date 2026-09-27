@@ -23,6 +23,7 @@ import { telescope } from './telescope.js';
  * which relationship it is.
  */
 export const api = new RestApi('Api', {
+	path: 'apps/api',
 	authorizers: ['iam'],
 	defaultAuthorizer: 'none',
 	// Only what a graph cannot answer. The *origins* are not here — they are read

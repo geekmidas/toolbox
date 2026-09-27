@@ -12,6 +12,7 @@ import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
 const api = new RestApi('Api', {
+	path: '.',
 	authorizers: ['iam'],
 	defaultAuthorizer: 'none',
 });
@@ -23,6 +24,7 @@ describe('RestApi', () => {
 		expect(surface).toMatchObject({
 			kind: 'rest-api',
 			id: 'Api',
+			path: '.',
 			authorizers: ['iam'],
 			defaultAuthorizer: 'none',
 			provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
@@ -30,9 +32,9 @@ describe('RestApi', () => {
 	});
 
 	it('canonicalises its id, so one surface cannot be spelled four ways', () => {
-		expect(new RestApi('user-api', { defaultAuthorizer: 'none' }).id).toBe(
-			'UserApi',
-		);
+		expect(
+			new RestApi('user-api', { path: '.', defaultAuthorizer: 'none' }).id,
+		).toBe('UserApi');
 	});
 
 	it('leaves its routes to the build', () => {
@@ -51,7 +53,9 @@ describe('RestApi', () => {
 		const withAuth = api.calls([
 			{
 				id: 'Auth',
-				declare: () => [{ kind: 'rest-api', id: 'Auth', endpoints: [] }],
+				declare: () => [
+					{ kind: 'rest-api', id: 'Auth', path: '.', endpoints: [] },
+				],
 			},
 		]);
 

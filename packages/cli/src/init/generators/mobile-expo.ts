@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -38,12 +39,12 @@ export function generateExpoAppFiles(
 		dependencies: {
 			[apiPackage]: 'workspace:*',
 			[modelsPackage]: 'workspace:*',
-			'@better-auth/expo': '~1.2.0',
+			'@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'],
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@react-navigation/native': '^7.1.0',
-			'@tanstack/react-query': '~5.80.0',
-			'better-auth': '~1.2.0',
+			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
+			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
 			expo: '~55.0.0',
 			'expo-constants': '~55.0.0',
 			'expo-dev-client': '~55.0.0',
@@ -184,7 +185,7 @@ module.exports = withNativeWind(config, { input: './global.css' });
 				'@/*': ['./*'],
 				[modelsPackage]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi.ts'],
+				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
 			},
 		},
 		include: [

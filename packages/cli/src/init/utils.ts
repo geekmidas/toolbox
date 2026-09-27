@@ -26,6 +26,17 @@ export function detectPackageManager(
 	return 'npm';
 }
 
+/** `gkm init`'s flags, which a name can swallow when a space goes missing. */
+const INIT_FLAGS = [
+	'yes',
+	'name',
+	'template',
+	'monorepo',
+	'api-path',
+	'pm',
+	'skip-install',
+];
+
 /**
  * Validate project name for npm package naming conventions
  */
@@ -37,6 +48,14 @@ export function validateProjectName(name: string): boolean | string {
 	// Check for valid npm package name characters
 	if (!/^[a-z0-9-_@/.]+$/i.test(name)) {
 		return 'Project name can only contain letters, numbers, hyphens, underscores, @, /, and .';
+	}
+
+	// `init beetlefit--monorepo` is `init beetlefit --monorepo` with the space
+	// lost, and the flag then ends up in every package scope and physical name.
+	const flag = name.match(/--(\w[\w-]*)$/)?.[1];
+	if (flag && INIT_FLAGS.includes(flag)) {
+		const intended = name.slice(0, -(flag.length + 2));
+		return `"${name}" ends in the --${flag} flag. Did you mean \`${intended} --${flag}\`?`;
 	}
 
 	// Check for reserved names

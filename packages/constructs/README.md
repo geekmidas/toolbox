@@ -57,6 +57,7 @@ import { RestApi } from '@geekmidas/constructs/rest-api';
 import { logger } from './logger';
 
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   // Required, and `'none'` is a valid answer that has to be typed out. An API
   // that ships open because a field was left off is the one default worth
   // refusing to have.

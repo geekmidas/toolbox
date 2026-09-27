@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { InferOpenApi } from '../infer';
 
 /** Endpoints are built from a surface now. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
 describe('InferOpenApi - TypedFetcher Integration', () => {
 	it('should generate paths structure compatible with TypedFetcher', () => {

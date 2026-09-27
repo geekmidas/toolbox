@@ -155,6 +155,7 @@ Your endpoint authorizers map to OpenAPI security schemes:
 // Names only: what verifies a request differs between local and deployed, so
 // the mechanism belongs to the target and never to portable code.
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   authorizers: ['bearer', 'iam'],
   defaultAuthorizer: 'bearer',
   logger,

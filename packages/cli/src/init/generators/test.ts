@@ -69,14 +69,16 @@ import pg from 'pg';
 import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
 import type { Database } from '${schema}';
 
-const connection = new Kysely<Database>({
+const db = new Kysely<Database>({
   dialect: new PostgresDialect({
     pool: new pg.Pool({ connectionString: process.env.${runtimeUrl} }),
   }),
 });
 
 export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
-  connection,
+  // A function, or a construct: an instance is taken for a construct and has
+  // no service to register.
+  connection: () => db,
 });
 `,
 		},
@@ -169,10 +171,10 @@ export const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
 import { it } from './config.ts';
 
 describe('example', () => {
-  it('should have a working test setup', async ({ db }) => {
-    // db is a transaction-wrapped Kysely instance
-    // All changes are automatically rolled back after the test
-    expect(db).toBeDefined();
+  it('should have a working test setup', async ({ trx }) => {
+    // trx is a Kysely transaction; everything in it is rolled back after the
+    // test
+    expect(trx).toBeDefined();
   });
 });
 `,

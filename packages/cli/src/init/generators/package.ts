@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import {
 	ENDPOINTS_OUTPUT_PATH,
 	type GeneratedFile,
@@ -64,13 +65,13 @@ export function generatePackageJson(
 
 	if (database) {
 		dependencies['@geekmidas/db'] = GEEKMIDAS_VERSIONS['@geekmidas/db'];
-		dependencies.kysely = '~0.28.2';
-		dependencies.pg = '~8.16.0';
-		devDependencies['@types/pg'] = '~8.15.0';
+		dependencies.kysely = DEPENDENCY_VERSIONS.kysely;
+		dependencies.pg = DEPENDENCY_VERSIONS.pg;
+		devDependencies['@types/pg'] = '~8.23.1';
 		devDependencies['@geekmidas/testkit'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
 		devDependencies['@faker-js/faker'] = '~9.8.0';
-		devDependencies['kysely-ctl'] = '~0.10.0';
+		devDependencies['kysely-ctl'] = DEPENDENCY_VERSIONS['kysely-ctl'];
 		devDependencies['vite-tsconfig-paths'] = '~5.1.0';
 	}
 
@@ -102,6 +103,13 @@ export function generatePackageJson(
 		const appName = pathParts[pathParts.length - 1] || 'api';
 		packageName = `@${name}/${appName}`;
 	}
+
+	// `./client` below is generated code that imports `@geekmidas/client` and
+	// React Query, and it resolves both from this package — not from the site
+	// that imports it. The client's React Query peer resolves here too.
+	dependencies['@geekmidas/client'] = GEEKMIDAS_VERSIONS['@geekmidas/client'];
+	dependencies['@tanstack/react-query'] =
+		DEPENDENCY_VERSIONS['@tanstack/react-query'];
 
 	const packageJson = {
 		name: packageName,

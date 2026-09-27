@@ -1143,6 +1143,7 @@ import { database } from './database';
 export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
 
 export const auth = new BetterAuth('Auth', {
+  path: 'apps/auth',
   database: authDb,
   basePath: '/api/auth',
 });

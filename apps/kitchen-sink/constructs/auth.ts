@@ -39,6 +39,7 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>(
  * rather than from a transport configured a second time.
  */
 export const auth = new BetterAuth('Auth', {
+	path: 'apps/auth',
 	database: authDb,
 	basePath: '/api/auth',
 

@@ -7,7 +7,7 @@ import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 
 /** Endpoints are built from a surface now, so this builds one. */
-const api = new RestApi('Test', { defaultAuthorizer: 'none' });
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
 describe('AmazonApiGatewayV2Endpoint — responseType', () => {
 	let envParser: EnvironmentParser<{}>;

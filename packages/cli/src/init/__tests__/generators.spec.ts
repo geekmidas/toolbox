@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateAgentFiles } from '../generators/agents.js';
+import { generateAuthAppFiles } from '../generators/auth.js';
 import { generateConfigFiles } from '../generators/config.js';
 import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
@@ -12,6 +13,7 @@ import {
 import { generatePackageJson } from '../generators/package.js';
 import { generateTestFiles } from '../generators/test.js';
 import { generateUiPackageFiles } from '../generators/ui.js';
+import { generateWebAppFiles } from '../generators/web.js';
 import { generateTanStackWebFiles } from '../generators/web-tanstack.js';
 import { apiTemplate } from '../templates/api.js';
 import type { TemplateOptions } from '../templates/index.js';
@@ -561,18 +563,17 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 	const at = (files: GeneratedFile[], path: string) =>
 		files.find((f) => f.path === path);
 
-	it('declares the site with the id that gives it its path', () => {
+	it('declares the site with the path it lives at', () => {
 		const files = generateRootConstructs({
 			...fullstackBase,
 			frontendFramework: 'nextjs',
 		});
 		const site = at(files, 'constructs/site.ts');
 
-		// No `path: 'apps/web'` — `Web` already says that.
+		// Written down: nothing infers `apps/web` from the id.
 		expect(site!.content).toContain(
-			"new StaticSite('Web', { variant: 'next' })",
+			"new StaticSite('Web', { path: 'apps/web', variant: 'next' })",
 		);
-		expect(site!.content).not.toContain('path:');
 	});
 
 	it('carries the framework as the site variant', () => {
@@ -614,10 +615,215 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		);
 	});
 
+	it('says nothing about where the API lives or where its code is', () => {
+		// `Api` is `apps/api`, and its handlers are in `apps/api/endpoints/`.
+		// A surface has no `app` to restate either with.
+		const api = at(generateRootConstructs(fullstackBase), 'constructs/api.ts');
+
+		expect(api!.content).not.toContain('app:');
+		expect(api!.content).not.toContain('code:');
+	});
+
 	it('declares nothing for a single-app project, which has no root', () => {
 		expect(
 			generateRootConstructs({ ...fullstackBase, monorepo: false }),
 		).toEqual([]);
+	});
+});
+
+describe('the workspace root, for the constructs that live there', () => {
+	const fullstackBase: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+		services: { db: true, cache: true, mail: true, storage: true },
+	};
+
+	const root = (options: TemplateOptions, path: string) =>
+		JSON.parse(
+			generateMonorepoFiles(options, minimalTemplate).find(
+				(f) => f.path === path,
+			)!.content,
+		);
+
+	it('installs what the root constructs import, beside them', () => {
+		// They resolve from the root `node_modules`, not from any app's.
+		const { dependencies } = root(fullstackBase, 'package.json');
+
+		for (const pkg of [
+			'@geekmidas/constructs',
+			'@geekmidas/logger',
+			'@geekmidas/auth',
+			'@geekmidas/db',
+			'@geekmidas/telescope',
+			'@geekmidas/storage',
+			'@geekmidas/emailkit',
+			'@geekmidas/cache',
+			'better-auth',
+			'kysely',
+			'pg',
+			'pino',
+		]) {
+			expect(dependencies[pkg], pkg).toBeDefined();
+		}
+	});
+
+	it('installs a service peer only when that service was chosen', () => {
+		const { dependencies } = root(
+			{
+				...fullstackBase,
+				services: { db: true, cache: false, mail: false, storage: false },
+			},
+			'package.json',
+		);
+
+		expect(dependencies['@geekmidas/storage']).toBeUndefined();
+		expect(dependencies['@geekmidas/emailkit']).toBeUndefined();
+		expect(dependencies['@geekmidas/cache']).toBeUndefined();
+	});
+
+	it('lets the root constructs import each other with `.ts`', () => {
+		const { compilerOptions } = root(fullstackBase, 'tsconfig.json');
+
+		expect(compilerOptions.allowImportingTsExtensions).toBe(true);
+		expect(compilerOptions.noEmit).toBe(true);
+	});
+
+	it('adds nothing to the root of a workspace with no root constructs', () => {
+		const { dependencies } = root(
+			{ ...fullstackBase, template: 'api' },
+			'package.json',
+		);
+
+		expect(dependencies['@geekmidas/constructs']).toBeUndefined();
+	});
+});
+
+describe('what a workspace runs its tools with', () => {
+	const options: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+	};
+	const file = (files: GeneratedFile[], path: string) =>
+		files.find((f) => f.path === path)!.content;
+
+	it('writes a Biome config Biome 2 accepts', () => {
+		// `organizeImports` and `files.ignore` are 1.x keys; Biome 2 refuses the
+		// whole config over either.
+		const biome = JSON.parse(
+			file(generateMonorepoFiles(options, minimalTemplate), 'biome.json'),
+		);
+
+		expect(biome.organizeImports).toBeUndefined();
+		expect(biome.files.ignore).toBeUndefined();
+		expect(biome.files.includes).toContain('!**/node_modules');
+		expect(biome.assist.actions.source.organizeImports).toBe('on');
+	});
+
+	it('runs each app’s tests under that app’s own config', () => {
+		// Without projects, the API's `globalSetup` never ran from the root.
+		const vitest = file(
+			generateMonorepoFiles(options, minimalTemplate),
+			'vitest.config.ts',
+		);
+
+		expect(vitest).toContain("projects: ['apps/*', 'packages/*']");
+	});
+
+	it('gives the example test the fixture testkit provides', () => {
+		const files = generateTestFiles(options, apiTemplate);
+
+		expect(file(files, 'test/example.spec.ts')).toContain('async ({ trx })');
+		// A function: an instance is taken for a construct.
+		expect(file(files, 'test/config.ts')).toContain('connection: () => db');
+	});
+
+	it('ships the migration its endpoints and test setup expect', () => {
+		const paths = apiTemplate.files(options).map((f) => f.path);
+
+		expect(paths).toContain('src/db/migrations/001_create_users.ts');
+	});
+});
+
+describe('the API, in a workspace', () => {
+	const options = (
+		routesStructure: TemplateOptions['routesStructure'],
+	): TemplateOptions => ({
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+		routesStructure,
+	});
+
+	it.each([
+		['centralized-endpoints', 'src/endpoints/users/list.ts'],
+		['centralized-routes', 'src/routes/users/list.ts'],
+		['domain-based', 'src/users/routes/list.ts'],
+	] as const)('keeps the %s layout', (structure, path) => {
+		const paths = apiTemplate.files(options(structure)).map((f) => f.path);
+
+		expect(paths).toContain(path);
+	});
+
+	it.each([
+		['centralized-endpoints', './apps/*/src/endpoints/**/*.ts'],
+		['centralized-routes', './apps/*/src/routes/**/*.ts'],
+		['domain-based', './apps/*/src/**/routes/*.ts'],
+	] as const)('covers the %s handlers from the root constructs glob', (structure, glob) => {
+		// Every app's handlers, not only the API's: the build sorts endpoints
+		// by the surface they were built from, so naming one app here would
+		// only decide whose endpoints never load.
+		const config = generateMonorepoFiles(
+			options(structure),
+			minimalTemplate,
+		).find((f) => f.path === 'gkm.config.ts')!.content;
+
+		expect(config).toContain("'./constructs/**/*.ts'");
+		expect(config).toContain(`'${glob}'`);
+		expect(config).not.toContain('./apps/api/');
+	});
+});
+
+describe('generateWebAppFiles', () => {
+	it('typechecks without project references to non-composite packages', () => {
+		// `paths` point at the sources; a reference to a project that is not
+		// `composite` turns the app's `tsc --noEmit` into TS6306.
+		const tsconfig = generateWebAppFiles({
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+			frontendFramework: 'nextjs',
+		}).find((f) => f.path === 'apps/web/tsconfig.json');
+
+		expect(JSON.parse(tsconfig!.content).references).toBeUndefined();
+	});
+});
+
+describe('generateAuthAppFiles', () => {
+	const options: TemplateOptions = {
+		...baseOptions,
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+	};
+
+	it('builds and runs through gkm, since its entry is generated', () => {
+		// No `src/` for `tsc` to find: the `BetterAuth` construct is the server.
+		const pkg = JSON.parse(
+			generateAuthAppFiles(options).find(
+				(f) => f.path === 'apps/auth/package.json',
+			)!.content,
+		);
+
+		expect(pkg.scripts.build).toBe('gkm build');
+		expect(pkg.scripts.dev).toBe('gkm dev');
+		expect(pkg.scripts.typecheck).toBeUndefined();
+		expect(pkg.dependencies['@geekmidas/constructs']).toBeDefined();
 	});
 });
 
@@ -638,10 +844,16 @@ describe('generateWorkspaceConfig, through generateMonorepoFiles', () => {
 	it('names no apps — they are the constructs that said they have a process', () => {
 		const cfg = config();
 
-		expect(cfg).toContain("constructs: './constructs/**/*.ts'");
+		expect(cfg).toContain("'./constructs/**/*.ts',");
 		expect(cfg).not.toContain('apps: {');
 		expect(cfg).not.toContain('envParser:');
 		expect(cfg).not.toContain('logger:');
+	});
+
+	it('globs the directory the API was put in, when it is not apps/', () => {
+		expect(config({ apiPath: 'services/api' })).toContain(
+			"'./services/*/src/endpoints/**/*.ts',",
+		);
 	});
 
 	it('names no services — every one of them is derived or defaulted', () => {
@@ -929,15 +1141,25 @@ describe('generateUiPackageFiles', () => {
 			(f) => f.path === 'packages/ui/src/components/ui/index.ts',
 		);
 		expect(indexFile).toBeDefined();
-		expect(indexFile!.content).toContain("from './button.tsx'");
-		expect(indexFile!.content).toContain("from './input.tsx'");
-		expect(indexFile!.content).toContain("from './card.tsx'");
-		expect(indexFile!.content).toContain("from './label.tsx'");
-		expect(indexFile!.content).toContain("from './badge.tsx'");
-		expect(indexFile!.content).toContain("from './separator.tsx'");
-		expect(indexFile!.content).toContain("from './tabs.tsx'");
-		expect(indexFile!.content).toContain("from './tooltip.tsx'");
-		expect(indexFile!.content).toContain("from './dialog.tsx'");
+		expect(indexFile!.content).toContain("from './button/index.tsx'");
+		expect(indexFile!.content).toContain("from './input/index.tsx'");
+		expect(indexFile!.content).toContain("from './card/index.tsx'");
+		expect(indexFile!.content).toContain("from './label/index.tsx'");
+		expect(indexFile!.content).toContain("from './badge/index.tsx'");
+		expect(indexFile!.content).toContain("from './separator/index.tsx'");
+		expect(indexFile!.content).toContain("from './tabs/index.tsx'");
+		expect(indexFile!.content).toContain("from './tooltip/index.tsx'");
+		expect(indexFile!.content).toContain("from './dialog/index.tsx'");
+		// Each one resolves: the components are generated as `<name>/index.tsx`.
+		const paths = new Set(files.map((f) => f.path));
+		for (const [, name] of indexFile!.content.matchAll(
+			/from '\.\/([a-z-]+)\/index\.tsx'/g,
+		)) {
+			expect(
+				paths.has(`packages/ui/src/components/ui/${name}/index.tsx`),
+				name,
+			).toBe(true);
+		}
 	});
 
 	it('should include cn utility function', () => {
@@ -1080,7 +1302,7 @@ describe('generateTestFiles', () => {
 		const exampleSpec = files.find((f) => f.path === 'test/example.spec.ts');
 		expect(exampleSpec).toBeDefined();
 		expect(exampleSpec!.content).toContain("from './config.ts'");
-		expect(exampleSpec!.content).toContain('{ db }');
+		expect(exampleSpec!.content).toContain('{ trx }');
 	});
 
 	it('should work with fullstack template options', () => {

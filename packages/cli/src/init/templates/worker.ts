@@ -1,4 +1,5 @@
 import { databaseFiles } from '../constructs.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -33,7 +34,7 @@ export const workerTemplate: TemplateConfig = {
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
-		pino: '~10.3.1',
+		pino: DEPENDENCY_VERSIONS.pino,
 	},
 
 	devDependencies: {

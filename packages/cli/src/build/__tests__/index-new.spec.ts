@@ -427,7 +427,7 @@ export const auth = {
     {
       kind: 'rest-api',
       id: 'Auth',
-      app: { path: '.' },
+      path: '.',
       provides: [],
       endpoints: [
         {

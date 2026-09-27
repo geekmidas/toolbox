@@ -1239,7 +1239,7 @@ them out of the manifest; none of them is listed in config.
 
 ```typescript
 // constructs/api.ts
-export const api = new RestApi('Api', { defaultAuthorizer: 'none', logger });
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', logger });
 ```
 
 `gkm build --provider server` generates a Hono server from the endpoints built
@@ -1253,6 +1253,7 @@ An auth server mounts a wildcard, so there is nothing for a glob to find:
 ```typescript
 // constructs/auth.ts
 export const auth = new BetterAuth('Auth', {
+  path: 'apps/auth',
   database: authDb,
   basePath: '/api/auth',
 });
@@ -1271,8 +1272,8 @@ from being read by it.
 
 ```typescript
 // constructs/site.ts
-export const web = new StaticSite('Web').dependsOn([api, auth]);
-export const admin = new StaticSite('Admin', { variant: 'next' }).dependsOn([api]);
+export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, auth]);
+export const admin = new StaticSite('Admin', { path: 'apps/admin', variant: 'next' }).dependsOn([api]);
 ```
 
 `.dependsOn()` is the single fact behind four things that are hand-maintained
@@ -1358,12 +1359,10 @@ interface WorkspaceConfig {
 What an app is comes from the declaration, not from here:
 
 ```typescript
-/** Overrides, all optional. A surface normally has none. */
+/** How a site is built and run. A surface declares only its `path`. */
 interface AppSpec {
-  /** Default: `apps/<kebab-id>` if present, else the project root. */
-  path?: string;
-  /** Default: the conventional directories under `path`. */
-  code?: string;
+  /** Required: where the app lives, relative to the workspace root. */
+  path: string;
   /** Default: assigned in a stable order, so adding an app renumbers nothing. */
   port?: number;
   entry?: string;

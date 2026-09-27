@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -32,8 +33,8 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
-			'@tanstack/react-query': '~5.80.0',
-			'better-auth': '~1.2.0',
+			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
+			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
 			next: '~16.1.0',
 			react: '~19.2.0',
 			'react-dom': '~19.2.0',
@@ -96,7 +97,7 @@ export default nextConfig;
 			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*', '../../packages/ui/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi.ts'],
+				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[`${uiPackage}`]: ['../../packages/ui/src'],
@@ -105,11 +106,9 @@ export default nextConfig;
 		},
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
 		exclude: ['node_modules'],
-		references: [
-			{ path: '../../apps/api' },
-			{ path: '../../packages/ui' },
-			{ path: '../../packages/models' },
-		],
+		// No project `references`: the `paths` above already point at the
+		// sources, and a reference to a project that is not `composite` makes
+		// `tsc --noEmit` — the app's `typecheck` — an error.
 	};
 
 	// Query client singleton for browser, fresh instance for server

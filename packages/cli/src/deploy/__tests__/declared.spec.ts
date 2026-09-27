@@ -13,7 +13,13 @@ const manifest = {
 		provides: ['ORDERS_URL'],
 	},
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
-	Api: { kind: 'rest-api', id: 'Api', endpoints: [], provides: ['API_URL'] },
+	Api: {
+		kind: 'rest-api',
+		id: 'Api',
+		path: '.',
+		endpoints: [],
+		provides: ['API_URL'],
+	},
 	// A kind this target has no primitive for. `objects` used to be the example
 	// here and no longer is — it provisions a MinIO compose stack now — so the
 	// case is made with mail, which is a SaaS account rather than infrastructure

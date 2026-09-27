@@ -1,4 +1,5 @@
 import { databaseFiles, databaseFor } from '../constructs.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -18,9 +19,9 @@ export const minimalTemplate: TemplateConfig = {
 		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
 		'@hono/node-server': '~1.14.1',
-		hono: '~4.8.2',
-		pino: '~9.6.0',
-		zod: '~4.1.0',
+		hono: DEPENDENCY_VERSIONS.hono,
+		pino: DEPENDENCY_VERSIONS.pino,
+		zod: DEPENDENCY_VERSIONS.zod,
 	},
 
 	devDependencies: {
@@ -86,6 +87,9 @@ export const logger = createLogger();
 import { logger } from '../config/logger.ts';
 
 export const api = new RestApi('Api', {
+  // The project is the app.
+  path: '.',
+
   // Typed out rather than omitted: an API that ships open because a field was
   // left off is the one default worth refusing to have.
   defaultAuthorizer: 'none',

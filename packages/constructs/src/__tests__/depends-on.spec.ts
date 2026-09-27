@@ -11,7 +11,8 @@ import { t } from '../topic';
 import { Worker } from '../worker';
 
 /** Endpoints come from a surface now, so the tests build one. */
-const endpoints = new RestApi('Test', { defaultAuthorizer: 'none' }).endpoints;
+const endpoints = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' })
+	.endpoints;
 
 /**
  * A driver for these tests, registered the way an entry point registers one:
