@@ -1,5 +1,22 @@
 # Plan: gkm upgrade with Workspace Support
 
+> **Implemented** (`packages/cli/src/upgrade/`), with three departures, all
+> from what v10 changed after this was written:
+>
+> - **No per-app-type filtering.** Every `@geekmidas` package shares one
+>   version, so leaving one behind (the plan skipped `constructs` in a
+>   frontend) leaves a mismatched pair. And the app types came from
+>   `config.apps`, which v10 derives from constructs instead.
+> - **"Latest" means the project's line.** The target is the dist-tag of the
+>   line the project is on — `alpha` for `10.0.0-alpha.x` — because `latest`
+>   is 9.x during the 10 prerelease and following it would downgrade. Never
+>   backwards; `--tag` overrides.
+> - **Also covered:** pnpm `catalog:` entries, and with `--all` the
+>   third-party packages the new version's peer ranges require.
+>
+> `--all`, `--dry-run`, keeping `^`/`~`, writing versions then one install,
+> and CLI-first all follow the plan below.
+
 ## Goal
 Update `gkm upgrade` to find all @geekmidas/* packages across workspace apps, update their versions directly, then run install. Only update packages that match the app type (backend/frontend).
 

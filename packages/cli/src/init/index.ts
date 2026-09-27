@@ -24,6 +24,7 @@ import {
 	generateDockerFiles,
 } from './generators/docker.js';
 import { generateEnvFiles } from './generators/env.js';
+import { generateGithubFiles } from './generators/github.js';
 import { generateExpoAppFiles } from './generators/mobile-expo.js';
 import { generateModelsPackage } from './generators/models.js';
 import {
@@ -441,6 +442,7 @@ export async function initCommand(
 				// At the project root in both layouts: an agent opening the repo
 				// reads the root, not the app directory it has not found yet.
 				...generateAgentFiles(templateOptions, baseTemplate),
+				...generateGithubFiles(templateOptions),
 				...generateMonorepoFiles(templateOptions, baseTemplate),
 				...generateRootConstructs(templateOptions),
 				...generateModelsPackage(templateOptions),

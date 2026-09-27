@@ -1,5 +1,48 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.10
+
+### Patch Changes
+
+- [#51](https://github.com/geekmidas/toolbox/pull/51) [`b7a16c9`](https://github.com/geekmidas/toolbox/commit/b7a16c9ab735dc32fb25588e394e99cf58d7243d) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` ships GitHub Actions: CI, a release drafter, and a deploy workflow
+
+  Every scaffold gets `.github/workflows/ci.yml` (pull requests: install, build,
+  lint, typecheck, `test:once` with `GKM_AUTO_SETUP=1`) and a release drafter
+  that labels pull requests from their titles. With a deploy target it also gets
+  `deploy.yml`: a push to main deploys the stages that are not protected, and
+  publishing the drafted release deploys the protected ones. It reads `stages`
+  from `gkm.config.ts` when it runs rather than naming any, deploys each stage in
+  the GitHub environment of the same name — `GKM_SECRETS_KEY`, plus
+  `AWS_ROLE_ARN` (OIDC) for SST or `DOKPLOY_API_TOKEN` / `DOKPLOY_ENDPOINT` for
+  Dokploy — and follows the project's package manager.
+
+- ⬆️ [#50](https://github.com/geekmidas/toolbox/pull/50) [`665ab5e`](https://github.com/geekmidas/toolbox/commit/665ab5e975359f787e5d14625088557db3ca3ff5) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm upgrade` follows the release line a project is on, and never goes backwards
+
+  It read npm's `latest` tag, which is 9.x while 10 is in prerelease: it could
+  not reach a 10 alpha, and on a project already on one it proposed 9.0.2 — a
+  downgrade — because it compared version text rather than versions. It then ran
+  `pnpm update --latest`, and never touched pnpm catalogs.
+
+  Now the target is the dist-tag of the line the project is on (`alpha` for
+  `10.0.0-alpha.x`), or `--tag`. A target behind what is installed is refused.
+  Without `--all` only `@geekmidas/cli` moves; with it, every `@geekmidas`
+  package moves to the one shared version, and third-party packages the project
+  lists are raised to the floor of the peer ranges that version declares. Ranges
+  keep their `^`/`~`/`>=`, pnpm `catalog:` entries are rewritten in place,
+  `workspace:` references and hand-written ranges are left alone, and one
+  install runs at the end.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.10
+  - @geekmidas/constructs@10.0.0-alpha.10
+  - @geekmidas/db@10.0.0-alpha.10
+  - @geekmidas/envkit@10.0.0-alpha.10
+  - @geekmidas/errors@10.0.0-alpha.10
+  - @geekmidas/logger@10.0.0-alpha.10
+  - @geekmidas/manifest@10.0.0-alpha.10
+  - @geekmidas/schema@10.0.0-alpha.10
+  - @geekmidas/telescope@10.0.0-alpha.10
+
 ## 10.0.0-alpha.9
 
 ### Patch Changes
