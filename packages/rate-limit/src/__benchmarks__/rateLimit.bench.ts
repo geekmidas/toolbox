@@ -1,5 +1,5 @@
 import { InMemoryCache } from '@geekmidas/cache/memory';
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import {
 	checkRateLimit,
 	type RateLimitConfig,
@@ -26,84 +26,101 @@ function createContext(ip: string): RateLimitContext {
 describe('Rate Limiting', () => {
 	const cache = new InMemoryCache();
 	const config: RateLimitConfig = {
-		limit: 100,
+		// Unreachable on purpose: these measure a check that passes. With a
+		// limit of 100 every iteration after the hundredth threw, which the old
+		// runner recorded without failing — so the figures were the error path.
+		limit: Number.MAX_SAFE_INTEGER,
 		windowMs: 60000,
 		cache,
 	};
 
-	bench('checkRateLimit - single IP', async () => {
-		const ctx = createContext('127.0.0.1');
-		await checkRateLimit(config, ctx);
+	test('checkRateLimit - single IP', async ({ bench }) => {
+		await bench('checkRateLimit - single IP', async () => {
+			const ctx = createContext('127.0.0.1');
+			await checkRateLimit(config, ctx);
+		}).run();
 	});
 
-	bench('checkRateLimit - varying IPs', async () => {
-		const ip = `192.168.1.${Math.floor(Math.random() * 255)}`;
-		const ctx = createContext(ip);
-		await checkRateLimit(config, ctx);
+	test('checkRateLimit - varying IPs', async ({ bench }) => {
+		await bench('checkRateLimit - varying IPs', async () => {
+			const ip = `192.168.1.${Math.floor(Math.random() * 255)}`;
+			const ctx = createContext(ip);
+			await checkRateLimit(config, ctx);
+		}).run();
 	});
 });
 
 describe('Rate Limiting - High Volume', () => {
-	bench('100 requests same IP', async () => {
-		const cache = new InMemoryCache();
-		const config: RateLimitConfig = {
-			limit: 1000,
-			windowMs: 60000,
-			cache,
-		};
-		const ctx = createContext('10.0.0.1');
+	test('100 requests same IP', async ({ bench }) => {
+		await bench('100 requests same IP', async () => {
+			const cache = new InMemoryCache();
+			const config: RateLimitConfig = {
+				limit: 1000,
+				windowMs: 60000,
+				cache,
+			};
+			const ctx = createContext('10.0.0.1');
 
-		for (let i = 0; i < 100; i++) {
-			await checkRateLimit(config, ctx);
-		}
+			for (let i = 0; i < 100; i++) {
+				await checkRateLimit(config, ctx);
+			}
+		}).run();
 	});
 
-	bench('100 requests different IPs', async () => {
-		const cache = new InMemoryCache();
-		const config: RateLimitConfig = {
-			limit: 100,
-			windowMs: 60000,
-			cache,
-		};
+	test('100 requests different IPs', async ({ bench }) => {
+		await bench('100 requests different IPs', async () => {
+			const cache = new InMemoryCache();
+			const config: RateLimitConfig = {
+				limit: 100,
+				windowMs: 60000,
+				cache,
+			};
 
-		for (let i = 0; i < 100; i++) {
-			const ctx = createContext(`10.0.0.${i}`);
-			await checkRateLimit(config, ctx);
-		}
+			for (let i = 0; i < 100; i++) {
+				const ctx = createContext(`10.0.0.${i}`);
+				await checkRateLimit(config, ctx);
+			}
+		}).run();
 	});
 });
 
 describe('Rate Limiting - Window Sizes', () => {
-	bench('1 second window', async () => {
-		const cache = new InMemoryCache();
-		const config: RateLimitConfig = {
-			limit: 10,
-			windowMs: 1000,
-			cache,
-		};
-		const ctx = createContext('127.0.0.1');
-		await checkRateLimit(config, ctx);
+	test('1 second window', async ({ bench }) => {
+		await bench('1 second window', async () => {
+			const cache = new InMemoryCache();
+			const config: RateLimitConfig = {
+				limit: 10,
+				windowMs: 1000,
+				cache,
+			};
+			const ctx = createContext('127.0.0.1');
+			await checkRateLimit(config, ctx);
+		}).run();
 	});
 
-	bench('1 minute window', async () => {
-		const cache = new InMemoryCache();
-		const config: RateLimitConfig = {
-			limit: 100,
-			windowMs: 60000,
-			cache,
-		};
-		const ctx = createContext('127.0.0.1');
-		await checkRateLimit(config, ctx);
+	test('1 minute window', async ({ bench }) => {
+		await bench('1 minute window', async () => {
+			const cache = new InMemoryCache();
+			const config: RateLimitConfig = {
+				limit: 100,
+				windowMs: 60000,
+				cache,
+			};
+			const ctx = createContext('127.0.0.1');
+			await checkRateLimit(config, ctx);
+		}).run();
 	});
 
-	bench('1 hour window', async () => {
-		const cache = new InMemoryCache();
-		const config: RateLimitConfig = {
-			limit: 1000,
-			windowMs: 3600000,
-			cache,
-		};
-		const ctx = createContext('127.0.0.1');
-		await checkRateLimit(config, ctx);
+	test('1 hour window', async ({ bench }) => {
+		await bench('1 hour window', async () => {
+			const cache = new InMemoryCache();
+			const config: RateLimitConfig = {
+				limit: 1000,
+				windowMs: 3600000,
+				cache,
+			};
+			const ctx = createContext('127.0.0.1');
+			await checkRateLimit(config, ctx);
+		}).run();
 	});
 });

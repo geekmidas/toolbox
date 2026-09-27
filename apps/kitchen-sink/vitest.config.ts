@@ -24,10 +24,10 @@ export default defineConfig({
 		name: 'kitchen-sink',
 		include: ['src/__tests__/**/*.spec.ts'],
 		globalSetup: ['./src/__tests__/__helpers__/globalSetup.ts'],
-		// Vitest 4 flattened these out of `poolOptions`.
+		// Vitest 4 flattened these out of `poolOptions` and dropped `minWorkers`;
+		// one worker is `maxWorkers: 1` alone.
 		pool: 'threads',
 		maxWorkers: 1,
-		minWorkers: 1,
 		fileParallelism: false,
 		// Containers, a broker poll interval, and mail delivery. The default 5s
 		// fails on a cold Docker rather than on anything the app did — and the

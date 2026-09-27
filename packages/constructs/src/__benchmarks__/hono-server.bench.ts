@@ -1,7 +1,7 @@
 import { LogLevel } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import { Hono } from 'hono';
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { z } from 'zod';
 import type { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
@@ -50,8 +50,10 @@ describe('Hono E2E - Simple Endpoints', () => {
 
 	const app = createApp([healthEndpoint]);
 
-	bench('GET /health - minimal response', async () => {
-		await app.request('/health');
+	test('GET /health - minimal response', async ({ bench }) => {
+		await bench('GET /health - minimal response', async () => {
+			await app.request('/health');
+		}).run();
 	});
 });
 
@@ -93,32 +95,42 @@ describe('Hono E2E - CRUD Operations', () => {
 
 	const app = createApp(endpoints);
 
-	bench('GET /users - list response', async () => {
-		await app.request('/users');
+	test('GET /users - list response', async ({ bench }) => {
+		await bench('GET /users - list response', async () => {
+			await app.request('/users');
+		}).run();
 	});
 
-	bench('GET /users/:id - path params', async () => {
-		await app.request('/users/123');
+	test('GET /users/:id - path params', async ({ bench }) => {
+		await bench('GET /users/:id - path params', async () => {
+			await app.request('/users/123');
+		}).run();
 	});
 
-	bench('POST /users - body validation', async () => {
-		await app.request('/users', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'Test', email: 'test@example.com' }),
-		});
+	test('POST /users - body validation', async ({ bench }) => {
+		await bench('POST /users - body validation', async () => {
+			await app.request('/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: 'Test', email: 'test@example.com' }),
+			});
+		}).run();
 	});
 
-	bench('PUT /users/:id - params + body', async () => {
-		await app.request('/users/123', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'Updated' }),
-		});
+	test('PUT /users/:id - params + body', async ({ bench }) => {
+		await bench('PUT /users/:id - params + body', async () => {
+			await app.request('/users/123', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: 'Updated' }),
+			});
+		}).run();
 	});
 
-	bench('DELETE /users/:id - params only', async () => {
-		await app.request('/users/123', { method: 'DELETE' });
+	test('DELETE /users/:id - params only', async ({ bench }) => {
+		await bench('DELETE /users/:id - params only', async () => {
+			await app.request('/users/123', { method: 'DELETE' });
+		}).run();
 	});
 });
 
@@ -154,30 +166,32 @@ describe('Hono E2E - Complex Validation', () => {
 
 	const app = createApp([complexEndpoint]);
 
-	bench('POST /orders - complex nested body', async () => {
-		await app.request('/orders', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				customer: {
-					name: 'John Doe',
-					email: 'john@example.com',
-					address: {
-						street: '123 Main St',
-						city: 'Boston',
-						zip: '02101',
+	test('POST /orders - complex nested body', async ({ bench }) => {
+		await bench('POST /orders - complex nested body', async () => {
+			await app.request('/orders', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					customer: {
+						name: 'John Doe',
+						email: 'john@example.com',
+						address: {
+							street: '123 Main St',
+							city: 'Boston',
+							zip: '02101',
+						},
 					},
-				},
-				items: [
-					{ productId: 'prod-1', quantity: 2, price: 29.99 },
-					{ productId: 'prod-2', quantity: 1, price: 39.99 },
-				],
-				payment: {
-					method: 'credit_card',
-					details: { last4: '4242' },
-				},
-			}),
-		});
+					items: [
+						{ productId: 'prod-1', quantity: 2, price: 29.99 },
+						{ productId: 'prod-2', quantity: 1, price: 39.99 },
+					],
+					payment: {
+						method: 'credit_card',
+						details: { last4: '4242' },
+					},
+				}),
+			});
+		}).run();
 	});
 });
 
@@ -208,8 +222,10 @@ describe('Hono E2E - Query Parameters', () => {
 
 	const app = createApp([searchEndpoint]);
 
-	bench('GET /search - with query params', async () => {
-		await app.request('/search?q=test&page=2&limit=20&sort=desc');
+	test('GET /search - with query params', async ({ bench }) => {
+		await bench('GET /search - with query params', async () => {
+			await app.request('/search?q=test&page=2&limit=20&sort=desc');
+		}).run();
 	});
 });
 
@@ -225,29 +241,33 @@ describe('Hono E2E - Concurrent Requests', () => {
 
 	const app = createApp(endpoints);
 
-	bench('10 concurrent requests', async () => {
-		await Promise.all([
-			app.request('/health'),
-			app.request('/users'),
-			app.request('/users/1'),
-			app.request('/users/2'),
-			app.request('/users/3'),
-			app.request('/health'),
-			app.request('/users'),
-			app.request('/users/4'),
-			app.request('/users/5'),
-			app.request('/health'),
-		]);
+	test('10 concurrent requests', async ({ bench }) => {
+		await bench('10 concurrent requests', async () => {
+			await Promise.all([
+				app.request('/health'),
+				app.request('/users'),
+				app.request('/users/1'),
+				app.request('/users/2'),
+				app.request('/users/3'),
+				app.request('/health'),
+				app.request('/users'),
+				app.request('/users/4'),
+				app.request('/users/5'),
+				app.request('/health'),
+			]);
+		}).run();
 	});
 
-	bench('50 concurrent requests', async () => {
-		const requests = Array.from({ length: 50 }, (_, i) =>
-			i % 3 === 0
-				? app.request('/health')
-				: i % 3 === 1
-					? app.request('/users')
-					: app.request(`/users/${i}`),
-		);
-		await Promise.all(requests);
+	test('50 concurrent requests', async ({ bench }) => {
+		await bench('50 concurrent requests', async () => {
+			const requests = Array.from({ length: 50 }, (_, i) =>
+				i % 3 === 0
+					? app.request('/health')
+					: i % 3 === 1
+						? app.request('/users')
+						: app.request(`/users/${i}`),
+			);
+			await Promise.all(requests);
+		}).run();
 	});
 });

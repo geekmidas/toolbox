@@ -1,6 +1,6 @@
 # Tranche 2: the build and test toolchain
 
-**Status: not started.** Tracked in #40.
+**Status: in progress** on `deps/tranche-2-toolchain`. Tracked in #40.
 
 Deferred from [tranche 1](./tranche-1-dependencies.md) because the toolchain
 changes how every package compiles and runs. Kept separate so that a failure
@@ -50,11 +50,18 @@ candidate cause:
    `node scripts/align-deps.mjs --latest <names…>`, then `--write`, then
    `pnpm install`. It also gave `tsx`, `tsdown`, `typescript`, `vite` and
    `vitest` one range each within their current majors.
-2. **`tsx` and `tsdown`.** They build and run everything else.
-3. **Vite, with `@vitejs/plugin-react`.** Vitest and Storybook both build on
-   Vite, so it goes before either.
-4. **Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers, and
-   the scaffold's Vitest pin.
+2. ~~**`tsx` and `tsdown`.**~~ **Done:** tsx 4.23, tsdown 0.23. A directory
+   is no longer an entry (the root `entry: ['src/']` became `src/**/*`), and
+   `external` / `noExternal` became `deps.neverBundle` / `deps.alwaysBundle`.
+3. ~~**Vite, with `@vitejs/plugin-react`.**~~ **Done:** Vite 8, plugin-react 6.
+   No config used a removed option; the Telescope UI's config now imports its
+   plugin with an extension, which Vite's native config loader needs.
+4. ~~**Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers~~
+   **Done:** Vitest 5 (through 4). Benchmarks use the `bench` test fixture; a
+   nested `vi.mock` moved to top level; kitchen-sink dropped `minWorkers`; the
+   CLI's throwaway test projects get a `node_modules` beside them, since
+   Vite's module runner no longer resolves their bare imports from the repo
+   root. The scaffold's Vitest pin follows with #43.
 5. **Storybook.** Only `packages/ui`, and it may overlap with
    [tranche 3](./tranche-3-react-ui.md).
 6. **TypeScript** last. It's the widest blast radius, and the other tools need

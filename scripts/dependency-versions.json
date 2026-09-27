@@ -268,10 +268,10 @@
 		"devDependencies": "^6.1.1"
 	},
 	"@vitest/coverage-v8": {
-		"devDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2"
 	},
 	"@vitest/ui": {
-		"devDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2"
 	},
 	"amqplib": {
 		"peerDependencies": ">=2.0.1"
@@ -476,8 +476,8 @@
 		"devDependencies": "^1.5.0"
 	},
 	"vitest": {
-		"devDependencies": "~3.2.4",
-		"peerDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2",
+		"peerDependencies": "~5.0.2"
 	},
 	"vue": {
 		"devDependencies": "^3.5.13"
