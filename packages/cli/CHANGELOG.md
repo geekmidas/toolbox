@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.8
+
+### Patch Changes
+
+- [#47](https://github.com/geekmidas/toolbox/pull/47) [`e49677e`](https://github.com/geekmidas/toolbox/commit/e49677e31780d2f0d91c54d9cb7ecc750b97446e) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` names what it declares plainly: `Database`, `Cache`, `Uploads`, `Mail`
+
+  The scaffold named them after the project — `new Cache('BeetlefitCache')`,
+  `new KyselyDatabase<Database, 'Beetlefit'>('Beetlefit')` — but the workspace
+  `name` already scopes every physical name, so the cache deployed as
+  `production-beetlefit-beetlefit-cache`. The ids are now plain, and so are the
+  keys they publish: `DATABASE_URL`, `DATABASE_OWNER_URL`, `CACHE_URL`,
+  `UPLOADS_URL`, `MAIL_URL`.
+
+  Existing projects are unaffected; a project scaffolded before this keeps its
+  ids until it renames them.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.8
+  - @geekmidas/constructs@10.0.0-alpha.8
+  - @geekmidas/db@10.0.0-alpha.8
+  - @geekmidas/envkit@10.0.0-alpha.8
+  - @geekmidas/errors@10.0.0-alpha.8
+  - @geekmidas/logger@10.0.0-alpha.8
+  - @geekmidas/manifest@10.0.0-alpha.8
+  - @geekmidas/schema@10.0.0-alpha.8
+  - @geekmidas/telescope@10.0.0-alpha.8
+
 ## 10.0.0-alpha.7
 
 ### Patch Changes

@@ -38,6 +38,7 @@
     "alpha-packaging",
     "client-coercion-types",
     "drop-free-standing-builders",
+    "init-plain-construct-ids",
     "init-scaffolds-constructs",
     "install-check",
     "logger-is-an-interface",
