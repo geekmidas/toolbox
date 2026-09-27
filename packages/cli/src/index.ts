@@ -1027,8 +1027,18 @@ program
 
 program
 	.command('upgrade')
-	.description('Upgrade all @geekmidas packages to their latest versions')
+	.description(
+		'Upgrade @geekmidas/cli (with --all, every @geekmidas package) along the release line the project is on',
+	)
 	.option('--dry-run', 'Show what would be upgraded without making changes')
+	.option(
+		'--all',
+		'Every @geekmidas package, and the third-party packages their peers require',
+	)
+	.option(
+		'--tag <tag>',
+		'npm dist-tag to follow (default: the line you are on)',
+	)
 	.action(async (options: UpgradeOptions) => {
 		try {
 			const globalOptions = program.opts();

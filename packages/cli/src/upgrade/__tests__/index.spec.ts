@@ -1,354 +1,327 @@
 import { execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { upgradeCommand } from '../index';
+import {
+	NoReleaseOnTag,
+	resolveTarget,
+	upgradeCommand,
+	WouldDowngrade,
+} from '../index';
 
 vi.mock('node:child_process', () => ({
 	execSync: vi.fn(),
 }));
 
-const NPM_REGISTRY = 'https://registry.npmjs.org';
-
 const server = setupServer();
 
-function writePackageJson(dir: string, content: Record<string, unknown>) {
-	writeFileSync(join(dir, 'package.json'), JSON.stringify(content, null, 2));
+/** What the v10 alpha line looks like on npm while v9 is `latest`. */
+const TAGS = { latest: '9.0.2', alpha: '10.0.0-alpha.8' };
+
+/**
+ * An npm registry holding `@geekmidas` packages at `TAGS`, each declaring
+ * `peers` at the alpha version.
+ */
+function registry(peers: Record<string, string> = {}) {
+	server.use(
+		http.get('https://registry.npmjs.org/*', ({ request }) => {
+			const name = decodeURIComponent(new URL(request.url).pathname.slice(1));
+			if (!name.startsWith('@geekmidas/')) {
+				return new HttpResponse(null, { status: 404 });
+			}
+			return HttpResponse.json({
+				'dist-tags': TAGS,
+				versions: {
+					'9.0.2': {},
+					'10.0.0-alpha.8': { peerDependencies: peers },
+				},
+			});
+		}),
+	);
 }
 
+const write = (path: string, content: unknown) =>
+	writeFileSync(
+		path,
+		typeof content === 'string' ? content : JSON.stringify(content, null, 2),
+	);
+const read = (path: string) => JSON.parse(readFileSync(path, 'utf-8'));
+
 describe('upgradeCommand', () => {
-	let tempDir: string;
-	let originalCwd: string;
+	let dir: string;
+	let cwd: string;
+	let log: ReturnType<typeof vi.spyOn>;
+	const output = () => log.mock.calls.flat().join('\n');
 
 	beforeEach(async () => {
-		tempDir = join(tmpdir(), `gkm-upgrade-test-${Date.now()}`);
-		await mkdir(tempDir, { recursive: true });
-		originalCwd = process.cwd();
-		process.chdir(tempDir);
-		server.listen({ onUnhandledRequest: 'bypass' });
+		dir = join(tmpdir(), `gkm-upgrade-${Date.now()}-${Math.random()}`);
+		await mkdir(dir, { recursive: true });
+		// macOS's tmpdir is a symlink; the command sees the resolved path.
+		dir = realpathSync(dir);
+		cwd = process.cwd();
+		process.chdir(dir);
+		server.listen({ onUnhandledRequest: 'error' });
 		vi.mocked(execSync).mockReset();
+		log = vi.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(async () => {
-		process.chdir(originalCwd);
+		process.chdir(cwd);
 		server.resetHandlers();
 		server.close();
-		await rm(tempDir, { recursive: true, force: true });
+		log.mockRestore();
+		await rm(dir, { recursive: true, force: true });
 	});
 
-	it('should report no packages found when none exist', async () => {
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: { lodash: '^4.0.0' },
+	/** A pnpm workspace with a root and one app. */
+	async function workspace(
+		rootDeps: Record<string, unknown>,
+		appDeps: Record<string, unknown> = {},
+		yaml = "packages:\n  - 'apps/*'\n",
+	) {
+		write(join(dir, 'pnpm-lock.yaml'), '');
+		write(join(dir, 'pnpm-workspace.yaml'), yaml);
+		write(join(dir, 'package.json'), { name: 'shop', ...rootDeps });
+		await mkdir(join(dir, 'apps', 'api'), { recursive: true });
+		write(join(dir, 'apps', 'api', 'package.json'), {
+			name: '@shop/api',
+			...appDeps,
 		});
-		// Create a lockfile so detectPackageManager finds a root
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
+	}
 
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+	it('reports a project with no @geekmidas packages', async () => {
+		await workspace({ dependencies: { lodash: '^4.0.0' } });
 
 		await upgradeCommand();
 
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('No @geekmidas packages found');
-
-		logSpy.mockRestore();
+		expect(output()).toContain('No @geekmidas packages found');
+		expect(execSync).not.toHaveBeenCalled();
 	});
 
-	it('should detect workspace refs and mark them as workspace status', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-monorepo',
-			workspaces: ['packages/*'],
-			dependencies: {
-				'@geekmidas/constructs': 'workspace:*',
-			},
+	it('follows the alpha line a project is on, not latest', async () => {
+		// `latest` is 9.x: following it from an alpha would be a downgrade.
+		registry();
+		await workspace({
+			devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' },
 		});
-
-		const pkgDir = join(tempDir, 'packages', 'api');
-		await mkdir(pkgDir, { recursive: true });
-		writePackageJson(pkgDir, {
-			name: '@test/api',
-			dependencies: {
-				'@geekmidas/auth': 'workspace:~',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/constructs/latest`, () => {
-				return HttpResponse.json({ version: '1.1.1' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/auth/latest`, () => {
-				return HttpResponse.json({ version: '1.0.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 		await upgradeCommand();
 
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('workspace');
-		expect(output).toContain('All @geekmidas packages are up to date');
-
-		logSpy.mockRestore();
-	});
-
-	it('should identify packages that need upgrade', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/constructs': '^1.0.0',
-				'@geekmidas/auth': '~1.0.0',
-			},
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': '~10.0.0-alpha.8',
 		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/constructs/latest`, () => {
-				return HttpResponse.json({ version: '1.2.0' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/auth/latest`, () => {
-				return HttpResponse.json({ version: '1.1.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-		await upgradeCommand({ dryRun: true });
-
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('⬆ upgrade');
-		expect(output).toContain('2 package(s) can be upgraded');
-		expect(output).toContain('--dry-run: No changes made');
-		expect(output).toContain('npm update');
-
-		logSpy.mockRestore();
-	});
-
-	it('should report up-to-date when versions match', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/errors': '1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/errors/latest`, () => {
-				return HttpResponse.json({ version: '1.0.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-		await upgradeCommand();
-
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('✓ up-to-date');
-		expect(output).toContain('All @geekmidas packages are up to date');
-
-		logSpy.mockRestore();
-	});
-
-	it('should execute upgrade command when not dry-run', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/errors': '^1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/errors/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-		await upgradeCommand();
-
+		expect(output()).toContain('Target: 10.0.0-alpha.8 (npm "alpha")');
 		expect(execSync).toHaveBeenCalledWith(
-			expect.stringContaining('npm update @geekmidas/errors'),
-			expect.objectContaining({ stdio: 'inherit' }),
+			'pnpm install',
+			expect.objectContaining({ cwd: dir }),
 		);
-
-		logSpy.mockRestore();
 	});
 
-	it('should use pnpm update -r when pnpm is detected', async () => {
-		writeFileSync(join(tempDir, 'pnpm-lock.yaml'), '');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/logger': '^1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/logger/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+	it('follows latest for a project on a release', async () => {
+		registry();
+		await workspace({ devDependencies: { '@geekmidas/cli': '^9.0.0' } });
 
 		await upgradeCommand();
 
-		expect(execSync).toHaveBeenCalledWith(
-			expect.stringContaining('pnpm update -r @geekmidas/logger --latest'),
-			expect.anything(),
-		);
-
-		logSpy.mockRestore();
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': '^9.0.2',
+		});
 	});
 
-	it('should scan all workspace packages in pnpm workspace', async () => {
-		writeFileSync(join(tempDir, 'pnpm-lock.yaml'), '');
-		writeFileSync(
-			join(tempDir, 'pnpm-workspace.yaml'),
-			'packages:\n  - "packages/*"\n  - "apps/*"\n',
+	it('moves only the CLI without --all, and says what comes next', async () => {
+		registry();
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' } },
+			{ dependencies: { '@geekmidas/constructs': '~10.0.0-alpha.6' } },
 		);
-		writePackageJson(tempDir, {
-			name: 'test-monorepo',
-			devDependencies: {
-				'@geekmidas/cli': '^1.0.0',
-			},
-		});
-
-		const apiDir = join(tempDir, 'apps', 'api');
-		await mkdir(apiDir, { recursive: true });
-		writePackageJson(apiDir, {
-			name: '@test/api',
-			dependencies: {
-				'@geekmidas/constructs': '^1.0.0',
-			},
-		});
-
-		const libDir = join(tempDir, 'packages', 'shared');
-		await mkdir(libDir, { recursive: true });
-		writePackageJson(libDir, {
-			name: '@test/shared',
-			dependencies: {
-				'@geekmidas/errors': '^1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/cli/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/constructs/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/errors/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-		await upgradeCommand({ dryRun: true });
-
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('Found 3 package(s) in workspace');
-		expect(output).toContain('3 package(s) can be upgraded');
-
-		logSpy.mockRestore();
-	});
-
-	it('should handle npm registry errors gracefully', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/nonexistent': '^1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/nonexistent/latest`, () => {
-				return new HttpResponse(null, { status: 404 });
-			}),
-		);
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 		await upgradeCommand();
 
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('unknown');
-
-		logSpy.mockRestore();
+		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
+			'@geekmidas/constructs': '~10.0.0-alpha.6',
+		});
+		expect(output()).toContain('run `gkm upgrade --all` with the new CLI');
 	});
 
-	it('should throw when execSync fails', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/errors': '^1.0.0',
+	it('moves every @geekmidas package to one version with --all', async () => {
+		registry();
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' } },
+			{
+				dependencies: {
+					'@geekmidas/constructs': '^10.0.0-alpha.5',
+					'@geekmidas/envkit': '10.0.0-alpha.6',
+				},
 			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/errors/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
 		);
 
-		vi.mocked(execSync).mockImplementation(() => {
-			throw new Error('command failed');
+		await upgradeCommand({ all: true });
+
+		// Each keeps the operator it was written with.
+		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
+			'@geekmidas/constructs': '^10.0.0-alpha.8',
+			'@geekmidas/envkit': '10.0.0-alpha.8',
 		});
-
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-		await expect(upgradeCommand()).rejects.toThrow('Package upgrade failed');
-
-		logSpy.mockRestore();
 	});
 
-	it('should scan deps, devDeps, and peerDeps', async () => {
-		writeFileSync(join(tempDir, 'package-lock.json'), '{}');
-		writePackageJson(tempDir, {
-			name: 'test-project',
-			dependencies: {
-				'@geekmidas/constructs': '^1.0.0',
-			},
-			devDependencies: {
-				'@geekmidas/testkit': '^1.0.0',
-			},
-			peerDependencies: {
-				'@geekmidas/logger': '^1.0.0',
-			},
-		});
-
-		server.use(
-			http.get(`${NPM_REGISTRY}/@geekmidas/constructs/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/testkit/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
-			http.get(`${NPM_REGISTRY}/@geekmidas/logger/latest`, () => {
-				return HttpResponse.json({ version: '2.0.0' });
-			}),
+	it('reports a hand-written range rather than flattening it', async () => {
+		registry();
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' } },
+			{ peerDependencies: { '@geekmidas/schema': '>=8.0.0 <10' } },
 		);
 
-		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+		await upgradeCommand({ all: true });
+
+		expect(read(join(dir, 'apps/api/package.json')).peerDependencies).toEqual({
+			'@geekmidas/schema': '>=8.0.0 <10',
+		});
+		expect(output()).toContain(
+			'@geekmidas/schema >=8.0.0 <10 is not a simple range; left as is',
+		);
+	});
+
+	it('leaves workspace references alone', async () => {
+		registry();
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' } },
+			{ dependencies: { '@geekmidas/models': 'workspace:*' } },
+		);
+
+		await upgradeCommand({ all: true });
+
+		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
+			'@geekmidas/models': 'workspace:*',
+		});
+	});
+
+	it('rewrites pnpm catalog entries, keeping the file as written', async () => {
+		registry();
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': 'catalog:' } },
+			{ dependencies: { '@geekmidas/constructs': 'catalog:geekmidas' } },
+			[
+				'packages:',
+				"  - 'apps/*'",
+				'# The toolchain, pinned once.',
+				'catalog:',
+				"  '@geekmidas/cli': ~10.0.0-alpha.6",
+				'catalogs:',
+				'  geekmidas:',
+				"    '@geekmidas/constructs': ~10.0.0-alpha.6",
+				'',
+			].join('\n'),
+		);
+
+		await upgradeCommand({ all: true });
+
+		const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8');
+		expect(yaml).toContain('# The toolchain, pinned once.');
+		expect(yaml).toMatch(/'@geekmidas\/cli': ~10\.0\.0-alpha\.8/);
+		expect(yaml).toMatch(/'@geekmidas\/constructs': ~10\.0\.0-alpha\.8/);
+		// The references themselves stay references.
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': 'catalog:',
+		});
+	});
+
+	it('raises third-party packages to the peer floor with --all', async () => {
+		registry({
+			kysely: '~0.29.6',
+			hono: '>=4.13.8',
+			pg: '>=8.23.0',
+			'@types/aws-lambda': '>=8.10.163',
+		});
+		await workspace(
+			{ devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' } },
+			{
+				dependencies: {
+					'@geekmidas/constructs': '~10.0.0-alpha.6',
+					kysely: '~0.28.2',
+					// Already past the floor: never lowered.
+					hono: '^4.14.0',
+					// Not one operator and one version: reported, not rewritten.
+					pg: '>=8.0.0 <9',
+				},
+			},
+		);
+
+		await upgradeCommand({ all: true });
+
+		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
+			'@geekmidas/constructs': '~10.0.0-alpha.8',
+			kysely: '~0.29.6',
+			hono: '^4.14.0',
+			pg: '>=8.0.0 <9',
+		});
+		// A peer the project does not list is not added.
+		expect(
+			read(join(dir, 'apps/api/package.json')).dependencies,
+		).not.toHaveProperty('@types/aws-lambda');
+		expect(output()).toContain('pg >=8.0.0 <9 is not a simple range');
+	});
+
+	it('refuses to move a project backwards', async () => {
+		registry();
+		await workspace({
+			devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' },
+		});
+
+		await expect(upgradeCommand({ tag: 'latest' })).rejects.toThrow(
+			WouldDowngrade,
+		);
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': '~10.0.0-alpha.6',
+		});
+	});
+
+	it('changes nothing on --dry-run', async () => {
+		registry();
+		await workspace({
+			devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.6' },
+		});
 
 		await upgradeCommand({ dryRun: true });
 
-		const output = logSpy.mock.calls.flat().join('\n');
-		expect(output).toContain('Checking 3 unique @geekmidas package(s)');
-		expect(output).toContain('3 package(s) can be upgraded');
+		expect(output()).toContain('@geekmidas/cli');
+		expect(output()).toContain('~10.0.0-alpha.6 → ~10.0.0-alpha.8');
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': '~10.0.0-alpha.6',
+		});
+		expect(execSync).not.toHaveBeenCalled();
+	});
 
-		logSpy.mockRestore();
+	it('does nothing when already on the target', async () => {
+		registry();
+		await workspace({
+			devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.8' },
+		});
+
+		await upgradeCommand();
+
+		expect(output()).toContain('already on the target version');
+		expect(execSync).not.toHaveBeenCalled();
+	});
+});
+
+describe('resolveTarget', () => {
+	it('uses the prerelease tag of the highest installed version', () => {
+		expect(resolveTarget(TAGS, ['9.0.2', '10.0.0-alpha.6'])).toEqual({
+			tag: 'alpha',
+			version: '10.0.0-alpha.8',
+		});
+	});
+
+	it('names the tags npm has when asked for one it does not', () => {
+		expect(() => resolveTarget(TAGS, ['9.0.2'], 'beta')).toThrow(
+			NoReleaseOnTag,
+		);
+		expect(() => resolveTarget(TAGS, ['9.0.2'], 'beta')).toThrow(
+			'npm has no "beta" release of @geekmidas/cli. Tags: latest, alpha.',
+		);
 	});
 });
