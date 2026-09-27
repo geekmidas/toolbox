@@ -64,7 +64,7 @@ async function packument(name: string): Promise<Packument> {
 		`https://registry.npmjs.org/${name.replace('/', '%2F')}`,
 		{ headers: { accept: 'application/vnd.npm.install-v1+json' } },
 	);
-	if (!res.ok) throw new Error(`npm answered ${res.status} for ${name}`);
+	if (!res.ok) throw new RegistryUnavailable(name, res.status);
 	return (await res.json()) as Packument;
 }
 
@@ -127,9 +127,7 @@ export function resolveTarget(
 	const chosen = tag ?? (highest && prereleaseTag(highest)) ?? 'latest';
 	const version = distTags[chosen];
 	if (!version) {
-		throw new Error(
-			`npm has no "${chosen}" release of @geekmidas/cli. Tags: ${Object.keys(distTags).join(', ')}.`,
-		);
+		throw new NoReleaseOnTag(chosen, Object.keys(distTags));
 	}
 	return { tag: chosen, version };
 }
@@ -175,9 +173,7 @@ export async function upgradeCommand(
 	// Never backwards: a project ahead of the tag it follows keeps its version.
 	const highest = installed.sort(compareVersions).at(-1)!;
 	if (compareVersions(target.version, highest) < 0) {
-		throw new Error(
-			`The project is already on ${highest}, ahead of npm's "${target.tag}" (${target.version}). Pass --tag to follow another line.`,
-		);
+		throw new WouldDowngrade(highest, target.tag, target.version);
 	}
 
 	const moving = options.all
@@ -318,6 +314,54 @@ function install(pm: PackageManager, cwd: string): void {
 	try {
 		execSync(command, { cwd, stdio: 'inherit', timeout: 300_000 });
 	} catch {
-		throw new Error('Install failed. Check the output above for details.');
+		throw new InstallFailed(command);
+	}
+}
+
+/** npm did not answer for a package, so there is no version to compare. */
+export class RegistryUnavailable extends Error {
+	constructor(
+		readonly name: string,
+		readonly status: number,
+	) {
+		super(
+			`npm answered ${status} for ${name}. Check the name and your network.`,
+		);
+		this.name = 'RegistryUnavailable';
+	}
+}
+
+/** A dist-tag npm does not have, e.g. `--tag beta` before any beta. */
+export class NoReleaseOnTag extends Error {
+	constructor(
+		readonly tag: string,
+		readonly tags: readonly string[],
+	) {
+		super(
+			`npm has no "${tag}" release of @geekmidas/cli. Tags: ${tags.join(', ')}.`,
+		);
+		this.name = 'NoReleaseOnTag';
+	}
+}
+
+/** The line asked for is behind what is installed; upgrade never goes back. */
+export class WouldDowngrade extends Error {
+	constructor(
+		readonly installed: string,
+		readonly tag: string,
+		readonly target: string,
+	) {
+		super(
+			`The project is already on ${installed}, ahead of npm's "${tag}" (${target}). Pass --tag to follow another line.`,
+		);
+		this.name = 'WouldDowngrade';
+	}
+}
+
+/** The install after rewriting versions failed; its own output says why. */
+export class InstallFailed extends Error {
+	constructor(readonly command: string) {
+		super(`\`${command}\` failed. Check the output above for details.`);
+		this.name = 'InstallFailed';
 	}
 }

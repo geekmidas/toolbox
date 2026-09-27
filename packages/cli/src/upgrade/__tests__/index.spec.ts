@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveTarget, upgradeCommand } from '../index';
+import {
+	NoReleaseOnTag,
+	resolveTarget,
+	upgradeCommand,
+	WouldDowngrade,
+} from '../index';
 
 vi.mock('node:child_process', () => ({
 	execSync: vi.fn(),
@@ -267,7 +272,7 @@ describe('upgradeCommand', () => {
 		});
 
 		await expect(upgradeCommand({ tag: 'latest' })).rejects.toThrow(
-			'already on 10.0.0-alpha.6, ahead of npm\'s "latest" (9.0.2)',
+			WouldDowngrade,
 		);
 		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
 			'@geekmidas/cli': '~10.0.0-alpha.6',
@@ -312,6 +317,9 @@ describe('resolveTarget', () => {
 	});
 
 	it('names the tags npm has when asked for one it does not', () => {
+		expect(() => resolveTarget(TAGS, ['9.0.2'], 'beta')).toThrow(
+			NoReleaseOnTag,
+		);
 		expect(() => resolveTarget(TAGS, ['9.0.2'], 'beta')).toThrow(
 			'npm has no "beta" release of @geekmidas/cli. Tags: latest, alpha.',
 		);
