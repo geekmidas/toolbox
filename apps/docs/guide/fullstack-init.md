@@ -176,6 +176,38 @@ my-app/
 └── .gitignore
 ```
 
+## GitHub Actions
+
+Every scaffold ships `.github/`:
+
+| File | Runs on | Does |
+|---|---|---|
+| `workflows/ci.yml` | every pull request | install → build → lint → typecheck → `test:once` |
+| `workflows/release-drafter.yml` + `release-drafter.yml` | pushes to main, pull requests | keeps a draft release, labelled from each PR title's `feat` / `fix` / `chore` prefix |
+| `workflows/deploy.yml` *(when a deploy target was picked)* | push to main, a published release, or a manual run | deploys stages, as below |
+
+Tests need no shared key: `gkm test` starts the containers the constructs
+declare and, with `GKM_AUTO_SETUP=1`, generates throwaway test-stage secrets.
+
+**Deploy** names no stage — it reads [`stages`](./workspaces.md#stages) from
+`gkm.config.ts` when it runs:
+
+| Event | Deploys |
+|---|---|
+| push to `main` | every deployed stage **not** in `protected` |
+| publishing the drafted release | the `protected` stages |
+| *Run workflow* | the one stage you type (refused if it is not deployed) |
+
+Each stage deploys in the GitHub **environment** of the same name, so give
+each one what it needs — and put a required reviewer on protected ones if a
+release should also need approval:
+
+| Environment setting | Target | Value |
+|---|---|---|
+| secret `GKM_SECRETS_KEY` | both | the stage's key, from `~/.gkm/<project>/<stage>.key` |
+| variable `AWS_ROLE_ARN` | SST | an IAM role that trusts GitHub's OIDC provider for this repo |
+| secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | your Dokploy API token and URL |
+
 ## Step-by-Step Execution
 
 Here's what happens internally, in order:
