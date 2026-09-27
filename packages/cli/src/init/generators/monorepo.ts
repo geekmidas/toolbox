@@ -14,6 +14,7 @@ import type {
 	TemplateOptions,
 } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
+import { deployPackage, generateDeployFiles } from './deploy.js';
 
 /**
  * What the root `constructs/` folder imports, and the peers each construct
@@ -62,6 +63,8 @@ export function generateMonorepoFiles(
 	}
 
 	const isFullstack = options.template === 'fullstack';
+	const deploy = deployPackage(options);
+	const isSst = options.deployTarget === 'sst';
 
 	// Root package.json for monorepo
 	const rootPackageJson = {
@@ -82,9 +85,7 @@ export function generateMonorepoFiles(
 			...(isFullstack
 				? { storybook: 'pnpm --filter ./packages/ui storybook' }
 				: {}),
-			...(options.deployTarget === 'dokploy'
-				? { deploy: 'gkm deploy --provider dokploy --stage production' }
-				: {}),
+			...deploy.scripts,
 		},
 		dependencies: {
 			zod: DEPENDENCY_VERSIONS.zod,
@@ -92,6 +93,7 @@ export function generateMonorepoFiles(
 			// `node_modules`, not from any app's — so what the constructs load,
 			// and the peers each of them needs, are installed here.
 			...(isFullstack ? rootConstructDependencies(options) : {}),
+			...deploy.dependencies,
 		},
 		devDependencies: {
 			'@biomejs/biome': '~2.3.0',
@@ -101,6 +103,7 @@ export function generateMonorepoFiles(
 			turbo: '~2.3.0',
 			typescript: '~5.8.2',
 			vitest: '~4.0.0',
+			...deploy.devDependencies,
 		},
 	};
 
@@ -160,6 +163,7 @@ export function generateMonorepoFiles(
 				'!**/dist',
 				'!**/.gkm',
 				'!**/coverage',
+				...(isSst ? ['!**/.sst', '!sst-env.d.ts'] : []),
 			],
 		},
 	};
@@ -234,7 +238,7 @@ coverage/
 
 # Turbo
 .turbo/
-`;
+${isSst ? '\n# SST\n.sst/\n' : ''}`;
 
 	// Root tsconfig.json - base config for all packages
 	// Using turbo typecheck to run tsc --noEmit in each app/package
@@ -263,7 +267,13 @@ coverage/
 			forceConsistentCasingInFileNames: true,
 			resolveJsonModule: true,
 		},
-		exclude: ['node_modules', 'dist'],
+		// SST typechecks its own config against its own platform types, which
+		// exist only after \`sst install\` and are not this project's to check.
+		exclude: [
+			'node_modules',
+			'dist',
+			...(isSst ? ['sst.config.ts', '.sst'] : []),
+		],
 	};
 
 	// Vitest config for workspace
@@ -372,6 +382,7 @@ export default defineConfig({
 			path: '.vscode/extensions.json',
 			content: `${JSON.stringify(vscodeExtensions, null, '\t')}\n`,
 		},
+		...generateDeployFiles(options),
 	];
 
 	// Add workspace config for fullstack template

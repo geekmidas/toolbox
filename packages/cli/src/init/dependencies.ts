@@ -16,5 +16,7 @@ export const DEPENDENCY_VERSIONS = {
 	'kysely-ctl': '~0.21.0',
 	pg: '~8.23.0',
 	pino: '~10.3.1',
+	// `@geekmidas/cloud`'s peer floor.
+	sst: '~4.17.1',
 	zod: '~4.6.5',
 } as const;

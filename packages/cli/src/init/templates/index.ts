@@ -34,7 +34,7 @@ export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 /**
  * Deploy target type
  */
-export type DeployTarget = 'dokploy' | 'none';
+export type DeployTarget = 'dokploy' | 'sst' | 'none';
 
 /**
  * Services selection
@@ -73,6 +73,8 @@ export interface TemplateOptions {
 	packageManager: PackageManager;
 	/** Deploy target */
 	deployTarget: DeployTarget;
+	/** The AWS region, when `deployTarget` is `sst` */
+	region?: string;
 	/** Services selection */
 	services: ServicesSelection;
 	/** Frontend framework (fullstack template only) */
@@ -258,6 +260,11 @@ export const deployTargetChoices = [
 		title: 'Dokploy',
 		value: 'dokploy' as DeployTarget,
 		description: 'Deploy to Dokploy (Docker-based hosting)',
+	},
+	{
+		title: 'AWS (SST)',
+		value: 'sst' as DeployTarget,
+		description: 'Deploy to your AWS account through SST',
 	},
 	{
 		title: 'Configure later',

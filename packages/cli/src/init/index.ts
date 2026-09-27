@@ -71,7 +71,14 @@ export interface InitOptions {
 	apiPath?: string;
 	/** Package manager to use */
 	pm?: PackageManager;
+	/** Where the project deploys: `dokploy`, `sst`, or `none` */
+	deploy?: DeployTarget;
+	/** The AWS region an SST deploy goes to, e.g. `eu-west-1` */
+	region?: string;
 }
+
+/** `eu-west-1`, `us-gov-west-1`, `ap-southeast-2`. */
+const AWS_REGION = /^[a-z]{2}(-gov)?-[a-z]+-\d$/;
 
 /**
  * Main init command - scaffolds a new project
@@ -82,6 +89,21 @@ export async function initCommand(
 ): Promise<void> {
 	const cwd = process.cwd();
 	const detectedPkgManager = detectPackageManager(cwd);
+
+	if (
+		options.deploy &&
+		!deployTargetChoices.some((choice) => choice.value === options.deploy)
+	) {
+		throw new Error(
+			`Unknown deploy target "${options.deploy}". Use ${deployTargetChoices.map((c) => c.value).join(', ')}.`,
+		);
+	}
+
+	if (options.region && !AWS_REGION.test(options.region)) {
+		throw new Error(
+			`"${options.region}" is not an AWS region. Use one like eu-west-1.`,
+		);
+	}
 
 	// Handle Ctrl+C gracefully
 	prompts.override({});
@@ -136,11 +158,23 @@ export async function initCommand(
 				),
 			},
 			{
-				type: options.yes ? null : 'select',
+				type: options.yes || options.deploy ? null : 'select',
 				name: 'deployTarget',
 				message: 'Deployment target:',
 				choices: deployTargetChoices,
 				initial: 0,
+			},
+			{
+				type: (_prev, values) =>
+					!options.yes &&
+					!options.region &&
+					(options.deploy ?? values.deployTarget) === 'sst'
+						? 'text'
+						: null,
+				name: 'region',
+				message: 'AWS region (e.g. eu-west-1):',
+				validate: (value: string) =>
+					AWS_REGION.test(value.trim()) || 'An AWS region, like eu-west-1',
 			},
 			{
 				type: options.yes ? null : 'confirm',
@@ -236,9 +270,10 @@ export async function initCommand(
 			? 'pnpm'
 			: (answers.packageManager ?? detectedPkgManager);
 
-	const deployTarget: DeployTarget = options.yes
-		? 'dokploy'
-		: (answers.deployTarget ?? 'dokploy');
+	// `--yes` picks no host rather than one: a default that scaffolds one
+	// provider's deploy script commits every unattended project to it.
+	const deployTarget: DeployTarget =
+		options.deploy ?? (options.yes ? 'none' : (answers.deployTarget ?? 'none'));
 
 	const database = services.db;
 	const frontendFramework: FullstackFrontendFramework | undefined = isFullstack
@@ -260,6 +295,14 @@ export async function initCommand(
 		apiPath: monorepo ? (options.apiPath ?? 'apps/api') : '',
 		packageManager: pkgManager,
 		deployTarget,
+		...(deployTarget === 'sst'
+			? {
+					// Asked when there is someone to ask; \`--yes\` takes eu-west-1.
+					region:
+						options.region ??
+						(options.yes ? 'eu-west-1' : answers.region?.trim()),
+				}
+			: {}),
 		services,
 		frontendFramework,
 	};
@@ -552,6 +595,18 @@ function printNextSteps(
 	if (options.deployTarget === 'dokploy') {
 		console.log('🚀 Deployment:');
 		console.log(`  ${getRunCommand(pkgManager, 'deploy')}`);
+		console.log('');
+	}
+
+	if (options.deployTarget === 'sst') {
+		console.log('🚀 Deployment (AWS, through SST):');
+		console.log(
+			`  ${getRunCommand(pkgManager, 'deploy')}  # gkm build --provider aws, then sst deploy`,
+		);
+		console.log(`  Uses your AWS credentials, in ${options.region}.`);
+		if (options.services.mail) {
+			console.log('  Set MAIL_FROM to a sender verified in SES first.');
+		}
 		console.log('');
 	}
 

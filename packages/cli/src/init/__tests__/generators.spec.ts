@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateAgentFiles } from '../generators/agents.js';
 import { generateAuthAppFiles } from '../generators/auth.js';
 import { generateConfigFiles } from '../generators/config.js';
+import { generateDeployFiles } from '../generators/deploy';
 import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
 import { generateExpoAppFiles } from '../generators/mobile-expo.js';
@@ -1478,5 +1479,42 @@ describe('generateAgentFiles', () => {
 
 		const pnpm = generateAgentFiles(baseOptions, minimalTemplate)[0].content;
 		expect(pnpm).toContain('pnpm exec gkm dev');
+	});
+});
+
+describe('generateDeployFiles', () => {
+	const sst = (overrides: Partial<TemplateOptions>) =>
+		generateDeployFiles({
+			...baseOptions,
+			deployTarget: 'sst',
+			region: 'eu-west-1',
+			...overrides,
+		} as TemplateOptions);
+
+	it('writes nothing for a target that is not SST', () => {
+		expect(sst({ deployTarget: 'dokploy' })).toEqual([]);
+		expect(sst({ deployTarget: 'none' })).toEqual([]);
+	});
+
+	it('asks for a sender only when the project sends mail', () => {
+		const withMail = sst({
+			services: { db: true, cache: false, mail: true, storage: false },
+		})[0]!.content;
+		const without = sst({
+			services: { db: true, cache: false, mail: false, storage: false },
+		})[0]!.content;
+
+		expect(withMail).toContain('Mail: { from: process.env.MAIL_FROM');
+		expect(without).not.toContain('MAIL_FROM');
+	});
+
+	it('creates no network for a project with no database', () => {
+		const content = sst({
+			template: 'api',
+			services: { db: false, cache: false, mail: false, storage: false },
+		})[0]!.content;
+
+		expect(content).not.toContain('Vpc');
+		expect(content).not.toContain('Database:');
 	});
 });

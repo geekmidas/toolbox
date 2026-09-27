@@ -576,11 +576,123 @@ describe('initCommand', () => {
 
 			expect(content).not.toContain('deploy:');
 
+			// And \`--yes\` picks no host: a default that wrote one provider's
+			// deploy script would commit every unattended scaffold to it.
 			const pkgPath = join(tempDir, 'my-fullstack', 'package.json');
-			const pkgContent = await readFile(pkgPath, 'utf-8');
-			const pkg = JSON.parse(pkgContent);
+			const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
 
-			expect(pkg.scripts.deploy).toContain('gkm deploy');
+			expect(pkg.scripts.deploy).toBeUndefined();
+			expect(existsSync(join(tempDir, 'my-fullstack', 'sst.config.ts'))).toBe(
+				false,
+			);
+		});
+
+		it('scaffolds a Dokploy deploy with --deploy dokploy', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				deploy: 'dokploy',
+			});
+
+			const root = join(tempDir, 'my-fullstack');
+			const pkg = JSON.parse(
+				await readFile(join(root, 'package.json'), 'utf-8'),
+			);
+
+			expect(pkg.scripts.deploy).toBe(
+				'gkm deploy --provider dokploy --stage production',
+			);
+			expect(existsSync(join(root, 'sst.config.ts'))).toBe(false);
+		});
+
+		it('scaffolds an SST deploy with --deploy sst', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				deploy: 'sst',
+				region: 'eu-west-1',
+			});
+
+			const root = join(tempDir, 'my-fullstack');
+			const pkg = JSON.parse(
+				await readFile(join(root, 'package.json'), 'utf-8'),
+			);
+
+			// The build writes the manifest SST reads; SST never imports the app.
+			expect(pkg.scripts.deploy).toBe(
+				'gkm build --provider aws && sst deploy --stage production',
+			);
+			expect(pkg.devDependencies.sst).toMatch(/^~4\./);
+			// What \`@geekmidas/cloud/sst\` imports: optional peers of the cloud
+			// package, so the scaffold installs them itself.
+			for (const dep of [
+				'@geekmidas/cloud',
+				'@geekmidas/db',
+				'@geekmidas/envkit',
+				'@geekmidas/events',
+				'@geekmidas/manifest',
+				'@geekmidas/storage',
+				'pg',
+			]) {
+				expect(pkg.dependencies[dep]).toBeDefined();
+			}
+
+			const config = await readFile(join(root, 'sst.config.ts'), 'utf-8');
+			expect(config).toContain("await import('@geekmidas/cloud/sst')");
+			expect(config).toContain("await import('./.gkm/manifest/aws.js')");
+			expect(config).toContain("name: 'my-fullstack'");
+			// The region asked for, written down — never a fallback.
+			expect(config).toContain("const region = 'eu-west-1';");
+			expect(config).not.toContain('AWS_REGION');
+			// The database needs a network, keyed by its plain id.
+			expect(config).toContain('Database: { vpc }');
+
+			await expect(
+				readFile(join(root, '.gitignore'), 'utf-8'),
+			).resolves.toContain('.sst/');
+			const tsconfig = JSON.parse(
+				await readFile(join(root, 'tsconfig.json'), 'utf-8'),
+			);
+			expect(tsconfig.exclude).toContain('sst.config.ts');
+		});
+
+		it('takes eu-west-1 for an unattended SST deploy', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				deploy: 'sst',
+			});
+
+			await expect(
+				readFile(join(tempDir, 'my-fullstack', 'sst.config.ts'), 'utf-8'),
+			).resolves.toContain("const region = 'eu-west-1';");
+		});
+
+		it('refuses a region that is not one', async () => {
+			await expect(
+				initCommand('my-fullstack', {
+					template: 'fullstack',
+					yes: true,
+					skipInstall: true,
+					deploy: 'sst',
+					region: 'europe',
+				}),
+			).rejects.toThrow('"europe" is not an AWS region');
+		});
+
+		it('refuses a deploy target it does not know', async () => {
+			await expect(
+				initCommand('my-fullstack', {
+					template: 'fullstack',
+					yes: true,
+					skipInstall: true,
+					deploy: 'heroku' as never,
+				}),
+			).rejects.toThrow('Unknown deploy target "heroku"');
+			expect(existsSync(join(tempDir, 'my-fullstack'))).toBe(false);
 		});
 
 		it('should NOT create app-level gkm.config.ts for api', async () => {

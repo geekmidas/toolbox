@@ -57,6 +57,9 @@ program
 	.option('--monorepo', 'Setup as monorepo with packages/models', false)
 	.option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
 	.option('--pm <manager>', 'Package manager (pnpm, npm, yarn, bun)')
+	.option('--deploy <target>', 'Where it deploys (dokploy, sst, none)')
+	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
+	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();
