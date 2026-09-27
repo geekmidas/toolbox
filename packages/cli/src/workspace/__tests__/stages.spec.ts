@@ -110,3 +110,28 @@ describe('normalizeWorkspace without stages', () => {
 		);
 	});
 });
+
+describe('stage errors', () => {
+	it('throws InvalidStages carrying every problem', async () => {
+		const { InvalidStages, validateStages } = await import('../stages');
+
+		try {
+			validateStages({ local: 'prod', deployed: ['prod', 'test'] });
+			expect.unreachable();
+		} catch (error) {
+			expect(error).toBeInstanceOf(InvalidStages);
+			expect((error as InstanceType<typeof InvalidStages>).problems).toEqual([
+				'stage "test" is reserved for gkm test',
+				'"prod" is both the local stage and a deployed one; they would share secrets',
+			]);
+		}
+	});
+
+	it('throws UndeclaredStage naming what is deployed', async () => {
+		const { assertDeployedStage, UndeclaredStage } = await import('../stages');
+
+		expect(() =>
+			assertDeployedStage({ local: 'dev', deployed: ['prod'] }, 'qa'),
+		).toThrow(UndeclaredStage);
+	});
+});

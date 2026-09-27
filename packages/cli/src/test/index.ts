@@ -44,9 +44,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			.then((loaded) => loaded.workspace.stages.local)
 			.catch(() => undefined));
 	if (!stage) {
-		throw new Error(
-			'No stage to test with: add `stages` to gkm.config.ts, or pass --stage.',
-		);
+		throw new NoStageToTest();
 	}
 
 	console.log(`\n🧪 Running tests with ${stage} environment...\n`);
@@ -223,4 +221,14 @@ export function rewriteDatabaseUrlForTests(
 	}
 
 	return result;
+}
+
+/** `gkm test` outside a project that declares stages, with none named. */
+export class NoStageToTest extends Error {
+	constructor() {
+		super(
+			'No stage to test with: add `stages` to gkm.config.ts, or pass --stage.',
+		);
+		this.name = 'NoStageToTest';
+	}
 }

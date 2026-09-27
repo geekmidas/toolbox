@@ -69,7 +69,7 @@ export function deployPackage(options: TemplateOptions): DeployPackage {
 
 export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
 	if (options.deployTarget !== 'sst') return [];
-	if (!options.region) throw new Error('An SST deploy needs a region.');
+	if (!options.region) throw new SstNeedsRegion();
 
 	const db = databaseFor();
 	const mail = emailFor();
@@ -155,4 +155,15 @@ ${inputs.join('\n')}
 `,
 		},
 	];
+}
+
+/**
+ * An SST scaffold asked for without a region. `init` always resolves one —
+ * asked, `--region`, or eu-west-1 under `--yes` — so this is a caller's bug.
+ */
+export class SstNeedsRegion extends Error {
+	constructor() {
+		super('An SST deploy needs a region: pass --region, e.g. eu-west-1.');
+		this.name = 'SstNeedsRegion';
+	}
 }

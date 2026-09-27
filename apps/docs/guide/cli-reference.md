@@ -322,6 +322,37 @@ Options:
   --skip-build           Skip the build step and use an existing one
 ```
 
+### `gkm deploy:github`
+
+Lets GitHub Actions deploy a stage with no long-lived AWS keys. A stage usually
+lives in its own AWS account, so it runs once per stage, with that account's
+profile:
+
+```bash
+gkm deploy:github --stage staging --profile acme-dev
+gkm deploy:github --stage prod    --profile acme-prod
+gkm deploy:github --stage prod    --profile acme-prod --dry-run
+```
+
+In the stage's account it creates GitHub's OIDC provider if missing, and the
+role `<project>-github-<stage>`, which only this repository's `<stage>`
+environment can assume — a staging job cannot use the production role. On
+GitHub (through `gh`, so be logged in) it creates the `<stage>` environment and
+sets `AWS_ROLE_ARN` and `GKM_SECRETS_KEY` (from
+`~/.gkm/<project>/<stage>.key`), which the generated deploy workflow reads.
+Re-running it converges.
+
+| Option | |
+|---|---|
+| `--stage` | a stage in `stages.deployed` |
+| `--profile` | the AWS profile for the stage's account — keys, assume-role or SSO, whatever `~/.aws/config` says. Only that profile: exported `AWS_*` variables are not consulted |
+| `--policy-arn` | what the role may do; defaults to `AdministratorAccess`, which is what SST needs to create stacks |
+| `--repo` | `owner/name`; defaults to the repository `gh` sees |
+
+The profile needs rights to manage IAM in that account; if it lacks them, AWS's
+error names the action. An expired SSO login says to run
+`aws sso login --profile <name>`.
+
 ### `gkm docker`
 
 Generate Docker files.

@@ -47,6 +47,16 @@ toolbox/
 - `import type` for type-only imports
 - Files: camelCase. Classes/Types/Interfaces: PascalCase. Constants: UPPER_SNAKE_CASE.
 - Zod formats are top-level schemas: `z.email()`, never `z.string().email()`. See [AGENTS.md](./AGENTS.md).
+- Never `throw new Error('…')`. Every failure is a named class, defined and exported beside the code that throws it: the name says what went wrong, the context is `readonly` fields, the message says what to do, and callers match on the class rather than message text.
+
+  ```typescript
+  export class DatabaseNeedsVpc extends Error {
+    constructor(readonly id: string) {
+      super(`'${id}' is a database, and a database needs a VPC to live in. …`);
+      this.name = 'DatabaseNeedsVpc';
+    }
+  }
+  ```
 
 ## Key Patterns
 
