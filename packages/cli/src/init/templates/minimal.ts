@@ -50,7 +50,7 @@ export const minimalTemplate: TemplateConfig = {
 		const { loggerType, routesStructure, name } = options;
 
 		// The id and env keys the scaffolded database owns.
-		const db = databaseFor(name);
+		const db = databaseFor();
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -148,7 +148,7 @@ export const healthEndpoint = api
 
 		// The database — a construct, not a hand-written service.
 		if (options.database) {
-			files.push(...databaseFiles(name));
+			files.push(...databaseFiles());
 		}
 
 		// Add Telescope config if enabled

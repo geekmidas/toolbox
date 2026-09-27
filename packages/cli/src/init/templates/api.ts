@@ -62,10 +62,10 @@ export const apiTemplate: TemplateConfig = {
 
 		// The ids and env keys the scaffolded constructs own. Derived, so the
 		// files below and the runtime that discovers them cannot disagree.
-		const bucket = storageFor(name);
-		const kv = cacheFor(name);
-		const db = databaseFor(name);
-		const mail = emailFor(name);
+		const bucket = storageFor();
+		const kv = cacheFor();
+		const db = databaseFor();
+		const mail = emailFor();
 
 		// Single-app projects have no `~/*` alias, so what a generated file
 		// imports depends on where it will sit.
@@ -447,7 +447,7 @@ export const router = api.endpoints${options.database ? '.database(database)' : 
 		// declares it at its root, but the API still owns the schema: the
 		// test setup and `kysely migrate` read migrations from here.
 		if (options.database && declares) {
-			files.push(...databaseFiles(name));
+			files.push(...databaseFiles());
 		} else if (options.database) {
 			files.push(usersMigration());
 		}

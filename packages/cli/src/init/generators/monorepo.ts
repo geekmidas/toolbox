@@ -462,7 +462,7 @@ export function generateRootConstructs(
 	if (!options.monorepo || options.template !== 'fullstack') return [];
 
 	const { name, services, frontendFramework } = options;
-	const db = databaseFor(name);
+	const db = databaseFor();
 	const files: GeneratedFile[] = [];
 
 	files.push({
@@ -591,7 +591,7 @@ export const web = new StaticSite('Web', ${variant}).dependsOn([api, auth]);
 	}
 
 	if (services.storage) {
-		const bucket = storageFor(name);
+		const bucket = storageFor();
 		files.push({
 			path: 'constructs/storage.ts',
 			content: `import { ObjectStorage } from '@geekmidas/constructs/object-storage';
@@ -603,7 +603,7 @@ export const uploads = new ObjectStorage('${bucket.id}');
 	}
 
 	if (services.mail) {
-		const mail = emailFor(name);
+		const mail = emailFor();
 		files.push({
 			path: 'constructs/email.ts',
 			content: `import { Email } from '@geekmidas/constructs/email';
@@ -615,7 +615,7 @@ export const email = new Email('${mail.id}', { templates: {} });
 	}
 
 	if (services.cache) {
-		const kv = cacheFor(name);
+		const kv = cacheFor();
 		files.push({
 			path: 'constructs/cache.ts',
 			content: `import { Cache } from '@geekmidas/constructs/cache';

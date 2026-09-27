@@ -122,7 +122,12 @@ describe('initCommand', () => {
 				'utf-8',
 			);
 			expect(database).toContain('KyselyDatabase');
-			expect(database).toContain("new KyselyDatabase<Database, 'MyApi'>");
+			// A plain id: the project name already scopes every physical name,
+			// so `MyApi` here would deploy as `production-my-api-my-api`.
+			expect(database).toContain(
+				"new KyselyDatabase<Database, 'Database'>('Database')",
+			);
+			expect(database).not.toContain('MyApi');
 
 			// And the config points reconcile at it.
 			const config = await readFile(join(projectDir, 'gkm.config.ts'), 'utf-8');

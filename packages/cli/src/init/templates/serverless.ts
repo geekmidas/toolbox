@@ -173,7 +173,7 @@ export const worker = new Worker('Jobs', { logger });
 		// The database, when this project has one. A `pgboss` events backend
 		// implies one, which is why a worker gets here without asking for it.
 		if (options.database) {
-			files.push(...databaseFiles(name));
+			files.push(...databaseFiles());
 		}
 
 		// Add Telescope config if enabled
