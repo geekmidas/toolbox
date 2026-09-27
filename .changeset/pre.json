@@ -44,6 +44,7 @@
     "minio-image",
     "server-crons",
     "single-app-paths",
+    "surface-has-no-app",
     "test-ports",
     "v10-the-manifest-is-the-source",
     "worker-template"
