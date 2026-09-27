@@ -321,11 +321,12 @@ function install(pm: PackageManager, cwd: string): void {
 /** npm did not answer for a package, so there is no version to compare. */
 export class RegistryUnavailable extends Error {
 	constructor(
-		readonly name: string,
+		// Not `name`: that is Error's own, and holds the class name.
+		readonly packageName: string,
 		readonly status: number,
 	) {
 		super(
-			`npm answered ${status} for ${name}. Check the name and your network.`,
+			`npm answered ${status} for ${packageName}. Check the name and your network.`,
 		);
 		this.name = 'RegistryUnavailable';
 	}
