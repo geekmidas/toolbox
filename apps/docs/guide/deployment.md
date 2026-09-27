@@ -47,6 +47,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-saas',
+  stages: { local: 'dev', deployed: ['prod'] },
 
   // Where the constructs live. The apps come from them: a `StaticSite` is an
   // app, and so is every `RestApi`. Each one is its own deploy unit — one
@@ -123,6 +124,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-saas',
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
 
   providers: {
@@ -184,11 +186,11 @@ services: {
 
 **2. Secrets Store**
 
-Secrets from `.gkm/secrets/development.json` are injected:
+Secrets from `.gkm/secrets/dev.json` are injected:
 
 ```bash
 # Set a development secret
-gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
+gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
 ```
 
 **3. Per-App Mapping (Workspaces)**
@@ -291,6 +293,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-saas',
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
 
   // A config entry of the same name as a derived app overrides one field
@@ -331,6 +334,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',  // Required for SSM provider
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
   state: {
     provider: 'ssm',
@@ -392,6 +396,7 @@ AWS Route 53 DNS management.
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   deploy: {
     dns: {
       provider: 'route53',
@@ -424,6 +429,7 @@ Hostinger DNS management.
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   deploy: {
     dns: {
       provider: 'hostinger',
@@ -445,6 +451,7 @@ For externally managed domains:
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   deploy: {
     dns: {
       provider: 'manual',

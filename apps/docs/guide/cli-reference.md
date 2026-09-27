@@ -23,6 +23,7 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   // Constructs — one glob, every kind. What reconcile reads to derive this
   // app's containers, databases, roles, and buckets.
   constructs: 'src/constructs/**/*.ts',
@@ -160,7 +161,7 @@ Reconcile only — derive the containers, databases, roles, schemas, and buckets
 the declared constructs name, and stop there.
 
 ```bash
-gkm setup                      # reconcile the development stage
+gkm setup                      # reconcile the local stage (stages.local)
 gkm setup --stage staging      # another stage
 gkm setup --skip-docker        # secrets and validation only
 gkm setup --force              # regenerate secrets even if they exist
@@ -231,6 +232,11 @@ gkm init <project-name> [options]
 Options:
   --template, -t <name>  Template: minimal, api, serverless, worker, fullstack
   --yes, -y              Skip prompts and use defaults
+  --deploy <target>      dokploy, sst or none
+  --region <region>      AWS region for --deploy sst (e.g. eu-west-1)
+  --stages <names>       Deployed stages, comma-separated (e.g. staging,prod)
+  --protected-stage <n>  Which deployed stage is production
+  --local-stage <name>   What gkm dev / exec / test run as (e.g. dev)
 ```
 
 **Templates:**

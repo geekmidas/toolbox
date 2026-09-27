@@ -229,6 +229,7 @@ To use a different backend, set `events` explicitly:
 import { defineWorkspace } from '@geekmidas/cli';
 
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
   services: {
     // pgboss is the default. It reuses the Postgres your declared database
@@ -388,6 +389,7 @@ When PostgreSQL is enabled, the CLI automatically creates pgboss credentials and
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   // Nothing to configure: pgboss is the default, and it lives in the Postgres
   // your declared database already implies.
   services: {},

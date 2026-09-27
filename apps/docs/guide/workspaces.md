@@ -45,6 +45,7 @@ export default defineWorkspace({
   // The scope every physical name is built from: `Database` becomes
   // `production-my-monorepo-database` on Dokploy and on AWS alike.
   name: 'my-monorepo',
+  stages: { local: 'dev', deployed: ['prod'] },
 
   // One glob, every kind. A database implies Postgres, a bucket implies MinIO,
   // mail implies Mailpit — none of it listed anywhere. It is also where the
@@ -127,6 +128,51 @@ read-only access — rather than reaching for the same URL by string.
 Use `defineWorkspace()` (not `defineConfig()`) for multi-app workspaces.
 :::
 
+### Stages
+
+A project names its own stages, once, and every command reads them:
+
+```typescript
+export default defineWorkspace({
+  name: 'my-saas',
+  stages: {
+    // What `gkm dev`, `exec`, `setup` and `test` run as.
+    local: 'dev',
+    // What `gkm deploy --stage` accepts.
+    deployed: ['staging', 'prod'],
+    // Retained and protected when a stack is removed.
+    protected: ['prod'],
+  },
+  constructs: './constructs/**/*.ts',
+});
+```
+
+`stages` is required, and nothing in the CLI assumes a stage name:
+
+- **Local commands** default to `stages.local`: its secrets are the ones
+  `gkm dev` loads (`.gkm/secrets/dev.json` above), and its containers are the
+  only ones without a stage suffix.
+- **`gkm deploy --stage`** refuses a stage that is not in `deployed`, before
+  anything is provisioned — a typo does not create a second environment.
+- **`gkm init`** asks for them, and writes a `deploy:<stage>` script for each
+  deployed stage.
+
+The config is checked when it loads:
+
+| Rule | Why |
+|---|---|
+| Lowercase letters, digits and hyphens, starting with a letter | A stage is part of every physical name |
+| `local` is not also in `deployed` | Secrets are stored per stage, so a deployed stage sharing the local name would share its secrets with every developer's machine |
+| `protected` ⊆ `deployed` | Only a deployed stage has resources to keep |
+| No stage is called `test` | It is reserved for `gkm test` |
+
+::: warning Upgrading
+Projects created before `stages` existed ran locally as `development`. Add
+`stages: { local: 'development', deployed: [...] }` to keep using
+`.gkm/secrets/development.json`, or rename that file (and its key in
+`~/.gkm/<project>/`) to the new local stage.
+:::
+
 ### There Is One Config, at the Root
 
 Apps in a workspace do not carry a `gkm.config.ts` of their own. Everything an
@@ -157,6 +203,7 @@ A **standalone** single-app project — one app, no workspace — still uses
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './src/constructs/**/*.ts',
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env#envParser',
