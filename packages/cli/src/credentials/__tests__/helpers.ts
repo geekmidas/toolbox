@@ -101,6 +101,7 @@ export function createWorkspaceConfig(
 	const content = `import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
   apps: {
 ${appEntries}

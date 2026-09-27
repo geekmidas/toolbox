@@ -68,6 +68,7 @@ import {
 	getPublicEnvPrefix,
 	isDeployTargetSupported,
 } from '../workspace/index.js';
+import { assertDeployedStage } from '../workspace/stages.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -1910,6 +1911,10 @@ export async function deployCommand(
 ): Promise<DeployResult | WorkspaceDeployResult> {
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
+
+	// Before anything is provisioned: a typo'd stage would otherwise create a
+	// whole second environment under the wrong name.
+	assertDeployedStage(loadedConfig.workspace.stages, options.stage);
 
 	// One path, whatever the config was written as.
 	//

@@ -123,6 +123,7 @@ function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
 	return (
 		own ?? {
 			services: workspace.services,
+			stages: workspace.stages,
 			constructs: allConstructGlobs(workspace),
 		}
 	);

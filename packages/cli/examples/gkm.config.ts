@@ -1,6 +1,9 @@
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+	// Which stage is local, which ones deploy.
+	stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
+
 	// Glob pattern to find endpoint files
 	routes: 'src/routes/**/*.ts',
 

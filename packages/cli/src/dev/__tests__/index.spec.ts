@@ -436,6 +436,7 @@ describe('Workspace Dev Server', () => {
 		return {
 			name: 'test-workspace',
 			root: '/test/workspace',
+			stages: { local: 'development', deployed: ['production'] },
 			apps: appsWithDeployTarget,
 			services: {},
 			deploy: { default: 'dokploy' },
@@ -1045,6 +1046,7 @@ describe('Workspace Dev Server', () => {
 			);
 
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test-workspace',
 				root: testDir,
 				apps: {
@@ -1079,6 +1081,7 @@ describe('Workspace Dev Server', () => {
 
 		it('should return empty array for backend-only workspace', async () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test-workspace',
 				root: testDir,
 				apps: {
@@ -1153,7 +1156,7 @@ describe('loadSecretsForApp', () => {
 				NODE_ENV: 'development',
 			});
 
-			const secrets = await loadSecretsForApp(testDir);
+			const secrets = await loadSecretsForApp(testDir, 'development');
 
 			expect(secrets).toEqual({
 				DATABASE_URL: 'postgresql://localhost/mydb',
@@ -1162,7 +1165,7 @@ describe('loadSecretsForApp', () => {
 			});
 		});
 
-		it('should try dev stage first, then development', async () => {
+		it('reads only the stage it is given — no dev/development fallback', async () => {
 			createSecretsFile('dev', {
 				DATABASE_URL: 'postgresql://localhost/devdb',
 			});
@@ -1170,24 +1173,17 @@ describe('loadSecretsForApp', () => {
 				DATABASE_URL: 'postgresql://localhost/developmentdb',
 			});
 
-			const secrets = await loadSecretsForApp(testDir);
-
-			// Should use 'dev' stage since it's checked first
-			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/devdb');
-		});
-
-		it('should fallback to development if dev does not exist', async () => {
-			createSecretsFile('development', {
-				DATABASE_URL: 'postgresql://localhost/developmentdb',
-			});
-
-			const secrets = await loadSecretsForApp(testDir);
-
-			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/developmentdb');
+			expect(
+				(await loadSecretsForApp(testDir, 'development')).DATABASE_URL,
+			).toBe('postgresql://localhost/developmentdb');
+			expect((await loadSecretsForApp(testDir, 'dev')).DATABASE_URL).toBe(
+				'postgresql://localhost/devdb',
+			);
+			expect(await loadSecretsForApp(testDir, 'local')).toEqual({});
 		});
 
 		it('should return empty object if no secrets exist', async () => {
-			const secrets = await loadSecretsForApp(testDir);
+			const secrets = await loadSecretsForApp(testDir, 'development');
 
 			expect(secrets).toEqual({});
 		});
@@ -1201,7 +1197,11 @@ describe('loadSecretsForApp', () => {
 				JWT_SECRET: 'shared-secret',
 			});
 
-			const authSecrets = await loadSecretsForApp(testDir, 'auth');
+			const authSecrets = await loadSecretsForApp(
+				testDir,
+				'development',
+				'auth',
+			);
 
 			expect(authSecrets.DATABASE_URL).toBe(
 				'postgresql://auth_user:pass@localhost/authdb',
@@ -1219,7 +1219,7 @@ describe('loadSecretsForApp', () => {
 				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
 			});
 
-			const apiSecrets = await loadSecretsForApp(testDir, 'api');
+			const apiSecrets = await loadSecretsForApp(testDir, 'development', 'api');
 
 			expect(apiSecrets.DATABASE_URL).toBe(
 				'postgresql://api_user:pass@localhost/apidb',
@@ -1233,7 +1233,11 @@ describe('loadSecretsForApp', () => {
 			});
 
 			// Asking for 'auth' app but AUTH_DATABASE_URL doesn't exist
-			const authSecrets = await loadSecretsForApp(testDir, 'auth');
+			const authSecrets = await loadSecretsForApp(
+				testDir,
+				'development',
+				'auth',
+			);
 
 			// Should keep the original DATABASE_URL since there's no AUTH_DATABASE_URL
 			expect(authSecrets.DATABASE_URL).toBe('postgresql://localhost/maindb');
@@ -1245,13 +1249,17 @@ describe('loadSecretsForApp', () => {
 			});
 
 			// App name is lowercase but secrets are uppercase prefixed
-			const secrets = await loadSecretsForApp(testDir, 'myservice');
+			const secrets = await loadSecretsForApp(
+				testDir,
+				'development',
+				'myservice',
+			);
 
 			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/myservicedb');
 		});
 
 		it('should return empty object if no secrets exist for app', async () => {
-			const secrets = await loadSecretsForApp(testDir, 'api');
+			const secrets = await loadSecretsForApp(testDir, 'development', 'api');
 
 			expect(secrets).toEqual({});
 		});
@@ -1282,7 +1290,7 @@ describe('loadSecretsForApp', () => {
 				JSON.stringify(stageSecrets, null, 2),
 			);
 
-			const secrets = await loadSecretsForApp(testDir);
+			const secrets = await loadSecretsForApp(testDir, 'development');
 
 			expect(secrets.POSTGRES_USER).toBe('postgres');
 			expect(secrets.POSTGRES_PASSWORD).toBe('postgres123');
@@ -1314,7 +1322,7 @@ describe('loadSecretsForApp', () => {
 				JSON.stringify(stageSecrets, null, 2),
 			);
 
-			const secrets = await loadSecretsForApp(testDir);
+			const secrets = await loadSecretsForApp(testDir, 'development');
 
 			expect(secrets.REDIS_PASSWORD).toBe('redis123');
 			expect(secrets.REDIS_HOST).toBe('localhost');

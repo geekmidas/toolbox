@@ -5,6 +5,7 @@ import {
 	formatValidationErrors,
 	safeValidateWorkspaceConfig,
 } from './schema.js';
+import { validateStages } from './stages.js';
 import type {
 	AppConfig,
 	AppsRecord,
@@ -182,6 +183,7 @@ export function normalizeWorkspace(
 		services: config.services ?? {},
 		deploy: config.deploy ?? { default: 'dokploy' },
 		shared: config.shared ?? { packages: ['packages/*'] },
+		stages: validateStages(config.stages),
 		secrets: config.secrets ?? {},
 		state: config.state,
 	};
@@ -274,6 +276,7 @@ export function wrapSingleAppAsWorkspace(
 		// config had no way to describe.
 		deploy: { default: 'dokploy', ...config.deploy },
 		shared: { packages: [] },
+		stages: validateStages(config.stages),
 		secrets: {},
 	};
 }
@@ -406,6 +409,7 @@ export function getAppGkmConfig(
 		// registered only the Upstash driver, and every request failed with
 		// `UnregisteredCacheScheme`.
 		services: workspace.services,
+		stages: workspace.stages,
 		// One glob, every kind, and the root's covers every app's code as well
 		// as the constructs. Which surface an endpoint belongs to is the
 		// endpoint's to say, not its file's, so the build sorts them there.

@@ -12,6 +12,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('validateWorkspaceConfig', () => {
 		it('should validate a minimal valid workspace config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -34,6 +35,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should validate a complete workspace config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'my-saas',
 				apps: {
 					api: {
@@ -91,6 +93,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should default app type to backend', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						path: 'apps/api',
@@ -107,6 +110,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept array of route globs', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -131,13 +135,20 @@ describe('WorkspaceConfigSchema', () => {
 			// A `site` is an app and so is a `rest-api` that named one, so the
 			// list is read off the graph. A config that names none is the normal
 			// case, not a mistake.
-			const config = { name: 'test', constructs: './constructs/**/*.ts' };
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
+				name: 'test',
+				constructs: './constructs/**/*.ts',
+			};
 
 			expect(() => validateWorkspaceConfig(config)).not.toThrow();
 		});
 
 		it('accepts an empty apps object', () => {
-			const result = safeValidateWorkspaceConfig({ apps: {} });
+			const result = safeValidateWorkspaceConfig({
+				stages: { local: 'development', deployed: ['production'] },
+				apps: {},
+			});
 
 			expect(result.success).toBe(true);
 		});
@@ -146,6 +157,7 @@ describe('WorkspaceConfigSchema', () => {
 			// A configured app is the escape hatch for something no construct
 			// describes, and an escape hatch that says nothing is a typo.
 			const result = safeValidateWorkspaceConfig({
+				stages: { local: 'development', deployed: ['production'] },
 				apps: { api: { type: 'backend' } },
 			});
 
@@ -155,6 +167,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should allow backend app without routes (e.g., auth servers)', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					auth: {
 						type: 'backend' as const,
@@ -172,6 +185,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject frontend app without framework', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					web: {
 						type: 'web' as const,
@@ -189,6 +203,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject invalid port', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -206,6 +221,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject dependency referencing non-existent app', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					web: {
 						type: 'web' as const,
@@ -224,6 +240,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject self-referential dependency', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -242,6 +259,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject circular dependencies', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -267,6 +285,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject invalid dokploy endpoint URL', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -292,6 +311,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('formatValidationErrors', () => {
 		it('should format errors with paths', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -314,7 +334,10 @@ describe('WorkspaceConfigSchema', () => {
 		});
 
 		it('should format root-level errors', () => {
-			const config = { apps: { api: { type: 'backend' } } };
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
+				apps: { api: { type: 'backend' } },
+			};
 
 			const result = safeValidateWorkspaceConfig(config);
 
@@ -329,6 +352,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('telescope configuration', () => {
 		it('should accept boolean telescope config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -347,6 +371,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept string telescope config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -365,6 +390,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept object telescope config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -401,6 +427,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('deploy configuration', () => {
 		it('should accept dokploy as per-app deploy target', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -423,6 +450,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject Phase 2 deploy target in deploy.default', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -448,6 +476,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject Phase 2 deploy target in per-app deploy', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -472,6 +501,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject unknown deploy target', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -492,6 +522,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('auth app configuration', () => {
 		it('should accept auth app as backend with better-auth framework', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					auth: {
 						type: 'backend' as const,
@@ -511,6 +542,7 @@ describe('WorkspaceConfigSchema', () => {
 		it('should accept auth backend without explicit framework', () => {
 			// Backend type defaults are permissive — framework is optional.
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					auth: {
 						type: 'backend' as const,
@@ -528,6 +560,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should allow auth backend with additional backend properties', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					auth: {
 						type: 'backend' as const,
@@ -550,6 +583,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should validate fullstack workspace with auth backend', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'fullstack-app',
 				apps: {
 					api: {
@@ -584,6 +618,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should reject auth backend with invalid framework value', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					auth: {
 						type: 'backend' as const,
@@ -603,6 +638,7 @@ describe('WorkspaceConfigSchema', () => {
 	describe('DNS configuration', () => {
 		it('should accept multi-domain DNS config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -633,6 +669,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept legacy single-domain DNS config', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -660,6 +697,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept DNS config with manual provider', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,
@@ -685,6 +723,7 @@ describe('WorkspaceConfigSchema', () => {
 
 		it('should accept DNS config with TTL', () => {
 			const config = {
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend' as const,

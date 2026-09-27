@@ -100,6 +100,7 @@ what the OpenAPI spec says, which env vars a process needs.
 \`\`\`typescript
 export default defineWorkspace({
   name: '${name}',
+  stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
   constructs: '${constructsGlob}',
   secrets: { enabled: true },
 });

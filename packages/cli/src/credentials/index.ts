@@ -535,19 +535,16 @@ export async function startWorkspaceServices(
  */
 export async function loadSecretsForApp(
 	secretsRoot: string,
+	stage: string,
 	appName?: string,
-	stages: string[] = ['dev', 'development'],
 ): Promise<Record<string, string>> {
 	let secrets: Record<string, string> = {};
 
-	for (const stage of stages) {
-		if (secretsExist(stage, secretsRoot)) {
-			const stageSecrets = await readStageSecrets(stage, secretsRoot);
-			if (stageSecrets) {
-				logger.log(`🔐 Loading secrets from stage: ${stage}`);
-				secrets = toEmbeddableSecrets(stageSecrets);
-				break;
-			}
+	if (secretsExist(stage, secretsRoot)) {
+		const stageSecrets = await readStageSecrets(stage, secretsRoot);
+		if (stageSecrets) {
+			logger.log(`🔐 Loading secrets from stage: ${stage}`);
+			secrets = toEmbeddableSecrets(stageSecrets);
 		}
 	}
 
@@ -699,7 +696,7 @@ export interface EntryCredentialsResult {
  * @param options.resolveDockerPorts - How to resolve Docker ports:
  *   - `'full'` (default): probe running containers, saved state, then find available ports. Used by dev/test.
  *   - `'readonly'`: check running containers and saved state only, never probe for new ports. Used by exec.
- * @param options.stages - Secret stages to try, in order. Default: ['dev', 'development'].
+ * @param options.stage - The stage whose secrets to load. Default: the project's `stages.local`.
  * @param options.startDocker - Start Docker Compose services after port resolution. Default: false.
  * @param options.secretsFileName - Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json'.
  * @internal Exported for testing
@@ -708,8 +705,8 @@ export async function prepareEntryCredentials(options: {
 	explicitPort?: number;
 	cwd?: string;
 	resolveDockerPorts?: 'full' | 'readonly';
-	/** Secret stages to try, in order. Default: ['dev', 'development'] */
-	stages?: string[];
+	/** The stage whose secrets to load. Default: the project's `stages.local` */
+	stage?: string;
 	/** Start Docker Compose services after port resolution. Default: false */
 	startDocker?: boolean;
 	/** Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json' */
@@ -718,8 +715,8 @@ export async function prepareEntryCredentials(options: {
 	 * The stage to reconcile the local target for.
 	 *
 	 * `gkm test` passes `test` and gets the same containers with suffixed
-	 * resources; `gkm dev` passes `development` and gets unsuffixed ones. Only
-	 * read by workspaces that have adopted the constructs glob.
+	 * resources; left out, it is the project's local stage and they are
+	 * unsuffixed. Only read by workspaces that have adopted the constructs glob.
 	 */
 	reconcileStage?: string;
 }): Promise<EntryCredentialsResult> {
@@ -746,12 +743,12 @@ export async function prepareEntryCredentials(options: {
 	// Determine port: explicit --port > workspace config > default 3000
 	const resolvedPort = options.explicitPort ?? workspaceAppPort ?? 3000;
 
-	// Load secrets and inject PORT
-	const credentials = await loadSecretsForApp(
-		secretsRoot,
-		appName,
-		options.stages,
-	);
+	// Load secrets and inject PORT. Outside a workspace there are no declared
+	// stages to read, so only a stage asked for by name is loaded.
+	const stage = options.stage ?? appInfo?.workspace.stages.local;
+	const credentials = stage
+		? await loadSecretsForApp(secretsRoot, stage, appName)
+		: {};
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);
@@ -764,7 +761,7 @@ export async function prepareEntryCredentials(options: {
 	if (appInfo && usesConstructs(appInfo.workspace)) {
 		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
 		const reconciled = await reconcileWorkspace(appInfo.workspace, {
-			stage: options.reconcileStage ?? 'development',
+			stage: options.reconcileStage ?? appInfo.workspace.stages.local,
 			start: options.startDocker ?? false,
 		});
 

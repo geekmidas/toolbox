@@ -1,5 +1,6 @@
 import { databaseFiles } from '../constructs.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -94,7 +95,7 @@ export const envParser = new EnvironmentParser({ ...process.env, ...Credentials 
 export const config = envParser
   .create((get) => ({
     nodeEnv: get('NODE_ENV').enum(['development', 'test', 'production']).default('development'),
-    stage: get('STAGE').enum(['development', 'staging', 'production']).default('development'),
+    stage: ${stageEnv(options.stages)},
   }))
   .parse();
 `,

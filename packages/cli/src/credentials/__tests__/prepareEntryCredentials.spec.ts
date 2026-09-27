@@ -41,17 +41,30 @@ describe('prepareEntryCredentials', () => {
 		expect(result.credentials.PORT).toBe('8080');
 	});
 
-	it('should load secrets from development stage by default', async () => {
+	it('should load secrets from the stage it is given', async () => {
 		createSecretsFile(
 			'development',
 			{ DATABASE_URL: 'postgresql://localhost/mydb', API_KEY: 'secret' },
 			testDir,
 		);
 
-		const result = await prepareEntryCredentials({ cwd: testDir });
+		const result = await prepareEntryCredentials({
+			cwd: testDir,
+			stage: 'development',
+		});
 
 		expect(result.credentials.DATABASE_URL).toBe('postgresql://localhost/mydb');
 		expect(result.credentials.API_KEY).toBe('secret');
+	});
+
+	it('should load no secrets outside a workspace when no stage is named', async () => {
+		// There are no declared stages to read, and no name worth guessing.
+		createSecretsFile('development', { API_KEY: 'dev-key' }, testDir);
+
+		const result = await prepareEntryCredentials({ cwd: testDir });
+
+		expect(result.credentials.API_KEY).toBeUndefined();
+		expect(result.credentials.PORT).toBe('3000');
 	});
 
 	it('should load secrets from custom stage', async () => {
@@ -59,7 +72,7 @@ describe('prepareEntryCredentials', () => {
 
 		const result = await prepareEntryCredentials({
 			cwd: testDir,
-			stages: ['staging'],
+			stage: 'staging',
 		});
 
 		expect(result.credentials.API_KEY).toBe('staging-key');
@@ -70,7 +83,7 @@ describe('prepareEntryCredentials', () => {
 
 		const result = await prepareEntryCredentials({
 			cwd: testDir,
-			stages: ['production'],
+			stage: 'production',
 		});
 
 		expect(result.credentials.API_KEY).toBeUndefined();
@@ -116,7 +129,10 @@ describe('prepareEntryCredentials', () => {
 	it('should write credentials JSON with all secrets and PORT', async () => {
 		createSecretsFile('development', { JWT_SECRET: 'abc123' }, testDir);
 
-		const result = await prepareEntryCredentials({ cwd: testDir });
+		const result = await prepareEntryCredentials({
+			cwd: testDir,
+			stage: 'development',
+		});
 
 		const content = JSON.parse(readFileSync(result.secretsJsonPath, 'utf-8'));
 		expect(content.PORT).toBe('3000');

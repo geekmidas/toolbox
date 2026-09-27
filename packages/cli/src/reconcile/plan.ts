@@ -23,9 +23,6 @@ import {
 import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
 import { EDGE_KINDS } from './caddyfile';
 
-/** The stage whose resources carry no suffix. */
-export const DEFAULT_STAGE = 'development';
-
 /**
  * Which container serves a kind.
  *
@@ -278,6 +275,12 @@ export interface Plan {
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
 	/**
+	 * The project's local stage (`stages.local`), whose resources carry no
+	 * suffix. Absent, every stage is suffixed — which is right for a deploy,
+	 * since a deployed stage is never the local one.
+	 */
+	localStage?: string;
+	/**
 	 * Whether the local edge fronts the addresses this plan resolves.
 	 *
 	 * On by default, because deployed every surface, site and file server has a
@@ -319,17 +322,19 @@ export interface PlanOptions {
 /**
  * The stage-scoped name for a resource.
  *
- * The default stage carries no suffix, so `gkm dev` keeps using `orders` and a
- * developer's psql history, saved connections, and muscle memory survive this
- * change. Every other stage is suffixed.
+ * The local stage carries no suffix, so `gkm dev` keeps using `orders` and a
+ * developer's psql history, saved connections, and muscle memory survive a
+ * change of stage name. Every other stage is suffixed.
  */
 export function resourceName(
 	id: string,
 	kind: DeclarationKind,
 	stage: string,
+	/** The project's local stage, whose names are unsuffixed. */
+	localStage?: string,
 ): string {
 	const base = id.toLowerCase();
-	if (stage === DEFAULT_STAGE) return base;
+	if (stage === localStage) return base;
 
 	return `${base}${SEPARATORS[kind] ?? '-'}${stage}`;
 }
@@ -420,7 +425,7 @@ export function planFor(
 			id,
 			kind: declaration.kind,
 			...(container ? { container } : {}),
-			name: resourceName(id, declaration.kind, stage),
+			name: resourceName(id, declaration.kind, stage, options.localStage),
 			// Through the shared derivation: a secret's name *is* its key, and
 			// this target and the deploy target must not answer that separately.
 			envKey: providedKeyFor(

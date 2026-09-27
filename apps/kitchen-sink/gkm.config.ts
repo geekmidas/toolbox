@@ -20,6 +20,10 @@ export default defineWorkspace({
 	// `production-kitchen-sink-database` on Dokploy and on AWS alike.
 	name: 'kitchen-sink',
 
+	// `development` locally because that is what its committed secrets are
+	// stored under; deployed to the throwaway Dokploy box as `production`.
+	stages: { local: 'development', deployed: ['production'] },
+
 	// One glob, every kind. A database implies Postgres, a bucket implies MinIO,
 	// mail implies Mailpit — none of it listed anywhere. It is also where the
 	// apps come from: a `site` is an app, and so is a `rest-api` that named one.

@@ -162,6 +162,7 @@ describe('the name that scopes a deploy', () => {
 	const config = (name?: string): GkmConfig =>
 		({
 			name,
+			stages: { local: 'development', deployed: ['production'] },
 			routes: './src/endpoints',
 			envParser: './src/env',
 			logger: './src/logger',

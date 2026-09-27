@@ -54,6 +54,7 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   // Glob pattern to find endpoint files
   routes: 'src/routes/**/*.ts',
 
@@ -490,6 +491,7 @@ Configure Docker settings in `gkm.config.ts`:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: 'src/routes/**/*.ts',
   envParser: './src/env.ts',
   logger: './src/logger.ts',
@@ -929,6 +931,7 @@ This allows the CLI to validate that all required secrets are configured before 
 ```typescript
 // gkm.config.ts
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: 'src/endpoints/**/*.ts',
   envParser: './src/env.ts',
   logger: './src/logger.ts',
@@ -1216,6 +1219,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-project',
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
   shared: {
     packages: ['packages/*'],
@@ -1882,6 +1886,7 @@ Configure multiple patterns for complex project structures:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: [
     'src/routes/**/*.ts',
     'src/api/v1/**/*.ts',

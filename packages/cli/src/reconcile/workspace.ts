@@ -73,6 +73,7 @@ export async function derivedContainers(
 		}));
 
 	return planFor(found, stage, provisionOrder(found), {
+		localStage: workspace.stages.local,
 		events: workspace.services.events,
 		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
 	}).containers;
@@ -108,6 +109,7 @@ export async function reconcileWorkspace(
 		project: workspace.name,
 		manifest,
 		stage: options.stage,
+		localStage: workspace.stages.local,
 		events: workspace.services.events,
 		// A backend name, not an image pin. `cache: 'db'` says where the cache
 		// lives and implies no container at all.

@@ -95,6 +95,7 @@ describe('web (frontend) app context', () => {
 	it('should handle workspace with single dependency', () => {
 		const workspace = normalizeWorkspace(
 			{
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',
@@ -126,6 +127,7 @@ describe('web (frontend) app context', () => {
 	it('should handle workspace with many dependencies', () => {
 		const workspace = normalizeWorkspace(
 			{
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',

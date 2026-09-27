@@ -135,7 +135,7 @@ If `docker-compose.yml` is missing, a warning is printed and services are skippe
    Loaded 15 secret(s)
 ```
 
-Secrets are loaded from `.gkm/secrets/development.json` (tries `dev` stage first, then `development`). Connection URLs in the secrets are rewritten with the resolved Docker ports. For example, if PostgreSQL was assigned port 5433:
+Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for `stages: { local: 'dev', … }` — and from no other stage. Connection URLs in the secrets are rewritten with the resolved Docker ports. For example, if PostgreSQL was assigned port 5433:
 
 ```
 DATABASE_URL=postgresql://api:pass@localhost:5432/app_dev
@@ -323,6 +323,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',  // Required — used in SSM parameter path
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
   services: { /* ... */ },
 
@@ -350,7 +351,7 @@ The same `state` config is also used for deployment state (`state:push/pull`). B
 
 ```bash
 # Developer A: after init or adding secrets
-gkm secrets:push --stage development
+gkm secrets:push --stage dev
 
 # Developer B: after cloning
 pnpm install
@@ -361,10 +362,10 @@ You can also push/pull manually:
 
 ```bash
 # Push local secrets to SSM
-gkm secrets:push --stage development
+gkm secrets:push --stage dev
 
 # Pull secrets from SSM to local
-gkm secrets:pull --stage development
+gkm secrets:pull --stage dev
 ```
 
 #### Secret Resolution Priority
@@ -399,10 +400,10 @@ gkm setup
 
 ```bash
 # Export secrets from one machine
-gkm secrets:show --stage development --reveal > secrets-export.json
+gkm secrets:show --stage dev --reveal > secrets-export.json
 
 # Import on another machine
-gkm secrets:import secrets-export.json --stage development
+gkm secrets:import secrets-export.json --stage dev
 gkm setup --skip-docker  # just write docker/.env, then start services manually
 ```
 
@@ -411,14 +412,14 @@ gkm setup --skip-docker  # just write docker/.env, then start services manually
 When you add secrets manually with `gkm secrets:set`:
 
 ```bash
-gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
+gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
 ```
 
 These are preserved across `gkm setup` runs because setup checks for existing local secrets first.
 
 To share manual secrets with the team:
 ```bash
-gkm secrets:push --stage development   # Team can now pull it
+gkm secrets:push --stage dev   # Team can now pull it
 ```
 
 ### Setup Command Reference
@@ -514,16 +515,16 @@ When enabled, these dashboards are available during development:
 
 ## Troubleshooting
 
-### "Secrets enabled but no dev/development secrets found"
+### "Secrets enabled but no \"dev\" secrets found"
 
-No encrypted secrets file exists. Run:
+No encrypted secrets file exists for the local stage (`stages.local` in `gkm.config.ts`). Run:
 ```bash
 gkm setup
 ```
 
 Or if you only need secrets without Docker:
 ```bash
-gkm secrets:init --stage development
+gkm secrets:init --stage dev
 ```
 
 ### "Decryption key not found for stage"

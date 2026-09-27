@@ -30,11 +30,21 @@ Running `gkm init my-app` walks you through these prompts in order:
 | 2 | Template | **API**, **Fullstack** | API |
 | 3 | Services | PostgreSQL, Redis, Mailpit (multi-select) | All selected |
 | 4 | Package manager | pnpm, npm, yarn, bun | Auto-detected |
-| 5 | Deployment target | Dokploy, Configure later | Dokploy |
-| 6 | Telescope | Yes / No | Yes |
-| 7 | Logger | Pino (recommended), Console | Pino |
-| 8 | Routes structure | Centralized (endpoints), Centralized (routes), Domain-based | Centralized (endpoints) |
-| 9 | Frontend framework *(fullstack only)* | **Next.js**, **TanStack Start**, **Expo** | Next.js |
+| 5 | Deployment target | Dokploy, AWS (SST), Configure later | Configure later |
+| 6 | AWS region *(SST only)* | Free text, e.g. `eu-west-1` | — |
+| 7 | Deployed stages | Free text, comma-separated, e.g. `staging, prod` | — |
+| 8 | Which stage is production *(when there are several)* | One of the deployed stages | — |
+| 9 | Local stage | Free text, e.g. `dev`; never one of the deployed stages | — |
+| 10 | Telescope | Yes / No | Yes |
+| 11 | Logger | Pino (recommended), Console | Pino |
+| 12 | Routes structure | Centralized (endpoints), Centralized (routes), Domain-based | Centralized (endpoints) |
+| 13 | Frontend framework *(fullstack only)* | **Next.js**, **TanStack Start**, **Expo** | Next.js |
+
+Stages are named by the project, not picked from a list. They are written to
+`gkm.config.ts` as [`stages`](./workspaces.md#stages) and everything else is
+derived from them: the local secrets it seeds, one `deploy:<stage>` script per
+deployed stage, SST's retain/protect list, and the `STAGE` your env config
+parses.
 
 All prompts can be skipped with `--yes` to use defaults:
 
@@ -208,6 +218,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-app',
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
 });
 ```
@@ -370,7 +381,7 @@ A shared React component library with Tailwind CSS v4 and Storybook.
 
 ### 10. Initialize Encrypted Secrets
 
-Secrets are encrypted and stored at `.gkm/secrets/development.json`. The decryption key is stored outside the project at `~/.gkm/{projectName}/development.key`.
+Secrets are encrypted and stored at `.gkm/secrets/dev.json`. The decryption key is stored outside the project at `~/.gkm/{projectName}/development.key`.
 
 **Auto-generated secrets:**
 
@@ -449,12 +460,12 @@ Next steps:
   └── turbo.json        # Turbo config
 
 🔐 Secrets management:
-  gkm secrets:show --stage development  # View secrets
-  gkm secrets:set KEY VALUE --stage development  # Add secret
-  gkm secrets:init --stage production  # Create production secrets
+  gkm secrets:show --stage dev  # View secrets
+  gkm secrets:set KEY VALUE --stage dev  # Add secret
+  gkm secrets:init --stage prod  # Create prod secrets
 
 🚀 Deployment:
-  pnpm deploy
+  pnpm deploy:prod
 
 📚 Documentation: https://geekmidas.github.io/toolbox/
 ```
@@ -475,6 +486,11 @@ gkm init <project-name> [options]
 | `--monorepo` | Force monorepo setup (API template only, fullstack is always monorepo) |
 | `--api-path <path>` | API app path in monorepo (default: `apps/api`) |
 | `--pm <manager>` | Package manager: `pnpm`, `npm`, `yarn`, `bun` |
+| `--deploy <target>` | Deploy target: `dokploy`, `sst`, `none` |
+| `--region <region>` | AWS region for `--deploy sst`, e.g. `eu-west-1` |
+| `--stages <names>` | Deployed stages, comma-separated, e.g. `staging,prod` |
+| `--protected-stage <name>` | Which deployed stage is production (retained and protected) |
+| `--local-stage <name>` | What `gkm dev`, `exec` and `test` run as, e.g. `dev` |
 
 ## Defaults with `--yes`
 
@@ -485,7 +501,9 @@ When running with `--yes`, these defaults are used:
 | Template | `api` (must pass `--template fullstack` explicitly) |
 | Services | All enabled (PostgreSQL, Redis, Mailpit) |
 | Package manager | `pnpm` |
-| Deploy target | Dokploy |
+| Deploy target | None (`--deploy` picks one) |
+| AWS region *(with `--deploy sst`)* | `eu-west-1` |
+| Stages | `local: 'local'`, `deployed: ['production']`, `protected: ['production']` |
 | Telescope | Enabled |
 | Logger | Pino |
 | Routes structure | Centralized (endpoints) |
