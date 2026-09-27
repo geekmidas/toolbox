@@ -563,6 +563,31 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 	const at = (files: GeneratedFile[], path: string) =>
 		files.find((f) => f.path === path);
 
+	it('names its resources plainly, since the workspace name scopes them', () => {
+		// `name: 'beetlefit'` already makes the cache `production-beetlefit-cache`
+		// on deploy; `BeetlefitCache` would make it `…-beetlefit-beetlefit-cache`.
+		const files = generateRootConstructs({
+			...fullstackBase,
+			name: 'beetlefit',
+			services: { db: true, cache: true, mail: true, storage: true },
+		});
+		const all = files.map((f) => f.content).join('\n');
+
+		expect(at(files, 'constructs/cache.ts')!.content).toContain(
+			"new Cache('Cache')",
+		);
+		expect(at(files, 'constructs/storage.ts')!.content).toContain(
+			"new ObjectStorage('Uploads')",
+		);
+		expect(at(files, 'constructs/email.ts')!.content).toContain(
+			"new Email('Mail'",
+		);
+		expect(at(files, 'constructs/database.ts')!.content).toContain(
+			"('Database')",
+		);
+		expect(all).not.toMatch(/Beetlefit/);
+	});
+
 	it('declares the site with the path it lives at', () => {
 		const files = generateRootConstructs({
 			...fullstackBase,
@@ -1265,7 +1290,7 @@ describe('generateTestFiles', () => {
 		expect(configFile!.content).toContain('@geekmidas/testkit/kysely');
 		// The declared database's schema type, and the key it publishes.
 		expect(configFile!.content).toContain('../src/constructs/database.ts');
-		expect(configFile!.content).toContain('process.env.TEST_PROJECT_URL');
+		expect(configFile!.content).toContain('process.env.DATABASE_URL');
 	});
 
 	it('should migrate as the owner role in globalSetup', () => {
@@ -1276,7 +1301,7 @@ describe('generateTestFiles', () => {
 		expect(setupFile!.content).toContain('Credentials');
 
 		// Migrations connect as the DDL role the database construct declares.
-		expect(setupFile!.content).toContain('TEST_PROJECT_OWNER_URL');
+		expect(setupFile!.content).toContain('DATABASE_OWNER_URL');
 
 		// Reconcile creates the roles before the suite runs, so there is no init
 		// script left to run and no per-app password to thread through it.

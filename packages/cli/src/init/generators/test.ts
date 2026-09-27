@@ -21,7 +21,7 @@ export function generateTestFiles(
 	// The keys the declared database publishes. Migrations connect as the owner
 	// role — the one that may create, alter, and drop; a handler is never given
 	// it, which is the security property the role split exists for.
-	const db = databaseFor(options.name);
+	const db = databaseFor();
 
 	// Single-app projects have no `~/*` alias, so what a test file imports
 	// depends on where it will sit.

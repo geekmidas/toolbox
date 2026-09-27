@@ -9,7 +9,7 @@
  * reason the constructs own both faces at runtime.
  */
 
-import { canonicalId, provideKey, serviceKey } from '@geekmidas/manifest';
+import { provideKey, serviceKey } from '@geekmidas/manifest';
 import type { GeneratedFile, RoutesStructure } from './templates/index.js';
 
 /** The glob every generated config points at. One glob, every kind. */
@@ -53,42 +53,34 @@ export interface ScaffoldedDatabase extends ScaffoldedConstruct {
 }
 
 /**
- * The database a project named `name` declares.
+ * Plain ids — `Database`, not `Beetlefit`.
  *
- * Named after the project rather than `Db`, so two apps in one workspace can
- * declare one each without colliding on an id or on an env key.
+ * The workspace `name` already scopes every physical name
+ * (`production-beetlefit-database`), so an id that carried the project too
+ * would say it twice: `production-beetlefit-beetlefit-cache`. Within a
+ * workspace the constructs are declared once, at its root, so there is no
+ * second app's `Database` to collide with.
  */
-export function databaseFor(name: string): ScaffoldedDatabase {
-	const id = canonicalId(name);
+function scaffolded(id: string): ScaffoldedConstruct {
+	return { id, service: serviceKey(id), urlKey: provideKey(id, 'url') };
+}
 
+/** The database a project declares. */
+export function databaseFor(): ScaffoldedDatabase {
 	return {
-		id,
-		service: serviceKey(id),
-		urlKey: provideKey(id, 'url'),
-		ownerUrlKey: provideKey(id, 'ownerUrl'),
+		...scaffolded('Database'),
+		ownerUrlKey: provideKey('Database', 'ownerUrl'),
 	};
 }
 
-/** The bucket a project named `name` declares. */
-export function storageFor(name: string): ScaffoldedConstruct {
-	const id = canonicalId(`${name}-uploads`);
+/** The bucket a project declares. */
+export const storageFor = (): ScaffoldedConstruct => scaffolded('Uploads');
 
-	return { id, service: serviceKey(id), urlKey: provideKey(id, 'url') };
-}
+/** The mail sender a project declares. */
+export const emailFor = (): ScaffoldedConstruct => scaffolded('Mail');
 
-/** The mail sender a project named `name` declares. */
-export function emailFor(name: string): ScaffoldedConstruct {
-	const id = canonicalId(`${name}-mail`);
-
-	return { id, service: serviceKey(id), urlKey: provideKey(id, 'url') };
-}
-
-/** The cache a project named `name` declares. */
-export function cacheFor(name: string): ScaffoldedConstruct {
-	const id = canonicalId(`${name}-cache`);
-
-	return { id, service: serviceKey(id), urlKey: provideKey(id, 'url') };
-}
+/** The cache a project declares. */
+export const cacheFor = (): ScaffoldedConstruct => scaffolded('Cache');
 
 /**
  * The files a project's declared database needs.
@@ -97,8 +89,8 @@ export function cacheFor(name: string): ScaffoldedConstruct {
  * the same way — and so the schema type, the migration, and the id the test
  * setup reads all come from one place.
  */
-export function databaseFiles(name: string): GeneratedFile[] {
-	const db = databaseFor(name);
+export function databaseFiles(): GeneratedFile[] {
+	const db = databaseFor();
 
 	return [
 		{
