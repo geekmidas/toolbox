@@ -14,7 +14,9 @@ import {
 	ensureOidcProvider,
 	ensureRole,
 	type Gh,
+	iamFor,
 	roleName,
+	SsoSessionExpired,
 	trustPolicy,
 } from '../github';
 
@@ -148,6 +150,51 @@ describe('deployGithubCommand', () => {
 		expect(log.mock.calls.flat().join('\n')).toContain(
 			'run gkm secrets:init --stage staging first',
 		);
+	});
+});
+
+describe('iamFor', () => {
+	it("points at the endpoint it is given, with the emulator's keys", async () => {
+		const iam = await iamFor(undefined, 'http://localhost:4566');
+		const endpoint = await iam.config.endpoint!();
+
+		expect(endpoint.hostname).toBe('localhost');
+		expect(await iam.config.credentials()).toMatchObject({
+			accessKeyId: 'test',
+		});
+	});
+});
+
+describe('an expired SSO login', () => {
+	it('names the profile and the command that fixes it', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'gkm-github-'));
+		const home = mkdtempSync(join(tmpdir(), 'gkm-home-'));
+		const originalHome = process.env.HOME;
+		process.env.HOME = home;
+		workspace(root, home);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+		// What the SDK raises from the first call once the SSO token lapses.
+		const iam = {
+			send: async () => {
+				throw new Error(
+					'The SSO session associated with this profile has expired.',
+				);
+			},
+		} as unknown as IAMClient;
+
+		try {
+			const run = deployGithubCommand(
+				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ gh: recordingGh().gh, iam, cwd: root },
+			);
+			await expect(run).rejects.toThrow(SsoSessionExpired);
+			await expect(run).rejects.toThrow('aws sso login --profile acme-prod');
+		} finally {
+			process.env.HOME = originalHome;
+			log.mockRestore();
+			rmSync(root, { recursive: true, force: true });
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 });
 
