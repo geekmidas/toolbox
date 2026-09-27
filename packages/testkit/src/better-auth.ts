@@ -52,8 +52,19 @@ function matchesWhere(record: any, where?: Where[]): boolean {
 	let result: boolean | null = null;
 
 	for (const condition of where) {
-		const { field, value, operator = 'eq', connector = 'AND' } = condition;
-		const recordValue = record[field];
+		const { field, operator = 'eq', connector = 'AND', mode } = condition;
+		// `mode: 'insensitive'` compares strings case-folded on both sides — in
+		// `in`/`not_in` lists too — the way the SQL adapters use ILIKE/LOWER().
+		const fold =
+			mode === 'insensitive'
+				? (v: unknown) => (typeof v === 'string' ? v.toLowerCase() : v)
+				: (v: unknown) => v;
+		const recordValue = fold(record[field]) as any;
+		const value = (
+			Array.isArray(condition.value)
+				? (condition.value as unknown[]).map(fold)
+				: fold(condition.value)
+		) as any;
 
 		let matches = false;
 
@@ -164,7 +175,12 @@ export const memoryAdapter = (
 		// - Input data is already transformed before reaching the adapter (e.g., email -> email_address)
 		// - Output data is automatically transformed after the adapter returns (e.g., email_address -> email)
 		// Therefore, we should NOT call transformInput or transformOutput ourselves.
-		adapter: ({ debugLog, getModelName, transformWhereClause }) => ({
+		adapter: ({
+			debugLog,
+			getModelName,
+			getFieldName,
+			transformWhereClause,
+		}) => ({
 			create: async ({ data, model }) => {
 				debugLog('CREATE', { model, data });
 				const modelName = getModelName(model);
@@ -199,7 +215,7 @@ export const memoryAdapter = (
 				return null;
 			},
 
-			findMany: async ({ where, model, limit, offset, sortBy }) => {
+			findMany: async ({ where, model, limit, offset, sortBy, select }) => {
 				debugLog('FIND_MANY', { model, where });
 
 				const modelName = getModelName(model);
@@ -223,6 +239,18 @@ export const memoryAdapter = (
 				}
 				if (limit) {
 					results = results.slice(0, limit);
+				}
+
+				// Only the fields asked for, as a SELECT list would return — under
+				// their stored names, which differ when the schema renames a field
+				// (`fields: { email: 'email_address' }`).
+				if (select?.length) {
+					const columns = select.map((field) => getFieldName({ model, field }));
+					return results.map((record) =>
+						Object.fromEntries(
+							columns.map((column) => [column, record[column]]),
+						),
+					);
 				}
 
 				return results;
