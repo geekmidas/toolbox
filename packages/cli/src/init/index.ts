@@ -397,9 +397,11 @@ export async function initCommand(
 		eventsBackend: services.events,
 	});
 
-	// Add common custom secrets
+	// Add common custom secrets. No `NODE_ENV`: the command decides that, and
+	// `gkm exec` injects secrets over the environment — so one stored here made
+	// every `gkm exec -- next build` a development build, which Next refuses
+	// to prerender.
 	const customSecrets: Record<string, string> = {
-		NODE_ENV: 'development',
 		PORT: '3000',
 		LOG_LEVEL: 'debug',
 		JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,

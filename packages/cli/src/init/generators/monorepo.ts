@@ -1,8 +1,10 @@
+import { join } from 'node:path';
 import {
 	cacheFor,
 	databaseFor,
 	emailFor,
 	storageFor,
+	routesGlob,
 	WORKSPACE_CONSTRUCTS_GLOB,
 } from '../constructs.js';
 import type {
@@ -10,7 +12,43 @@ import type {
 	TemplateConfig,
 	TemplateOptions,
 } from '../templates/index.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
+
+/**
+ * What the root `constructs/` folder imports, and the peers each construct
+ * needs, for the services this workspace was scaffolded with.
+ */
+function rootConstructDependencies(
+	options: TemplateOptions,
+): Record<string, string> {
+	const v = GEEKMIDAS_VERSIONS;
+	return {
+		'@geekmidas/constructs': v['@geekmidas/constructs'],
+		'@geekmidas/logger': v['@geekmidas/logger'],
+		...(options.loggerType === 'pino'
+			? { pino: DEPENDENCY_VERSIONS.pino }
+			: {}),
+		// `RestApi` needs Telescope's types; `BetterAuth` needs the auth
+		// package and Better Auth itself.
+		'@geekmidas/telescope': v['@geekmidas/telescope'],
+		'@geekmidas/auth': v['@geekmidas/auth'],
+		'better-auth': DEPENDENCY_VERSIONS['better-auth'],
+		// `KyselyDatabase`.
+		'@geekmidas/db': v['@geekmidas/db'],
+		kysely: DEPENDENCY_VERSIONS.kysely,
+		pg: DEPENDENCY_VERSIONS.pg,
+		...(options.services.storage
+			? { '@geekmidas/storage': v['@geekmidas/storage'] }
+			: {}),
+		...(options.services.mail
+			? { '@geekmidas/emailkit': v['@geekmidas/emailkit'] }
+			: {}),
+		...(options.services.cache
+			? { '@geekmidas/cache': v['@geekmidas/cache'] }
+			: {}),
+	};
+}
 
 /**
  * Generate monorepo root files (pnpm-workspace.yaml, root package.json, etc.)
@@ -49,7 +87,11 @@ export function generateMonorepoFiles(
 				: {}),
 		},
 		dependencies: {
-			zod: '~4.1.0',
+			zod: DEPENDENCY_VERSIONS.zod,
+			// The root `constructs/` folder resolves its imports from the root
+			// `node_modules`, not from any app's — so what the constructs load,
+			// and the peers each of them needs, are installed here.
+			...(isFullstack ? rootConstructDependencies(options) : {}),
 		},
 		devDependencies: {
 			'@biomejs/biome': '~2.3.0',
@@ -79,9 +121,9 @@ export function generateMonorepoFiles(
 			clientKind: 'git',
 			useIgnoreFile: true,
 		},
-		organizeImports: {
-			enabled: true,
-		},
+		// Biome 2 moved import sorting into the assist, and `files.ignore` into
+		// negated `includes`: the 1.x keys make it refuse the whole config.
+		assist: { actions: { source: { organizeImports: 'on' } } },
 		formatter: {
 			enabled: true,
 			indentStyle: 'space',
@@ -109,8 +151,16 @@ export function generateMonorepoFiles(
 				},
 			},
 		},
+		// Tailwind v4's `@theme` and `@apply`, which the UI package's CSS uses.
+		css: { parser: { tailwindDirectives: true } },
 		files: {
-			ignore: ['node_modules', 'dist', '.gkm', 'coverage'],
+			includes: [
+				'**',
+				'!**/node_modules',
+				'!**/dist',
+				'!**/.gkm',
+				'!**/coverage',
+			],
 		},
 	};
 
@@ -198,6 +248,9 @@ coverage/
 						paths: {
 							[`@${options.name}/constructs/*`]: ['./constructs/*'],
 						},
+						// The constructs import each other with `.ts` extensions.
+						allowImportingTsExtensions: true,
+						noEmit: true,
 					}
 				: {}),
 			target: 'ES2022',
@@ -218,10 +271,11 @@ coverage/
 
 export default defineConfig({
   test: {
-    globals: true,
-    environment: 'node',
-    include: ['apps/**/*.{test,spec}.ts', 'packages/**/*.{test,spec}.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    // Each app and package is its own project, so its own config — an app's
+    // \`globalSetup\`, its path aliases — applies to its own tests.
+    projects: ['apps/*', 'packages/*'],
+    // The shared packages ship without tests of their own.
+    passWithNoTests: true,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -351,11 +405,16 @@ export default defineWorkspace({
   // \`production-${options.name}-database\` on Dokploy and on AWS alike.
   name: '${options.name}',
 
-  // One glob, every kind. A declared database is why a Postgres exists, a
+  // Every kind, in every app. A declared database is why a Postgres exists, a
   // declared bucket is why MinIO does, a declared topic is why a broker does —
   // none of it listed here. It is also where the apps come from: a
-  // \`StaticSite\` is an app, and so is every \`RestApi\`.
-  constructs: '${WORKSPACE_CONSTRUCTS_GLOB}',
+  // \`StaticSite\` is an app, and so is every \`RestApi\`. And it finds each
+  // app's endpoints, crons and subscribers: an endpoint belongs to the surface
+  // it was built from, not to the directory it sits in.
+  constructs: [
+    '${WORKSPACE_CONSTRUCTS_GLOB}',
+    './${join(options.apiPath, routesGlob(options.routesStructure))}',
+  ],
 
   secrets: {
     enabled: true,
@@ -486,9 +545,8 @@ import { logger } from './logger.ts';
 /**
  * The application's HTTP surface — one RestApi, one container.
  *
- * No \`app\`: \`Api\` means \`apps/api\`, which the id already said. The
- * \`code\` glob is here only because this scaffold puts its endpoints under
- * \`src/\`, where the conventional layout has them at the app root.
+ * Nothing says where it lives: \`Api\` is \`apps/api\`, and its handlers are
+ * the ones in \`apps/api/endpoints/\`.
  */
 export const api = new RestApi('Api', {
   // Typed out rather than omitted: an API that ships open because a field was
@@ -497,10 +555,6 @@ export const api = new RestApi('Api', {
 
   // The actual logger, not a path to one.
   logger,
-
-  app: {
-    code: './src/{endpoints,functions,crons,queues,topics,subscribers}/**/*.ts',
-  },
 }).auth(auth);
 `,
 	});

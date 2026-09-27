@@ -2,27 +2,43 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { DEFAULT_APP_CODE } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { appKey, derivedApps, hostOf, resolveAppSpec } from '../derive';
+import {
+	appKey,
+	conventionalPath,
+	derivedApps,
+	hostOf,
+	resolveAppSpec,
+} from '../derive';
 import type { NormalizedWorkspace } from '../types';
 
 /**
  * A workspace that declares no apps of its own.
  *
- * The normal case now: a `site` is an app and so is a `rest-api` that named
- * one, so the list is read off the graph rather than written down.
+ * The normal case now: a `site` is an app and so is every `rest-api`, so the
+ * list is read off the graph rather than written down.
  */
-const workspace = (apps: Record<string, unknown> = {}): NormalizedWorkspace =>
+const workspace = (
+	apps: Record<string, unknown> = {},
+	root = '/tmp/shop',
+): NormalizedWorkspace =>
 	({
 		name: 'shop',
-		root: '/tmp/shop',
+		root,
 		apps,
 		services: {},
 		deploy: { default: 'dokploy' },
 		shared: { packages: [] },
 		secrets: {},
 	}) as unknown as NormalizedWorkspace;
+
+/** A workspace root with `apps/<name>` actually present. */
+const rootWith = (...names: string[]): string => {
+	const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
+	for (const name of names)
+		mkdirSync(join(root, 'apps', name), { recursive: true });
+	return root;
+};
 
 const site = (
 	id: string,
@@ -70,39 +86,32 @@ describe('derivedApps', () => {
 		expect(apps.shop?.framework).toBe('tanstack-start');
 	});
 
-	it('carries an app spec onto the app it describes', () => {
-		// What is left on an `AppSpec` after the globs went: overrides for a
-		// layout or a runtime that differs, and nothing describing what the app
-		// contains — that comes from the constructs.
+	it('places a surface where its id says', () => {
+		// A surface has no `app` to override it with: `Api` is `apps/api`.
+		const root = rootWith('api');
 		const manifest = {
-			Api: surface('Api', {
-				app: {
-					path: 'apps/api',
-					port: 4000,
-					runtime: 'bun',
-					openapi: true,
-					env: ['.env'],
-				},
-			}),
+			Api: surface('Api'),
 		} as unknown as ConstructManifest;
 
-		const apps = derivedApps(manifest, workspace());
-
-		expect(apps.api).toMatchObject({
+		expect(derivedApps(manifest, workspace({}, root)).api).toMatchObject({
 			type: 'backend',
 			path: 'apps/api',
-			port: 4000,
-			runtime: 'bun',
-			openapi: true,
-			env: ['.env'],
 		});
+	});
+
+	it('carries the telescope a surface streams into', () => {
+		const manifest = {
+			Api: surface('Api', { telescope: true }),
+		} as unknown as ConstructManifest;
+
+		expect(derivedApps(manifest, workspace()).api?.telescope).toBe(true);
 	});
 
 	it('no longer fans a code glob into a field per kind', () => {
 		// Six globs was six things to keep in step. One glob loads everything and
 		// each generator picks out what it recognises, so an app carries none.
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
+			Api: surface('Api'),
 		} as unknown as ConstructManifest;
 
 		const app = derivedApps(manifest, workspace()).api!;
@@ -127,7 +136,7 @@ describe('derivedApps', () => {
 		// process shares a filesystem, an environment and every credential
 		// either surface holds, so Auth simply gets its own.
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
+			Api: surface('Api', { auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
@@ -137,10 +146,10 @@ describe('derivedApps', () => {
 		expect(apps.auth?.type).toBe('backend');
 	});
 
-	it('gives an auth server its own container once it has an app', () => {
+	it('gives every surface its own container', () => {
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
-			Auth: surface('Auth', { app: { path: 'apps/auth' } }),
+			Api: surface('Api'),
+			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
 		expect(Object.keys(derivedApps(manifest, workspace())).sort()).toEqual([
@@ -154,7 +163,7 @@ describe('derivedApps', () => {
 		// alphabetically. A port that moves when an unrelated app appears is a
 		// port nobody can bookmark.
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
+			Api: surface('Api'),
 			Web: site('Web', { path: 'apps/web' }),
 			Admin: site('Admin', { path: 'apps/admin' }),
 		} as unknown as ConstructManifest;
@@ -166,16 +175,16 @@ describe('derivedApps', () => {
 		expect(apps.admin?.port).toBe(3002);
 	});
 
-	it('keeps a port a construct asked for, and works around it', () => {
+	it('keeps a port a site asked for, and works around it', () => {
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api', port: 3001 } }),
-			Web: site('Web', { path: 'apps/web' }),
+			Api: surface('Api'),
+			Web: site('Web', { path: 'apps/web', port: 3000 }),
 		} as unknown as ConstructManifest;
 
 		const apps = derivedApps(manifest, workspace());
 
-		expect(apps.api?.port).toBe(3001);
-		expect(apps.web?.port).not.toBe(3001);
+		expect(apps.web?.port).toBe(3000);
+		expect(apps.api?.port).not.toBe(3000);
 	});
 
 	it('gives the base domain to the site called web', () => {
@@ -218,7 +227,7 @@ describe('derivedApps', () => {
 
 	it('reads build order off the edges rather than a hand-kept list', () => {
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
+			Api: surface('Api'),
 			Web: site(
 				'Web',
 				{ path: 'apps/web' },
@@ -237,8 +246,8 @@ describe('derivedApps', () => {
 		// `Web` calls `Auth`, which has its own container — so the edge resolves
 		// to `auth`, and the build order says web waits on it.
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
-			Auth: surface('Auth', { app: { path: 'apps/auth' } }),
+			Api: surface('Api', { auth: 'Auth' }),
+			Auth: surface('Auth'),
 			Web: site(
 				'Web',
 				{ path: 'apps/web' },
@@ -256,7 +265,6 @@ describe('derivedApps', () => {
 	it('never makes an app depend on itself', () => {
 		const manifest = {
 			Api: surface('Api', {
-				app: { path: 'apps/api' },
 				calls: [{ target: 'Api', kind: 'rest-api' }],
 			}),
 		} as unknown as ConstructManifest;
@@ -312,9 +320,9 @@ describe('derivedApps', () => {
 });
 
 describe('hostOf', () => {
-	it('answers with the surface itself when it has an app', () => {
+	it('answers with the surface itself', () => {
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' } }),
+			Api: surface('Api'),
 		} as unknown as ConstructManifest;
 
 		expect(hostOf(manifest, 'Api')).toBe('Api');
@@ -323,21 +331,11 @@ describe('hostOf', () => {
 	it('does not treat `.auth()` as a place to run', () => {
 		// Auth hosts itself, not the API that authenticates against it.
 		const manifest = {
-			Api: surface('Api', { app: { path: 'apps/api' }, auth: 'Auth' }),
+			Api: surface('Api', { auth: 'Auth' }),
 			Auth: surface('Auth'),
 		} as unknown as ConstructManifest;
 
 		expect(hostOf(manifest, 'Auth')).toBe('Auth');
-	});
-
-	it('answers with the surface itself even when it named no app', () => {
-		// `app` is an override, so having none is the ordinary case rather
-		// than a surface with nowhere to run.
-		const manifest = {
-			A: surface('A'),
-		} as unknown as ConstructManifest;
-
-		expect(hostOf(manifest, 'A')).toBe('A');
 	});
 
 	it('answers with nothing for a kind that is not a surface', () => {
@@ -357,19 +355,9 @@ describe('appKey', () => {
 	});
 });
 
-describe('resolveAppSpec', () => {
-	/** A workspace root with `apps/<name>` actually present. */
-	const rootWith = (...names: string[]): string => {
-		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
-		for (const name of names)
-			mkdirSync(join(root, 'apps', name), { recursive: true });
-		return root;
-	};
-
+describe('conventionalPath', () => {
 	it('reads the path off the id when the directory is there', () => {
-		const root = rootWith('api');
-
-		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('apps/api');
+		expect(conventionalPath('Api', rootWith('api'))).toBe('apps/api');
 	});
 
 	it('falls back to the workspace root when there is no such directory', () => {
@@ -378,59 +366,24 @@ describe('resolveAppSpec', () => {
 		// where throwing does not take the whole manifest with it.
 		const root = mkdtempSync(join(tmpdir(), 'gkm-derive-'));
 
-		expect(resolveAppSpec('Api', {}, root, 'rest-api').path).toBe('.');
+		expect(conventionalPath('Api', root)).toBe('.');
 	});
 
 	it('kebab-cases a multi-word id the way every other physical name is', () => {
-		const root = rootWith('admin-api');
-
-		expect(resolveAppSpec('AdminApi', {}, root, 'rest-api').path).toBe(
+		expect(conventionalPath('AdminApi', rootWith('admin-api'))).toBe(
 			'apps/admin-api',
 		);
 	});
+});
 
-	it('keeps a path that was written down', () => {
-		const root = rootWith('api');
+describe('resolveAppSpec', () => {
+	it('defaults a site to its conventional path', () => {
+		expect(resolveAppSpec('Web', {}, rootWith('web')).path).toBe('apps/web');
+	});
 
+	it('keeps a path a site wrote down', () => {
 		expect(
-			resolveAppSpec('Api', { path: 'services/api' }, root, 'rest-api').path,
-		).toBe('services/api');
-	});
-
-	it('gives a surface the conventional code glob', () => {
-		const root = rootWith('api');
-
-		expect(resolveAppSpec('Api', {}, root, 'rest-api').code).toBe(
-			DEFAULT_APP_CODE,
-		);
-	});
-
-	it('does not default the glob over one that was given', () => {
-		const root = rootWith('api');
-
-		expect(
-			resolveAppSpec('Api', { code: './src/**/*.ts' }, root, 'rest-api').code,
-		).toBe('./src/**/*.ts');
-	});
-
-	it('leaves the glob alone when a per-kind field named one', () => {
-		// The per-kind fields still win, so defaulting `code` here would add a
-		// second pattern the first one has to be reconciled with.
-		const root = rootWith('api');
-		const spec = resolveAppSpec(
-			'Api',
-			{ routes: './src/endpoints/**/*.ts' },
-			root,
-			'rest-api',
-		);
-
-		expect(spec.code).toBeUndefined();
-		expect(spec.routes).toBe('./src/endpoints/**/*.ts');
-	});
-
-	it("gives a site no code glob — its build is its framework's", () => {
-		const root = rootWith('web');
-
-		expect(resolveAppSpec('Web', {}, root, 'site').code).toBeUndefined();
+			resolveAppSpec('Web', { path: 'sites/web' }, rootWith('web')).path,
+		).toBe('sites/web');
 	});
 });

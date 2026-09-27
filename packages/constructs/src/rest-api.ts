@@ -25,7 +25,6 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
-	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -44,26 +43,6 @@ export interface RestApiConfig<
 	// and `'none'`, not widen it back to any string.
 	TAuthorizers extends readonly string[] = readonly [],
 > {
-	/**
-	 * The app that serves this surface: where its source lives, which globs
-	 * find its code, how it is run.
-	 *
-	 * What makes a surface a deploy unit rather than something a deploy has to
-	 * be told about separately: one `RestApi` is one server. A `StaticSite` says
-	 * the same thing, and the two are the same kind of statement.
-	 *
-	 * Normally omitted. One RestApi is one server, always — there is no mode in
-	 * which a surface shares somebody else's container, because a surface that
-	 * gets its process by inference gets it from whatever happened to reference
-	 * it, and that was the thing worth removing.
-	 *
-	 * So this is an override and nothing else. Everything in it follows from
-	 * this construct's id — `apps/<kebab-id>` where that directory exists, the
-	 * conventional code directories under it, a port assigned in a stable
-	 * order. Write one when the layout genuinely differs:
-	 * `app: { path: 'services/api' }`.
-	 */
-	app?: AppSpec;
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -330,10 +309,7 @@ export class RestApi<
 			{
 				kind: 'rest-api',
 				id: this.id,
-				app: {
-					...this.config.app,
-					...(this.config.telescope ? { telescope: true } : {}),
-				},
+				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator } : {}),
 				// Filled by the build, which already generates one handler per

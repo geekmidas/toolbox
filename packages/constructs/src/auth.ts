@@ -26,7 +26,6 @@
  */
 
 import {
-	type AppSpec,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -65,14 +64,6 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 * between stages the way the host can.
 	 */
 	basePath?: string;
-	/**
-	 * The app that serves this auth server — its own container.
-	 *
-	 * An auth server holds the session secret and reaches the identity tables.
-	 * Its own process is the default because sharing one means the surface it
-	 * shares with can read both.
-	 */
-	app?: AppSpec;
 	/**
 	 * The rest of better-auth's options: providers, plugins, email settings.
 	 *
@@ -163,7 +154,6 @@ export class BetterAuth<
 			{
 				kind: 'rest-api',
 				id: this.id,
-				...(this.config.app ? { app: this.config.app } : {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

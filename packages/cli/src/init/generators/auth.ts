@@ -1,4 +1,5 @@
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
+import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
 /**
@@ -21,28 +22,34 @@ export function generateAuthAppFiles(
 		version: '0.0.1',
 		private: true,
 		type: 'module',
+		// Both halves are `gkm`'s: the entry is generated from the `BetterAuth`
+		// construct, so there is no source here for `tsc` to build or check.
 		scripts: {
-			dev: 'gkm dev --entry ./src/index.ts',
-			build: 'tsc',
-			start: 'node dist/index.js',
-			typecheck: 'tsc --noEmit',
+			dev: 'gkm dev',
+			build: 'gkm build',
 			'db:migrate': 'gkm exec -- npx @better-auth/cli migrate',
 			'db:generate': 'gkm exec -- npx @better-auth/cli generate',
 		},
+		// What the generated entry and the construct behind it load. The
+		// container is built from this package, so it names them itself rather
+		// than leaning on the workspace root's.
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
+			'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
+			'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
+			'@geekmidas/db': GEEKMIDAS_VERSIONS['@geekmidas/db'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
-			'@hono/node-server': '~1.13.0',
-			'better-auth': '~1.2.0',
-			hono: '~4.8.0',
-			kysely: '~0.27.0',
-			pg: '~8.13.0',
+			'@hono/node-server': '~1.14.1',
+			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
+			hono: DEPENDENCY_VERSIONS.hono,
+			kysely: DEPENDENCY_VERSIONS.kysely,
+			pg: DEPENDENCY_VERSIONS.pg,
 		},
 		devDependencies: {
 			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
 			'@types/node': '~22.0.0',
-			'@types/pg': '~8.11.0',
+			'@types/pg': '~8.23.1',
 			tsx: '~4.20.0',
 			typescript: '~5.8.2',
 		},

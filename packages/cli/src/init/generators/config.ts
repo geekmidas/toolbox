@@ -1,4 +1,4 @@
-import { CONSTRUCTS_GLOB } from '../constructs.js';
+import { CONSTRUCTS_GLOB, routesGlob } from '../constructs.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -32,17 +32,7 @@ export function generateConfigFiles(
 	const hasWorker = template.name === 'worker';
 	const isFullstack = options.template === 'fullstack';
 
-	// Get routes glob pattern based on structure
-	const getRoutesGlob = () => {
-		switch (routesStructure) {
-			case 'centralized-endpoints':
-				return './src/endpoints/**/*.ts';
-			case 'centralized-routes':
-				return './src/routes/**/*.ts';
-			case 'domain-based':
-				return './src/**/routes/*.ts';
-		}
-	};
+	const getRoutesGlob = () => routesGlob(routesStructure);
 
 	// For fullstack template, generate workspace config at root
 	// Single app config is still generated for non-fullstack monorepo setups
@@ -139,25 +129,7 @@ export default defineConfig({${
 	// Build tsconfig.json - extends root for monorepo, standalone for non-monorepo
 	// Using noEmit: true since typecheck is done via turbo
 	const tsConfig = options.monorepo
-		? {
-				extends: '../../tsconfig.json',
-				compilerOptions: {
-					noEmit: true,
-					allowImportingTsExtensions: true,
-					baseUrl: '.',
-					paths: {
-						'~/*': ['./src/*'],
-						// Before the wildcard below it: TypeScript takes the longest
-						// matching prefix, so the constructs at the workspace root win
-						// over `packages/constructs/src`, which is a different thing
-						// with a colliding name.
-						[`@${options.name}/constructs/*`]: ['../../constructs/*'],
-						[`@${options.name}/*`]: ['../../packages/*/src'],
-					},
-				},
-				include: ['src/**/*.ts'],
-				exclude: ['node_modules', 'dist'],
-			}
+		? workspaceApiTsConfig(options.name)
 		: {
 				compilerOptions: {
 					target: 'ES2022',
@@ -215,9 +187,9 @@ export default defineConfig({${
 			clientKind: 'git',
 			useIgnoreFile: true,
 		},
-		organizeImports: {
-			enabled: true,
-		},
+		// Biome 2 moved import sorting into the assist, and `files.ignore` into
+		// negated `includes`: the 1.x keys make it refuse the whole config.
+		assist: { actions: { source: { organizeImports: 'on' } } },
 		formatter: {
 			enabled: true,
 			indentStyle: 'space',
@@ -245,8 +217,16 @@ export default defineConfig({${
 				},
 			},
 		},
+		// Tailwind v4's `@theme` and `@apply`, which the UI package's CSS uses.
+		css: { parser: { tailwindDirectives: true } },
 		files: {
-			ignore: ['node_modules', 'dist', '.gkm', 'coverage'],
+			includes: [
+				'**',
+				'!**/node_modules',
+				'!**/dist',
+				'!**/.gkm',
+				'!**/coverage',
+			],
 		},
 	};
 
@@ -325,6 +305,36 @@ interface ConfigHelperOptions {
 	getRoutesGlob: () => string;
 }
 
+/**
+ * The tsconfig of an API inside a workspace.
+ *
+ * One definition for both ways of getting one — the fullstack template and
+ * `--monorepo` — because the two copies had drifted: only one of them mapped
+ * the root constructs, so in the other `@<name>/constructs/api.ts` fell through
+ * to the `packages/` mapping and nothing could load the surface.
+ */
+function workspaceApiTsConfig(name: string) {
+	return {
+		extends: '../../tsconfig.json',
+		compilerOptions: {
+			noEmit: true,
+			allowImportingTsExtensions: true,
+			baseUrl: '.',
+			paths: {
+				'~/*': ['./src/*'],
+				// Before the wildcard below it: TypeScript takes the longest
+				// matching prefix, so the constructs at the workspace root win
+				// over `packages/constructs/src`, which is a different thing
+				// with a colliding name.
+				[`@${name}/constructs/*`]: ['../../constructs/*'],
+				[`@${name}/*`]: ['../../packages/*/src'],
+			},
+		},
+		include: ['src/**/*.ts'],
+		exclude: ['node_modules', 'dist'],
+	};
+}
+
 function generateSingleAppConfigFiles(
 	options: TemplateOptions,
 	_template: TemplateConfig,
@@ -333,20 +343,7 @@ function generateSingleAppConfigFiles(
 	// For fullstack, only generate tsconfig.json for the API app
 	// The workspace gkm.config.ts is generated in monorepo.ts
 	// Using noEmit: true since typecheck is done via turbo
-	const tsConfig = {
-		extends: '../../tsconfig.json',
-		compilerOptions: {
-			noEmit: true,
-			allowImportingTsExtensions: true,
-			baseUrl: '.',
-			paths: {
-				'~/*': ['./src/*'],
-				[`@${options.name}/*`]: ['../../packages/*/src'],
-			},
-		},
-		include: ['src/**/*.ts'],
-		exclude: ['node_modules', 'dist'],
-	};
+	const tsConfig = workspaceApiTsConfig(options.name);
 
 	const files: GeneratedFile[] = [
 		{

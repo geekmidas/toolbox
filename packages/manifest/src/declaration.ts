@@ -345,21 +345,14 @@ export interface CacheDeclaration extends Node {
 export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
 	/**
-	 * Where the process serving it is built from, relative to the workspace
-	 * root — the same thing a `site` says, for the same reason.
+	 * Whether this surface streams into a Telescope.
 	 *
-	 * A surface is a deploy unit: one of these is one server. Without it the
-	 * deploy had to ask the *config* which apps to build, and a surface could
-	 * never be its own process because it was not in that list. Two surfaces in
-	 * one app then had to share one container, which is how an auth server ended
-	 * up mounted into an API by a hook.
-	 *
-	 * Optional, and its absence is meaningful: a surface with no app of its own
-	 * is served by the surface that named it — an auth server mounted into the
-	 * API that called `.auth()` on it, rather than a second container nobody
-	 * asked for.
+	 * Everything else about the process serving it follows from the id:
+	 * `apps/<kebab-id>` is where it lives, the conventional directories under
+	 * that are where its code is, and ports are assigned in a stable order. So
+	 * a surface has no `app` to write — one would only restate its id.
 	 */
-	app?: AppSpec;
+	telescope?: true;
 	/**
 	 * The construct that authenticates this surface.
 	 *

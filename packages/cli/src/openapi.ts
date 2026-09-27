@@ -84,8 +84,8 @@ export interface OpenApiResult {
  * Load endpoints from a glob, then generate.
  *
  * For the callers that have no endpoints in hand — `gkm openapi`, and `gkm dev`
- * regenerating on reload. The glob is the app's derived one, off `AppSpec.code`,
- * not a `routes` field anybody wrote.
+ * regenerating on reload. The glob is the app's derived one — the conventional
+ * directories under it — not a `routes` field anybody wrote.
  */
 export async function generateOpenApiFrom(
 	routes: Routes,

@@ -33,12 +33,11 @@ import {
 import { type Declarable, edgeTo } from './construct-interface';
 
 /**
- * A site's config is flat, where a surface's nests its `app`.
+ * Where a site's source lives, and the little else a layout can differ by.
  *
- * Not an inconsistency: a `RestApi` may or may not have a process of its own,
- * so "what the surface is" and "how its process is built" are separable there
- * and worth separating. A site *is* its app — there is nothing to separate it
- * from, and `{ app: { path } }` would be a wrapper around the only thing in it.
+ * A surface has no equivalent: its app is `apps/<kebab-id>` with its code in
+ * the conventional directories, always. A site keeps `path` because a
+ * frontend's framework, not ours, decides how its directory is laid out.
  *
  * Every field is optional, so `new StaticSite('Web')` is a complete site.
  */

@@ -1292,8 +1292,8 @@ export const Alert: Story = {
 `;
 
 	// src/components/ui/index.ts
-	const componentsUiIndex = `export { Button, type ButtonProps, buttonVariants } from './button.tsx';
-export { Input } from './input.tsx';
+	const componentsUiIndex = `export { Button, type ButtonProps, buttonVariants } from './button/index.tsx';
+export { Input } from './input/index.tsx';
 export {
   Card,
   CardHeader,
@@ -1301,17 +1301,17 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
-} from './card.tsx';
-export { Label } from './label.tsx';
-export { Badge, type BadgeProps, badgeVariants } from './badge.tsx';
-export { Separator } from './separator.tsx';
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs.tsx';
+} from './card/index.tsx';
+export { Label } from './label/index.tsx';
+export { Badge, type BadgeProps, badgeVariants } from './badge/index.tsx';
+export { Separator } from './separator/index.tsx';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs/index.tsx';
 export {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-} from './tooltip.tsx';
+} from './tooltip/index.tsx';
 export {
   Dialog,
   DialogPortal,
@@ -1323,7 +1323,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from './dialog.tsx';
+} from './dialog/index.tsx';
 `;
 
 	// Rename component files to index.tsx (same content)

@@ -75,7 +75,7 @@ import {
 	SubscriberGenerator,
 	TopicGenerator,
 } from '../generators';
-import { generateOpenApi, openapiCommand } from '../openapi.js';
+import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
 import type { GkmConfig } from '../types';
 import {
@@ -87,7 +87,7 @@ import {
 	type Routes,
 } from '../types';
 import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
-import { resolveAppSpec } from '../workspace/derive.js';
+import { conventionalPath } from '../workspace/derive.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -262,7 +262,18 @@ export async function buildCommand(
 	const surfaces = Object.values(declared).filter(
 		(d): d is Extract<typeof d, { kind: 'rest-api' }> => d.kind === 'rest-api',
 	);
-	const primary = surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
+	// The surface this build serves is the one whose app is the directory being
+	// built — asked of every surface, because a workspace has several and each
+	// app's build serves exactly one. The guess below is only for a project
+	// with no such directory, where there is one app and it is the project.
+	const workspaceRoot = loadedConfig.workspace.root;
+	const served = surfaces.find(
+		(d) =>
+			resolve(workspaceRoot, conventionalPath(d.id, workspaceRoot)) ===
+			resolve(process.cwd()),
+	);
+	const primary =
+		served ?? surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
 
 	// Which database Studio browses: the one the app declared. A reader is not a
 	// candidate — it is the same data through a role that cannot write, so
@@ -350,7 +361,7 @@ export async function buildCommand(
 	const code = constructGlobs;
 
 	const [
-		allEndpoints,
+		loadedEndpoints,
 		allFunctions,
 		allCrons,
 		allSubscribers,
@@ -364,6 +375,16 @@ export async function buildCommand(
 		queueGenerator.load(code),
 		topicGenerator.load(code),
 	]);
+
+	// One glob finds every surface's endpoints, wherever their files live. A
+	// build keeps the ones built from the surface it serves; one built from no
+	// surface at all has nowhere else to go.
+	const allEndpoints = primary
+		? loadedEndpoints.filter(
+				({ construct }) =>
+					!construct.surface || construct.surface.id === primary.id,
+			)
+		: loadedEndpoints;
 
 	logger.log(`Found ${allEndpoints.length} endpoints`);
 	logger.log(`Found ${allFunctions.length} functions`);
@@ -383,20 +404,12 @@ export async function buildCommand(
 		// A surface whose routes are *declared* rather than discovered — an auth
 		// server's wildcard. There is nothing for a glob to find, and that is not
 		// an empty app: the construct serves itself and the entry only starts it.
-		const selfServing = Object.entries(declared).find(
-			([id, d]) =>
-				d.kind === 'rest-api' &&
-				d.endpoints.length > 0 &&
-				constructSources[id] !== undefined &&
-				// Resolved against the workspace root, not matched on the end of
-				// the path — `apps/api` is a suffix of `other-apps/api` too.
-				// Through `resolveAppSpec`, because a surface normally names no
-				// path and the default is the one this would otherwise repeat.
-				resolve(
-					loadedConfig.workspace.root,
-					resolveAppSpec(id, d.app ?? {}, loadedConfig.workspace.root).path!,
-				) === resolve(process.cwd()),
-		);
+		const selfServing =
+			served &&
+			served.endpoints.length > 0 &&
+			constructSources[served.id] !== undefined
+				? ([served.id, served] as const)
+				: undefined;
 
 		if (selfServing) {
 			const [id] = selfServing;
@@ -878,8 +891,10 @@ export async function workspaceBuildCommand(
 
 		logger.log(`\n✅ Workspace build complete!`);
 
-		// Generate OpenAPI specs and copy to frontend apps
-		await openapiCommand({ cwd: workspace.root });
+		// No OpenAPI pass here. Each surface's own build writes its client
+		// (`.gkm/openapi/<surface>.ts`) before turbo builds whatever depends on
+		// it; a second pass after every app had built came too late to feed
+		// anything, and ran without the app's credentials.
 
 		// Summary
 		logger.log(`\n📋 Build Summary:`);
