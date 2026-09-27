@@ -795,6 +795,33 @@ program
 
 // Deploy list command - List Dokploy resources
 program
+	.command('deploy:github')
+	.description(
+		"Let GitHub Actions deploy a stage: OIDC role in the stage's AWS account, and the GitHub environment the deploy workflow uses",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage from gkm.config.ts')
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('--repo <owner/name>', 'GitHub repository (default: this one)')
+	.option(
+		'--policy-arn <arn>',
+		'Policy for the deploy role (default: AdministratorAccess)',
+	)
+	.option('--dry-run', 'Show the plan without changing AWS or GitHub')
+	.action(async (options) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { deployGithubCommand } = await import('./deploy/github.js');
+			await deployGithubCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
 	.command('deploy:list')
 	.description('List Dokploy resources (projects, registries)')
 	.option(

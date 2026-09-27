@@ -610,6 +610,57 @@ connect as the owner, which makes a tenant a `search_path` rather than an
 isolation boundary. See the outstanding design notes.
 :::
 
+## AWS with SST
+
+Pick **AWS (SST)** in `gkm init` (or `--deploy sst --region eu-west-1`) and the
+scaffold gets an `sst.config.ts`, a `deploy:<stage>` script per deployed stage,
+and the packages `@geekmidas/cloud/sst` needs.
+
+```bash
+pnpm run deploy:staging
+# = gkm build --provider aws && sst deploy --stage staging
+```
+
+`gkm build --provider aws` writes `.gkm/manifest/aws.ts` — every construct the
+app declares — and `sst.config.ts` hands it to `fromManifest`. So the config
+lists no bucket, queue or IAM; what it holds is what a declaration cannot say:
+
+```typescript
+// sst.config.ts (generated)
+const region = 'eu-west-1';
+const PROTECTED: string[] = ['prod']; // from stages.protected
+
+export default $config({
+  app(input) {
+    return {
+      name: 'beetlefit',
+      removal: PROTECTED.includes(input?.stage) ? 'retain' : 'remove',
+      protect: PROTECTED.includes(input?.stage),
+      home: 'aws',
+      providers: { aws: { region } },
+    };
+  },
+  async run() {
+    const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+    const { backends, constructs } = await import('./.gkm/manifest/aws.js');
+    const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
+    // …
+    return fromManifest(new Stack(app, 'Beetlefit'), constructs, {
+      Database: { vpc },                                      // RDS needs a network
+      Mail: { from: process.env.MAIL_FROM as string },        // a verified SES sender
+    }, backends);
+  },
+});
+```
+
+The two inputs are the ones the synth refuses to guess: a database without a
+VPC stops with `DatabaseNeedsVpc`, a mailer without a sender with
+`EmailNeedsSender`. Replace the created VPC with `sst.aws.Vpc.get(…)` if the
+account already has one. Protected stages keep their resources when the stack
+is removed.
+
+---
+
 ## Docker Deployment
 
 ### Generate Docker Files
@@ -651,54 +702,60 @@ gkm docker push --tag my-api:latest
 
 ---
 
-## CI/CD Integration
+## Deploying from GitHub Actions
 
-### GitHub Actions
+`gkm init` writes the workflows (see [GitHub Actions](./fullstack-init.md#github-actions)):
+pull requests run CI, merged pull requests collect in a drafted release, and
+`deploy.yml` deploys stages. It reads [`stages`](./workspaces.md#stages) from
+`gkm.config.ts` when it runs, so nothing in it names a stage:
 
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
+| Event | Deploys |
+|---|---|
+| merge to `main` | every deployed stage **not** in `protected` — e.g. `staging` |
+| publishing the drafted release | the `protected` stages — e.g. `prod` |
+| *Run workflow* | the one stage you type |
 
-on:
-  push:
-    branches: [main]
+Each stage deploys in the GitHub **environment** of the same name. Put a
+required reviewer on a protected one if a release should also need approval.
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+### One-time setup, per stage
 
-      - uses: pnpm/action-setup@v4
+A stage usually lives in its own AWS account, so each is set up with its own
+profile:
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+```bash
+# The stage's secrets, encrypted in the repo; the key stays on your machine
+gkm secrets:init --stage staging
+gkm secrets:init --stage prod
 
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Deploy
-        env:
-          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_TOKEN }}
-        run: |
-          pnpm gkm deploy --stage production
+# AWS (SST): OIDC role in the stage's account + the GitHub environment
+gkm deploy:github --stage staging --profile acme-dev
+gkm deploy:github --stage prod    --profile acme-prod
 ```
 
-### Required Secrets
+[`gkm deploy:github`](./cli-reference.md#gkm-deploy-github) creates GitHub's
+OIDC provider in the account if missing and a role only this repository's
+`<stage>` environment can assume, then sets the environment's `AWS_ROLE_ARN`
+and `GKM_SECRETS_KEY`. No long-lived AWS keys are stored anywhere.
 
-| Secret | Purpose |
-|--------|---------|
-| `DOKPLOY_TOKEN` | Dokploy API authentication |
-| `AWS_ROLE_ARN` | For SSM state provider and Route53 DNS |
-| Custom secrets | Application-specific (Stripe, SendGrid, etc.) |
+For **Dokploy**, set the environment's values with `gh`:
+
+```bash
+gh secret set GKM_SECRETS_KEY --env prod < ~/.gkm/<project>/prod.key
+gh secret set DOKPLOY_API_TOKEN --env prod
+gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
+```
+
+### What each environment needs
+
+| Setting | Target | Set by |
+|---|---|---|
+| secret `GKM_SECRETS_KEY` | both | `gkm deploy:github`, or `gh secret set` |
+| variable `AWS_ROLE_ARN` | SST | `gkm deploy:github` |
+| secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
+
+Tests in CI need none of these: `gkm test` with `GKM_AUTO_SETUP=1` generates
+throwaway secrets for the test stage.
 
 ---
 
@@ -709,7 +766,8 @@ Before deploying to production:
 - [ ] All tests passing (`pnpm test:once`)
 - [ ] Type checks passing (`pnpm ts:check`)
 - [ ] Linting passing (`pnpm lint`)
-- [ ] Secrets configured (`gkm secrets:show --stage production`)
+- [ ] Secrets configured (`gkm secrets:show --stage <stage>`)
+- [ ] Each deployed stage has its GitHub environment (`gkm deploy:github --stage <stage>`)
 - [ ] DNS provider configured
 - [ ] State provider configured (SSM for teams)
 - [ ] Health check endpoint configured

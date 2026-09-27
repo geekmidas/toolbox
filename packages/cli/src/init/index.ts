@@ -10,7 +10,11 @@ import {
 	generateDbUrl,
 } from '../setup/fullstack-secrets.js';
 import type { ComposeServiceName, EventsBackend } from '../types.js';
-import { deployedProblems, stageProblems } from '../workspace/stages.js';
+import {
+	deployedProblems,
+	InvalidStages,
+	stageProblems,
+} from '../workspace/stages.js';
 import type { StagesConfig } from '../workspace/types.js';
 import { generateAgentFiles } from './generators/agents.js';
 import { generateAuthAppFiles } from './generators/auth.js';
@@ -111,15 +115,14 @@ export async function initCommand(
 		options.deploy &&
 		!deployTargetChoices.some((choice) => choice.value === options.deploy)
 	) {
-		throw new Error(
-			`Unknown deploy target "${options.deploy}". Use ${deployTargetChoices.map((c) => c.value).join(', ')}.`,
+		throw new UnknownDeployTarget(
+			options.deploy,
+			deployTargetChoices.map((c) => c.value),
 		);
 	}
 
 	if (options.region && !AWS_REGION.test(options.region)) {
-		throw new Error(
-			`"${options.region}" is not an AWS region. Use one like eu-west-1.`,
-		);
+		throw new NotAnAwsRegion(options.region);
 	}
 
 	// Flags are checked before anything is asked or written, the same rules
@@ -135,7 +138,7 @@ export async function initCommand(
 				? [`--protected-stage "${options.protectedStage}" is not in --stages`]
 				: []),
 		];
-		if (problems.length) throw new Error([...new Set(problems)].join('\n'));
+		if (problems.length) throw new InvalidStages([...new Set(problems)]);
 	}
 
 	let deployedSoFar: string[] = [];
@@ -743,6 +746,25 @@ function resolveStages(
 		...(kept ? { protected: [kept] } : {}),
 	};
 	const problems = stageProblems(stages);
-	if (problems.length) throw new Error(problems.join('\n'));
+	if (problems.length) throw new InvalidStages(problems);
 	return stages;
+}
+
+/** `--deploy` naming a target init has no scaffold for. */
+export class UnknownDeployTarget extends Error {
+	constructor(
+		readonly target: string,
+		readonly known: readonly string[],
+	) {
+		super(`Unknown deploy target "${target}". Use ${known.join(', ')}.`);
+		this.name = 'UnknownDeployTarget';
+	}
+}
+
+/** `--region` that is not shaped like one, e.g. `europe` for `eu-west-1`. */
+export class NotAnAwsRegion extends Error {
+	constructor(readonly region: string) {
+		super(`"${region}" is not an AWS region. Use one like eu-west-1.`);
+		this.name = 'NotAnAwsRegion';
+	}
 }

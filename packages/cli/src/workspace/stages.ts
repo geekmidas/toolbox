@@ -64,9 +64,7 @@ export function stageProblems(stages: StagesConfig | undefined): string[] {
 export function validateStages(stages: StagesConfig | undefined): StagesConfig {
 	const problems = stageProblems(stages);
 	if (problems.length) {
-		throw new Error(
-			`Invalid stages in gkm.config.ts:\n  ${problems.join('\n  ')}`,
-		);
+		throw new InvalidStages(problems);
 	}
 	return stages!;
 }
@@ -74,8 +72,30 @@ export function validateStages(stages: StagesConfig | undefined): StagesConfig {
 /** Refuses a stage the project does not deploy to. */
 export function assertDeployedStage(stages: StagesConfig, stage: string): void {
 	if (!stages.deployed.includes(stage)) {
-		throw new Error(
-			`"${stage}" is not a deployed stage. gkm.config.ts deploys to: ${stages.deployed.join(', ') || 'nothing yet'}.`,
+		throw new UndeclaredStage(stage, stages.deployed);
+	}
+}
+
+/** A stages block — in gkm.config.ts or from `gkm init`'s flags — that breaks a rule. */
+export class InvalidStages extends Error {
+	constructor(readonly problems: readonly string[]) {
+		super(`Invalid stages:\n  ${problems.join('\n  ')}`);
+		this.name = 'InvalidStages';
+	}
+}
+
+/**
+ * A stage the project does not deploy to. Refused before anything is
+ * provisioned, so a typo does not become a second environment.
+ */
+export class UndeclaredStage extends Error {
+	constructor(
+		readonly stage: string,
+		readonly deployed: readonly string[],
+	) {
+		super(
+			`"${stage}" is not a deployed stage. gkm.config.ts deploys to: ${deployed.join(', ') || 'nothing yet'}.`,
 		);
+		this.name = 'UndeclaredStage';
 	}
 }
