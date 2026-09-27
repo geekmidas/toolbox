@@ -120,8 +120,8 @@
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
 		"@types/prompts": "~2.4.9",
-		"typescript": "^5.8.2",
-		"vitest": "^3.2.4",
+		"typescript": "~5.8.2",
+		"vitest": "~3.2.4",
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {

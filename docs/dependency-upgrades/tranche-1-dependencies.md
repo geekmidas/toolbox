@@ -53,5 +53,6 @@ Twenty-three of the bumps were majors. These needed code changes:
 - **`memoryAdapter` has no conformance test** since better-auth 1.7 removed
   `runAdapterTest`. The suite is skipped with the gap recorded. Needs a
   decision (#42).
-- **The alignment script was never committed**, and neither was its list of
-  versions. Tranches 2 and 3 need it (#44).
+- ~~**The alignment script was never committed**, and neither was its list of
+  versions.~~ Recreated in #44: `scripts/align-deps.mjs` and
+  `scripts/dependency-versions.json`, checked in CI by `pnpm check:deps`.

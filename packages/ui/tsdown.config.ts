@@ -25,4 +25,9 @@ export default defineConfig({
 	dts: true,
 	clean: true,
 	external: ['react', 'react-dom'],
+	// tsdown 0.12 names ESM output `.js` in a `"type": "module"` package, where
+	// 0.9 wrote `.mjs`; `exports` points at `.mjs`, as the root config does.
+	outExtensions: (ctx) => ({
+		js: ctx.format === 'es' ? '.mjs' : '.cjs',
+	}),
 });
