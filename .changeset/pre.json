@@ -37,6 +37,7 @@
     "align-deps-tranche-1",
     "alpha-packaging",
     "client-coercion-types",
+    "deploy-github-oidc",
     "drop-free-standing-builders",
     "init-deploy-target",
     "init-github-actions",
