@@ -62,8 +62,10 @@ candidate cause:
    CLI's throwaway test projects get a `node_modules` beside them, since
    Vite's module runner no longer resolves their bare imports from the repo
    root. The scaffold's Vitest pin follows with #43.
-5. **Storybook.** Only `packages/ui`, and it may overlap with
-   [tranche 3](./tranche-3-react-ui.md).
+5. ~~**Storybook.**~~ **Done:** Storybook 10 (through 9). Essentials and
+   interactions are core now, so only `addon-docs` and `addon-a11y` remain;
+   stories import types from `@storybook/react-vite`; backgrounds use
+   `options` and `initialGlobals`.
 6. **TypeScript** last. It's the widest blast radius, and the other tools need
    to support it first. Check each one's TypeScript 7 support before starting
    this step.

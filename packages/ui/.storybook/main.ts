@@ -2,17 +2,12 @@ import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
 	stories: ['../src/**/*.stories.@(ts|tsx)'],
-	addons: [
-		'@storybook/addon-essentials',
-		'@storybook/addon-interactions',
-		'@storybook/addon-a11y',
-	],
+	// Controls, actions, backgrounds, viewport and interactions are part of
+	// `storybook` itself since 9; docs is still an addon.
+	addons: ['@storybook/addon-docs', '@storybook/addon-a11y'],
 	framework: {
 		name: '@storybook/react-vite',
 		options: {},
-	},
-	docs: {
-		autodocs: 'tag',
 	},
 	viteFinal: async (config) => {
 		// Add Tailwind CSS v4 plugin

@@ -157,19 +157,13 @@
 		"dependencies": "~1.1.0"
 	},
 	"@storybook/addon-a11y": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
-	"@storybook/addon-essentials": {
-		"devDependencies": "~8.6.14"
-	},
-	"@storybook/addon-interactions": {
-		"devDependencies": "~8.6.14"
-	},
-	"@storybook/react": {
-		"devDependencies": "^8.4.7"
+	"@storybook/addon-docs": {
+		"devDependencies": "^10.6.0"
 	},
 	"@storybook/react-vite": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
 	"@tailwindcss/vite": {
 		"devDependencies": "~4.3.3"
@@ -447,7 +441,7 @@
 		"peerDependencies": ">=4.17.1"
 	},
 	"storybook": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
 	"tailwind-merge": {
 		"dependencies": "~3.4.0"

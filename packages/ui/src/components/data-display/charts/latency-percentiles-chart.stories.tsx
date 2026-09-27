@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LatencyPercentilesChart } from './latency-percentiles-chart';
 
 const meta: Meta<typeof LatencyPercentilesChart> = {

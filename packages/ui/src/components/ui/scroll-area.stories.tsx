@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Badge } from './badge';
 import { CodeBlock } from './code-block';
 import { ScrollArea, ScrollBar } from './scroll-area';
