@@ -32,6 +32,7 @@ describe('prepareEntryCredentials', () => {
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
   apps: {
     api: {
@@ -189,6 +190,7 @@ export default defineWorkspace({
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
   apps: {
     api: {
@@ -271,6 +273,7 @@ export default defineWorkspace({
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
   apps: {
     api: {

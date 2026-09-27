@@ -143,8 +143,10 @@ export interface ReconcileOptions {
 	project: string;
 	/** The construct manifest — what the app declared. */
 	manifest: ConstructManifest;
-	/** The stage being reconciled: `development` for dev, `test` for test. */
+	/** The stage being reconciled: the project's local stage, or `test`. */
 	stage: string;
+	/** The project's local stage, whose resources carry no suffix. */
+	localStage?: string;
 	/** The events backend, until `topic` and `queue` are kinds. */
 	events?: EventsBackend;
 	/** Where a declared cache lives — see {@link CacheBackend}. */
@@ -227,6 +229,7 @@ export async function reconcile(
 	} = options;
 
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: options.localStage,
 		events: options.events,
 		cache: options.cache,
 		extraContainers: options.extraContainers,

@@ -456,10 +456,10 @@ Manage encrypted secrets for different deployment stages.
 gkm secrets:init --stage production
 
 # View secrets (masked)
-gkm secrets:show --stage development
+gkm secrets:show --stage dev
 
 # View actual values
-gkm secrets:show --stage development --reveal
+gkm secrets:show --stage dev --reveal
 
 # Set a custom secret
 gkm secrets:set API_KEY sk-1234567890 --stage production
@@ -546,6 +546,7 @@ Create a `gkm.config.ts` file in your project root:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   // Constructs — one glob, every kind.
   //
   // What reconcile reads to derive the containers this app needs: a declared
@@ -640,6 +641,7 @@ When enabled:
 
 ```typescript
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env#envParser',
   logger: './src/config/logger#logger',
@@ -663,6 +665,7 @@ By default, construct types (`routes`, `functions`, `crons`, `subscribers`) acce
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   // Partitioned routes — groups by directory name
   routes: {
     paths: './src/endpoints/**/*.ts',
@@ -891,6 +894,7 @@ Server hooks allow you to customize the Hono application before and after gkm en
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env#envParser',
   logger: './src/config/logger#logger',
@@ -1080,6 +1084,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-saas',
+  stages: { local: 'dev', deployed: ['prod'] },
 
   constructs: './constructs/**/*.ts',
 

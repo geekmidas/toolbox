@@ -48,6 +48,7 @@ describe('buildCommand', () => {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
 };
 `,
@@ -147,6 +148,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
 };
 `,
@@ -250,6 +252,7 @@ export default {
 			'gkm.config.ts',
 			`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
 };
 `,
@@ -291,6 +294,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
@@ -347,6 +351,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,
@@ -409,6 +414,7 @@ export default {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
   constructs: './constructs/**/*.ts',
   envParser: './config/env',
@@ -473,6 +479,7 @@ export const auth = {
 				'gkm.config.ts',
 				`
 export default {
+  stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
   functions: undefined,
   crons: undefined,

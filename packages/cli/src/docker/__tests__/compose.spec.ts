@@ -638,6 +638,7 @@ describe('generateWorkspaceCompose', () => {
 		return {
 			name: 'test-workspace',
 			root: '/workspace',
+			stages: { local: 'development', deployed: ['production'] },
 			apps: {
 				api: {
 					type: 'backend',

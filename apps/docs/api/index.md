@@ -106,6 +106,7 @@ throw createError.forbidden('Access denied');
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
+  stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
   deploy: {
     default: 'dokploy',

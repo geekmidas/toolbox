@@ -8,6 +8,7 @@ import { constructGlobs, imagePins } from '../workspace';
 /** A workspace that declares nothing but the services under test. */
 function workspaceWith(services: ServicesConfig): NormalizedWorkspace {
 	return {
+		stages: { local: 'development', deployed: ['production'] },
 		name: 'test',
 		root: '/tmp/test',
 		apps: {},

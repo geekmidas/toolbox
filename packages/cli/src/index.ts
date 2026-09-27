@@ -57,6 +57,15 @@ program
 	.option('--monorepo', 'Setup as monorepo with packages/models', false)
 	.option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
 	.option('--pm <manager>', 'Package manager (pnpm, npm, yarn, bun)')
+	.option('--deploy <target>', 'Where it deploys (dokploy, sst, none)')
+	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
+	.option(
+		'--stages <names>',
+		'Deployed stages, comma-separated (e.g. staging,prod)',
+	)
+	.option('--protected-stage <name>', 'Which deployed stage is production')
+	.option('--local-stage <name>', 'What gkm dev runs as (e.g. dev)')
+	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -94,7 +103,7 @@ program
 	.description(
 		'Reconcile declared constructs — containers, databases, buckets, secrets',
 	)
-	.option('--stage <stage>', 'Stage name', 'development')
+	.option('--stage <stage>', 'Stage name (default: stages.local)')
 	.option('--force', 'Regenerate secrets even if they exist')
 	.option('--skip-docker', 'Skip starting Docker services')
 	.option('-y, --yes', 'Skip prompts')
@@ -255,7 +264,10 @@ program
 program
 	.command('test')
 	.description('Run tests with secrets loaded from environment')
-	.option('--stage <stage>', 'Stage to load secrets from', 'development')
+	.option(
+		'--stage <stage>',
+		'Stage to load secrets from (default: stages.local)',
+	)
 	.option('--run', 'Run tests once without watch mode')
 	.option('--watch', 'Enable watch mode')
 	.option('--coverage', 'Generate coverage report')
@@ -639,8 +651,8 @@ program
 program
 	.command('secrets:reconcile')
 	.description('Backfill missing custom secrets from workspace config')
-	.option('--stage <stage>', 'Stage name', 'development')
-	.action(async (options: { stage: string }) => {
+	.option('--stage <stage>', 'Stage name (default: stages.local)')
+	.action(async (options: { stage?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -654,11 +666,12 @@ program
 			);
 
 			const { workspace } = await loadWorkspaceConfig();
-			const secrets = await readStageSecrets(options.stage, workspace.root);
+			const stage = options.stage ?? workspace.stages.local;
+			const secrets = await readStageSecrets(stage, workspace.root);
 
 			if (!secrets) {
 				console.error(
-					`No secrets found for stage "${options.stage}". Run "gkm secrets:init --stage ${options.stage}" first.`,
+					`No secrets found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
 				);
 				process.exit(1);
 			}
@@ -667,17 +680,17 @@ program
 			const result = reconcileMissingSecrets(
 				secrets,
 				workspace,
-				await derivedContainers(workspace, options.stage),
+				await derivedContainers(workspace, stage),
 			);
 
 			if (!result) {
-				console.log(`\n✓ Secrets for stage "${options.stage}" are up-to-date`);
+				console.log(`\n✓ Secrets for stage "${stage}" are up-to-date`);
 				return;
 			}
 
 			await writeStageSecrets(result.secrets, workspace.root);
 			console.log(
-				`\n✓ Reconciled ${result.addedKeys.length} missing secret(s) for stage "${options.stage}":`,
+				`\n✓ Reconciled ${result.addedKeys.length} missing secret(s) for stage "${stage}":`,
 			);
 			for (const key of result.addedKeys) {
 				console.log(`    + ${key}`);

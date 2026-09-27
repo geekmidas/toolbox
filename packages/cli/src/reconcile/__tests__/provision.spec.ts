@@ -51,7 +51,9 @@ const manifest = {
 } as const satisfies ConstructManifest;
 
 const plan = (stage = 'development') =>
-	planFor(manifest, stage, provisionOrder(manifest));
+	planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: 'development',
+	});
 
 /** A Postgres that starts empty and remembers what was created in it. */
 /**
@@ -118,7 +120,10 @@ describe('the cache table', () => {
 	} as const satisfies ConstructManifest;
 
 	const cachePlan = (cache: 'db' | 'upstash') =>
-		planFor(withCache, 'development', provisionOrder(withCache), { cache });
+		planFor(withCache, 'development', provisionOrder(withCache), {
+			localStage: 'development',
+			cache,
+		});
 
 	it('is created for a parentless cache when the backend is the database', () => {
 		// `cache: 'db'` puts a cache that named no parent in whichever database
@@ -155,6 +160,7 @@ describe('the cache table', () => {
 
 		const created = postgresStatements(
 			planFor(twoCaches, 'development', provisionOrder(twoCaches), {
+				localStage: 'development',
 				cache: 'db',
 			}),
 		).map((s) => s.create);
@@ -395,7 +401,9 @@ describe('bucket policies', () => {
 
 		expect(
 			bucketPolicies(
-				planFor(unserved, 'development', provisionOrder(unserved)),
+				planFor(unserved, 'development', provisionOrder(unserved), {
+					localStage: 'development',
+				}),
 			),
 		).toEqual([]);
 	});

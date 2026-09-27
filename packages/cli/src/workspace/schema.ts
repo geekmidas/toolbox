@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { stageProblems } from './stages.js';
 
 /**
  * Routes can be a string glob, array of globs, or a partitioned config
@@ -593,6 +594,18 @@ const SharedConfigSchema = z.object({
 /**
  * Secrets configuration schema.
  */
+const StagesConfigSchema = z
+	.object({
+		local: z.string(),
+		deployed: z.array(z.string()),
+		protected: z.array(z.string()).optional(),
+	})
+	.superRefine((stages, ctx) => {
+		for (const message of stageProblems(stages)) {
+			ctx.addIssue({ code: 'custom', message });
+		}
+	});
+
 const SecretsConfigSchema = z.object({
 	enabled: z.boolean().optional(),
 	algorithm: z.string().optional(),
@@ -767,6 +780,7 @@ export const WorkspaceConfigSchema = z
 		shared: SharedConfigSchema.optional(),
 		deploy: DeployConfigSchema.optional(),
 		services: ServicesConfigSchema.optional(),
+		stages: StagesConfigSchema,
 		secrets: SecretsConfigSchema.optional(),
 		state: StateConfigSchema.optional(),
 	})

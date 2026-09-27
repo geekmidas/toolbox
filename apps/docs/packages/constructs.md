@@ -1337,6 +1337,7 @@ Register subscriber files in `gkm.config.ts` so the CLI can discover them:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   subscribers: './src/subscribers/**/*.ts',
   envParser: './src/config/env',
@@ -1472,6 +1473,7 @@ Register queue files in `gkm.config.ts` so the CLI discovers them:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   subscribers: './src/subscribers/**/*.ts',
   queues: './src/queues/**/*.ts',
@@ -1645,6 +1647,7 @@ Register your cron files in `gkm.config.ts` so the CLI can discover and build th
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   crons: './src/crons/**/*.ts',    // glob pattern for cron files
   envParser: './src/config/env',

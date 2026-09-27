@@ -207,6 +207,7 @@ Add to your `gkm.config.ts`:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   openapi: {
     title: 'My API',

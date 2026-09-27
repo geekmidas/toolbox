@@ -60,6 +60,7 @@ app.route('/__studio', createUI(studio));
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   routes: './src/endpoints/**/*.ts',
   envParser: './src/config/env',
   logger: './src/logger',

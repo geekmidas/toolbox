@@ -90,6 +90,7 @@ describe('full mode Docker port resolution', () => {
 
 	it('should resolve ports and rewrite URLs', async () => {
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'full',
 		});
@@ -101,6 +102,7 @@ describe('full mode Docker port resolution', () => {
 
 	it('should write ports.json after full resolution', async () => {
 		await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'full',
 		});
@@ -126,6 +128,7 @@ describe('full mode Docker port resolution', () => {
 		expect(occupiedPort).toBe(5432);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'full',
 		});

@@ -1,5 +1,6 @@
 import { databaseFiles } from '../constructs.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -111,7 +112,7 @@ export const envParser = new EnvironmentParser({ ...process.env, ...Credentials 
 export const config = envParser
   .create((get) => ({
     nodeEnv: get('NODE_ENV').enum(['development', 'test', 'production']).default('development'),
-    stage: get('STAGE').enum(['dev', 'staging', 'prod']).default('dev'),
+    stage: ${stageEnv(options.stages)},
   }))
   .parse();
 `,
@@ -186,7 +187,7 @@ import { InMemoryStorage } from '@geekmidas/telescope/storage/memory';
 // Note: For production Lambda, consider using a persistent storage
 export const telescope = new Telescope({
   storage: new InMemoryStorage({ maxEntries: 50 }),
-  enabled: process.env.STAGE === 'dev',
+  enabled: process.env.STAGE === '${options.stages.local}',
 });
 `,
 			});

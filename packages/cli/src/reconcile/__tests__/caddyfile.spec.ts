@@ -23,7 +23,9 @@ const manifest = {
 } as const satisfies ConstructManifest;
 
 const plan = (stage = 'development') =>
-	planFor(manifest, stage, provisionOrder(manifest));
+	planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: 'development',
+	});
 
 describe('sitesFor', () => {
 	it('gives each file server a host of its own', () => {
@@ -67,7 +69,9 @@ describe('sitesFor', () => {
 		} as const satisfies ConstructManifest;
 
 		const sites = sitesFor(
-			planFor(withSurface, 'development', provisionOrder(withSurface)),
+			planFor(withSurface, 'development', provisionOrder(withSurface), {
+				localStage: 'development',
+			}),
 			'shop',
 			{ Api: 'http://localhost:3000', Web: 'http://localhost:5173' },
 		);
@@ -92,7 +96,9 @@ describe('sitesFor', () => {
 
 		expect(
 			sitesFor(
-				planFor(withSurface, 'development', provisionOrder(withSurface)),
+				planFor(withSurface, 'development', provisionOrder(withSurface), {
+					localStage: 'development',
+				}),
 				'shop',
 			),
 		).toEqual([]);
@@ -115,7 +121,9 @@ describe('sitesFor', () => {
 
 		expect(
 			sitesFor(
-				planFor(bucketOnly, 'development', provisionOrder(bucketOnly)),
+				planFor(bucketOnly, 'development', provisionOrder(bucketOnly), {
+					localStage: 'development',
+				}),
 				'shop',
 			),
 		).toEqual([]);

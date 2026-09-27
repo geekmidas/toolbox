@@ -6,6 +6,7 @@ describe('Type Inference', () => {
 	describe('defineWorkspace type inference', () => {
 		it('should infer app names as literal types', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',
@@ -32,6 +33,7 @@ describe('Type Inference', () => {
 
 		it('should allow valid dependencies', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',
@@ -61,6 +63,7 @@ describe('Type Inference', () => {
 		it('should throw error for invalid dependency at runtime', () => {
 			expect(() =>
 				defineWorkspace({
+					stages: { local: 'development', deployed: ['production'] },
 					apps: {
 						api: {
 							type: 'backend',
@@ -83,6 +86,7 @@ describe('Type Inference', () => {
 		it('should throw error for self-dependency at runtime', () => {
 			expect(() =>
 				defineWorkspace({
+					stages: { local: 'development', deployed: ['production'] },
 					apps: {
 						api: {
 							type: 'backend',
@@ -98,6 +102,7 @@ describe('Type Inference', () => {
 
 		it('should preserve all config properties with inference', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'my-workspace',
 				apps: {
 					api: {
@@ -164,6 +169,7 @@ describe('Type Inference', () => {
 	describe('Complex workspace scenarios', () => {
 		it('should handle workspace with multiple backend and frontend apps', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'complex-saas',
 				apps: {
 					'api-gateway': {
@@ -219,6 +225,7 @@ describe('Type Inference', () => {
 
 		it('should handle empty dependencies array', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',
@@ -235,6 +242,7 @@ describe('Type Inference', () => {
 
 		it('should handle undefined dependencies', () => {
 			const config = defineWorkspace({
+				stages: { local: 'development', deployed: ['production'] },
 				apps: {
 					api: {
 						type: 'backend',

@@ -88,6 +88,7 @@ describe('Client Generator', () => {
 	describe('getBackendDependencies', () => {
 		it('should return backend dependencies with routes', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/test',
 				apps: {
@@ -127,6 +128,7 @@ describe('Client Generator', () => {
 
 		it('should filter out backends without routes', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/test',
 				apps: {
@@ -166,6 +168,7 @@ describe('Client Generator', () => {
 
 		it('should return empty array for non-frontend app', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/test',
 				apps: {
@@ -192,6 +195,7 @@ describe('Client Generator', () => {
 	describe('getDependentFrontends', () => {
 		it('should find frontends that depend on a backend', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/test',
 				apps: {
@@ -237,6 +241,7 @@ describe('Client Generator', () => {
 
 		it('should return empty array for backend with no dependents', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/test',
 				apps: {
@@ -263,6 +268,7 @@ describe('Client Generator', () => {
 	describe('getBackendOpenApiPath', () => {
 		it('should return correct path for backend app', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/project',
 				apps: {
@@ -287,6 +293,7 @@ describe('Client Generator', () => {
 
 		it('should return null for non-backend app', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/project',
 				apps: {
@@ -310,6 +317,7 @@ describe('Client Generator', () => {
 
 		it('should return null for non-existent app', () => {
 			const workspace: NormalizedWorkspace = {
+				stages: { local: 'development', deployed: ['production'] },
 				name: 'test',
 				root: '/project',
 				apps: {},

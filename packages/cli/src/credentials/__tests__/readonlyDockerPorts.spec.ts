@@ -66,6 +66,7 @@ describe('readonly Docker port resolution', () => {
 		);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -82,6 +83,7 @@ describe('readonly Docker port resolution', () => {
 		createPortState({ POSTGRES_HOST_PORT: 15432 }, testDir);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -93,6 +95,7 @@ describe('readonly Docker port resolution', () => {
 		createPortState({ POSTGRES_HOST_PORT: 15432 }, testDir);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -104,6 +107,7 @@ describe('readonly Docker port resolution', () => {
 		createPortState({ REDIS_HOST_PORT: 16379 }, testDir);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -147,6 +151,7 @@ describe('readonly Docker port resolution', () => {
 		);
 
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -161,6 +166,7 @@ describe('readonly Docker port resolution', () => {
 
 	it('should not rewrite URLs when no saved state exists', async () => {
 		const result = await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});
@@ -178,6 +184,7 @@ describe('readonly Docker port resolution', () => {
 		createPortState(originalPorts, testDir);
 
 		await prepareEntryCredentials({
+			stage: 'development',
 			cwd: testDir,
 			resolveDockerPorts: 'readonly',
 		});

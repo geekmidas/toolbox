@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { loadWorkspaceConfig } from '../config';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
@@ -34,8 +35,19 @@ export interface TestOptions {
  * Environment variables are sniffed to inject only what the app needs.
  */
 export async function testCommand(options: TestOptions = {}): Promise<void> {
-	const stage = options.stage ?? 'development';
 	const cwd = process.cwd();
+	// The project's local stage unless one was named: \`gkm test\` reads the
+	// secrets a developer's own \`gkm dev\` does.
+	const stage =
+		options.stage ??
+		(await loadWorkspaceConfig(cwd)
+			.then((loaded) => loaded.workspace.stages.local)
+			.catch(() => undefined));
+	if (!stage) {
+		throw new Error(
+			'No stage to test with: add `stages` to gkm.config.ts, or pass --stage.',
+		);
+	}
 
 	console.log(`\n🧪 Running tests with ${stage} environment...\n`);
 
@@ -59,7 +71,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	// 2. Prepare credentials: loads secrets, resolves Docker ports,
 	//    starts services, rewrites URLs, injects dependency URLs
 	const result = await prepareEntryCredentials({
-		stages: [stage],
+		stage,
 		startDocker: true,
 		secretsFileName: 'test-secrets.json',
 		resolveDockerPorts: 'full',

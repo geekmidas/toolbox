@@ -113,6 +113,7 @@ Point the config at it:
 import { defineConfig } from '@geekmidas/cli/config';
 
 export default defineConfig({
+  stages: { local: 'dev', deployed: ['prod'] },
   // One glob, every kind of resource. A declared ObjectStorage would never be
   // found by `routes:` or `crons:` — resources have no kind to be listed under.
   constructs: './src/constructs/**/*.ts',
@@ -416,7 +417,7 @@ the producer gets it — `.publisher(users.publisher)` on the factory, or
 
 ```
 my-project/
-├── .gkm/secrets/development.json   # encrypted — safe to commit
+├── .gkm/secrets/dev.json   # encrypted — safe to commit
 ├── gkm.config.ts
 └── src/constructs/
 ```
@@ -454,9 +455,9 @@ shape. Reach for a raw env key when neither fits.
 Managing them:
 
 ```bash
-gkm secrets:set STRIPE_KEY sk_test_xxx --stage development
-gkm secrets:show --stage development
-gkm secrets:rotate --stage development
+gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
+gkm secrets:show --stage dev
+gkm secrets:rotate --stage dev
 gkm secrets:init --stage production
 ```
 
