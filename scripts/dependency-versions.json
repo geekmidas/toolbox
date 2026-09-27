@@ -457,11 +457,11 @@
 		"peerDependencies": ">=4.0.0"
 	},
 	"tsdown": {
-		"devDependencies": "~0.12.8"
+		"devDependencies": "~0.23.0"
 	},
 	"tsx": {
-		"dependencies": "~4.20.3",
-		"devDependencies": "~4.20.6"
+		"dependencies": "~4.23.15",
+		"devDependencies": "~4.23.15"
 	},
 	"turbo": {
 		"devDependencies": "^2.5.4"
