@@ -122,6 +122,12 @@ jobs:
       - name: Release (dry run)
         if: github.event_name == 'pull_request'
         run: scripts/release.sh dry-run
+        # The changelog generator wraps @changesets/changelog-github, which
+        # looks up each changeset's commit and pull request on GitHub. Main's
+        # version step has always had a token; without one here, every pull
+        # request carrying a changeset failed.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Consumes any pending changesets, then compares the version with what
       # npm has on this branch's line (`scripts/release-state.mjs`). It fails,
