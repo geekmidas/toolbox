@@ -1,0 +1,69 @@
+# Tranche 2: the build and test toolchain
+
+**Status: not started.** Tracked in #40.
+
+Deferred from [tranche 1](./tranche-1-dependencies.md) because the toolchain
+changes how every package compiles and runs. Kept separate so that a failure
+has one candidate cause.
+
+## Scope
+
+Versions on `main` as of 2026-09-27, against the latest on npm:
+
+| Package | On `main` | Latest | Jump |
+|---|---|---|---|
+| `typescript` | `5.8.2` (root, exact), `^5.8.2`, `~5.8.2` | `7.0.2` | two majors |
+| `vitest` | `~3.2.4` | `5.0.2` | two majors |
+| `@vitest/coverage-v8` | `~3.2.4` | `5.0.2` | two majors, moves with Vitest |
+| `vite` | `^6.0.0` | `8.3.1` | two majors |
+| `@vitejs/plugin-react` | `^4.3.4` | `6.1.1` | two majors, moves with Vite |
+| `storybook`, `@storybook/*` | `^8.4.7` | `10.6.0` | two majors |
+| `tsdown` | `^0.9.1`, `~0.12.8` | `0.23.0` | pre-1.0, so every minor may break |
+| `tsx` | `~4.19.4`, `~4.20.3` | `4.23.15` | minor, but disagrees with itself |
+
+Every row is a major or pre-1.0 jump, and several are two majors. Read each
+changelog before bumping, and don't assume one major's migration is the same
+as the next.
+
+Out of scope: `expo-secure-store` (tracks the Expo SDK).
+
+## Include the scaffold
+
+`gkm init` pins its own toolchain, and it's already out of step with the
+packages:
+
+- New projects get `vitest ~4.0.0`, while `@geekmidas/testkit` and
+  `@geekmidas/db` declare a `vitest ~3.2.4` peer. Every fresh install warns
+  `unmet peer vitest@~3.2.4: found 4.0.18`.
+- New projects pin `typescript ~5.8.2`, `tsx ~4.20.0` and `esbuild ~0.27.0`.
+
+Move the scaffold's toolchain pins, and testkit's and db's Vitest peers, in the
+same change, so a fresh project installs with no toolchain peer warnings.
+Keeping the scaffold's versions current in general is #43.
+
+## Suggested order
+
+One tool per step, each landing green before the next, so a failure has one
+candidate cause:
+
+1. **The alignment script** (#44), so each bump is derived from one list and not
+   edited by hand across 20 `package.json` files.
+2. **`tsx` and `tsdown`.** They build and run everything else, and `tsx` first
+   gets a single range.
+3. **Vite, with `@vitejs/plugin-react`.** Vitest and Storybook both build on
+   Vite, so it goes before either.
+4. **Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers, and
+   the scaffold's Vitest pin.
+5. **Storybook.** Only `packages/ui`, and it may overlap with
+   [tranche 3](./tranche-3-react-ui.md).
+6. **TypeScript** last. It's the widest blast radius, and the other tools need
+   to support it first. Check each one's TypeScript 7 support before starting
+   this step.
+
+## Done when
+
+- `pnpm build`, `pnpm ts:check`, `pnpm lint` and `pnpm test:once` pass on the
+  new toolchain, in CI.
+- `pnpm check:exports` and `pnpm check:install` pass.
+- A fresh `gkm init --template fullstack` installs with no toolchain peer
+  warnings, and `build`, `typecheck`, `test:once` and `lint` pass in it.
