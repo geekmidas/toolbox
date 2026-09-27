@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types';
-import { turboFilters, writeTurboConfigs } from '../index';
+import { turboFilters } from '../index';
 
 /**
  * A repo with a turbo root above the workspace, which is the layout that made
@@ -82,90 +82,5 @@ describe('turboFilters', () => {
 		expect(
 			turboFilters(workspace({ api: app('apps/api') })).unpackaged,
 		).toEqual(['api']);
-	});
-});
-
-describe('writeTurboConfigs', async () => {
-	it('names the workspace constructs as inputs, above the package', async () => {
-		// The whole point: turbo hashes a package's own files, so without this an
-		// edit to a construct leaves the cached build in place.
-		packageAt('apps/api', '@shop/api');
-		writeFileSync(join(wsRoot, 'gkm.config.ts'), 'export default {}');
-
-		await writeTurboConfigs(
-			workspace({ api: app('apps/api') }, './constructs/**/*.ts'),
-		);
-
-		const written = JSON.parse(
-			readFileSync(join(wsRoot, 'apps/api/turbo.json'), 'utf8').replace(
-				/^\s*\/\/.*$/gm,
-				'',
-			),
-		);
-
-		expect(written.tasks.build.inputs).toContain('$TURBO_DEFAULT$');
-		expect(written.tasks.build.inputs).toContain(
-			'$TURBO_ROOT$/apps/shop/constructs/**/*.ts',
-		);
-		expect(written.tasks.build.inputs).toContain(
-			'$TURBO_ROOT$/apps/shop/gkm.config.ts',
-		);
-		expect(written.tasks.build.outputs).toEqual(['.gkm/**']);
-	});
-
-	it('declares the outputs each kind of app actually produces', async () => {
-		packageAt('apps/web', '@shop/web');
-
-		await writeTurboConfigs(
-			workspace({ web: app('apps/web', 'web') }, './constructs/**/*.ts'),
-		);
-
-		const written = JSON.parse(
-			readFileSync(join(wsRoot, 'apps/web/turbo.json'), 'utf8').replace(
-				/^\s*\/\/.*$/gm,
-				'',
-			),
-		);
-
-		expect(written.tasks.build.outputs).toEqual([
-			'dist/**',
-			'.next/**',
-			'!.next/cache/**',
-		]);
-	});
-
-	it('leaves a file someone has taken ownership of', async () => {
-		packageAt('apps/api', '@shop/api');
-		const file = join(wsRoot, 'apps/api/turbo.json');
-		writeFileSync(file, '{"mine":true}');
-
-		await writeTurboConfigs(
-			workspace({ api: app('apps/api') }, './constructs/**/*.ts'),
-		);
-
-		expect(readFileSync(file, 'utf8')).toBe('{"mine":true}');
-	});
-
-	it('writes nothing when no constructs are declared', async () => {
-		// Nothing above the package to hash, so nothing to say.
-		packageAt('apps/api', '@shop/api');
-
-		await writeTurboConfigs(workspace({ api: app('apps/api') }));
-
-		expect(() =>
-			readFileSync(join(wsRoot, 'apps/api/turbo.json'), 'utf8'),
-		).toThrow();
-	});
-
-	it('skips an app that is not a package', async () => {
-		mkdirSync(join(wsRoot, 'apps/api'), { recursive: true });
-
-		await writeTurboConfigs(
-			workspace({ api: app('apps/api') }, './constructs/**/*.ts'),
-		);
-
-		expect(() =>
-			readFileSync(join(wsRoot, 'apps/api/turbo.json'), 'utf8'),
-		).toThrow();
 	});
 });

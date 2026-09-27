@@ -1,4 +1,4 @@
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -40,7 +40,7 @@ export function generateAuthAppFiles(
 			'@geekmidas/db': GEEKMIDAS_VERSIONS['@geekmidas/db'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
-			'@hono/node-server': '~1.14.1',
+			'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
 			hono: DEPENDENCY_VERSIONS.hono,
 			kysely: DEPENDENCY_VERSIONS.kysely,
@@ -48,10 +48,10 @@ export function generateAuthAppFiles(
 		},
 		devDependencies: {
 			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-			'@types/node': '~22.0.0',
-			'@types/pg': '~8.23.1',
-			tsx: '~4.20.0',
-			typescript: '~5.8.2',
+			'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+			'@types/pg': DEPENDENCY_VERSIONS['@types/pg'],
+			tsx: TOOLCHAIN_VERSIONS['tsx'],
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
 		},
 	};
 

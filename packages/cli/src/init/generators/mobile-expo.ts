@@ -1,4 +1,8 @@
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import {
+	DEPENDENCY_VERSIONS,
+	EXPO_VERSIONS,
+	TOOLCHAIN_VERSIONS,
+} from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -42,32 +46,34 @@ export function generateExpoAppFiles(
 			'@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'],
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
-			'@react-navigation/native': '^7.1.0',
+			'@react-navigation/native': EXPO_VERSIONS['@react-navigation/native'],
 			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
 			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
-			expo: '~55.0.0',
-			'expo-constants': '~55.0.0',
-			'expo-dev-client': '~55.0.0',
-			'expo-linking': '~55.0.0',
-			'expo-router': '~55.0.0',
-			'expo-secure-store': '~14.2.0',
-			'expo-splash-screen': '~55.0.0',
-			'expo-status-bar': '~55.0.0',
-			nativewind: '~4.2.0',
-			react: '19.2.0',
-			'react-dom': '19.2.0',
-			'react-native': '0.83.6',
-			'react-native-gesture-handler': '~2.30.0',
-			'react-native-reanimated': '~4.2.0',
-			'react-native-safe-area-context': '~5.6.0',
-			'react-native-screens': '~4.23.0',
-			'react-native-web': '~0.21.0',
-			tailwindcss: '~3.4.0',
+			expo: EXPO_VERSIONS['expo'],
+			'expo-constants': EXPO_VERSIONS['expo-constants'],
+			'expo-dev-client': EXPO_VERSIONS['expo-dev-client'],
+			'expo-linking': EXPO_VERSIONS['expo-linking'],
+			'expo-router': EXPO_VERSIONS['expo-router'],
+			'expo-secure-store': EXPO_VERSIONS['expo-secure-store'],
+			'expo-splash-screen': EXPO_VERSIONS['expo-splash-screen'],
+			'expo-status-bar': EXPO_VERSIONS['expo-status-bar'],
+			nativewind: EXPO_VERSIONS['nativewind'],
+			react: EXPO_VERSIONS['react'],
+			'react-dom': EXPO_VERSIONS['react-dom'],
+			'react-native': EXPO_VERSIONS['react-native'],
+			'react-native-gesture-handler':
+				EXPO_VERSIONS['react-native-gesture-handler'],
+			'react-native-reanimated': EXPO_VERSIONS['react-native-reanimated'],
+			'react-native-safe-area-context':
+				EXPO_VERSIONS['react-native-safe-area-context'],
+			'react-native-screens': EXPO_VERSIONS['react-native-screens'],
+			'react-native-web': EXPO_VERSIONS['react-native-web'],
+			tailwindcss: EXPO_VERSIONS['tailwindcss'],
 		},
 		devDependencies: {
-			'@babel/core': '^7.25.0',
-			'@types/react': '~19.0.0',
-			typescript: '~5.8.2',
+			'@babel/core': EXPO_VERSIONS['@babel/core'],
+			'@types/react': EXPO_VERSIONS['@types/react'],
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
 		},
 	};
 

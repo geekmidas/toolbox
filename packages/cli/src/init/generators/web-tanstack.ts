@@ -1,4 +1,4 @@
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -38,25 +38,25 @@ export function generateTanStackWebFiles(
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
-			'@tanstack/react-router': '^1.87.0',
-			'@tanstack/react-start': '^1.87.0',
+			'@tanstack/react-router': DEPENDENCY_VERSIONS['@tanstack/react-router'],
+			'@tanstack/react-start': DEPENDENCY_VERSIONS['@tanstack/react-start'],
 			'better-auth': DEPENDENCY_VERSIONS['better-auth'],
-			react: '~19.2.0',
-			'react-dom': '~19.2.0',
+			react: DEPENDENCY_VERSIONS['react'],
+			'react-dom': DEPENDENCY_VERSIONS['react-dom'],
 		},
 		devDependencies: {
 			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-			'@tailwindcss/vite': '^4.0.0',
-			'@tanstack/router-plugin': '^1.87.0',
-			'@types/node': '~22.0.0',
-			'@types/react': '~19.0.0',
-			'@types/react-dom': '~19.0.0',
-			'@vitejs/plugin-react': '^4.3.4',
-			tailwindcss: '^4.0.0',
-			tsx: '~4.20.0',
-			typescript: '~5.8.2',
-			vite: '^7.0.0',
-			'vite-tsconfig-paths': '~5.1.0',
+			'@tailwindcss/vite': DEPENDENCY_VERSIONS['@tailwindcss/vite'],
+			'@tanstack/router-plugin': DEPENDENCY_VERSIONS['@tanstack/router-plugin'],
+			'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+			'@types/react': DEPENDENCY_VERSIONS['@types/react'],
+			'@types/react-dom': DEPENDENCY_VERSIONS['@types/react-dom'],
+			'@vitejs/plugin-react': TOOLCHAIN_VERSIONS['@vitejs/plugin-react'],
+			tailwindcss: DEPENDENCY_VERSIONS['tailwindcss'],
+			tsx: TOOLCHAIN_VERSIONS['tsx'],
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
+			vite: TOOLCHAIN_VERSIONS['vite'],
+			'vite-tsconfig-paths': DEPENDENCY_VERSIONS['vite-tsconfig-paths'],
 		},
 	};
 

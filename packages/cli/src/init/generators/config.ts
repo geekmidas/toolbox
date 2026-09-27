@@ -1,4 +1,5 @@
 import { CONSTRUCTS_GLOB, routesGlob } from '../constructs.js';
+import { BIOME_SCHEMA } from '../dependencies.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -182,7 +183,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 
 	// Build biome.json
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/2.3.0/schema.json',
+		$schema: BIOME_SCHEMA,
 		vcs: {
 			enabled: true,
 			clientKind: 'git',

@@ -1,3 +1,4 @@
+import { TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 
 /**
@@ -27,7 +28,7 @@ export function generateModelsPackage(
 		},
 		dependencies: {},
 		devDependencies: {
-			typescript: '~5.8.2',
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
 		},
 	};
 

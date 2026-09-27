@@ -6,7 +6,7 @@ import {
 	storageFor,
 	usersMigration,
 } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
@@ -30,21 +30,21 @@ export const apiTemplate: TemplateConfig = {
 		'@geekmidas/services': GEEKMIDAS_VERSIONS['@geekmidas/services'],
 		'@geekmidas/errors': GEEKMIDAS_VERSIONS['@geekmidas/errors'],
 		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
-		'@hono/node-server': '~1.14.1',
+		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
 		pino: DEPENDENCY_VERSIONS.pino,
 		zod: DEPENDENCY_VERSIONS.zod,
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~2.3.0',
+		'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-		'@types/node': '~22.0.0',
-		esbuild: '~0.27.0',
-		tsx: '~4.20.0',
-		turbo: '~2.3.0',
-		typescript: '~5.8.2',
-		vitest: '~4.0.0',
+		'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+		esbuild: TOOLCHAIN_VERSIONS['esbuild'],
+		tsx: TOOLCHAIN_VERSIONS['tsx'],
+		turbo: DEPENDENCY_VERSIONS['turbo'],
+		typescript: TOOLCHAIN_VERSIONS['typescript'],
+		vitest: TOOLCHAIN_VERSIONS['vitest'],
 	},
 
 	scripts: {

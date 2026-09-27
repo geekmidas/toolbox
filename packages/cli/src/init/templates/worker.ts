@@ -1,5 +1,5 @@
 import { databaseFiles } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
@@ -39,13 +39,13 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~2.3.0',
+		'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-		'@types/node': '~22.0.0',
-		tsx: '~4.20.0',
-		turbo: '~2.3.0',
-		typescript: '~5.8.2',
-		vitest: '~4.0.0',
+		'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+		tsx: TOOLCHAIN_VERSIONS['tsx'],
+		turbo: DEPENDENCY_VERSIONS['turbo'],
+		typescript: TOOLCHAIN_VERSIONS['typescript'],
+		vitest: TOOLCHAIN_VERSIONS['vitest'],
 	},
 
 	scripts: {
