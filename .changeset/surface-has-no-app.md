@@ -6,24 +6,25 @@
 
 A surface has no `app`, and `gkm init --template fullstack` builds
 
-`RestApi` and `BetterAuth` no longer take an `app` block. Everything it held
-follows from the id: `Api` is `apps/api`, its handlers are the ones in
-`apps/api/{endpoints,functions,crons,queues,topics,subscribers}/`, and ports are
-assigned in a stable order. The manifest's `rest-api` declaration loses `app`
-too; the one thing it carried that the id does not — whether the surface
-streams into a Telescope — is `telescope: true` on the declaration itself.
+`RestApi` and `BetterAuth` no longer take an `app` block, and the manifest's
+`rest-api` declaration loses it too. The one thing the block carried that the id
+does not — whether the surface streams into a Telescope — is `telescope: true`
+on the declaration itself.
 
-That convention had been removed along with the per-kind globs, and nothing
-replaced it, so a scaffolded workspace built its API with no endpoints at all.
-It is back, read only by the app's own build: discovery runs from wherever a
-command started, and a handler imports through its own app's path aliases.
+Constructs, and the endpoints built from them, are loaded from the workspace's
+`constructs` glob. An endpoint belongs to the surface it was built from, not to
+the directory its file is in: each app's build now keeps only the endpoints
+built from the surface that app serves. Before this, every build in a workspace
+guessed the same surface and kept every endpoint the glob found — so an auth
+server's build would have served the API's routes.
 
-The fullstack scaffold did not build. What it gets now, verified by
-scaffolding, installing, and running `build`, `typecheck`, `test:once` and
-`lint` to completion:
+Every module's path aliases resolve through the tsconfig beside it. tsx applies
+the tsconfig of the directory a command ran from to the whole process, so a
+glob that reaches every app resolved `~/router.ts` in `apps/api` through
+`apps/web`'s `~` — silently, to the wrong file — when the command ran there.
 
-- **Handlers in `apps/api/endpoints/`**, where the build looks, and no routes
-  structure question — a workspace surface has one layout.
+The fullstack scaffold did not build. What it gets now:
+
 - **The root `constructs/` folder's dependencies at the root**, where it
   resolves them: `@geekmidas/constructs` and the peers each declared construct
   needs. The root tsconfig allows the `.ts` imports they use.
@@ -40,13 +41,11 @@ scaffolding, installing, and running `build`, `typecheck`, `test:once` and
 - **A Next.js site that typechecks**: no project `references` to packages that
   are not `composite`, which made its `tsc --noEmit` fail with TS6306.
 - **A Biome config Biome 2 accepts**: `assist` and `files.includes` rather than
-  the 1.x `organizeImports` and `files.ignore`, which made it refuse to run, and
-  Tailwind directives parsed. No unused import left in the router it lints.
+  the 1.x `organizeImports` and `files.ignore`, and Tailwind directives parsed.
 - **Tests that run**: the root Vitest config uses projects, so the API's own
   `globalSetup` runs; the API ships the `users` migration its endpoints and
   that setup expect; the example test asks for testkit's `trx` fixture, and
-  hands testkit a connection function rather than an instance it mistook for
-  a construct.
+  hands testkit a connection function.
 - **No `NODE_ENV` among the development secrets.** `gkm exec` injects secrets
   over the environment, so every `gkm exec -- next build` was a development
   build, which Next refuses to prerender.
