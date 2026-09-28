@@ -120,7 +120,9 @@ describe('gkm docker', () => {
 		it("layers the project's own compose file in the run instructions", async () => {
 			writeFileSync(join(root, 'docker-compose.yml'), 'services: {}\n');
 
-			await workspaceDockerCommand(workspace({ api: app('backend', 'apps/api') }));
+			await workspaceDockerCommand(
+				workspace({ api: app('backend', 'apps/api') }),
+			);
 
 			expect(printed()).toContain(
 				'-f docker-compose.constructs.yml -f docker-compose.yml',

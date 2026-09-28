@@ -65,10 +65,8 @@ describe('resolveProviders', () => {
 
 		it('builds Lambda when either functions or crons are on', () => {
 			expect(
-				resolve(
-					{ aws: { lambda: { crons: true } } },
-					{ provider: 'aws' },
-				).providers,
+				resolve({ aws: { lambda: { crons: true } } }, { provider: 'aws' })
+					.providers,
 			).toEqual(['aws-apigatewayv2', 'aws-lambda']);
 		});
 

@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import prompts from 'prompts';
@@ -78,9 +84,7 @@ describe('initCommand, answered interactively', () => {
 		const pkg = JSON.parse(read('shop/package.json'));
 		expect(pkg.dependencies).not.toHaveProperty('@geekmidas/telescope');
 		expect(existsSync(join(dir, 'shop/src/constructs/cache.ts'))).toBe(true);
-		expect(existsSync(join(dir, 'shop/src/constructs/storage.ts'))).toBe(
-			false,
-		);
+		expect(existsSync(join(dir, 'shop/src/constructs/storage.ts'))).toBe(false);
 		// Domain-based routes live beside their domain.
 		expect(existsSync(join(dir, 'shop/src/users/routes'))).toBe(true);
 		expect(existsSync(join(dir, 'shop/.gkm/secrets/dev.json'))).toBe(true);

@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStageSecrets } from '../generator';
 import {
@@ -91,6 +92,36 @@ describe('secrets commands', () => {
 			// The fresh stage has none of the seeded custom secrets.
 			expect((await readStageSecrets('dev'))?.custom).toEqual({});
 		});
+
+		it('generates per-app secrets in a workspace with several apps', async () => {
+			writeFileSync(
+				join(dir, 'gkm.config.ts'),
+				`import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'shop',
+  stages: { local: 'dev', deployed: ['prod'] },
+  apps: {
+    api: { type: 'backend', path: 'apps/api', port: 3000 },
+    web: {
+      type: 'web',
+      path: 'apps/web',
+      port: 3001,
+      framework: 'nextjs',
+      dependencies: ['api'],
+    },
+  },
+});
+`,
+			);
+
+			await secretsInitCommand({ stage: 'dev' });
+
+			const custom = (await readStageSecrets('dev'))?.custom ?? {};
+			expect(Object.keys(custom).length).toBeGreaterThan(0);
+			expect(printed()).toContain('generating per-app secrets');
+			expect(printed()).toContain('Custom secrets:');
+		});
 	});
 
 	describe('secrets:set', () => {
@@ -105,6 +136,46 @@ describe('secrets commands', () => {
 				'https://sentry',
 			);
 			expect(printed()).toContain('Secret "SENTRY_DSN" set for stage "dev"');
+		});
+
+		describe('from a pipe', () => {
+			const stdin = process.stdin;
+			const pipe = (content: string) =>
+				Object.defineProperty(process, 'stdin', {
+					value: Object.assign(Readable.from([Buffer.from(content)]), {
+						isTTY: false,
+					}),
+					configurable: true,
+				});
+
+			afterEach(() => {
+				Object.defineProperty(process, 'stdin', {
+					value: stdin,
+					configurable: true,
+				});
+			});
+
+			it('reads the value piped in, trimmed', async () => {
+				await seed();
+				pipe('whsec_123\n');
+
+				await secretsSetCommand('WEBHOOK_SECRET', undefined, {
+					stage: 'dev',
+				});
+
+				expect((await readStageSecrets('dev'))?.custom.WEBHOOK_SECRET).toBe(
+					'whsec_123',
+				);
+			});
+
+			it('refuses an empty pipe', async () => {
+				pipe('');
+
+				await expect(
+					secretsSetCommand('WEBHOOK_SECRET', undefined, { stage: 'dev' }),
+				).rejects.toThrow(Exited);
+				expect(errors()).toContain('No value received from stdin');
+			});
 		});
 
 		it('refuses a stage that has no secrets', async () => {
@@ -163,6 +234,19 @@ describe('secrets commands', () => {
 			expect(out).not.toContain('--reveal');
 		});
 
+		it('shows a stage that holds nothing without inventing entries', async () => {
+			// What `secrets:init` writes now: no containers, so no credentials
+			// and no URLs — reconcile provides those.
+			await writeStageSecrets(createStageSecrets('bare', []));
+
+			await secretsShowCommand({ stage: 'bare' });
+
+			const out = printed();
+			expect(out).toContain('Secrets for stage "bare"');
+			expect(out).not.toContain('DATABASE_URL');
+			expect(out).not.toContain('Custom Secrets:');
+		});
+
 		it('refuses a stage that has no secrets', async () => {
 			await expect(secretsShowCommand({ stage: 'nowhere' })).rejects.toThrow(
 				Exited,
@@ -210,9 +294,9 @@ describe('secrets commands', () => {
 		});
 
 		it('refuses a stage that has no secrets', async () => {
-			await expect(
-				secretsRotateCommand({ stage: 'nowhere' }),
-			).rejects.toThrow(Exited);
+			await expect(secretsRotateCommand({ stage: 'nowhere' })).rejects.toThrow(
+				Exited,
+			);
 		});
 	});
 
