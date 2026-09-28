@@ -113,6 +113,46 @@
 				"types": "./dist/requestContext.d.cts",
 				"default": "./dist/requestContext.cjs"
 			}
+		},
+		"./browser": {
+			"import": {
+				"types": "./dist/browser.d.mts",
+				"default": "./dist/browser.mjs"
+			},
+			"require": {
+				"types": "./dist/browser.d.cts",
+				"default": "./dist/browser.cjs"
+			}
+		},
+		"./context": {
+			"import": {
+				"types": "./dist/context.d.mts",
+				"default": "./dist/context.mjs"
+			},
+			"require": {
+				"types": "./dist/context.d.cts",
+				"default": "./dist/context.cjs"
+			}
+		},
+		"./mailbox": {
+			"import": {
+				"types": "./dist/mailbox.d.mts",
+				"default": "./dist/mailbox.mjs"
+			},
+			"require": {
+				"types": "./dist/mailbox.d.cts",
+				"default": "./dist/mailbox.cjs"
+			}
+		},
+		"./transactions": {
+			"import": {
+				"types": "./dist/transactions.d.mts",
+				"default": "./dist/transactions.mjs"
+			},
+			"require": {
+				"types": "./dist/transactions.d.cts",
+				"default": "./dist/transactions.cjs"
+			}
 		}
 	},
 	"files": [
@@ -122,7 +162,8 @@
 		"@faker-js/faker": "~10.6.0",
 		"@geekmidas/envkit": "workspace:^",
 		"@geekmidas/logger": "workspace:^",
-		"@geekmidas/services": "workspace:^"
+		"@geekmidas/services": "workspace:^",
+		"tough-cookie": "~6.0.2"
 	},
 	"devDependencies": {
 		"@better-auth/test-utils": "~1.7.6",

@@ -54,6 +54,9 @@ const STORAGE_CREDENTIALS: Readonly<Record<string, string>> = {
 /** The token the local cache proxy accepts. Matches the compose definition. */
 const LOCAL_TOKEN = 'geekmidas';
 
+/** The port Mailpit's inbox — its web UI and HTTP API — is published under. */
+const MAILPIT_INBOX_PORT = 'mailpit-web';
+
 /** The schema pg-boss keeps its tables in, inside the declared database. */
 const PGBOSS_SCHEMA = 'pgboss';
 
@@ -152,6 +155,17 @@ export function envFor(
 		if (resource.kind === 'email' && url) {
 			env[provideKey(resource.id, 'from')] =
 				options.mailFrom ?? `noreply@${LOCAL_HOST}`;
+
+			// And, locally, a third: where the mail it sent can be read back.
+			// Mailpit answers SMTP on one port and its inbox on another; a feature
+			// test signs in by opening the email that was actually sent, and this
+			// is how it finds it. Deployed mail has no inbox, so nothing deployed
+			// publishes this key.
+			const inbox = options.ports[MAILPIT_INBOX_PORT];
+			if (inbox !== undefined) {
+				env[provideKey(resource.id, 'inboxUrl')] =
+					`http://${LOCAL_HOST}:${inbox}`;
+			}
 		}
 	}
 

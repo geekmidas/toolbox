@@ -451,6 +451,9 @@
 		"devDependencies": "^4.3.3",
 		"peerDependencies": ">=4.0.0"
 	},
+	"tough-cookie": {
+		"dependencies": "~6.0.2"
+	},
 	"tsdown": {
 		"devDependencies": "~0.23.0"
 	},

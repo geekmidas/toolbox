@@ -253,6 +253,8 @@ describe('reconcile', () => {
 
 		expect(Object.keys(env).sort()).toEqual([
 			'MAIL_FROM',
+			// Local only: where the mail it sent is read back.
+			'MAIL_INBOX_URL',
 			'MAIL_URL',
 			// Not in `provides`: the owner URL is what a migrator connects with,
 			// so no edge in any manifest can name it.

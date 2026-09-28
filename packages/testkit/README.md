@@ -54,6 +54,12 @@ import { itWithDir } from '@geekmidas/testkit/os';
 import { createMockContext, createMockV1Event, createMockV2Event } from '@geekmidas/testkit/aws';
 import { createMockLogger } from '@geekmidas/testkit/logger';
 import { memoryAdapter } from '@geekmidas/testkit/better-auth';
+
+// Feature tests: the primitives `@geekmidas/constructs/testing` builds on
+import { Browser } from '@geekmidas/testkit/browser';
+import { createMailbox } from '@geekmidas/testkit/mailbox';
+import { runInTestContext, installContextFetch } from '@geekmidas/testkit/context';
+import { TransactionRegistry } from '@geekmidas/testkit/transactions';
 ```
 
 ## Quick Start
@@ -319,6 +325,74 @@ describe('Authentication', () => {
     expect(data.user).toHaveLength(2);
   });
 });
+```
+
+## Feature Test Primitives
+
+The pieces a feature test is built from — a test that drives an app the way it
+runs deployed: a browser signs in, calls the API, the API calls the auth server,
+each over a URL, every database in a transaction that is rolled back. The wiring
+that knows about constructs lives in `@geekmidas/constructs/testing`; these know
+nothing about them.
+
+### `Browser`
+
+A `fetch` with a cookie jar that follows the browser's rules (RFC 6265): a
+`Set-Cookie` lands in the jar, and every later request to a URL the cookie
+belongs to carries it. Redirects are followed hop by hop, keeping each hop's
+cookies. Give it to an app's real clients:
+
+```typescript
+import { Browser as TestBrowser } from '@geekmidas/testkit/browser';
+
+export class Browser extends TestBrowser {
+  readonly api = createApi({ baseURL: process.env.API_URL, fetch: this.fetch });
+}
+
+const browser = new Browser();
+await browser.visit(magicLink);          // 302 + Set-Cookie → the jar
+await browser.api.get('/profile');       // sent with the session cookie
+const restore = browser.install();       // the global fetch, for module-level clients
+```
+
+On the server side of a test — a handler serving a request — `browser.fetch` is
+the plain `fetch`: a server forwards what it was handed and never reaches into a
+browser's jar.
+
+### `createMailbox`
+
+Reads the mail an app actually sent, from Mailpit's HTTP API. One address per
+test keeps tests apart, since Mailpit has one inbox and no transactions:
+
+```typescript
+const mailbox = createMailbox({ inbox: process.env.MAILER_INBOX_URL! });
+
+const email = await mailbox('ada@shop.test').last(); // waits for it to arrive
+await browser.visit(email.link!);
+await mailbox('ada@shop.test').clear();
+```
+
+### Test context
+
+`runInTestContext(id, fn)` carries a test's id through every await;
+`installContextFetch()` stamps it onto every outgoing request as
+`x-test-context-id`, so whatever serves a URL in-process finds the test the
+request belongs to — including a request the code under test made while
+handling another one.
+
+### `TransactionRegistry`
+
+One transaction per database per test — an app's database and a schema tenant
+each on their own connection, as deployed — opened the first time the test
+touches it and rolled back by `rollbackAll()`. Code under test may use
+transactions freely: a `BEGIN` becomes a savepoint, so nothing it does can end
+the test's transaction.
+
+```typescript
+const registry = new TransactionRegistry();
+const db = await registry.get('Database', process.env.DATABASE_URL!);
+// …
+await registry.rollbackAll();
 ```
 
 ## Database Migration
