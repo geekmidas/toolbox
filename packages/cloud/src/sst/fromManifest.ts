@@ -39,11 +39,7 @@ import {
 	withCacheTable,
 } from './aws/Cache';
 import { Credential } from './aws/Credential';
-import {
-	Database,
-	DatabaseNeedsVpc,
-	type DatabaseProps,
-} from './aws/Database';
+import { Database, DatabaseNeedsVpc, type DatabaseProps } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { Email, EmailNeedsSender } from './aws/Email';
