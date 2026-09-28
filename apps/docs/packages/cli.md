@@ -328,21 +328,6 @@ gkm openapi --source "./src/endpoints/**/*.ts" --output api-docs.json
 | `--version` | API version |
 | `--description` | API description |
 
-### Generate React Query
-
-Generate React Query hooks from OpenAPI specification.
-
-```bash
-gkm generate:react-query --input api-docs.json --output ./src/api
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--input` | Path to OpenAPI spec file |
-| `--output` | Output directory for generated hooks |
-
 ### Dev Server
 
 Start a development server with hot reload.

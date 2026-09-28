@@ -87,7 +87,7 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 
 		const openApiSchema = await response.json();
 		expect(openApiSchema).toMatchObject({
-			openapi: '3.0.0',
+			openapi: '3.1.0',
 			info: {
 				title: 'API',
 				version: '1.0.0',

@@ -39,8 +39,8 @@
 		"kysely": "~0.29.4",
 		"pg": "~8.23.0",
 		"pino": "^9.6.0",
-		"react": "^19.1.0",
-		"react-dom": "^19.1.0",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0",
 		"zod": "~4.1.13"
 	},
 	"devDependencies": {
@@ -50,7 +50,7 @@
 		"@pulumi/random": "4.16.6",
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
-		"@types/react": "~19.1.8",
+		"@types/react": "~19.3.0",
 		"sst": "~4.17.1",
 		"tsx": "~4.23.15"
 	}

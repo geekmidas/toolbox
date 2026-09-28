@@ -554,9 +554,8 @@ If you see "Circular dependency detected":
 If frontend types are out of sync:
 
 ```bash
-# Force regenerate
-gkm openapi --app api
-gkm generate:react-query --force
+# Regenerate the API's typed client
+gkm build
 ```
 
 ### Build Cache Issues

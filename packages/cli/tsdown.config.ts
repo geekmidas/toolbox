@@ -9,7 +9,6 @@ export default defineConfig({
 		'src/reconcile/public.ts',
 		'src/workspace/index.ts',
 		'src/openapi.ts',
-		'src/openapi-react-query.ts',
 		// Sniffer files need to be standalone for subprocess loading via --import
 		'src/deploy/sniffer-loader.ts',
 		'src/deploy/sniffer-worker.ts',

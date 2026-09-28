@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EventConnectionFactory, EventPublisherType } from '../EventConnection';
+import { UnsupportedEventTransport } from '../types';
 
 describe('EventConnectionFactory', () => {
 	describe('fromConnectionString', () => {
@@ -12,7 +13,14 @@ describe('EventConnectionFactory', () => {
 		it('should throw for unsupported protocol', async () => {
 			await expect(
 				EventConnectionFactory.fromConnectionString('unknown://localhost'),
-			).rejects.toThrow('Unsupported connection type: unknown');
+			).rejects.toMatchObject({
+				name: 'UnsupportedEventTransport',
+				transport: 'unknown',
+				role: 'connection',
+			});
+			await expect(
+				EventConnectionFactory.fromConnectionString('unknown://localhost'),
+			).rejects.toThrow(UnsupportedEventTransport);
 		});
 
 		it('should throw for invalid URL', async () => {

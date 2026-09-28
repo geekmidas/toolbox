@@ -17,7 +17,6 @@ import { devCommand, execCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
 import { openapiCommand } from './openapi';
-import { generateReactQueryCommand } from './openapi-react-query';
 import {
 	secretsImportCommand,
 	secretsInitCommand,
@@ -342,31 +341,6 @@ program
 			process.exit(1);
 		}
 	});
-
-program
-	.command('generate:react-query')
-	.description('Generate React Query hooks from OpenAPI specification')
-	.option('--input <path>', 'Input OpenAPI spec file path', 'openapi.json')
-	.option(
-		'--output <path>',
-		'Output file path for generated hooks',
-		'src/api/hooks.ts',
-	)
-	.option('--name <name>', 'API name prefix for generated code', 'API')
-	.action(
-		async (options: { input?: string; output?: string; name?: string }) => {
-			try {
-				const globalOptions = program.opts();
-				if (globalOptions.cwd) {
-					process.chdir(globalOptions.cwd);
-				}
-				await generateReactQueryCommand(options);
-			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
-			}
-		},
-	);
 
 program
 	.command('docker')

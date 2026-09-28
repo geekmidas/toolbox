@@ -33,7 +33,10 @@ import {
 } from '@geekmidas/manifest';
 import type { Telescope } from '@geekmidas/telescope';
 import { type Declarable, edgeTo } from './construct-interface';
-import type { BuiltInSecuritySchemeId } from './endpoints/Authorizer';
+import {
+	type BuiltInSecuritySchemeId,
+	getSecurityScheme,
+} from './endpoints/Authorizer';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 
@@ -205,7 +208,13 @@ export class RestApi<
 			defaultLogger: this.logger,
 			...(config.authorizers
 				? {
-						availableAuthorizers: config.authorizers.map((name) => ({ name })),
+						// With the scheme a built-in name stands for, as the factory's own
+						// `.authorizers()` resolves it. Bare names reached the OpenAPI
+						// document with no scheme, so a guarded endpoint read as public.
+						availableAuthorizers: config.authorizers.map((name) => {
+							const securityScheme = getSecurityScheme(name);
+							return securityScheme ? { name, securityScheme } : { name };
+						}),
 					}
 				: {}),
 			// `'none'` reaches the factory as no default at all, which is what

@@ -1,3 +1,11 @@
+# One project name for every checkout. Compose names a project after its
+# directory by default, so each worktree was a separate project asking for the
+# same host ports, and the second to start failed with "port is already
+# allocated". Named, every checkout attaches to the same running containers and
+# `docker compose up -d --wait` is a no-op when they are up. The *_HOST_PORT
+# overrides are still there for a clash with some *other* project.
+name: geekmidas-toolbox-test
+
 services:
   redis:
     image: redis

@@ -25,6 +25,31 @@ export enum EventPublisherType {
 	PgBoss = 'pgboss',
 }
 
+/** The transports a publisher, subscriber or connection can be built for. */
+const SUPPORTED: readonly string[] = [
+	EventPublisherType.Basic,
+	EventPublisherType.SQS,
+	EventPublisherType.SNS,
+	EventPublisherType.RabbitMQ,
+	EventPublisherType.PgBoss,
+];
+
+/**
+ * A connection string or connection whose transport nothing here implements —
+ * a typo'd scheme, or one of the listed-but-unbuilt ones (EventBridge, Kafka).
+ */
+export class UnsupportedEventTransport extends Error {
+	constructor(
+		readonly transport: string,
+		readonly role: 'publisher' | 'subscriber' | 'connection',
+	) {
+		super(
+			`No event ${role} for "${transport}". Use one of: ${SUPPORTED.join(', ')} — e.g. pgboss://… or sns://….`,
+		);
+		this.name = 'UnsupportedEventTransport';
+	}
+}
+
 /**
  * Base interface for event connections
  * Connections manage the underlying transport (RabbitMQ channel, SQS client, etc.)
