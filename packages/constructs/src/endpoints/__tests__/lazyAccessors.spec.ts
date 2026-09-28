@@ -1,12 +1,69 @@
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import {
 	createApiGatewayCookies,
 	createApiGatewayHeaders,
 	createCookieHeaderAccessor,
+	createHonoCookies,
+	createHonoHeaders,
 	createNoopCookies,
 	createNoopHeaders,
 	createObjectHeaders,
 } from '../lazyAccessors';
+
+describe('Hono accessors', () => {
+	/** Runs `read` against the context of one real request. */
+	async function within<T>(
+		headers: Record<string, string>,
+		read: (c: Parameters<typeof createHonoHeaders>[0]) => T,
+	): Promise<T> {
+		let result: T | undefined;
+		const app = new Hono().get('/', (c) => {
+			result = read(c);
+			return c.body(null);
+		});
+		await app.request('/', { headers });
+		return result as T;
+	}
+
+	it('reads one header natively, and all of them once', async () => {
+		const seen = await within(
+			{ 'X-Tenant': 'acme', Accept: 'text/plain' },
+			(c) => {
+				const header = createHonoHeaders(c);
+				const all = header();
+				return { one: header('x-tenant'), all, again: header() === all };
+			},
+		);
+
+		expect(seen.one).toBe('acme');
+		expect(seen.all).toMatchObject({
+			'x-tenant': 'acme',
+			accept: 'text/plain',
+		});
+		expect(seen.again).toBe(true);
+	});
+
+	it('reads one cookie natively, and parses them all once', async () => {
+		const seen = await within(
+			{ cookie: 'session=abc; theme=dark; =orphan; flag' },
+			(c) => {
+				const cookie = createHonoCookies(c);
+				const all = cookie();
+				return { one: cookie('theme'), all, again: cookie() === all };
+			},
+		);
+
+		expect(seen.one).toBe('dark');
+		// A pair without a name, or without a value, is skipped.
+		expect(seen.all).toEqual({ session: 'abc', theme: 'dark' });
+		expect(seen.again).toBe(true);
+	});
+
+	it('has no cookies when the request sent none', async () => {
+		expect(await within({}, (c) => createHonoCookies(c)())).toEqual({});
+	});
+});
 
 describe('lazyAccessors', () => {
 	describe('createApiGatewayHeaders', () => {
