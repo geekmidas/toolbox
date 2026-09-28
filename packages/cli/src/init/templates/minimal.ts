@@ -148,7 +148,7 @@ export const healthEndpoint = api
 		];
 
 		// The database — a construct, not a hand-written service.
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push(...databaseFiles());
 		}
 
@@ -168,7 +168,7 @@ export const telescope = new Telescope({
 		}
 
 		// Add Studio config if enabled (requires database)
-		if (options.studio && options.database) {
+		if (options.studio && options.constructs.database) {
 			files.push({
 				path: 'src/config/studio.ts',
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';

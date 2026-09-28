@@ -174,15 +174,11 @@ new Cache('Sessions');                             // → SESSIONS_URL
 new Email('Mail');                                 // → MAIL_URL, MAIL_FROM
 ```
 
-Backends that no construct implies are still config, and still generate their
-own URLs:
-
-```typescript
-services: {
-  cache: 'elasticache', // → a Redis; 'upstash' → the HTTP proxy; 'db' → a table
-  events: 'pgboss',     // → EVENT_PUBLISHER_CONNECTION_STRING, EVENT_SUBSCRIBER_CONNECTION_STRING
-}
-```
+Which backend a cache or a broker resolves to is the deploy target's answer,
+not config: on a server the cache is a table in the database and events use
+pg-boss; on AWS the cache is Upstash and events use SNS and SQS. Each still
+generates its own URLs — `EVENT_PUBLISHER_CONNECTION_STRING` and
+`EVENT_SUBSCRIBER_CONNECTION_STRING` for a declared topic or queue.
 
 **2. Secrets Store**
 

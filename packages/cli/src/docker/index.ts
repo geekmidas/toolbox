@@ -4,13 +4,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
 import { getPublicUrlArgNames } from '../deploy/domain.js';
-import { derivedContainers } from '../reconcile/workspace.js';
+import { COMPOSE_PATH } from '../reconcile/index.js';
+import { reconcileWorkspace } from '../reconcile/workspace.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
-import {
-	generateDockerCompose,
-	generateMinimalDockerCompose,
-	generateWorkspaceCompose,
-} from './compose';
 import {
 	detectPackageManager,
 	findLockfilePath,
@@ -77,7 +73,7 @@ export async function dockerCommand(
 	// Route to workspace docker mode for multi-app workspaces
 	if (loadedConfig.type === 'workspace') {
 		logger.log('📦 Detected workspace configuration');
-		return workspaceDockerCommand(loadedConfig.workspace, options);
+		return workspaceDockerCommand(loadedConfig.workspace);
 	}
 
 	// Single-app mode - use existing logic
@@ -175,27 +171,7 @@ export async function dockerCommand(
 		`Generated: .gkm/docker/Dockerfile (${dockerMode}, ${packageManager})`,
 	);
 
-	// Generate docker-compose.yml
-	const composeOptions = {
-		imageName: dockerConfig.imageName,
-		registry: options.registry ?? dockerConfig.registry,
-		port: dockerConfig.port,
-		healthCheckPath,
-		services: dockerConfig.compose?.services ?? {},
-	};
-
-	// Check if there are any services configured
-	const hasServices = Array.isArray(composeOptions.services)
-		? composeOptions.services.length > 0
-		: Object.keys(composeOptions.services).length > 0;
-
-	const dockerCompose = hasServices
-		? generateDockerCompose(composeOptions)
-		: generateMinimalDockerCompose(composeOptions);
-
-	const composePath = join(dockerDir, 'docker-compose.yml');
-	await writeFile(composePath, dockerCompose);
-	logger.log('Generated: .gkm/docker/docker-compose.yml');
+	const composePath = await writeConstructsCompose(loadedConfig.workspace);
 
 	// Generate .dockerignore in project root (Docker looks for it there)
 	const dockerignore = generateDockerignore();
@@ -383,7 +359,6 @@ function getAppPackageName(appPath: string): string | undefined {
  */
 export async function workspaceDockerCommand(
 	workspace: NormalizedWorkspace,
-	options: DockerOptions,
 ): Promise<WorkspaceDockerResult> {
 	const results: AppDockerResult[] = [];
 	const apps = Object.entries(workspace.apps);
@@ -493,20 +468,11 @@ export async function workspaceDockerCommand(
 	await writeFile(dockerignorePath, dockerignore);
 	logger.log(`\n   Generated: .dockerignore (workspace root)`);
 
-	// Generate docker-compose.yml for workspace
-	const dockerCompose = generateWorkspaceCompose(workspace, {
-		registry: options.registry,
-		// Which infrastructure this file describes is the manifest's answer, the
-		// same one reconcile derives — not a boolean per service in config.
-		containers: await derivedContainers(workspace, workspace.stages.local),
-	});
-	const composePath = join(dockerDir, 'docker-compose.yml');
-	await writeFile(composePath, dockerCompose);
-	logger.log(`   Generated: .gkm/docker/docker-compose.yml`);
+	const composePath = await writeConstructsCompose(workspace);
 
 	// Summary
 	logger.log(
-		`\n✅ Generated ${results.length} Dockerfile(s) + docker-compose.yml`,
+		`\n✅ Generated ${results.length} Dockerfile(s) + ${COMPOSE_PATH}`,
 	);
 	logger.log('\n📋 Build commands:');
 	for (const result of results) {
@@ -516,12 +482,42 @@ export async function workspaceDockerCommand(
 			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
 		);
 	}
-	logger.log('\n📋 Run all services:');
-	logger.log('   docker compose -f .gkm/docker/docker-compose.yml up --build');
+	printRunInstructions(workspace);
 
 	return {
 		apps: results,
 		dockerCompose: composePath,
 		dockerignore: dockerignorePath,
 	};
+}
+
+/**
+ * Write `docker-compose.constructs.yml` — the same file `gkm dev` writes, with
+ * the apps beside the containers their constructs derive.
+ *
+ * Through reconcile rather than a second generator, so what `gkm docker`
+ * describes and what `gkm dev` runs cannot disagree. Nothing is started.
+ */
+async function writeConstructsCompose(
+	workspace: NormalizedWorkspace,
+): Promise<string> {
+	await reconcileWorkspace(workspace, {
+		stage: workspace.stages.local,
+		start: false,
+	});
+	logger.log(`   Generated: ${COMPOSE_PATH} (project root)`);
+	return join(workspace.root, COMPOSE_PATH);
+}
+
+function printRunInstructions(workspace: NormalizedWorkspace): void {
+	const project = existsSync(join(workspace.root, 'docker-compose.yml'))
+		? ' -f docker-compose.yml'
+		: '';
+	logger.log('\n📋 Run everything (the apps sit behind the "apps" profile):');
+	logger.log(
+		'   gkm setup   # starts the containers and creates what they hold',
+	);
+	logger.log(
+		`   docker compose -f ${COMPOSE_PATH}${project} --profile apps up --build`,
+	);
 }

@@ -320,7 +320,7 @@ schema, reached by this database's role. It is the stronger statement of the
 two — `new Cache('Sessions')` says the app caches and leaves *where* to the
 deployment, while `database.cache()` says it caches **here**, which is a fact
 about the application and so belongs in its code. Declaring it this way pins it:
-`services.cache: 'upstash'` moves a standalone cache and does not move this one.
+a deploy target that puts a standalone cache in Upstash does not move this one.
 
 The client is a `CacheClient` either way — a key/value store, not a query
 builder. Typing it as the parent would be a convenience that lies.
@@ -505,12 +505,11 @@ Nothing stops working. Four things are on notice, all warn-and-honour:
 | `.services([dbService])` with a hand-written `Service` | `.dependsOn([construct])` |
 | Per-kind globs (`routes`, `crons`, `subscribers`) | one `constructs` glob |
 | `q.queue(name)` | `new Queue(name)` |
-| Workspace `services: { db, cache, mail }` | the constructs that imply them |
+| Workspace `services: { … }` | the constructs that imply them; backends follow the deploy target |
 
-`services.cache`, `services.mail`, and `services.events` keep a narrower job —
-naming the *backend* (`'upstash' | 'elasticache' | 'db'`, `'ses' | 'resend' |
-'smtp'`, `'pgboss' | 'sns' | 'rabbitmq'`) rather than declaring that a resource
-exists.
+The `services` block is gone entirely. Whether a resource exists is its
+construct; which backend serves it follows the deploy target; an image pin is
+your own `docker-compose.yml`.
 
 `export const e` still works and gains a surface named `api`, which matches the
 current single-gateway behaviour.

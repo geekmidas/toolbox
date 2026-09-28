@@ -98,8 +98,8 @@ export interface ProvisionContext {
 	/**
 	 * Where a declared cache lives, and who delivers mail.
 	 *
-	 * Deployment choices rather than declarations, for the same reason
-	 * `services.events` is: the same application code caches into any of them and
+	 * Deployment choices rather than declarations, for the same reason the
+	 * event broker is: the same application code caches into any of them and
 	 * sends through any of them. They reach the provisioner here because it is
 	 * the only place that knows both the choice and the manifest.
 	 */

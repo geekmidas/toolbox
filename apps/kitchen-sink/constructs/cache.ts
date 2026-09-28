@@ -4,9 +4,10 @@ import { database } from './database.js';
 /**
  * The app's cache — a table in the database this app already declared.
  *
- * `database.cache('Sessions')` rather than `new Cache('Sessions')` plus
- * `services.cache: 'db'`, and the difference is which artefact carries the
- * fact. The config form says *this deployment happens to cache in a database*,
+ * `database.cache('Sessions')` rather than `new Cache('Sessions')` on a target
+ * whose default is a database table, and the difference is which artefact
+ * carries the fact. The target's default says *this deployment happens to cache
+ * in a database*,
  * which leaves every reader to work out which one: the URL composer, the table's
  * DDL, and the entry point that registers a driver all had to re-derive it, and
  * they did not agree.

@@ -6,11 +6,6 @@ import { createStageSecrets } from '../secrets/generator.js';
 import { getKeyPath } from '../secrets/keystore.js';
 import { writeStageSecrets } from '../secrets/storage.js';
 import {
-	generateDbPassword,
-	generateDbUrl,
-} from '../setup/fullstack-secrets.js';
-import type { ComposeServiceName, EventsBackend } from '../types.js';
-import {
 	deployedProblems,
 	InvalidStages,
 	stageProblems,
@@ -19,10 +14,6 @@ import type { StagesConfig } from '../workspace/types.js';
 import { generateAgentFiles } from './generators/agents.js';
 import { generateAuthAppFiles } from './generators/auth.js';
 import { generateConfigFiles } from './generators/config.js';
-import {
-	type DatabaseAppConfig,
-	generateDockerFiles,
-} from './generators/docker.js';
 import { generateEnvFiles } from './generators/env.js';
 import { generateGithubFiles } from './generators/github.js';
 import { generateExpoAppFiles } from './generators/mobile-expo.js';
@@ -38,9 +29,9 @@ import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
 import { generateTanStackWebFiles } from './generators/web-tanstack.js';
 import {
+	constructChoices,
 	type DeployTarget,
 	deployTargetChoices,
-	eventsBackendChoices,
 	type FullstackFrontendFramework,
 	frontendFrameworkChoices,
 	getTemplate,
@@ -49,8 +40,6 @@ import {
 	type PackageManager,
 	packageManagerChoices,
 	routesStructureChoices,
-	type ServicesSelection,
-	servicesChoices,
 	type TemplateName,
 	type TemplateOptions,
 	templateChoices,
@@ -174,17 +163,10 @@ export async function initCommand(
 			},
 			{
 				type: options.yes ? null : 'multiselect',
-				name: 'services',
-				message: 'Services (space to select, enter to confirm):',
-				choices: servicesChoices.map((c) => ({ ...c, selected: true })),
+				name: 'constructs',
+				message: 'Constructs to declare (space to select, enter to confirm):',
+				choices: constructChoices.map((c) => ({ ...c, selected: true })),
 				hint: '- Space to select. Return to submit',
-			},
-			{
-				type: options.yes ? null : 'select',
-				name: 'eventsBackend',
-				message: 'Event backend:',
-				choices: eventsBackendChoices,
-				initial: 0,
 			},
 			{
 				type: options.yes ? null : 'select',
@@ -322,28 +304,19 @@ export async function initCommand(
 	// For api template, monorepo is optional (via --monorepo flag)
 	const monorepo = isFullstack || options.monorepo || false;
 
-	// Parse services selection
-	const servicesArray: string[] = options.yes
-		? ['db', 'cache', 'mail', 'storage']
-		: answers.services || [];
-
-	// Determine events backend (default to pgboss for all templates with --yes)
-	const eventsBackend: EventsBackend | undefined = options.yes
-		? 'pgboss'
-		: answers.eventsBackend;
-
-	const services: ServicesSelection = {
-		db: servicesArray.includes('db'),
-		cache: servicesArray.includes('cache'),
-		mail: servicesArray.includes('mail'),
-		storage: servicesArray.includes('storage'),
-		events: eventsBackend,
+	// Which constructs to declare. Everything that runs them — the containers
+	// locally, the backends deployed — is derived from these and the target.
+	const chosen: string[] = options.yes
+		? constructChoices.map((c) => c.value)
+		: answers.constructs || [];
+	const constructs = {
+		// A fullstack workspace always has a database: its auth server's
+		// tenant lives in it.
+		database: isFullstack || chosen.includes('database'),
+		cache: chosen.includes('cache'),
+		uploads: chosen.includes('uploads'),
+		mail: chosen.includes('mail'),
 	};
-
-	// pgboss requires postgres
-	if (services.events === 'pgboss') {
-		services.db = true;
-	}
 
 	const pkgManager: PackageManager = options.pm
 		? options.pm
@@ -356,7 +329,7 @@ export async function initCommand(
 	const deployTarget: DeployTarget =
 		options.deploy ?? (options.yes ? 'none' : (answers.deployTarget ?? 'none'));
 
-	const database = services.db;
+	const database = constructs.database;
 	const frontendFramework: FullstackFrontendFramework | undefined = isFullstack
 		? options.yes
 			? 'nextjs'
@@ -366,7 +339,6 @@ export async function initCommand(
 		name,
 		template,
 		telescope: options.yes ? true : (answers.telescope ?? true),
-		database,
 		studio: database,
 		loggerType: options.yes ? 'pino' : (answers.loggerType ?? 'pino'),
 		routesStructure: options.yes
@@ -385,7 +357,7 @@ export async function initCommand(
 						(options.yes ? 'eu-west-1' : answers.region?.trim()),
 				}
 			: {}),
-		services,
+		constructs,
 		frontendFramework,
 	};
 
@@ -406,15 +378,6 @@ export async function initCommand(
 		await mkdir(appDir, { recursive: true });
 	}
 
-	// Generate per-app database configs for fullstack template
-	const dbApps: DatabaseAppConfig[] = [];
-	if (isFullstack && services.db) {
-		dbApps.push(
-			{ name: 'api', password: generateDbPassword() },
-			{ name: 'auth', password: generateDbPassword() },
-		);
-	}
-
 	// Collect app files (backend/api)
 	// Note: Docker files go to root for monorepo, so exclude them here
 	const appFiles = baseTemplate
@@ -424,17 +387,8 @@ export async function initCommand(
 				...generateEnvFiles(templateOptions, baseTemplate),
 				...generateSourceFiles(templateOptions, baseTemplate),
 				...generateTestFiles(templateOptions, baseTemplate),
-				...(isMonorepo
-					? []
-					: generateDockerFiles(templateOptions, baseTemplate, dbApps)),
 			]
 		: [];
-
-	// For monorepo, docker files go at root level
-	const dockerFiles =
-		isMonorepo && baseTemplate
-			? generateDockerFiles(templateOptions, baseTemplate, dbApps)
-			: [];
 
 	// Collect root monorepo files (includes packages/models)
 	const rootFiles = baseTemplate
@@ -473,13 +427,6 @@ export async function initCommand(
 		await writeFile(fullPath, content);
 	}
 
-	// Write docker files at root for monorepo
-	for (const { path, content } of dockerFiles) {
-		const fullPath = join(targetDir, path);
-		await mkdir(dirname(fullPath), { recursive: true });
-		await writeFile(fullPath, content);
-	}
-
 	// Write app files (backend)
 	for (const { path, content } of appFiles) {
 		const fullPath = join(appDir, path);
@@ -510,19 +457,10 @@ export async function initCommand(
 
 	// Initialize encrypted secrets for the local stage
 	console.log('🔐 Initializing encrypted secrets...\n');
-	const secretServices: ComposeServiceName[] = [];
-	if (services.db) secretServices.push('postgres');
-	if (services.cache) secretServices.push('redis');
-	if (services.storage) secretServices.push('minio');
-	if (services.mail) secretServices.push('mailpit');
-	if (services.events === 'sns') secretServices.push('localstack');
-	if (services.events === 'rabbitmq') secretServices.push('rabbitmq');
-
+	// No container credentials: the containers are derived from the declared
+	// constructs, and reconcile provisions their roles and passwords.
 	const local = templateOptions.stages.local;
-	const devSecrets = createStageSecrets(local, secretServices, {
-		projectName: name,
-		eventsBackend: services.events,
-	});
+	const devSecrets = createStageSecrets(local, [], { projectName: name });
 
 	// Add common custom secrets. No `NODE_ENV`: the command decides that, and
 	// `gkm exec` injects secrets over the environment — so one stored here made
@@ -534,18 +472,7 @@ export async function initCommand(
 		JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	};
 
-	// Add per-app database URLs and passwords for fullstack template
-	if (isFullstack && dbApps.length > 0) {
-		for (const app of dbApps) {
-			// Database URL for the app to use (all apps use same database, different users/schemas)
-			const urlKey = `${app.name.toUpperCase()}_DATABASE_URL`;
-			customSecrets[urlKey] = generateDbUrl(app.name, app.password, name);
-
-			// Database password for docker-compose init script
-			const passwordKey = `${app.name.toUpperCase()}_DB_PASSWORD`;
-			customSecrets[passwordKey] = app.password;
-		}
-
+	if (isFullstack) {
 		// Auth service secrets (better-auth)
 		customSecrets.AUTH_PORT = '3002';
 		customSecrets.AUTH_URL = 'http://localhost:3002'; // For API app to call auth service
@@ -631,14 +558,9 @@ function printNextSteps(
 
 	// A project that declares its infrastructure starts nothing by hand:
 	// `gkm dev` reconciles the containers its constructs imply first.
-	if (options.services.db && options.monorepo) {
-		console.log(`  # Start PostgreSQL (if not running)`);
-		console.log(`  docker compose up -d postgres`);
-	}
-
 	console.log(`  ${devCommand}`);
 
-	if (!options.monorepo && options.services.db) {
+	if (!options.monorepo && options.constructs.database) {
 		console.log('');
 		console.log('  # Then, once the container is up:');
 		console.log(`  gkm exec -- pnpm kysely migrate:latest`);
@@ -701,7 +623,7 @@ function printNextSteps(
 			);
 		}
 		console.log(`  Uses your AWS credentials, in ${options.region}.`);
-		if (options.services.mail) {
+		if (options.constructs.mail) {
 			console.log('  Set MAIL_FROM to a sender verified in SES first.');
 		}
 		console.log('');

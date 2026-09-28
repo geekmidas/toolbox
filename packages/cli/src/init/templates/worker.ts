@@ -60,7 +60,8 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, name, database } = options;
+		const { loggerType, name } = options;
+		const { database } = options.constructs;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -202,7 +203,7 @@ export const cleanup = worker
 
 		// The database, when this project has one. A `pgboss` events backend
 		// implies one, which is why a worker gets here without asking for it.
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push(...databaseFiles());
 		}
 

@@ -45,7 +45,9 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'tsconfig.json'))).toBe(true);
 			expect(existsSync(join(projectDir, 'biome.json'))).toBe(true);
 			expect(existsSync(join(projectDir, 'turbo.json'))).toBe(true);
-			expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(true);
+			// No hand-written compose: the containers are derived from the
+			// declared constructs, into a file gkm writes and git ignores.
+			expect(existsSync(join(projectDir, 'docker-compose.yml'))).toBe(false);
 			// Secrets are now encrypted instead of .env files
 			expect(existsSync(join(projectDir, '.gkm/secrets/local.json'))).toBe(
 				true,
@@ -775,43 +777,31 @@ describe('initCommand', () => {
 	});
 
 	describe('docker-compose', () => {
-		it('should include postgres for database-enabled projects', async () => {
+		it.each([
+			'minimal',
+			'serverless',
+			'worker',
+		] as const)('writes no compose file for the %s template — the constructs are the list', async (template) => {
+			await initCommand('my-api', { template, yes: true, skipInstall: true });
+
+			expect(existsSync(join(tempDir, 'my-api', 'docker-compose.yml'))).toBe(
+				false,
+			);
+		});
+
+		it('ignores the compose file gkm writes, and not one the project owns', async () => {
 			await initCommand('my-api', {
 				template: 'minimal',
 				yes: true,
 				skipInstall: true,
 			});
 
-			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-			const content = await readFile(dockerPath, 'utf-8');
-			expect(content).toContain('postgres:18-alpine');
-			expect(content).toContain("'${POSTGRES_HOST_PORT:-5432}:5432'");
-		});
-
-		it('should include serverless-redis-http for serverless template', async () => {
-			await initCommand('my-api', {
-				template: 'serverless',
-				yes: true,
-				skipInstall: true,
-			});
-
-			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-			const content = await readFile(dockerPath, 'utf-8');
-			expect(content).toContain('hiett/serverless-redis-http');
-		});
-
-		it('should include rabbitmq for worker template', async () => {
-			await initCommand('my-api', {
-				template: 'worker',
-				yes: true,
-				skipInstall: true,
-			});
-
-			const dockerPath = join(tempDir, 'my-api', 'docker-compose.yml');
-			const content = await readFile(dockerPath, 'utf-8');
-			expect(content).toContain('rabbitmq:3-management-alpine');
-			expect(content).toContain("'${RABBITMQ_HOST_PORT:-5672}:5672'");
-			expect(content).toContain("'${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'");
+			const gitignore = await readFile(
+				join(tempDir, 'my-api', '.gitignore'),
+				'utf-8',
+			);
+			expect(gitignore).toMatch(/^docker-compose\.constructs\.yml$/m);
+			expect(gitignore).not.toMatch(/^docker-compose\.yml$/m);
 		});
 	});
 });

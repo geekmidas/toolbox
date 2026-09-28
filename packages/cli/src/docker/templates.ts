@@ -543,9 +543,7 @@ exec "$@"
 /**
  * Resolve Docker configuration from GkmConfig with defaults
  */
-export function resolveDockerConfig(
-	config: GkmConfig,
-): Required<Omit<DockerConfig, 'compose'>> & Pick<DockerConfig, 'compose'> {
+export function resolveDockerConfig(config: GkmConfig): Required<DockerConfig> {
 	const docker = config.docker ?? {};
 
 	// Try to get image name from package.json name
@@ -566,7 +564,6 @@ export function resolveDockerConfig(
 		imageName: docker.imageName ?? defaultImageName,
 		baseImage: docker.baseImage ?? 'node:22-alpine',
 		port: docker.port ?? 3000,
-		compose: docker.compose,
 	};
 }
 

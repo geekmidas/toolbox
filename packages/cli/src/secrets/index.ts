@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { loadConfig, loadWorkspaceConfig } from '../config';
+import { loadWorkspaceConfig } from '../config';
 import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
-import type { ComposeServiceName, ComposeServicesConfig } from '../types';
+import type { ComposeServiceName } from '../types';
 import { createStageSecrets, rotateServicePassword } from './generator';
 import {
 	maskPassword,
@@ -40,26 +40,6 @@ export interface SecretsImportOptions {
 }
 
 /**
- * Extract service names from compose config.
- */
-export function getServicesFromConfig(
-	services: ComposeServicesConfig | ComposeServiceName[] | undefined,
-): ComposeServiceName[] {
-	if (!services) {
-		return [];
-	}
-
-	if (Array.isArray(services)) {
-		return services;
-	}
-
-	// Object format - get keys where value is truthy
-	return (Object.entries(services) as [ComposeServiceName, unknown][])
-		.filter(([, config]) => config)
-		.map(([name]) => name);
-}
-
-/**
  * Initialize secrets for a stage.
  * Generates secure random passwords for configured services.
  */
@@ -74,16 +54,6 @@ export async function secretsInitCommand(
 			`Secrets already exist for stage "${stage}". Use --force to overwrite.`,
 		);
 		process.exit(1);
-	}
-
-	// Load config to get services
-	const config = await loadConfig();
-	const services = getServicesFromConfig(config.docker?.compose?.services);
-
-	if (services.length === 0) {
-		logger.warn(
-			'No services configured in docker.compose.services. Creating secrets with empty services.',
-		);
 	}
 
 	// Detect workspace mode for project name and fullstack secrets
@@ -103,7 +73,9 @@ export async function secretsInitCommand(
 	}
 
 	// Generate secrets (with project name so DATABASE_URL matches app-specific URLs)
-	const secrets = createStageSecrets(stage, services, { projectName });
+	// No container credentials: the containers are derived from the declared
+	// constructs, and reconcile provisions their roles and passwords.
+	const secrets = createStageSecrets(stage, [], { projectName });
 
 	if (workspaceSecrets) {
 		secrets.custom = workspaceSecrets;
@@ -114,11 +86,6 @@ export async function secretsInitCommand(
 
 	logger.log(`\n✓ Secrets initialized for stage "${stage}"`);
 	logger.log(`  Location: .gkm/secrets/${stage}.json`);
-	logger.log('\n  Generated credentials for:');
-
-	for (const service of services) {
-		logger.log(`    - ${service}`);
-	}
 
 	if (secrets.urls.DATABASE_URL) {
 		logger.log(`\n  DATABASE_URL: ${maskUrl(secrets.urls.DATABASE_URL)}`);

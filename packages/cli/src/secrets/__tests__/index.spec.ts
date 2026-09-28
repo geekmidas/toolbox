@@ -1,45 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getServicesFromConfig, maskUrl } from '../index';
-
-describe('getServicesFromConfig', () => {
-	it('should return empty array when services is undefined', () => {
-		const result = getServicesFromConfig(undefined);
-		expect(result).toEqual([]);
-	});
-
-	it('should return array as-is when services is an array', () => {
-		const services = ['postgres', 'redis'] as const;
-		const result = getServicesFromConfig([...services]);
-		expect(result).toEqual(['postgres', 'redis']);
-	});
-
-	it('should extract service names from object config', () => {
-		const services = {
-			postgres: true,
-			redis: { port: 6379 },
-			rabbitmq: false,
-		};
-		const result = getServicesFromConfig(services);
-		expect(result).toContain('postgres');
-		expect(result).toContain('redis');
-		expect(result).not.toContain('rabbitmq');
-	});
-
-	it('should handle empty object', () => {
-		const result = getServicesFromConfig({});
-		expect(result).toEqual([]);
-	});
-
-	it('should handle all falsy values in object', () => {
-		const services = {
-			postgres: false,
-			redis: null,
-			rabbitmq: undefined,
-		};
-		const result = getServicesFromConfig(services as Record<string, unknown>);
-		expect(result).toEqual([]);
-	});
-});
+import { maskUrl } from '../index';
 
 describe('maskUrl', () => {
 	it('should mask password in URL', () => {

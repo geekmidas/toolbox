@@ -11,8 +11,7 @@
 		"openapi": "gkm openapi",
 		"migrate": "pnpm --filter @kitchen-sink/api migrate",
 		"test": "gkm test --run",
-		"test:watch": "gkm test",
-		"test:sns": "KITCHEN_SINK_EVENTS=sns gkm test --run"
+		"test:watch": "gkm test"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "~3.1136.0",

@@ -40,13 +40,13 @@ function rootConstructDependencies(
 		'@geekmidas/db': v['@geekmidas/db'],
 		kysely: DEPENDENCY_VERSIONS.kysely,
 		pg: DEPENDENCY_VERSIONS.pg,
-		...(options.services.storage
+		...(options.constructs.uploads
 			? { '@geekmidas/storage': v['@geekmidas/storage'] }
 			: {}),
-		...(options.services.mail
+		...(options.constructs.mail
 			? { '@geekmidas/emailkit': v['@geekmidas/emailkit'] }
 			: {}),
-		...(options.services.cache
+		...(options.constructs.cache
 			? { '@geekmidas/cache': v['@geekmidas/cache'] }
 			: {}),
 	};
@@ -209,6 +209,9 @@ node_modules/
 # Build output
 dist/
 .gkm/
+
+# Written by gkm from the constructs; your own docker-compose.yml is not
+docker-compose.constructs.yml
 
 # Environment
 .env
@@ -410,7 +413,7 @@ export default defineConfig({
  * table in the database that is already there, storage is MinIO, mail is SES.
  */
 function generateWorkspaceConfig(options: TemplateOptions): string {
-	let config = `import { defineWorkspace } from '@geekmidas/cli/config';
+	const config = `import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   // The scope every physical name is built from: \`Database\` becomes
@@ -436,24 +439,6 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
 });
 `;
 
-	// The one thing a construct cannot answer and a default cannot either.
-	//
-	// `services.events` is doing two jobs — *are there events* and *which
-	// broker carries them* — so an unset value means "none" rather than "the
-	// obvious one", and defaulting it would assert events exist for a project
-	// that declared no topic. Written only when the choice is not the one
-	// `pgboss` already gives for free.
-	if (options.services.events && options.services.events !== 'pgboss') {
-		config = config.replace(
-			'  secrets: {',
-			`  services: {
-    events: '${options.services.events}',
-  },
-
-  secrets: {`,
-		);
-	}
-
 	return config;
 }
 
@@ -474,7 +459,8 @@ export function generateRootConstructs(
 ): GeneratedFile[] {
 	if (!options.monorepo || options.template !== 'fullstack') return [];
 
-	const { name, services, frontendFramework } = options;
+	const { name, frontendFramework } = options;
+	const { cache, uploads, mail } = options.constructs;
 	const db = databaseFor();
 	const files: GeneratedFile[] = [];
 
@@ -603,7 +589,7 @@ export const web = new StaticSite('Web', ${variant}).dependsOn([api, auth]);
 		});
 	}
 
-	if (services.storage) {
+	if (uploads) {
 		const bucket = storageFor();
 		files.push({
 			path: 'constructs/storage.ts',
@@ -615,7 +601,7 @@ export const uploads = new ObjectStorage('${bucket.id}');
 		});
 	}
 
-	if (services.mail) {
+	if (mail) {
 		const mail = emailFor();
 		files.push({
 			path: 'constructs/email.ts',
@@ -627,7 +613,7 @@ export const email = new Email('${mail.id}', { templates: {} });
 		});
 	}
 
-	if (services.cache) {
+	if (cache) {
 		const kv = cacheFor();
 		files.push({
 			path: 'constructs/cache.ts',

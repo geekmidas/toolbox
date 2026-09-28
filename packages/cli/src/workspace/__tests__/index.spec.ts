@@ -125,7 +125,6 @@ describe('normalizeWorkspace', () => {
 		expect(result.root).toBe('/project');
 		expect(result.apps.api.type).toBe('backend');
 		expect(result.apps.api.dependencies).toEqual([]);
-		expect(result.services).toEqual({});
 		expect(result.deploy).toEqual({ default: 'dokploy' });
 		expect(result.shared).toEqual({ packages: ['packages/*'] });
 		expect(result.secrets).toEqual({});
@@ -321,28 +320,6 @@ describe('wrapSingleAppAsWorkspace', () => {
 		expect(result.apps.api.telescope).toBe(true);
 	});
 
-	it('does not let a compose list decide which services exist', () => {
-		// It used to seed `services.db` and `services.cache` from here, which is
-		// to say a container existed because a deploy-side list named it. Which
-		// containers exist is the manifest's answer — a declared database implies
-		// Postgres — so this block is left to be what its name says.
-		const config: GkmConfig = {
-			stages: { local: 'development', deployed: ['production'] },
-			routes: './src/**/*.ts',
-			envParser: './src/env',
-			logger: './src/logger',
-			docker: {
-				compose: {
-					services: ['postgres', 'redis'],
-				},
-			},
-		};
-
-		const result = wrapSingleAppAsWorkspace(config, '/project');
-
-		expect(result.services).toEqual({});
-	});
-
 	it('carries the constructs glob through', () => {
 		// Reconcile derives the local containers from this glob, so dropping it
 		// here is the difference between a single-app project deriving its
@@ -476,14 +453,14 @@ describe('getAppGkmConfig', () => {
 		expect(wrapped.deploy.default).toBe('dokploy');
 	});
 
-	it('carries the workspace backends onto the app config', () => {
-		// The entry point reads these to decide which drivers to register, while
-		// the local target reads the same field to compose the URLs those drivers
-		// receive. Dropping them here is how an app on `cache: 'db'` was handed a
-		// `postgres://` URL by an entry that had registered only Upstash.
+	it('carries the deploy target onto the app config', () => {
+		// The entry point decides which cache driver to register from the
+		// target, and the local target composes the URL from the same target.
+		// Dropping it here is how an app on a server was handed a
+		// `postgres://` cache URL by an entry that registered only Upstash.
 		const config: WorkspaceConfig = {
 			stages: { local: 'development', deployed: ['production'] },
-			services: { cache: 'db', mail: 'ses' },
+			deploy: { default: 'dokploy' },
 			apps: {
 				api: {
 					type: 'backend',
@@ -496,9 +473,8 @@ describe('getAppGkmConfig', () => {
 
 		const workspace = normalizeWorkspace(config, '/project');
 
-		expect(getAppGkmConfig(workspace, 'api')?.services).toEqual({
-			cache: 'db',
-			mail: 'ses',
+		expect(getAppGkmConfig(workspace, 'api')?.deploy).toEqual({
+			default: 'dokploy',
 		});
 	});
 

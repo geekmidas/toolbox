@@ -10,12 +10,24 @@
  */
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Docker } from './index';
 
 const run = promisify(execFile);
+
+/**
+ * The generated file, then the project's own if it has one.
+ *
+ * Merged in that order so the project's wins — an `image:` there pins a
+ * container this file derived, and a service there is added beside them.
+ */
+export function composeFiles(composePath: string): string[] {
+	const project = join(dirname(composePath), 'docker-compose.yml');
+	return ['-f', composePath, ...(existsSync(project) ? ['-f', project] : [])];
+}
 
 /** How long to wait for containers to pass their health checks. */
 const HEALTH_TIMEOUT_MS = 120_000;
@@ -25,8 +37,7 @@ export const dockerCli: Docker = {
 		try {
 			const { stdout } = await run('docker', [
 				'compose',
-				'-f',
-				composePath,
+				...composeFiles(composePath),
 				'port',
 				service,
 				String(inside),
@@ -45,8 +56,7 @@ export const dockerCli: Docker = {
 	async up(composePath, services) {
 		await run('docker', [
 			'compose',
-			'-f',
-			composePath,
+			...composeFiles(composePath),
 			'up',
 			'-d',
 			// Recreate anything whose definition moved — a changed image pin is
@@ -63,8 +73,7 @@ export const dockerCli: Docker = {
 		await mkdir(dirname(to), { recursive: true });
 		await run('docker', [
 			'compose',
-			'-f',
-			composePath,
+			...composeFiles(composePath),
 			'cp',
 			`${service}:${from}`,
 			to,
@@ -76,8 +85,7 @@ export const dockerCli: Docker = {
 		// refuses leaves the previous one serving rather than dropping the edge.
 		await run('docker', [
 			'compose',
-			'-f',
-			composePath,
+			...composeFiles(composePath),
 			'exec',
 			'-T',
 			service,
@@ -94,8 +102,7 @@ export const dockerCli: Docker = {
 		try {
 			const { stdout } = await run('docker', [
 				'compose',
-				'-f',
-				composePath,
+				...composeFiles(composePath),
 				'ps',
 				'--format',
 				'json',

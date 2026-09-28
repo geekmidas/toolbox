@@ -132,7 +132,7 @@ describe('reconcileSecrets', () => {
 	});
 
 	it('should add missing service credentials when workspace config adds a new service', () => {
-		const workspace = createWorkspace({ services: {} });
+		const workspace = createWorkspace();
 		// Secrets only have postgres, not minio
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
@@ -164,7 +164,7 @@ describe('reconcileSecrets', () => {
 	});
 
 	it('should add missing mailpit credentials when mail service is enabled', () => {
-		const workspace = createWorkspace({ services: {} });
+		const workspace = createWorkspace();
 		// Secrets only have postgres, not mailpit
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
@@ -200,12 +200,12 @@ describe('reconcileSecrets', () => {
 	});
 
 	it('should not regenerate credentials for existing services', () => {
-		const workspace = createWorkspace({ services: {} });
+		const workspace = createWorkspace();
 		// Include ALL expected custom keys so reconcile has nothing to add
-		const expected = generateFullstackCustomSecrets(
-			createWorkspace({ services: {} }),
-			['postgres', 'minio'],
-		);
+		const expected = generateFullstackCustomSecrets(createWorkspace(), [
+			'postgres',
+			'minio',
+		]);
 		const secrets = createSecrets(expected);
 		// Add existing minio creds
 		secrets.services.minio = {

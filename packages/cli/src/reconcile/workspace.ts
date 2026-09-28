@@ -1,11 +1,10 @@
 /**
  * Workspace config → reconcile.
  *
- * The one place the old `services:` block is read, and what it becomes: images
- * stay explicit config, the events backend stays config until `topic` and
- * `queue` are kinds, and anything no construct implies is listed as an
- * exception. What is *derived* — which containers exist at all — comes from the
- * manifest and is never read from here.
+ * Nothing here is read from a `services:` block — there is none. Which
+ * containers exist comes from the manifest; which backend a cache or a broker
+ * resolves to comes from the deploy target; and an image pin is the project's
+ * own `docker-compose.yml`, merged over the generated file.
  *
  * Shared by `gkm setup`, `gkm dev`, and `gkm test` so all three converge on the
  * same state, differing only in the stage they pass.
@@ -13,10 +12,15 @@
 
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { loadPortState, savePortState } from '../credentials/index.js';
-import { cacheBackendOf, providerOf } from '../workspace/backends.js';
+import {
+	cacheBackendFor,
+	eventsBackendFor,
+	providerOf,
+} from '../workspace/backends.js';
 import { appKey, hostOf } from '../workspace/derive.js';
 import { allConstructGlobs } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { appServices } from './apps.js';
 import { discover } from './discover.js';
 import { type ReconcileResult, reconcile } from './index.js';
 import { planFor } from './plan.js';
@@ -36,18 +40,10 @@ export function usesConstructs(workspace: NormalizedWorkspace): boolean {
 	return constructGlobs(workspace).length > 0;
 }
 
-/**
- * Image pins, by container. The config half of the derived/config split.
- *
- * Read from `services.images` rather than from the backend keys beside it.
- * They used to share one key, which is how `cache: true` came to mean "start a
- * Redis" — the last way a container could exist because config asked for one
- * instead of because something declared it.
- */
-export function imagePins(
-	workspace: NormalizedWorkspace,
-): Record<string, string> {
-	return { ...workspace.services.images };
+/** The backends a workspace's target implies, as the plan takes them. */
+export function backendsOf(workspace: NormalizedWorkspace) {
+	const on = providerOf(workspace);
+	return { events: eventsBackendFor(on), cache: cacheBackendFor(on) };
 }
 
 /**
@@ -74,8 +70,7 @@ export async function derivedContainers(
 
 	return planFor(found, stage, provisionOrder(found), {
 		localStage: workspace.stages.local,
-		events: workspace.services.events,
-		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
+		...backendsOf(workspace),
 	}).containers;
 }
 
@@ -110,13 +105,10 @@ export async function reconcileWorkspace(
 		manifest,
 		stage: options.stage,
 		localStage: workspace.stages.local,
-		events: workspace.services.events,
-		// A backend name, not an image pin. `cache: 'db'` says where the cache
-		// lives and implies no container at all.
-		cache: cacheBackendOf(workspace.services.cache, providerOf(workspace)),
-		images: imagePins(workspace),
+		...backendsOf(workspace),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
+		apps: (containers) => appServices(workspace, manifest, containers),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 
@@ -141,9 +133,15 @@ export async function reconcileWorkspace(
  * an app serving both its own API and an auth server publishes one address
  * twice — which is exactly what it does at runtime.
  */
-function surfaceAddresses(
+export function surfaceAddresses(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
+	/**
+	 * How an app is addressed: on the host by default, or — for the compose
+	 * apps — by service name on the compose network.
+	 */
+	at: (app: string, port: number) => string = (_app, port) =>
+		localAddress(port),
 ): Record<string, string> {
 	const addresses: Record<string, string> = {};
 
@@ -157,7 +155,7 @@ function surfaceAddresses(
 			declaration.kind === 'site' ? appKey(id) : appKeyOfHost(manifest, id);
 		const app = host ? workspace.apps[host] : undefined;
 
-		if (app?.port) addresses[id] = localAddress(app.port);
+		if (host && app?.port) addresses[id] = at(host, app.port);
 	}
 
 	return addresses;

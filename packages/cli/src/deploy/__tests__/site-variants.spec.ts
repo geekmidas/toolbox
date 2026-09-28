@@ -27,7 +27,6 @@ const workspace = {
 			resolvedDeployTarget: 'dokploy',
 		},
 	},
-	services: {},
 	deploy: {
 		default: 'dokploy',
 		dokploy: { domains: { production: 'acme.com' } },

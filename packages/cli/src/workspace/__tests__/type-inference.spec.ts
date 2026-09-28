@@ -115,10 +115,6 @@ describe('Type Inference', () => {
 						telescope: { enabled: true, port: 9000 },
 					},
 				},
-				services: {
-					db: true,
-					cache: { version: '7.2' },
-				},
 				deploy: {
 					default: 'dokploy',
 				},
@@ -127,7 +123,6 @@ describe('Type Inference', () => {
 			expect(config.name).toBe('my-workspace');
 			expect(config.apps.api.envParser).toBe('./src/env');
 			expect(config.apps.api.telescope).toEqual({ enabled: true, port: 9000 });
-			expect(config.services?.db).toBe(true);
 			expect(config.deploy?.default).toBe('dokploy');
 		});
 	});
@@ -205,11 +200,6 @@ describe('Type Inference', () => {
 						framework: 'nextjs',
 						dependencies: ['api-gateway', 'user-service'],
 					},
-				},
-				services: {
-					db: { version: '16-alpine' },
-					cache: true,
-					mail: { smtp: { host: 'smtp.example.com', port: 587 } },
 				},
 			});
 
