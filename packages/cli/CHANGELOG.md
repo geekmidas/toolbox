@@ -1,5 +1,37 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.14
+
+### Patch Changes
+
+- 🔥 [#66](https://github.com/geekmidas/toolbox/pull/66) [`5235875`](https://github.com/geekmidas/toolbox/commit/52358754906af071a40d29dcbd4c28e25887d5e1) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm generate:react-query` is removed, and with it the `openapi-typescript` dependency
+
+  It read an `openapi.json` and shelled out to `npx openapi-typescript`. Each
+  surface's typed client is written by `gkm build` (and kept current by
+  `gkm dev`) to `.gkm/openapi/<surface>.ts`, built from the endpoints
+  themselves: its `createApi()` returns a typed fetcher with React Query hooks.
+  Verified against openapi-typescript on kitchen-sink's endpoints, its types
+  match. Import that file instead. The `@geekmidas/cli/openapi-react-query`
+  export is gone too.
+
+- [#62](https://github.com/geekmidas/toolbox/pull/62) [`db9cc57`](https://github.com/geekmidas/toolbox/commit/db9cc57ce5fa0ec5529ec5a01b33fbedf8848493) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` installs `pino` only for the pino logger
+
+  The API, minimal, serverless and worker templates listed `pino` among their
+  dependencies whatever logger was chosen, so a console-logger project installed
+  a logging library it never imports. `pino` is now added only when the pino
+  logger is picked, beside the `@geekmidas/logger/pino` import it serves.
+
+- Updated dependencies [[`9602a19`](https://github.com/geekmidas/toolbox/commit/9602a19a9b4fb9cecd2641d108976f73272df55e)]:
+  - @geekmidas/schema@10.0.0-alpha.14
+  - @geekmidas/constructs@10.0.0-alpha.14
+  - @geekmidas/cache@10.0.0-alpha.14
+  - @geekmidas/db@10.0.0-alpha.14
+  - @geekmidas/envkit@10.0.0-alpha.14
+  - @geekmidas/errors@10.0.0-alpha.14
+  - @geekmidas/logger@10.0.0-alpha.14
+  - @geekmidas/manifest@10.0.0-alpha.14
+  - @geekmidas/telescope@10.0.0-alpha.14
+
 ## 10.0.0-alpha.13
 
 ### Patch Changes

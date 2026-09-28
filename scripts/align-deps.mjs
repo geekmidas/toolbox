@@ -86,6 +86,40 @@ function writeList(list) {
 	writeFileSync(listPath, `${JSON.stringify(sorted, null, '\t')}\n`);
 }
 
+const workspacePath = join(root, 'pnpm-workspace.yaml');
+
+/**
+ * The `overrides:` entries in pnpm-workspace.yaml, by line.
+ *
+ * An override pins a transitive copy to the workspace's own version — e.g.
+ * `"@docsearch/react>@types/react"` — so its range is not a second list: it
+ * must be whatever the workspace installs that package at. Read line by line
+ * because the block is flat and the script has no YAML dependency.
+ */
+function workspaceOverrides() {
+	const lines = readFileSync(workspacePath, 'utf-8').split('\n');
+	const start = lines.findIndex((line) => line.trim() === 'overrides:');
+	if (start === -1) return { lines, entries: [] };
+
+	const entries = [];
+	for (let i = start + 1; i < lines.length && /^\s+\S/.test(lines[i]); i++) {
+		const match = lines[i].match(/^(\s+)"?([^"]+?)"?\s*:\s*"?([^"\s]+)"?\s*$/);
+		if (!match) continue;
+		const [, indent, selector, range] = match;
+		// `a>b@1` → `b`: the package the override versions, without a selector.
+		const target = selector
+			.split('>')
+			.at(-1)
+			.replace(/(?<=.)@.*$/, '');
+		entries.push({ index: i, indent, selector, target, range });
+	}
+	return { lines, entries };
+}
+
+/** The range an override must hold: the one the workspace installs it at. */
+const overrideRange = (list, name) =>
+	list[name]?.devDependencies ?? list[name]?.dependencies;
+
 /** Every place a registry range differs from the list, or has no entry. */
 function drift(manifests, list) {
 	const problems = [];
@@ -107,6 +141,19 @@ function drift(manifests, list) {
 					problems.push(`${where}: ${field}.${name} ${range} → ${wanted}`);
 				}
 			}
+		}
+	}
+
+	for (const { selector, target, range } of workspaceOverrides().entries) {
+		const wanted = overrideRange(list, target);
+		if (wanted === undefined) {
+			problems.push(
+				`pnpm-workspace.yaml: overrides.${selector} ${range} has no workspace range to follow`,
+			);
+		} else if (wanted !== range) {
+			problems.push(
+				`pnpm-workspace.yaml: overrides.${selector} ${range} → ${wanted}`,
+			);
 		}
 	}
 
@@ -137,6 +184,19 @@ function write(manifests, list) {
 			writeFileSync(path, `${JSON.stringify(json, null, indent)}\n`);
 			changed += 1;
 		}
+	}
+
+	const { lines, entries } = workspaceOverrides();
+	let overridden = false;
+	for (const { index, indent, selector, target, range } of entries) {
+		const wanted = overrideRange(list, target);
+		if (!wanted || wanted === range) continue;
+		lines[index] = `${indent}"${selector}": "${wanted}"`;
+		overridden = true;
+	}
+	if (overridden) {
+		writeFileSync(workspacePath, lines.join('\n'));
+		changed += 1;
 	}
 
 	return changed;
@@ -210,7 +270,7 @@ if (args[0] === '--latest') {
 	);
 } else if (args[0] === '--write') {
 	const changed = write(readManifests(), list);
-	console.log(`Rewrote ${changed} package.json file(s). Run pnpm install.`);
+	console.log(`Rewrote ${changed} file(s). Run pnpm install.`);
 	const left = drift(readManifests(), list);
 	if (left.length) {
 		console.error(`\nStill not in the list:\n${left.join('\n')}`);

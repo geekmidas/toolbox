@@ -9,10 +9,10 @@ packages:
   - "packages/studio/ui"
 
 # One @types/react for the whole workspace. VitePress's @docsearch/react
-# declares an optional `@types/react <19` peer, which pnpm auto-installs as 18
-# and hoists; packages with no copy of their own (@react-email/*) then resolve
-# that one, and their React types stop agreeing with everyone else's 19.
-# Accepting 19 there lets pnpm reuse the workspace's copy instead.
-peerDependencyRules:
-  allowedVersions:
-    "@docsearch/react>@types/react": "19"
+# declares an optional `@types/react <19` peer, which pnpm auto-installed as 18
+# and hoisted; packages with no copy of their own (@react-email/*,
+# prism-react-renderer) resolved that one, and their React types stopped
+# agreeing with everyone else's 19. `check:deps` holds each override to the
+# workspace's range in scripts/dependency-versions.json.
+overrides:
+  "@docsearch/react>@types/react": "~19.3.0"
