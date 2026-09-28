@@ -2,6 +2,9 @@
 	"@apidevtools/swagger-parser": {
 		"dependencies": "~13.1.0"
 	},
+	"@better-auth/test-utils": {
+		"devDependencies": "~1.7.6"
+	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"
 	},
@@ -278,7 +281,7 @@
 	},
 	"better-auth": {
 		"dependencies": "~1.4.18",
-		"devDependencies": "~1.7.5",
+		"devDependencies": "~1.7.6",
 		"peerDependencies": ">=1.7.5"
 	},
 	"chokidar": {

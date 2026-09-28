@@ -278,7 +278,7 @@
 		"@types/lodash.uniqby": "~4.7.9",
 		"@types/pg": "~8.23.1",
 		"@types/qs": "~6.15.1",
-		"better-auth": "~1.7.5",
+		"better-auth": "~1.7.6",
 		"kysely": "~0.29.6",
 		"msw": "~2.15.0",
 		"pg": "~8.23.0",
