@@ -25,6 +25,7 @@
  * application config.
  */
 
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	type ConstructName,
 	canonicalId,
@@ -37,10 +38,18 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { betterAuth } from 'better-auth';
 import type { Hono } from 'hono';
 import type { Kysely } from 'kysely';
-import { type Construct, type Consumable, edgeTo } from './construct-interface';
+import {
+	type Authenticator,
+	type Construct,
+	type Consumable,
+	edgeTo,
+} from './construct-interface';
 
 /** The server better-auth hands back. */
 export type AuthServer = ReturnType<typeof betterAuth>;
+
+/** A signed-in session as better-auth hands it back: `{ user, session }`. */
+export type AuthSession = AuthServer['$Infer']['Session'];
 
 /** Everything better-auth takes, minus what the construct owns. */
 export type BetterAuthOptions = Omit<
@@ -93,7 +102,7 @@ const DEFAULT_BASE_PATH = '/api/auth';
 export class BetterAuth<
 	TName extends string = string,
 	TDatabase extends Consumable = Consumable,
-> implements Construct<TName, AuthServer>
+> implements Construct<TName, AuthServer>, Authenticator<AuthSession>
 {
 	readonly id: TName;
 	readonly service: Service<Uncapitalize<TName>, AuthServer>;
@@ -184,6 +193,36 @@ export class BetterAuth<
 				],
 			},
 		];
+	}
+
+	/**
+	 * Whose request this is: the session for these headers, or `null`.
+	 *
+	 * Asked of the auth server over HTTP, at the URL the `.auth()` edge injects —
+	 * so it is the same call whether the server runs in this process, beside
+	 * it, or behind MSW in a test. Only the session headers are forwarded; the
+	 * surface decides which.
+	 */
+	async verify(
+		headers: Headers,
+		envParser: EnvironmentParser<{}>,
+	): Promise<AuthSession | null> {
+		const { url } = envParser
+			.create((get) => ({ url: get(this.keys.url).string() }))
+			.parse();
+
+		const response = await fetch(`${url}${this.basePath}/get-session`, {
+			headers,
+		});
+
+		// Better Auth answers `null` for a request with no session. Anything
+		// other than a 200 is the server failing, which is not the same thing as
+		// "signed out" and must not be read as it.
+		if (!response.ok) {
+			throw new SessionCheckFailed(this.id, response.status);
+		}
+
+		return (await response.json()) as AuthSession | null;
 	}
 
 	/**
@@ -367,5 +406,20 @@ export class BetterAuth<
 					: {}),
 			},
 		}) as AuthServer;
+	}
+}
+
+/** The auth server answered a session check with something other than 200. */
+export class SessionCheckFailed extends Error {
+	constructor(
+		readonly authenticator: string,
+		readonly status: number,
+	) {
+		super(
+			`'${authenticator}' answered a session check with ${status}. ` +
+				`A request with no session gets 200 and null; this is the server ` +
+				`failing — check that it is running and reachable at its URL.`,
+		);
+		this.name = 'SessionCheckFailed';
 	}
 }

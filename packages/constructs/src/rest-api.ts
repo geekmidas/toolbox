@@ -32,7 +32,14 @@ import {
 	provideKey,
 } from '@geekmidas/manifest';
 import type { Telescope } from '@geekmidas/telescope';
-import { type Declarable, edgeTo } from './construct-interface';
+import {
+	type Authenticator,
+	type Declarable,
+	edgeTo,
+} from './construct-interface';
+
+export type { Authenticator } from './construct-interface';
+
 import {
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
@@ -188,7 +195,7 @@ export class RestApi<
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
-		private readonly authenticator?: string,
+		private readonly authenticator?: Authenticator,
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -226,7 +233,11 @@ export class RestApi<
 			...(config.defaultAuthorizer && config.defaultAuthorizer !== 'none'
 				? { defaultAuthorizerName: config.defaultAuthorizer }
 				: {}),
-			surface: { id: this.id, envParser: this.envParser },
+			surface: {
+				id: this.id,
+				envParser: this.envParser,
+				...(authenticator ? { auth: authenticator } : {}),
+			},
 		});
 
 		const endpoints = this.#endpoints;
@@ -301,17 +312,18 @@ export class RestApi<
 	 * what a request is allowed to be. A surface with two of the first is a
 	 * mistake; two of the second is Tuesday.
 	 *
-	 * It records the id, not a client. Every endpoint consumes the same thing —
-	 * `verify(request) → Session | null` — and that is what every provider
-	 * shares, whether the server is mounted in this process, deployed beside it,
-	 * or an OIDC issuer somebody else runs.
+	 * It declares the id, and keeps the construct: a session callback reads from
+	 * it as `auth` — `session(async ({ auth }) => auth.getSession())` — which
+	 * calls the construct's `verify(headers)`. That is the one thing every
+	 * provider shares, whether the server is mounted in this process, deployed
+	 * beside it, or an OIDC issuer somebody else runs.
 	 */
-	auth(construct: Declarable): RestApi<TName, TAuthorizers> {
+	auth(construct: Authenticator): RestApi<TName, TAuthorizers> {
 		return new RestApi<TName, TAuthorizers>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, edgeTo(construct)],
-			construct.id,
+			construct,
 		);
 	}
 
@@ -355,7 +367,7 @@ export class RestApi<
 				path: this.config.path,
 				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
-				...(this.authenticator ? { auth: this.authenticator } : {}),
+				...(this.authenticator ? { auth: this.authenticator.id } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single

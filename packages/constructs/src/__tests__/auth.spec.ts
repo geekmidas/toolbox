@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
+import { HttpResponse, http } from 'msw';
+import { setupServer } from 'msw/node';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
-import { BetterAuth, type BetterAuthOptions } from '../auth';
+import {
+	BetterAuth,
+	type BetterAuthOptions,
+	SessionCheckFailed,
+} from '../auth';
 import { KyselyDatabase } from '../database/kysely';
 
 /**
@@ -229,5 +235,57 @@ describe('BetterAuth.server', () => {
 		const plain = await auth().server(options());
 		const narrow = await plain.app.request(signUp(email('n')));
 		expect(narrow.headers.get('set-cookie')).not.toMatch(/Domain=/i);
+	});
+});
+
+describe('BetterAuth.verify', () => {
+	// The real server, reached the way a surface reaches it: over HTTP at
+	// AUTH_URL — served by MSW from the construct's own app rather than a
+	// listening port.
+	const network = setupServer();
+	beforeAll(() => network.listen({ onUnhandledRequest: 'error' }));
+	afterAll(() => network.close());
+
+	const serve = async (construct: BetterAuth) => {
+		const { app } = await construct.server(options());
+		network.use(http.all(`${AUTH_URL}/*`, ({ request }) => app.fetch(request)));
+	};
+
+	it('answers with the session a cookie belongs to', async () => {
+		const construct = auth();
+		await serve(construct);
+		const who = email('ada');
+
+		const created = await fetch(signUp(who));
+		const cookie = created.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+
+		const session = await construct.verify(
+			new Headers({ cookie }),
+			options().envParser,
+		);
+
+		expect(session?.user.email).toBe(who);
+	});
+
+	it('answers null for a request with no session', async () => {
+		const construct = auth();
+		await serve(construct);
+
+		expect(
+			await construct.verify(new Headers(), options().envParser),
+		).toBeNull();
+	});
+
+	it('refuses to read a failing server as signed out', async () => {
+		network.use(
+			http.all(`${AUTH_URL}/*`, () => new HttpResponse(null, { status: 503 })),
+		);
+
+		await expect(
+			auth().verify(new Headers(), options().envParser),
+		).rejects.toBeInstanceOf(SessionCheckFailed);
 	});
 });

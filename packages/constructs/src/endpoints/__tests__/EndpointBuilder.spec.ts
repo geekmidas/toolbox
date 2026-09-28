@@ -6,6 +6,23 @@ import { ConstructType } from '../../Construct';
 import { Endpoint } from '../Endpoint';
 import { EndpointBuilder } from '../EndpointBuilder';
 
+/**
+ * Run an endpoint's session callback the way an adaptor does. The endpoint
+ * wraps the callback to hand it `auth`, so what it holds is not the function
+ * it was given — what it *does* is.
+ */
+const sessionOf = (
+	endpoint: { getSession: (ctx: any) => unknown },
+	ctx: Record<string, unknown> = {},
+) =>
+	endpoint.getSession({
+		services: {},
+		logger: console,
+		header: () => undefined,
+		cookie: () => undefined,
+		...ctx,
+	});
+
 describe('EndpointBuilder', () => {
 	describe('constructor', () => {
 		it('should create builder with route and method', () => {
@@ -284,7 +301,7 @@ describe('EndpointBuilder', () => {
 			expect(endpoint).toBeInstanceOf(Endpoint);
 		});
 
-		it('should pass all configurations to endpoint', () => {
+		it('should pass all configurations to endpoint', async () => {
 			const bodySchema = z.object({ data: z.string() });
 			const querySchema = z.object({ filter: z.string() });
 			const paramsSchema = z.object({ id: z.string() });
@@ -331,7 +348,7 @@ describe('EndpointBuilder', () => {
 			expect(endpoint.logger).toBe(logger);
 			expect(endpoint.status).toBe(201);
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 			expect(endpoint.timeout).toBe(5000);
 		});
 
@@ -418,13 +435,13 @@ describe('EndpointBuilder', () => {
 			expect(endpoint.authorize).toBeDefined();
 		});
 
-		it('should allow setting custom session extractor', () => {
+		it('should allow setting custom session extractor', async () => {
 			const customSession = async () => ({ userId: '123', role: 'admin' });
 			const builder = new EndpointBuilder('/test', 'GET');
 			(builder as any)._getSession = customSession;
 
 			const endpoint = builder.handle(async () => ({}));
-			expect(endpoint.getSession).toBe(customSession);
+			expect(await sessionOf(endpoint)).toEqual(await customSession());
 		});
 	});
 
