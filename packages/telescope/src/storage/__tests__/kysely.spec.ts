@@ -73,17 +73,19 @@ describe('KyselyStorage', () => {
 				method: 'GET',
 				path: '/api/users',
 				url: 'http://localhost/api/users',
-				headers: { 'content-type': 'application/json' },
-				query: { page: '1' },
+				// JSON columns are written as JSON text: node-postgres would send
+				// an array as a Postgres array literal, which jsonb rejects.
+				headers: '{"content-type":"application/json"}',
+				query: '{"page":"1"}',
 				body: null,
 				status: 200,
-				response_headers: { 'content-type': 'application/json' },
-				response_body: { users: [] },
+				response_headers: '{"content-type":"application/json"}',
+				response_body: '{"users":[]}',
 				duration: 50,
 				timestamp: entry.timestamp,
 				ip: '127.0.0.1',
 				user_id: 'user-1',
-				tags: ['api'],
+				tags: '["api"]',
 			});
 			expect(mockDb.execute).toHaveBeenCalled();
 		});
@@ -289,12 +291,12 @@ describe('KyselyStorage', () => {
 				id: 'exc-123',
 				name: 'Error',
 				message: 'Something went wrong',
-				stack: entry.stack,
-				source: entry.source,
+				stack: JSON.stringify(entry.stack),
+				source: JSON.stringify(entry.source),
 				request_id: 'req-1',
 				timestamp: entry.timestamp,
 				handled: false,
-				tags: ['critical'],
+				tags: '["critical"]',
 			});
 		});
 	});
@@ -417,7 +419,7 @@ describe('KyselyStorage', () => {
 				id: 'log-123',
 				level: 'info',
 				message: 'User logged in',
-				context: { userId: '123' },
+				context: '{"userId":"123"}',
 				request_id: 'req-1',
 				timestamp: entry.timestamp,
 			});

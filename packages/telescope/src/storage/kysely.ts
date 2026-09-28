@@ -191,7 +191,7 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			}
 		}
 
-		query = this.applyQueryOptions(query, options);
+		query = this.applyQueryOptions(query, options, ['path', 'url']);
 
 		const rows = await query.execute();
 		return rows.map((row: TelescopeRequestTable) => this.rowToRequest(row));
@@ -235,7 +235,7 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			.selectAll()
 			.orderBy('timestamp', 'desc');
 
-		query = this.applyQueryOptions(query, options);
+		query = this.applyQueryOptions(query, options, ['name', 'message']);
 
 		const rows = await query.execute();
 		return rows.map((row: TelescopeExceptionTable) => this.rowToException(row));
@@ -278,7 +278,7 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			query = query.where('level', '=', options.level);
 		}
 
-		query = this.applyQueryOptions(query, options);
+		query = this.applyQueryOptions(query, options, ['message']);
 
 		const rows = await query.execute();
 		return rows.map((row: TelescopeLogTable) => this.rowToLog(row));
@@ -367,7 +367,11 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 	// Private Helpers
 	// ============================================
 
-	private applyQueryOptions(query: any, options?: QueryOptions): any {
+	private applyQueryOptions(
+		query: any,
+		options: QueryOptions | undefined,
+		searchColumns: readonly string[],
+	): any {
 		if (!options) {
 			return query.limit(50);
 		}
@@ -383,12 +387,14 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 		if (options.search) {
 			// Search in relevant text fields - using ILIKE for case-insensitive
 			// This is a simple implementation; for production you'd want full-text search
+			// Only the columns this table has: a column another table has and
+			// this one lacks is a query error, not a miss.
 			query = query.where((eb: any) =>
-				eb.or([
-					eb('message', 'ilike', `%${options.search}%`),
-					eb('path', 'ilike', `%${options.search}%`),
-					eb('url', 'ilike', `%${options.search}%`),
-				]),
+				eb.or(
+					searchColumns.map((column) =>
+						eb(column, 'ilike', `%${options.search}%`),
+					),
+				),
 			);
 		}
 
@@ -407,17 +413,17 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			method: entry.method,
 			path: entry.path,
 			url: entry.url,
-			headers: entry.headers,
-			body: entry.body ?? null,
-			query: entry.query ?? null,
+			headers: toJson(entry.headers),
+			body: toJson(entry.body),
+			query: toJson(entry.query),
 			status: entry.status,
-			response_headers: entry.responseHeaders,
-			response_body: entry.responseBody ?? null,
+			response_headers: toJson(entry.responseHeaders),
+			response_body: toJson(entry.responseBody),
 			duration: entry.duration,
 			timestamp: entry.timestamp,
 			ip: entry.ip ?? null,
 			user_id: entry.userId ?? null,
-			tags: entry.tags ?? null,
+			tags: toJson(entry.tags),
 		};
 	}
 
@@ -453,12 +459,12 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			id: entry.id,
 			name: entry.name,
 			message: entry.message,
-			stack: entry.stack,
-			source: entry.source ?? null,
+			stack: toJson(entry.stack),
+			source: toJson(entry.source),
 			request_id: entry.requestId ?? null,
 			timestamp: entry.timestamp,
 			handled: entry.handled,
-			tags: entry.tags ?? null,
+			tags: toJson(entry.tags),
 		};
 	}
 
@@ -483,7 +489,7 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 			id: entry.id,
 			level: entry.level,
 			message: entry.message,
-			context: entry.context ?? null,
+			context: toJson(entry.context),
 			request_id: entry.requestId ?? null,
 			timestamp: entry.timestamp,
 		};
@@ -518,6 +524,18 @@ export class KyselyStorage<DB> implements TelescopeStorage {
 		}
 		return value;
 	}
+}
+
+/**
+ * A value for a JSON column, as JSON text.
+ *
+ * Handed an object, node-postgres writes JSON; handed an array it writes a
+ * Postgres array literal (`{1,2}`), which a `jsonb` column rejects — so every
+ * exception (its stack is an array) failed to save. Serialising here makes
+ * the column's type the only thing that decides.
+ */
+function toJson(value: unknown): string | null {
+	return value === undefined || value === null ? null : JSON.stringify(value);
 }
 
 /**
