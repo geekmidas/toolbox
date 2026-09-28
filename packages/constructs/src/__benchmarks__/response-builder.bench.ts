@@ -3,7 +3,7 @@
  *
  * Run with: pnpm bench packages/constructs/src/__benchmarks__/response-builder.bench.ts
  */
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { z } from 'zod';
 import { Endpoint, ResponseBuilder } from '../endpoints/Endpoint';
 import {
@@ -16,62 +16,80 @@ import {
 // =============================================================================
 
 describe('ResponseBuilder Creation', () => {
-	bench('new ResponseBuilder()', () => {
-		const rb = new ResponseBuilder();
-		rb.getMetadata();
+	test('new ResponseBuilder()', async ({ bench }) => {
+		await bench('new ResponseBuilder()', () => {
+			const rb = new ResponseBuilder();
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('stub object (current minimal approach)', () => {
-		const stub = { getMetadata: () => ({}) };
-		stub.getMetadata();
+	test('stub object (current minimal approach)', async ({ bench }) => {
+		await bench('stub object (current minimal approach)', () => {
+			const stub = { getMetadata: () => ({}) };
+			stub.getMetadata();
+		}).run();
 	});
 
 	// Shared constant stub - zero allocation
 	const SHARED_STUB = { getMetadata: () => ({}) };
-	bench('shared constant stub', () => {
-		SHARED_STUB.getMetadata();
+	test('shared constant stub', async ({ bench }) => {
+		await bench('shared constant stub', () => {
+			SHARED_STUB.getMetadata();
+		}).run();
 	});
 });
 
 describe('ResponseBuilder Usage', () => {
-	bench('unused - just create and get metadata', () => {
-		const rb = new ResponseBuilder();
-		rb.getMetadata();
+	test('unused - just create and get metadata', async ({ bench }) => {
+		await bench('unused - just create and get metadata', () => {
+			const rb = new ResponseBuilder();
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('set 1 header', () => {
-		const rb = new ResponseBuilder();
-		rb.header('X-Request-Id', '123');
-		rb.getMetadata();
+	test('set 1 header', async ({ bench }) => {
+		await bench('set 1 header', () => {
+			const rb = new ResponseBuilder();
+			rb.header('X-Request-Id', '123');
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('set 3 headers', () => {
-		const rb = new ResponseBuilder();
-		rb.header('X-Request-Id', '123')
-			.header('X-Correlation-Id', 'abc')
-			.header('Cache-Control', 'no-cache');
-		rb.getMetadata();
+	test('set 3 headers', async ({ bench }) => {
+		await bench('set 3 headers', () => {
+			const rb = new ResponseBuilder();
+			rb.header('X-Request-Id', '123')
+				.header('X-Correlation-Id', 'abc')
+				.header('Cache-Control', 'no-cache');
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('set 1 cookie', () => {
-		const rb = new ResponseBuilder();
-		rb.cookie('session', 'abc123', { httpOnly: true, secure: true });
-		rb.getMetadata();
+	test('set 1 cookie', async ({ bench }) => {
+		await bench('set 1 cookie', () => {
+			const rb = new ResponseBuilder();
+			rb.cookie('session', 'abc123', { httpOnly: true, secure: true });
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('full usage (status + 2 headers + 2 cookies)', () => {
-		const rb = new ResponseBuilder();
-		rb.status(201)
-			.header('Location', '/users/123')
-			.header('X-Request-Id', 'req-123')
-			.cookie('session', 'abc', { httpOnly: true })
-			.cookie('csrf', 'xyz');
-		rb.getMetadata();
+	test('full usage (status + 2 headers + 2 cookies)', async ({ bench }) => {
+		await bench('full usage (status + 2 headers + 2 cookies)', () => {
+			const rb = new ResponseBuilder();
+			rb.status(201)
+				.header('Location', '/users/123')
+				.header('X-Request-Id', 'req-123')
+				.cookie('session', 'abc', { httpOnly: true })
+				.cookie('csrf', 'xyz');
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('send() with data', () => {
-		const rb = new ResponseBuilder();
-		rb.send({ id: '123', name: 'Test' });
+	test('send() with data', async ({ bench }) => {
+		await bench('send() with data', () => {
+			const rb = new ResponseBuilder();
+			rb.send({ id: '123', name: 'Test' });
+		}).run();
 	});
 });
 
@@ -96,70 +114,86 @@ const SAMPLE_COOKIE =
 	'session=abc123; csrf=xyz789; theme=dark; lang=en; _ga=GA1.2.123456789; _gid=GA1.2.987654321';
 
 describe('Header Parsing (Endpoint.createHeaders)', () => {
-	bench('parse 10 headers (typical request)', () => {
-		const headerFn = Endpoint.createHeaders(SAMPLE_HEADERS);
-		headerFn('authorization');
+	test('parse 10 headers (typical request)', async ({ bench }) => {
+		await bench('parse 10 headers (typical request)', () => {
+			const headerFn = Endpoint.createHeaders(SAMPLE_HEADERS);
+			headerFn('authorization');
+		}).run();
 	});
 
-	bench('parse 10 headers + access 3 headers', () => {
-		const headerFn = Endpoint.createHeaders(SAMPLE_HEADERS);
-		headerFn('authorization');
-		headerFn('content-type');
-		headerFn('x-request-id');
+	test('parse 10 headers + access 3 headers', async ({ bench }) => {
+		await bench('parse 10 headers + access 3 headers', () => {
+			const headerFn = Endpoint.createHeaders(SAMPLE_HEADERS);
+			headerFn('authorization');
+			headerFn('content-type');
+			headerFn('x-request-id');
+		}).run();
 	});
 
-	bench('parse empty headers', () => {
-		const headerFn = Endpoint.createHeaders({});
-		headerFn('authorization');
+	test('parse empty headers', async ({ bench }) => {
+		await bench('parse empty headers', () => {
+			const headerFn = Endpoint.createHeaders({});
+			headerFn('authorization');
+		}).run();
 	});
 
 	// Lazy parsing alternative
-	bench('lazy header access (no upfront parsing)', () => {
-		const headers = SAMPLE_HEADERS;
-		const lazyHeaderFn = (key?: string) => {
-			if (!key) return headers;
-			return headers[key.toLowerCase()];
-		};
-		lazyHeaderFn('authorization');
+	test('lazy header access (no upfront parsing)', async ({ bench }) => {
+		await bench('lazy header access (no upfront parsing)', () => {
+			const headers = SAMPLE_HEADERS;
+			const lazyHeaderFn = (key?: string) => {
+				if (!key) return headers;
+				return headers[key.toLowerCase()];
+			};
+			lazyHeaderFn('authorization');
+		}).run();
 	});
 });
 
 describe('Cookie Parsing (Endpoint.createCookies)', () => {
-	bench('parse 6 cookies (typical request)', () => {
-		const cookieFn = Endpoint.createCookies(SAMPLE_COOKIE);
-		cookieFn('session');
+	test('parse 6 cookies (typical request)', async ({ bench }) => {
+		await bench('parse 6 cookies (typical request)', () => {
+			const cookieFn = Endpoint.createCookies(SAMPLE_COOKIE);
+			cookieFn('session');
+		}).run();
 	});
 
-	bench('parse 6 cookies + access 2 cookies', () => {
-		const cookieFn = Endpoint.createCookies(SAMPLE_COOKIE);
-		cookieFn('session');
-		cookieFn('csrf');
+	test('parse 6 cookies + access 2 cookies', async ({ bench }) => {
+		await bench('parse 6 cookies + access 2 cookies', () => {
+			const cookieFn = Endpoint.createCookies(SAMPLE_COOKIE);
+			cookieFn('session');
+			cookieFn('csrf');
+		}).run();
 	});
 
-	bench('parse empty/undefined cookies', () => {
-		const cookieFn = Endpoint.createCookies(undefined);
-		cookieFn('session');
+	test('parse empty/undefined cookies', async ({ bench }) => {
+		await bench('parse empty/undefined cookies', () => {
+			const cookieFn = Endpoint.createCookies(undefined);
+			cookieFn('session');
+		}).run();
 	});
 
 	// Lazy parsing alternative
-	bench('lazy cookie access (parse on demand)', () => {
-		let parsed: Map<string, string> | null = null;
-		const lazyCookieFn = (name?: string) => {
-			if (!parsed) {
-				parsed = new Map();
-				for (const part of SAMPLE_COOKIE.split(';')) {
-					const [k, v] = part.trim().split('=');
-					if (k && v) parsed.set(k, v);
+	test('lazy cookie access (parse on demand)', async ({ bench }) => {
+		await bench('lazy cookie access (parse on demand)', () => {
+			let parsed: Map<string, string> | null = null;
+			const lazyCookieFn = (name?: string) => {
+				if (!parsed) {
+					parsed = new Map();
+					for (const part of SAMPLE_COOKIE.split(';')) {
+						const [k, v] = part.trim().split('=');
+						if (k && v) parsed.set(k, v);
+					}
 				}
-			}
-			if (!name) {
-				const obj: Record<string, string> = {};
-				for (const [k, v] of parsed) obj[k] = v;
-				return obj;
-			}
-			return parsed.get(name);
-		};
-		lazyCookieFn('session');
+				if (!name) {
+					const obj: Record<string, string> = {};
+					for (const [k, v] of parsed) obj[k] = v;
+					return obj;
+				}
+				return parsed.get(name);
+			};
+			lazyCookieFn('session');
+		}).run();
 	});
 });
 
@@ -216,20 +250,28 @@ const complexData = {
 };
 
 describe('Zod Output Validation', () => {
-	bench('simple schema (literal)', () => {
-		simpleSchema.parse(simpleData);
+	test('simple schema (literal)', async ({ bench }) => {
+		await bench('simple schema (literal)', () => {
+			simpleSchema.parse(simpleData);
+		}).run();
 	});
 
-	bench('medium schema (4 fields)', () => {
-		mediumSchema.parse(mediumData);
+	test('medium schema (4 fields)', async ({ bench }) => {
+		await bench('medium schema (4 fields)', () => {
+			mediumSchema.parse(mediumData);
+		}).run();
 	});
 
-	bench('complex schema (nested + array)', () => {
-		complexSchema.parse(complexData);
+	test('complex schema (nested + array)', async ({ bench }) => {
+		await bench('complex schema (nested + array)', () => {
+			complexSchema.parse(complexData);
+		}).run();
 	});
 
-	bench('no validation (return as-is)', () => {
-		const _result = simpleData;
+	test('no validation (return as-is)', async ({ bench }) => {
+		await bench('no validation (return as-is)', () => {
+			const _result = simpleData;
+		}).run();
 	});
 });
 
@@ -245,77 +287,83 @@ describe('Full Minimal Handler Context', () => {
 		warn: () => {},
 	};
 
-	bench('current approach (eager parsing)', () => {
-		const context = {
-			services: {},
-			logger,
-			body: undefined,
-			query: undefined,
-			params: undefined,
-			session: undefined,
-			header: Endpoint.createHeaders(SAMPLE_HEADERS),
-			cookie: Endpoint.createCookies(SAMPLE_COOKIE),
-			auditor: undefined,
-			db: undefined,
-		};
-		const rb = new ResponseBuilder();
-		// Simulate handler access
-		context.header('authorization');
-		rb.getMetadata();
+	test('current approach (eager parsing)', async ({ bench }) => {
+		await bench('current approach (eager parsing)', () => {
+			const context = {
+				services: {},
+				logger,
+				body: undefined,
+				query: undefined,
+				params: undefined,
+				session: undefined,
+				header: Endpoint.createHeaders(SAMPLE_HEADERS),
+				cookie: Endpoint.createCookies(SAMPLE_COOKIE),
+				auditor: undefined,
+				db: undefined,
+			};
+			const rb = new ResponseBuilder();
+			// Simulate handler access
+			context.header('authorization');
+			rb.getMetadata();
+		}).run();
 	});
 
-	bench('optimized (lazy parsing, shared stub)', () => {
-		const headers = SAMPLE_HEADERS;
-		const cookieHeader = SAMPLE_COOKIE;
-		let parsedCookies: Map<string, string> | null = null;
+	test('optimized (lazy parsing, shared stub)', async ({ bench }) => {
+		await bench('optimized (lazy parsing, shared stub)', () => {
+			const headers = SAMPLE_HEADERS;
+			const cookieHeader = SAMPLE_COOKIE;
+			let parsedCookies: Map<string, string> | null = null;
 
-		const context = {
-			services: {},
-			logger,
-			body: undefined,
-			query: undefined,
-			params: undefined,
-			session: undefined,
-			header: (key?: string) => {
-				if (!key) return headers;
-				return headers[key.toLowerCase()];
-			},
-			cookie: (name?: string) => {
-				if (!parsedCookies && cookieHeader) {
-					parsedCookies = new Map();
-					for (const part of cookieHeader.split(';')) {
-						const [k, v] = part.trim().split('=');
-						if (k && v) parsedCookies.set(k, v);
+			const context = {
+				services: {},
+				logger,
+				body: undefined,
+				query: undefined,
+				params: undefined,
+				session: undefined,
+				header: (key?: string) => {
+					if (!key) return headers;
+					return headers[key.toLowerCase()];
+				},
+				cookie: (name?: string) => {
+					if (!parsedCookies && cookieHeader) {
+						parsedCookies = new Map();
+						for (const part of cookieHeader.split(';')) {
+							const [k, v] = part.trim().split('=');
+							if (k && v) parsedCookies.set(k, v);
+						}
 					}
-				}
-				if (!name) {
-					const obj: Record<string, string> = {};
-					if (parsedCookies) for (const [k, v] of parsedCookies) obj[k] = v;
-					return obj;
-				}
-				return parsedCookies?.get(name);
-			},
-			auditor: undefined,
-			db: undefined,
-		};
-		// Simulate handler access
-		context.header('authorization');
+					if (!name) {
+						const obj: Record<string, string> = {};
+						if (parsedCookies) for (const [k, v] of parsedCookies) obj[k] = v;
+						return obj;
+					}
+					return parsedCookies?.get(name);
+				},
+				auditor: undefined,
+				db: undefined,
+			};
+			// Simulate handler access
+			context.header('authorization');
+		}).run();
 	});
 
-	bench('minimal (no header/cookie parsing at all)', () => {
-		const _context = {
-			services: {},
-			logger,
-			body: undefined,
-			query: undefined,
-			params: undefined,
-			session: undefined,
-			header: () => undefined,
-			cookie: () => undefined,
-			auditor: undefined,
-			db: undefined,
-		};
-		// Handler doesn't use headers
+	test('minimal (no header/cookie parsing at all)', async ({ bench }) => {
+		await bench('minimal (no header/cookie parsing at all)', () => {
+			const _context = {
+				services: {},
+				logger,
+				body: undefined,
+				query: undefined,
+				params: undefined,
+				session: undefined,
+				header: () => undefined,
+				cookie: () => undefined,
+				auditor: undefined,
+				db: undefined,
+			};
+			// Handler doesn't use headers
+		}).run();
 	});
 });
 
@@ -325,29 +373,35 @@ describe('Full Minimal Handler Context', () => {
 
 describe('Handler Execution Comparison', () => {
 	// Simulates what a raw Hono handler would do
-	bench('raw handler (no framework)', async () => {
-		const handler = async () => ({ message: 'pong' as const });
-		const result = await handler();
-		JSON.stringify(result);
+	test('raw handler (no framework)', async ({ bench }) => {
+		await bench('raw handler (no framework)', async () => {
+			const handler = async () => ({ message: 'pong' as const });
+			const result = await handler();
+			JSON.stringify(result);
+		}).run();
 	});
 
 	// Current minimal approach
-	bench('minimal handler (current)', async () => {
-		const handler = async () => ({ message: 'pong' as const });
-		const _rb = { getMetadata: () => ({}) };
-		const result = await handler();
-		simpleSchema.parse(result); // output validation
-		JSON.stringify(result);
+	test('minimal handler (current)', async ({ bench }) => {
+		await bench('minimal handler (current)', async () => {
+			const handler = async () => ({ message: 'pong' as const });
+			const _rb = { getMetadata: () => ({}) };
+			const result = await handler();
+			simpleSchema.parse(result); // output validation
+			JSON.stringify(result);
+		}).run();
 	});
 
 	// With header parsing
-	bench('minimal handler + header parsing', async () => {
-		const handler = async () => ({ message: 'pong' as const });
-		Endpoint.createHeaders(SAMPLE_HEADERS);
-		Endpoint.createCookies(SAMPLE_COOKIE);
-		const result = await handler();
-		simpleSchema.parse(result);
-		JSON.stringify(result);
+	test('minimal handler + header parsing', async ({ bench }) => {
+		await bench('minimal handler + header parsing', async () => {
+			const handler = async () => ({ message: 'pong' as const });
+			Endpoint.createHeaders(SAMPLE_HEADERS);
+			Endpoint.createCookies(SAMPLE_COOKIE);
+			const result = await handler();
+			simpleSchema.parse(result);
+			JSON.stringify(result);
+		}).run();
 	});
 });
 
@@ -364,9 +418,12 @@ describe('Hono Lazy Accessors', () => {
 				cookie: SAMPLE_COOKIE,
 			},
 		});
-		// Create a minimal context-like object
+		// Create a minimal context-like object. `raw` is what Hono's getCookie
+		// reads; without it the lazy cookie path threw on every iteration, which
+		// the old runner recorded without failing.
 		return {
 			req: {
+				raw: req,
 				header: (name?: string) => {
 					if (name) return req.headers.get(name) ?? undefined;
 					const all: Record<string, string> = {};
@@ -379,50 +436,66 @@ describe('Hono Lazy Accessors', () => {
 		};
 	};
 
-	bench('OLD: Endpoint.createHeaders + createCookies (eager)', () => {
-		const c = createMockContext();
-		const headerValues = c.req.header() as Record<string, string>;
-		const header = Endpoint.createHeaders(headerValues);
-		const cookie = Endpoint.createCookies(headerValues.cookie);
-		// Simulate typical access pattern
-		header('authorization');
-		cookie('session');
+	test('OLD: Endpoint.createHeaders + createCookies (eager)', async ({
+		bench,
+	}) => {
+		await bench('OLD: Endpoint.createHeaders + createCookies (eager)', () => {
+			const c = createMockContext();
+			const headerValues = c.req.header() as Record<string, string>;
+			const header = Endpoint.createHeaders(headerValues);
+			const cookie = Endpoint.createCookies(headerValues.cookie);
+			// Simulate typical access pattern
+			header('authorization');
+			cookie('session');
+		}).run();
 	});
 
-	bench('NEW: createHonoHeaders + createHonoCookies (lazy)', () => {
-		const c = createMockContext();
-		const header = createHonoHeaders(c as any);
-		const cookie = createHonoCookies(c as any);
-		// Simulate typical access pattern - uses native methods
-		header('authorization');
-		cookie('session');
+	test('NEW: createHonoHeaders + createHonoCookies (lazy)', async ({
+		bench,
+	}) => {
+		await bench('NEW: createHonoHeaders + createHonoCookies (lazy)', () => {
+			const c = createMockContext();
+			const header = createHonoHeaders(c as any);
+			const cookie = createHonoCookies(c as any);
+			// Simulate typical access pattern - uses native methods
+			header('authorization');
+			cookie('session');
+		}).run();
 	});
 
-	bench('OLD: eager - access all headers', () => {
-		const c = createMockContext();
-		const headerValues = c.req.header() as Record<string, string>;
-		const header = Endpoint.createHeaders(headerValues);
-		header(); // get all
+	test('OLD: eager - access all headers', async ({ bench }) => {
+		await bench('OLD: eager - access all headers', () => {
+			const c = createMockContext();
+			const headerValues = c.req.header() as Record<string, string>;
+			const header = Endpoint.createHeaders(headerValues);
+			header(); // get all
+		}).run();
 	});
 
-	bench('NEW: lazy - access all headers', () => {
-		const c = createMockContext();
-		const header = createHonoHeaders(c as any);
-		header(); // get all - triggers parsing
+	test('NEW: lazy - access all headers', async ({ bench }) => {
+		await bench('NEW: lazy - access all headers', () => {
+			const c = createMockContext();
+			const header = createHonoHeaders(c as any);
+			header(); // get all - triggers parsing
+		}).run();
 	});
 
-	bench('OLD: eager - no access (still parses)', () => {
-		const c = createMockContext();
-		const headerValues = c.req.header() as Record<string, string>;
-		Endpoint.createHeaders(headerValues);
-		Endpoint.createCookies(headerValues.cookie);
-		// Don't access anything - but parsing already happened
+	test('OLD: eager - no access (still parses)', async ({ bench }) => {
+		await bench('OLD: eager - no access (still parses)', () => {
+			const c = createMockContext();
+			const headerValues = c.req.header() as Record<string, string>;
+			Endpoint.createHeaders(headerValues);
+			Endpoint.createCookies(headerValues.cookie);
+			// Don't access anything - but parsing already happened
+		}).run();
 	});
 
-	bench('NEW: lazy - no access (no parsing)', () => {
-		const c = createMockContext();
-		createHonoHeaders(c as any);
-		createHonoCookies(c as any);
-		// Don't access anything - no parsing happens
+	test('NEW: lazy - no access (no parsing)', async ({ bench }) => {
+		await bench('NEW: lazy - no access (no parsing)', () => {
+			const c = createMockContext();
+			createHonoHeaders(c as any);
+			createHonoCookies(c as any);
+			// Don't access anything - no parsing happens
+		}).run();
 	});
 });

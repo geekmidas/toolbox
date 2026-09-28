@@ -84,7 +84,21 @@ export class Database<
 	 * produces a database that looks empty.
 	 */
 	provides(): Record<string, $util.Input<string>> {
-		return { url: this.urlFor({}) };
+		return { url: this.urlFor(this.role ? { as: this.role } : {}) };
+	}
+
+	/**
+	 * The runtime role this database's own handlers connect as.
+	 *
+	 * Set by the adapter once the bootstrap has registered the role — the
+	 * cluster exists before any role does, so it cannot be a constructor
+	 * argument. Until it is set (and under `roles: false`, where it never is),
+	 * the URL is the master's.
+	 */
+	private role: { user: string; password: $util.Input<string> } | undefined;
+
+	connectAs(role: { user: string; password: $util.Input<string> }): void {
+		this.role = role;
 	}
 
 	/**

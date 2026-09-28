@@ -14,7 +14,7 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import { allEndpoints, mockLogger, simpleEndpoint } from './fixtures';
 import { OptimizedHonoEndpoint } from './strategies/strategy-a-lazy-services';
@@ -117,14 +117,18 @@ describe('Baseline: Raw Hono vs HonoEndpoint', () => {
 		c.json({ status: 'ok', timestamp: Date.now() }),
 	);
 
-	bench('raw Hono (baseline)', async () => {
-		const req = createRequest('/health');
-		await rawHono.fetch(req);
+	test('raw Hono (baseline)', async ({ bench }) => {
+		await bench('raw Hono (baseline)', async () => {
+			const req = createRequest('/health');
+			await rawHono.fetch(req);
+		}).run();
 	});
 
-	bench('HonoEndpoint adaptor (current)', async () => {
-		const req = createRequest('/health');
-		await currentSimpleApp.fetch(req);
+	test('HonoEndpoint adaptor (current)', async ({ bench }) => {
+		await bench('HonoEndpoint adaptor (current)', async () => {
+			const req = createRequest('/health');
+			await currentSimpleApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -135,28 +139,40 @@ describe('Baseline: Raw Hono vs HonoEndpoint', () => {
 describe('Strategy Comparison: Simple Endpoint (GET /health)', () => {
 	const req = createRequest('/health');
 
-	bench('Current Implementation', async () => {
-		await currentSimpleApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentSimpleApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazySimpleApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazySimpleApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareSimpleApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareSimpleApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Minimal (no middleware)', async () => {
-		await minimalSimpleApp.fetch(req);
+	test('Strategy C: Minimal (no middleware)', async ({ bench }) => {
+		await bench('Strategy C: Minimal (no middleware)', async () => {
+			await minimalSimpleApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInSimpleApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInSimpleApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedSimpleApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedSimpleApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -169,24 +185,34 @@ describe('Strategy Comparison: Auth Endpoint (GET /profile)', () => {
 		headers: { Authorization: 'Bearer test-token' },
 	});
 
-	bench('Current Implementation', async () => {
-		await currentApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazyServicesApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazyServicesApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInEventsApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInEventsApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -197,24 +223,34 @@ describe('Strategy Comparison: Auth Endpoint (GET /profile)', () => {
 describe('Strategy Comparison: Database Endpoint (GET /users)', () => {
 	const req = createRequest('/users');
 
-	bench('Current Implementation', async () => {
-		await currentApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazyServicesApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazyServicesApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInEventsApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInEventsApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -229,24 +265,34 @@ describe('Strategy Comparison: Complex Endpoint (POST /orders)', () => {
 		headers: { Authorization: 'Bearer test-token' },
 	});
 
-	bench('Current Implementation', async () => {
-		await currentApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazyServicesApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazyServicesApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInEventsApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInEventsApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -260,24 +306,34 @@ describe('Strategy Comparison: POST with Body Validation (POST /users)', () => {
 		body: { name: 'Test User', email: 'test@example.com' },
 	});
 
-	bench('Current Implementation', async () => {
-		await currentApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazyServicesApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazyServicesApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInEventsApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInEventsApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -288,24 +344,34 @@ describe('Strategy Comparison: POST with Body Validation (POST /users)', () => {
 describe('Strategy Comparison: Query Params (GET /search)', () => {
 	const req = createRequest('/search?q=test&page=1&limit=10');
 
-	bench('Current Implementation', async () => {
-		await currentApp.fetch(req);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await currentApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await lazyServicesApp.fetch(req);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await lazyServicesApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await middlewareApp.fetch(req);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await middlewareApp.fetch(req);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await optInEventsApp.fetch(req);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await optInEventsApp.fetch(req);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized (A+C+D)', async () => {
-		await fullyOptimizedApp.fetch(req);
+	test('Combined: Fully Optimized (A+C+D)', async ({ bench }) => {
+		await bench('Combined: Fully Optimized (A+C+D)', async () => {
+			await fullyOptimizedApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -314,34 +380,44 @@ describe('Strategy Comparison: Query Params (GET /search)', () => {
 // ============================================================================
 
 describe('App Setup Performance', () => {
-	bench('Current: setup with 8 endpoints', () => {
-		const app = new Hono();
-		const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
-		HonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+	test('Current: setup with 8 endpoints', async ({ bench }) => {
+		await bench('Current: setup with 8 endpoints', () => {
+			const app = new Hono();
+			const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
+			HonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+		}).run();
 	});
 
-	bench('Strategy A: setup with 8 endpoints', () => {
-		const app = new Hono();
-		const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
-		OptimizedHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+	test('Strategy A: setup with 8 endpoints', async ({ bench }) => {
+		await bench('Strategy A: setup with 8 endpoints', () => {
+			const app = new Hono();
+			const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
+			OptimizedHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+		}).run();
 	});
 
-	bench('Strategy C: setup with 8 endpoints', () => {
-		const app = new Hono();
-		const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
-		MiddlewareHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+	test('Strategy C: setup with 8 endpoints', async ({ bench }) => {
+		await bench('Strategy C: setup with 8 endpoints', () => {
+			const app = new Hono();
+			const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
+			MiddlewareHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+		}).run();
 	});
 
-	bench('Strategy D: setup with 8 endpoints', () => {
-		const app = new Hono();
-		const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
-		OptInEventHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+	test('Strategy D: setup with 8 endpoints', async ({ bench }) => {
+		await bench('Strategy D: setup with 8 endpoints', () => {
+			const app = new Hono();
+			const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
+			OptInEventHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+		}).run();
 	});
 
-	bench('Combined: setup with 8 endpoints', () => {
-		const app = new Hono();
-		const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
-		FullyOptimizedHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+	test('Combined: setup with 8 endpoints', async ({ bench }) => {
+		await bench('Combined: setup with 8 endpoints', () => {
+			const app = new Hono();
+			const sd = ServiceDiscovery.getInstance(mockLogger, envParser);
+			FullyOptimizedHonoEndpoint.addRoutes(allEndpoints as any, sd as any, app);
+		}).run();
 	});
 });
 
@@ -352,34 +428,44 @@ describe('App Setup Performance', () => {
 describe('Memory Pressure: 100 Sequential Requests', () => {
 	const req = createRequest('/health');
 
-	bench('Current Implementation', async () => {
-		for (let i = 0; i < 100; i++) {
-			await currentApp.fetch(req);
-		}
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			for (let i = 0; i < 100; i++) {
+				await currentApp.fetch(req);
+			}
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		for (let i = 0; i < 100; i++) {
-			await lazyServicesApp.fetch(req);
-		}
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			for (let i = 0; i < 100; i++) {
+				await lazyServicesApp.fetch(req);
+			}
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		for (let i = 0; i < 100; i++) {
-			await middlewareApp.fetch(req);
-		}
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			for (let i = 0; i < 100; i++) {
+				await middlewareApp.fetch(req);
+			}
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		for (let i = 0; i < 100; i++) {
-			await optInEventsApp.fetch(req);
-		}
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			for (let i = 0; i < 100; i++) {
+				await optInEventsApp.fetch(req);
+			}
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized', async () => {
-		for (let i = 0; i < 100; i++) {
-			await fullyOptimizedApp.fetch(req);
-		}
+	test('Combined: Fully Optimized', async ({ bench }) => {
+		await bench('Combined: Fully Optimized', async () => {
+			for (let i = 0; i < 100; i++) {
+				await fullyOptimizedApp.fetch(req);
+			}
+		}).run();
 	});
 });
 
@@ -390,44 +476,54 @@ describe('Memory Pressure: 100 Sequential Requests', () => {
 describe('Concurrent Requests: 100 Parallel', () => {
 	const req = createRequest('/health');
 
-	bench('Current Implementation', async () => {
-		await Promise.all(
-			Array(100)
-				.fill(null)
-				.map(() => currentApp.fetch(req)),
-		);
+	test('Current Implementation', async ({ bench }) => {
+		await bench('Current Implementation', async () => {
+			await Promise.all(
+				Array(100)
+					.fill(null)
+					.map(() => currentApp.fetch(req)),
+			);
+		}).run();
 	});
 
-	bench('Strategy A: Lazy Services', async () => {
-		await Promise.all(
-			Array(100)
-				.fill(null)
-				.map(() => lazyServicesApp.fetch(req)),
-		);
+	test('Strategy A: Lazy Services', async ({ bench }) => {
+		await bench('Strategy A: Lazy Services', async () => {
+			await Promise.all(
+				Array(100)
+					.fill(null)
+					.map(() => lazyServicesApp.fetch(req)),
+			);
+		}).run();
 	});
 
-	bench('Strategy C: Middleware Composition', async () => {
-		await Promise.all(
-			Array(100)
-				.fill(null)
-				.map(() => middlewareApp.fetch(req)),
-		);
+	test('Strategy C: Middleware Composition', async ({ bench }) => {
+		await bench('Strategy C: Middleware Composition', async () => {
+			await Promise.all(
+				Array(100)
+					.fill(null)
+					.map(() => middlewareApp.fetch(req)),
+			);
+		}).run();
 	});
 
-	bench('Strategy D: Opt-in Events', async () => {
-		await Promise.all(
-			Array(100)
-				.fill(null)
-				.map(() => optInEventsApp.fetch(req)),
-		);
+	test('Strategy D: Opt-in Events', async ({ bench }) => {
+		await bench('Strategy D: Opt-in Events', async () => {
+			await Promise.all(
+				Array(100)
+					.fill(null)
+					.map(() => optInEventsApp.fetch(req)),
+			);
+		}).run();
 	});
 
-	bench('Combined: Fully Optimized', async () => {
-		await Promise.all(
-			Array(100)
-				.fill(null)
-				.map(() => fullyOptimizedApp.fetch(req)),
-		);
+	test('Combined: Fully Optimized', async ({ bench }) => {
+		await bench('Combined: Fully Optimized', async () => {
+			await Promise.all(
+				Array(100)
+					.fill(null)
+					.map(() => fullyOptimizedApp.fetch(req)),
+			);
+		}).run();
 	});
 });
 
@@ -459,28 +555,36 @@ describe('Validation Overhead', () => {
 
 	const testBody = { name: 'Test', email: 'test@example.com' };
 
-	bench('no validation (baseline)', async () => {
-		await noValidationApp.fetch(
-			createRequest('/test', { method: 'POST', body: testBody }),
-		);
+	test('no validation (baseline)', async ({ bench }) => {
+		await bench('no validation (baseline)', async () => {
+			await noValidationApp.fetch(
+				createRequest('/test', { method: 'POST', body: testBody }),
+			);
+		}).run();
 	});
 
-	bench('manual Zod validation', async () => {
-		await manualValidationApp.fetch(
-			createRequest('/test', { method: 'POST', body: testBody }),
-		);
+	test('manual Zod validation', async ({ bench }) => {
+		await bench('manual Zod validation', async () => {
+			await manualValidationApp.fetch(
+				createRequest('/test', { method: 'POST', body: testBody }),
+			);
+		}).run();
 	});
 
-	bench('Current HonoEndpoint validation', async () => {
-		await currentApp.fetch(
-			createRequest('/users', { method: 'POST', body: testBody }),
-		);
+	test('Current HonoEndpoint validation', async ({ bench }) => {
+		await bench('Current HonoEndpoint validation', async () => {
+			await currentApp.fetch(
+				createRequest('/users', { method: 'POST', body: testBody }),
+			);
+		}).run();
 	});
 
-	bench('Optimized HonoEndpoint validation', async () => {
-		await fullyOptimizedApp.fetch(
-			createRequest('/users', { method: 'POST', body: testBody }),
-		);
+	test('Optimized HonoEndpoint validation', async ({ bench }) => {
+		await bench('Optimized HonoEndpoint validation', async () => {
+			await fullyOptimizedApp.fetch(
+				createRequest('/users', { method: 'POST', body: testBody }),
+			);
+		}).run();
 	});
 });
 
@@ -511,23 +615,33 @@ describe('Middleware Overhead Analysis', () => {
 	});
 	multiMiddlewareApp.get('/test', (c) => c.json({ ok: true }));
 
-	bench('no middleware (baseline)', async () => {
-		await noMiddlewareApp.fetch(createRequest('/test'));
+	test('no middleware (baseline)', async ({ bench }) => {
+		await bench('no middleware (baseline)', async () => {
+			await noMiddlewareApp.fetch(createRequest('/test'));
+		}).run();
 	});
 
-	bench('timing middleware only', async () => {
-		await timingApp.fetch(createRequest('/test'));
+	test('timing middleware only', async ({ bench }) => {
+		await bench('timing middleware only', async () => {
+			await timingApp.fetch(createRequest('/test'));
+		}).run();
 	});
 
-	bench('multiple custom middleware', async () => {
-		await multiMiddlewareApp.fetch(createRequest('/test'));
+	test('multiple custom middleware', async ({ bench }) => {
+		await bench('multiple custom middleware', async () => {
+			await multiMiddlewareApp.fetch(createRequest('/test'));
+		}).run();
 	});
 
-	bench('HonoEndpoint (all features)', async () => {
-		await currentApp.fetch(createRequest('/health'));
+	test('HonoEndpoint (all features)', async ({ bench }) => {
+		await bench('HonoEndpoint (all features)', async () => {
+			await currentApp.fetch(createRequest('/health'));
+		}).run();
 	});
 
-	bench('Fully Optimized (minimal middleware)', async () => {
-		await fullyOptimizedApp.fetch(createRequest('/health'));
+	test('Fully Optimized (minimal middleware)', async ({ bench }) => {
+		await bench('Fully Optimized (minimal middleware)', async () => {
+			await fullyOptimizedApp.fetch(createRequest('/health'));
+		}).run();
 	});
 });

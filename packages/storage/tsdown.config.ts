@@ -10,9 +10,11 @@ export default defineConfig({
 	outExtensions: (ctx) => ({
 		js: ctx.format === 'es' ? '.mjs' : '.cjs',
 	}),
-	external: [
-		'@aws-sdk/client-s3',
-		'@aws-sdk/s3-presigned-post',
-		'@aws-sdk/s3-request-presigner',
-	],
+	deps: {
+		neverBundle: [
+			'@aws-sdk/client-s3',
+			'@aws-sdk/s3-presigned-post',
+			'@aws-sdk/s3-request-presigner',
+		],
+	},
 });

@@ -232,13 +232,20 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			const bootstrap = bootstrapFor(cluster, d.id, context);
 			const runtime = roleNameFor(d, context);
 
-			bootstrap?.add({
+			const credentials = bootstrap?.add({
 				id: d.id,
 				schema: d.schema,
 				runtime,
 				owner: ownerRole(runtime),
 				...(hasReader(d.id, context) ? { reader: readerRole(runtime) } : {}),
 			});
+
+			// Registering the role was half of it: its handlers have to connect as
+			// it too, or the DDL creates a role nothing uses and every handler
+			// linked to the database still holds the master.
+			if (credentials) {
+				cluster.connectAs({ user: runtime, password: credentials.runtime });
+			}
 		}
 
 		return cluster;

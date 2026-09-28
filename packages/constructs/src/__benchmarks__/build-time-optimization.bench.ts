@@ -12,7 +12,7 @@ import { EnvironmentParser } from '@geekmidas/envkit';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { Endpoint, ResponseBuilder } from '../endpoints';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import {
@@ -231,16 +231,22 @@ function createRequest(
 describe('Build-Time vs Runtime: Minimal Endpoint (GET /health)', () => {
 	const req = createRequest('/health');
 
-	bench('Raw Hono (baseline)', async () => {
-		await rawHonoApp.fetch(req);
+	test('Raw Hono (baseline)', async ({ bench }) => {
+		await bench('Raw Hono (baseline)', async () => {
+			await rawHonoApp.fetch(req);
+		}).run();
 	});
 
-	bench('HonoEndpoint.addRoutes (runtime)', async () => {
-		await runtimeApp.fetch(req);
+	test('HonoEndpoint.addRoutes (runtime)', async ({ bench }) => {
+		await bench('HonoEndpoint.addRoutes (runtime)', async () => {
+			await runtimeApp.fetch(req);
+		}).run();
 	});
 
-	bench('Build-time generated (minimal tier)', async () => {
-		await buildTimeMinimalApp.fetch(req);
+	test('Build-time generated (minimal tier)', async ({ bench }) => {
+		await bench('Build-time generated (minimal tier)', async () => {
+			await buildTimeMinimalApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -249,12 +255,16 @@ describe('Build-Time vs Runtime: Auth Endpoint (GET /profile)', () => {
 		headers: { Authorization: 'Bearer test-token' },
 	});
 
-	bench('HonoEndpoint.addRoutes (runtime)', async () => {
-		await runtimeAuthApp.fetch(req);
+	test('HonoEndpoint.addRoutes (runtime)', async ({ bench }) => {
+		await bench('HonoEndpoint.addRoutes (runtime)', async () => {
+			await runtimeAuthApp.fetch(req);
+		}).run();
 	});
 
-	bench('Build-time generated (standard tier)', async () => {
-		await buildTimeStandardApp.fetch(req);
+	test('Build-time generated (standard tier)', async ({ bench }) => {
+		await bench('Build-time generated (standard tier)', async () => {
+			await buildTimeStandardApp.fetch(req);
+		}).run();
 	});
 });
 
@@ -264,11 +274,15 @@ describe('Build-Time vs Runtime: Body Validation (POST /users)', () => {
 		body: { name: 'Test User', email: 'test@example.com' },
 	});
 
-	bench('HonoEndpoint.addRoutes (runtime)', async () => {
-		await runtimeBodyApp.fetch(req);
+	test('HonoEndpoint.addRoutes (runtime)', async ({ bench }) => {
+		await bench('HonoEndpoint.addRoutes (runtime)', async () => {
+			await runtimeBodyApp.fetch(req);
+		}).run();
 	});
 
-	bench('Build-time generated (standard tier)', async () => {
-		await buildTimeBodyApp.fetch(req);
+	test('Build-time generated (standard tier)', async ({ bench }) => {
+		await bench('Build-time generated (standard tier)', async () => {
+			await buildTimeBodyApp.fetch(req);
+		}).run();
 	});
 });

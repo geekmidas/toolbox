@@ -14,7 +14,11 @@ interface OpenApiTsOptions {
 
 // JSON Schema type definition
 interface JsonSchema {
-	type?: string;
+	// An array since Zod 4.6, which writes a union of primitives — a nullable
+	// string among them — as `type: ['string', 'null']` rather than `anyOf`.
+	type?: string | string[];
+	/** A literal — `z.literal('open')` is `{ type: 'string', const: 'open' }`. */
+	const?: unknown;
 	properties?: Record<string, JsonSchema>;
 	items?: JsonSchema;
 	required?: string[];
@@ -401,7 +405,7 @@ export class OpenApiTsGenerator {
 			// which strips $defs)
 			const vendor = schema['~standard']?.vendor;
 			if (!vendor || !(vendor in StandardSchemaJsonSchema)) {
-				return null;
+				return unknownType(name);
 			}
 
 			const toJsonSchema =
@@ -409,7 +413,7 @@ export class OpenApiTsGenerator {
 					vendor as keyof typeof StandardSchemaJsonSchema
 				];
 			const jsonSchema = await toJsonSchema(schema);
-			if (!jsonSchema) return null;
+			if (!jsonSchema) return unknownType(name);
 
 			// Extract $defs from the JSON schema (these come from .meta({ id: 'X' }))
 			if (jsonSchema.$defs && typeof jsonSchema.$defs === 'object') {
@@ -449,7 +453,7 @@ export class OpenApiTsGenerator {
 
 			return this.jsonSchemaToInterface(schemaWithoutDefs, name);
 		} catch {
-			return null;
+			return unknownType(name);
 		}
 	}
 
@@ -482,6 +486,14 @@ export class OpenApiTsGenerator {
 			return refName;
 		}
 
+		// Before the type: a literal is narrower than the type it belongs to, and
+		// reading only the type turned `'open' | 'closed'` into `string | string`.
+		if (schema.const !== undefined) {
+			return typeof schema.const === 'string'
+				? `'${schema.const}'`
+				: String(schema.const);
+		}
+
 		if (schema.anyOf) {
 			return schema.anyOf
 				.map((s: JsonSchema) => this.jsonSchemaTypeToTs(s))
@@ -498,6 +510,12 @@ export class OpenApiTsGenerator {
 			return schema.allOf
 				.map((s: JsonSchema) => this.jsonSchemaTypeToTs(s))
 				.join(' & ');
+		}
+
+		if (Array.isArray(schema.type)) {
+			return schema.type
+				.map((type) => this.jsonSchemaTypeToTs({ ...schema, type }))
+				.join(' | ');
 		}
 
 		switch (schema.type) {
@@ -839,4 +857,13 @@ ${pathsInterface}
 ${createApiSection}
 `;
 	}
+}
+
+/**
+ * The declaration for a schema that cannot be converted — a vendor with no
+ * converter, or one that fails. The paths interface names it either way, so
+ * leaving it undeclared made the generated client fail to compile.
+ */
+function unknownType(name: string): string {
+	return `export type ${name} = unknown;`;
 }

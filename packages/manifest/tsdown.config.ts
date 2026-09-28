@@ -12,5 +12,5 @@ export default defineConfig({
 	}),
 	// Not hoisted to the workspace root, so it would fail to resolve when a
 	// consumer loads dist from the root context.
-	noExternal: ['lodash.snakecase'],
+	deps: { alwaysBundle: ['lodash.snakecase'] },
 });

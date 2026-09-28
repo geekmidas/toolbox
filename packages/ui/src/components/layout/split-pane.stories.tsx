@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '../ui/badge';

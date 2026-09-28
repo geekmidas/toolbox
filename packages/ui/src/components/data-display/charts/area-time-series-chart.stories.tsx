@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { subMinutes } from 'date-fns';
 import { AreaTimeSeriesChart } from './area-time-series-chart';
 

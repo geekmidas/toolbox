@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Activity, AlertCircle, Clock, Users, Zap } from 'lucide-react';
 import { MetricCard, SparkBar, Sparkline } from './sparkline';
 

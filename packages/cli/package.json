@@ -111,7 +111,7 @@
 		"openapi-typescript": "~7.13.0",
 		"pg": "~8.23.0",
 		"prompts": "~2.4.2",
-		"tsx": "~4.20.3",
+		"tsx": "~4.23.15",
 		"yaml": "~2.9.1"
 	},
 	"devDependencies": {
@@ -120,8 +120,8 @@
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
 		"@types/prompts": "~2.4.9",
-		"typescript": "~5.8.2",
-		"vitest": "~3.2.4",
+		"typescript": "~6.0.3",
+		"vitest": "~5.0.2",
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {

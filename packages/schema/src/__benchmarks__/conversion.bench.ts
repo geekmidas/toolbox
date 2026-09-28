@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { z } from 'zod';
 import { convertStandardSchemaToJsonSchema } from '../conversion';
 
@@ -9,18 +9,24 @@ describe('Schema Conversion - Simple', () => {
 		email: z.email(),
 	});
 
-	bench('simple object schema', async () => {
-		await convertStandardSchemaToJsonSchema(simpleSchema);
+	test('simple object schema', async ({ bench }) => {
+		await bench('simple object schema', async () => {
+			await convertStandardSchemaToJsonSchema(simpleSchema);
+		}).run();
 	});
 
 	const primitiveSchema = z.string();
-	bench('primitive string schema', async () => {
-		await convertStandardSchemaToJsonSchema(primitiveSchema);
+	test('primitive string schema', async ({ bench }) => {
+		await bench('primitive string schema', async () => {
+			await convertStandardSchemaToJsonSchema(primitiveSchema);
+		}).run();
 	});
 
 	const arraySchema = z.array(z.string());
-	bench('array of strings schema', async () => {
-		await convertStandardSchemaToJsonSchema(arraySchema);
+	test('array of strings schema', async ({ bench }) => {
+		await bench('array of strings schema', async () => {
+			await convertStandardSchemaToJsonSchema(arraySchema);
+		}).run();
 	});
 });
 
@@ -45,8 +51,10 @@ describe('Schema Conversion - Complex', () => {
 		}),
 	});
 
-	bench('deeply nested schema', async () => {
-		await convertStandardSchemaToJsonSchema(nestedSchema);
+	test('deeply nested schema', async ({ bench }) => {
+		await bench('deeply nested schema', async () => {
+			await convertStandardSchemaToJsonSchema(nestedSchema);
+		}).run();
 	});
 
 	const unionSchema = z.discriminatedUnion('type', [
@@ -59,8 +67,10 @@ describe('Schema Conversion - Complex', () => {
 		}),
 	]);
 
-	bench('discriminated union schema', async () => {
-		await convertStandardSchemaToJsonSchema(unionSchema);
+	test('discriminated union schema', async ({ bench }) => {
+		await bench('discriminated union schema', async () => {
+			await convertStandardSchemaToJsonSchema(unionSchema);
+		}).run();
 	});
 
 	const largeSchema = z.object(
@@ -69,8 +79,10 @@ describe('Schema Conversion - Complex', () => {
 		),
 	);
 
-	bench('large object (50 fields)', async () => {
-		await convertStandardSchemaToJsonSchema(largeSchema);
+	test('large object (50 fields)', async ({ bench }) => {
+		await bench('large object (50 fields)', async () => {
+			await convertStandardSchemaToJsonSchema(largeSchema);
+		}).run();
 	});
 });
 
@@ -82,7 +94,9 @@ describe('Schema Conversion - With Refinements', () => {
 		uuid: z.string().uuid(),
 	});
 
-	bench('schema with refinements', async () => {
-		await convertStandardSchemaToJsonSchema(refinedSchema);
+	test('schema with refinements', async ({ bench }) => {
+		await bench('schema with refinements', async () => {
+			await convertStandardSchemaToJsonSchema(refinedSchema);
+		}).run();
 	});
 });

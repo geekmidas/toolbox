@@ -24,7 +24,7 @@ export default defineConfig({
 	format: ['esm', 'cjs'],
 	dts: true,
 	clean: true,
-	external: ['react', 'react-dom'],
+	deps: { neverBundle: ['react', 'react-dom'] },
 	// `.mjs`/`.cjs` whatever the package's `"type"`, which is what `exports`
 	// names. tsdown 0.12 otherwise writes ESM as `.js` in a module package.
 	fixedExtension: true,

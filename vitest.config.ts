@@ -23,7 +23,16 @@ export default defineConfig({
 				'**/sniffer-hooks.ts',
 				'**/sniffer-worker.ts',
 				'**/sniffer-envkit-patch.ts',
+				'**/sniffer-routes-worker.ts',
+				// The commander wiring: each command's options and a call into the
+				// function that does the work, which has tests of its own.
+				'packages/cli/src/index.ts',
 				'**/__fixtures__/**',
+				// Test code, not the code under test: spec files, their helpers and
+				// type-level tests live here, and measuring them counted helpers a
+				// given run did not call as untested source.
+				'**/__tests__/**',
+				'**/*.test-d.ts',
 			],
 			include: ['packages/*/src/**/*.{ts,tsx}'],
 			thresholds: {

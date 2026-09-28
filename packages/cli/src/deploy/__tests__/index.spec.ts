@@ -12,6 +12,16 @@ import { generateTag, workspaceDeployCommand } from '../index';
 import { createEmptyState } from '../state';
 import type { DeployOptions } from '../types';
 
+// The credentials check fails fast. Declared here because it applies to the
+// whole file: vi.mock is hoisted above every import wherever it is written,
+// and Vitest 5 refuses the nested form that suggested otherwise.
+vi.mock('../../auth', () => ({
+	getDokployCredentials: vi.fn().mockResolvedValue(null),
+	getDokployRegistryId: vi.fn().mockResolvedValue(null),
+	storeDokployCredentials: vi.fn(),
+	validateDokployToken: vi.fn().mockResolvedValue(true),
+}));
+
 const BASE_URL = 'https://dokploy.example.com';
 
 // MSW server for mocking Dokploy API calls
@@ -232,14 +242,6 @@ describe('workspaceDeployCommand', () => {
 				stage: 'production',
 				apps: ['api', 'nonexistent'],
 			};
-
-			// Mock credentials check to fail fast
-			vi.mock('../../auth', () => ({
-				getDokployCredentials: vi.fn().mockResolvedValue(null),
-				getDokployRegistryId: vi.fn().mockResolvedValue(null),
-				storeDokployCredentials: vi.fn(),
-				validateDokployToken: vi.fn().mockResolvedValue(true),
-			}));
 
 			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
 				'Unknown apps: nonexistent',

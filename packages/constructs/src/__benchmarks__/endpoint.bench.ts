@@ -7,7 +7,7 @@ import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { LogLevel } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
-import { bench, describe } from 'vitest';
+import { describe, test } from 'vitest';
 import { z } from 'zod';
 import type { MappedAudit } from '../endpoints/audit';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
@@ -110,11 +110,13 @@ describe('Endpoint Handling - Simple', () => {
 		.handle(async () => ({ status: 'ok' }));
 	const adaptor = new TestEndpointAdaptor(simpleEndpoint);
 
-	bench('simple GET endpoint', async () => {
-		await adaptor.request({
-			services: {},
-			headers: {},
-		});
+	test('simple GET endpoint', async ({ bench }) => {
+		await bench('simple GET endpoint', async () => {
+			await adaptor.request({
+				services: {},
+				headers: {},
+			});
+		}).run();
 	});
 });
 
@@ -127,12 +129,14 @@ describe('Endpoint Handling - With Validation', () => {
 
 	const adaptor = new TestEndpointAdaptor(validatedEndpoint);
 
-	bench('POST with body validation', async () => {
-		await adaptor.request({
-			services: {},
-			headers: { 'content-type': 'application/json' },
-			body: { name: 'Test User', email: 'test@example.com' },
-		});
+	test('POST with body validation', async ({ bench }) => {
+		await bench('POST with body validation', async () => {
+			await adaptor.request({
+				services: {},
+				headers: { 'content-type': 'application/json' },
+				body: { name: 'Test User', email: 'test@example.com' },
+			});
+		}).run();
 	});
 
 	const complexBodyEndpoint = api
@@ -160,22 +164,24 @@ describe('Endpoint Handling - With Validation', () => {
 
 	const complexAdaptor = new TestEndpointAdaptor(complexBodyEndpoint);
 
-	bench('POST with complex body validation', async () => {
-		await complexAdaptor.request({
-			services: {},
-			headers: { 'content-type': 'application/json' },
-			body: {
-				user: {
-					name: 'Test',
-					email: 'test@example.com',
-					profile: { bio: 'Hello', avatar: 'https://example.com/avatar.jpg' },
+	test('POST with complex body validation', async ({ bench }) => {
+		await bench('POST with complex body validation', async () => {
+			await complexAdaptor.request({
+				services: {},
+				headers: { 'content-type': 'application/json' },
+				body: {
+					user: {
+						name: 'Test',
+						email: 'test@example.com',
+						profile: { bio: 'Hello', avatar: 'https://example.com/avatar.jpg' },
+					},
+					items: [
+						{ id: '1', quantity: 2 },
+						{ id: '2', quantity: 5 },
+					],
 				},
-				items: [
-					{ id: '1', quantity: 2 },
-					{ id: '2', quantity: 5 },
-				],
-			},
-		});
+			});
+		}).run();
 	});
 });
 
@@ -188,12 +194,14 @@ describe('Endpoint Handling - Path Params', () => {
 
 	const adaptor = new TestEndpointAdaptor(paramsEndpoint);
 
-	bench('GET with path params', async () => {
-		await adaptor.request({
-			services: {},
-			headers: {},
-			params: { id: '123' },
-		});
+	test('GET with path params', async ({ bench }) => {
+		await bench('GET with path params', async () => {
+			await adaptor.request({
+				services: {},
+				headers: {},
+				params: { id: '123' },
+			});
+		}).run();
 	});
 });
 
@@ -212,12 +220,14 @@ describe('Endpoint Handling - Query Params', () => {
 
 	const adaptor = new TestEndpointAdaptor(queryEndpoint);
 
-	bench('GET with query params', async () => {
-		await adaptor.request({
-			services: {},
-			headers: {},
-			query: { q: 'test', page: 2, limit: 20 },
-		});
+	test('GET with query params', async ({ bench }) => {
+		await bench('GET with query params', async () => {
+			await adaptor.request({
+				services: {},
+				headers: {},
+				query: { q: 'test', page: 2, limit: 20 },
+			});
+		}).run();
 	});
 });
 
@@ -238,12 +248,14 @@ describe('Endpoint Handling - Single Service', () => {
 
 	const adaptor = new TestEndpointAdaptor(singleServiceEndpoint);
 
-	bench('GET with single service', async () => {
-		await adaptor.request({
-			services: { database: registeredDatabase },
-			headers: {},
-			params: { id: '123' },
-		});
+	test('GET with single service', async ({ bench }) => {
+		await bench('GET with single service', async () => {
+			await adaptor.request({
+				services: { database: registeredDatabase },
+				headers: {},
+				params: { id: '123' },
+			});
+		}).run();
 	});
 });
 
@@ -269,16 +281,18 @@ describe('Endpoint Handling - Multiple Services', () => {
 
 	const adaptor = new TestEndpointAdaptor(multiServiceEndpoint);
 
-	bench('GET with multiple services (3)', async () => {
-		await adaptor.request({
-			services: {
-				database: registeredDatabase,
-				cache: registeredCache,
-				auth: registeredAuth,
-			},
-			headers: {},
-			params: { id: '123' },
-		});
+	test('GET with multiple services (3)', async ({ bench }) => {
+		await bench('GET with multiple services (3)', async () => {
+			await adaptor.request({
+				services: {
+					database: registeredDatabase,
+					cache: registeredCache,
+					auth: registeredAuth,
+				},
+				headers: {},
+				params: { id: '123' },
+			});
+		}).run();
 	});
 });
 
@@ -306,11 +320,13 @@ describe('Endpoint Handling - Session Extraction', () => {
 
 	const adaptor = new TestEndpointAdaptor(sessionEndpoint);
 
-	bench('GET with session extraction', async () => {
-		await adaptor.request({
-			services: {},
-			headers: { authorization: 'Bearer test-token' },
-		});
+	test('GET with session extraction', async ({ bench }) => {
+		await bench('GET with session extraction', async () => {
+			await adaptor.request({
+				services: {},
+				headers: { authorization: 'Bearer test-token' },
+			});
+		}).run();
 	});
 });
 
@@ -329,15 +345,17 @@ describe('Endpoint Handling - Authorization', () => {
 
 	const adaptor = new TestEndpointAdaptor(authEndpoint);
 
-	bench('POST with authorization check', async () => {
-		await adaptor.request({
-			services: {},
-			headers: {
-				authorization: 'Bearer admin-token',
-				'content-type': 'application/json',
-			},
-			body: { action: 'delete-all' },
-		});
+	test('POST with authorization check', async ({ bench }) => {
+		await bench('POST with authorization check', async () => {
+			await adaptor.request({
+				services: {},
+				headers: {
+					authorization: 'Bearer admin-token',
+					'content-type': 'application/json',
+				},
+				body: { action: 'delete-all' },
+			});
+		}).run();
 	});
 });
 
@@ -369,13 +387,15 @@ describe('Endpoint Handling - Declarative Audit', () => {
 
 	const adaptor = new TestEndpointAdaptor(auditEndpoint);
 
-	bench('POST with declarative audit', async () => {
-		await adaptor.request({
-			services: {},
-			headers: { 'content-type': 'application/json' },
-			body: { name: 'Test User', email: 'test@example.com' },
-			auditorStorage: auditStorage,
-		});
+	test('POST with declarative audit', async ({ bench }) => {
+		await bench('POST with declarative audit', async () => {
+			await adaptor.request({
+				services: {},
+				headers: { 'content-type': 'application/json' },
+				body: { name: 'Test User', email: 'test@example.com' },
+				auditorStorage: auditStorage,
+			});
+		}).run();
 	});
 });
 
@@ -393,13 +413,15 @@ describe('Endpoint Handling - Manual Audit', () => {
 
 	const adaptor = new TestEndpointAdaptor(manualAuditEndpoint);
 
-	bench('POST with manual audit', async () => {
-		await adaptor.request({
-			services: {},
-			headers: { 'content-type': 'application/json' },
-			body: { name: 'Test User', email: 'test@example.com' },
-			auditorStorage: auditStorage,
-		});
+	test('POST with manual audit', async ({ bench }) => {
+		await bench('POST with manual audit', async () => {
+			await adaptor.request({
+				services: {},
+				headers: { 'content-type': 'application/json' },
+				body: { name: 'Test User', email: 'test@example.com' },
+				auditorStorage: auditStorage,
+			});
+		}).run();
 	});
 });
 
@@ -421,13 +443,15 @@ describe('Endpoint Handling - Event Publishing', () => {
 
 	const adaptor = new TestEndpointAdaptor(publisherEndpoint);
 
-	bench('POST with event publishing', async () => {
-		await adaptor.request({
-			services: {},
-			headers: { 'content-type': 'application/json' },
-			body: { name: 'Test User', email: 'test@example.com' },
-			publisher: PublisherService,
-		});
+	test('POST with event publishing', async ({ bench }) => {
+		await bench('POST with event publishing', async () => {
+			await adaptor.request({
+				services: {},
+				headers: { 'content-type': 'application/json' },
+				body: { name: 'Test User', email: 'test@example.com' },
+				publisher: PublisherService,
+			});
+		}).run();
 	});
 });
 
@@ -477,22 +501,24 @@ describe('Endpoint Handling - Full Stack (Services + Session + Audit)', () => {
 
 	const adaptor = new TestEndpointAdaptor(fullStackEndpoint);
 
-	bench('POST full stack (services + session + audit)', async () => {
-		await adaptor.request({
-			services: {
-				database: registeredDatabase,
-				cache: registeredCache,
-			},
-			headers: {
-				authorization: 'Bearer admin-token',
-				'content-type': 'application/json',
-			},
-			body: {
-				name: 'New User',
-				email: 'new@example.com',
-				profile: { bio: 'Hello world' },
-			},
-			auditorStorage: auditStorage,
-		});
+	test('POST full stack (services + session + audit)', async ({ bench }) => {
+		await bench('POST full stack (services + session + audit)', async () => {
+			await adaptor.request({
+				services: {
+					database: registeredDatabase,
+					cache: registeredCache,
+				},
+				headers: {
+					authorization: 'Bearer admin-token',
+					'content-type': 'application/json',
+				},
+				body: {
+					name: 'New User',
+					email: 'new@example.com',
+					profile: { bio: 'Hello world' },
+				},
+				auditorStorage: auditStorage,
+			});
+		}).run();
 	});
 });

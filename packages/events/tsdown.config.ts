@@ -14,10 +14,12 @@ export default defineConfig({
 		'src/sns/snsUrl.ts',
 		'src/pgboss/index.ts',
 	],
-	external: [
-		'amqplib',
-		'@aws-sdk/client-sqs',
-		'@aws-sdk/client-sns',
-		'pg-boss',
-	],
+	deps: {
+		neverBundle: [
+			'amqplib',
+			'@aws-sdk/client-sqs',
+			'@aws-sdk/client-sns',
+			'pg-boss',
+		],
+	},
 });

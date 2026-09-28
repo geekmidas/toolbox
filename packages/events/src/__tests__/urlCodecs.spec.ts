@@ -65,3 +65,42 @@ describe('snsUrl', () => {
 		);
 	});
 });
+
+describe.each([
+	{
+		name: 'sqsUrl',
+		codec: sqsUrl,
+		scheme: 'sqs',
+		Malformed: sqsUrl.MalformedQueueUrl,
+		Scheme: sqsUrl.UnexpectedQueueScheme,
+		Missing: sqsUrl.MissingQueueUrl,
+		empty: { queueUrl: '' },
+	},
+	{
+		name: 'snsUrl',
+		codec: snsUrl,
+		scheme: 'sns',
+		Malformed: snsUrl.MalformedTopicUrl,
+		Scheme: snsUrl.UnexpectedTopicScheme,
+		Missing: snsUrl.MissingTopicArn,
+		empty: { topicArn: '' },
+	},
+])('$name refusals', ({ codec, scheme, Malformed, Scheme, Missing, empty }) => {
+	it('refuses a string that is not a URL at all', () => {
+		expect(() => codec.parse('not a url')).toThrow(Malformed);
+	});
+
+	it('names both schemes when handed the wrong one', () => {
+		expect(() => codec.parse('https://example.test')).toThrow(Scheme);
+		expect(() => codec.parse('https://example.test')).toThrow(
+			`Expected a '${scheme}://' connection string and got 'https://'`,
+		);
+	});
+
+	it('refuses to compose a string that would name nothing', () => {
+		expect(() => codec.build(empty as never)).toThrow(Missing);
+		expect(() => codec.build(empty as never)).toThrow(
+			`An ${scheme}:// connection string needs`,
+		);
+	});
+});

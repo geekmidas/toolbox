@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -5,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	checkDirectoryExists,
 	detectPackageManager,
+	findWorkspacePackages,
+	findWorkspaceRoot,
+	getExecCommand,
+	getInstallCommand,
+	getRunCommand,
+	getWorkspaceGlobs,
 	validateProjectName,
 } from '../utils.js';
 
@@ -111,5 +118,126 @@ describe('detectPackageManager', () => {
 	it('should default to npm when no lockfile or user agent', () => {
 		delete process.env.npm_config_user_agent;
 		expect(detectPackageManager(tempDir)).toBe('npm');
+	});
+});
+
+describe('detectPackageManager from a lockfile', () => {
+	let dir: string;
+	const agent = process.env.npm_config_user_agent;
+
+	beforeEach(async () => {
+		dir = join(tmpdir(), `gkm-pm-${Date.now()}-${Math.random()}`);
+		await mkdir(dir, { recursive: true });
+		// The lockfile is only read when no user agent names a manager.
+		delete process.env.npm_config_user_agent;
+	});
+
+	afterEach(async () => {
+		await rm(dir, { recursive: true, force: true });
+		if (agent !== undefined) process.env.npm_config_user_agent = agent;
+	});
+
+	it.each([
+		['yarn.lock', 'yarn'],
+		['bun.lockb', 'bun'],
+		['package-lock.json', 'npm'],
+		['pnpm-lock.yaml', 'pnpm'],
+	] as const)('reads %s as %s', (lockfile, pm) => {
+		writeFileSync(join(dir, lockfile), '');
+		expect(detectPackageManager(dir)).toBe(pm);
+	});
+});
+
+describe('validateProjectName, reserved names', () => {
+	it('refuses a name that would shadow a project file', () => {
+		expect(validateProjectName('src')).toBe('"src" is a reserved name');
+		expect(validateProjectName('Package.json')).toBe(
+			'"Package.json" is a reserved name',
+		);
+	});
+});
+
+describe('package manager commands', () => {
+	it.each([
+		['pnpm', 'pnpm install', 'pnpm dev', 'pnpm exec biome'],
+		['yarn', 'yarn', 'yarn dev', 'yarn biome'],
+		['bun', 'bun install', 'bun run dev', 'bunx biome'],
+		['npm', 'npm install', 'npm run dev', 'npx --no-install biome'],
+	] as const)('%s installs, runs and executes its own way', (pm, install, run, exec) => {
+		expect(getInstallCommand(pm)).toBe(install);
+		expect(getRunCommand(pm, 'dev')).toBe(run);
+		expect(getExecCommand(pm, 'biome')).toBe(exec);
+	});
+});
+
+describe('workspace discovery', () => {
+	let root: string;
+
+	beforeEach(async () => {
+		root = join(tmpdir(), `gkm-ws-${Date.now()}-${Math.random()}`);
+		await mkdir(join(root, 'apps/api/src'), { recursive: true });
+		await mkdir(join(root, 'packages/models'), { recursive: true });
+		writeFileSync(join(root, 'apps/api/package.json'), '{"name":"@x/api"}');
+		writeFileSync(
+			join(root, 'packages/models/package.json'),
+			'{"name":"@x/models"}',
+		);
+	});
+
+	afterEach(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+
+	it('finds a pnpm workspace by its pnpm-workspace.yaml', () => {
+		writeFileSync(
+			join(root, 'pnpm-workspace.yaml'),
+			"packages:\n  - 'apps/*'\n  - 'packages/*'\n",
+		);
+		writeFileSync(join(root, 'package.json'), '{"name":"x"}');
+
+		expect(findWorkspaceRoot(join(root, 'apps/api/src'), 'pnpm')).toBe(root);
+		expect(getWorkspaceGlobs(root)).toEqual(['apps/*', 'packages/*']);
+		expect(
+			findWorkspacePackages(join(root, 'apps/api'), 'pnpm').sort(),
+		).toEqual(
+			[
+				join(root, 'apps/api/package.json'),
+				join(root, 'package.json'),
+				join(root, 'packages/models/package.json'),
+			].sort(),
+		);
+	});
+
+	it('finds an npm or yarn workspace by package.json#workspaces', () => {
+		writeFileSync(
+			join(root, 'package.json'),
+			'{"name":"x","workspaces":["apps/*"]}',
+		);
+
+		expect(findWorkspaceRoot(join(root, 'apps/api'), 'npm')).toBe(root);
+		expect(getWorkspaceGlobs(root)).toEqual(['apps/*']);
+	});
+
+	it('reads the object form of workspaces', () => {
+		writeFileSync(
+			join(root, 'package.json'),
+			'{"name":"x","workspaces":{"packages":["packages/*"]}}',
+		);
+
+		expect(getWorkspaceGlobs(root)).toEqual(['packages/*']);
+	});
+
+	it('falls back to the lockfile, and skips a package.json it cannot parse', () => {
+		writeFileSync(join(root, 'apps/api/package.json'), '{ not json');
+		writeFileSync(join(root, 'yarn.lock'), '');
+
+		expect(findWorkspaceRoot(join(root, 'apps/api'), 'yarn')).toBe(root);
+	});
+
+	it('is the directory itself when nothing marks a root above it', () => {
+		const lone = join(root, 'apps/api/src');
+		expect(findWorkspaceRoot(lone, 'bun')).toBe(lone);
+		expect(getWorkspaceGlobs(lone)).toEqual([]);
+		expect(getWorkspaceGlobs(join(root, 'apps/api'))).toEqual([]);
 	});
 });

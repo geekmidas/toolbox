@@ -1015,4 +1015,84 @@ describe('AWSLambdaSubscriber', () => {
 			expect(hasContext).toBe(true);
 		});
 	});
+
+	describe('edge cases', () => {
+		const run = async (
+			event: unknown,
+			subscribedEvents?: string[],
+		): Promise<unknown[] | undefined> => {
+			let received: unknown[] | undefined;
+			const subscriber = new Subscriber(
+				async ({ events }: { events: unknown[] }) => {
+					received = events;
+				},
+				30000,
+				subscribedEvents as never,
+				undefined,
+				[],
+				logger,
+			);
+			await new AWSLambdaSubscriber(envParser, subscriber).handler(
+				event as SQSEvent,
+				createMockContext(),
+				vi.fn(),
+			);
+			return received;
+		};
+
+		it('treats an event with no records, or records from neither source, as empty', async () => {
+			expect(await run({})).toBeUndefined();
+			expect(
+				await run({ Records: [{ eventSource: 'aws:kinesis' }] }),
+			).toBeUndefined();
+		});
+
+		it('drops SNS records for events it did not subscribe to', async () => {
+			const events = await run(
+				createSNSEvent([
+					{ type: 'user.created', payload: { id: '1' } },
+					{ type: 'user.deleted', payload: { id: '2' } },
+				]),
+				['user.created'],
+			);
+
+			expect(events).toEqual([{ type: 'user.created', payload: { id: '1' } }]);
+		});
+
+		it('passes an untyped SNS-in-SQS payload through as it came', async () => {
+			const events = await run(createSNSWrappedInSQS([{ orderId: 'o-1' }]));
+
+			expect(events).toEqual([{ orderId: 'o-1' }]);
+		});
+
+		it('registers its services once, across invocations', async () => {
+			let registrations = 0;
+			const counted: Service<'counted', object> = {
+				serviceName: 'counted',
+				async register() {
+					registrations += 1;
+					return {};
+				},
+			};
+			const subscriber = new Subscriber(
+				async () => {},
+				30000,
+				undefined,
+				undefined,
+				[counted],
+				logger,
+			);
+			const adaptor = new AWSLambdaSubscriber(
+				new EnvironmentParser({ run: String(Math.random()) }),
+				subscriber,
+			);
+			const event = createSQSEvent([{ type: 'a', payload: {} }]);
+
+			await adaptor.handler(event, createMockContext(), vi.fn());
+			await adaptor.handler(event, createMockContext(), vi.fn());
+
+			expect(registrations).toBe(1);
+			expect(adaptor.logger).toBeDefined();
+		});
+	});
 });

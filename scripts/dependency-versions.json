@@ -2,9 +2,6 @@
 	"@apidevtools/swagger-parser": {
 		"dependencies": "~13.1.0"
 	},
-	"@better-auth/test-utils": {
-		"devDependencies": "~1.7.6"
-	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"
 	},
@@ -34,6 +31,9 @@
 	"@aws-sdk/s3-request-presigner": {
 		"dependencies": "~3.844.0",
 		"peerDependencies": ">=3.1136.0"
+	},
+	"@better-auth/test-utils": {
+		"devDependencies": "~1.7.6"
 	},
 	"@biomejs/biome": {
 		"devDependencies": "~2.3.11"
@@ -160,19 +160,13 @@
 		"dependencies": "~1.1.0"
 	},
 	"@storybook/addon-a11y": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
-	"@storybook/addon-essentials": {
-		"devDependencies": "~8.6.14"
-	},
-	"@storybook/addon-interactions": {
-		"devDependencies": "~8.6.14"
-	},
-	"@storybook/react": {
-		"devDependencies": "^8.4.7"
+	"@storybook/addon-docs": {
+		"devDependencies": "^10.6.0"
 	},
 	"@storybook/react-vite": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
 	"@tailwindcss/vite": {
 		"devDependencies": "~4.3.3"
@@ -265,16 +259,17 @@
 		"peerDependencies": ">=1.39.0"
 	},
 	"@valibot/to-json-schema": {
-		"peerDependencies": ">=1.8.0"
+		"peerDependencies": ">=1.8.0",
+		"devDependencies": "~1.8.0"
 	},
 	"@vitejs/plugin-react": {
-		"devDependencies": "^4.3.4"
+		"devDependencies": "^6.1.1"
 	},
 	"@vitest/coverage-v8": {
-		"devDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2"
 	},
 	"@vitest/ui": {
-		"devDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2"
 	},
 	"amqplib": {
 		"peerDependencies": ">=2.0.1"
@@ -450,7 +445,7 @@
 		"peerDependencies": ">=4.17.1"
 	},
 	"storybook": {
-		"devDependencies": "^8.4.7"
+		"devDependencies": "^10.6.0"
 	},
 	"tailwind-merge": {
 		"dependencies": "~3.4.0"
@@ -460,27 +455,30 @@
 		"peerDependencies": ">=4.0.0"
 	},
 	"tsdown": {
-		"devDependencies": "~0.12.8"
+		"devDependencies": "~0.23.0"
 	},
 	"tsx": {
-		"dependencies": "~4.20.3",
-		"devDependencies": "~4.20.6"
+		"dependencies": "~4.23.15",
+		"devDependencies": "~4.23.15"
 	},
 	"turbo": {
 		"devDependencies": "^2.5.4"
 	},
 	"typescript": {
-		"devDependencies": "~5.8.2"
+		"devDependencies": "~6.0.3"
+	},
+	"valibot": {
+		"devDependencies": "~1.5.0"
 	},
 	"vite": {
-		"devDependencies": "~6.3.5"
+		"devDependencies": "~8.3.1"
 	},
 	"vitepress": {
 		"devDependencies": "^1.5.0"
 	},
 	"vitest": {
-		"devDependencies": "~3.2.4",
-		"peerDependencies": "~3.2.4"
+		"devDependencies": "~5.0.2",
+		"peerDependencies": "~5.0.2"
 	},
 	"vue": {
 		"devDependencies": "^3.5.13"

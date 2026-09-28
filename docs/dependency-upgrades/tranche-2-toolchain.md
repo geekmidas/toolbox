@@ -1,6 +1,7 @@
 # Tranche 2: the build and test toolchain
 
-**Status: not started.** Tracked in #40.
+**Status: done, TypeScript at 6.0** (#58). Tracked in #40; TypeScript 7 is
+blocked on the tools listed in step 6.
 
 Deferred from [tranche 1](./tranche-1-dependencies.md) because the toolchain
 changes how every package compiles and runs. Kept separate so that a failure
@@ -50,16 +51,38 @@ candidate cause:
    `node scripts/align-deps.mjs --latest <names…>`, then `--write`, then
    `pnpm install`. It also gave `tsx`, `tsdown`, `typescript`, `vite` and
    `vitest` one range each within their current majors.
-2. **`tsx` and `tsdown`.** They build and run everything else.
-3. **Vite, with `@vitejs/plugin-react`.** Vitest and Storybook both build on
-   Vite, so it goes before either.
-4. **Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers, and
-   the scaffold's Vitest pin.
-5. **Storybook.** Only `packages/ui`, and it may overlap with
-   [tranche 3](./tranche-3-react-ui.md).
-6. **TypeScript** last. It's the widest blast radius, and the other tools need
-   to support it first. Check each one's TypeScript 7 support before starting
-   this step.
+2. ~~**`tsx` and `tsdown`.**~~ **Done:** tsx 4.23, tsdown 0.23. A directory
+   is no longer an entry (the root `entry: ['src/']` became `src/**/*`), and
+   `external` / `noExternal` became `deps.neverBundle` / `deps.alwaysBundle`.
+3. ~~**Vite, with `@vitejs/plugin-react`.**~~ **Done:** Vite 8, plugin-react 6.
+   No config used a removed option; the Telescope UI's config now imports its
+   plugin with an extension, which Vite's native config loader needs.
+4. ~~**Vitest, with `@vitest/coverage-v8`**, testkit's and db's Vitest peers~~
+   **Done:** Vitest 5 (through 4). Benchmarks use the `bench` test fixture; a
+   nested `vi.mock` moved to top level; kitchen-sink dropped `minWorkers`; the
+   CLI's throwaway test projects get a `node_modules` beside them, since
+   Vite's module runner no longer resolves their bare imports from the repo
+   root. The scaffold's Vitest pin follows with #43.
+5. ~~**Storybook.**~~ **Done:** Storybook 10 (through 9). Essentials and
+   interactions are core now, so only `addon-docs` and `addon-a11y` remain;
+   stories import types from `@storybook/react-vite`; backgrounds use
+   `options` and `initialGlobals`.
+6. **TypeScript: 6.0, not 7.** TypeScript 7's package ships the native compiler
+   and a new `unstable/*` API, not the classic compiler API — and three things
+   on our path still need the classic one:
+   - **`openapi-typescript`** (a runtime dependency of the CLI, driving
+     `openapi-react-query`): latest 7.13 supports `typescript ^5.x` and builds
+     its output through the compiler API.
+   - **Storybook's docgen** (`@joshwooding/vite-plugin-react-docgen-typescript`
+     0.9): `typescript >=4.3 <7 || >=7.1.0-0` — it skips 7.0 explicitly.
+   - **Next.js 15**, which typechecks through the compiler API in
+     `next build` (kitchen-sink's admin, and every Next scaffold).
+
+   tsdown is ready (rolldown-plugin-dts 0.28 accepts `~7.0.0` and generates
+   declarations with tsgo). 6.0 is the last JavaScript compiler and keeps the
+   API; it moved `types` to default `[]`, so the base config names `node`, and
+   deprecates `baseUrl`, which kitchen-sink no longer sets. **7 follows when
+   `openapi-typescript` supports it and TypeScript 7.1 ships.**
 
 ## Done when
 

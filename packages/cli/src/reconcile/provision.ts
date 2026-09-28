@@ -461,17 +461,3 @@ export async function applyBuckets(
 
 	return applied;
 }
-
-/** Everything a plan implies, for a caller that wants to show it. */
-export function summarise(plan: Plan): string[] {
-	return [
-		...postgresStatements(plan).map((s) => s.describe),
-		...bucketNames(plan).map((b) => `bucket ${b}`),
-		...bucketPolicies(plan).map((p) => `open paths on ${p.bucket}`),
-	];
-}
-
-/** Resources the plan resolves a URL for but creates nothing for. */
-export function unprovisioned(plan: Plan): PlannedResource[] {
-	return plan.resources.filter((r) => !r.provisions);
-}

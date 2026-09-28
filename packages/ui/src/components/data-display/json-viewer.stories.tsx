@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { JsonViewer } from './json-viewer';
 
 const meta: Meta<typeof JsonViewer> = {
