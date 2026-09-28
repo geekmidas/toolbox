@@ -17,7 +17,7 @@ import type {
  * impossible.
  *
  * Instructions live in `AGENTS.md` because that is the file every tool reads.
- * `CLAUDE.md` points at it rather than copying it: two files saying the same
+ * `CLAUDE.md` imports it rather than copying it: two files saying the same
  * thing is two files to keep in step, and the copy that drifts is always the
  * one nobody opened.
  *
@@ -37,19 +37,25 @@ export function generateAgentFiles(
 }
 
 /**
- * The pointer.
+ * The import.
  *
- * Deliberately short and deliberately not a summary — a summary is a second
- * copy of the conventions that ages independently of the first.
+ * `@AGENTS.md` rather than a link: Claude Code loads an `@` import into context
+ * with the file that names it, and follows no links. A link left the
+ * conventions one step away from an agent that never took it — it read the
+ * pointer and nothing it pointed at.
+ *
+ * Deliberately not a summary — a summary is a second copy of the conventions
+ * that ages independently of the first.
  */
 function claudeContent(): string {
 	return `# CLAUDE.md
 
-The conventions for this project live in [AGENTS.md](./AGENTS.md).
+@AGENTS.md
 
-Read that file before writing code here. It is the single copy, kept that way
-on purpose: anything repeated here would be a second thing to keep in step, and
-the stale one is always the copy nobody opened.
+The conventions for this project live in \`AGENTS.md\`, imported above. It is
+the single copy, kept that way on purpose: anything repeated here would be a
+second thing to keep in step, and the stale one is always the copy nobody
+opened.
 `;
 }
 

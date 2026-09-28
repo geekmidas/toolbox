@@ -1341,15 +1341,16 @@ describe('generatePackageJson - testkit dependencies', () => {
 });
 
 describe('generateAgentFiles', () => {
-	it('writes AGENTS.md and a CLAUDE.md that points at it', () => {
+	it('writes AGENTS.md and a CLAUDE.md that imports it', () => {
 		const files = generateAgentFiles(baseOptions, minimalTemplate);
 
 		expect(files.map((f) => f.path)).toEqual(['AGENTS.md', 'CLAUDE.md']);
 
-		// The instructions live in one file. `CLAUDE.md` refers to it rather than
-		// repeating it, because the copy that drifts is the one nobody opened.
+		// The instructions live in one file. `CLAUDE.md` imports it rather than
+		// repeating it, because the copy that drifts is the one nobody opened —
+		// and imports it rather than linking, because a link is not loaded.
 		const claude = files.find((f) => f.path === 'CLAUDE.md')!.content;
-		expect(claude).toContain('[AGENTS.md](./AGENTS.md)');
+		expect(claude).toMatch(/^@AGENTS\.md$/m);
 		expect(claude).not.toContain('## Commands');
 	});
 
