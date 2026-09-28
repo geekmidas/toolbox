@@ -768,11 +768,15 @@ function readsFrom(manifest: ConstructManifest, id: string): boolean {
 /** The schema a database or tenant pins on its roles. */
 function schemaOf(manifest: ConstructManifest, id: string): string | undefined {
 	const declaration = manifest[id];
-	if (!declaration) return undefined;
 
-	return 'schema' in declaration
-		? ((declaration.schema as string | undefined) ?? 'app')
-		: undefined;
+	// By kind rather than `'schema' in declaration`: a database that names no
+	// schema has no `schema` key at all, and its roles are still pinned to
+	// `app` — so a cache table created unqualified landed where its runtime
+	// role's search_path never looks.
+	if (declaration?.kind === 'database') return declaration.schema ?? 'app';
+	if (declaration?.kind === 'database-schema') return declaration.schema;
+
+	return undefined;
 }
 
 /**

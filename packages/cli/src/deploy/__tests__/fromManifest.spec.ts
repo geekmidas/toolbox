@@ -7,12 +7,14 @@ import {
 	CacheNeedsAHome,
 	type DokployProvisionContext,
 	type Provisioned,
+	provisionableKinds,
 	provisionerFor,
 	SurfaceHasNoAddress,
 	serviceName,
 	UnprovisionableBucket,
 	UnprovisionableCarrier,
 	UnresolvedParent,
+	WrongKind,
 } from '../fromManifest';
 
 /**
@@ -545,5 +547,144 @@ describe('a surface', () => {
 		await expect(provision({ addresses: {} })).rejects.toThrow(
 			SurfaceHasNoAddress,
 		);
+	});
+});
+
+describe('provisioning out of order', () => {
+	it.each(
+		provisionableKinds(),
+	)('the %s provisioner refuses a declaration of another kind', async (kind) => {
+		const { context } = await provision();
+		const stranger = {
+			kind: kind === 'secret' ? 'cache' : 'secret',
+			id: 'Stranger',
+			provides: [],
+		} as never;
+
+		await expect(provisionerFor(kind)?.(stranger, context)).rejects.toThrow(
+			WrongKind,
+		);
+	});
+
+	it('a reader needs its database resolved first', async () => {
+		const { context } = await provision();
+
+		await expect(
+			provisionerFor('database-reader')?.(manifest.OrdersReader, {
+				...context,
+				provisioned: {},
+			}),
+		).rejects.toThrow(UnresolvedParent);
+	});
+
+	it('a cache needs the database it names resolved, with a URL', async () => {
+		const { context } = await provision();
+		const cache = {
+			kind: 'cache',
+			id: 'Sessions',
+			of: 'Orders',
+			provides: ['SESSIONS_URL'],
+		} as never;
+		const run = (provisioned: Record<string, Provisioned>) =>
+			provisionerFor('cache')?.(cache, { ...context, provisioned });
+
+		await expect(run({})).rejects.toThrow(UnresolvedParent);
+		await expect(run({ Orders: { provides: {} } })).rejects.toThrow(
+			UnresolvedParent,
+		);
+	});
+
+	it('a file server needs its bucket resolved, with an endpoint', async () => {
+		const { context } = await provision();
+		const server = {
+			kind: 'file-server',
+			id: 'UploadsServer',
+			of: 'Uploads',
+			provides: ['UPLOADS_SERVER_URL'],
+		} as never;
+		const run = (provisioned: Record<string, Provisioned>) =>
+			provisionerFor('file-server')?.(server, { ...context, provisioned });
+
+		await expect(run({})).rejects.toThrow(UnresolvedParent);
+		await expect(
+			run({ Uploads: { provides: { UPLOADS_URL: 's3://uploads' } } }),
+		).rejects.toThrow(UnresolvedParent);
+	});
+});
+
+describe('a cache in a database that names no schema', () => {
+	it('lands in the default schema', async () => {
+		const { context } = await provision({}, {
+			Orders: {
+				kind: 'database',
+				id: 'Orders',
+				engine: 'postgres',
+				provides: ['ORDERS_URL'],
+			},
+			Sessions: {
+				kind: 'cache',
+				id: 'Sessions',
+				of: 'Orders',
+				provides: ['SESSIONS_URL'],
+			},
+		} as ConstructManifest);
+
+		expect(
+			context.deferred.filter((s) => s.id === 'Sessions').map((s) => s.sql),
+		).toContainEqual(expect.stringMatching(/CREATE TABLE[^(]+"app"\./));
+	});
+});
+
+describe('a secret that publishes nothing', () => {
+	it('resolves to nothing', async () => {
+		const { context } = await provision();
+
+		await expect(
+			provisionerFor('secret')?.(
+				{ kind: 'secret', id: 'Unused', provides: [] } as never,
+				context,
+			),
+		).resolves.toEqual({ provides: {} });
+	});
+});
+
+describe('a surface with callers', () => {
+	it('trusts each caller’s address and shares a cookie across their domain', async () => {
+		const { env } = await provision(
+			{
+				addresses: {
+					Api: 'https://api.shop.com',
+					Web: 'https://shop.com',
+					// A caller with no address yet contributes no origin.
+					Admin: undefined as never,
+				},
+			},
+			{
+				Api: {
+					kind: 'rest-api',
+					id: 'Api',
+					path: '.',
+					endpoints: [],
+					provides: ['API_URL'],
+				},
+				Web: {
+					kind: 'rest-api',
+					id: 'Web',
+					path: '.',
+					endpoints: [],
+					calls: [{ target: 'Api', kind: 'rest-api' }],
+					provides: ['WEB_URL'],
+				},
+				Admin: {
+					kind: 'secret',
+					id: 'Admin',
+					dependencies: [{ target: 'Api', kind: 'rest-api' }],
+					provides: [],
+				},
+			} as unknown as ConstructManifest,
+		);
+
+		expect(env.API_TRUSTED_ORIGINS).toBe('https://shop.com');
+		expect(env.API_COOKIE_DOMAIN).toBe('.shop.com');
 	});
 });
