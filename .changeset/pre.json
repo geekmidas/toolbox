@@ -36,6 +36,8 @@
   "changesets": [
     "align-deps-tranche-1",
     "alpha-packaging",
+    "branch-from-the-surface",
+    "claude-md-imports-agents",
     "cli-starts-again",
     "client-coercion-types",
     "constructs-only-compose",
@@ -58,6 +60,7 @@
     "scaffold-typescript-7",
     "secrets-store-adaptors",
     "server-crons",
+    "setup-leaves-node-env",
     "single-app-paths",
     "surface-has-no-app",
     "test-ports",

@@ -1,5 +1,64 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.19
+
+### Patch Changes
+
+- [#76](https://github.com/geekmidas/toolbox/pull/76) [`8533bac`](https://github.com/geekmidas/toolbox/commit/8533baca5b4771281cdb017e44719d925bdcd883) Thanks [@geekmidas](https://github.com/geekmidas)! - Branch from the surface: `api.database(db)`; `api.endpoints` is gone
+
+  `api.get()` was already sugar for `api.endpoints.get()`, but a group had to
+  reach through the factory — `api.endpoints.database(database)`. The branching
+  methods now live on the surface like the verbs do: `api.database()`,
+  `api.session()`, `api.auditor()`, `api.actor()`, `api.publisher()`,
+  `api.authorizer()`, `api.authorize()`, `api.rls()` and `api.route()`. Each
+  returns a new factory and leaves the surface untouched, so a route built
+  straight from `api` gets none of what a group opted into. The factory itself is
+  private.
+
+  Two methods deliberately stay off the surface. `dependsOn` is per endpoint —
+  `api.post('/x').dependsOn([uploads])`. `services` is replaced by `dependsOn` on
+  constructs. `logger` is the surface's config (`new RestApi(id, { logger })`),
+  and `api.logger` is that logger.
+
+  **Migrating:** `api.endpoints.database(db)` → `api.database(db)`;
+  `api.endpoints.get(…)` → `api.get(…)`; `api.endpoints.dependsOn([x]).get(p)` →
+  `api.get(p).dependsOn([x])`.
+
+  The scaffold's `AGENTS.md` now shows what the scaffold generates: handlers
+  read `db` (not `services.database`), the router is imported from
+  `~/router.ts`, and a single endpoint can name its own database with
+  `.database(other)`.
+
+- [#75](https://github.com/geekmidas/toolbox/pull/75) [`a8ab67c`](https://github.com/geekmidas/toolbox/commit/a8ab67c1c63e2613b44809ed4190a9a472216c30) Thanks [@geekmidas](https://github.com/geekmidas)! - A scaffolded `CLAUDE.md` imports `AGENTS.md` instead of linking to it
+
+  It pointed at the conventions with `[AGENTS.md](./AGENTS.md)`, and Claude Code
+  follows no links: it loaded the pointer and none of what it pointed at. It now
+  reads `@AGENTS.md`, which Claude Code loads into context with the file. The
+  conventions still live only in `AGENTS.md`.
+
+- [#74](https://github.com/geekmidas/toolbox/pull/74) [`769a4a0`](https://github.com/geekmidas/toolbox/commit/769a4a0b866a58900c5b47aaf66b5c2abd538e3c) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm setup` no longer stores `NODE_ENV` in a stage's secrets
+
+  `gkm exec` injects secrets over the environment, so a stored
+  `NODE_ENV=development` made every `gkm exec -- next build` a development
+  build, and Next fails to prerender one (`Cannot read properties of null
+(reading 'useContext')` on `/_global-error`). `gkm init` already left it out
+  for this reason; `gkm setup` — which a developer runs after cloning, and which
+  regenerates the stage — still wrote it, on both its single-app and its
+  fullstack path. The command decides `NODE_ENV`.
+
+  A stage generated before this keeps the key until it is removed from it.
+
+- Updated dependencies [[`8533bac`](https://github.com/geekmidas/toolbox/commit/8533baca5b4771281cdb017e44719d925bdcd883)]:
+  - @geekmidas/constructs@10.0.0-alpha.19
+  - @geekmidas/cache@10.0.0-alpha.19
+  - @geekmidas/db@10.0.0-alpha.19
+  - @geekmidas/envkit@10.0.0-alpha.19
+  - @geekmidas/errors@10.0.0-alpha.19
+  - @geekmidas/logger@10.0.0-alpha.19
+  - @geekmidas/manifest@10.0.0-alpha.19
+  - @geekmidas/schema@10.0.0-alpha.19
+  - @geekmidas/telescope@10.0.0-alpha.19
+
 ## 10.0.0-alpha.18
 
 ### Patch Changes
