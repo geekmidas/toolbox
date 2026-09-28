@@ -1252,6 +1252,24 @@ describe('generateTestFiles', () => {
 		expect(paths).toContain('test/config.ts');
 		expect(paths).toContain('test/globalSetup.ts');
 	});
+
+	it('should migrate as the owner role in a monorepo too', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+		};
+		const files = generateTestFiles(options, apiTemplate);
+
+		// The root declares the same database, so it publishes the same keys.
+		for (const path of ['test/globalSetup.ts', 'kysely.config.ts']) {
+			const file = files.find((f) => f.path === path);
+			expect(file!.content).toContain(
+				'Credentials.DATABASE_OWNER_URL ?? Credentials.DATABASE_URL',
+			);
+		}
+	});
 });
 
 describe('generateConfigFiles - vitest.config.ts', () => {

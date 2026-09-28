@@ -152,9 +152,16 @@ export abstract class PostgresMigrator {
 
 	/**
 	 * Starts the migration process by creating the database and running migrations.
-	 * Returns a cleanup function that will drop the database when called.
+	 * Returns a cleanup function that drops the database — if this call created
+	 * it.
 	 *
-	 * @returns Async cleanup function that drops the created database
+	 * A database that was already there belongs to whoever made it, and the
+	 * cleanup leaves it alone. `gkm test` provisions the test database before
+	 * the suite starts, with an owner role that may migrate it but not drop it:
+	 * dropping it was never the suite's to do, and failed there as a permission
+	 * error on the way out of an otherwise green run.
+	 *
+	 * @returns Async cleanup function that drops the database if it created it
 	 *
 	 * @example
 	 * ```typescript
@@ -174,8 +181,10 @@ export abstract class PostgresMigrator {
 	 */
 	async start() {
 		const { database, db } = await setupClient(this.uri);
+		let created = false;
 		try {
-			await PostgresMigrator.create(this.uri);
+			const { alreadyExisted } = await PostgresMigrator.create(this.uri);
+			created = !alreadyExisted;
 			if (this.afterCreate) {
 				await this.afterCreate(this.uri);
 			}
@@ -187,7 +196,7 @@ export abstract class PostgresMigrator {
 		}
 
 		return async () => {
-			await PostgresMigrator.drop(this.uri);
+			if (created) await PostgresMigrator.drop(this.uri);
 		};
 	}
 }

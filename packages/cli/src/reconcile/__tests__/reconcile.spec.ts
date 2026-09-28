@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -29,6 +36,8 @@ function fakeDocker(
 			calls.healthy++;
 			return options.healthy ?? false;
 		},
+		async copyOut() {},
+		async reload() {},
 	};
 
 	return { docker, calls };
@@ -98,6 +107,34 @@ describe('reconcile', () => {
 
 		expect(calls.up).toHaveLength(1);
 		expect(calls.up[0].sort()).toEqual(['mailpit', 'postgres']);
+	});
+
+	it('drops the routes of a stage that was renamed', async () => {
+		// `development` became `dev`: both files declare the same hosts, and Caddy
+		// refuses the pair as ambiguous rather than picking one.
+		const withApi = {
+			...manifest,
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: '.',
+				endpoints: [],
+				provides: ['API_URL'],
+			},
+		} as const satisfies ConstructManifest;
+		const sites = join(root, '.gkm/caddy-sites');
+		await mkdir(sites, { recursive: true });
+		await writeFile(join(sites, 'development.caddy'), 'stale');
+		await writeFile(join(sites, 'test.caddy'), 'the test stage');
+
+		await run({
+			manifest: withApi,
+			stage: 'dev',
+			localStage: 'dev',
+			addresses: { Api: 'http://localhost:3000' },
+		});
+
+		expect((await readdir(sites)).sort()).toEqual(['dev.caddy', 'test.caddy']);
 	});
 
 	it('reports what changed on a first run', async () => {

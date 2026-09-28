@@ -152,6 +152,32 @@ describe('PostgresMigrator', () => {
 			}
 		});
 
+		it('should leave a database it did not create in place', async () => {
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`;
+			const migrator = new TestPostgresMigrator(uri);
+
+			const cleanup = await migrator.start();
+			await cleanup();
+
+			const client = new Client({
+				host: 'localhost',
+				port: POSTGRES_PORT,
+				user: 'geekmidas',
+				password: 'geekmidas',
+				database: 'postgres',
+			});
+			await client.connect();
+			try {
+				const result = await client.query(
+					`SELECT * FROM pg_catalog.pg_database WHERE datname = $1`,
+					[testDbName],
+				);
+				expect(result.rowCount).toBe(1);
+			} finally {
+				await client.end();
+			}
+		});
+
 		it('should return cleanup function that drops database', async () => {
 			const cleanupDbName = `test_cleanup_${Date.now()}`;
 			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${cleanupDbName}`;
