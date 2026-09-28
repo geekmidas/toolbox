@@ -1,5 +1,51 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.21
+
+### Minor Changes
+
+- [#81](https://github.com/geekmidas/toolbox/pull/81) [`d505053`](https://github.com/geekmidas/toolbox/commit/d505053ef116d609a8fac6dec85dfcb091d6ac5e) Thanks [@geekmidas](https://github.com/geekmidas)! - `featureTest`: drive an app the way it runs deployed
+
+  `@geekmidas/constructs/testing` gains `featureTest`: a browser signs in and calls
+  the API, the API asks the auth server who is calling, each over its URL, and
+  every database is in its own transaction, rolled back after the test.
+  - Each surface's endpoints and each `BetterAuth` server are served in-process
+    through MSW, from the real handler, for the test a request was made for —
+    found from the `x-test-context-id` header, including on a request the code
+    under test made while handling another.
+  - 🐛 Each database construct — the app's and each schema tenant — resolves, inside
+    a test, to that test's own transaction on its own connection.
+  - Fixtures: `browser` (already the global `fetch`), `db`, `mailbox(address)`.
+  - A request belonging to no running test is refused (`UnknownTestContext`).
+
+  `gkm test` and `gkm dev` publish `<ID>_INBOX_URL` beside an `Email` construct's
+  URL: Mailpit's inbox, where the mail it sent is read back. Local only.
+
+  `@geekmidas/testkit` is an optional peer of `@geekmidas/constructs`, needed by
+  `./testing` alone.
+
+  Part 3b of #77.
+
+### Patch Changes
+
+- Updated dependencies [[`1e2bc9b`](https://github.com/geekmidas/toolbox/commit/1e2bc9b18a36f31fa5658c5695ee3e11264e2709)]:
+  - @geekmidas/testkit@10.0.0-alpha.21
+  - @geekmidas/audit@10.0.0-alpha.21
+  - @geekmidas/auth@10.0.0-alpha.21
+  - @geekmidas/cache@10.0.0-alpha.21
+  - @geekmidas/db@10.0.0-alpha.21
+  - @geekmidas/emailkit@10.0.0-alpha.21
+  - @geekmidas/envkit@10.0.0-alpha.21
+  - @geekmidas/errors@10.0.0-alpha.21
+  - @geekmidas/events@10.0.0-alpha.21
+  - @geekmidas/logger@10.0.0-alpha.21
+  - @geekmidas/manifest@10.0.0-alpha.21
+  - @geekmidas/rate-limit@10.0.0-alpha.21
+  - @geekmidas/schema@10.0.0-alpha.21
+  - @geekmidas/services@10.0.0-alpha.21
+  - @geekmidas/storage@10.0.0-alpha.21
+  - @geekmidas/telescope@10.0.0-alpha.21
+
 ## 10.0.0-alpha.20
 
 ### Minor Changes

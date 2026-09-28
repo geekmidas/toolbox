@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.21
+
+### Patch Changes
+
+- Updated dependencies [[`d505053`](https://github.com/geekmidas/toolbox/commit/d505053ef116d609a8fac6dec85dfcb091d6ac5e)]:
+  - @geekmidas/constructs@10.0.0-alpha.21
+  - @geekmidas/schema@10.0.0-alpha.21
+
 ## 10.0.0-alpha.20
 
 ### Minor Changes
