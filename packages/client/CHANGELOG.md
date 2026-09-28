@@ -1,5 +1,25 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.16
+
+### Patch Changes
+
+- [#69](https://github.com/geekmidas/toolbox/pull/69) [`259cd9c`](https://github.com/geekmidas/toolbox/commit/259cd9ca0318d2da3193f989f0c78a4c62d774c8) Thanks [@geekmidas](https://github.com/geekmidas)! - Built and typechecked with TypeScript 7
+
+  The packages now build with the native compiler; declarations are emitted by
+  tsgo. Nothing in their public types changes.
+
+  `@geekmidas/client` no longer ships `dist/openapi.*`: a stale spec from another
+  app that no export named and nothing imported.
+
+  `@geekmidas/cloud`'s `fromManifest` types a database's provider inputs as
+  `DatabaseProps` — the `Vpc` component its bootstrap function needs — rather
+  than RDS's wider `PostgresArgs`, which also accepts bare subnet ids.
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.16
+  - @geekmidas/schema@10.0.0-alpha.16
+
 ## 10.0.0-alpha.15
 
 ### Patch Changes

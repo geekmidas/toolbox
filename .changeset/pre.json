@@ -59,6 +59,7 @@
     "test-ports",
     "tranche-2-toolchain",
     "tranche-3-react-ui",
+    "typescript-7",
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "worker-template"
