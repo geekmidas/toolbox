@@ -11,10 +11,10 @@ import { stagesBlock } from './stages.js';
  * Vitest config content with globalSetup for database-enabled apps
  */
 const vitestConfigContent = `import { defineConfig } from 'vitest/config';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  // Vite resolves tsconfig \`paths\` itself; no plugin needed.
+  resolve: { tsconfigPaths: true },
   test: {
     environment: 'node',
     globalSetup: './test/globalSetup.ts',
@@ -117,7 +117,6 @@ export default defineConfig({${stagesBlock(options.stages)}${
 					resolveJsonModule: true,
 					noEmit: true,
 					allowImportingTsExtensions: true,
-					baseUrl: '.',
 					// The monorepo and fullstack layouts already mapped this; a
 					// single app did not, so every `~/…` import the templates write
 					// — the api's `~/router.ts`, the worker's `~/constructs/worker.ts`
@@ -293,7 +292,6 @@ function workspaceApiTsConfig(name: string) {
 		compilerOptions: {
 			noEmit: true,
 			allowImportingTsExtensions: true,
-			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],
 				// Before the wildcard below it: TypeScript takes the longest

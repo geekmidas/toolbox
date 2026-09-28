@@ -25,11 +25,11 @@
 		"dependencies": "~3.1136.0"
 	},
 	"@aws-sdk/s3-presigned-post": {
-		"dependencies": "^3.844.0",
+		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@aws-sdk/s3-request-presigner": {
-		"dependencies": "~3.844.0",
+		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@better-auth/test-utils": {
@@ -105,15 +105,15 @@
 		"dependencies": "~0.4.0"
 	},
 	"@pulumi/aws": {
-		"devDependencies": "7.20.0",
+		"devDependencies": "~7.47.0",
 		"peerDependencies": ">=7.47.0"
 	},
 	"@pulumi/pulumi": {
-		"devDependencies": "3.215.0",
+		"devDependencies": "~3.263.0",
 		"peerDependencies": ">=3.263.0"
 	},
 	"@pulumi/random": {
-		"devDependencies": "4.16.6",
+		"devDependencies": "~4.21.2",
 		"peerDependencies": ">=4.21.2"
 	},
 	"@radix-ui/react-checkbox": {
@@ -153,7 +153,7 @@
 		"dependencies": "~1.2.16"
 	},
 	"@react-email/components": {
-		"dependencies": "~1.0.1",
+		"dependencies": "~1.0.12",
 		"peerDependencies": ">=1.0.12"
 	},
 	"@standard-schema/spec": {
@@ -335,7 +335,7 @@
 		"peerDependencies": ">=3.3.0"
 	},
 	"kysely": {
-		"dependencies": "~0.29.4",
+		"dependencies": "~0.29.6",
 		"devDependencies": "~0.29.6",
 		"peerDependencies": "~0.29.6"
 	},
@@ -398,7 +398,7 @@
 		"peerDependencies": ">=12.33.3"
 	},
 	"pino": {
-		"dependencies": "^9.6.0",
+		"dependencies": "~10.3.1",
 		"devDependencies": "~10.3.1",
 		"peerDependencies": ">=10.3.1"
 	},
@@ -484,7 +484,7 @@
 		"dependencies": "~2.9.1"
 	},
 	"zod": {
-		"dependencies": "~4.1.13",
+		"dependencies": "~4.6.5",
 		"devDependencies": "~4.6.5",
 		"peerDependencies": ">=4.6.5"
 	},

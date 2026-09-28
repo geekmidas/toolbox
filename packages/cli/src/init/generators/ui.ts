@@ -47,11 +47,7 @@ export function generateUiPackageFiles(
 		},
 		devDependencies: {
 			'@storybook/addon-a11y': TOOLCHAIN_VERSIONS['@storybook/addon-a11y'],
-			'@storybook/addon-essentials':
-				TOOLCHAIN_VERSIONS['@storybook/addon-essentials'],
-			'@storybook/addon-interactions':
-				TOOLCHAIN_VERSIONS['@storybook/addon-interactions'],
-			'@storybook/react': TOOLCHAIN_VERSIONS['@storybook/react'],
+			'@storybook/addon-docs': TOOLCHAIN_VERSIONS['@storybook/addon-docs'],
 			'@storybook/react-vite': TOOLCHAIN_VERSIONS['@storybook/react-vite'],
 			'@tailwindcss/vite': DEPENDENCY_VERSIONS['@tailwindcss/vite'],
 			'@types/react': DEPENDENCY_VERSIONS['@types/react'],
@@ -61,7 +57,7 @@ export function generateUiPackageFiles(
 			storybook: TOOLCHAIN_VERSIONS['storybook'],
 			tailwindcss: DEPENDENCY_VERSIONS['tailwindcss'],
 			typescript: TOOLCHAIN_VERSIONS['typescript'],
-			vite: TOOLCHAIN_VERSIONS['vite@storybook'],
+			vite: TOOLCHAIN_VERSIONS['vite'],
 		},
 		peerDependencies: {
 			react: '>=18.0.0',
@@ -78,7 +74,6 @@ export function generateUiPackageFiles(
 			lib: ['ES2023', 'DOM', 'DOM.Iterable'],
 			noEmit: true,
 			allowImportingTsExtensions: true,
-			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],
 			},
@@ -115,17 +110,17 @@ export function generateUiPackageFiles(
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|tsx)'],
-  addons: [
-    '@storybook/addon-essentials',
-    '@storybook/addon-interactions',
-    '@storybook/addon-a11y',
-  ],
+  // Controls, actions, backgrounds, viewport and interactions are part of
+  // \`storybook\` itself; docs and a11y are add-ons.
+  addons: ['@storybook/addon-docs', '@storybook/addon-a11y'],
   framework: {
     name: '@storybook/react-vite',
     options: {},
   },
-  docs: {
-    autodocs: 'tag',
+  // \`react-docgen\` parses components itself. The TypeScript-based docgen
+  // calls into TypeScript's JavaScript API, which TypeScript 7 no longer ships.
+  typescript: {
+    reactDocgen: 'react-docgen',
   },
   viteFinal: async (config) => {
     // Add Tailwind CSS v4 plugin
@@ -140,18 +135,21 @@ export default config;
 `;
 
 	// .storybook/preview.ts
-	const storybookPreview = `import type { Preview } from '@storybook/react';
+	const storybookPreview = `import type { Preview } from '@storybook/react-vite';
 import '../src/styles/globals.css';
 
 const preview: Preview = {
+  // The starting background is a global, not a parameter.
+  initialGlobals: {
+    backgrounds: { value: 'dark' },
+  },
   parameters: {
     backgrounds: {
-      default: 'dark',
-      values: [
-        { name: 'dark', value: '#171717' },
-        { name: 'surface', value: '#1c1c1c' },
-        { name: 'light', value: '#fafafa' },
-      ],
+      options: {
+        dark: { name: 'dark', value: '#171717' },
+        surface: { name: 'surface', value: '#1c1c1c' },
+        light: { name: 'light', value: '#fafafa' },
+      },
     },
     controls: {
       matchers: {
@@ -322,7 +320,7 @@ export { Button, buttonVariants };
 `;
 
 	// src/components/ui/button/button.stories.tsx
-	const buttonStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const buttonStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Button } from '~/components/ui/button';
 
 const meta: Meta<typeof Button> = {
@@ -493,7 +491,7 @@ export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 `;
 
 	// src/components/ui/input/input.stories.tsx
-	const inputStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const inputStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Input } from '~/components/ui/input';
 
 const meta: Meta<typeof Input> = {
@@ -549,7 +547,7 @@ export const WithValue: Story = {
 `;
 
 	// src/components/ui/card/card.stories.tsx
-	const cardStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const cardStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Button } from '~/components/ui/button';
 import {
   Card,
@@ -640,7 +638,7 @@ export { Label };
 `;
 
 	// src/components/ui/label/label.stories.tsx
-	const labelStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const labelStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 
@@ -720,7 +718,7 @@ export { Badge, badgeVariants };
 `;
 
 	// src/components/ui/badge/badge.stories.tsx
-	const badgeStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const badgeStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Badge } from '~/components/ui/badge';
 
 const meta: Meta<typeof Badge> = {
@@ -800,7 +798,7 @@ export { Separator };
 `;
 
 	// src/components/ui/separator/separator.stories.tsx
-	const separatorStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const separatorStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Separator } from '~/components/ui/separator';
 
 const meta: Meta<typeof Separator> = {
@@ -909,7 +907,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent };
 `;
 
 	// src/components/ui/tabs/tabs.stories.tsx
-	const tabsStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const tabsStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/components/ui/card';
@@ -1017,7 +1015,7 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
 `;
 
 	// src/components/ui/tooltip/tooltip.stories.tsx
-	const tooltipStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const tooltipStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip';
 import { Button } from '~/components/ui/button';
 
@@ -1214,7 +1212,7 @@ export {
 `;
 
 	// src/components/ui/dialog/dialog.stories.tsx
-	const dialogStories = `import type { Meta, StoryObj } from '@storybook/react';
+	const dialogStories = `import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   Dialog,
   DialogContent,

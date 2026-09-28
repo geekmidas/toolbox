@@ -10,6 +10,7 @@ import {
 import {
 	BIOME_SCHEMA,
 	DEPENDENCY_VERSIONS,
+	PNPM_VERSION,
 	TOOLCHAIN_VERSIONS,
 } from '../dependencies.js';
 import type {
@@ -77,7 +78,7 @@ export function generateMonorepoFiles(
 		version: '0.0.1',
 		private: true,
 		type: 'module',
-		packageManager: 'pnpm@10.13.1',
+		packageManager: PNPM_VERSION,
 		scripts: {
 			dev: isFullstack ? 'gkm dev' : 'turbo dev',
 			build: isFullstack ? 'gkm build' : 'turbo build',
@@ -267,7 +268,6 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 			// of its own directory with `../../`.
 			...(isFullstack
 				? {
-						baseUrl: '.',
 						paths: {
 							[`@${options.name}/constructs/*`]: ['./constructs/*'],
 						},

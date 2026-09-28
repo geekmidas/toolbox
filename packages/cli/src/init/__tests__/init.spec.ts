@@ -760,7 +760,7 @@ describe('initCommand', () => {
 			expect(existsSync(join(apiDir, 'vitest.config.ts'))).toBe(true);
 		});
 
-		it('should include globalSetup and vite-tsconfig-paths in vitest.config.ts', async () => {
+		it('should include globalSetup and resolve tsconfig paths in vitest.config.ts', async () => {
 			await initCommand('my-api', {
 				template: 'api',
 				yes: true,
@@ -771,7 +771,9 @@ describe('initCommand', () => {
 			const content = await readFile(vitestConfigPath, 'utf-8');
 			expect(content).toContain('globalSetup');
 			expect(content).toContain('./test/globalSetup.ts');
-			expect(content).toContain('vite-tsconfig-paths');
+			// Vite resolves them itself; the plugin's tsconfck peers TS 5 only.
+			expect(content).toContain('tsconfigPaths: true');
+			expect(content).not.toContain('vite-tsconfig-paths');
 			expect(content).not.toContain('globals: true');
 		});
 	});

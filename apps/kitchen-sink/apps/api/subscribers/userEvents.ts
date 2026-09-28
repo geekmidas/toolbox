@@ -22,8 +22,10 @@ import { worker } from '@kitchen-sink/constructs/worker.js';
  * batches, and a per-event insert would be a round trip per event for no reason.
  */
 export const userEventsSubscriber = worker
-	.dependsOn([database])
+	// First, because what comes first decides what is built: a topic makes a
+	// subscriber, where \`dependsOn\` first would make a plain function.
 	.topic(users)
+	.dependsOn([database])
 	.subscribe(['user.created', 'user.updated'])
 	.handle(async ({ events, services, logger }) => {
 		const rows = events.map((event) =>

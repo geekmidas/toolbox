@@ -1,4 +1,4 @@
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, PNPM_VERSION } from '../dependencies.js';
 import {
 	ENDPOINTS_OUTPUT_PATH,
 	type GeneratedFile,
@@ -76,8 +76,6 @@ export function generatePackageJson(
 			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
 		devDependencies['@faker-js/faker'] = DEPENDENCY_VERSIONS['@faker-js/faker'];
 		devDependencies['kysely-ctl'] = DEPENDENCY_VERSIONS['kysely-ctl'];
-		devDependencies['vite-tsconfig-paths'] =
-			DEPENDENCY_VERSIONS['vite-tsconfig-paths'];
 	}
 
 	// For monorepo apps, remove biome/turbo/esbuild (they're at root) and lint/fmt scripts
@@ -121,6 +119,10 @@ export function generatePackageJson(
 		version: '0.0.1',
 		private: true,
 		type: 'module',
+		// A workspace's root carries this; a standalone app is its own root.
+		...(!monorepo && options.packageManager === 'pnpm'
+			? { packageManager: PNPM_VERSION }
+			: {}),
 		exports: {
 			'./client': OPENAPI_OUTPUT_PATH,
 			'./endpoints': ENDPOINTS_OUTPUT_PATH,

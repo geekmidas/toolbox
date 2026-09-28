@@ -173,8 +173,8 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from './constructs/database.ts';
-import { envParser } from './config/env.ts';
+import type { Database } from '~/constructs/database.ts';
+import { envParser } from '~/config/env.ts';
 
 // The key the database construct publishes — not a hand-written DATABASE_URL.
 const studioConfig = envParser
