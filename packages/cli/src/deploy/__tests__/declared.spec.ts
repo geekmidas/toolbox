@@ -68,7 +68,6 @@ function workspaceWith(
 				constructs: './src/constructs/**/*.ts',
 			},
 		},
-		services: { cache: 'db' },
 		deploy: { default: 'dokploy' },
 		shared: { packages: [] },
 		secrets: {},

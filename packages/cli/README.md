@@ -444,7 +444,7 @@ gkm docker [options]
 
 **Generated Files:**
 - `.gkm/docker/Dockerfile` - Multi-stage or slim Dockerfile
-- `.gkm/docker/docker-compose.yml` - Docker Compose configuration
+- `docker-compose.constructs.yml` - the containers the constructs imply, and the app (project root)
 - `.gkm/docker/docker-entrypoint.sh` - Entrypoint script
 - `.dockerignore` - Docker ignore file (project root)
 
@@ -505,38 +505,20 @@ export default defineConfig({
     baseImage: 'node:22-alpine',
     // Port to expose (default: 3000)
     port: 3000,
-    // Docker Compose services
-    compose: {
-      services: {
-        postgres: { image: 'postgis/postgis:16-3.4-alpine' },  // Custom image
-        redis: true,                                            // Default version
-        rabbitmq: { version: '3.12-management-alpine' },        // Custom version
-      },
-    },
   },
 });
 ```
 
-**Docker Compose Services:**
+**Compose:** there is no `compose` option. `gkm docker` writes
+`docker-compose.constructs.yml` at the project root from the declared
+constructs; an image pin or an extra service goes in your own
+`docker-compose.yml`, which is merged over it:
 
-Services can be configured with custom versions, custom images, or use defaults:
-
-```typescript
-// Object format (recommended)
-services: {
-  postgres: { version: '15-alpine' },              // Custom version
-  redis: true,                                      // Default: redis:7-alpine
-  rabbitmq: { version: '3.12-management-alpine' },
-}
-
-// Custom images (e.g., PostGIS, Redis Stack)
-services: {
-  postgres: { image: 'postgis/postgis:16-3.4-alpine' },  // Full image reference
-  redis: { image: 'redis/redis-stack:latest' },
-}
-
-// Legacy array format - uses default versions
-services: ['postgres', 'redis', 'rabbitmq']
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
 ```
 
 **Service Configuration Options:**
@@ -684,8 +666,8 @@ gkm secrets:init --stage production --force
 ```
 
 **Generated:**
-- Secure passwords for postgres, redis, rabbitmq (based on `docker.compose.services` config)
-- Connection URLs (`DATABASE_URL`, `REDIS_URL`, `RABBITMQ_URL`)
+- Custom secrets for the stage; the containers' credentials are provisioned by
+  reconcile from the declared constructs, not stored here
 - Stored in `.gkm/secrets/<stage>.json` (gitignored)
 
 ### `gkm secrets:set`
@@ -1296,7 +1278,7 @@ gkm docker
 - `.gkm/docker/Dockerfile.api` - Routes-based backend (uses `gkm build`)
 - `.gkm/docker/Dockerfile.auth` - Entry-based backend (uses esbuild bundling)
 - `.gkm/docker/Dockerfile.web` - Next.js standalone output
-- `.gkm/docker/docker-compose.yml` - Full stack with all apps and services
+- `docker-compose.constructs.yml` - every container the constructs imply, and each app behind the `apps` profile (project root)
 - `.dockerignore` - Optimized ignore patterns
 
 **Dockerfile types by app:**
@@ -2058,16 +2040,7 @@ interface DockerConfig {
   imageName?: string;       // Image name (defaults to package.json name)
   baseImage?: string;       // Base image (default: node:22-alpine)
   port?: number;            // Port to expose (default: 3000)
-  compose?: {
-    services?: ComposeServicesConfig | ComposeServiceName[];
-  };
 }
-
-// Service configuration for docker-compose
-type ComposeServiceName = 'postgres' | 'redis' | 'rabbitmq';
-type ComposeServicesConfig = {
-  [K in ComposeServiceName]?: boolean | { version?: string };
-};
 
 // Telescope configuration
 interface TelescopeConfig {

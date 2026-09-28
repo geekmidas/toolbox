@@ -1,5 +1,5 @@
 import { databaseFiles, databaseFor } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
@@ -19,21 +19,21 @@ export const minimalTemplate: TemplateConfig = {
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
-		'@hono/node-server': '~1.14.1',
+		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
 		pino: DEPENDENCY_VERSIONS.pino,
 		zod: DEPENDENCY_VERSIONS.zod,
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~2.3.0',
+		'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-		'@types/node': '~22.0.0',
-		esbuild: '~0.27.0',
-		tsx: '~4.20.0',
-		turbo: '~2.3.0',
-		typescript: '~5.8.2',
-		vitest: '~4.0.0',
+		'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+		esbuild: TOOLCHAIN_VERSIONS['esbuild'],
+		tsx: TOOLCHAIN_VERSIONS['tsx'],
+		turbo: DEPENDENCY_VERSIONS['turbo'],
+		typescript: TOOLCHAIN_VERSIONS['typescript'],
+		vitest: TOOLCHAIN_VERSIONS['vitest'],
 	},
 
 	scripts: {
@@ -148,7 +148,7 @@ export const healthEndpoint = api
 		];
 
 		// The database — a construct, not a hand-written service.
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push(...databaseFiles());
 		}
 
@@ -168,7 +168,7 @@ export const telescope = new Telescope({
 		}
 
 		// Add Studio config if enabled (requires database)
-		if (options.studio && options.database) {
+		if (options.studio && options.constructs.database) {
 			files.push({
 				path: 'src/config/studio.ts',
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';

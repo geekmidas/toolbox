@@ -59,28 +59,54 @@ export default defineWorkspace({
 });
 ```
 
-That is a whole workspace config. There is no `services` block, because every
-key in it has a default that follows the deploy target:
+That is a whole workspace config. There is no `services` block: which
+infrastructure exists is what the constructs declare, and which backend each
+one resolves to follows from the deploy target:
 
 | | on `dokploy` / `docker` | on `aws` |
 |---|---|---|
-| `cache` | `db` — the connection pool is already open | `upstash` — reachable from a Lambda with no VPC |
-| `storage` | `minio` | `s3` |
-| `mail` | `ses` | `ses` |
-| `events` | `pgboss` | `pgboss` |
+| `Cache` | a table in the database — the pool is already open | Upstash — reachable from a Lambda with no VPC |
+| `ObjectStorage` | MinIO | S3 |
+| `Topic` / `Queue` | pg-boss, in the Postgres already there | SNS and SQS (the AWS emulator locally) |
+| `Email` | whichever SMTP provider the stage's mail URL names | the same |
 
-Write one only to override:
+There is nothing to override. A config with a `services` key fails to load —
+the schema is strict — rather than being quietly ignored.
 
-```typescript
-services: {
-  cache: 'upstash',  // a real Redis even on Dokploy
-  mail: 'resend',
-}
+### Compose: two files, one stack
+
+The containers a project needs are derived from its constructs and written to
+**`docker-compose.constructs.yml`** at the project root — by `gkm dev`, `gkm
+test`, `gkm setup` and `gkm docker` alike. It is regenerated on every run,
+gitignored, and never edited.
+
+Anything a construct cannot express goes in **your own `docker-compose.yml`**,
+beside it: an image pin, an extra service, a volume or port tweak. gkm merges
+it over the generated file, so yours wins:
+
+```bash
+docker compose -f docker-compose.constructs.yml -f docker-compose.yml …
 ```
 
-`db` and `storage` are not selections at all — they are derived from the
-declared `KyselyDatabase` and `ObjectStorage`, and ignored here, so the two
-cannot disagree.
+```yaml
+# docker-compose.yml — yours, optional
+services:
+  postgres:
+    image: postgis/postgis:18-3.5   # a pin, merged over the derived postgres
+  pgadmin:                          # a service no construct implies
+    image: dpage/pgadmin4
+```
+
+The apps sit in the generated file too, behind the `apps` profile, built from
+the Dockerfiles `gkm docker` writes and wired to every construct's own keys on
+the compose network — `ORDERS_URL`, a schema tenant's URL, the bucket, the
+mailer — so `gkm dev` starts only the containers. To run everything:
+
+```bash
+gkm docker     # Dockerfiles, and the file above
+gkm setup      # start the containers and create what they hold
+docker compose -f docker-compose.constructs.yml --profile apps up --build
+```
 
 ::: info There is no `apps` block
 There used to be one, naming each app with its type, path, port, framework and
@@ -381,50 +407,13 @@ gkm dev
 ### Multi-App Docker Compose
 
 ```bash
-gkm docker --workspace --services postgres,redis
+gkm docker
 ```
 
-Generates:
-
-```yaml
-# docker-compose.yml
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: myapp
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
-  api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    ports:
-      - "3000:3000"
-    depends_on:
-      - postgres
-      - redis
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/myapp
-      REDIS_URL: redis://redis:6379
-
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    ports:
-      - "3001:3001"
-    depends_on:
-      - api
-    environment:
-      API_URL: http://api:3000
-```
+Writes a Dockerfile per app under `.gkm/docker/`, and
+`docker-compose.constructs.yml` at the root with the containers the constructs
+imply and each app behind the `apps` profile — see
+[Compose: two files, one stack](#compose-two-files-one-stack).
 
 ### Individual App Dockerfiles
 

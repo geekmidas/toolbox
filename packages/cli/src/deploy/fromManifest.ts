@@ -859,20 +859,20 @@ export class CacheNeedsAHome extends Error {
 	) {
 		super(
 			`'${id}' is a cache and nothing says where it lives. Declare it from ` +
-				`its database — \`orders.cache('${id}')\` — or set services.cache.` +
-				(backend ? ` The configured backend is '${backend}'.` : ''),
+				`its database — \`orders.cache('${id}')\`.` +
+				(backend ? ` The deploy target's backend is '${backend}'.` : ''),
 		);
 		this.name = 'CacheNeedsAHome';
 	}
 }
 
-/** `services.cache: 'db'` in an app declaring more than one database. */
+/** A `'db'` cache (a server target's default) with more than one database. */
 export class CacheIsAmbiguous extends Error {
 	constructor(readonly databases: readonly string[]) {
 		super(
 			`A cache backed by the database needs to know which one, and this app ` +
 				`declares ${databases.length}: ${databases.join(', ')}. Declare the ` +
-				`cache from its database rather than with services.cache.`,
+				`cache from its database rather than as a bare new Cache().`,
 		);
 		this.name = 'CacheIsAmbiguous';
 	}
@@ -901,8 +901,8 @@ export class UnprovisionableCarrier extends Error {
 				`provision. SNS needs a topic ARN that has to exist first and ` +
 				`RabbitMQ needs a broker Dokploy has no primitive for; pg-boss is a ` +
 				`schema tenant of a database this app already declares, which is why ` +
-				`it is the one that works here. Set services.events to 'pgboss', or ` +
-				`deploy this app to a target that has the backend.`,
+				`it is the one that works here. Deploy this app to a target that has ` +
+				`the backend.`,
 		);
 		this.name = 'UnprovisionableCarrier';
 	}
@@ -913,8 +913,8 @@ export class BrokerNeedsADatabase extends Error {
 	constructor(readonly id: string) {
 		super(
 			`'${id}' is carried by pg-boss, which lives in the database the app ` +
-				`declares — and this app declares none. Declare a database, or set ` +
-				`services.events to a backend that brings its own broker.`,
+				`declares — and this app declares none. Declare a database, or deploy ` +
+				`to a target whose broker is its own.`,
 		);
 		this.name = 'BrokerNeedsADatabase';
 	}
@@ -929,8 +929,7 @@ export class UnprovisionableBucket extends Error {
 		super(
 			`'${id}' is stored on '${backend}', which this target cannot ` +
 				`provision: an S3 or R2 bucket belongs to an account this deploy ` +
-				`does not hold, the way an API key does. Set services.storage to ` +
-				`'minio' to run one on the box, or supply the bucket's URL.`,
+				`does not hold, the way an API key does. Supply the bucket's URL.`,
 		);
 		this.name = 'UnprovisionableBucket';
 	}

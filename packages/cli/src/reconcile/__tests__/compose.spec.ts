@@ -21,11 +21,10 @@ const portsFor = (containers: string[]) =>
 		portKeys(containers).map((key, index) => [key, 20000 + index]),
 	);
 
-const compose = (containers: string[], images?: Record<string, string>) =>
+const compose = (containers: string[]) =>
 	composeFor(plan(containers), {
 		project: 'toolbox',
 		ports: portsFor(containers),
-		...(images ? { images } : {}),
 	});
 
 describe('composeFor', () => {
@@ -103,14 +102,29 @@ describe('composeFor', () => {
 		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
 	});
 
-	it('lets config override an image', () => {
-		// The config half of the split: which containers is derived, which image
-		// stays explicit — a project needing postgis says so.
-		const { services } = compose(['postgres'], {
-			postgres: 'postgis/postgis:18-3.5',
+	it('pins no image of its own beyond the default — that is the project file', () => {
+		// An image pin is the project's docker-compose.yml, merged over this
+		// one; nothing in config names an image any more.
+		const { services } = compose(['postgres']);
+
+		expect(services.postgres.image).toMatch(/^postgres:/);
+	});
+
+	it('writes app services beside the containers, behind the apps profile', () => {
+		const file = composeFor(plan(['postgres']), {
+			project: 'toolbox',
+			ports: portsFor(['postgres']),
+			apps: {
+				api: {
+					image: 'api:latest',
+					build: { context: '.', dockerfile: '.gkm/docker/Dockerfile.api' },
+					profiles: ['apps'],
+				},
+			},
 		});
 
-		expect(services.postgres.image).toBe('postgis/postgis:18-3.5');
+		expect(Object.keys(file.services)).toEqual(['postgres', 'api']);
+		expect(file.services.api?.profiles).toEqual(['apps']);
 	});
 
 	it('declares a volume for containers whose data should survive', () => {

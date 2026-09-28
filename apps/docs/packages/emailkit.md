@@ -13,7 +13,7 @@ export const email = new Email('Mail', { templates: { welcome: WelcomeEmail } })
 ```
 
 Every backend speaks SMTP, so the client never changes — Mailpit locally, SES,
-Resend, or your own SMTP deployed, selected by `services.mail`.
+Resend, or your own SMTP deployed, whichever the stage's mail URL names.
 :::
 
 ## Installation

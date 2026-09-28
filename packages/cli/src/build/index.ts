@@ -86,7 +86,8 @@ import {
 	type RouteInfo,
 	type Routes,
 } from '../types';
-import { cacheBackendOf, emailBackendOf } from '../workspace/backends.js';
+import { DEFAULT_EMAIL } from '../types.js';
+import { cacheBackendFor, providerOf } from '../workspace/backends.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -122,8 +123,8 @@ function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
 
 	return (
 		own ?? {
-			services: workspace.services,
 			stages: workspace.stages,
+			...(workspace.deploy ? { deploy: workspace.deploy } : {}),
 			constructs: allConstructGlobs(workspace),
 		}
 	);
@@ -170,18 +171,12 @@ export async function buildCommand(
 	// Resolve providers from new config format
 	const resolved = resolveProviders(config, options);
 
-	// One answer for which backends this app uses, read once. The build
+	// One answer for which backends this app uses, read once — from the
+	// deploy target, which is the same place reconcile reads it. The build
 	// registers drivers for it and records it in the manifest, so a deploy
 	// cannot pick differently and hand the running code a URL it has no driver
 	// for.
-	const backendConfig =
-		(config as { services?: { cache?: unknown; mail?: unknown } }).services ??
-		(
-			loadedConfig as {
-				workspace?: { services?: { cache?: unknown; mail?: unknown } };
-			}
-		).workspace?.services;
-	const cacheBackend = cacheBackendOf(backendConfig?.cache);
+	const cacheBackend = cacheBackendFor(providerOf(loadedConfig.workspace));
 
 	// Normalize production configuration
 	const productionConfigFromGkm = getProductionConfigFromGkm(config);
@@ -216,22 +211,6 @@ export async function buildCommand(
 	if (hooks) {
 		logger.log(`🪝 Server hooks enabled`);
 	}
-
-	// Extract docker compose services for env var auto-population
-	const services = config.docker?.compose?.services;
-	const dockerServices = services
-		? Array.isArray(services)
-			? {
-					postgres: services.includes('postgres'),
-					redis: services.includes('redis'),
-					rabbitmq: services.includes('rabbitmq'),
-				}
-			: {
-					postgres: Boolean(services.postgres),
-					redis: Boolean(services.redis),
-					rabbitmq: Boolean(services.rabbitmq),
-				}
-		: undefined;
 
 	// `constructs` accepts the partitioned shape every other glob does; only the
 	// flat forms name a construct file.
@@ -325,14 +304,15 @@ export async function buildCommand(
 				: studio,
 		hooks,
 		production,
-		dockerServices,
 		constructGlobs,
 		cacheBackend,
-		emailBackend: emailBackendOf(backendConfig?.mail),
+		// Mail is SMTP everywhere; the provider is whatever the stage's URL
+		// names, so there is no choice to read here.
+		emailBackend: DEFAULT_EMAIL,
 		// Both halves of "where does the cache live": the declaration for one
-		// that named its database, and `services.cache` for one that named
-		// nowhere. Reading only the config registers a driver for a protocol the
-		// target never composes.
+		// that named its database, and the deploy target's default for one that
+		// named nowhere. Reading only the default registers a driver for a
+		// protocol the target never composes.
 		storageDrivers: driversFor({
 			appRoot: process.cwd(),
 			cache: cacheBackendsIn(declared, cacheBackend),
@@ -584,9 +564,6 @@ async function buildForProvider(
 				...queues.map((q) => q.construct),
 			];
 
-			// Get docker compose services for auto-populating env vars
-			const dockerServices = context.dockerServices;
-
 			const bundleResult = await bundleServer({
 				entryPoint: join(outputDir, 'server.ts'),
 				outputDir: join(outputDir, 'dist'),
@@ -595,7 +572,6 @@ async function buildForProvider(
 				external: context.production.external,
 				stage,
 				constructs: allConstructs,
-				dockerServices,
 			});
 			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
@@ -719,88 +695,6 @@ export function turboFilters(workspace: NormalizedWorkspace): {
 }
 
 /**
- * The directory turbo treats as the repo root: the nearest ancestor with a
- * `turbo.json`. Its own path is what `$TURBO_ROOT$` resolves to.
- */
-function turboRoot(from: string): string | undefined {
-	let dir = resolve(from);
-
-	for (;;) {
-		if (existsSync(join(dir, 'turbo.json'))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) return undefined;
-		dir = parent;
-	}
-}
-
-/**
- * Write each app's turbo task config, so a construct edit invalidates the build
- * that read it.
- *
- * Turbo hashes a package's own files. An app's constructs live *above* it, in
- * the workspace that declares them for everybody — so without this, editing a
- * database or a surface leaves every cached app build in place and the apps
- * keep serving a graph that no longer exists. It is a silent wrong answer,
- * which is the worst kind: the build succeeds and the output is stale.
- *
- * Generated rather than documented because the globs are already known here and
- * a hand-written copy is one more list to keep in step — the same reason the
- * apps themselves are no longer written down. A file that someone has since
- * edited by hand is left alone.
- */
-export async function writeTurboConfigs(
-	workspace: NormalizedWorkspace,
-): Promise<void> {
-	const root = turboRoot(workspace.root);
-	if (!root) return;
-
-	const globs = allConstructGlobs(workspace).map(
-		(glob) => `$TURBO_ROOT$/${relative(root, glob)}`,
-	);
-	if (globs.length === 0) return;
-
-	const configPath = join(workspace.root, 'gkm.config.ts');
-	const inputs = [
-		'$TURBO_DEFAULT$',
-		...globs,
-		...(existsSync(configPath)
-			? [`$TURBO_ROOT$/${relative(root, configPath)}`]
-			: []),
-	];
-
-	for (const app of Object.values(workspace.apps)) {
-		const dir = join(workspace.root, app.path);
-		if (!existsSync(join(dir, 'package.json'))) continue;
-
-		const file = join(dir, 'turbo.json');
-		const existing = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
-		if (existing && !existing.includes(GENERATED_BY_GKM)) continue;
-
-		const content = `{
-	"$schema": "https://turborepo.com/schema.json",
-	${GENERATED_BY_GKM}
-	"extends": ["//"],
-	"tasks": {
-		"build": {
-			"inputs": [
-${inputs.map((glob) => `\t\t\t\t${JSON.stringify(glob)}`).join(',\n')}
-			],
-			"outputs": [${app.type === 'backend' ? '".gkm/**"' : '"dist/**", ".next/**", "!.next/cache/**"'}]
-		}
-	}
-}
-`;
-
-		if (existing === content) continue;
-		await writeFile(file, content);
-	}
-}
-
-/** Marks a turbo config as gkm's to rewrite. Edit the file and it is left alone. */
-const GENERATED_BY_GKM =
-	'// Generated by `gkm build`. Delete this line to take ownership of the file.';
-
-/**
  * Build all apps in a workspace using Turbo for dependency-ordered parallel builds.
  * @internal Exported for testing
  */
@@ -834,10 +728,6 @@ export async function workspaceBuildCommand(
 	logger.log(`\n📦 Using ${pm} with Turbo for parallel builds...\n`);
 
 	try {
-		// Before turbo, so the hash it computes includes the constructs this
-		// build reads.
-		await writeTurboConfigs(workspace);
-
 		// Run turbo build which handles dependency ordering and parallelization
 		const { filters, unpackaged } = turboFilters(workspace);
 		if (unpackaged.length > 0) {

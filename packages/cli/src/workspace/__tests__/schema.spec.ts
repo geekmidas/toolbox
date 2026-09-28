@@ -68,11 +68,6 @@ describe('WorkspaceConfigSchema', () => {
 						projectId: 'proj-123',
 					},
 				},
-				services: {
-					db: true,
-					cache: { version: '7.2', image: 'redis:7.2-alpine' },
-					mail: { smtp: { host: 'smtp.example.com', port: 587 } },
-				},
 				secrets: {
 					enabled: true,
 					algorithm: 'aes-256-gcm',
@@ -88,7 +83,19 @@ describe('WorkspaceConfigSchema', () => {
 			expect(result.apps.web.dependencies).toEqual(['api']);
 			expect(result.shared?.packages).toEqual(['packages/*']);
 			expect(result.deploy?.default).toBe('dokploy');
-			expect(result.services?.db).toBe(true);
+		});
+
+		it('rejects a key it does not have, a leftover services block included', () => {
+			// Strict: silently dropping `services:` would hide that its answers
+			// moved to the constructs and the deploy target.
+			const config = {
+				stages: { local: 'development', deployed: ['production'] },
+				services: { cache: 'db' },
+			};
+
+			expect(() => validateWorkspaceConfig(config)).toThrow(
+				/Unrecognized key.*services/s,
+			);
 		});
 
 		it('should default app type to backend', () => {

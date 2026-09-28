@@ -73,8 +73,7 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
 
 	const db = databaseFor();
 	const mail = emailFor();
-	// A fullstack workspace always declares one; the others only when asked.
-	const hasDatabase = options.template === 'fullstack' || options.services.db;
+	const hasDatabase = options.constructs.database;
 
 	// Provider inputs keyed by construct id: the two things a neutral
 	// declaration cannot carry, and that the synth refuses to guess.
@@ -87,7 +86,7 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
         ${db.id}: { vpc },`,
 				]
 			: []),
-		...(options.services.mail
+		...(options.constructs.mail
 			? [
 					`        // Every provider rejects an unverified sender, so there is no
         // default; the synth stops with \`EmailNeedsSender\` until it is set.

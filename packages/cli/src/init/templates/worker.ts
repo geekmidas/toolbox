@@ -1,5 +1,5 @@
 import { databaseFiles } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
@@ -39,13 +39,13 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~2.3.0',
+		'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-		'@types/node': '~22.0.0',
-		tsx: '~4.20.0',
-		turbo: '~2.3.0',
-		typescript: '~5.8.2',
-		vitest: '~4.0.0',
+		'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+		tsx: TOOLCHAIN_VERSIONS['tsx'],
+		turbo: DEPENDENCY_VERSIONS['turbo'],
+		typescript: TOOLCHAIN_VERSIONS['typescript'],
+		vitest: TOOLCHAIN_VERSIONS['vitest'],
 	},
 
 	scripts: {
@@ -60,7 +60,8 @@ export const workerTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, name, database } = options;
+		const { loggerType, name } = options;
+		const { database } = options.constructs;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 
@@ -202,7 +203,7 @@ export const cleanup = worker
 
 		// The database, when this project has one. A `pgboss` events backend
 		// implies one, which is why a worker gets here without asking for it.
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push(...databaseFiles());
 		}
 

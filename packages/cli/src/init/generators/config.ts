@@ -1,4 +1,5 @@
 import { CONSTRUCTS_GLOB, routesGlob } from '../constructs.js';
+import { BIOME_SCHEMA } from '../dependencies.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -68,34 +69,6 @@ export default defineConfig({${stagesBlock(options.stages)}${
 	if (isServerless || hasWorker) {
 		gkmConfig += `
   functions: './src/functions/**/*.ts',`;
-	}
-
-	// What no construct implies. `db` and `storage` are deliberately absent —
-	// the declared KyselyDatabase and ObjectStorage are what bring up the
-	// Postgres and the MinIO, and reconcile ignores those keys rather than
-	// obeying them so the two cannot disagree. What is left is a backend
-	// selection.
-	if (!options.monorepo) {
-		const { cache, mail, events } = options.services;
-
-		if (cache || mail || events) {
-			gkmConfig += `
-  services: {`;
-			if (cache) {
-				gkmConfig += `
-    cache: true,`;
-			}
-			if (mail) {
-				gkmConfig += `
-    mail: true,`;
-			}
-			if (events) {
-				gkmConfig += `
-    events: '${events}',`;
-			}
-			gkmConfig += `
-  },`;
-		}
 	}
 
 	if (hasWorker) {
@@ -170,7 +143,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 			},
 		];
 
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push({
 				path: 'vitest.config.ts',
 				content: vitestConfigContent,
@@ -182,7 +155,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 
 	// Build biome.json
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/2.3.0/schema.json',
+		$schema: BIOME_SCHEMA,
 		vcs: {
 			enabled: true,
 			clientKind: 'git',
@@ -283,7 +256,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 		},
 	];
 
-	if (options.database) {
+	if (options.constructs.database) {
 		files.push({
 			path: 'vitest.config.ts',
 			content: vitestConfigContent,
@@ -353,7 +326,7 @@ function generateSingleAppConfigFiles(
 		},
 	];
 
-	if (options.database) {
+	if (options.constructs.database) {
 		files.push({
 			path: 'vitest.config.ts',
 			content: vitestConfigContent,

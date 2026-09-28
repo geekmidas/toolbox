@@ -50,9 +50,11 @@ Twenty-three of the bumps were majors. These needed code changes:
 
 ## Open items
 
-- **`memoryAdapter` has no conformance test** since better-auth 1.7 removed
-  `runAdapterTest`. The suite is skipped with the gap recorded. Needs a
-  decision (#42).
+- ~~**`memoryAdapter` has no conformance test** since better-auth 1.7 removed
+  `runAdapterTest`.~~ Resolved in #42: the harness moved to
+  `@better-auth/test-utils/adapter`, and `memoryAdapter` runs its basic,
+  auth-flow and case-insensitive suites again — which found two real gaps
+  (`mode: 'insensitive'`, and `select` under renamed fields), now fixed.
 - ~~**The alignment script was never committed**, and neither was its list of
   versions.~~ Recreated in #44: `scripts/align-deps.mjs` and
   `scripts/dependency-versions.json`, checked in CI by `pnpm check:deps`.

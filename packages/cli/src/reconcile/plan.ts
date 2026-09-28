@@ -493,9 +493,10 @@ export function planFor(
 		);
 	}
 
-	// A cache the config placed in a database becomes an *edge*, here, once.
+	// A cache the deploy target placed in a database becomes an *edge*, here,
+	// once.
 	//
-	// `services.cache: 'db'` names something that exists in this graph, which
+	// A server target's `'db'` cache names something that exists in this graph, which
 	// makes it different in kind from `upstash` or `elasticache`: those name a
 	// backend nothing declares, while this one names a database sitting right
 	// there. So it is resolved to `of` — the same field `database.cache()` sets
@@ -550,17 +551,18 @@ export class CacheNeedsDatabase extends Error {
 	constructor(readonly ids: readonly string[]) {
 		super(
 			`A cache backed by the database needs a declared database, and none ` +
-				`was declared. Declare one, or set services.cache to 'upstash' or ` +
-				`'elasticache'. Caches affected: ${ids.join(', ')}.`,
+				`was declared, and on this deploy target that is where a cache lives. ` +
+				`Declare one. Caches affected: ${ids.join(', ')}.`,
 		);
 		this.name = 'CacheNeedsDatabase';
 	}
 }
 
 /**
- * `services.cache: 'db'` in an app that declares more than one database.
+ * A `'db'` cache — a server target's default — in an app that declares more
+ * than one database.
  *
- * The config says *a* database and the graph offers several, so there is no
+ * The target says *a* database and the graph offers several, so there is no
  * answer to give — and the wrong kind of failure would be to pick one, since a
  * cache silently landing in the wrong database is a bug that surfaces as
  * missing rows much later. The fix is a stronger statement in application code:
@@ -576,7 +578,7 @@ export class CacheIsAmbiguous extends Error {
 			`A cache backed by the database needs to know which one, and this app ` +
 				`declares ${databases.length}: ${databases.join(', ')}. Declare the ` +
 				`cache from its database — e.g. ${databases[0]}.cache('Sessions') — ` +
-				`rather than with services.cache. Caches affected: ${ids.join(', ')}.`,
+				`rather than as a bare new Cache(). Caches affected: ${ids.join(', ')}.`,
 		);
 		this.name = 'CacheIsAmbiguous';
 	}
@@ -586,7 +588,7 @@ export class PgBossNeedsDatabase extends Error {
 	constructor(readonly ids: readonly string[]) {
 		super(
 			`pg-boss keeps its queues in a declared database, and none was declared. ` +
-				`Declare one, or set services.events to 'rabbitmq' or 'sns'. ` +
+				`Declare one: on this deploy target, events are carried by pg-boss. ` +
 				`Queues and topics affected: ${ids.join(', ')}.`,
 		);
 		this.name = 'PgBossNeedsDatabase';

@@ -17,7 +17,6 @@ const workspace = (
 		name: 'shop',
 		root,
 		apps,
-		services: {},
 		deploy: { default: 'dokploy' },
 		shared: { packages: [] },
 		secrets: {},

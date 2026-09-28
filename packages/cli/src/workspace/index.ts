@@ -50,14 +50,11 @@ export type {
 	InferAppNames,
 	InferredWorkspaceConfig,
 	LoadedConfig,
-	MailServiceConfig,
 	MobileFramework,
 	ModelsConfig,
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 	SecretsConfig,
-	ServiceImageConfig,
-	ServicesConfig,
 	SharedConfig,
 	WorkspaceConfig,
 	WorkspaceInput,
@@ -120,10 +117,6 @@ function validateDependencies<TApps extends AppsRecord>(apps: TApps): void {
  *       dependencies: ['api'], // <- autocomplete shows 'api' | 'web'
  *     },
  *   },
- *   services: {
- *     db: true,
- *     cache: true,
- *   },
  * });
  *
  * // config.apps.api <- full type inference
@@ -180,7 +173,6 @@ export function normalizeWorkspace(
 		root: cwd,
 		...(config.constructs ? { constructs: config.constructs } : {}),
 		apps: normalizedApps,
-		services: config.services ?? {},
 		deploy: config.deploy ?? { default: 'dokploy' },
 		shared: config.shared ?? { packages: ['packages/*'] },
 		stages: validateStages(config.stages),
@@ -221,17 +213,6 @@ export function wrapSingleAppAsWorkspace(
 	// in a monorepo and was ignored in a single-app project.
 	const name = config.name ?? getPackageName(cwd) ?? basename(cwd);
 
-	// `docker.compose.services` no longer decides anything here.
-	//
-	// It used to seed `services.db` and `services.cache`, which is to say a
-	// container existed because a compose list named it. Which containers exist
-	// is the manifest's answer now — a database implies Postgres, a declared
-	// cache implies whichever container its backend needs — so the compose block
-	// is left to be what its name says: a deploy-side list.
-	const normalizedServices: NormalizedWorkspace['services'] = {
-		...(config.services ?? {}),
-	};
-
 	// A projection, not a default-filled stand-in.
 	//
 	// Every hardcoded value here was a field the config could already state and
@@ -268,7 +249,6 @@ export function wrapSingleAppAsWorkspace(
 		// deploy asks the workspace what its apps are called rather than asking
 		// the filesystem.
 		apps: { api: app },
-		services: normalizedServices,
 		// Carried rather than replaced. A single-app project configures its
 		// deploy in the same shape a workspace does — endpoint, registry,
 		// domains — and hardcoding the default here silently discarded all of it,
@@ -400,15 +380,14 @@ export function getAppGkmConfig(
 	}
 
 	return {
-		// Workspace-level, and carried here deliberately. These name the backends
-		// a cache and a mailer resolve to, which the *entry point* reads when it
-		// decides which drivers to register — and the local target reads from the
-		// workspace when it composes the URLs those drivers receive. Dropping the
-		// field left the two reading different answers: a project on
-		// `cache: 'db'` was handed a `postgres://` URL by an entry that had
-		// registered only the Upstash driver, and every request failed with
-		// `UnregisteredCacheScheme`.
-		services: workspace.services,
+		// Workspace-level, and carried here deliberately. The deploy target is
+		// what decides the backend a cache resolves to, which the *entry point*
+		// reads when it decides which drivers to register — and the local target
+		// reads from the workspace when it composes the URLs those drivers
+		// receive. The two have to answer from the same target, or a project on
+		// a server is handed a `postgres://` cache URL by an entry that
+		// registered only the Upstash driver (`UnregisteredCacheScheme`).
+		...(workspace.deploy ? { deploy: workspace.deploy } : {}),
 		stages: workspace.stages,
 		// One glob, every kind, and the root's covers every app's code as well
 		// as the constructs. Which surface an endpoint belongs to is the

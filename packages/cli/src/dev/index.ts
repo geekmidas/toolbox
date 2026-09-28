@@ -60,7 +60,7 @@ import type {
 	StudioConfig,
 	TelescopeConfig,
 } from '../types';
-import { cacheBackendOf } from '../workspace/backends.js';
+import { cacheBackendFor, providerOf } from '../workspace/backends.js';
 import {
 	type FrontendFramework,
 	getAppBuildOrder,
@@ -1236,16 +1236,16 @@ async function buildServer(
 	// known, and read by every generator that writes an entry.
 	//
 	// Both halves of the answer, because both halves decide where a cache lives:
-	// the declaration for a cache that named its database, and `services.cache`
-	// for one that named nowhere. Reading only the config registered a driver
-	// for a protocol the target had not composed.
+	// the declaration for a cache that named its database, and the deploy
+	// target for one that named nowhere — the same target reconcile composed
+	// the URL for, so the driver registered is the one the URL needs.
 	context = {
 		...context,
 		storageDrivers: driversFor({
 			appRoot,
 			cache: cacheBackendsIn(
 				await declaredConstructs(config, appRoot),
-				cacheBackendOf(config?.services?.cache),
+				cacheBackendFor(providerOf(config ?? {})),
 			),
 		}),
 	};

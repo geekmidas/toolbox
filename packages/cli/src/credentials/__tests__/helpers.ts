@@ -106,7 +106,6 @@ export default defineWorkspace({
   apps: {
 ${appEntries}
   },
-  services: {},
 });
 `;
 	writeFileSync(join(root, 'gkm.config.ts'), content);

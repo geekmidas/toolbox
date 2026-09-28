@@ -1,5 +1,5 @@
 import { databaseFiles } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
@@ -20,20 +20,20 @@ export const serverlessTemplate: TemplateConfig = {
 		'@geekmidas/cloud': GEEKMIDAS_VERSIONS['@geekmidas/cloud'],
 		'@geekmidas/rate-limit': GEEKMIDAS_VERSIONS['@geekmidas/rate-limit'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
-		'@hono/node-server': '~1.14.1',
+		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
 		pino: DEPENDENCY_VERSIONS.pino,
 	},
 
 	devDependencies: {
-		'@biomejs/biome': '~2.3.0',
+		'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 		'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-		'@types/aws-lambda': '~8.10.92',
-		'@types/node': '~22.0.0',
-		tsx: '~4.20.0',
-		turbo: '~2.3.0',
-		typescript: '~5.8.2',
-		vitest: '~4.0.0',
+		'@types/aws-lambda': DEPENDENCY_VERSIONS['@types/aws-lambda'],
+		'@types/node': DEPENDENCY_VERSIONS['@types/node'],
+		tsx: TOOLCHAIN_VERSIONS['tsx'],
+		turbo: DEPENDENCY_VERSIONS['turbo'],
+		typescript: TOOLCHAIN_VERSIONS['typescript'],
+		vitest: TOOLCHAIN_VERSIONS['vitest'],
 	},
 
 	scripts: {
@@ -173,7 +173,7 @@ export const worker = new Worker('Jobs', { logger });
 
 		// The database, when this project has one. A `pgboss` events backend
 		// implies one, which is why a worker gets here without asking for it.
-		if (options.database) {
+		if (options.constructs.database) {
 			files.push(...databaseFiles());
 		}
 

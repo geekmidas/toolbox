@@ -16,7 +16,7 @@ A complete guide to `gkm dev` — what it does, how it orchestrates a fullstack 
 | Trigger | at least one app sets `constructs:` | no app does |
 | Where containers come from | the manifest — a declared `KyselyDatabase` is why a Postgres exists | a `docker-compose.yml` you wrote |
 | Where URLs come from | derived and injected (`ORDERS_URL`, `UPLOADS_URL`) | secrets, rewritten with resolved ports |
-| Compose file | generated at `.gkm/docker-compose.yml` | yours, at the project root |
+| Compose file | generated at `docker-compose.constructs.yml`, with your `docker-compose.yml` merged over it | yours, at the project root |
 
 Steps 5 through 8 below describe the **hand-written** path. On the declared
 path, all four collapse into one reconcile pass:
@@ -109,22 +109,25 @@ Starts the containers the manifest implies, with resolved ports injected.
 
 **Which containers exist is derived, not configured.** A declared
 `KyselyDatabase` is why a Postgres runs; a declared `ObjectStorage` is why MinIO
-does; a declared cache runs whichever container its backend needs — `redis` for
-`elasticache`, the Upstash-protocol proxy for `upstash`, and nothing at all for
-`db`, which is a table in the database you already declared.
+does; a declared cache runs whichever container its backend needs, and the
+backend follows the deploy target — the Upstash-protocol proxy on AWS, and
+nothing at all on a server, where it is a table in the database you already
+declared.
 
 | You declared | What starts |
 |---|---|
 | `new KyselyDatabase('…')` | `postgres` |
 | `new ObjectStorage('…')` / `new FileServer('…')` | `minio`, and `caddy` for a file server |
-| `database.cache('…')` with `services.cache: 'elasticache'` | `redis` |
-| `database.cache('…')` with `services.cache: 'upstash'` | `redis` + the HTTP proxy |
-| `database.cache('…')` with `services.cache: 'db'` | nothing — it is a table |
+| `new Cache('…')`, deploying to AWS | `redis` + the HTTP proxy |
+| `new Cache('…')`, deploying to a server | nothing — it is a table |
 | `new Email('…')` | `mailpit` |
-| a topic or queue on `services.events: 'rabbitmq'` | `rabbitmq` |
+| a topic or queue, deploying to AWS | the AWS emulator (SNS and SQS) |
+| a topic or queue, deploying to a server | nothing — pg-boss lives in Postgres |
 
-There is no `services.db: true` any more, and no flag that starts a container.
-A container exists because something declared it.
+There is no `services` block and no flag that starts a container. A container
+exists because something declared it; an image pin, or a service no construct
+implies, goes in your own `docker-compose.yml`, merged over the generated
+`docker-compose.constructs.yml`.
 
 If `docker-compose.yml` is missing, a warning is printed and services are skipped.
 
@@ -325,7 +328,6 @@ export default defineWorkspace({
   name: 'my-app',  // Required — used in SSM parameter path
   stages: { local: 'dev', deployed: ['prod'] },
   constructs: './constructs/**/*.ts',
-  services: { /* ... */ },
 
   state: {
     provider: 'ssm',

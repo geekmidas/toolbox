@@ -206,7 +206,7 @@ export function withCacheTable(url: string, table: string): string {
 }
 
 /**
- * `services.cache: 'db'` in an app that declares more than one database.
+ * A `'db'` cache in an app that declares more than one database.
  *
  * Picking one would put the cache somewhere nobody chose, and the symptom —
  * entries that are never found — appears long after the deploy reported
@@ -222,7 +222,7 @@ export class CacheIsAmbiguous extends Error {
 			`'${id}' is a cache backed by the database, and this app declares ` +
 				`${databases.length}: ${databases.join(', ')}. Declare the cache from ` +
 				`its database — e.g. ${databases[0]}.cache('${id}') — rather than ` +
-				`with services.cache.`,
+				`as a bare new Cache().`,
 		);
 		this.name = 'CacheIsAmbiguous';
 	}
@@ -232,8 +232,8 @@ export class CacheNeedsDatabase extends Error {
 	constructor(readonly id: string) {
 		super(
 			`'${id}' is a cache backed by the database, and this app declares no ` +
-				`database for it to live in. Declare one, or set services.cache to ` +
-				`'upstash' or 'elasticache'.`,
+				`database for it to live in. Declare one, or declare the cache from ` +
+				`the database it belongs to.`,
 		);
 		this.name = 'CacheNeedsDatabase';
 	}

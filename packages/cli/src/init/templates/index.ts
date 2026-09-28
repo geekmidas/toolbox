@@ -38,14 +38,18 @@ export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 export type DeployTarget = 'dokploy' | 'sst' | 'none';
 
 /**
- * Services selection
+ * The constructs a scaffold declares.
+ *
+ * Constructs, not containers: `Database` is a `KyselyDatabase`, `Uploads` an
+ * `ObjectStorage`. Which container runs each locally, and which backend serves
+ * it deployed, follow from the declaration and the deploy target — nothing
+ * here names a Postgres or a Redis.
  */
-export interface ServicesSelection {
-	db: boolean;
+export interface ScaffoldedConstructs {
+	database: boolean;
 	cache: boolean;
+	uploads: boolean;
 	mail: boolean;
-	storage: boolean;
-	events?: import('../../types.js').EventsBackend;
 }
 
 /**
@@ -63,7 +67,6 @@ export interface TemplateOptions {
 	name: string;
 	template: TemplateName;
 	telescope: boolean;
-	database: boolean;
 	studio: boolean;
 	loggerType: LoggerType;
 	routesStructure: RoutesStructure;
@@ -78,8 +81,8 @@ export interface TemplateOptions {
 	region?: string;
 	/** The project's stages, written to gkm.config.ts and read from it */
 	stages: StagesConfig;
-	/** Services selection */
-	services: ServicesSelection;
+	/** The constructs this scaffold declares */
+	constructs: ScaffoldedConstructs;
 	/** Frontend framework (fullstack template only) */
 	frontendFramework?: FullstackFrontendFramework;
 }
@@ -277,62 +280,36 @@ export const deployTargetChoices = [
 ];
 
 /**
- * Services choices for multi-select prompt
- */
-/**
- * What the project declares — and therefore which containers it runs.
+ * Which constructs to declare.
  *
- * Each choice scaffolds a construct rather than a container: the container is
- * what `gkm dev` derives from the declaration, which is why the descriptions
- * name the construct and the titles name the thing you will see running.
+ * The containers that run them locally and the backends that serve them
+ * deployed are derived from these, so the prompt names only what the code
+ * will say.
  */
-export const servicesChoices = [
+export const constructChoices: {
+	title: string;
+	value: keyof ScaffoldedConstructs;
+	description: string;
+}[] = [
 	{
-		title: 'PostgreSQL',
-		value: 'db',
-		description: 'A declared database — KyselyDatabase construct',
+		title: 'Database',
+		value: 'database',
+		description: 'KyselyDatabase — Postgres',
 	},
 	{
-		title: 'Redis',
+		title: 'Cache',
 		value: 'cache',
-		description: 'A declared cache — Cache construct',
+		description: 'Cache — backed by what the deploy target implies',
 	},
 	{
-		title: 'Mailpit',
+		title: 'Uploads',
+		value: 'uploads',
+		description: 'ObjectStorage — a bucket',
+	},
+	{
+		title: 'Mail',
 		value: 'mail',
-		description: 'Declared outbound mail — Email construct',
-	},
-	{
-		title: 'MinIO',
-		value: 'storage',
-		description: 'A declared bucket — ObjectStorage construct',
-	},
-];
-
-/**
- * Event backend choices for prompts
- */
-export const eventsBackendChoices = [
-	{
-		title: 'pg-boss',
-		value: 'pgboss' as const,
-		description:
-			'PostgreSQL-based job queue (reuses postgres, no extra container)',
-	},
-	{
-		title: 'SNS/SQS',
-		value: 'sns' as const,
-		description: 'AWS SNS+SQS via LocalStack for local dev',
-	},
-	{
-		title: 'RabbitMQ',
-		value: 'rabbitmq' as const,
-		description: 'AMQP message broker',
-	},
-	{
-		title: 'None',
-		value: undefined,
-		description: 'Skip event backend',
+		description: 'Email — outbound mail over SMTP',
 	},
 ];
 

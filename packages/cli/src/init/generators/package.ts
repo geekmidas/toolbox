@@ -15,7 +15,8 @@ export function generatePackageJson(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): GeneratedFile[] {
-	const { name, telescope, database, studio, monorepo, services } = options;
+	const { name, telescope, studio, monorepo } = options;
+	const { database, cache, uploads, mail } = options.constructs;
 
 	// Start with template dependencies
 	const dependencies = { ...template.dependencies };
@@ -38,10 +39,7 @@ export function generatePackageJson(
 
 	// Every construct resolves its env key through the manifest, so declaring
 	// one at all is what needs this — not any particular kind.
-	if (
-		declares &&
-		(database || services.storage || services.cache || services.mail)
-	) {
+	if (declares && (database || uploads || cache || mail)) {
 		dependencies['@geekmidas/manifest'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/manifest'];
 	}
@@ -49,16 +47,16 @@ export function generatePackageJson(
 	// A construct hands back a client from the package that owns it, and each of
 	// those is an optional peer — an app that declares no bucket resolves no S3
 	// SDK. Installed here because the app declared one.
-	if (declares && services.storage) {
+	if (declares && uploads) {
 		dependencies['@geekmidas/storage'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/storage'];
 	}
 
-	if (declares && services.cache) {
+	if (declares && cache) {
 		dependencies['@geekmidas/cache'] = GEEKMIDAS_VERSIONS['@geekmidas/cache'];
 	}
 
-	if (declares && services.mail) {
+	if (declares && mail) {
 		dependencies['@geekmidas/emailkit'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/emailkit'];
 	}
@@ -67,12 +65,13 @@ export function generatePackageJson(
 		dependencies['@geekmidas/db'] = GEEKMIDAS_VERSIONS['@geekmidas/db'];
 		dependencies.kysely = DEPENDENCY_VERSIONS.kysely;
 		dependencies.pg = DEPENDENCY_VERSIONS.pg;
-		devDependencies['@types/pg'] = '~8.23.1';
+		devDependencies['@types/pg'] = DEPENDENCY_VERSIONS['@types/pg'];
 		devDependencies['@geekmidas/testkit'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
-		devDependencies['@faker-js/faker'] = '~9.8.0';
+		devDependencies['@faker-js/faker'] = DEPENDENCY_VERSIONS['@faker-js/faker'];
 		devDependencies['kysely-ctl'] = DEPENDENCY_VERSIONS['kysely-ctl'];
-		devDependencies['vite-tsconfig-paths'] = '~5.1.0';
+		devDependencies['vite-tsconfig-paths'] =
+			DEPENDENCY_VERSIONS['vite-tsconfig-paths'];
 	}
 
 	// For monorepo apps, remove biome/turbo/esbuild (they're at root) and lint/fmt scripts

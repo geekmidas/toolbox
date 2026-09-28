@@ -129,9 +129,6 @@ async function reconcileLocal(
 
 	if (url) {
 		await ensureTrusted(workspace.root, url, {
-			...(workspace.services.trustLocalCa === undefined
-				? {}
-				: { configured: workspace.services.trustLocalCa }),
 			...(options.yes ? { assumeYes: true } : {}),
 		});
 	}
@@ -333,9 +330,12 @@ export function createFreshWorkspaceSecrets(
 	const serviceNames = credentialedServices(containers);
 
 	// Create base secrets with service credentials
+	// No events backend: whether there are events is a declared `Topic` or
+	// `Queue`, and reconcile derives their connection strings from those.
+	// Passing the target's broker here would demand broker credentials from a
+	// project that declared no queue at all.
 	const secrets = createStageSecrets(stage, serviceNames, {
 		projectName: workspace.name,
-		eventsBackend: workspace.services.events,
 	});
 
 	// Generate fullstack-aware custom secrets

@@ -3,7 +3,6 @@ import { generateAgentFiles } from '../generators/agents.js';
 import { generateAuthAppFiles } from '../generators/auth.js';
 import { generateConfigFiles } from '../generators/config.js';
 import { generateDeployFiles } from '../generators/deploy';
-import { generateDockerFiles } from '../generators/docker.js';
 import { generateEnvFiles } from '../generators/env.js';
 import { generateExpoAppFiles } from '../generators/mobile-expo.js';
 import { generateModelsPackage } from '../generators/models.js';
@@ -27,7 +26,6 @@ const baseOptions: TemplateOptions = {
 	name: 'test-project',
 	template: 'minimal',
 	telescope: true,
-	database: true,
 	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
@@ -35,7 +33,7 @@ const baseOptions: TemplateOptions = {
 	apiPath: '',
 	packageManager: 'pnpm',
 	deployTarget: 'dokploy',
-	services: { db: true, cache: true, mail: false, storage: false },
+	constructs: { database: true, cache: true, mail: false, uploads: false },
 };
 
 describe('generatePackageJson', () => {
@@ -216,189 +214,6 @@ describe('generateEnvFiles', () => {
 	});
 });
 
-describe('generateDockerFiles', () => {
-	it('should generate docker-compose.yml', () => {
-		const files = generateDockerFiles(baseOptions, minimalTemplate);
-		expect(files).toHaveLength(1);
-		expect(files[0].path).toBe('docker-compose.yml');
-	});
-
-	it('should include postgres with dynamic port when database is enabled', () => {
-		const files = generateDockerFiles(baseOptions, minimalTemplate);
-		expect(files[0].content).toContain('postgres');
-		expect(files[0].content).toContain("'${POSTGRES_HOST_PORT:-5432}:5432'");
-	});
-
-	it('should include redis with dynamic port', () => {
-		const files = generateDockerFiles(baseOptions, minimalTemplate);
-		expect(files[0].content).toContain('redis');
-		expect(files[0].content).toContain("'${REDIS_HOST_PORT:-6379}:6379'");
-	});
-
-	it('should include serverless-redis-http with dynamic port for serverless template', () => {
-		const options = { ...baseOptions, template: 'serverless' as const };
-		const files = generateDockerFiles(options, serverlessTemplate);
-		expect(files[0].content).toContain('hiett/serverless-redis-http');
-		expect(files[0].content).toContain("'${SRH_HOST_PORT:-8079}:80'");
-	});
-
-	it('should include rabbitmq with dynamic ports for worker template', () => {
-		const options = { ...baseOptions, template: 'worker' as const };
-		const files = generateDockerFiles(options, workerTemplate);
-		expect(files[0].content).toContain('rabbitmq');
-		expect(files[0].content).toContain("'${RABBITMQ_HOST_PORT:-5672}:5672'");
-		expect(files[0].content).toContain(
-			"'${RABBITMQ_MGMT_HOST_PORT:-15672}:15672'",
-		);
-	});
-
-	it('should include mailpit with dynamic ports when mail is enabled', () => {
-		const options = {
-			...baseOptions,
-			services: { ...baseOptions.services, mail: true },
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		expect(files[0].content).toContain('mailpit');
-		expect(files[0].content).toContain("'${SMTP_PORT:-1025}:1025'");
-		expect(files[0].content).toContain("'${MAILPIT_PORT:-8025}:8025'");
-		expect(files[0].content).toContain('MP_SMTP_AUTH:');
-	});
-
-	it('should include minio with dynamic ports when storage is enabled', () => {
-		const options = {
-			...baseOptions,
-			services: { ...baseOptions.services, storage: true },
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		expect(files[0].content).toContain('minio');
-		// pgsty's build, and pinned: MinIO's own images left Docker Hub and
-		// then Quay went behind a login, and each time a scaffolded project
-		// could not start.
-		expect(files[0].content).toContain(
-			'pgsty/minio:RELEASE.2026-08-04T00-00-00Z',
-		);
-		expect(files[0].content).toContain("'${MINIO_API_HOST_PORT:-9000}:9000'");
-		expect(files[0].content).toContain(
-			"'${MINIO_CONSOLE_HOST_PORT:-9001}:9001'",
-		);
-		expect(files[0].content).toContain('MINIO_ROOT_USER:');
-		expect(files[0].content).toContain('MINIO_ROOT_PASSWORD:');
-		expect(files[0].content).toContain('minio_data:');
-	});
-
-	it('should include all services when all are enabled', () => {
-		const options = {
-			...baseOptions,
-			services: { db: true, cache: true, mail: true, storage: true },
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		expect(files[0].content).toContain('postgres');
-		expect(files[0].content).toContain('redis');
-		expect(files[0].content).toContain('mailpit');
-		expect(files[0].content).toContain('minio');
-	});
-
-	it('should not include disabled services', () => {
-		const options = {
-			...baseOptions,
-			database: false,
-			services: { db: false, cache: false, mail: false, storage: false },
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		expect(files[0].content).not.toContain('postgres');
-		expect(files[0].content).toContain('redis'); // redis is always included
-		expect(files[0].content).not.toContain('mailpit');
-		expect(files[0].content).not.toContain('minio');
-	});
-
-	it('should include the AWS emulator when events is sns', () => {
-		const options = {
-			...baseOptions,
-			services: {
-				db: true,
-				cache: true,
-				mail: false,
-				storage: false,
-				events: 'sns' as const,
-			},
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		const compose = files[0].content;
-		expect(compose).toContain('localstack');
-		expect(compose).toContain('floci/floci');
-		// No SERVICES list: the emulator enables everything, so there is nothing
-		// to keep in step with what the app actually publishes to.
-		expect(compose).not.toContain('SERVICES:');
-		expect(compose).toContain('LOCALSTACK_PORT');
-	});
-
-	it('should include rabbitmq when events is rabbitmq', () => {
-		const options = {
-			...baseOptions,
-			services: {
-				db: true,
-				cache: true,
-				mail: false,
-				storage: false,
-				events: 'rabbitmq' as const,
-			},
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		const compose = files[0].content;
-		expect(compose).toContain('rabbitmq');
-		expect(compose).toContain('RABBITMQ_HOST_PORT');
-	});
-
-	it('should not add extra container for pgboss events', () => {
-		const options = {
-			...baseOptions,
-			services: {
-				db: true,
-				cache: true,
-				mail: false,
-				storage: false,
-				events: 'pgboss' as const,
-			},
-		};
-		const files = generateDockerFiles(options, minimalTemplate);
-		const compose = files[0].content;
-		expect(compose).not.toContain('localstack');
-		// pgboss reuses postgres, no separate container
-	});
-
-	it('should generate idempotent postgres init script with pgboss', () => {
-		const options = {
-			...baseOptions,
-			template: 'fullstack' as const,
-			monorepo: true,
-			apiPath: 'apps/api',
-			services: {
-				db: true,
-				cache: true,
-				mail: false,
-				storage: false,
-				events: 'pgboss' as const,
-			},
-		};
-		const dbApps = [
-			{ name: 'api', password: 'api-pass' },
-			{ name: 'auth', password: 'auth-pass' },
-		];
-		const files = generateDockerFiles(options, apiTemplate, dbApps);
-		const initScript = files.find((f) => f.path === 'docker/postgres/init.sh');
-		expect(initScript).toBeDefined();
-		expect(initScript!.content).toContain('IF NOT EXISTS');
-		expect(initScript!.content).toContain('pgboss');
-		expect(initScript!.content).toContain('PGBOSS_DB_PASSWORD');
-		expect(initScript!.content).toContain('CREATE SCHEMA IF NOT EXISTS pgboss');
-
-		// Docker env should include pgboss password
-		const envFile = files.find((f) => f.path === 'docker/.env');
-		expect(envFile).toBeDefined();
-		expect(envFile!.content).toContain('PGBOSS_DB_PASSWORD');
-	});
-});
-
 describe('generateMonorepoFiles', () => {
 	it('should return empty array for non-monorepo', () => {
 		const files = generateMonorepoFiles(baseOptions, minimalTemplate);
@@ -571,7 +386,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		const files = generateRootConstructs({
 			...fullstackBase,
 			name: 'beetlefit',
-			services: { db: true, cache: true, mail: true, storage: true },
+			constructs: { database: true, cache: true, mail: true, uploads: true },
 		});
 		const all = files.map((f) => f.content).join('\n');
 
@@ -664,7 +479,7 @@ describe('the workspace root, for the constructs that live there', () => {
 		template: 'fullstack',
 		monorepo: true,
 		apiPath: 'apps/api',
-		services: { db: true, cache: true, mail: true, storage: true },
+		constructs: { database: true, cache: true, mail: true, uploads: true },
 	};
 
 	const root = (options: TemplateOptions, path: string) =>
@@ -700,7 +515,12 @@ describe('the workspace root, for the constructs that live there', () => {
 		const { dependencies } = root(
 			{
 				...fullstackBase,
-				services: { db: true, cache: false, mail: false, storage: false },
+				constructs: {
+					database: true,
+					cache: false,
+					mail: false,
+					uploads: false,
+				},
 			},
 			'package.json',
 		);
@@ -885,7 +705,7 @@ describe('generateWorkspaceConfig, through generateMonorepoFiles', () => {
 
 	it('names no services — every one of them is derived or defaulted', () => {
 		const cfg = config({
-			services: { db: true, cache: true, mail: true, storage: true },
+			constructs: { database: true, cache: true, mail: true, uploads: true },
 		});
 
 		expect(cfg).not.toContain('services:');
@@ -1269,7 +1089,10 @@ describe('generateUiPackageFiles', () => {
 
 describe('generateTestFiles', () => {
 	it('should return empty array when database is disabled', () => {
-		const options = { ...baseOptions, database: false };
+		const options = {
+			...baseOptions,
+			constructs: { ...baseOptions.constructs, database: false },
+		};
 		const files = generateTestFiles(options, minimalTemplate);
 		expect(files).toHaveLength(0);
 	});
@@ -1361,7 +1184,10 @@ describe('generateConfigFiles - vitest.config.ts', () => {
 	});
 
 	it('should not generate vitest.config.ts when database is disabled', () => {
-		const options = { ...baseOptions, database: false };
+		const options = {
+			...baseOptions,
+			constructs: { ...baseOptions.constructs, database: false },
+		};
 		const files = generateConfigFiles(options, minimalTemplate);
 		const paths = files.map((f) => f.path);
 		expect(paths).not.toContain('vitest.config.ts');
@@ -1400,7 +1226,10 @@ describe('generatePackageJson - testkit dependencies', () => {
 	});
 
 	it('should not include testkit when database is disabled', () => {
-		const options = { ...baseOptions, database: false };
+		const options = {
+			...baseOptions,
+			constructs: { ...baseOptions.constructs, database: false },
+		};
 		const files = generatePackageJson(options, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.devDependencies['@geekmidas/testkit']).toBeUndefined();
@@ -1453,8 +1282,7 @@ describe('generateAgentFiles', () => {
 		const without = generateAgentFiles(
 			{
 				...baseOptions,
-				database: false,
-				services: { ...baseOptions.services, db: false },
+				constructs: { ...baseOptions.constructs, database: false },
 			},
 			minimalTemplate,
 		)[0].content;
@@ -1499,10 +1327,10 @@ describe('generateDeployFiles', () => {
 
 	it('asks for a sender only when the project sends mail', () => {
 		const withMail = sst({
-			services: { db: true, cache: false, mail: true, storage: false },
+			constructs: { database: true, cache: false, mail: true, uploads: false },
 		})[0]!.content;
 		const without = sst({
-			services: { db: true, cache: false, mail: false, storage: false },
+			constructs: { database: true, cache: false, mail: false, uploads: false },
 		})[0]!.content;
 
 		expect(withMail).toContain('Mail: { from: process.env.MAIL_FROM');
@@ -1512,7 +1340,12 @@ describe('generateDeployFiles', () => {
 	it('creates no network for a project with no database', () => {
 		const content = sst({
 			template: 'api',
-			services: { db: false, cache: false, mail: false, storage: false },
+			constructs: {
+				database: false,
+				cache: false,
+				mail: false,
+				uploads: false,
+			},
 		})[0]!.content;
 
 		expect(content).not.toContain('Vpc');

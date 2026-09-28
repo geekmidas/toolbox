@@ -12,8 +12,9 @@ import { defineWorkspace } from '@geekmidas/cli/config';
  * and the apps are read off the graph.
  *
  * What is left here is what no graph can answer: the name every physical name
- * is scoped by, where the constructs live, which backends a cache and a mailer
- * resolve to, and where a deploy sends things.
+ * is scoped by, its stages, where the constructs live, and where a deploy
+ * sends things. Which backend a cache or a broker resolves to follows from
+ * that deploy target, so it is not here either.
  */
 export default defineWorkspace({
 	// The scope every physical name is built from: `Database` becomes
@@ -28,15 +29,6 @@ export default defineWorkspace({
 	// mail implies Mailpit — none of it listed anywhere. It is also where the
 	// apps come from: a `site` is an app, and so is a `rest-api` that named one.
 	constructs: './constructs/**/*.ts',
-
-	// Where the things no construct implies actually live. Backend names only —
-	// whether a cache exists comes from declaring one.
-	services: {
-		mail: 'ses',
-		events:
-			(process.env.KITCHEN_SINK_EVENTS as 'pgboss' | 'sns' | 'rabbitmq') ??
-			'pgboss',
-	},
 
 	// Read from the environment rather than written down, for the reason
 	// `sst.config.ts` reads its sending identity that way: an endpoint and a
