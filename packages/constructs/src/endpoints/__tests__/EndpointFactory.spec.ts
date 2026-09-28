@@ -5,6 +5,23 @@ import { z } from 'zod';
 import { EndpointFactory } from '../EndpointFactory';
 import { TEST_SURFACE } from './__helpers__/surface';
 
+/**
+ * Run an endpoint's session callback the way an adaptor does. The endpoint
+ * wraps the callback to hand it `auth`, so what it holds is not the function
+ * it was given — what it *does* is.
+ */
+const sessionOf = (
+	endpoint: { getSession: (ctx: any) => unknown },
+	ctx: Record<string, unknown> = {},
+) =>
+	endpoint.getSession({
+		services: {},
+		logger: console,
+		header: () => undefined,
+		cookie: () => undefined,
+		...ctx,
+	});
+
 describe('EndpointFactory', () => {
 	describe('joinPaths', () => {
 		it('should join simple paths', () => {
@@ -155,7 +172,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.authorize).toBe(authFn);
 		});
 
-		it('should chain with other factory methods', () => {
+		it('should chain with other factory methods', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: 'user1' });
 
@@ -171,7 +188,7 @@ describe('EndpointFactory', () => {
 				.handle(async () => ({ success: true }));
 
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 		});
 
 		it('should preserve authorization in factory chains', () => {
@@ -238,7 +255,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.route).toBe('/api/v1/users');
 		});
 
-		it('should preserve services, auth, and logger in sub-routes', () => {
+		it('should preserve services, auth, and logger in sub-routes', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: 'user1' });
 
@@ -259,7 +276,7 @@ describe('EndpointFactory', () => {
 
 			expect(endpoint.route).toBe('/api/test');
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 		});
 	});
 
@@ -346,7 +363,7 @@ describe('EndpointFactory', () => {
 	});
 
 	describe('session', () => {
-		it('should set session extractor', () => {
+		it('should set session extractor', async () => {
 			const sessionFn = async () => ({ userId: '123', role: 'admin' });
 			const factory = new EndpointFactory({ surface: TEST_SURFACE }).session(
 				sessionFn,
@@ -356,10 +373,10 @@ describe('EndpointFactory', () => {
 				session,
 			}));
 
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 		});
 
-		it('should handle session with services', () => {
+		it('should handle session with services', async () => {
 			const SessionService = {
 				serviceName: 'SessionService' as const,
 				async register() {
@@ -380,7 +397,16 @@ describe('EndpointFactory', () => {
 
 			const endpoint = factory.get('/test').handle(async () => ({}));
 
-			expect(endpoint.getSession).toBe(sessionFn);
+			const services = {
+				SessionService: { getSession: (token: string) => ({ token }) },
+			};
+			expect(
+				await sessionOf(endpoint, {
+					services,
+					header: (name: string) =>
+						name === 'authorization' ? 'Bearer t' : undefined,
+				}),
+			).toEqual({ token: 'Bearer t' });
 		});
 	});
 
@@ -421,7 +447,7 @@ describe('EndpointFactory', () => {
 	});
 
 	describe('constructor options', () => {
-		it('should initialize with all options', () => {
+		it('should initialize with all options', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 			const logger: Logger = new ConsoleLogger();
@@ -446,7 +472,7 @@ describe('EndpointFactory', () => {
 
 			expect(endpoint.route).toBe('/api/test');
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 			expect(endpoint.logger).toBe(logger);
 			expect(endpoint.services).toEqual([TestService]);
 		});

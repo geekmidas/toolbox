@@ -27,11 +27,13 @@ import pick from 'lodash.pick';
 import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import { ConstructType } from '../Construct';
+import type { Authenticator } from '../construct-interface';
 import { Function, type FunctionHandler } from '../functions';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
 import type { RlsConfig } from './rls';
+import { type SessionAuth, sessionAuth } from './sessionAuth';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -682,7 +684,11 @@ export class Endpoint<
 		this.endpointFn = fn;
 
 		if (getSession) {
-			this.getSession = getSession;
+			// `auth` is added here, once, rather than by each adaptor: every
+			// adaptor calls this, so every one of them hands a session callback
+			// the surface's authenticator bound to the request it is handling.
+			this.getSession = (ctx) =>
+				getSession({ ...ctx, auth: sessionAuth(surface, ctx.header) });
 		}
 
 		if (authorize) {
@@ -775,6 +781,11 @@ export interface EndpointSurface {
 	 * file or throws on a missing variable would do it at build time.
 	 */
 	envParser: EnvironmentParser<{}>;
+	/**
+	 * What authenticates requests to this surface — the construct named in
+	 * `RestApi.auth()`, which session callbacks read from as `auth`.
+	 */
+	auth?: Authenticator;
 }
 
 /**
@@ -952,6 +963,12 @@ type BaseSessionContext<
 	logger: TLogger;
 	header: HeaderFn;
 	cookie: CookieFn;
+	/**
+	 * The surface's authenticator — the construct named in `.auth()` — bound to
+	 * this request: `await auth.getSession()` is this request's session, or
+	 * `null`.
+	 */
+	auth: SessionAuth;
 };
 
 /**

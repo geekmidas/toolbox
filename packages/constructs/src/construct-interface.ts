@@ -15,6 +15,7 @@
  * still in use; it takes that name once the class is gone.
  */
 
+import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Declaration, Dependency } from '@geekmidas/manifest';
 import type { Service } from '@geekmidas/services';
 
@@ -64,6 +65,21 @@ export interface Construct<TName extends string = string, TClient = never> {
 export interface Declarable<TName extends string = string> {
 	readonly id: TName;
 	declare(): Declaration[];
+}
+
+/**
+ * A construct that authenticates requests — what `RestApi.auth()` takes.
+ *
+ * `verify` is the one thing every provider shares: given a request's headers,
+ * whose request is it — the session, or `null` when there is none. Whether the
+ * provider is a server mounted beside the API, deployed elsewhere, or an issuer
+ * somebody else runs is its own business; a surface only ever asks this.
+ */
+export interface Authenticator<TSession = unknown> extends Declarable {
+	verify(
+		headers: Headers,
+		envParser: EnvironmentParser<{}>,
+	): Promise<TSession | null>;
 }
 
 /**

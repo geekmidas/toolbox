@@ -39,4 +39,8 @@ export {
 	type RlsContext,
 	type RlsContextExtractor,
 } from './rls';
+export {
+	NoAuthenticator,
+	type SessionAuth,
+} from './sessionAuth';
 export { defaultEnvParser, envParserFor } from './surfaceEnv';

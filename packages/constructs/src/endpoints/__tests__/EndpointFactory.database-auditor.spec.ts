@@ -5,6 +5,23 @@ import { z } from 'zod';
 import { EndpointFactory } from '../EndpointFactory';
 import { TEST_SURFACE } from './__helpers__/surface';
 
+/**
+ * Run an endpoint's session callback the way an adaptor does. The endpoint
+ * wraps the callback to hand it `auth`, so what it holds is not the function
+ * it was given — what it *does* is.
+ */
+const sessionOf = (
+	endpoint: { getSession: (ctx: any) => unknown },
+	ctx: Record<string, unknown> = {},
+) =>
+	endpoint.getSession({
+		services: {},
+		logger: console,
+		header: () => undefined,
+		cookie: () => undefined,
+		...ctx,
+	});
+
 describe('EndpointFactory', () => {
 	const mockLogger: Logger = {
 		debug: vi.fn(),
@@ -102,7 +119,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.databaseService).toBe(AlternativeDatabase);
 		});
 
-		it('should work with authorization and session', () => {
+		it('should work with authorization and session', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 
@@ -117,7 +134,7 @@ describe('EndpointFactory', () => {
 
 			expect(endpoint.databaseService).toBe(DatabaseService);
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 		});
 	});
 
@@ -213,7 +230,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.auditorStorageService).toBe(AlternativeAuditStorage);
 		});
 
-		it('should work with authorization and session', () => {
+		it('should work with authorization and session', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 
@@ -228,7 +245,7 @@ describe('EndpointFactory', () => {
 
 			expect(endpoint.auditorStorageService).toBe(AuditStorageService);
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 		});
 	});
 
@@ -284,7 +301,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.route).toBe('/api/v1/users');
 		});
 
-		it('should work with all factory configuration options', () => {
+		it('should work with all factory configuration options', async () => {
 			const authFn = async () => true;
 			const sessionFn = async () => ({ userId: '123' });
 
@@ -313,7 +330,7 @@ describe('EndpointFactory', () => {
 			expect(endpoint.databaseService).toBe(DatabaseService);
 			expect(endpoint.auditorStorageService).toBe(AuditStorageService);
 			expect(endpoint.authorize).toBe(authFn);
-			expect(endpoint.getSession).toBe(sessionFn);
+			expect(await sessionOf(endpoint)).toEqual(await sessionFn());
 			expect(endpoint.services).toContainEqual(OtherService);
 			expect(endpoint.route).toBe('/api/users');
 		});
