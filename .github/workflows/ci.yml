@@ -59,6 +59,12 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      # Starts the built `gkm` and asks every command for --help. Nothing else
+      # ran the binary, and a duplicate option in the commander wiring shipped
+      # a CLI that died at startup for every command.
+      - name: Check the CLI starts
+        run: pnpm run check:cli
+
       - name: Check declared exports resolve
         run: pnpm run check:exports
 

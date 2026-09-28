@@ -3,6 +3,7 @@
 	"private": true,
 	"scripts": {
 		"build": "tsdown",
+		"check:cli": "node scripts/check-cli.mjs",
 		"check:deps": "node scripts/align-deps.mjs",
 		"check:exports": "node scripts/check-exports.mjs",
 		"check:install": "node scripts/check-install.mjs",
