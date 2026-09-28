@@ -352,7 +352,7 @@ When using `@geekmidas/constructs`, RLS integrates seamlessly with endpoints. Th
 ```typescript
 import { api } from '../constructs/api';
 
-const router = api.endpoints
+const router = api
   .database(database)  // the declared KyselyDatabase — `db` in every handler
   .authorizer('jwt')
   .rls({

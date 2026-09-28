@@ -19,7 +19,7 @@ const api = new RestApi('Bench', {
 	path: '.',
 	defaultAuthorizer: 'none',
 	logger: silentLogger,
-}).endpoints;
+});
 
 // ============================================================================
 // Mock Services for Benchmarks
@@ -473,8 +473,8 @@ describe('Endpoint Handling - Full Stack (Services + Session + Audit)', () => {
 
 	// Configure factory with session and authorization
 	const fullStackApi = api
-		.services([DatabaseService, CacheService])
 		.session<UserSession>(async () => ({ userId: 'admin-123', role: 'admin' }))
+		.services([DatabaseService, CacheService])
 		.authorize(async ({ session }) => session.role === 'admin');
 
 	const fullStackEndpoint = fullStackApi

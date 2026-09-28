@@ -81,7 +81,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			total: z.number(),
 		});
 
-		const endpoint = api.endpoints
+		const endpoint = api
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)
@@ -156,7 +156,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			isHighValue: z.boolean(),
 		});
 
-		const endpoint = api.endpoints
+		const endpoint = api
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)
@@ -246,7 +246,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			isHighValue: z.boolean(),
 		});
 
-		const endpoint = api.endpoints
+		const endpoint = api
 			.publisher(PgBossPublisherService)
 			.post('/orders')
 			.output(outputSchema)

@@ -10,9 +10,9 @@ import { authService, databaseService } from '../services';
 /** Endpoints are built from a surface now. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
-export const login = api.endpoints
-	.services([databaseService, authService])
+export const login = api
 	.post('/auth/login')
+	.services([databaseService, authService])
 	.body(z.object({ email: z.string(), password: z.string() }))
 	.output(z.object({ token: z.string() }))
 	.handle(async () => {

@@ -10,9 +10,9 @@ import { databaseService } from '../services';
 /** Endpoints are built from a surface now. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
-export const getUsers = api.endpoints
-	.services([databaseService])
+export const getUsers = api
 	.get('/users')
+	.services([databaseService])
 	.output(z.array(z.object({ id: z.string(), name: z.string() })))
 	.handle(async () => {
 		return [{ id: '1', name: 'Test User' }];

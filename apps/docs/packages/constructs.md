@@ -34,7 +34,7 @@ pnpm add @geekmidas/constructs
 | Export | Description |
 |--------|-------------|
 | `/` | Core types and utilities |
-| `/endpoints` | `EndpointFactory` (reached as `api.endpoints`) and types |
+| `/endpoints` | `EndpointFactory` (what `api.get()` and `api.database()` return) and types |
 | `/functions` | Cloud function builder (`f`) |
 | `/crons` | Scheduled task builder (`c`) and AWS adaptor (`AWSScheduledFunction`) |
 | `/subscribers` | Event subscriber builder (`s`) — topic fan-out |
@@ -347,10 +347,11 @@ const endpoint = api
 
 #### Using Cookies for Authentication
 
-Combine cookie reading with session management by calling `.session()` on the factory:
+Combine cookie reading with session management by calling `.session()` on a
+branch — here the app's `router` (`api.database(database)`):
 
 ```typescript
-const sessionRouter = api
+const sessionRouter = router
   .services([AuthService])
   .session(async ({ cookie, services }) => {
     const sessionToken = cookie('session');
@@ -572,10 +573,10 @@ const uploadEndpoint = api
 import { api } from '../constructs/api';
 import { ForbiddenError } from '@geekmidas/errors';
 
-// Create a factory with services and database
+// Branch from the surface with the database, then add services
 const r = api
-  .services([AuthService])
-  .database(DatabaseService);
+  .database(DatabaseService)
+  .services([AuthService]);
 
 // Create a session-enabled router
 const sessionRouter = r
@@ -823,7 +824,7 @@ Set `.auditor()` and `.actor()` on a branch of the surface's factory so every en
 ```typescript
 import { api } from '../constructs/api';
 
-const router = api.endpoints
+const router = api
   .database(database)
   .services([auditStorageService])
   .session(extractSession)
@@ -862,7 +863,7 @@ const deleteUser = router
 When the audit storage uses the same database as the endpoint (e.g., both use the same Kysely instance), audits are flushed inside the same database transaction. This guarantees atomicity — if the handler fails, both the data changes and the audit records are rolled back.
 
 ```typescript
-const router = api.endpoints
+const router = api
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)
@@ -906,7 +907,7 @@ Configure RLS once on the factory so all endpoints inherit it:
 ```typescript
 import { api } from '../constructs/api';
 
-const router = api.endpoints
+const router = api
   .database(database)
   .session(extractSession)
   .authorizer('jwt')
@@ -1163,7 +1164,7 @@ and is granted nothing on it, because at runtime it only reads its own queue.
 Set a default publisher on the factory so all endpoints inherit it:
 
 ```typescript
-const router = api.endpoints
+const router = api
   .database(database)
   .publisher(users.publisher);
 

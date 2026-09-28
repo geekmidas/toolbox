@@ -204,7 +204,7 @@ import { database } from '../constructs/database';
 
 // Branch the surface's factory for what a group of endpoints shares. The
 // logger and the environment parser come along with it.
-export const router = api.endpoints.database(database);
+export const router = api.database(database);
 ```
 
 ```typescript

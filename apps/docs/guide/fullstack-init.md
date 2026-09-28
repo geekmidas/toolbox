@@ -85,7 +85,7 @@ my-app/
 │   │   │   ├── services/
 │   │   │   │   ├── database.ts  # Kysely database service
 │   │   │   │   └── auth.ts      # Auth client service
-│   │   │   ├── router.ts        # a branch of api.endpoints, with session/auth
+│   │   │   ├── router.ts        # a branch of api, with session/auth
 │   │   │   ├── endpoints/
 │   │   │   │   ├── health.ts    # GET /health
 │   │   │   │   ├── users/
@@ -286,7 +286,7 @@ The API app is built on `@geekmidas/constructs` with the Hono framework.
 - `config/studio.ts` — Studio database browser (if database enabled)
 - `services/database.ts` — Kysely database service with PostgreSQL dialect
 - `services/auth.ts` — Auth client for calling the auth service
-- `router.ts` — a branch of `api.endpoints` with a default JWT authorizer and session support
+- `router.ts` — a branch of `api` with a default JWT authorizer and session support
 - `endpoints/health.ts` — basic health check
 - `endpoints/users/list.ts` and `get.ts` — example CRUD endpoints
 - `endpoints/profile.ts` — protected endpoint requiring authentication

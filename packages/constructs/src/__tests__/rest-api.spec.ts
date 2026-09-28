@@ -1,6 +1,8 @@
 import type { Service } from '@geekmidas/services';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import { z } from 'zod';
 import { sniffService } from '../Construct';
+import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 import { RestApi } from '../rest-api';
 
 const api = () =>
@@ -28,6 +30,66 @@ describe('RestApi', () => {
 		expect(endpoint.route).toBe('/orders/:id');
 		// Built from the surface, so the build knows which app serves it.
 		expect(endpoint.surface?.id).toBe('Api');
+	});
+
+	it('branches from the surface itself, and hands the branch `db`', async () => {
+		interface Db {
+			users: () => string[];
+		}
+		const database: Service<'appDb', Db> = {
+			serviceName: 'appDb',
+			register: () => ({ users: () => [] }),
+		};
+		const surface = api();
+
+		// No factory to reach through first: the surface is where endpoints are
+		// built, whether one at a time or as a group sharing a database.
+		const router = surface.database(database);
+		const listUsers = router
+			.get('/users')
+			.output(z.object({ users: z.array(z.string()) }))
+			.handle(async ({ db }) => ({ users: db.users() }));
+
+		expect(listUsers.surface?.id).toBe('Api');
+		const result = await new TestEndpointAdaptor(listUsers).request({
+			services: {},
+			headers: {},
+			database: { users: () => ['ada'] },
+		});
+		expect(result).toEqual({ users: ['ada'] });
+
+		// A branch is a new factory: a route built straight from the surface is
+		// not handed the database because some group of routes asked for it.
+		const health = surface.get('/health').handle(async () => ({}));
+		expect(health.databaseService).toBeUndefined();
+	});
+
+	it('lets one endpoint name its own database over the branch’s', () => {
+		interface Reports {
+			totals: () => number;
+		}
+		const appDb: Service<'appDb', { users: () => string[] }> = {
+			serviceName: 'appDb',
+			register: () => ({ users: () => [] }),
+		};
+		const reportsDb: Service<'reportsDb', Reports> = {
+			serviceName: 'reportsDb',
+			register: () => ({ totals: () => 0 }),
+		};
+		const router = api().database(appDb);
+
+		const report = router
+			.get('/reports')
+			.database(reportsDb)
+			.handle(async ({ db }) => {
+				expectTypeOf(db).toEqualTypeOf<Reports>();
+				return {};
+			});
+		const users = router.get('/users').handle(async () => ({}));
+
+		expect(report.databaseService?.serviceName).toBe('reportsDb');
+		// The override is the endpoint's alone; the branch keeps its own.
+		expect(users.databaseService?.serviceName).toBe('appDb');
 	});
 
 	it('names its authenticator, as an edge and as the auth it declares', () => {

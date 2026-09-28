@@ -7,6 +7,7 @@ import { z } from 'zod';
 const api = new RestApi('Test', {
 	path: 'apps/test',
 	defaultAuthorizer: 'none',
+	logger,
 });
 
 /**
@@ -17,10 +18,9 @@ const api = new RestApi('Test', {
  * declares the bucket, the target injects `UPLOADS_URL`, and the scheme in that
  * URL builds the client. Nothing here names MinIO, S3, a region, or a key.
  */
-export const createUploadUrl = api.endpoints
-	.logger(logger)
-	.dependsOn([uploads])
+export const createUploadUrl = api
 	.post('/uploads')
+	.dependsOn([uploads])
 	.body(
 		z.object({
 			path: z.string().min(1),

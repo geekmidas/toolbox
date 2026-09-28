@@ -7,7 +7,7 @@ import { AuditStorageService } from '../services/AuditStorageService.js';
  * What a group of endpoints shares, and deliberately not what any of them may
  * reach.
  *
- * Branched from `api.endpoints`, so everything built here still knows which
+ * Branched from `api`, so everything built here still knows which
  * surface serves it — and therefore which logger and environment parser it runs
  * with, neither of which is named anywhere any more.
  *
@@ -26,7 +26,7 @@ import { AuditStorageService } from '../services/AuditStorageService.js';
  * No default authorizer → endpoints are public; opt in per-endpoint with
  * `.authorizer('iam')` (see the protected endpoint in users.ts).
  */
-export const router = api.endpoints
+export const router = api
 	.database(database)
 	.auditor(AuditStorageService)
 	.publisher(users.publisher);

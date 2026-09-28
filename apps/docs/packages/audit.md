@@ -240,7 +240,7 @@ Set `.auditor()` and `.actor()` on a branch of the surface's factory so every en
 ```typescript
 import { api } from '../constructs/api';
 
-const router = api.endpoints
+const router = api
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)
@@ -299,7 +299,7 @@ const auditStorageService = {
   },
 } satisfies Service<'auditStorage', KyselyAuditStorage<Database>>;
 
-const router = api.endpoints
+const router = api
   .database(database)
   .services([auditStorageService])
   .auditor(auditStorageService)

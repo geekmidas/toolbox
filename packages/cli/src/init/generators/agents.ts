@@ -233,17 +233,17 @@ per endpoint:
 
 \`\`\`typescript
 import { z } from 'zod';
-import { router } from '../constructs/router.ts';
+import { router } from '~/router.ts';
 
 export const createUser = router
   .post('/users')
   .body(z.object({ name: z.string(), email: z.email() }))
   .output(z.object({ id: z.uuid() }))
-  .handle(async ({ body, logger${database ? ', services' : ''} }) => {
+  .handle(async ({ body, logger${database ? ', db' : ''} }) => {
     logger.info({ name: body.name }, 'creating user');
 ${
 	database
-		? `    const user = await services.database
+		? `    const user = await db
       .insertInto('users')
       .values({ name: body.name, email: body.email })
       .returningAll()
@@ -265,12 +265,19 @@ beside it is a second app that shadows the real one.
 
 ### Branching the factory
 
-Share what a *group* of endpoints needs by branching once, in its own file:
+Share what a *group* of endpoints needs by branching once, in
+\`src/router.ts\`. A branch starts from the surface itself — there is no
+factory object to reach through first:
 
 \`\`\`typescript
-export const router = api.endpoints${database ? '.database(database)' : ''};
+export const router = api${database ? '.database(database)' : ''};
 export const sessionRouter = router.session(/* … */);
 \`\`\`
+
+A branch is a new factory; the surface is untouched, so a route built straight
+from \`api\` gets none of what the branch added. What one endpoint alone needs —
+a bucket, a cache, another construct — goes on that endpoint with
+\`.dependsOn([...])\`, and arrives in \`services\`.
 
 Branch for a group, never for a single endpoint — a one-endpoint branch is
 indirection with nothing on the other side of it.`;
@@ -326,15 +333,27 @@ The database is a **construct**, not a hand-rolled service. Declaring it is what
 makes a Postgres exist locally and a database exist on deploy — nothing names
 \`postgres\` in config.
 
-An endpoint reaches it by declaring the dependency, and gets it typed:
+The router in \`src/router.ts\` names it — \`api.database(database)\` — and
+every endpoint built from that router gets it as \`db\`, typed by the
+construct's schema:
 
 \`\`\`typescript
 export const listUsers = router
   .get('/users')
   .output(z.array(z.object({ id: z.uuid() })))
-  .handle(async ({ services }) => {
-    return services.database.selectFrom('users').selectAll().execute();
+  .handle(async ({ db }) => {
+    return db.selectFrom('users').selectAll().execute();
   });
+\`\`\`
+
+An endpoint that needs a different database names it itself, and gets that
+one as \`db\` instead — the router's is unchanged for every other route:
+
+\`\`\`typescript
+export const monthly = router
+  .get('/reports/monthly')
+  .database(reports)
+  .handle(async ({ db }) => db.selectFrom('totals').selectAll().execute());
 \`\`\`
 
 Queries go through Kysely. Never open your own connection pool — the one the

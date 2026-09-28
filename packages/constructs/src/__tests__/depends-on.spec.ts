@@ -4,6 +4,7 @@ import { registerStorageDriver, type StorageClient } from '@geekmidas/storage';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { NotAConstruct } from '../construct-interface';
+import { EndpointFactory } from '../endpoints/EndpointFactory';
 import { ObjectStorage } from '../object-storage';
 import { q } from '../queue';
 import { RestApi } from '../rest-api';
@@ -11,8 +12,16 @@ import { t } from '../topic';
 import { Worker } from '../worker';
 
 /** Endpoints come from a surface now, so the tests build one. */
-const endpoints = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' })
-	.endpoints;
+const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
+
+/**
+ * A factory, for the cases that depend at factory level. The surface offers no
+ * `dependsOn` of its own — an endpoint names what it needs — so a group reaches
+ * it from a branch. Built directly here so the case is about `dependsOn` alone.
+ */
+const factory = new EndpointFactory({
+	surface: { id: 'Test', envParser: new EnvironmentParser({}) },
+});
 
 /**
  * A driver for these tests, registered the way an entry point registers one:
@@ -55,9 +64,9 @@ describe('.dependsOn', () => {
 	it('reaches a construct under its own id', async () => {
 		// `services.uploads`, never the name of whatever service it happens to
 		// own — the id is the only name, so a call site cannot drift from it.
-		const endpoint = endpoints
-			.dependsOn([uploads])
+		const endpoint = api
 			.get('/files')
+			.dependsOn([uploads])
 			.handle(async ({ services }) => services.uploads);
 
 		const services = (await resolve(endpoint.services)) as {
@@ -69,9 +78,9 @@ describe('.dependsOn', () => {
 
 	it('hands a topic its publisher, because publishing is what depending means', async () => {
 		// A subscriber binds with `testWorker.topic(…)` instead, and is never given this.
-		const endpoint = endpoints
-			.dependsOn([users])
+		const endpoint = api
 			.get('/ping')
+			.dependsOn([users])
 			.handle(async ({ services }) => services.users);
 
 		const services = (await resolve(endpoint.services)) as {
@@ -82,9 +91,9 @@ describe('.dependsOn', () => {
 	});
 
 	it('takes several constructs at once', async () => {
-		const endpoint = endpoints
-			.dependsOn([uploads, emails])
+		const endpoint = api
 			.get('/both')
+			.dependsOn([uploads, emails])
 			.handle(async ({ services }) => [services.uploads, services.emails]);
 
 		expect(endpoint.services.map((s) => s.serviceName).sort()).toEqual([
@@ -97,9 +106,9 @@ describe('.dependsOn', () => {
 		const clock = { serviceName: 'clock' as const, register: async () => ({}) };
 
 		// @ts-expect-error - constructs only; a Service does not match the shape.
-		expect(() => endpoints.dependsOn([clock])).toThrow(NotAConstruct);
+		expect(() => factory.dependsOn([clock])).toThrow(NotAConstruct);
 		// @ts-expect-error - same, with the message a JavaScript caller gets.
-		expect(() => endpoints.dependsOn([clock])).toThrow(
+		expect(() => factory.dependsOn([clock])).toThrow(
 			/services\(\[…\]\) instead/,
 		);
 	});
@@ -116,7 +125,7 @@ describe('.dependsOn', () => {
  */
 describe('.dependsOn — the ids it records', () => {
 	it('keeps the ids beside the services', () => {
-		const endpoint = endpoints
+		const endpoint = api
 			.get('/files')
 			.dependsOn([uploads])
 			.handle(async () => null);
@@ -128,7 +137,7 @@ describe('.dependsOn — the ids it records', () => {
 	it('accumulates across calls and collapses repeats', () => {
 		// `.services()` already unions rather than replaces, so the ids that
 		// mirror it have to as well or the two halves disagree.
-		const endpoint = endpoints
+		const endpoint = api
 			.get('/both')
 			.dependsOn([uploads])
 			.dependsOn([emails, uploads])
@@ -138,12 +147,12 @@ describe('.dependsOn — the ids it records', () => {
 	});
 
 	it('carries a factory-level dependency into every endpoint built from it', () => {
-		// The `endpoints.dependsOn([…]).get(…)` form: the factory is cloned by each
+		// The `branch.dependsOn([…]).get(…)` form: the factory is cloned by each
 		// builder method, so the ids have to survive thirteen clones to arrive.
-		const api = endpoints.dependsOn([uploads]);
+		const group = factory.dependsOn([uploads]);
 
-		const first = api.get('/a').handle(async () => null);
-		const second = api
+		const first = group.get('/a').handle(async () => null);
+		const second = group
 			.post('/b')
 			.dependsOn([emails])
 			.handle(async () => null);
@@ -155,13 +164,13 @@ describe('.dependsOn — the ids it records', () => {
 	it('does not leak from one endpoint into the next', () => {
 		// Builders are mutable and reused, which is why every other field is reset
 		// after `.handle()`; an edge leaking here would over-grant silently.
-		const api = endpoints.dependsOn([uploads]);
+		const group = factory.dependsOn([uploads]);
 
-		api
+		group
 			.get('/a')
 			.dependsOn([emails])
 			.handle(async () => null);
-		const after = api.get('/b').handle(async () => null);
+		const after = group.get('/b').handle(async () => null);
 
 		expect(after.constructs).toEqual(['Uploads']);
 	});
