@@ -866,19 +866,40 @@ export const config = new EnvironmentParser(process.env)
 		const tty = stdin.isTTY;
 		const rawMode = stdin.setRawMode;
 
-		/** The URL a line at a time, then the token a keystroke at a time. */
-		const answer = (url: string, token: string[] = []) => {
-			setTimeout(() => stdin.emit('data', Buffer.from(`${url}\n`)), 10);
-			setTimeout(() => {
-				for (const key of token) stdin.emit('data', Buffer.from(key));
-			}, 60);
+		/**
+		 * What the user types: a line at the first prompt, then keystrokes at the
+		 * hidden one. Each is sent when its prompt is written — the prompt starts
+		 * listening in the same tick it writes — rather than on a timer, which
+		 * raced the prompt whenever the suite ran under load.
+		 */
+		let typed: ({ line: string } | { keys: string[] })[] = [];
+		const answer = (line: string, keys: string[] = []) => {
+			typed = [{ line }, { keys }];
 		};
 
 		beforeEach(() => {
 			rmSync(join(home, '.gkm'), { recursive: true, force: true });
+			typed = [];
 			stdin.isTTY = true;
 			stdin.setRawMode = vi.fn(() => stdin);
-			vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+			vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+				// Every prompt `deploy` asks ends in ': '.
+				if (String(chunk).endsWith(': ')) {
+					const next = typed.shift();
+					if (next) {
+						setImmediate(() => {
+							if ('line' in next) {
+								stdin.emit('data', Buffer.from(`${next.line}\n`));
+							} else {
+								for (const key of next.keys) {
+									stdin.emit('data', Buffer.from(key));
+								}
+							}
+						});
+					}
+				}
+				return true;
+			});
 		});
 
 		afterEach(() => {
