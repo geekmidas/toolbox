@@ -1,5 +1,15 @@
 # @geekmidas/ui
 
+## 10.0.0-alpha.15
+
+### Patch Changes
+
+- [#67](https://github.com/geekmidas/toolbox/pull/67) [`fa7433f`](https://github.com/geekmidas/toolbox/commit/fa7433f1d396cece6ab4f5736c2835de4e3b3591) Thanks [@geekmidas](https://github.com/geekmidas)! - React 19.3, React Query 5.104, Tailwind 4.3 and lucide-react 1.x
+
+  `@geekmidas/ui` moves to lucide-react 1.48; its `Spinner` props follow
+  lucide's narrower `LucideProps`. `gkm init` scaffolds lucide-react 1.48. Peer
+  ranges for React, React Query and Tailwind are unchanged.
+
 ## 10.0.0-alpha.14
 
 ## 10.0.0-alpha.13

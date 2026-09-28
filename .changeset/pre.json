@@ -58,6 +58,7 @@
     "surface-has-no-app",
     "test-ports",
     "tranche-2-toolchain",
+    "tranche-3-react-ui",
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "worker-template"
