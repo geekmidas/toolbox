@@ -1,5 +1,76 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.17
+
+### Patch Changes
+
+- [#71](https://github.com/geekmidas/toolbox/pull/71) [`b3e2081`](https://github.com/geekmidas/toolbox/commit/b3e20817d4dfd32852acdf40a644720f5e8eceb1) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm` starts again
+
+  Every command failed at startup with "Cannot add option '--region <region>'
+  to command 'init' due to conflicting flag '--region'": `init` registered
+  `--region` twice. CI now starts the built CLI and runs `--help` for every
+  command (`pnpm check:cli`), so a broken command registration fails the build
+  instead of shipping.
+
+- [#72](https://github.com/geekmidas/toolbox/pull/72) [`c83944a`](https://github.com/geekmidas/toolbox/commit/c83944a7ac552e6c20b49bc48f6a81811028a466) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` scaffolds on TypeScript 7, and every `gkm` command starts again
+
+  **The CLI could not start.** `init` registered `--region` twice, so commander
+  threw while building the program and every `gkm` command — `build`, `dev`,
+  `--help` — failed on 10.0.0-alpha.16. A test now runs the built program.
+
+  **Scaffolds move to the toolchain the packages are built with:** TypeScript 7,
+  Vitest 5, Vite 8, tsx 4.23, esbuild 0.28 and Storybook 10. Storybook's config
+  follows Storybook 10 — `addon-docs` in place of essentials and interactions,
+  stories typed from `@storybook/react-vite`, backgrounds as a global — and uses
+  `react-docgen`, since the TypeScript-based docgen needs the compiler API that
+  TypeScript 7 no longer ships. Generated tsconfigs drop `baseUrl`.
+
+  `vite-tsconfig-paths` is gone: Vite resolves tsconfig `paths` itself
+  (`resolve.tsconfigPaths`), and the plugin's `tsconfck` declares a TypeScript 5
+  peer.
+
+  **A standalone app installs and typechecks.** It had no `packageManager`, so
+  Corepack took pnpm 11, which fails the first install on esbuild's build
+  script; it now pins the same pnpm as the workspace scaffold. And its endpoints
+  imported `./router.ts` from `src/endpoints/…`, a file that is not there — every
+  layout imports through `~/` now.
+
+- [#70](https://github.com/geekmidas/toolbox/pull/70) [`149f539`](https://github.com/geekmidas/toolbox/commit/149f539a8d4d12fec096af71619d7da8d93267b5) Thanks [@geekmidas](https://github.com/geekmidas)! - A deployed stage's secrets live in a store: `secrets.store` in gkm.config.ts
+
+  `.gkm/` is gitignored, so the encrypted secrets file a deploy decrypts was
+  never on a CI runner. `secrets.store` says where a deployed stage's secrets
+  live instead:
+  - `'file'` (default) — the encrypted `.gkm/secrets/<stage>.json`, as before.
+  - `{ provider: 'ssm', region }` — one `SecureString` per stage,
+    `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials.
+  - `{ provider: store }` — any object with `pull(stage)` and `push(stage, secrets)`.
+
+  The local stage always stays in the file.
+
+  `gkm secrets:push --stage <stage> [--profile <p>]` and `gkm secrets:pull`
+  move a deployed stage's secrets to and from its store; `--profile` resolves
+  only that profile, never `AWS_*` from the environment. The generated
+  `deploy.yml` for SST runs `gkm secrets:pull --stage "$STAGE"` after assuming
+  the stage's role, and no longer needs `GKM_SECRETS_KEY`; `gkm deploy:github`
+  pushes the stage's secrets to SSM with the same profile instead of setting the
+  key. `gkm init --deploy sst` writes the SSM store with the chosen region.
+
+  Breaking: `state: { provider: 'ssm' }` no longer carries secrets (it still
+  holds deploy state), and `gkm setup` no longer shares the local stage's
+  secrets through SSM. Move secrets to `secrets.store` and push each deployed
+  stage once.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.17
+  - @geekmidas/constructs@10.0.0-alpha.17
+  - @geekmidas/db@10.0.0-alpha.17
+  - @geekmidas/envkit@10.0.0-alpha.17
+  - @geekmidas/errors@10.0.0-alpha.17
+  - @geekmidas/logger@10.0.0-alpha.17
+  - @geekmidas/manifest@10.0.0-alpha.17
+  - @geekmidas/schema@10.0.0-alpha.17
+  - @geekmidas/telescope@10.0.0-alpha.17
+
 ## 10.0.0-alpha.16
 
 ### Patch Changes

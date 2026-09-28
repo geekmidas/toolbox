@@ -36,6 +36,7 @@
   "changesets": [
     "align-deps-tranche-1",
     "alpha-packaging",
+    "cli-starts-again",
     "client-coercion-types",
     "constructs-only-compose",
     "deploy-github-oidc",
@@ -53,6 +54,8 @@
     "minio-image",
     "named-errors-cloud-events",
     "openapi-document-fixes",
+    "scaffold-typescript-7",
+    "secrets-store-adaptors",
     "server-crons",
     "single-app-paths",
     "surface-has-no-app",
