@@ -462,7 +462,7 @@
 		"devDependencies": "^2.5.4"
 	},
 	"typescript": {
-		"devDependencies": "~6.0.3"
+		"devDependencies": "~7.0.2"
 	},
 	"valibot": {
 		"devDependencies": "~1.5.0"

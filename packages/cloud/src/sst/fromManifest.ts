@@ -39,7 +39,11 @@ import {
 	withCacheTable,
 } from './aws/Cache';
 import { Credential } from './aws/Credential';
-import { Database, DatabaseNeedsVpc } from './aws/Database';
+import {
+	Database,
+	DatabaseNeedsVpc,
+	type DatabaseProps,
+} from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { Email, EmailNeedsSender } from './aws/Email';
@@ -220,7 +224,11 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			// rather than whatever Aurora defaults to that month. Local ran 18
 			// while this ran 17.7, and neither was written down anywhere.
 			version: String(d.version ?? DEFAULT_POSTGRES_VERSION),
-			...(props as unknown as sst.aws.PostgresArgs),
+			// `DatabaseProps`, not `sst.aws.PostgresArgs`: the database needs the
+			// `Vpc` component itself (its bootstrap function runs in the same VPC
+			// and needs the security groups too), where RDS would accept bare
+			// subnet ids. TS 7 checks the spread; 6 let the wider type through.
+			...(props as unknown as Omit<DatabaseProps, 'schema'>),
 		});
 
 		// A database needs its own roles, not just its tenants'. Registering only
