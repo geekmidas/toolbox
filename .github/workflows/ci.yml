@@ -5,26 +5,15 @@ on:
     branches: [main, v9]
   pull_request:
     branches: [main, v9]
-    # A base change fires `edited`, which is not one of the default types — so a
-    # PR retargeted onto main, the last step of unstacking a PR stack, never
-    # built. It read as reviewed and green having never run once.
-    types: [opened, synchronize, reopened, edited]
+    # Not `edited`: it fires on every title and description edit, and each
+    # one left a skipped "Validate" as the newest result, which GitHub counts
+    # as passing — a failed PR read as green after any description edit. A
+    # retargeted PR builds on its next push, or from "Re-run jobs".
+    types: [opened, synchronize, reopened]
   workflow_call:
 
 concurrency:
-  # An `edited` event that did not move the base builds nothing — the job's `if`
-  # sees to that. But concurrency is evaluated before the job, so such a run
-  # still entered this group and cancelled the build already in it: editing a
-  # pull request's description killed its CI and left a skipped run looking like
-  # the answer. No-op runs get their own group, where the only thing they can
-  # cancel is each other.
-  group: >-
-    ${{ github.workflow }}-${{ github.ref }}-${{
-      github.event_name == 'pull_request'
-        && github.event.action == 'edited'
-        && github.event.changes.base == null
-        && 'noop' || 'build'
-    }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -35,13 +24,6 @@ permissions:
 jobs:
   validate:
     name: Validate
-    # `edited` has no narrower event to subscribe to: it also fires on every
-    # title and body edit. `changes.base` is present only when the base
-    # actually moved, so a typo fix in a description does not rebuild.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.action != 'edited' ||
-      github.event.changes.base != null
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
