@@ -44,8 +44,7 @@ export const DEPENDENCY_VERSIONS = {
 	'@radix-ui/react-tooltip': '~1.2.16',
 	'class-variance-authority': '~0.7.1',
 	clsx: '~2.1.1',
-	// 0.x: 1.x renames icons the UI components import; tranche 3 (#41).
-	'lucide-react': '~0.577.0',
+	'lucide-react': '~1.48.0',
 	'tailwind-merge': '~3.7.0',
 	// 5.x: 6.x changes how the plugin is configured.
 	'vite-tsconfig-paths': '~5.1.4',

@@ -172,7 +172,7 @@
 		"devDependencies": "~4.3.3"
 	},
 	"@tanstack/react-query": {
-		"devDependencies": "~5.90.16",
+		"devDependencies": "~5.104.0",
 		"peerDependencies": ">=5.0.0"
 	},
 	"@testing-library/dom": {
@@ -250,10 +250,10 @@
 		"devDependencies": "~6.15.1"
 	},
 	"@types/react": {
-		"devDependencies": "~19.1.8"
+		"devDependencies": "~19.3.0"
 	},
 	"@types/react-dom": {
-		"devDependencies": "~19.1.6"
+		"devDependencies": "~19.3.0"
 	},
 	"@upstash/redis": {
 		"peerDependencies": ">=1.39.0"
@@ -364,7 +364,7 @@
 		"dependencies": "~4.7.0"
 	},
 	"lucide-react": {
-		"dependencies": "~0.562.0"
+		"dependencies": "~1.48.0"
 	},
 	"medium-zoom": {
 		"devDependencies": "~1.1.0"
@@ -377,7 +377,7 @@
 		"dependencies": "~6.0.1"
 	},
 	"next": {
-		"dependencies": "~15.1.3"
+		"dependencies": "~16.3.6"
 	},
 	"nodemailer": {
 		"dependencies": "~10.0.10"
@@ -425,13 +425,13 @@
 		"dependencies": "~6.16.0"
 	},
 	"react": {
-		"dependencies": "^19.1.0",
-		"devDependencies": "^19.0.0",
+		"dependencies": "^19.3.0",
+		"devDependencies": "^19.3.0",
 		"peerDependencies": ">=18.0.0"
 	},
 	"react-dom": {
-		"dependencies": "^19.1.0",
-		"devDependencies": "^19.0.0",
+		"dependencies": "^19.3.0",
+		"devDependencies": "^19.3.0",
 		"peerDependencies": ">=18.0.0"
 	},
 	"react-router-dom": {
@@ -448,10 +448,10 @@
 		"devDependencies": "^10.6.0"
 	},
 	"tailwind-merge": {
-		"dependencies": "~3.4.0"
+		"dependencies": "~3.7.0"
 	},
 	"tailwindcss": {
-		"devDependencies": "^4.0.0",
+		"devDependencies": "^4.3.3",
 		"peerDependencies": ">=4.0.0"
 	},
 	"tsdown": {
