@@ -1,4 +1,5 @@
 import type { EventPublisher, PublishableMessage } from '../types';
+import { PgBossNotStarted } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
 
 export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
@@ -26,7 +27,7 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 
 		const boss = this.connection.instance;
 		if (!boss) {
-			throw new Error('PgBoss instance not initialized');
+			throw new PgBossNotStarted();
 		}
 
 		// Group jobs by queue name (v11+ requires per-queue insert calls)

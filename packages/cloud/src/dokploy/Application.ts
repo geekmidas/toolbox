@@ -196,6 +196,45 @@ const provider: dynamic.ResourceProvider<
 };
 
 /**
+ * A Dokploy API call that answered with an error status.
+ *
+ * Defined here, beside the provider, rather than imported: the provider's
+ * functions are serialised into state, and Pulumi's closure serialiser
+ * captures a class declared in the same module by value — once, shared by
+ * every function that refers to it, so `instanceof` still holds in the
+ * deployed provider. An imported class would have to be resolvable as a
+ * module where the provider runs, which is the obscure failure the note on
+ * `call` below is about.
+ *
+ * Serialisation rewrites the class into a plain function and drops its link to
+ * `Error.prototype`, so the constructor sets `message` and `stack` itself and
+ * the class says how to print itself. `Application.provider.spec.ts` runs the
+ * serialised provider to keep all of this true.
+ */
+export class DokployCallFailed extends Error {
+	constructor(
+		readonly path: string,
+		readonly status: number,
+		readonly statusText: string,
+		readonly detail: string,
+	) {
+		const message = `Dokploy ${path} failed: ${status} ${statusText}${detail ? ` — ${detail}` : ''}. Check the endpoint and API token, and Dokploy's own logs for the request.`;
+		super(message);
+		// Serialised, this constructor becomes a plain function whose super call
+		// does not initialise `this`: without these the provider host, which
+		// reports `e.message` and logs `${e}: ${e.stack}`, would show nothing.
+		this.message = message;
+		Error.captureStackTrace?.(this, DokployCallFailed);
+		this.name = 'DokployCallFailed';
+	}
+
+	/** What `${error}` prints once serialisation has dropped Error's own. */
+	override toString(): string {
+		return `${this.name}: ${this.message}`;
+	}
+}
+
+/**
  * One call to Dokploy.
  *
  * Written out rather than reusing `DokployApi` because the provider's functions
@@ -218,10 +257,11 @@ async function call<T>(
 
 	if (!response.ok) {
 		const detail = await response.text().catch(() => '');
-		throw new Error(
-			`Dokploy ${path} failed: ${response.status} ${response.statusText}${
-				detail ? ` — ${detail}` : ''
-			}`,
+		throw new DokployCallFailed(
+			path,
+			response.status,
+			response.statusText,
+			detail,
 		);
 	}
 
@@ -230,7 +270,7 @@ async function call<T>(
 
 /** Whether an error means the thing is already absent. */
 function isNotFound(error: unknown): boolean {
-	return error instanceof Error && /\b404\b/.test(error.message);
+	return error instanceof DokployCallFailed && error.status === 404;
 }
 
 export interface ApplicationArgs {

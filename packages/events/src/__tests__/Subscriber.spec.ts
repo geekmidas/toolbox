@@ -6,6 +6,7 @@ import { SNSSubscriber } from '../sns/SNSSubscriber';
 import { SQSConnection } from '../sqs/SQSConnection';
 import { SQSSubscriber } from '../sqs/SQSSubscriber';
 import type { PublishableMessage } from '../types';
+import { UnsupportedEventTransport } from '../types';
 
 type TestMessage = PublishableMessage<'test.event', { data: string }>;
 
@@ -55,7 +56,7 @@ describe('Subscriber', () => {
 
 			await expect(
 				Subscriber.fromConnectionString<TestMessage>(connectionStr),
-			).rejects.toThrow('Unsupported event subscriber type');
+			).rejects.toThrow(UnsupportedEventTransport);
 		});
 	});
 
@@ -103,7 +104,7 @@ describe('Subscriber', () => {
 
 			await expect(
 				Subscriber.fromConnection<TestMessage>(fakeConnection as any),
-			).rejects.toThrow('Unsupported connection type');
+			).rejects.toThrow(UnsupportedEventTransport);
 		});
 	});
 });

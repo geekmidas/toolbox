@@ -1,3 +1,4 @@
+export { RabbitMQChannelUnavailable } from './errors';
 export type { RabbitMQConnectionConfig } from './RabbitMQConnection';
 export { RabbitMQConnection } from './RabbitMQConnection';
 export type { RabbitMQPublisherOptions } from './RabbitMQPublisher';

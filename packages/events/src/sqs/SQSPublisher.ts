@@ -89,11 +89,12 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 
 		// Check for failures
 		if (response.Failed && response.Failed.length > 0) {
-			const errors = response.Failed.map(
-				(f) => `${f.Id}: ${f.Code} - ${f.Message}`,
-			).join(', ');
-			throw new Error(
-				`Failed to send ${response.Failed.length} messages: ${errors}`,
+			throw new SqsBatchPartlyFailed(
+				response.Failed.map((f) => ({
+					id: f.Id,
+					code: f.Code,
+					message: f.Message,
+				})),
 			);
 		}
 	}
@@ -101,5 +102,21 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 	async close(): Promise<void> {
 		// Publisher doesn't own the connection
 		// Connection should be closed by whoever created it
+	}
+}
+
+/** SQS accepted the batch but refused some of its messages; the rest were sent. */
+export class SqsBatchPartlyFailed extends Error {
+	constructor(
+		readonly failed: readonly {
+			id?: string;
+			code?: string;
+			message?: string;
+		}[],
+	) {
+		super(
+			`Failed to send ${failed.length} messages: ${failed.map((f) => `${f.id}: ${f.code} - ${f.message}`).join(', ')}. The others in the batch were sent; retry only these.`,
+		);
+		this.name = 'SqsBatchPartlyFailed';
 	}
 }

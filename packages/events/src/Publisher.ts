@@ -3,7 +3,7 @@ import type {
 	EventPublisher,
 	PublishableMessage,
 } from './types';
-import { EventPublisherType } from './types';
+import { EventPublisherType, UnsupportedEventTransport } from './types';
 
 export class Publisher {
 	/**
@@ -41,7 +41,10 @@ export class Publisher {
 			}
 			// Future implementations for EventBridge, Kafka, etc.
 			default:
-				throw new Error(`Unsupported event publisher type: ${url.protocol}`);
+				throw new UnsupportedEventTransport(
+					url.protocol.replace(':', ''),
+					'publisher',
+				);
 		}
 	}
 
@@ -89,7 +92,7 @@ export class Publisher {
 				);
 			}
 			default:
-				throw new Error(`Unsupported connection type: ${connection.type}`);
+				throw new UnsupportedEventTransport(connection.type, 'publisher');
 		}
 	}
 }
