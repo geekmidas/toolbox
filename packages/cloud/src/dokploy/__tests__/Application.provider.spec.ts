@@ -16,6 +16,8 @@ const inputs = {
 	projectId: 'proj-1',
 	environmentId: 'env-1',
 };
+/** What state holds once the application exists: every later call gets it. */
+const outs = { ...inputs, applicationId: 'app-1', appName: 'my-api' };
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -70,19 +72,19 @@ describe('Dokploy application provider', () => {
 		answer('get', 'application.one', () =>
 			HttpResponse.json({ applicationId: 'app-1', appName: 'my-api-2' }),
 		);
-		expect(await provider.read!('app-1', inputs)).toEqual({
+		expect(await provider.read!('app-1', outs)).toEqual({
 			id: 'app-1',
 			props: { ...inputs, applicationId: 'app-1', appName: 'my-api-2' },
 		});
 
 		server.resetHandlers();
 		answer('get', 'application.one', () => HttpResponse.json(null));
-		expect(await provider.read!('app-1', inputs)).toEqual({ id: undefined });
+		expect(await provider.read!('app-1', outs)).toEqual({ id: undefined });
 	});
 
 	it('diffs through the same rule preview uses', async () => {
 		expect(
-			await provider.diff!('app-1', inputs, { ...inputs, name: 'Gateway' }),
+			await provider.diff!('app-1', outs, { ...inputs, name: 'Gateway' }),
 		).toMatchObject({ changes: true, replaces: ['name'] });
 	});
 
@@ -91,7 +93,7 @@ describe('Dokploy application provider', () => {
 			HttpResponse.json({}),
 		);
 
-		const result = await provider.update!('app-1', inputs, {
+		const result = await provider.update!('app-1', outs, {
 			...inputs,
 			name: 'My Api',
 		});
@@ -118,7 +120,7 @@ describe('Dokploy application provider', () => {
 			}),
 		);
 
-		await expect(provider.delete!('app-1', inputs)).resolves.toBeUndefined();
+		await expect(provider.delete!('app-1', outs)).resolves.toBeUndefined();
 		expect((await call.request()).body).toEqual({ applicationId: 'app-1' });
 	});
 
@@ -129,7 +131,7 @@ describe('Dokploy application provider', () => {
 				statusText: 'Internal Server Error',
 			}),
 		);
-		await expect(provider.delete!('app-1', inputs)).rejects.toThrow(
+		await expect(provider.delete!('app-1', outs)).rejects.toThrow(
 			'Dokploy application.remove failed: 500 Internal Server Error — database is locked',
 		);
 
